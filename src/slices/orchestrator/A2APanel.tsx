@@ -1,5 +1,6 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Network,
   Send,
@@ -12,6 +13,10 @@ import {
   CheckCircle2,
   Clock,
   RefreshCw,
+  Copy,
+  Check,
+  Trash2,
+  Sparkles,
 } from "lucide-react";
 import { TerminalInfo } from "../terminal/types";
 
@@ -32,11 +37,11 @@ interface A2APanelProps {
   onClose: () => void;
 }
 
-export const A2APanel = ({
+export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
   onClose,
-}: A2APanelProps) => {
+}) => {
   const claudeTerminals = terminals.filter((t) => t.run_kind === "claude");
   const [fromTerminal, setFromTerminal] = useState(claudeTerminals[0]?.id || "");
   const [toTerminal, setToTerminal] = useState(claudeTerminals[1]?.id || "");
@@ -45,6 +50,7 @@ export const A2APanel = ({
   const [broadcastText, setBroadcastText] = useState("");
   const [messages, setMessages] = useState<A2AMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (claudeTerminals.length > 0 && !fromTerminal) {
@@ -59,8 +65,33 @@ export const A2APanel = ({
     if (!isOpen) return;
 
     loadMessages();
-    const interval = setInterval(loadMessages, 1500);
-    return () => clearInterval(interval);
+
+    // Listen for real-time message updates
+    const unlistenUpdatedPromise = listen<A2AMessage>("a2a-message-updated", (event) => {
+      const updated = event.payload;
+      setMessages((prev) => {
+        const index = prev.findIndex((m) => m.id === updated.id);
+        if (index >= 0) {
+          const next = [...prev];
+          next[index] = updated;
+          return next;
+        } else {
+          return [updated, ...prev];
+        }
+      });
+    });
+
+    const unlistenClearedPromise = listen("a2a-messages-cleared", () => {
+      setMessages([]);
+    });
+
+    const interval = setInterval(loadMessages, 3000);
+
+    return () => {
+      clearInterval(interval);
+      unlistenUpdatedPromise.then((unlisten) => unlisten());
+      unlistenClearedPromise.then((unlisten) => unlisten());
+    };
   }, [isOpen]);
 
   const loadMessages = async () => {
@@ -72,8 +103,8 @@ export const A2APanel = ({
     }
   };
 
-  const handleSendPrompt = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSendPrompt = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (!fromTerminal || !toTerminal || !prompt.trim()) return;
 
     setIsSending(true);
@@ -107,85 +138,113 @@ export const A2APanel = ({
     }
   };
 
+  const handleClearMessages = async () => {
+    try {
+      await invoke("a2a_clear_messages");
+      setMessages([]);
+    } catch (err) {
+      console.error("Failed to clear A2A messages:", err);
+    }
+  };
+
+  const handleCopy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  const applyTemplate = (templatePrompt: string) => {
+    setPrompt(templatePrompt);
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs">
-      <div className="w-[720px] max-h-[88vh] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl flex flex-col text-[#c9d1d9] animate-in zoom-in-95 duration-150">
+      <div className="w-[740px] max-h-[88vh] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl flex flex-col text-[#c9d1d9] animate-in zoom-in-95 duration-150">
+        {/* Panel Header */}
         <div className="h-14 px-6 border-b border-[#30363d] flex items-center justify-between shrink-0 bg-[#161b22]">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Network className="w-5 h-5 text-[#58a6ff]" />
             <div>
               <h2 className="text-base font-semibold text-white leading-tight">
                 A2A Orchestration Bus
               </h2>
               <p className="text-[11px] text-[#8b949e]">
-                Autonomous Peer-to-Peer Agent Collaboration & MCP Server
+                Autonomous Peer-to-Peer Agent Collaboration & Embedded MCP Server
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-[#8b949e] hover:text-white p-1 rounded"
+            className="text-[#8b949e] hover:text-white p-1.5 hover:bg-[#21262d] rounded transition-colors"
+            title="Close Panel (Esc)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-6 overflow-y-auto space-y-5">
           {/* Active MCP Tools info banner */}
           <div className="p-3.5 bg-[#0d1117] border border-[#30363d] rounded-lg">
-            <div className="flex items-center gap-2 text-xs font-semibold text-white mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-white mb-1.5">
               <Cpu className="w-4 h-4 text-[#3fb950]" />
               <span>Injected Quay MCP Server (Active)</span>
             </div>
-            <p className="text-xs text-[#8b949e] mb-2.5">
-              Every Claude Code terminal is provisioned with the embedded <code className="text-[#58a6ff]">quay</code> MCP server. Agents can autonomously invoke these tools:
+            <p className="text-xs text-[#8b949e] mb-2.5 leading-relaxed">
+              Every Claude Code terminal is provisioned with the loopback <code className="text-[#58a6ff]">quay</code> MCP server. Running agents can autonomously invoke these tools:
             </p>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_list_agents</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Discover peer agents & status</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Discover peer agents, tasks, & statuses</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_send_message</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Send task & await reply turn</p>
-              </div>
-              <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
-                <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Inspect turn state & actions</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Dispatch tasks & await peer agent replies</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Broadcast toast to all agents</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Send toast alerts to all active agents</p>
+              </div>
+              <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
+                <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Query active tools & auto-approved counts</p>
               </div>
             </div>
           </div>
 
-          {/* Manual Dispatch Section */}
-          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] mb-3 flex items-center gap-1.5">
+          {/* Interactive Agent-to-Agent Dispatch */}
+          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
               <Send className="w-3.5 h-3.5 text-[#58a6ff]" />
-              <span>Manual Agent Handoff / Test Dispatch</span>
+              <span>Dispatch Prompt / Handoff Task</span>
             </h3>
 
             {claudeTerminals.length < 2 ? (
-              <div className="text-xs text-[#8b949e] p-2 bg-[#161b22] rounded border border-[#30363d]">
-                Launch at least 2 Claude Code terminals to dispatch inter-agent tasks.
+              <div className="p-3 bg-[#161b22] border border-[#30363d] rounded text-xs text-[#8b949e] flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#d29922] shrink-0" />
+                <span>
+                  Spawn at least <strong>two Claude Code terminals</strong> to test autonomous agent-to-agent messaging and task handoffs.
+                </span>
               </div>
             ) : (
               <form onSubmit={handleSendPrompt} className="space-y-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1">From Agent</label>
+                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
                     <select
                       value={fromTerminal}
                       onChange={(e) => setFromTerminal(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white"
+                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
                       {claudeTerminals.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} ({t.id})
+                          {t.name} • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
                         </option>
                       ))}
                     </select>
@@ -194,35 +253,77 @@ export const A2APanel = ({
                   <ArrowRight className="w-4 h-4 text-[#8b949e] mt-5 shrink-0" />
 
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1">To Agent</label>
+                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">To Agent</label>
                     <select
                       value={toTerminal}
                       onChange={(e) => setToTerminal(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white"
+                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
                       {claudeTerminals
                         .filter((t) => t.id !== fromTerminal)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} ({t.id})
+                            {t.name} • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
                           </option>
                         ))}
                     </select>
                   </div>
                 </div>
 
+                {/* Prompt Templates */}
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  <span className="text-[#8b949e] flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-[#58a6ff]" />
+                    <span>Templates:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate("Please inspect the latest code changes in this workspace and provide a concise review summary.")}
+                    className="px-2 py-0.5 rounded bg-[#161b22] border border-[#30363d] hover:border-[#58a6ff] hover:text-white transition-colors"
+                  >
+                    Code Review
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate("Please execute the test suite (cargo test / pnpm test), verify pass/fail status, and report results.")}
+                    className="px-2 py-0.5 rounded bg-[#161b22] border border-[#30363d] hover:border-[#58a6ff] hover:text-white transition-colors"
+                  >
+                    Run Tests
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate("What task are you currently executing and what is your latest progress status?")}
+                    className="px-2 py-0.5 rounded bg-[#161b22] border border-[#30363d] hover:border-[#58a6ff] hover:text-white transition-colors"
+                  >
+                    Status Check
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate("I have completed the backend APIs. Please implement matching frontend components and handlers.")}
+                    className="px-2 py-0.5 rounded bg-[#161b22] border border-[#30363d] hover:border-[#58a6ff] hover:text-white transition-colors"
+                  >
+                    Task Handoff
+                  </button>
+                </div>
+
                 <div>
                   <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Task instruction or prompt to dispatch to peer agent..."
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        handleSendPrompt();
+                      }
+                    }}
+                    placeholder="Task instruction or prompt to dispatch to peer agent... (Ctrl+Enter to send)"
                     rows={2}
                     className="w-full p-2.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                   />
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-xs text-[#8b949e] cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs text-[#8b949e] cursor-pointer hover:text-white transition-colors">
                     <input
                       type="checkbox"
                       checked={asUser}
@@ -230,7 +331,7 @@ export const A2APanel = ({
                       className="rounded bg-[#161b22] border-[#30363d]"
                     />
                     <UserCheck className="w-3.5 h-3.5" />
-                    <span>Send as user's own prompt</span>
+                    <span>Send directly without peer attribution (as user prompt)</span>
                   </label>
 
                   <button
@@ -239,7 +340,7 @@ export const A2APanel = ({
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Dispatch Task</span>
+                    <span>{isSending ? "Dispatching..." : "Dispatch Task"}</span>
                   </button>
                 </div>
               </form>
@@ -276,21 +377,32 @@ export const A2APanel = ({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-[#a371f7]" />
-                <span>Live A2A Message & Tool Call Trail ({messages.length})</span>
+                <span>Live A2A Message Trail ({messages.length})</span>
               </h3>
-              <button
-                onClick={loadMessages}
-                className="text-[11px] text-[#58a6ff] hover:underline flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Refresh</span>
-              </button>
+              <div className="flex items-center gap-3">
+                {messages.length > 0 && (
+                  <button
+                    onClick={handleClearMessages}
+                    className="text-[11px] text-[#ff7b72] hover:underline flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear Trail</span>
+                  </button>
+                )}
+                <button
+                  onClick={loadMessages}
+                  className="text-[11px] text-[#58a6ff] hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Refresh</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2.5 max-h-56 overflow-y-auto">
               {messages.length === 0 ? (
                 <div className="text-xs text-[#8b949e] text-center py-6 bg-[#0d1117] rounded border border-[#30363d]">
-                  No inter-agent messages dispatched yet. When agents invoke <code className="text-[#58a6ff]">quay_send_message</code>, conversations appear here.
+                  No inter-agent messages dispatched yet. When agents invoke <code className="text-[#58a6ff]">quay_send_message</code> or you dispatch tasks above, conversations appear here live.
                 </div>
               ) : (
                 messages.map((m) => (
@@ -301,6 +413,11 @@ export const A2APanel = ({
                     <div className="flex items-center justify-between text-[11px] text-[#8b949e]">
                       <span className="font-semibold text-[#58a6ff]">
                         {m.from_terminal} → {m.to_terminal}
+                        {m.as_user && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-[#30363d] text-[#c9d1d9] font-normal">
+                            as user
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         {m.status === "completed" && (
@@ -315,17 +432,48 @@ export const A2APanel = ({
                             <span>Working</span>
                           </span>
                         )}
+                        {m.status === "failed" && (
+                          <span className="flex items-center gap-1 text-[#ff7b72]">
+                            <span>Failed</span>
+                          </span>
+                        )}
                         <span>{new Date(m.timestamp).toLocaleTimeString()}</span>
                       </div>
                     </div>
-                    <div className="text-white text-xs font-mono bg-[#161b22] p-2 rounded border border-[#30363d]/50">
-                      {m.content}
+
+                    <div className="text-white text-xs font-mono bg-[#161b22] p-2 rounded border border-[#30363d]/50 relative group">
+                      <div className="pr-6">{m.content}</div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(`content-${m.id}`, m.content)}
+                        className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 p-1 text-[#8b949e] hover:text-white rounded bg-[#21262d] transition-opacity"
+                        title="Copy message"
+                      >
+                        {copiedKey === `content-${m.id}` ? (
+                          <Check className="w-3 h-3 text-[#3fb950]" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
                     </div>
 
                     {m.response && (
-                      <div className="mt-1 pl-2 border-l-2 border-[#3fb950] text-[#7ee787] text-[11px] font-mono">
-                        <span className="text-[#8b949e] block font-sans text-[10px]">Reply:</span>
-                        {m.response}
+                      <div className="mt-1 pl-2.5 border-l-2 border-[#3fb950] text-[#7ee787] text-[11px] font-mono relative group">
+                        <div className="flex items-center justify-between text-[10px] text-[#8b949e] font-sans mb-0.5">
+                          <span>Reply:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(`resp-${m.id}`, m.response!)}
+                            className="opacity-0 group-hover:opacity-100 text-[#58a6ff] hover:underline flex items-center gap-0.5"
+                          >
+                            {copiedKey === `resp-${m.id}` ? (
+                              <span className="text-[#3fb950]">Copied!</span>
+                            ) : (
+                              <span>Copy Reply</span>
+                            )}
+                          </button>
+                        </div>
+                        <div className="whitespace-pre-wrap">{m.response}</div>
                       </div>
                     )}
                   </div>

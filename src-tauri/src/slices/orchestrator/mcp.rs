@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tauri::Emitter;
 
 use super::models::A2ADispatchRequest;
 use super::router::A2ARouter;
@@ -64,11 +65,18 @@ pub async fn handle_mcp_request(
 
     match req.method.as_str() {
         "initialize" => {
+            let requested_version = req
+                .params
+                .as_ref()
+                .and_then(|p| p.get("protocolVersion"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("2024-11-05");
+
             let res = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
                 result: Some(json!({
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": requested_version,
                     "capabilities": {
                         "tools": {}
                     },
@@ -83,8 +91,42 @@ pub async fn handle_mcp_request(
         }
 
         "notifications/initialized" => {
-            // Acknowledge initialization
-            StatusCode::OK.into_response()
+            (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                "{}",
+            )
+                .into_response()
+        }
+
+        "ping" => {
+            let res = JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(json!({})),
+                error: None,
+            };
+            Json(res).into_response()
+        }
+
+        "resources/list" => {
+            let res = JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(json!({ "resources": [] })),
+                error: None,
+            };
+            Json(res).into_response()
+        }
+
+        "prompts/list" => {
+            let res = JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(json!({ "prompts": [] })),
+                error: None,
+            };
+            Json(res).into_response()
         }
 
         "tools/list" => {
@@ -177,8 +219,10 @@ pub async fn handle_mcp_request(
                             json!({
                                 "terminal_id": t.id,
                                 "name": t.name,
+                                "task_title": t.task_title,
                                 "run_kind": t.run_kind,
                                 "status": t.claude_status,
+                                "current_tool": t.current_tool,
                                 "auto_approved_count": t.auto_approved_count,
                                 "project_path": t.project_path
                             })
@@ -225,26 +269,39 @@ pub async fn handle_mcp_request(
                                 .dispatch_and_wait(request, &ctx.bridge_state, 60)
                                 .await
                             {
-                                Ok(reply) => Ok(json!({
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": format!("Reply from {}:\n{}", target_id, reply)
-                                        }
-                                    ]
-                                })),
+                                Ok(reply) => {
+                                    if let Some(msg) = a2a_router
+                                        .get_messages()
+                                        .into_iter()
+                                        .rev()
+                                        .find(|m| m.to_terminal == target_id)
+                                    {
+                                        let _ = ctx.app_handle.emit("a2a-message-updated", msg);
+                                    }
+                                    Ok(json!({
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": format!("Reply from {}:\n{}", target_id, reply)
+                                            }
+                                        ]
+                                    }))
+                                }
                                 Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
                             }
                         } else {
                             match a2a_router.dispatch(request, &ctx.bridge_state) {
-                                Ok(_) => Ok(json!({
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": format!("Successfully dispatched task to {}.", target_id)
-                                        }
-                                    ]
-                                })),
+                                Ok(msg) => {
+                                    let _ = ctx.app_handle.emit("a2a-message-updated", msg);
+                                    Ok(json!({
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": format!("Successfully dispatched task to {}.", target_id)
+                                            }
+                                        ]
+                                    }))
+                                }
                                 Err(e) => Err("Failed to dispatch task: ".to_string() + &e),
                             }
                         }
@@ -280,8 +337,14 @@ pub async fn handle_mcp_request(
                                 {
                                     "type": "text",
                                     "text": format!(
-                                        "Agent {}: name='{}', status={:?}, auto_approved_count={}, project='{}'",
-                                        info.id, info.name, info.claude_status, info.auto_approved_count, info.project_path
+                                        "Agent {}: name='{}', status={:?}, task='{}', tool='{}', auto_approved={}, project='{}'",
+                                        info.id,
+                                        info.name,
+                                        info.claude_status,
+                                        info.task_title.as_deref().unwrap_or("none"),
+                                        info.current_tool.as_deref().unwrap_or("none"),
+                                        info.auto_approved_count,
+                                        info.project_path
                                     )
                                 }
                             ]

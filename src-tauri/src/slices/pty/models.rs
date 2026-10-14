@@ -37,6 +37,12 @@ pub struct TerminalInfo {
     pub claude_status: ClaudeStatus,
     pub auto_approved_count: u32,
     pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub task_title: Option<String>,
+    #[serde(default)]
+    pub current_tool: Option<String>,
+    #[serde(default)]
+    pub custom_name: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -49,4 +55,15 @@ pub struct SpawnTerminalRequest {
     pub command_text: Option<String>,
     pub rows: Option<u16>,
     pub cols: Option<u16>,
+    #[serde(default)]
+    pub env_vars: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    pub custom_flags: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalOutputPayload {
+    pub terminal_id: String,
+    pub data: String,
+    pub last_seq: u64,
 }

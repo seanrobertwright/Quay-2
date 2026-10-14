@@ -1,20 +1,52 @@
 use tauri::{AppHandle, State};
 
 use super::manager::PtyManager;
-use super::models::{SpawnTerminalRequest, TerminalInfo};
+use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalOutputPayload};
 use crate::slices::bridge::state::BridgeState;
 
 #[tauri::command]
 pub async fn spawn_terminal(
-    request: SpawnTerminalRequest,
+    mut request: SpawnTerminalRequest,
     pty_manager: State<'_, PtyManager>,
     bridge_state: State<'_, BridgeState>,
+    workspace_manager: State<'_, crate::slices::workspace::manager::WorkspaceManager>,
     app_handle: AppHandle,
 ) -> Result<TerminalInfo, String> {
+    let terminal_id = request
+        .id
+        .clone()
+        .unwrap_or_else(|| format!("term-{}", uuid::Uuid::new_v4().simple()));
+    request.id = Some(terminal_id.clone());
+
+    // Inherit workspace environment variables and custom flags
+    if let Some((proj_env, proj_flags)) =
+        workspace_manager.get_project_settings(&request.project_path)
+    {
+        if request.env_vars.is_none() && !proj_env.is_empty() {
+            request.env_vars = Some(proj_env);
+        } else if let Some(ref mut envs) = request.env_vars {
+            for (k, v) in proj_env {
+                envs.entry(k).or_insert(v);
+            }
+        }
+
+        if request.custom_flags.is_none() && proj_flags.is_some() {
+            request.custom_flags = proj_flags;
+        }
+    }
+
     let port = bridge_state.port();
-    let token = bridge_state.token_for(request.id.as_deref().unwrap_or(""));
+    let token = bridge_state.token_for(&terminal_id);
 
     pty_manager.spawn(request, port, token, app_handle)
+}
+
+#[tauri::command]
+pub async fn get_terminal_output(
+    terminal_id: String,
+    pty_manager: State<'_, PtyManager>,
+) -> Result<TerminalOutputPayload, String> {
+    pty_manager.get_output(&terminal_id)
 }
 
 #[tauri::command]
@@ -40,7 +72,9 @@ pub async fn resize_pty(
 pub async fn kill_terminal(
     terminal_id: String,
     pty_manager: State<'_, PtyManager>,
+    bridge_state: State<'_, BridgeState>,
 ) -> Result<(), String> {
+    bridge_state.cancel_pending_permissions_for_terminal(&terminal_id);
     pty_manager.kill(&terminal_id)
 }
 
@@ -49,4 +83,13 @@ pub async fn list_terminals(
     pty_manager: State<'_, PtyManager>,
 ) -> Result<Vec<TerminalInfo>, String> {
     Ok(pty_manager.list())
+}
+
+#[tauri::command]
+pub async fn rename_terminal(
+    terminal_id: String,
+    name: String,
+    pty_manager: State<'_, PtyManager>,
+) -> Result<(), String> {
+    pty_manager.rename(&terminal_id, &name)
 }

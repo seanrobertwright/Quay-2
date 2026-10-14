@@ -7,6 +7,7 @@ export type ClaudeStatus =
   | "idle"
   | "exited"
   | "unknown";
+export type StageLayout = "single" | "split-horizontal" | "split-vertical" | "grid";
 
 export interface TerminalInfo {
   id: string;
@@ -18,6 +19,10 @@ export interface TerminalInfo {
   claude_status: ClaudeStatus;
   auto_approved_count: number;
   exit_code?: number | null;
+  task_title?: string | null;
+  current_tool?: string | null;
+  tool_detail?: string | null;
+  custom_name?: boolean;
 }
 
 export interface SpawnTerminalRequest {
@@ -29,4 +34,18 @@ export interface SpawnTerminalRequest {
   command_text?: string;
   rows?: number;
   cols?: number;
+  env_vars?: Record<string, string>;
+  custom_flags?: string;
+}
+
+export interface PtyOutputPayload {
+  terminal_id: string;
+  data: string;
+  seq: number;
+}
+
+export interface TerminalOutputPayload {
+  terminal_id: string;
+  data: string;
+  last_seq: number;
 }

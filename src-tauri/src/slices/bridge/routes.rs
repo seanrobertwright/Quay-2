@@ -69,17 +69,52 @@ pub async fn handle_events(
                 "turn.started" => {
                     ctx.pty_manager
                         .update_status(terminal_id, ClaudeStatus::Working);
+                    if let Some(prompt) = envelope
+                        .data
+                        .get("prompt")
+                        .or_else(|| envelope.data.get("text"))
+                        .or_else(|| envelope.data.get("query"))
+                        .or_else(|| envelope.data.get("user_input"))
+                        .and_then(|v| v.as_str())
+                    {
+                        let clean = prompt
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim();
+                        if !clean.is_empty() {
+                            let shortened: String = clean.chars().take(32).collect();
+                            ctx.pty_manager.update_task_title(terminal_id, &shortened);
+                        }
+                    }
                 }
                 "turn.completed" => {
                     ctx.pty_manager
                         .update_status(terminal_id, ClaudeStatus::Idle);
+                    ctx.pty_manager.update_current_tool(terminal_id, None);
                     let answer = envelope
                         .data
                         .get("answer")
                         .and_then(|v| v.as_str())
                         .unwrap_or("Turn completed")
                         .to_string();
-                    ctx.a2a_router.resolve_pending_reply(terminal_id, answer);
+                    if let Some(msg) = ctx.a2a_router.resolve_pending_reply(terminal_id, answer) {
+                        let _ = ctx.app_handle.emit("a2a-message-updated", msg);
+                    }
+                }
+                "tool.started" => {
+                    ctx.pty_manager
+                        .update_status(terminal_id, ClaudeStatus::Working);
+                    let tool = envelope
+                        .data
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Tool");
+                    ctx.pty_manager.update_current_tool(terminal_id, Some(tool.to_string()));
+                }
+                "tool.finished" => {
+                    ctx.pty_manager.increment_auto_approved(terminal_id);
+                    ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
                 "attention.notification" => {
                     ctx.pty_manager
@@ -92,9 +127,7 @@ pub async fn handle_events(
                 "session.ended" => {
                     ctx.pty_manager
                         .update_status(terminal_id, ClaudeStatus::Exited);
-                }
-                "tool.finished" => {
-                    ctx.pty_manager.increment_auto_approved(terminal_id);
+                    ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
                 _ => {}
             }
@@ -164,10 +197,79 @@ pub async fn handle_permission(
         }
     }
 
-    // Emit event to Tauri frontend so the user/UI knows permission was requested
-    let _ = ctx.app_handle.emit("permission-requested", payload.clone());
+    // Check terminal permission mode
+    let term_info = ctx.pty_manager.get_info(tag);
+    let is_normal = term_info
+        .as_ref()
+        .map(|t| t.live_mode == crate::slices::pty::models::PermissionMode::Normal)
+        .unwrap_or(false);
 
-    // By default, auto-approve tool execution for Skip terminals
+    // If Normal mode and not already allowed for session, wait for human approval
+    if is_normal && !ctx.bridge_state.is_tool_allowed_for_session(tag, &payload.tool) {
+        ctx.pty_manager.update_status(tag, ClaudeStatus::Waiting);
+        ctx.pty_manager
+            .update_current_tool(tag, Some(payload.tool.clone()));
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        ctx.bridge_state.register_pending_permission(
+            payload.request_id.clone(),
+            payload.clone(),
+            tx,
+        );
+
+        // Broadcast to frontend modal
+        let _ = ctx.app_handle.emit("permission-requested", payload.clone());
+
+        // Wait up to 10 minutes (600 seconds) for user decision
+        let result = match tokio::time::timeout(Duration::from_secs(600), rx).await {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(_)) => PermissionResponsePayload {
+                decision: "deny".to_string(),
+                reason: Some("Permission request channel cancelled".to_string()),
+            },
+            Err(_) => {
+                ctx.bridge_state
+                    .remove_pending_permission(&payload.request_id);
+                PermissionResponsePayload {
+                    decision: "deny".to_string(),
+                    reason: Some("Timed out waiting for human approval".to_string()),
+                }
+            }
+        };
+
+        if result.decision == "allow" {
+            ctx.pty_manager.update_status(tag, ClaudeStatus::Working);
+            ctx.pty_manager.increment_auto_approved(tag);
+        } else {
+            ctx.pty_manager.update_status(tag, ClaudeStatus::Idle);
+        }
+
+        let _ = ctx.app_handle.emit(
+            "permission-resolved",
+            serde_json::json!({
+                "requestId": payload.request_id,
+                "decision": result.decision,
+                "tool": payload.tool,
+                "tag": tag,
+            }),
+        );
+
+        return Ok(Json(result).into_response());
+    }
+
+    // Auto-approve for Skip mode or if tool was previously allowed for session
+    ctx.pty_manager.increment_auto_approved(tag);
+    let _ = ctx.app_handle.emit("permission-requested", payload.clone());
+    let _ = ctx.app_handle.emit(
+        "permission-resolved",
+        serde_json::json!({
+            "requestId": payload.request_id,
+            "decision": "allow",
+            "tool": payload.tool,
+            "tag": tag,
+        }),
+    );
+
     let response = PermissionResponsePayload {
         decision: "allow".to_string(),
         reason: None,
@@ -185,11 +287,20 @@ pub async fn handle_mcp(
     crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), headers, Json(req)).await
 }
 
+pub async fn handle_mcp_get() -> Response {
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        r#"{"name":"quay-a2a","status":"ready"}"#,
+    )
+        .into_response()
+}
+
 pub fn create_router(ctx: AppContext) -> Router {
     Router::new()
         .route("/v1/events", post(handle_events))
         .route("/v1/commands", get(handle_commands))
         .route("/v1/permission", post(handle_permission))
-        .route("/mcp", post(handle_mcp))
+        .route("/mcp", post(handle_mcp).get(handle_mcp_get))
         .with_state(Arc::new(ctx))
 }

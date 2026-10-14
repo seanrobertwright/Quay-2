@@ -37,10 +37,14 @@ impl A2ARouter {
 
         let msg_id = format!("a2a-{}", Uuid::new_v4().simple());
 
-        let formatted_prompt = format!(
-            "[Message from peer agent in {}]:\n{}",
-            request.from_terminal, request.prompt
-        );
+        let formatted_prompt = if request.as_user.unwrap_or(false) {
+            request.prompt.clone()
+        } else {
+            format!(
+                "[Message from peer agent in {}]:\n{}",
+                request.from_terminal, request.prompt
+            )
+        };
 
         let cmd = Command {
             id: format!("cmd-{}", Uuid::new_v4().simple()),
@@ -119,7 +123,22 @@ impl A2ARouter {
         }
     }
 
-    pub fn resolve_pending_reply(&self, terminal_id: &str, answer: String) {
+    pub fn resolve_pending_reply(&self, terminal_id: &str, answer: String) -> Option<A2AMessage> {
+        let updated_msg = {
+            let mut history = self.messages.lock();
+            if let Some(msg) = history
+                .iter_mut()
+                .rev()
+                .find(|m| m.to_terminal == terminal_id && m.status == A2AMessageStatus::Dispatched)
+            {
+                msg.status = A2AMessageStatus::Completed;
+                msg.response = Some(answer.clone());
+                Some(msg.clone())
+            } else {
+                None
+            }
+        };
+
         let senders = {
             let mut pending = self.pending_replies.lock();
             pending.remove(terminal_id).unwrap_or_default()
@@ -128,6 +147,8 @@ impl A2ARouter {
         for tx in senders {
             let _ = tx.send(answer.clone());
         }
+
+        updated_msg
     }
 
     pub fn broadcast_toast(
@@ -152,5 +173,106 @@ impl A2ARouter {
 
     pub fn get_messages(&self) -> Vec<A2AMessage> {
         self.messages.lock().clone()
+    }
+
+    pub fn clear_messages(&self) {
+        self.messages.lock().clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_a2a_dispatch_peer_formatting() {
+        let router = A2ARouter::new();
+        let bridge_state = BridgeState::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-agent-2".to_string(),
+            prompt: "Please review PR #12".to_string(),
+            as_user: Some(false),
+        };
+
+        let msg = router.dispatch(request, &bridge_state).unwrap();
+        assert_eq!(msg.status, A2AMessageStatus::Dispatched);
+        assert_eq!(msg.from_terminal, "term-agent-1");
+        assert_eq!(msg.to_terminal, "term-agent-2");
+
+        // Verify command in BridgeState queue for term-agent-2
+        let drained = bridge_state.drain_commands("term-agent-2");
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].command_type, "prompt");
+        assert!(drained[0].text.as_ref().unwrap().contains("[Message from peer agent in term-agent-1]:"));
+        assert!(drained[0].text.as_ref().unwrap().contains("Please review PR #12"));
+    }
+
+    #[test]
+    fn test_a2a_dispatch_as_user() {
+        let router = A2ARouter::new();
+        let bridge_state = BridgeState::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-agent-2".to_string(),
+            prompt: "cargo test --all".to_string(),
+            as_user: Some(true),
+        };
+
+        let msg = router.dispatch(request, &bridge_state).unwrap();
+        assert!(msg.as_user);
+
+        let drained = bridge_state.drain_commands("term-agent-2");
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].text.as_deref(), Some("cargo test --all"));
+        assert_eq!(drained[0].as_user, Some(true));
+    }
+
+    #[test]
+    fn test_a2a_resolve_pending_reply_updates_history() {
+        let router = A2ARouter::new();
+        let bridge_state = BridgeState::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-a".to_string(),
+            to_terminal: "term-b".to_string(),
+            prompt: "Calculate 2+2".to_string(),
+            as_user: None,
+        };
+
+        let _ = router.dispatch(request, &bridge_state).unwrap();
+
+        let updated = router.resolve_pending_reply("term-b", "Result is 4".to_string());
+        assert!(updated.is_some());
+        let updated_msg = updated.unwrap();
+        assert_eq!(updated_msg.status, A2AMessageStatus::Completed);
+        assert_eq!(updated_msg.response.as_deref(), Some("Result is 4"));
+
+        // Check in get_messages
+        let messages = router.get_messages();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].status, A2AMessageStatus::Completed);
+        assert_eq!(messages[0].response.as_deref(), Some("Result is 4"));
+    }
+
+    #[test]
+    fn test_a2a_clear_messages() {
+        let router = A2ARouter::new();
+        let bridge_state = BridgeState::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-1".to_string(),
+            to_terminal: "term-2".to_string(),
+            prompt: "Test".to_string(),
+            as_user: None,
+        };
+
+        let _ = router.dispatch(request, &bridge_state).unwrap();
+        assert_eq!(router.get_messages().len(), 1);
+
+        router.clear_messages();
+        assert_eq!(router.get_messages().len(), 0);
     }
 }

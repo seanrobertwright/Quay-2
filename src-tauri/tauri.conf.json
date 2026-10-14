@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Quay — Claude Code Workspace & Orchestrator",
         "width": 1280,
         "height": 800,

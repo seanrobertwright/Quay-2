@@ -1,0 +1,431 @@
+import React, { useState, useEffect } from "react";
+import { SwarmPreset, BUILTIN_SWARM_PRESETS } from "./swarmTypes";
+import {
+  X,
+  Bot,
+  Zap,
+  Columns2,
+  Rows2,
+  LayoutGrid,
+  Square,
+  Play,
+  Terminal,
+  Layers,
+  Sparkles,
+  Plus,
+  Trash2,
+} from "lucide-react";
+
+interface SwarmModalProps {
+  isOpen: boolean;
+  activeProject: string;
+  onClose: () => void;
+  onLaunchSwarm: (preset: SwarmPreset) => Promise<void>;
+}
+
+export const SwarmModal: React.FC<SwarmModalProps> = ({
+  isOpen,
+  activeProject,
+  onClose,
+  onLaunchSwarm,
+}) => {
+  const [presets, setPresets] = useState<SwarmPreset[]>(BUILTIN_SWARM_PRESETS);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(BUILTIN_SWARM_PRESETS[0].id);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [isCustomMode, setIsCustomMode] = useState(false);
+
+  // Custom preset form state
+  const [customTitle, setCustomTitle] = useState("Custom Swarm");
+  const [customLayout, setCustomLayout] = useState<"split-horizontal" | "split-vertical" | "grid">("split-horizontal");
+  const [customAgents, setCustomAgents] = useState([
+    { role: "Agent 1", name: "agent-1", run_kind: "claude" as const, custom_flags: "" },
+    { role: "Agent 2", name: "agent-2", run_kind: "claude" as const, custom_flags: "" },
+  ]);
+
+  // Load custom presets from localStorage if available
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("quay2_custom_swarm_presets");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPresets([...BUILTIN_SWARM_PRESETS, ...parsed]);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load custom swarm presets:", e);
+    }
+  }, []);
+
+  // Handle ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const selectedPreset = presets.find((p) => p.id === selectedPresetId) || presets[0];
+  const projectName = activeProject.split(/[/\\]/).filter(Boolean).pop() || "Workspace";
+
+  const handleLaunch = async () => {
+    setIsLaunching(true);
+    try {
+      if (isCustomMode) {
+        const customPreset: SwarmPreset = {
+          id: `custom-${Date.now()}`,
+          title: customTitle,
+          description: `Custom ${customAgents.length}-agent swarm in ${customLayout} layout`,
+          layout: customLayout,
+          agents: customAgents,
+          badge: `${customAgents.length} Agents`,
+          tagColor: "#f0883e",
+        };
+        // Persist to custom presets
+        const updated = [...presets, customPreset];
+        setPresets(updated);
+        try {
+          const onlyCustom = updated.filter(
+            (p) => !BUILTIN_SWARM_PRESETS.some((b) => b.id === p.id)
+          );
+          localStorage.setItem("quay2_custom_swarm_presets", JSON.stringify(onlyCustom));
+        } catch (e) {
+          console.error(e);
+        }
+        await onLaunchSwarm(customPreset);
+      } else {
+        await onLaunchSwarm(selectedPreset);
+      }
+      onClose();
+    } catch (err) {
+      console.error("Failed to launch swarm:", err);
+    } finally {
+      setIsLaunching(false);
+    }
+  };
+
+  const getLayoutIcon = (layout: string) => {
+    switch (layout) {
+      case "split-horizontal":
+        return <Columns2 className="w-4 h-4" />;
+      case "split-vertical":
+        return <Rows2 className="w-4 h-4" />;
+      case "grid":
+        return <LayoutGrid className="w-4 h-4" />;
+      default:
+        return <Square className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-[#30363d] flex items-center justify-between bg-[#0d1117]/80">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-md bg-[#d29922]/15 text-[#d29922] border border-[#d29922]/30">
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Multi-Agent Swarm Launcher</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-[#21262d] text-[#58a6ff] font-mono">
+                  {projectName}
+                </span>
+              </h2>
+              <p className="text-xs text-[#8b949e] mt-0.5">
+                Launch a pre-configured team of specialized Claude & Shell terminals with automatic split layout
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Mode Toggle Bar */}
+        <div className="px-5 py-2.5 bg-[#161b22] border-b border-[#30363d] flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCustomMode(false)}
+              className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                !isCustomMode
+                  ? "bg-[#21262d] text-white shadow-xs"
+                  : "text-[#8b949e] hover:text-white"
+              }`}
+            >
+              Preset Catalog
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCustomMode(true)}
+              className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                isCustomMode
+                  ? "bg-[#21262d] text-white shadow-xs"
+                  : "text-[#8b949e] hover:text-white"
+              }`}
+            >
+              Create Custom Swarm
+            </button>
+          </div>
+
+          <span className="text-[11px] text-[#8b949e] flex items-center gap-1 font-mono">
+            <Layers className="w-3.5 h-3.5 text-[#58a6ff]" />
+            <span>Target: {projectName}</span>
+          </span>
+        </div>
+
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {!isCustomMode ? (
+            /* Presets Grid */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {presets.map((preset) => {
+                const isSelected = preset.id === selectedPresetId;
+                return (
+                  <div
+                    key={preset.id}
+                    onClick={() => setSelectedPresetId(preset.id)}
+                    className={`p-4 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
+                      isSelected
+                        ? "bg-[#1f2937]/70 border-[#58a6ff] shadow-md shadow-[#58a6ff]/5"
+                        : "bg-[#0d1117] border-[#30363d] hover:border-[#8b949e]/50 hover:bg-[#161b22]"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Bot className="w-4 h-4 text-[#58a6ff]" />
+                          <h3 className="text-sm font-bold text-white">{preset.title}</h3>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {preset.badge && (
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded font-mono font-semibold"
+                              style={{
+                                backgroundColor: `${preset.tagColor || "#58a6ff"}20`,
+                                color: preset.tagColor || "#58a6ff",
+                              }}
+                            >
+                              {preset.badge}
+                            </span>
+                          )}
+                          <div
+                            className="p-1 rounded bg-[#21262d] text-[#8b949e]"
+                            title={`Layout: ${preset.layout}`}
+                          >
+                            {getLayoutIcon(preset.layout)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-[#8b949e] leading-relaxed mb-3">
+                        {preset.description}
+                      </p>
+                    </div>
+
+                    {/* Agent Member Pills */}
+                    <div className="space-y-1.5 pt-2 border-t border-[#30363d]/60">
+                      <span className="text-[10px] uppercase font-semibold text-[#8b949e] tracking-wider block">
+                        Team Roster ({preset.agents.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {preset.agents.map((agent, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[11px]"
+                          >
+                            {agent.run_kind === "claude" ? (
+                              <Sparkles className="w-3 h-3 text-[#58a6ff]" />
+                            ) : (
+                              <Terminal className="w-3 h-3 text-[#3fb950]" />
+                            )}
+                            <span className="font-medium text-white">{agent.role}</span>
+                            <span className="text-[#8b949e] font-mono text-[10px]">
+                              ({agent.name})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Custom Swarm Form */
+            <div className="space-y-4 max-w-xl mx-auto">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#c9d1d9]">Swarm Name</label>
+                <input
+                  type="text"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  placeholder="e.g. Audit & Refactor Pair"
+                  className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#c9d1d9]">Layout Arrangement</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "split-horizontal", label: "Side-by-Side Split", icon: Columns2 },
+                    { id: "split-vertical", label: "Stacked Split", icon: Rows2 },
+                    { id: "grid", label: "2x2 Quad Grid", icon: LayoutGrid },
+                  ].map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => setCustomLayout(l.id as any)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs font-medium transition-colors ${
+                        customLayout === l.id
+                          ? "bg-[#21262d] border-[#58a6ff] text-white"
+                          : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:text-[#c9d1d9]"
+                      }`}
+                    >
+                      <l.icon className="w-4 h-4 text-[#58a6ff]" />
+                      <span>{l.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-[#c9d1d9]">
+                    Agents Roster ({customAgents.length})
+                  </label>
+                  {customAgents.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustomAgents((prev) => [
+                          ...prev,
+                          {
+                            role: `Agent ${prev.length + 1}`,
+                            name: `agent-${prev.length + 1}`,
+                            run_kind: "claude",
+                            custom_flags: "",
+                          },
+                        ])
+                      }
+                      className="flex items-center gap-1 text-xs text-[#58a6ff] hover:underline"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Agent</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {customAgents.map((ag, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 bg-[#0d1117] border border-[#30363d] rounded-md flex items-center gap-2 text-xs"
+                    >
+                      <select
+                        value={ag.run_kind}
+                        onChange={(e) =>
+                          setCustomAgents((prev) =>
+                            prev.map((a, i) =>
+                              i === idx ? { ...a, run_kind: e.target.value as any } : a
+                            )
+                          )
+                        }
+                        className="px-2 py-1 bg-[#161b22] border border-[#30363d] rounded text-white font-mono"
+                      >
+                        <option value="claude">Claude Code</option>
+                        <option value="powershell">PowerShell</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        value={ag.role}
+                        onChange={(e) =>
+                          setCustomAgents((prev) =>
+                            prev.map((a, i) => (i === idx ? { ...a, role: e.target.value } : a))
+                          )
+                        }
+                        placeholder="Role / Title"
+                        className="flex-1 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-white"
+                      />
+
+                      <input
+                        type="text"
+                        value={ag.name}
+                        onChange={(e) =>
+                          setCustomAgents((prev) =>
+                            prev.map((a, i) => (i === idx ? { ...a, name: e.target.value } : a))
+                          )
+                        }
+                        placeholder="session-name"
+                        className="w-28 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-[#58a6ff] font-mono text-[11px]"
+                      />
+
+                      {customAgents.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCustomAgents((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="p-1 text-[#8b949e] hover:text-[#f85149]"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-[#30363d] flex items-center justify-between bg-[#0d1117]/80">
+          <div className="flex items-center gap-2 text-xs text-[#8b949e]">
+            <Sparkles className="w-4 h-4 text-[#d29922]" />
+            <span>
+              Spawns{" "}
+              <strong className="text-white font-semibold">
+                {isCustomMode ? customAgents.length : selectedPreset.agents.length} terminals
+              </strong>{" "}
+              in <strong className="text-white">{projectName}</strong> with full A2A message bus
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-1.5 text-xs text-[#c9d1d9] hover:bg-[#21262d] rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={isLaunching}
+              onClick={handleLaunch}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-[#238636] hover:bg-[#2ea043] text-white rounded-md shadow-sm transition-colors disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{isLaunching ? "Launching Swarm..." : "Launch Swarm Now"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

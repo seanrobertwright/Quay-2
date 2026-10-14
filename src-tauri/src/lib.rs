@@ -1,14 +1,26 @@
 pub mod slices;
 
-use slices::bridge::{get_bridge_port, BridgeServer, BridgeState};
+use slices::audit::run_pre_pr_audit;
+use slices::bridge::{
+    get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
+    BridgeServer, BridgeState,
+};
+use slices::git::{create_git_worktree, is_git_repo, list_git_worktrees, remove_git_worktree};
+use slices::github::{
+    check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
+    list_github_prs,
+};
 use slices::orchestrator::{
-    a2a_broadcast_toast, a2a_get_messages, a2a_send_prompt, A2ARouter,
+    a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt, A2ARouter,
 };
 use slices::pty::{
-    kill_terminal, list_terminals, resize_pty, spawn_terminal, write_pty, PtyManager,
+    get_terminal_output, kill_terminal, list_terminals, rename_terminal, resize_pty,
+    spawn_terminal, write_pty, PtyManager,
 };
+use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
-    add_project, get_active_project, list_projects, set_active_project, WorkspaceManager,
+    add_project, get_active_project, list_projects, pick_folder, remove_project,
+    set_active_project, update_project_settings, validate_path, WorkspaceManager,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -52,17 +64,39 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_bridge_port,
             spawn_terminal,
+            get_terminal_output,
             write_pty,
             resize_pty,
             kill_terminal,
             list_terminals,
+            rename_terminal,
             list_projects,
             add_project,
+            remove_project,
             set_active_project,
             get_active_project,
+            update_project_settings,
+            pick_folder,
+            validate_path,
             a2a_send_prompt,
             a2a_broadcast_toast,
             a2a_get_messages,
+            a2a_clear_messages,
+            resolve_permission,
+            get_pending_permissions,
+            set_terminal_live_mode,
+            is_git_repo,
+            list_git_worktrees,
+            create_git_worktree,
+            remove_git_worktree,
+            check_gh_cli_installed,
+            get_github_repo_info,
+            list_github_issues,
+            get_github_issue,
+            list_github_prs,
+            run_pre_pr_audit,
+            list_claude_sessions,
+            get_claude_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
