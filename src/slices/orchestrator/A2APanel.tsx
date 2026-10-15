@@ -42,9 +42,11 @@ export const A2APanel: FC<A2APanelProps> = ({
   terminals,
   onClose,
 }) => {
-  const claudeTerminals = terminals.filter((t) => t.run_kind === "claude");
-  const [fromTerminal, setFromTerminal] = useState(claudeTerminals[0]?.id || "");
-  const [toTerminal, setToTerminal] = useState(claudeTerminals[1]?.id || "");
+  const agentTerminals = terminals.filter(
+    (t) => t.run_kind === "claude" || t.run_kind === "antigravity" || t.run_kind === "codex"
+  );
+  const [fromTerminal, setFromTerminal] = useState(agentTerminals[0]?.id || "");
+  const [toTerminal, setToTerminal] = useState(agentTerminals[1]?.id || "");
   const [prompt, setPrompt] = useState("");
   const [asUser, setAsUser] = useState(false);
   const [broadcastText, setBroadcastText] = useState("");
@@ -53,13 +55,13 @@ export const A2APanel: FC<A2APanelProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (claudeTerminals.length > 0 && !fromTerminal) {
-      setFromTerminal(claudeTerminals[0].id);
+    if (agentTerminals.length > 0 && !fromTerminal) {
+      setFromTerminal(agentTerminals[0].id);
     }
-    if (claudeTerminals.length > 1 && !toTerminal) {
-      setToTerminal(claudeTerminals[1].id);
+    if (agentTerminals.length > 1 && !toTerminal) {
+      setToTerminal(agentTerminals[1].id);
     }
-  }, [claudeTerminals, fromTerminal, toTerminal]);
+  }, [agentTerminals, fromTerminal, toTerminal]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -196,7 +198,7 @@ export const A2APanel: FC<A2APanelProps> = ({
               <span>Injected Quay MCP Server (Active)</span>
             </div>
             <p className="text-xs text-[#8b949e] mb-2.5 leading-relaxed">
-              Every Claude Code terminal is provisioned with the loopback <code className="text-[#58a6ff]">quay</code> MCP server. Running agents can autonomously invoke these tools:
+              Every AI agent terminal (Claude Code, Antigravity, or Codex) is provisioned with the loopback <code className="text-[#58a6ff]">quay</code> MCP server. Running agents can autonomously invoke these tools:
             </p>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
@@ -225,11 +227,11 @@ export const A2APanel: FC<A2APanelProps> = ({
               <span>Dispatch Prompt / Handoff Task</span>
             </h3>
 
-            {claudeTerminals.length < 2 ? (
+            {agentTerminals.length < 2 ? (
               <div className="p-3 bg-[#161b22] border border-[#30363d] rounded text-xs text-[#8b949e] flex items-center gap-2">
                 <Clock className="w-4 h-4 text-[#d29922] shrink-0" />
                 <span>
-                  Spawn at least <strong>two Claude Code terminals</strong> to test autonomous agent-to-agent messaging and task handoffs.
+                  Spawn at least <strong>two AI agent terminals (Claude, Antigravity, or Codex)</strong> to test autonomous agent-to-agent messaging and task handoffs.
                 </span>
               </div>
             ) : (
@@ -242,9 +244,9 @@ export const A2APanel: FC<A2APanelProps> = ({
                       onChange={(e) => setFromTerminal(e.target.value)}
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
-                      {claudeTerminals.map((t) => (
+                      {agentTerminals.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                          {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
                         </option>
                       ))}
                     </select>
@@ -259,11 +261,11 @@ export const A2APanel: FC<A2APanelProps> = ({
                       onChange={(e) => setToTerminal(e.target.value)}
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
-                      {claudeTerminals
+                      {agentTerminals
                         .filter((t) => t.id !== fromTerminal)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                            {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
                           </option>
                         ))}
                     </select>
@@ -351,7 +353,7 @@ export const A2APanel: FC<A2APanelProps> = ({
           <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] mb-2 flex items-center gap-1.5">
               <Radio className="w-3.5 h-3.5 text-[#3fb950]" />
-              <span>Broadcast Notice to All Claude Sessions</span>
+              <span>Broadcast Notice to All AI Agent Sessions</span>
             </h3>
 
             <form onSubmit={handleBroadcast} className="flex gap-2">

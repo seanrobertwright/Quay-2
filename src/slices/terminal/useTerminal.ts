@@ -84,6 +84,7 @@ export function useTerminal(
 
     // Send user keystrokes to Rust ConPTY
     const onDataDispose = term.onData((data) => {
+      if (!initialLoaded) return;
       invoke("write_pty", { terminalId, data }).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });
@@ -131,8 +132,20 @@ export function useTerminal(
         initialLoaded = true;
       });
 
-    // Fit on mount
-    setTimeout(() => {
+    // Immediate fit on mount if container is already sized
+    try {
+      if (containerRef.current?.clientWidth && containerRef.current?.clientHeight) {
+        fitAddon.fit();
+        invoke("resize_pty", {
+          terminalId,
+          rows: term.rows,
+          cols: term.cols,
+        }).catch(console.error);
+      }
+    } catch (_) {}
+
+    // Settle fit shortly after mount
+    const fitTimer = setTimeout(() => {
       try {
         fitAddon.fit();
         invoke("resize_pty", {
@@ -143,7 +156,7 @@ export function useTerminal(
       } catch (err) {
         console.error("Error initial fit:", err);
       }
-    }, 50);
+    }, 20);
 
     // Watch resize of container
     const resizeObserver = new ResizeObserver(() => {
@@ -164,6 +177,7 @@ export function useTerminal(
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      clearTimeout(fitTimer);
       resizeObserver.disconnect();
       onDataDispose.dispose();
       onResultsDispose.dispose();

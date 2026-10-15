@@ -45,6 +45,11 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   onToggleLiveMode,
   onOpenPermissionModal,
 }) => {
+  const isAgent =
+    terminal.run_kind === "claude" ||
+    terminal.run_kind === "antigravity" ||
+    terminal.run_kind === "codex";
+
   return (
     <div className="h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-between text-xs text-[#8b949e] shrink-0 select-none">
       <div className="flex items-center gap-4">
@@ -55,7 +60,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         </div>
 
         {/* Live Status indicator */}
-        {terminal.run_kind === "claude" && (
+        {isAgent && (
           <div className="flex items-center gap-2">
             <span className="text-[#30363d]">|</span>
             {terminal.claude_status === "working" && (
@@ -123,7 +128,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         )}
 
         {/* Live Permission Mode Switcher */}
-        {terminal.run_kind === "claude" && onToggleLiveMode && (
+        {isAgent && onToggleLiveMode && (
           <button
             type="button"
             onClick={onToggleLiveMode}
@@ -149,7 +154,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         )}
 
         {/* Auto approved count */}
-        {terminal.run_kind === "claude" && (
+        {isAgent && (
           <div
             className="flex items-center gap-1 text-[#8b949e] hover:text-[#c9d1d9] cursor-pointer"
             onClick={onOpenActionLog}
@@ -163,7 +168,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         )}
 
         {/* Action Log Drawer Trigger */}
-        {terminal.run_kind === "claude" && (
+        {isAgent && (
           <button
             type="button"
             onClick={onOpenActionLog}

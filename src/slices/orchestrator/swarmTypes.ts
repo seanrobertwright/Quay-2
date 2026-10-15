@@ -1,9 +1,9 @@
-import { StageLayout } from "../terminal/types";
+import { StageLayout, RunKind } from "../terminal/types";
 
 export interface SwarmAgentConfig {
   role: string;
   name: string;
-  run_kind: "claude" | "powershell";
+  run_kind: RunKind;
   custom_flags?: string;
   initial_prompt?: string;
 }
@@ -19,6 +19,36 @@ export interface SwarmPreset {
 }
 
 export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
+  {
+    id: "polyglot-trio",
+    title: "Polyglot Agent Trio",
+    description: "Multi-agent vanguard: Claude Implementer, Antigravity Deep Planner, and Codex Code Reviewer collaborating with a verification shell.",
+    layout: "grid",
+    badge: "Claude + Antigravity + Codex",
+    tagColor: "#f0883e",
+    agents: [
+      {
+        role: "Primary Implementer",
+        name: "claude-dev",
+        run_kind: "claude",
+      },
+      {
+        role: "Architecture & Planner",
+        name: "agy-planner",
+        run_kind: "antigravity",
+      },
+      {
+        role: "Code Reviewer & Quality Gate",
+        name: "codex-reviewer",
+        run_kind: "codex",
+      },
+      {
+        role: "Test & CI Shell",
+        name: "test-runner",
+        run_kind: "powershell",
+      },
+    ],
+  },
   {
     id: "fullstack-pair",
     title: "Full-Stack Pair",

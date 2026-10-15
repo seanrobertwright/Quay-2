@@ -59,11 +59,13 @@ impl PtySession {
         let mut cmd = match request.run_kind {
             RunKind::PowerShell => {
                 let mut c = CommandBuilder::new("pwsh.exe");
+                c.arg("-NoProfile");
                 c.arg("-NoLogo");
                 c
             }
             RunKind::Command => {
                 let mut c = CommandBuilder::new("pwsh.exe");
+                c.arg("-NoProfile");
                 c.arg("-NoLogo");
                 if let Some(ref text) = request.command_text {
                     c.arg("-Command");
@@ -111,6 +113,20 @@ impl PtySession {
 
                 c
             }
+            RunKind::Antigravity => {
+                let mut c = CommandBuilder::new("agy.exe");
+                if perm == PermissionMode::Skip {
+                    c.arg("--dangerously-skip-permissions");
+                }
+                c
+            }
+            RunKind::Codex => {
+                let mut c = CommandBuilder::new("codex.exe");
+                if perm == PermissionMode::Skip {
+                    c.arg("--dangerously-bypass-approvals-and-sandbox");
+                }
+                c
+            }
         };
 
         // Inject workspace / custom environment variables
@@ -120,8 +136,8 @@ impl PtySession {
             }
         }
 
-        // Inject custom CLI launch flags (e.g. for Claude)
-        if request.run_kind == RunKind::Claude {
+        // Inject custom CLI launch flags (e.g. for Claude, Antigravity, Codex)
+        if matches!(request.run_kind, RunKind::Claude | RunKind::Antigravity | RunKind::Codex) {
             if let Some(ref flags) = request.custom_flags {
                 for flag in flags.split_whitespace() {
                     cmd.arg(flag);
@@ -156,12 +172,12 @@ impl PtySession {
             let app_handle = app_handle.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
-            let writer = writer.clone();
             let output_buffer = output_buffer.clone();
 
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut current_seq = 0u64;
+                let mut session_started_emitted = false;
 
                 while is_alive.load(Ordering::SeqCst) {
                     match reader.read(&mut buf) {
@@ -169,12 +185,25 @@ impl PtySession {
                         Ok(n) => {
                             let text = String::from_utf8_lossy(&buf[..n]).to_string();
 
-                            // Auto-respond to ANSI DSR 6n (Cursor Position Report) queries
-                            // from interactive CLIs like Claude Code so they don't block on stdin
-                            if text.contains("\x1b[6n") {
-                                let mut w = writer.lock();
-                                let _ = w.write_all(b"\x1b[1;1R");
-                                let _ = w.flush();
+                            // Transition session to active/idle state on first output from child process
+                            if !session_started_emitted {
+                                session_started_emitted = true;
+                                let _ = app_handle.emit(
+                                    "bridge-event",
+                                    crate::slices::bridge::Envelope {
+                                        v: 1,
+                                        boot: "".to_string(),
+                                        seq: 0,
+                                        ts: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_millis() as u64,
+                                        session_id: terminal_id.clone(),
+                                        tag: Some(terminal_id.clone()),
+                                        event_type: "session.started".to_string(),
+                                        data: serde_json::Value::Null,
+                                    },
+                                );
                             }
 
                             current_seq += 1;
@@ -188,7 +217,11 @@ impl PtySession {
                                 // Cap buffer at 256KB to avoid unbounded memory usage
                                 if guard.0.len() > 256 * 1024 {
                                     let excess = guard.0.len() - 256 * 1024;
-                                    guard.0.drain(..excess);
+                                    let mut cut = excess;
+                                    while cut < guard.0.len() && !guard.0.is_char_boundary(cut) {
+                                        cut += 1;
+                                    }
+                                    guard.0.drain(..cut);
                                 }
                             }
 
@@ -249,6 +282,8 @@ impl PtySession {
 
         let name = request.name.unwrap_or_else(|| match request.run_kind {
             RunKind::Claude => "claude".to_string(),
+            RunKind::Antigravity => "agy".to_string(),
+            RunKind::Codex => "codex".to_string(),
             RunKind::PowerShell => "pwsh".to_string(),
             RunKind::Command => request
                 .command_text
@@ -360,4 +395,30 @@ mod tests {
         let status = child.wait().expect("wait failed");
         assert!(status.success());
     }
+
+    #[test]
+    fn test_buffer_drain_multibyte_utf8() {
+        let mut buffer = String::new();
+        // Fill buffer close to 256KB with 3-byte unicode characters (e.g. '━' or '✢')
+        let chunk = "✢━│└"; // 3 bytes each
+        while buffer.len() < 256 * 1024 - 2 {
+            buffer.push_str(chunk);
+        }
+        // Now push a multi-byte string that pushes buffer over 256KB
+        // such that 256 * 1024 falls in the middle of a multi-byte character
+        buffer.push_str("🌟 Gusting... 322 tokens ━ Claude Code");
+
+        if buffer.len() > 256 * 1024 {
+            let excess = buffer.len() - 256 * 1024;
+            let mut cut = excess;
+            while cut < buffer.len() && !buffer.is_char_boundary(cut) {
+                cut += 1;
+            }
+            buffer.drain(..cut);
+        }
+
+        assert!(buffer.len() <= 256 * 1024);
+        assert!(buffer.is_char_boundary(0));
+    }
 }
+

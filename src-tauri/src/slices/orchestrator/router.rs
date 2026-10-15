@@ -159,7 +159,7 @@ impl A2ARouter {
     ) {
         let terminals = pty_manager.list();
         for t in terminals {
-            if t.run_kind == RunKind::Claude {
+            if matches!(t.run_kind, RunKind::Claude | RunKind::Antigravity | RunKind::Codex) {
                 let cmd = Command {
                     id: format!("toast-{}", Uuid::new_v4().simple()),
                     command_type: "toast".to_string(),

@@ -114,8 +114,13 @@ export const Stage: FC<StageProps> = ({
     return <Placeholder onNewTerminal={onNewTerminal} />;
   }
 
+  const isAgent =
+    activeTerminal.run_kind === "claude" ||
+    activeTerminal.run_kind === "antigravity" ||
+    activeTerminal.run_kind === "codex";
+
   const showSkipBanner =
-    activeTerminal.run_kind === "claude" &&
+    isAgent &&
     activeTerminal.permission_mode === "skip";
 
   const projectName = activeProject.split(/[/\\]/).filter(Boolean).pop() || "Workspace";
@@ -404,7 +409,7 @@ export const Stage: FC<StageProps> = ({
           let onSwitchTerm: ((newId: string) => void) | undefined = undefined;
 
           if (layout === "single") {
-            isVisible = term.id === primaryTerminalId;
+            isVisible = term.id === (primaryTerminalId || activeTerminalId);
             isFocused = isVisible;
             showPaneHeader = false;
             paneStyle = {

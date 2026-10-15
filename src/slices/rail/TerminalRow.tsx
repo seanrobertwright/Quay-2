@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, MouseEvent, KeyboardEvent } from "react";
 import { TerminalInfo } from "../terminal/types";
+import { ClaudeIcon, AntigravityIcon, CodexIcon, PowerShellIcon, CommandIcon } from "../terminal/AgentIcons";
 import {
-  Sparkles,
   Terminal as TerminalIcon,
-  Command as CommandIcon,
   X,
   Loader2,
   FileEdit,
@@ -63,12 +62,21 @@ export const TerminalRow = ({
     }
   };
 
+  const isAgent =
+    terminal.run_kind === "claude" ||
+    terminal.run_kind === "antigravity" ||
+    terminal.run_kind === "codex";
+
   const renderIcon = () => {
     switch (terminal.run_kind) {
       case "claude":
-        return <Sparkles className="w-3.5 h-3.5 text-[#f0883e] shrink-0" />;
+        return <ClaudeIcon className="w-3.5 h-3.5 text-[#f0883e] shrink-0" />;
+      case "antigravity":
+        return <AntigravityIcon className="w-3.5 h-3.5 text-[#38bdf8] shrink-0" />;
+      case "codex":
+        return <CodexIcon className="w-3.5 h-3.5 text-[#10a37f] shrink-0" />;
       case "powershell":
-        return <TerminalIcon className="w-3.5 h-3.5 text-[#58a6ff] shrink-0" />;
+        return <PowerShellIcon className="w-3.5 h-3.5 text-[#58a6ff] shrink-0" />;
       case "command":
         return <CommandIcon className="w-3.5 h-3.5 text-[#3fb950] shrink-0" />;
     }
@@ -132,7 +140,7 @@ export const TerminalRow = ({
   };
 
   const renderStatus = () => {
-    if (terminal.run_kind !== "claude") {
+    if (!isAgent) {
       if (terminal.claude_status === "exited") {
         return (
           <span className="text-[10px] text-[#8b949e] font-mono">
@@ -245,7 +253,7 @@ export const TerminalRow = ({
           )}
 
           {/* Permission Mode badge */}
-          {terminal.run_kind === "claude" && terminal.permission_mode === "skip" && (
+          {isAgent && terminal.permission_mode === "skip" && (
             <span className="px-1 py-0.2 rounded text-[9px] font-mono font-bold bg-[#ff7b72]/20 text-[#ff7b72] border border-[#ff7b72]/40 shrink-0">
               SKIP
             </span>

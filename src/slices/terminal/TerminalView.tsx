@@ -2,10 +2,8 @@ import { FC, CSSProperties, MouseEvent, useState, useEffect } from "react";
 import { useTerminal } from "./useTerminal";
 import { TerminalInfo } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
+import { AgentIcon } from "./AgentIcons";
 import {
-  Sparkles,
-  Terminal as TerminalIcon,
-  Command as CommandIcon,
   Maximize2,
   X,
   Loader2,
@@ -70,21 +68,17 @@ export const TerminalView: FC<TerminalViewProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isVisible, isFocused]);
 
+  const isAgent =
+    terminal?.run_kind === "claude" ||
+    terminal?.run_kind === "antigravity" ||
+    terminal?.run_kind === "codex";
+
   const renderIcon = () => {
-    switch (terminal?.run_kind) {
-      case "claude":
-        return <Sparkles className="w-3 h-3 text-[#f0883e] shrink-0" />;
-      case "powershell":
-        return <TerminalIcon className="w-3 h-3 text-[#58a6ff] shrink-0" />;
-      case "command":
-        return <CommandIcon className="w-3 h-3 text-[#3fb950] shrink-0" />;
-      default:
-        return <TerminalIcon className="w-3 h-3 text-[#8b949e] shrink-0" />;
-    }
+    return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;
   };
 
   const renderStatusBadge = () => {
-    if (!terminal || terminal.run_kind !== "claude") return null;
+    if (!terminal || !isAgent) return null;
 
     if (terminal.claude_status === "working") {
       return (

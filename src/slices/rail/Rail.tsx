@@ -279,7 +279,6 @@ export const Rail: React.FC<RailProps> = ({
                             terminal={term}
                             isActive={term.id === activeTerminalId}
                             onSelect={() => {
-                              onSelectProject(proj.path);
                               onSelectTerminal(term.id);
                             }}
                             onClose={(e: MouseEvent<HTMLButtonElement>) => {
@@ -405,7 +404,6 @@ export const Rail: React.FC<RailProps> = ({
                                           terminal={term}
                                           isActive={term.id === activeTerminalId}
                                           onSelect={() => {
-                                            onSelectProject(wt.path);
                                             onSelectTerminal(term.id);
                                           }}
                                           onClose={(e: MouseEvent<HTMLButtonElement>) => {

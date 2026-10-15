@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { TerminalInfo, StageLayout } from "../terminal/types";
+import { TerminalInfo, StageLayout, RunKind } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
 import { SwarmPreset, BUILTIN_SWARM_PRESETS } from "../orchestrator/swarmTypes";
+import { AgentIcon, ClaudeIcon, AntigravityIcon, CodexIcon, PowerShellIcon } from "../terminal/AgentIcons";
 import {
   Search,
-  Terminal,
   FolderGit2,
   Columns2,
   Rows2,
@@ -20,7 +20,6 @@ import {
   GitCompare,
   Plus,
   ShieldCheck,
-  Sparkles,
   GitBranch,
   History,
   Coins,
@@ -51,7 +50,7 @@ interface CommandPaletteProps {
   onSetLayout: (layout: StageLayout) => void;
   onToggleZoom: () => void;
   onFocusNextPane: () => void;
-  onNewTerminal: (runKind?: "claude" | "powershell") => void;
+  onNewTerminal: (runKind?: RunKind) => void;
   onOpenWorkspaceSettings: () => void;
   onOpenSwarmModal: () => void;
   onLaunchSwarmPreset: (preset: SwarmPreset) => void;
@@ -180,17 +179,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-new-claude",
         category: "Tools & Actions",
         title: "New Claude Code Agent",
-        subtitle: "Launch a new AI coding session",
-        icon: <Sparkles className="w-4 h-4 text-[#58a6ff]" />,
+        subtitle: "Launch a new Claude Code AI session",
+        icon: <ClaudeIcon className="w-4 h-4 text-[#f0883e]" />,
         shortcut: "Ctrl+B n",
         action: () => onNewTerminal("claude"),
+      },
+      {
+        id: "action-new-antigravity",
+        category: "Tools & Actions",
+        title: "New Antigravity CLI Agent",
+        subtitle: "Launch Google Gemini / Antigravity CLI session",
+        icon: <AntigravityIcon className="w-4 h-4 text-[#38bdf8]" />,
+        action: () => onNewTerminal("antigravity"),
+      },
+      {
+        id: "action-new-codex",
+        category: "Tools & Actions",
+        title: "New OpenAI Codex Agent",
+        subtitle: "Launch OpenAI Codex CLI session",
+        icon: <CodexIcon className="w-4 h-4 text-[#10a37f]" />,
+        action: () => onNewTerminal("codex"),
       },
       {
         id: "action-new-shell",
         category: "Tools & Actions",
         title: "New PowerShell Terminal",
         subtitle: "Launch a clean ConPTY PowerShell terminal",
-        icon: <Terminal className="w-4 h-4 text-[#3fb950]" />,
+        icon: <PowerShellIcon className="w-4 h-4 text-[#58a6ff]" />,
         action: () => onNewTerminal("powershell"),
       },
       {
@@ -335,12 +350,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         category: "Terminals",
         title: term.name || `Terminal ${idx + 1}`,
         subtitle: `${projName} • ${term.run_kind} ${term.task_title ? `— "${term.task_title}"` : ""}`,
-        icon:
-          term.run_kind === "claude" ? (
-            <Sparkles className="w-4 h-4 text-[#58a6ff]" />
-          ) : (
-            <Terminal className="w-4 h-4 text-[#3fb950]" />
-          ),
+        icon: <AgentIcon kind={term.run_kind} className="w-4 h-4 shrink-0" />,
         badge:
           term.id === activeTerminalId
             ? "active"

@@ -52,7 +52,7 @@ impl PtyManager {
             permission_mode: session.permission_mode,
             live_mode: session.permission_mode,
             claude_status: match session.run_kind {
-                RunKind::Claude => ClaudeStatus::Starting,
+                RunKind::Claude | RunKind::Antigravity | RunKind::Codex => ClaudeStatus::Starting,
                 _ => ClaudeStatus::Unknown,
             },
             auto_approved_count: 0,

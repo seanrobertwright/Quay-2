@@ -1,4 +1,4 @@
-export type RunKind = "claude" | "powershell" | "command";
+export type RunKind = "claude" | "antigravity" | "codex" | "powershell" | "command";
 export type PermissionMode = "skip" | "normal";
 export type ClaudeStatus =
   | "starting"

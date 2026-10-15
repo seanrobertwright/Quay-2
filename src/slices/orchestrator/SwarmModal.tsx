@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { SwarmPreset, BUILTIN_SWARM_PRESETS } from "./swarmTypes";
+import { SwarmPreset, SwarmAgentConfig, BUILTIN_SWARM_PRESETS } from "./swarmTypes";
+import { AgentIcon } from "../terminal/AgentIcons";
 import {
   X,
   Bot,
@@ -9,7 +10,6 @@ import {
   LayoutGrid,
   Square,
   Play,
-  Terminal,
   Layers,
   Sparkles,
   Plus,
@@ -37,9 +37,9 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   // Custom preset form state
   const [customTitle, setCustomTitle] = useState("Custom Swarm");
   const [customLayout, setCustomLayout] = useState<"split-horizontal" | "split-vertical" | "grid">("split-horizontal");
-  const [customAgents, setCustomAgents] = useState([
-    { role: "Agent 1", name: "agent-1", run_kind: "claude" as const, custom_flags: "" },
-    { role: "Agent 2", name: "agent-2", run_kind: "claude" as const, custom_flags: "" },
+  const [customAgents, setCustomAgents] = useState<SwarmAgentConfig[]>([
+    { role: "Implementer", name: "dev-agent", run_kind: "claude", custom_flags: "" },
+    { role: "Architect", name: "plan-agent", run_kind: "antigravity", custom_flags: "" },
   ]);
 
   // Load custom presets from localStorage if available
@@ -139,7 +139,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-[#8b949e] mt-0.5">
-                Launch a pre-configured team of specialized Claude & Shell terminals with automatic split layout
+                Launch a pre-configured team of specialized AI agents (Claude, Antigravity, Codex) & shell terminals with automatic split layout
               </p>
             </div>
           </div>
@@ -243,13 +243,9 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                         {preset.agents.map((agent, i) => (
                           <div
                             key={i}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[11px]"
+                            className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[11px]"
                           >
-                            {agent.run_kind === "claude" ? (
-                              <Sparkles className="w-3 h-3 text-[#58a6ff]" />
-                            ) : (
-                              <Terminal className="w-3 h-3 text-[#3fb950]" />
-                            )}
+                            <AgentIcon kind={agent.run_kind} className="w-3.5 h-3.5 shrink-0" />
                             <span className="font-medium text-white">{agent.role}</span>
                             <span className="text-[#8b949e] font-mono text-[10px]">
                               ({agent.name})
@@ -334,6 +330,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                       key={idx}
                       className="p-2.5 bg-[#0d1117] border border-[#30363d] rounded-md flex items-center gap-2 text-xs"
                     >
+                      <AgentIcon kind={ag.run_kind} className="w-3.5 h-3.5 shrink-0" />
                       <select
                         value={ag.run_kind}
                         onChange={(e) =>
@@ -343,10 +340,13 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                             )
                           )
                         }
-                        className="px-2 py-1 bg-[#161b22] border border-[#30363d] rounded text-white font-mono"
+                        className="px-2 py-1 bg-[#161b22] border border-[#30363d] rounded text-white font-mono text-[11px]"
                       >
                         <option value="claude">Claude Code</option>
+                        <option value="antigravity">Antigravity CLI</option>
+                        <option value="codex">Codex CLI</option>
                         <option value="powershell">PowerShell</option>
+                        <option value="command">Custom Command</option>
                       </select>
 
                       <input

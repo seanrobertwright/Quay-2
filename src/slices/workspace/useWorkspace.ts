@@ -240,6 +240,26 @@ export function useWorkspace() {
     };
   }, []);
 
+  // Listen for terminal output to transition 'starting' status to 'idle'
+  useEffect(() => {
+    const unlistenPromise = listen<{ terminal_id: string }>("pty-output", (event) => {
+      const { terminal_id } = event.payload;
+      setTerminals((prev) => {
+        const target = prev.find((t) => t.id === terminal_id);
+        if (target && target.claude_status === "starting") {
+          return prev.map((t) =>
+            t.id === terminal_id ? { ...t, claude_status: "idle" } : t
+          );
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
   // Add a new project workspace
   const addProject = async (path: string) => {
     try {
@@ -551,7 +571,7 @@ export function useWorkspace() {
   ]);
 
   // Switch active project
-  const selectProject = async (path: string) => {
+  const selectProject = async (path: string, targetTerminalId?: string) => {
     try {
       await invoke("set_active_project", { path });
       setActiveProject(path);
@@ -559,11 +579,16 @@ export function useWorkspace() {
       // Select terminal belonging to this project if one exists
       const projectTerms = terminals.filter((t) => t.project_path === path);
       if (projectTerms.length > 0) {
-        const firstId = projectTerms[0].id;
-        const secondId = projectTerms[1]?.id || null;
-        setPrimaryTerminalId(firstId);
+        const chosenId =
+          targetTerminalId && projectTerms.some((t) => t.id === targetTerminalId)
+            ? targetTerminalId
+            : activeTerminalId && projectTerms.some((t) => t.id === activeTerminalId)
+            ? activeTerminalId
+            : projectTerms[0].id;
+        const secondId = projectTerms.find((t) => t.id !== chosenId)?.id || null;
+        setPrimaryTerminalId(chosenId);
         setSecondaryTerminalId(secondId);
-        setActiveTerminalId(firstId);
+        setActiveTerminalId(chosenId);
         setFocusedPane("primary");
         if (projectTerms.length < 2 && (layout === "split-horizontal" || layout === "split-vertical")) {
           setLayout("single");
@@ -581,6 +606,12 @@ export function useWorkspace() {
   // Select / activate a terminal (e.g. from Rail or shortcut)
   const selectTerminal = useCallback(
     (id: string) => {
+      const targetTerm = terminals.find((t) => t.id === id);
+      if (targetTerm && targetTerm.project_path && targetTerm.project_path !== activeProject) {
+        selectProject(targetTerm.project_path, id);
+        return;
+      }
+
       setActiveTerminalId(id);
       if (layout === "single") {
         setPrimaryTerminalId(id);
@@ -612,7 +643,7 @@ export function useWorkspace() {
         }
       }
     },
-    [layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
+    [terminals, activeProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
   );
 
   // Focus a specific pane
@@ -824,6 +855,17 @@ export function useWorkspace() {
           setActiveTerminalId(newTerm.id);
         }
       }
+
+      // Fallback timer: if terminal is still in "starting" after 3s, mark it "idle"
+      setTimeout(() => {
+        setTerminals((prev) =>
+          prev.map((t) =>
+            t.id === newTerm.id && t.claude_status === "starting"
+              ? { ...t, claude_status: "idle" }
+              : t
+          )
+        );
+      }, 3000);
     } catch (err) {
       console.error("Failed to spawn terminal:", err);
     }
