@@ -108,7 +108,7 @@ impl MachinaManager {
     /// Probes Node 24 & Praxis sidecar host on startup and writes `praxis.config.mjs`.
     pub fn start_supervisor(&self, app_handle: AppHandle) {
         let mgr = self.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let app_dir = praxis_app_data_dir();
             let runtime_dir = app_dir.join("runtime");
             let db_path = app_dir
