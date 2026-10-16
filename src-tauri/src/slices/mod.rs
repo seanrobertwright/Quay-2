@@ -1,7 +1,9 @@
+pub mod archon;
 pub mod audit;
 pub mod bridge;
 pub mod git;
 pub mod github;
+pub mod machina;
 pub mod orchestrator;
 pub mod pty;
 pub mod sessions;

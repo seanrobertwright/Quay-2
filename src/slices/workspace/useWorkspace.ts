@@ -47,6 +47,8 @@ export function useWorkspace() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
+  const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
+  const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
 
   // Multi-terminal layout and split pane state
@@ -253,6 +255,36 @@ export function useWorkspace() {
         }
         return prev;
       });
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  // Listen for A2A message dispatches to immediately update receiver's status and task title
+  useEffect(() => {
+    const unlistenPromise = listen<{
+      id: string;
+      from_terminal: string;
+      to_terminal: string;
+      content: string;
+    }>("a2a-message-dispatched", (event) => {
+      const { to_terminal, content } = event.payload;
+      const cleanTitle = content.trim().replace(/^\[Peer agent[^\]]*\]:\s*/, "").slice(0, 36);
+
+      setTerminals((prev) =>
+        prev.map((t) => {
+          if (t.id === to_terminal) {
+            return {
+              ...t,
+              claude_status: "working",
+              task_title: cleanTitle || t.task_title,
+            };
+          }
+          return t;
+        })
+      );
     });
 
     return () => {
@@ -642,6 +674,18 @@ export function useWorkspace() {
           });
         }
       }
+
+      // Lock focus on the newly selected terminal
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
+        );
+      }, 20);
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
+        );
+      }, 100);
     },
     [terminals, activeProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
   );
@@ -856,6 +900,23 @@ export function useWorkspace() {
         }
       }
 
+      // Proactively notify the terminal to lock focus as soon as it mounts in the DOM
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
+        );
+      }, 20);
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
+        );
+      }, 100);
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
+        );
+      }, 250);
+
       // Fallback timer: if terminal is still in "starting" after 3s, mark it "idle"
       setTimeout(() => {
         setTerminals((prev) =>
@@ -913,6 +974,30 @@ export function useWorkspace() {
       console.error("Failed to kill terminal:", err);
     }
   };
+
+  // Relaunch an exited or restored dormant terminal
+  const relaunchTerminal = async (terminalId: string) => {
+    try {
+      const updated = await invoke<TerminalInfo>("relaunch_terminal", { terminalId });
+      setTerminals((prev) => prev.map((t) => (t.id === terminalId ? updated : t)));
+      setActiveTerminalId(terminalId);
+
+      // Lock focus on the relaunched terminal
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
+        );
+      }, 50);
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
+        );
+      }, 150);
+    } catch (err) {
+      console.error("Failed to relaunch terminal:", err);
+    }
+  };
+
 
   // Keyboard shortcut listener (^b n, ^b %, ^b ", ^b o, ^b z, ^b x, ^b g, ^b s, ^b d, Ctrl+K, and ^b 1..9)
   useEffect(() => {
@@ -1023,6 +1108,22 @@ export function useWorkspace() {
           e.preventDefault();
           e.stopPropagation();
           setIsTokenSpendOpen((prev) => !prev);
+          ctrlBActive = false;
+          return;
+        }
+
+        if (e.key.toLowerCase() === "r") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsArchonGraphOpen((prev) => !prev);
+          ctrlBActive = false;
+          return;
+        }
+
+        if (e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsFactoryStationOpen((prev) => !prev);
           ctrlBActive = false;
           return;
         }
@@ -1187,6 +1288,10 @@ export function useWorkspace() {
     setIsSessionHistoryOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
+    isArchonGraphOpen,
+    setIsArchonGraphOpen,
+    isFactoryStationOpen,
+    setIsFactoryStationOpen,
     claudeStats,
     refreshClaudeStats,
     resumeSession,
@@ -1195,6 +1300,7 @@ export function useWorkspace() {
     renameTerminal,
     spawnTerminal,
     killTerminal,
+    relaunchTerminal,
     toggleTerminalLiveMode,
   };
 }

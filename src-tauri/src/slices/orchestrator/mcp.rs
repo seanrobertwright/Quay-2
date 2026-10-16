@@ -210,6 +210,74 @@ pub async fn handle_mcp_request(
                             },
                             "required": ["terminal_id"]
                         }
+                    },
+                    {
+                        "name": "machina_submit_work_order",
+                        "description": "Submit a governed Work Order to the Machina Praxis AI Software Factory. Extracts and strips .machina/holdbacks/ into the external vault and initializes the 6-stage pipeline.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "project_path": { "type": "string" },
+                                "template_id": { "type": "string" },
+                                "title": { "type": "string" },
+                                "allowed_output_paths": {
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                },
+                                "holdback_suite": { "type": "string" },
+                                "max_corrections": { "type": "integer" },
+                                "budget_allowance_usd": { "type": "number" },
+                                "author_agent": { "type": "string" },
+                                "reviewer_agent": { "type": "string" }
+                            },
+                            "required": ["title"]
+                        }
+                    },
+                    {
+                        "name": "machina_get_stage_status",
+                        "description": "Get live status, active Governed Holds (aiws-hold-card/1), and sanitized Two-Tier Holdback diagnostics for a Machina Praxis Work Order.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "work_order_id": { "type": "string" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "machina_claim_attempt",
+                        "description": "Claim an INITIAL or CORRECTION stage attempt ordinal for a Machina Praxis Work Order.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "work_order_id": { "type": "string" },
+                                "stage_id": { "type": "string" }
+                            },
+                            "required": ["work_order_id", "stage_id"]
+                        }
+                    },
+                    {
+                        "name": "machina_submit_deliverable",
+                        "description": "Submit stage deliverables for a Machina Praxis Work Order and trigger the Two-Tier Holdback Validation Gate (Output-Path Confinement + Tier 1 Build + Tier 2 Blind Vault + Pre-PR Secret Audit).",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "work_order_id": { "type": "string" },
+                                "project_path": { "type": "string" }
+                            },
+                            "required": ["work_order_id"]
+                        }
+                    },
+                    {
+                        "name": "machina_resolve_hold",
+                        "description": "Resolve an active Praxis Governed Hold (aiws-hold-card/1) by selecting an exit option (e.g. grant_lease, mock_only, abort_wo).",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "work_order_id": { "type": "string" },
+                                "option_id": { "type": "string" }
+                            },
+                            "required": ["work_order_id", "option_id"]
+                        }
                     }
                 ]
             });
@@ -287,7 +355,7 @@ pub async fn handle_mcp_request(
 
                         if wait {
                             match a2a_router
-                                .dispatch_and_wait(request, &ctx.bridge_state, 60)
+                                .dispatch_and_wait(request, &ctx.bridge_state, Some(&ctx.pty_manager), 60)
                                 .await
                             {
                                 Ok(reply) => {
@@ -295,9 +363,10 @@ pub async fn handle_mcp_request(
                                         .get_messages()
                                         .into_iter()
                                         .rev()
-                                        .find(|m| m.to_terminal == target_id)
+                                        .find(|m| m.to_terminal == target_id || m.from_terminal == caller_id)
                                     {
-                                        let _ = ctx.app_handle.emit("a2a-message-updated", msg);
+                                        let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
+                                        let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
                                     }
                                     Ok(json!({
                                         "content": [
@@ -311,9 +380,10 @@ pub async fn handle_mcp_request(
                                 Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
                             }
                         } else {
-                            match a2a_router.dispatch(request, &ctx.bridge_state) {
+                            match a2a_router.dispatch(request, &ctx.bridge_state, Some(&ctx.pty_manager)) {
                                 Ok(msg) => {
-                                    let _ = ctx.app_handle.emit("a2a-message-updated", msg);
+                                    let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
+                                    let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
                                     Ok(json!({
                                         "content": [
                                             {
@@ -334,7 +404,12 @@ pub async fn handle_mcp_request(
                     if text.is_empty() {
                         Err("Missing text argument".to_string())
                     } else {
-                        a2a_router.broadcast_toast(text, &ctx.bridge_state, &ctx.pty_manager);
+                        let msgs = a2a_router.broadcast_toast(text, &ctx.bridge_state, &ctx.pty_manager);
+                        for msg in &msgs {
+                            let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
+                            let _ = ctx.app_handle.emit("a2a-message-dispatched", msg.clone());
+                        }
+                        let _ = ctx.app_handle.emit("a2a-toast", text.to_string());
                         Ok(json!({
                             "content": [
                                 {
@@ -372,6 +447,189 @@ pub async fn handle_mcp_request(
                         }))
                     } else {
                         Err(format!("Agent '{}' not found", target_id))
+                    }
+                }
+
+                "machina_submit_work_order" => {
+                    let project_path = arguments
+                        .get("project_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(".")
+                        .to_string();
+                    let template_id = arguments
+                        .get("template_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("feature-holdback-tdd")
+                        .to_string();
+                    let title = arguments
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Autonomous Factory Work Order")
+                        .to_string();
+                    let allowed_output_paths = arguments
+                        .get("allowed_output_paths")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<String>>()
+                        })
+                        .unwrap_or_else(|| vec!["src/**".to_string()]);
+                    let holdback_suite = arguments
+                        .get("holdback_suite")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(".machina/holdbacks/default.holdback.test.ts")
+                        .to_string();
+                    let max_corrections = arguments
+                        .get("max_corrections")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(3) as u32;
+                    let budget_allowance_usd = arguments
+                        .get("budget_allowance_usd")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(5.0);
+                    let author_agent = arguments
+                        .get("author_agent")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("claude")
+                        .to_string();
+                    let reviewer_agent = arguments
+                        .get("reviewer_agent")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("antigravity")
+                        .to_string();
+
+                    let req = crate::slices::machina::models::SubmitWorkOrderRequest {
+                        project_path,
+                        template_id,
+                        title,
+                        allowed_output_paths,
+                        holdback_suite,
+                        max_corrections,
+                        budget_allowance_usd,
+                        author_agent,
+                        reviewer_agent,
+                    };
+
+                    match ctx
+                        .machina_manager
+                        .submit_work_order(req, Some(&ctx.app_handle))
+                    {
+                        Ok(wo) => {
+                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
+                            Ok(json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }))
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+
+                "machina_get_stage_status" => {
+                    let wo_id = arguments
+                        .get("work_order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let list = ctx.machina_manager.list_work_orders();
+                    let payload = if wo_id.is_empty() {
+                        serde_json::to_string_pretty(&list).unwrap_or_default()
+                    } else if let Some(found) = list.into_iter().find(|w| w.id == wo_id) {
+                        serde_json::to_string_pretty(&found).unwrap_or_default()
+                    } else {
+                        return Json(JsonRpcResponse {
+                            jsonrpc: "2.0".to_string(),
+                            id,
+                            result: None,
+                            error: Some(JsonRpcError {
+                                code: -32602,
+                                message: format!("Work Order '{}' not found", wo_id),
+                                data: None,
+                            }),
+                        })
+                        .into_response();
+                    };
+
+                    Ok(json!({
+                        "content": [{ "type": "text", "text": payload }]
+                    }))
+                }
+
+                "machina_claim_attempt" => {
+                    let wo_id = arguments
+                        .get("work_order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let stage_id = arguments
+                        .get("stage_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("implementation");
+
+                    match ctx.machina_manager.claim_attempt(
+                        wo_id,
+                        stage_id,
+                        &caller_id,
+                        Some(&ctx.app_handle),
+                    ) {
+                        Ok(res) => {
+                            let text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                            Ok(json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }))
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+
+                "machina_submit_deliverable" => {
+                    let wo_id = arguments
+                        .get("work_order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let project_path = arguments
+                        .get("project_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(".");
+
+                    match ctx.machina_manager.run_stage_validation(
+                        wo_id,
+                        project_path,
+                        Some(&ctx.app_handle),
+                    ) {
+                        Ok(wo) => {
+                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
+                            Ok(json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }))
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+
+                "machina_resolve_hold" => {
+                    let wo_id = arguments
+                        .get("work_order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let option_id = arguments
+                        .get("option_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("grant_lease")
+                        .to_string();
+
+                    let req = crate::slices::machina::models::ResolveHoldRequest {
+                        work_order_id: wo_id,
+                        option_id,
+                    };
+
+                    match ctx.machina_manager.resolve_hold(req, Some(&ctx.app_handle)) {
+                        Ok(wo) => {
+                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
+                            Ok(json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }))
+                        }
+                        Err(e) => Err(e),
                     }
                 }
 

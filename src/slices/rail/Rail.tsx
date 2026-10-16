@@ -21,6 +21,8 @@ import {
   History,
   ShieldCheck,
   Coins,
+  GitFork,
+  Cpu,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
@@ -50,6 +52,9 @@ interface RailProps {
   onOpenPrePrAudit?: () => void;
   onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
+  onOpenArchonGraph?: () => void;
+  onOpenFactoryStation?: () => void;
+  onRelaunchTerminal?: (id: string) => void;
 }
 
 export const Rail: React.FC<RailProps> = ({
@@ -67,6 +72,7 @@ export const Rail: React.FC<RailProps> = ({
   onAddProject,
   onRemoveProject,
   onRenameTerminal,
+  onRelaunchTerminal,
   onOpenA2APanel,
   onOpenSettings,
   onOpenSwarm,
@@ -77,6 +83,8 @@ export const Rail: React.FC<RailProps> = ({
   onOpenPrePrAudit,
   onOpenSessionHistory,
   onOpenTokenSpend,
+  onOpenArchonGraph,
+  onOpenFactoryStation,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
 
@@ -286,6 +294,7 @@ export const Rail: React.FC<RailProps> = ({
                               onCloseTerminal(term.id);
                             }}
                             onRename={onRenameTerminal}
+                            onRelaunch={onRelaunchTerminal}
                           />
                         );
                       })
@@ -411,6 +420,7 @@ export const Rail: React.FC<RailProps> = ({
                                             onCloseTerminal(term.id);
                                           }}
                                           onRename={onRenameTerminal}
+                                          onRelaunch={onRelaunchTerminal}
                                         />
                                       );
                                     })}
@@ -449,6 +459,7 @@ export const Rail: React.FC<RailProps> = ({
                         onCloseTerminal(term.id);
                       }}
                       onRename={onRenameTerminal}
+                      onRelaunch={onRelaunchTerminal}
                     />
                   );
                 })}
@@ -504,6 +515,38 @@ export const Rail: React.FC<RailProps> = ({
             </div>
             <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
               Ctrl+B a
+            </kbd>
+          </button>
+        )}
+
+        {onOpenArchonGraph && (
+          <button
+            onClick={onOpenArchonGraph}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
+            title="Archon Workflow DAG & SDD Spec Inspector (Ctrl+B R)"
+          >
+            <div className="flex items-center gap-2">
+              <GitFork className="w-3.5 h-3.5 text-[#58a6ff]" />
+              <span>Archon & SDD Graph</span>
+            </div>
+            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
+              Ctrl+B r
+            </kbd>
+          </button>
+        )}
+
+        {onOpenFactoryStation && (
+          <button
+            onClick={onOpenFactoryStation}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#c9d1d9] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#58a6ff]/40"
+            title="Machina Praxis AI Software Factory Cockpit (Ctrl+B F)"
+          >
+            <div className="flex items-center gap-2">
+              <Cpu className="w-3.5 h-3.5 text-[#58a6ff]" />
+              <span className="font-semibold text-white">Machina Praxis</span>
+            </div>
+            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#58a6ff] border border-[#30363d]">
+              Ctrl+B f
             </kbd>
           </button>
         )}

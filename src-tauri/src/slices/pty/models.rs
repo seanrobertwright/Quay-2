@@ -6,8 +6,51 @@ pub enum RunKind {
     Claude,
     Antigravity,
     Codex,
+    Pi,
+    Gemini,
+    Grok,
+    Aider,
+    Kiro,
+    Copilot,
+    #[serde(rename = "opencode")]
+    OpenCode,
     PowerShell,
     Command,
+}
+
+impl RunKind {
+    pub fn is_agent(&self) -> bool {
+        matches!(
+            self,
+            RunKind::Claude
+                | RunKind::Antigravity
+                | RunKind::Codex
+                | RunKind::Pi
+                | RunKind::Gemini
+                | RunKind::Grok
+                | RunKind::Aider
+                | RunKind::Kiro
+                | RunKind::Copilot
+                | RunKind::OpenCode
+        )
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RunKind::Claude => "claude",
+            RunKind::Antigravity => "antigravity",
+            RunKind::Codex => "codex",
+            RunKind::Pi => "pi",
+            RunKind::Gemini => "gemini",
+            RunKind::Grok => "grok",
+            RunKind::Aider => "aider",
+            RunKind::Kiro => "kiro",
+            RunKind::Copilot => "copilot",
+            RunKind::OpenCode => "opencode",
+            RunKind::PowerShell => "powershell",
+            RunKind::Command => "command",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,4 +111,23 @@ pub struct TerminalOutputPayload {
     pub terminal_id: String,
     pub data: String,
     pub last_seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedTerminalSession {
+    pub id: String,
+    pub name: String,
+    pub project_path: String,
+    pub run_kind: RunKind,
+    pub permission_mode: PermissionMode,
+    #[serde(default)]
+    pub task_title: Option<String>,
+    #[serde(default)]
+    pub custom_name: bool,
+    #[serde(default)]
+    pub auto_approved_count: u32,
+    #[serde(default)]
+    pub command_text: Option<String>,
+    #[serde(default)]
+    pub last_updated: u64,
 }

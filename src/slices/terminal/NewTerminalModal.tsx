@@ -1,7 +1,20 @@
 import { useState, useEffect } from "react";
 import { Terminal, Shield, AlertTriangle, X, Sliders } from "lucide-react";
-import { RunKind, PermissionMode, SpawnTerminalRequest } from "./types";
-import { ClaudeIcon, AntigravityIcon, CodexIcon, PowerShellIcon, CommandIcon } from "./AgentIcons";
+import { RunKind, PermissionMode, SpawnTerminalRequest, isAgentRunKind } from "./types";
+import {
+  ClaudeIcon,
+  AntigravityIcon,
+  CodexIcon,
+  PiIcon,
+  GeminiIcon,
+  GrokIcon,
+  AiderIcon,
+  KiroIcon,
+  CopilotIcon,
+  OpenCodeIcon,
+  PowerShellIcon,
+  CommandIcon,
+} from "./AgentIcons";
 
 interface NewTerminalModalProps {
   isOpen: boolean;
@@ -10,7 +23,7 @@ interface NewTerminalModalProps {
   onSpawn: (request: SpawnTerminalRequest) => void;
 }
 
-const AGENT_MODELS: Record<"claude" | "antigravity" | "codex", { label: string; value: string }[]> = {
+const AGENT_MODELS: Record<string, { label: string; value: string }[]> = {
   claude: [
     { label: "Default (Claude 3.7 Sonnet)", value: "" },
     { label: "Claude 3.7 Sonnet", value: "--model claude-3-7-sonnet-20250219" },
@@ -30,6 +43,58 @@ const AGENT_MODELS: Record<"claude" | "antigravity" | "codex", { label: string; 
     { label: "GPT-4.1", value: "-m gpt-4.1" },
     { label: "GPT-4o", value: "-m gpt-4o" },
   ],
+  pi: [
+    { label: "Default (Smart Multi-Provider)", value: "" },
+    { label: "Claude 3.7 Sonnet (Thinking High)", value: "--model sonnet:high" },
+    { label: "High Thinking Mode", value: "--thinking high" },
+    { label: "Max Thinking Mode", value: "--thinking max" },
+    { label: "GPT-4o", value: "--model gpt-4o" },
+    { label: "DeepSeek Reasoner", value: "--model deepseek-reasoner" },
+  ],
+  gemini: [
+    { label: "Default (Gemini 2.5 Pro)", value: "" },
+    { label: "Gemini 2.5 Pro", value: "--model gemini-2.5-pro" },
+    { label: "Gemini 2.5 Flash", value: "--model gemini-2.5-flash" },
+    { label: "Gemini 3.8 Flash (High)", value: "--model gemini-3.8-flash --effort high" },
+  ],
+  grok: [
+    { label: "Default (Grok 2)", value: "" },
+    { label: "Grok 2 Beta", value: "--model grok-beta" },
+    { label: "Grok Vision", value: "--model grok-vision-beta" },
+  ],
+  aider: [
+    { label: "Default (Claude 3.7 Sonnet)", value: "" },
+    { label: "Claude 3.7 Sonnet (Thinking)", value: "--model claude-3-7-sonnet-20250219 --thinking-tokens 4096" },
+    { label: "DeepSeek R1", value: "--model openrouter/deepseek/deepseek-r1" },
+    { label: "GPT-4o", value: "--model gpt-4o" },
+  ],
+  kiro: [
+    { label: "Default (Auto Engine)", value: "" },
+    { label: "Claude Opus 5.5 (1M context)", value: "--model claude-opus-5.5" },
+    { label: "Claude Sonnet 5.5 (1M context)", value: "--model claude-sonnet-5.5" },
+    { label: "Claude Opus 5 (1M context)", value: "--model claude-opus-5" },
+    { label: "Claude Sonnet 5 (1M context)", value: "--model claude-sonnet-5" },
+    { label: "OpenAI GPT 5.6 Sol (1M context)", value: "--model gpt-5.6-sol" },
+    { label: "OpenAI GPT 5.6 Terra", value: "--model gpt-5.6-terra" },
+    { label: "DeepSeek V3.2", value: "--model deepseek-3.2" },
+    { label: "Qwen3 Coder Next", value: "--model qwen3-coder-next" },
+    { label: "V3 Next-Gen Engine", value: "--v3" },
+  ],
+  copilot: [
+    { label: "Default (GitHub Copilot CLI)", value: "" },
+    { label: "Claude 3.7 Sonnet (Copilot)", value: "--model claude-3.7-sonnet" },
+    { label: "GPT-4o (Copilot)", value: "--model gpt-4o" },
+    { label: "o3-mini (Reasoning)", value: "--model o3-mini" },
+  ],
+  opencode: [
+    { label: "Default (OpenCode TUI)", value: "" },
+    { label: "Claude 3.7 Sonnet (Anthropic)", value: "-m anthropic/claude-3-7-sonnet" },
+    { label: "Claude 3.5 Sonnet (Anthropic)", value: "-m anthropic/claude-3-5-sonnet" },
+    { label: "OpenAI GPT-4o", value: "-m openai/gpt-4o" },
+    { label: "Google Gemini 2.0 Flash", value: "-m google/gemini-2.0-flash" },
+    { label: "DeepSeek Chat (DeepSeek)", value: "-m deepseek/deepseek-chat" },
+    { label: "Continue Previous Session", value: "--continue" },
+  ],
 };
 
 export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
@@ -45,7 +110,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
   const [commandText, setCommandText] = useState("");
   const [name, setName] = useState("");
 
-  const isAgent = runKind === "claude" || runKind === "antigravity" || runKind === "codex";
+  const isAgent = isAgentRunKind(runKind);
 
   // Reset model flag when switching agent kinds
   useEffect(() => {
@@ -74,6 +139,11 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
   const handleSubmit = () => {
     const mergedFlags = [selectedModelFlag, customFlags].filter(Boolean).join(" ").trim() || undefined;
 
+    // Explicitly blur any input/button in the modal so focus smoothly transfers to new terminal
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     onSpawn({
       project_path: projectPath,
       run_kind: runKind,
@@ -93,6 +163,20 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
         return "Antigravity CLI (Google)";
       case "codex":
         return "Codex CLI (OpenAI)";
+      case "pi":
+        return "Pi Coding Agent (Earendil Works)";
+      case "gemini":
+        return "Gemini CLI (Google)";
+      case "grok":
+        return "Grok CLI (xAI)";
+      case "aider":
+        return "Aider Pair Programmer (Paul Gauthier)";
+      case "kiro":
+        return "Kiro CLI (AWS & Multi-Model Engine)";
+      case "copilot":
+        return "GitHub Copilot CLI (GitHub & Microsoft)";
+      case "opencode":
+        return "OpenCode CLI (Multi-Provider Terminal Agent)";
       default:
         return "Agent";
     }
@@ -100,7 +184,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs">
-      <div className="w-[580px] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-6 text-[#c9d1d9] animate-in fade-in zoom-in-95 duration-100">
+      <div className="w-[660px] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-6 text-[#c9d1d9] animate-in fade-in zoom-in-95 duration-100 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-[#30363d]">
           <div className="flex items-center gap-2">
             <Terminal className="w-5 h-5 text-[#58a6ff]" />
@@ -118,14 +202,14 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
           {/* Run Kind Selection with Official Icons */}
           <div>
             <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2">
-              Agent / Shell Type
+              Autonomous AI Agents
             </label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 sm:grid-cols-5 gap-2 mb-3">
               {/* Claude Code */}
               <button
                 type="button"
                 onClick={() => setRunKind("claude")}
-                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-md border text-xs font-medium transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
                   runKind === "claude"
                     ? "bg-[#f0883e]/15 border-[#f0883e] text-white shadow-sm ring-1 ring-[#f0883e]/50"
                     : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
@@ -142,7 +226,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
               <button
                 type="button"
                 onClick={() => setRunKind("antigravity")}
-                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-md border text-xs font-medium transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
                   runKind === "antigravity"
                     ? "bg-[#38bdf8]/15 border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/50"
                     : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
@@ -159,7 +243,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
               <button
                 type="button"
                 onClick={() => setRunKind("codex")}
-                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-md border text-xs font-medium transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
                   runKind === "codex"
                     ? "bg-[#10a37f]/15 border-[#10a37f] text-white shadow-sm ring-1 ring-[#10a37f]/50"
                     : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
@@ -172,38 +256,156 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                 <span className="text-[10px] text-[#8b949e] scale-90">OpenAI</span>
               </button>
 
+              {/* Pi Coding Agent */}
+              <button
+                type="button"
+                onClick={() => setRunKind("pi")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "pi"
+                    ? "bg-[#a855f7]/15 border-[#a855f7] text-white shadow-sm ring-1 ring-[#a855f7]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <PiIcon className={`w-5 h-5 ${runKind === "pi" ? "text-[#c084fc]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Pi Agent</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">Earendil</span>
+              </button>
+
+              {/* Gemini CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("gemini")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "gemini"
+                    ? "bg-[#3b82f6]/15 border-[#3b82f6] text-white shadow-sm ring-1 ring-[#3b82f6]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <GeminiIcon className={`w-5 h-5 ${runKind === "gemini" ? "text-[#60a5fa]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Gemini</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">Google</span>
+              </button>
+
+              {/* Grok CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("grok")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "grok"
+                    ? "bg-white/15 border-white text-white shadow-sm ring-1 ring-white/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <GrokIcon className={`w-5 h-5 ${runKind === "grok" ? "text-[#f1f5f9]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Grok</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">xAI</span>
+              </button>
+
+              {/* Aider CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("aider")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "aider"
+                    ? "bg-[#10b981]/15 border-[#10b981] text-white shadow-sm ring-1 ring-[#10b981]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <AiderIcon className={`w-5 h-5 ${runKind === "aider" ? "text-[#34d399]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Aider</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">Pair</span>
+              </button>
+
+              {/* Kiro CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("kiro")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "kiro"
+                    ? "bg-[#a855f7]/15 border-[#a855f7] text-white shadow-sm ring-1 ring-[#a855f7]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <KiroIcon className={`w-5 h-5 ${runKind === "kiro" ? "text-[#a855f7]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Kiro</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">AWS/Multi</span>
+              </button>
+
+              {/* GitHub Copilot CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("copilot")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "copilot"
+                    ? "bg-[#38bdf8]/15 border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <CopilotIcon className={`w-5 h-5 ${runKind === "copilot" ? "text-[#38bdf8]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">Copilot</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">GitHub</span>
+              </button>
+
+              {/* OpenCode CLI */}
+              <button
+                type="button"
+                onClick={() => setRunKind("opencode")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "opencode"
+                    ? "bg-[#f97316]/15 border-[#f97316] text-white shadow-sm ring-1 ring-[#f97316]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <OpenCodeIcon className={`w-5 h-5 ${runKind === "opencode" ? "text-[#f97316]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">OpenCode</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">SST</span>
+              </button>
+            </div>
+
+            <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2 mt-2">
+              Shells & Commands
+            </label>
+            <div className="grid grid-cols-2 gap-2">
               {/* PowerShell */}
               <button
                 type="button"
                 onClick={() => setRunKind("powershell")}
-                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-md border text-xs font-medium transition-all ${
+                className={`flex items-center justify-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
                   runKind === "powershell"
                     ? "bg-[#58a6ff]/15 border-[#58a6ff] text-white shadow-sm ring-1 ring-[#58a6ff]/50"
                     : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
                 }`}
               >
-                <div className="w-6 h-6 flex items-center justify-center">
-                  <PowerShellIcon className={`w-5 h-5 ${runKind === "powershell" ? "text-[#58a6ff]" : "text-[#8b949e]"}`} />
-                </div>
-                <span className="font-semibold text-center leading-tight">PowerShell</span>
-                <span className="text-[10px] text-[#8b949e] scale-90">Console</span>
+                <PowerShellIcon className={`w-4 h-4 ${runKind === "powershell" ? "text-[#58a6ff]" : "text-[#8b949e]"}`} />
+                <span className="font-semibold">PowerShell Console</span>
               </button>
 
               {/* Custom Command */}
               <button
                 type="button"
                 onClick={() => setRunKind("command")}
-                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-md border text-xs font-medium transition-all ${
+                className={`flex items-center justify-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
                   runKind === "command"
                     ? "bg-[#3fb950]/15 border-[#3fb950] text-white shadow-sm ring-1 ring-[#3fb950]/50"
                     : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
                 }`}
               >
-                <div className="w-6 h-6 flex items-center justify-center">
-                  <CommandIcon className={`w-5 h-5 ${runKind === "command" ? "text-[#3fb950]" : "text-[#8b949e]"}`} />
-                </div>
-                <span className="font-semibold text-center leading-tight">Command</span>
-                <span className="text-[10px] text-[#8b949e] scale-90">Script</span>
+                <CommandIcon className={`w-4 h-4 ${runKind === "command" ? "text-[#3fb950]" : "text-[#8b949e]"}`} />
+                <span className="font-semibold">Custom Command</span>
               </button>
             </div>
           </div>

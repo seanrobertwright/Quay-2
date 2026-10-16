@@ -127,6 +127,89 @@ impl PtySession {
                 }
                 c
             }
+            RunKind::Pi => {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/c");
+                c.arg("pi");
+                if perm == PermissionMode::Skip {
+                    c.arg("--approve");
+                }
+                c
+            }
+            RunKind::Gemini => {
+                let mut c = CommandBuilder::new("cmd.exe");
+                c.arg("/c");
+                c.arg("gemini");
+                c
+            }
+            RunKind::Grok => {
+                // Check if user has ~/.grok/bin/agent.exe installed
+                let grok_path = std::env::var("USERPROFILE")
+                    .ok()
+                    .map(|home| std::path::PathBuf::from(home).join(".grok").join("bin").join("agent.exe"))
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "agent.exe".to_string());
+                CommandBuilder::new(grok_path)
+            }
+            RunKind::Aider => {
+                let mut c = CommandBuilder::new("aider.exe");
+                if perm == PermissionMode::Skip {
+                    c.arg("--yes-always");
+                }
+                c
+            }
+            RunKind::Kiro => {
+                let kiro_path = std::env::var("LOCALAPPDATA")
+                    .ok()
+                    .map(|local| std::path::PathBuf::from(local).join("Kiro-Cli").join("kiro-cli.exe"))
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "kiro-cli.exe".to_string());
+                let mut c = CommandBuilder::new(kiro_path);
+                c.arg("chat");
+                if perm == PermissionMode::Skip {
+                    c.arg("--trust-all-tools");
+                }
+                c
+            }
+            RunKind::Copilot => {
+                let copilot_local = std::env::var("LOCALAPPDATA")
+                    .ok()
+                    .map(|local| std::path::PathBuf::from(local).join("GitHub CLI").join("copilot").join("copilot.exe"))
+                    .filter(|p| p.exists());
+
+                if let Some(path) = copilot_local {
+                    let mut c = CommandBuilder::new(path.to_string_lossy().to_string());
+                    if perm == PermissionMode::Skip {
+                        c.arg("--allow-all-tools");
+                    }
+                    c
+                } else {
+                    let gh_path = std::path::PathBuf::from("C:\\Program Files\\GitHub CLI\\gh.exe");
+                    let program = if gh_path.exists() {
+                        gh_path.to_string_lossy().to_string()
+                    } else {
+                        "gh.exe".to_string()
+                    };
+                    let mut c = CommandBuilder::new(program);
+                    c.arg("copilot");
+                    c
+                }
+            }
+            RunKind::OpenCode => {
+                let opencode_path = std::env::var("USERPROFILE")
+                    .ok()
+                    .map(|home| std::path::PathBuf::from(home).join(".bun").join("bin").join("opencode.exe"))
+                    .filter(|p| p.exists())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "opencode.exe".to_string());
+                let mut c = CommandBuilder::new(opencode_path);
+                if perm == PermissionMode::Skip {
+                    c.arg("--auto");
+                }
+                c
+            }
         };
 
         // Inject workspace / custom environment variables
@@ -136,8 +219,8 @@ impl PtySession {
             }
         }
 
-        // Inject custom CLI launch flags (e.g. for Claude, Antigravity, Codex)
-        if matches!(request.run_kind, RunKind::Claude | RunKind::Antigravity | RunKind::Codex) {
+        // Inject custom CLI launch flags (for any supported agent)
+        if request.run_kind.is_agent() {
             if let Some(ref flags) = request.custom_flags {
                 for flag in flags.split_whitespace() {
                     cmd.arg(flag);
@@ -164,7 +247,48 @@ impl PtySession {
             format!("Failed to take master writer: {}", e)
         })?));
 
-        let output_buffer = Arc::new(Mutex::new((String::new(), 0u64)));
+        let log_dir = {
+            #[cfg(test)]
+            {
+                let t = std::env::temp_dir().join("quay2_test_sessions");
+                let _ = std::fs::create_dir_all(&t);
+                t
+            }
+            #[cfg(not(test))]
+            {
+                let d = if let Ok(local) = std::env::var("LOCALAPPDATA") {
+                    std::path::Path::new(&local).join("Quay2").join("sessions")
+                } else {
+                    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+                    std::path::Path::new(&home).join(".quay2").join("sessions")
+                };
+                let _ = std::fs::create_dir_all(&d);
+                d
+            }
+        };
+        let log_path = log_dir.join(format!("{}.log", terminal_id));
+
+        // Read existing scrollback if relaunching an existing terminal
+        let initial_data = if log_path.exists() {
+            std::fs::read(&log_path).ok().and_then(|bytes| {
+                let max_len = 256 * 1024;
+                let slice = if bytes.len() > max_len {
+                    let start = bytes.len() - max_len;
+                    let mut cut = start;
+                    while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
+                        cut += 1;
+                    }
+                    &bytes[cut..]
+                } else {
+                    &bytes[..]
+                };
+                String::from_utf8(slice.to_vec()).ok()
+            }).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let output_buffer = Arc::new(Mutex::new((initial_data, 0u64)));
         let is_alive = Arc::new(AtomicBool::new(true));
 
         // Background thread for reading PTY output
@@ -173,17 +297,28 @@ impl PtySession {
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
             let output_buffer = output_buffer.clone();
+            let log_path_clone = log_path.clone();
 
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut current_seq = 0u64;
                 let mut session_started_emitted = false;
+                let mut log_file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path_clone)
+                    .ok();
 
                 while is_alive.load(Ordering::SeqCst) {
                     match reader.read(&mut buf) {
                         Ok(0) => break, // EOF
                         Ok(n) => {
                             let text = String::from_utf8_lossy(&buf[..n]).to_string();
+
+                            if let Some(ref mut file) = log_file {
+                                use std::io::Write;
+                                let _ = file.write_all(text.as_bytes());
+                            }
 
                             // Transition session to active/idle state on first output from child process
                             if !session_started_emitted {
@@ -249,6 +384,7 @@ impl PtySession {
             let app_handle = app_handle.clone();
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
+            let log_path_exit = log_path.clone();
 
             std::thread::spawn(move || {
                 let exit_status = child.wait();
@@ -257,6 +393,23 @@ impl PtySession {
                 // Clean up temporary MCP config file if exists
                 let temp_mcp = std::env::temp_dir().join(format!("quay-mcp-{}.json", terminal_id));
                 let _ = std::fs::remove_file(temp_mcp);
+
+                // Compact log file if it exceeds 2MB to keep disk space bounded
+                if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
+                    if metadata.len() > 2 * 1024 * 1024 {
+                        if let Ok(bytes) = std::fs::read(&log_path_exit) {
+                            let max_len = 256 * 1024;
+                            if bytes.len() > max_len {
+                                let start = bytes.len() - max_len;
+                                let mut cut = start;
+                                while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
+                                    cut += 1;
+                                }
+                                let _ = std::fs::write(&log_path_exit, &bytes[cut..]);
+                            }
+                        }
+                    }
+                }
 
                 let exit_code = match exit_status {
                     Ok(status) => {
@@ -284,6 +437,13 @@ impl PtySession {
             RunKind::Claude => "claude".to_string(),
             RunKind::Antigravity => "agy".to_string(),
             RunKind::Codex => "codex".to_string(),
+            RunKind::Pi => "pi".to_string(),
+            RunKind::Gemini => "gemini".to_string(),
+            RunKind::Grok => "grok".to_string(),
+            RunKind::Aider => "aider".to_string(),
+            RunKind::Kiro => "kiro".to_string(),
+            RunKind::Copilot => "copilot".to_string(),
+            RunKind::OpenCode => "opencode".to_string(),
             RunKind::PowerShell => "pwsh".to_string(),
             RunKind::Command => request
                 .command_text

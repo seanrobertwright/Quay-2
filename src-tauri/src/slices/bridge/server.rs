@@ -3,6 +3,7 @@ use tokio::net::TcpListener;
 
 use super::routes::{create_router, AppContext};
 use super::state::BridgeState;
+use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 
@@ -13,6 +14,7 @@ impl BridgeServer {
         bridge_state: BridgeState,
         pty_manager: PtyManager,
         a2a_router: A2ARouter,
+        machina_manager: MachinaManager,
         app_handle: AppHandle,
     ) -> Result<u16, String> {
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -31,6 +33,7 @@ impl BridgeServer {
             bridge_state,
             pty_manager,
             a2a_router,
+            machina_manager,
             app_handle,
         };
 

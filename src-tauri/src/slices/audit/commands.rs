@@ -15,7 +15,7 @@ pub async fn run_pre_pr_audit(
         .map_err(|e| format!("Audit task panicked: {}", e))?
 }
 
-fn run_pre_pr_audit_sync(project_path: &str, base_branch: Option<&str>) -> Result<AuditReport, String> {
+pub(crate) fn run_pre_pr_audit_sync(project_path: &str, base_branch: Option<&str>) -> Result<AuditReport, String> {
     let mut violations = Vec::new();
     let mut files_scanned_set = HashSet::new();
 

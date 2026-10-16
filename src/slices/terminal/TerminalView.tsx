@@ -1,6 +1,7 @@
 import { FC, CSSProperties, MouseEvent, useState, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
-import { TerminalInfo } from "./types";
+import { TerminalInfo, isAgentRunKind } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import {
@@ -8,6 +9,7 @@ import {
   X,
   Loader2,
   Search,
+  Play,
 } from "lucide-react";
 
 interface TerminalViewProps {
@@ -21,6 +23,7 @@ interface TerminalViewProps {
   onClosePane?: () => void;
   onZoomPane?: () => void;
   onSwitchTerminal?: (newTerminalId: string) => void;
+  onRelaunch?: () => void;
   className?: string;
   style?: CSSProperties;
 }
@@ -36,10 +39,59 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onClosePane,
   onZoomPane,
   onSwitchTerminal,
+  onRelaunch,
   className = "",
   style,
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [a2aNotification, setA2aNotification] = useState<{
+    fromName: string;
+    content: string;
+  } | null>(null);
+
+  const isAgent = isAgentRunKind(terminal?.run_kind);
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const unlistenDispatchedPromise = listen<{
+      id: string;
+      from_terminal: string;
+      to_terminal: string;
+      from_name?: string | null;
+      to_name?: string | null;
+      content: string;
+    }>("a2a-message-dispatched", (event) => {
+      if (event.payload.to_terminal === terminalId) {
+        setA2aNotification({
+          fromName: event.payload.from_name || event.payload.from_terminal,
+          content: event.payload.content,
+        });
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setA2aNotification(null);
+        }, 10000);
+      }
+    });
+
+    const unlistenToastPromise = listen<string>("a2a-toast", (event) => {
+      if (isAgent) {
+        setA2aNotification({
+          fromName: "Swarm Broadcast",
+          content: event.payload,
+        });
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setA2aNotification(null);
+        }, 10000);
+      }
+    });
+
+    return () => {
+      unlistenDispatchedPromise.then((unlisten) => unlisten());
+      unlistenToastPromise.then((unlisten) => unlisten());
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [terminalId, isAgent]);
 
   const {
     containerRef,
@@ -48,6 +100,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
     clearSearch,
     exportScrollback,
     searchResult,
+    focusTerminal,
   } = useTerminal(terminalId, isVisible, isFocused, () => {
     setIsSearchOpen((prev) => !prev);
   });
@@ -67,11 +120,6 @@ export const TerminalView: FC<TerminalViewProps> = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isVisible, isFocused]);
-
-  const isAgent =
-    terminal?.run_kind === "claude" ||
-    terminal?.run_kind === "antigravity" ||
-    terminal?.run_kind === "codex";
 
   const renderIcon = () => {
     return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;
@@ -116,7 +164,13 @@ export const TerminalView: FC<TerminalViewProps> = ({
 
   return (
     <div
-      onClick={onSelect}
+      onClick={() => {
+        onSelect?.();
+        focusTerminal();
+      }}
+      onMouseDown={() => {
+        focusTerminal();
+      }}
       className={`overflow-hidden transition-all bg-[#0d1117] ${
         isVisible ? "flex flex-col" : "hidden"
       } ${
@@ -166,6 +220,12 @@ export const TerminalView: FC<TerminalViewProps> = ({
 
           {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
           <div className="flex items-center gap-1 shrink-0">
+            {terminal?.permission_mode === "skip" && (
+              <span className="text-[9px] px-1 py-0.2 rounded bg-[#ff7b72]/20 text-[#ff7b72] font-mono font-bold border border-[#ff7b72]/40" title="Bypassing tool permissions">
+                SKIP
+              </span>
+            )}
+
             {isFocused && (
               <span className="text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
                 ACTIVE
@@ -233,7 +293,63 @@ export const TerminalView: FC<TerminalViewProps> = ({
           onClose={() => setIsSearchOpen(false)}
           onGetScrollback={exportScrollback}
         />
-        <div ref={containerRef} className="w-full h-full" />
+
+        {/* Incoming A2A Task Floating Banner */}
+        {a2aNotification && (
+          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#1f6feb]/70 rounded shadow-lg backdrop-blur text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
+              </span>
+              <span className="font-semibold text-[#58a6ff] shrink-0">
+                Incoming A2A Task from {a2aNotification.fromName}:
+              </span>
+              <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
+                {a2aNotification.content}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setA2aNotification(null)}
+              className="text-[#8b949e] hover:text-white p-0.5 rounded cursor-pointer shrink-0 ml-2"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Restored Dormant / Exited Session Ribbon */}
+        {terminal?.claude_status === "exited" && (
+          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
+            <div className="flex items-center gap-2 text-[#8b949e]">
+              <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
+              <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
+              <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
+            </div>
+            {onRelaunch && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRelaunch();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Play className="w-3 h-3 fill-white" />
+                <span>Relaunch Agent</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        <div
+          ref={containerRef}
+          tabIndex={-1}
+          onClick={() => focusTerminal()}
+          className="w-full h-full focus:outline-hidden"
+        />
       </div>
     </div>
   );

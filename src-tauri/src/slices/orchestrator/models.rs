@@ -14,6 +14,10 @@ pub struct A2AMessage {
     pub id: String,
     pub from_terminal: String,
     pub to_terminal: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_name: Option<String>,
     pub content: String,
     pub as_user: bool,
     pub timestamp: u64,

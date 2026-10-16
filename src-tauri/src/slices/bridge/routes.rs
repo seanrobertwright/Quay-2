@@ -14,6 +14,7 @@ use super::models::{
     CommandsResponse, EventsBatchRequest, PermissionRequestPayload, PermissionResponsePayload,
 };
 use super::state::BridgeState;
+use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
@@ -23,6 +24,7 @@ pub struct AppContext {
     pub bridge_state: BridgeState,
     pub pty_manager: PtyManager,
     pub a2a_router: A2ARouter,
+    pub machina_manager: MachinaManager,
     pub app_handle: AppHandle,
 }
 
@@ -296,11 +298,19 @@ pub async fn handle_mcp_get() -> Response {
         .into_response()
 }
 
+pub async fn handle_machina_agent_card(State(ctx): State<Arc<AppContext>>) -> Response {
+    let port = ctx.bridge_state.port();
+    let card = ctx.machina_manager.get_a2a_agent_card(port);
+    Json(card).into_response()
+}
+
 pub fn create_router(ctx: AppContext) -> Router {
     Router::new()
         .route("/v1/events", post(handle_events))
         .route("/v1/commands", get(handle_commands))
         .route("/v1/permission", post(handle_permission))
         .route("/mcp", post(handle_mcp).get(handle_mcp_get))
+        .route("/.well-known/agent.json", get(handle_machina_agent_card))
+        .route("/a2a/machina-praxis", get(handle_machina_agent_card))
         .with_state(Arc::new(ctx))
 }

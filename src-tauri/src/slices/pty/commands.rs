@@ -93,3 +93,16 @@ pub async fn rename_terminal(
 ) -> Result<(), String> {
     pty_manager.rename(&terminal_id, &name)
 }
+
+#[tauri::command]
+pub async fn relaunch_terminal(
+    terminal_id: String,
+    pty_manager: State<'_, PtyManager>,
+    bridge_state: State<'_, BridgeState>,
+    app_handle: AppHandle,
+) -> Result<TerminalInfo, String> {
+    let port = bridge_state.port();
+    let token = bridge_state.token_for(&terminal_id);
+    pty_manager.relaunch(&terminal_id, port, token, app_handle)
+}
+

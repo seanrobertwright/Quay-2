@@ -66,6 +66,22 @@ export function useTerminal(
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
+    // Immediately request focus if active on mount
+    if (isVisible && isFocused) {
+      requestAnimationFrame(() => {
+        try {
+          term.focus();
+          term.textarea?.focus({ preventScroll: true });
+        } catch (_) {}
+      });
+      setTimeout(() => {
+        try {
+          term.focus();
+          term.textarea?.focus({ preventScroll: true });
+        } catch (_) {}
+      }, 50);
+    }
+
     const onResultsDispose = searchAddon.onDidChangeResults((e) => {
       setSearchResult({ index: e.resultIndex, count: e.resultCount });
     });
@@ -93,11 +109,23 @@ export function useTerminal(
     // Tracking sequence numbers for clean deduplication
     let highestSeq = -1;
     let initialLoaded = false;
+    let firstPtyOutputFocused = false;
     const queuedEvents: PtyOutputPayload[] = [];
 
     // Listen for streaming PTY output events from Rust
     const unlistenPromise = listen<PtyOutputPayload>("pty-output", (event) => {
       if (event.payload.terminal_id !== terminalId) return;
+
+      // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
+      if (!firstPtyOutputFocused && isVisible && isFocused) {
+        firstPtyOutputFocused = true;
+        requestAnimationFrame(() => {
+          try {
+            term.focus();
+            term.textarea?.focus({ preventScroll: true });
+          } catch (_) {}
+        });
+      }
 
       if (!initialLoaded) {
         queuedEvents.push(event.payload);
@@ -117,6 +145,13 @@ export function useTerminal(
           highestSeq = res.last_seq;
         }
         initialLoaded = true;
+
+        if (isVisible && isFocused) {
+          try {
+            term.focus();
+            term.textarea?.focus({ preventScroll: true });
+          } catch (_) {}
+        }
 
         // Drain any queued events that arrived after the snapshot
         for (const item of queuedEvents) {
@@ -186,13 +221,45 @@ export function useTerminal(
     };
   }, [terminalId, onToggleSearch]);
 
-  // Focus and refit when becomes visible
+  // Robust focus method that targets both xterm core and helper textarea
+  const focusTerminal = useCallback(() => {
+    if (!termRef.current) return;
+    try {
+      termRef.current.focus();
+      const textarea =
+        termRef.current.textarea ||
+        containerRef.current?.querySelector<HTMLTextAreaElement>("textarea.xterm-helper-textarea");
+      if (textarea && document.activeElement !== textarea) {
+        textarea.focus({ preventScroll: true });
+      }
+    } catch (_) {}
+  }, []);
+
+  // Multi-stage staggered focus scheduler to overcome modal unmount blurs and DOM layouts
+  const scheduleFocus = useCallback(() => {
+    const rafId = requestAnimationFrame(() => {
+      focusTerminal();
+    });
+    const t1 = setTimeout(focusTerminal, 30);
+    const t2 = setTimeout(focusTerminal, 100);
+    const t3 = setTimeout(focusTerminal, 250);
+    const t4 = setTimeout(focusTerminal, 500);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [focusTerminal]);
+
+  // Focus and refit when becomes visible or gains active pane focus
   useEffect(() => {
     if (isVisible && termRef.current && fitAddonRef.current) {
-      setTimeout(() => {
+      const fitTimer = setTimeout(() => {
         try {
           fitAddonRef.current?.fit();
-          termRef.current?.focus();
           if (termRef.current) {
             invoke("resize_pty", {
               terminalId,
@@ -203,16 +270,36 @@ export function useTerminal(
         } catch (err) {
           console.error("Fit on visibility error:", err);
         }
-      }, 50);
-    }
-  }, [isVisible, terminalId]);
+      }, 30);
 
-  // Refocus when pane gains focus
-  useEffect(() => {
-    if (isVisible && isFocused && termRef.current) {
-      termRef.current.focus();
+      let cancelFocus: (() => void) | undefined;
+      if (isFocused) {
+        cancelFocus = scheduleFocus();
+      }
+
+      return () => {
+        clearTimeout(fitTimer);
+        cancelFocus?.();
+      };
     }
-  }, [isFocused, isVisible]);
+  }, [isVisible, isFocused, terminalId, scheduleFocus]);
+
+  // Global event listener for custom "quay:focus-terminal" triggers
+  useEffect(() => {
+    const handleFocusEvent = (e: Event) => {
+      const ce = e as CustomEvent<{ terminalId?: string }>;
+      if (!ce.detail?.terminalId || ce.detail.terminalId === terminalId) {
+        if (isVisible) {
+          scheduleFocus();
+        }
+      }
+    };
+
+    window.addEventListener("quay:focus-terminal", handleFocusEvent);
+    return () => {
+      window.removeEventListener("quay:focus-terminal", handleFocusEvent);
+    };
+  }, [terminalId, isVisible, scheduleFocus]);
 
   const findNext = useCallback((query: string, options?: ISearchOptions) => {
     if (!searchAddonRef.current || !query) return false;
@@ -275,5 +362,6 @@ export function useTerminal(
     clearSearch,
     exportScrollback,
     searchResult,
+    focusTerminal,
   };
 }

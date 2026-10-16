@@ -1,5 +1,5 @@
 import { FC, useState, useRef, CSSProperties } from "react";
-import { TerminalInfo, StageLayout } from "../terminal/types";
+import { TerminalInfo, StageLayout, isAgentRunKind } from "../terminal/types";
 import { TerminalView } from "../terminal/TerminalView";
 import { SkipBanner } from "./SkipBanner";
 import { StatusStrip } from "./StatusStrip";
@@ -23,6 +23,7 @@ import {
   GitBranch,
   History,
   ShieldCheck,
+  Cpu,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
@@ -62,8 +63,10 @@ interface StageProps {
   onOpenAuditModal?: () => void;
   onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
+  onOpenFactoryStation?: () => void;
   claudeStats?: ClaudeTokenStats | null;
   onToggleLiveMode?: (terminalId: string, currentMode: "skip" | "normal") => void;
+  onRelaunchTerminal?: (terminalId: string) => void;
 }
 
 export const Stage: FC<StageProps> = ({
@@ -100,7 +103,9 @@ export const Stage: FC<StageProps> = ({
   onOpenAuditModal,
   onOpenSessionHistory,
   onOpenTokenSpend,
+  onOpenFactoryStation,
   onToggleLiveMode,
+  onRelaunchTerminal,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -114,14 +119,21 @@ export const Stage: FC<StageProps> = ({
     return <Placeholder onNewTerminal={onNewTerminal} />;
   }
 
-  const isAgent =
-    activeTerminal.run_kind === "claude" ||
-    activeTerminal.run_kind === "antigravity" ||
-    activeTerminal.run_kind === "codex";
+  let focusedTerminal = activeTerminal;
+  if (layout === "split-horizontal" || layout === "split-vertical") {
+    const targetId = focusedPane === "secondary" ? secondaryTerminalId : primaryTerminalId;
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  } else if (layout === "grid" && focusedPane.startsWith("grid-")) {
+    const idx = parseInt(focusedPane.replace("grid-", ""), 10);
+    const targetId = gridTerminalIds[idx];
+    focusedTerminal = visibleTerminals.find((t) => t.id === targetId) || activeTerminal;
+  }
+
+  const isAgent = isAgentRunKind(focusedTerminal.run_kind);
 
   const showSkipBanner =
     isAgent &&
-    activeTerminal.permission_mode === "skip";
+    focusedTerminal.permission_mode === "skip";
 
   const projectName = activeProject.split(/[/\\]/).filter(Boolean).pop() || "Workspace";
 
@@ -313,6 +325,19 @@ export const Stage: FC<StageProps> = ({
             </button>
           )}
 
+          {/* Machina Praxis Factory Station Button */}
+          {onOpenFactoryStation && (
+            <button
+              type="button"
+              onClick={onOpenFactoryStation}
+              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded border border-[#58a6ff]/30 transition-colors text-xs font-medium cursor-pointer"
+              title="Machina Praxis AI Software Factory Cockpit (Ctrl+B F)"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span>Factory</span>
+            </button>
+          )}
+
           {/* Visual Diff Inspector Button */}
           {onOpenDiffInspector && (
             <button
@@ -392,7 +417,12 @@ export const Stage: FC<StageProps> = ({
       </header>
 
       {/* Skip Banner above terminal */}
-      {showSkipBanner && <SkipBanner />}
+      {showSkipBanner && (
+        <SkipBanner
+          runKind={focusedTerminal.run_kind}
+          agentName={focusedTerminal.name}
+        />
+      )}
 
       {/* Main Terminal Viewport (Persistently mounts all terminals) */}
       <div
@@ -538,6 +568,7 @@ export const Stage: FC<StageProps> = ({
               onZoomPane={onToggleZoom}
               onClosePane={onUnsplit}
               onSwitchTerminal={onSwitchTerm}
+              onRelaunch={onRelaunchTerminal ? () => onRelaunchTerminal(term.id) : undefined}
               style={paneStyle}
             />
           );

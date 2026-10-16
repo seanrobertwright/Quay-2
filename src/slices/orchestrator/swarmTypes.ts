@@ -152,4 +152,34 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
       },
     ],
   },
+  {
+    id: "frontier-federation",
+    title: "Frontier Agent Federation",
+    description: "Four distinct agent ecosystems collaborating via A2A: Claude Implementer, Kiro Multi-Model Architect, Copilot Specialist, and OpenCode Verifier.",
+    layout: "grid",
+    badge: "Claude + Kiro + Copilot + OpenCode",
+    tagColor: "#a855f7",
+    agents: [
+      {
+        role: "Primary Implementer",
+        name: "claude-dev",
+        run_kind: "claude",
+      },
+      {
+        role: "Multi-Model Architect",
+        name: "kiro-architect",
+        run_kind: "kiro",
+      },
+      {
+        role: "Copilot Specialist",
+        name: "copilot-assistant",
+        run_kind: "copilot",
+      },
+      {
+        role: "OpenCode Verifier",
+        name: "opencode-verifier",
+        run_kind: "opencode",
+      },
+    ],
+  },
 ];

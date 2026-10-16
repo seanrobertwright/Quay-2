@@ -7,15 +7,16 @@ This document captures the strategic features, architectural proposals, and futu
 ## 1. Status Overview
 
 ### ✅ Implemented Capabilities
-* **Core ConPTY Multiplexing**: Native Windows ConPTY terminal hosting via `portable-pty` and `@xterm/xterm` with fast-start `-NoProfile` support.
-* **Multi-Agent Engine**: Unified terminal support for **Claude Code**, **Antigravity CLI**, and **Codex CLI** with authentic brand iconography.
+* **Expanded Multi-Agent Engine**: Unified terminal support for **10 first-class AI coding agents**: **Claude Code**, **Antigravity CLI**, **Codex CLI**, **Pi Coding Agent**, **Google Gemini CLI**, **xAI Grok CLI**, **Aider Pair Programmer**, **Kiro CLI**, **GitHub Copilot CLI**, and **OpenCode CLI** with authentic brand iconography, model presets, thinking level selectors, and auto-approval modes.
+* **Archon & Spec-Driven Development (SDD) Graph Inspector (`Ctrl+B R`)**: Interactive task dependency DAG viewer connecting to local Archon service (`http://127.0.0.1:3090` / `3737`), parsing project specification files (`SPEC.md`, `CONTEXT.md`, `IDEAS.md`), visualizing Architecture Decision Records (`docs/adr/`), and providing 1-click **"Assign to Agent"** and **"Run Workflow"** execution.
 * **Autonomous Agent-to-Agent (A2A) Bus**: Built-in loopback MCP server (`http://127.0.0.1:<port>/mcp`) exposing `quay_list_agents`, `quay_send_message`, `quay_broadcast`, and `quay_get_agent_status` for autonomous peer collaboration without human relays.
-* **1-Click Multi-Agent Swarm Presets**: TDD Swarm, Full-Stack Pair, and Multi-Agent Trio layouts.
+* **1-Click Multi-Agent Swarm Presets**: Frontier Federation, TDD Swarm, Full-Stack Pair, and Multi-Agent Trio layouts.
 * **Git Worktrees**: 1-click isolated worktree provisioning and Claude Code auto-launch.
 * **Pre-PR Audit Gate**: Secret and API key leak detection before opening PRs (`Ctrl+B A`).
 * **Session History & Auto-Resume**: Direct session inspection with `--resume <id>` relaunching (`Ctrl+B H`).
 * **Live Spend Meter & Audio Chimes**: Token cost tracking and audible turn completion notifications (`Ctrl+B T`).
 * **GitHub Companion**: Drawer for triage of open issues and PRs (`Ctrl+B I`).
+* **Terminal Session State & Scrollback Persistence Across Restarts**: Persistent storage of session metadata in `%LOCALAPPDATA%\Quay2\sessions\sessions.json` and real-time streaming of ANSI/color scrollback logs to `<session_id>.log`. Reopening Quay 2 automatically restores dormant sessions with their complete historical scrollback, and features a 1-click **"Relaunch Agent"** button in both `TerminalView` and `Rail` to instantly resume work in the same project directory.
 * **Terminal Engine Stabilization**: Fixed ConPTY UTF-8 character boundary panics, single-layout pane switching, duplicate CPR `CC` input injection, and automatic `Starting... -> Ready` status transitions.
 
 ---
@@ -52,10 +53,10 @@ Quay inspects the active project's git branches, open PRs, and test suites to co
 
 ---
 
-### Feature 2: Archon & Spec-Driven Development (SDD) Graph Inspector
+### Feature 2: Archon & Spec-Driven Development (SDD) Graph Inspector [COMPLETED ✅]
 
 #### Overview
-An interactive task dependency graph (DAG) viewer embedded inside Quay 2. It connects to your local Archon service (`http://localhost:3737`) and parses repo specification files (`SPEC.md`, `CONTEXT.md`, and `docs/adr/`). 
+An interactive task dependency graph (DAG) viewer embedded inside Quay 2 (`Ctrl+B R`). It connects to your local Archon service (`http://127.0.0.1:3090` or `3737`) and parses repo specification files (`SPEC.md`, `CONTEXT.md`, and `docs/adr/`). 
 
 Selecting any node on the graph displays the spec requirements, dependency status (blocked vs. ready to start), and provides a 1-click **"Assign to Agent"** button that launches or routes the task to a specific Claude Code, Antigravity, or Codex terminal pane.
 
@@ -104,9 +105,8 @@ Quay performs automatic health checks (`GET /openapi.json` or `/v1/models`), sta
 
 Beyond the three strategic features above, several tactical enhancements have emerged during daily use:
 
-### 1. Terminal Session State Persistence Across App Restarts
-* **Current Behavior**: Closing Quay 2 closes running ConPTY child processes.
-* **Proposed Enhancement**: Store session history buffers on disk in `~/.quay/sessions/` so reopening Quay 2 can restore scrollback buffers and prompt contexts seamlessly.
+### 1. Terminal Session State Persistence Across App Restarts [COMPLETED ✅]
+* **Implementation**: Persists session metadata to `%LOCALAPPDATA%\Quay2\sessions\sessions.json` and streams ANSI output to `<terminal_id>.log`. Restores dormant sessions with full scrollback in `xterm.js` on app launch with 1-click **"Relaunch Agent"** functionality.
 
 ### 2. Dual-Pane Visual Diff & Merge Conflict Resolver (`Ctrl+B D`)
 * **Current Behavior**: Git Diff Inspector shows a unified diff view.

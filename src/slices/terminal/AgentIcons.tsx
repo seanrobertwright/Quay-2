@@ -69,6 +69,103 @@ export const CommandIcon: React.FC<{ className?: string }> = ({ className = "w-4
   </svg>
 );
 
+/** Official Greek letter Pi mark for Pi Coding Agent */
+export const PiIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="Pi Coding Agent"
+  >
+    <path d="M4 5h16c.6 0 1 .4 1 1s-.4 1-1 1h-3v11c0 1.1-.9 2-2 2s-2-.9-2-2V7h-4v8c0 1.7-1.3 3-3 3s-3-1.3-3-3V7H4c-.6 0-1-.4-1-1s.4-1 1-1z" />
+  </svg>
+);
+
+/** Google Gemini CLI 4-point star mark */
+export const GeminiIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="Gemini CLI"
+  >
+    <path d="M12 2C12 7.5 7.5 12 2 12C7.5 12 12 16.5 12 22C12 16.5 16.5 12 22 12C16.5 12 12 7.5 12 2Z" />
+  </svg>
+);
+
+/** xAI Grok geometric mark */
+export const GrokIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="Grok CLI"
+  >
+    <path d="M3.5 3.5h5.2l11.8 17h-5.2L3.5 3.5zm11.8 0h5.2L15 11.4l-2.6-3.7 2.9-4.2zM3.5 20.5h5.2l3.4-4.9-2.6-3.7-6 8.6z" />
+  </svg>
+);
+
+/** Aider AI pair programming chevron mark */
+export const AiderIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-label="Aider"
+  >
+    <polyline points="7 8 3 12 7 16" />
+    <polyline points="13 8 9 12 13 16" />
+    <line x1="17" y1="18" x2="21" y2="18" />
+  </svg>
+);
+
+/** Kiro CLI multi-model agent spark mark */
+export const KiroIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="Kiro CLI"
+  >
+    <path d="M12 2L14.7 9.3L22 12L14.7 14.7L12 22L9.3 14.7L2 12L9.3 9.3L12 2Z" />
+    <circle cx="12" cy="12" r="2.5" fill="#0d1117" />
+  </svg>
+);
+
+/** GitHub Copilot CLI mark */
+export const CopilotIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="GitHub Copilot"
+  >
+    <path d="M12 2a4 4 0 0 0-4 4v1H6a3 3 0 0 0-3 3v5a3 3 0 0 0 3 3h1v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1h1a3 3 0 0 0 3-3v-5a3 3 0 0 0-3-3h-2V6a4 4 0 0 0-4-4zm-2 5V6a2 2 0 1 1 4 0v1h-4zm-3 4h10a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1zm2 10a1 1 0 0 1-1-1v-1h8v1a1 1 0 0 1-1 1h-6z" />
+  </svg>
+);
+
+/** OpenCode CLI terminal agent mark */
+export const OpenCodeIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-label="OpenCode CLI"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="3.5" />
+    <path d="M8 9l3 3-3 3" />
+    <line x1="13" y1="15" x2="16" y2="15" />
+  </svg>
+);
+
 /** Helper to render the official icon with authentic brand colors */
 export const AgentIcon: React.FC<{ kind?: RunKind; className?: string }> = ({
   kind,
@@ -81,6 +178,20 @@ export const AgentIcon: React.FC<{ kind?: RunKind; className?: string }> = ({
       return <AntigravityIcon className={`${className} text-[#38bdf8]`} />;
     case "codex":
       return <CodexIcon className={`${className} text-[#10a37f]`} />;
+    case "pi":
+      return <PiIcon className={`${className} text-[#c084fc]`} />;
+    case "gemini":
+      return <GeminiIcon className={`${className} text-[#60a5fa]`} />;
+    case "grok":
+      return <GrokIcon className={`${className} text-[#f1f5f9]`} />;
+    case "aider":
+      return <AiderIcon className={`${className} text-[#34d399]`} />;
+    case "kiro":
+      return <KiroIcon className={`${className} text-[#a855f7]`} />;
+    case "copilot":
+      return <CopilotIcon className={`${className} text-[#38bdf8]`} />;
+    case "opencode":
+      return <OpenCodeIcon className={`${className} text-[#f97316]`} />;
     case "powershell":
       return <PowerShellIcon className={`${className} text-[#58a6ff]`} />;
     case "command":

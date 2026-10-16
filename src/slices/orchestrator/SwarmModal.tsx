@@ -345,6 +345,13 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                         <option value="claude">Claude Code</option>
                         <option value="antigravity">Antigravity CLI</option>
                         <option value="codex">Codex CLI</option>
+                        <option value="pi">Pi Coding Agent</option>
+                        <option value="gemini">Gemini CLI</option>
+                        <option value="grok">Grok CLI</option>
+                        <option value="aider">Aider CLI</option>
+                        <option value="kiro">Kiro CLI</option>
+                        <option value="copilot">GitHub Copilot</option>
+                        <option value="opencode">OpenCode CLI</option>
                         <option value="powershell">PowerShell</option>
                         <option value="command">Custom Command</option>
                       </select>

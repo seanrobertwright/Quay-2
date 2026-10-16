@@ -18,12 +18,14 @@ import {
   Trash2,
   Sparkles,
 } from "lucide-react";
-import { TerminalInfo } from "../terminal/types";
+import { TerminalInfo, isAgentRunKind } from "../terminal/types";
 
 interface A2AMessage {
   id: string;
   from_terminal: string;
   to_terminal: string;
+  from_name?: string | null;
+  to_name?: string | null;
   content: string;
   as_user: boolean;
   timestamp: number;
@@ -42,9 +44,7 @@ export const A2APanel: FC<A2APanelProps> = ({
   terminals,
   onClose,
 }) => {
-  const agentTerminals = terminals.filter(
-    (t) => t.run_kind === "claude" || t.run_kind === "antigravity" || t.run_kind === "codex"
-  );
+  const agentTerminals = terminals.filter((t) => isAgentRunKind(t.run_kind));
   const [fromTerminal, setFromTerminal] = useState(agentTerminals[0]?.id || "");
   const [toTerminal, setToTerminal] = useState(agentTerminals[1]?.id || "");
   const [prompt, setPrompt] = useState("");
@@ -52,7 +52,15 @@ export const A2APanel: FC<A2APanelProps> = ({
   const [broadcastText, setBroadcastText] = useState("");
   const [messages, setMessages] = useState<A2AMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const getTerminalLabel = (idOrName: string, nameFallback?: string | null) => {
+    if (nameFallback) return nameFallback;
+    const term = terminals.find((t) => t.id === idOrName || t.name === idOrName);
+    return term ? term.name : idOrName;
+  };
 
   useEffect(() => {
     if (agentTerminals.length > 0 && !fromTerminal) {
@@ -130,13 +138,20 @@ export const A2APanel: FC<A2APanelProps> = ({
 
   const handleBroadcast = async (e: FormEvent) => {
     e.preventDefault();
-    if (!broadcastText.trim()) return;
+    if (!broadcastText.trim() || isBroadcasting) return;
 
+    setIsBroadcasting(true);
     try {
-      await invoke("a2a_broadcast_toast", { text: broadcastText });
+      const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", { text: broadcastText });
+      const count = dispatched?.length || agentTerminals.length;
       setBroadcastText("");
+      setBroadcastSuccess(`Broadcast sent to ${count} agent${count === 1 ? "" : "s"}!`);
+      setTimeout(() => setBroadcastSuccess(null), 3500);
+      await loadMessages();
     } catch (err) {
       console.error("Broadcast toast error:", err);
+    } finally {
+      setIsBroadcasting(false);
     }
   };
 
@@ -350,11 +365,22 @@ export const A2APanel: FC<A2APanelProps> = ({
           </div>
 
           {/* Broadcast Section */}
-          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] mb-2 flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-[#3fb950]" />
-              <span>Broadcast Notice to All AI Agent Sessions</span>
-            </h3>
+          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-[#3fb950]" />
+                <span>Broadcast Notice to All AI Agent Sessions</span>
+              </h3>
+              <span className="text-[11px]">
+                {agentTerminals.length > 0 ? (
+                  <span className="text-[#3fb950] font-mono">
+                    {agentTerminals.length} target{agentTerminals.length === 1 ? "" : "s"} active
+                  </span>
+                ) : (
+                  <span className="text-[#d29922]">No agent terminals active</span>
+                )}
+              </span>
+            </div>
 
             <form onSubmit={handleBroadcast} className="flex gap-2">
               <input
@@ -366,12 +392,29 @@ export const A2APanel: FC<A2APanelProps> = ({
               />
               <button
                 type="submit"
-                disabled={!broadcastText.trim()}
-                className="px-3 py-1.5 bg-[#238636] hover:bg-[#2ea043] disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+                disabled={!broadcastText.trim() || isBroadcasting}
+                className="px-3 py-1.5 bg-[#238636] hover:bg-[#2ea043] disabled:opacity-50 text-white rounded text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
               >
-                Broadcast
+                {isBroadcasting ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <span>Broadcasting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Radio className="w-3 h-3" />
+                    <span>Broadcast</span>
+                  </>
+                )}
               </button>
             </form>
+
+            {broadcastSuccess && (
+              <div className="flex items-center gap-1.5 text-xs text-[#3fb950] bg-[#238636]/15 border border-[#238636]/40 rounded px-2.5 py-1 animate-in fade-in">
+                <Check className="w-3.5 h-3.5" />
+                <span>{broadcastSuccess}</span>
+              </div>
+            )}
           </div>
 
           {/* Messages History */}
@@ -414,7 +457,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                   >
                     <div className="flex items-center justify-between text-[11px] text-[#8b949e]">
                       <span className="font-semibold text-[#58a6ff]">
-                        {m.from_terminal} → {m.to_terminal}
+                        {getTerminalLabel(m.from_terminal, m.from_name)} → {getTerminalLabel(m.to_terminal, m.to_name)}
                         {m.as_user && (
                           <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-[#30363d] text-[#c9d1d9] font-normal">
                             as user

@@ -1,4 +1,4 @@
-import { TerminalInfo } from "../terminal/types";
+import { TerminalInfo, isAgentRunKind } from "../terminal/types";
 import {
   Loader2,
   ShieldCheck,
@@ -45,10 +45,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   onToggleLiveMode,
   onOpenPermissionModal,
 }) => {
-  const isAgent =
-    terminal.run_kind === "claude" ||
-    terminal.run_kind === "antigravity" ||
-    terminal.run_kind === "codex";
+  const isAgent = isAgentRunKind(terminal.run_kind);
 
   return (
     <div className="h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-between text-xs text-[#8b949e] shrink-0 select-none">

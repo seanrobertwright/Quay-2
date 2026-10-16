@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, MouseEvent, KeyboardEvent } from "react";
-import { TerminalInfo } from "../terminal/types";
-import { ClaudeIcon, AntigravityIcon, CodexIcon, PowerShellIcon, CommandIcon } from "../terminal/AgentIcons";
+import { listen } from "@tauri-apps/api/event";
+import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { AgentIcon } from "../terminal/AgentIcons";
 import {
   Terminal as TerminalIcon,
   X,
@@ -9,6 +10,8 @@ import {
   Search,
   Edit2,
   Shield,
+  Radio,
+  Play,
 } from "lucide-react";
 
 interface TerminalRowProps {
@@ -18,6 +21,7 @@ interface TerminalRowProps {
   onSelect: () => void;
   onClose: (e: MouseEvent<HTMLButtonElement>) => void;
   onRename?: (id: string, newName: string) => void;
+  onRelaunch?: (id: string) => void;
 }
 
 export const TerminalRow = ({
@@ -27,10 +31,51 @@ export const TerminalRow = ({
   onSelect,
   onClose,
   onRename,
+  onRelaunch,
 }: TerminalRowProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(terminal.name);
+  const [hasRecentA2A, setHasRecentA2A] = useState(false);
+  const [recentA2APrompt, setRecentA2APrompt] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isAgent = isAgentRunKind(terminal.run_kind);
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const unlistenDispatchedPromise = listen<{
+      id: string;
+      from_terminal: string;
+      to_terminal: string;
+      content: string;
+    }>("a2a-message-dispatched", (event) => {
+      if (event.payload.to_terminal === terminal.id) {
+        setHasRecentA2A(true);
+        setRecentA2APrompt(event.payload.content);
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setHasRecentA2A(false);
+        }, 9000);
+      }
+    });
+
+    const unlistenToastPromise = listen<string>("a2a-toast", (event) => {
+      if (isAgent) {
+        setHasRecentA2A(true);
+        setRecentA2APrompt(`Broadcast: ${event.payload}`);
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setHasRecentA2A(false);
+        }, 9000);
+      }
+    });
+
+    return () => {
+      unlistenDispatchedPromise.then((unlisten) => unlisten());
+      unlistenToastPromise.then((unlisten) => unlisten());
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [terminal.id, isAgent]);
 
   useEffect(() => {
     setEditValue(terminal.name);
@@ -62,24 +107,8 @@ export const TerminalRow = ({
     }
   };
 
-  const isAgent =
-    terminal.run_kind === "claude" ||
-    terminal.run_kind === "antigravity" ||
-    terminal.run_kind === "codex";
-
   const renderIcon = () => {
-    switch (terminal.run_kind) {
-      case "claude":
-        return <ClaudeIcon className="w-3.5 h-3.5 text-[#f0883e] shrink-0" />;
-      case "antigravity":
-        return <AntigravityIcon className="w-3.5 h-3.5 text-[#38bdf8] shrink-0" />;
-      case "codex":
-        return <CodexIcon className="w-3.5 h-3.5 text-[#10a37f] shrink-0" />;
-      case "powershell":
-        return <PowerShellIcon className="w-3.5 h-3.5 text-[#58a6ff] shrink-0" />;
-      case "command":
-        return <CommandIcon className="w-3.5 h-3.5 text-[#3fb950] shrink-0" />;
-    }
+    return <AgentIcon kind={terminal.run_kind} className="w-3.5 h-3.5 shrink-0" />;
   };
 
   const renderToolBadge = () => {
@@ -188,8 +217,21 @@ export const TerminalRow = ({
         );
       case "exited":
         return (
-          <span className="text-[10px] text-[#ff7b72] font-mono">
-            exited {terminal.exit_code ?? "?"}
+          <span className="flex items-center gap-1.5 text-[10px] text-[#8b949e]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ff7b72] shrink-0" />
+            <span className="font-mono">exited {terminal.exit_code ?? 0}</span>
+            {onRelaunch && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRelaunch(terminal.id);
+                }}
+                className="text-[9px] text-[#58a6ff] hover:text-[#79c0ff] hover:underline cursor-pointer"
+              >
+                Relaunch
+              </button>
+            )}
           </span>
         );
       case "unknown":
@@ -258,6 +300,17 @@ export const TerminalRow = ({
               SKIP
             </span>
           )}
+
+          {/* Incoming A2A Badge */}
+          {hasRecentA2A && (
+            <span
+              className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[#1f6feb]/30 text-[#58a6ff] border border-[#58a6ff]/60 animate-pulse shrink-0 flex items-center gap-1"
+              title={`Incoming A2A Task: ${recentA2APrompt || ""}`}
+            >
+              <Radio className="w-2.5 h-2.5 text-[#58a6ff] animate-spin shrink-0" />
+              <span>A2A ✉</span>
+            </span>
+          )}
         </div>
 
         {/* Action icons / counters on right */}
@@ -270,6 +323,20 @@ export const TerminalRow = ({
               <Shield className="w-2.5 h-2.5 text-[#3fb950]" />
               <span>{terminal.auto_approved_count}</span>
             </span>
+          )}
+
+          {terminal.claude_status === "exited" && onRelaunch && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRelaunch(terminal.id);
+              }}
+              className="p-0.5 text-[#3fb950] hover:text-[#56d364] hover:bg-[#238636]/20 rounded transition-colors"
+              title="Relaunch agent process"
+            >
+              <Play className="w-3 h-3 fill-current" />
+            </button>
           )}
 
           <button

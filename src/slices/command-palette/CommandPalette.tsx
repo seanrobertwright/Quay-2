@@ -3,7 +3,20 @@ import { TerminalInfo, StageLayout, RunKind } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
 import { SwarmPreset, BUILTIN_SWARM_PRESETS } from "../orchestrator/swarmTypes";
-import { AgentIcon, ClaudeIcon, AntigravityIcon, CodexIcon, PowerShellIcon } from "../terminal/AgentIcons";
+import {
+  AgentIcon,
+  ClaudeIcon,
+  AntigravityIcon,
+  CodexIcon,
+  PiIcon,
+  GeminiIcon,
+  GrokIcon,
+  AiderIcon,
+  KiroIcon,
+  CopilotIcon,
+  OpenCodeIcon,
+  PowerShellIcon,
+} from "../terminal/AgentIcons";
 import {
   Search,
   FolderGit2,
@@ -24,6 +37,8 @@ import {
   History,
   Coins,
   ShieldAlert,
+  GitFork,
+  Cpu,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 
@@ -65,6 +80,8 @@ interface CommandPaletteProps {
   onOpenPrePrAudit?: () => void;
   onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
+  onOpenArchonGraph?: () => void;
+  onOpenFactoryStation?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -92,6 +109,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenPrePrAudit,
   onOpenSessionHistory,
   onOpenTokenSpend,
+  onOpenArchonGraph,
+  onOpenFactoryStation,
   onToggleLiveMode,
   onAddProject,
 }) => {
@@ -199,6 +218,62 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         subtitle: "Launch OpenAI Codex CLI session",
         icon: <CodexIcon className="w-4 h-4 text-[#10a37f]" />,
         action: () => onNewTerminal("codex"),
+      },
+      {
+        id: "action-new-pi",
+        category: "Tools & Actions",
+        title: "New Pi Coding Agent",
+        subtitle: "Launch Pi multi-provider coding agent session",
+        icon: <PiIcon className="w-4 h-4 text-[#c084fc]" />,
+        action: () => onNewTerminal("pi"),
+      },
+      {
+        id: "action-new-gemini",
+        category: "Tools & Actions",
+        title: "New Google Gemini CLI Agent",
+        subtitle: "Launch Google Gemini CLI session",
+        icon: <GeminiIcon className="w-4 h-4 text-[#60a5fa]" />,
+        action: () => onNewTerminal("gemini"),
+      },
+      {
+        id: "action-new-grok",
+        category: "Tools & Actions",
+        title: "New xAI Grok CLI Agent",
+        subtitle: "Launch xAI Grok CLI session",
+        icon: <GrokIcon className="w-4 h-4 text-[#f1f5f9]" />,
+        action: () => onNewTerminal("grok"),
+      },
+      {
+        id: "action-new-aider",
+        category: "Tools & Actions",
+        title: "New Aider Pair Programmer",
+        subtitle: "Launch Aider terminal pair programmer",
+        icon: <AiderIcon className="w-4 h-4 text-[#34d399]" />,
+        action: () => onNewTerminal("aider"),
+      },
+      {
+        id: "action-new-kiro",
+        category: "Tools & Actions",
+        title: "New Kiro CLI Agent",
+        subtitle: "Launch Kiro CLI multi-model session",
+        icon: <KiroIcon className="w-4 h-4 text-[#a855f7]" />,
+        action: () => onNewTerminal("kiro"),
+      },
+      {
+        id: "action-new-copilot",
+        category: "Tools & Actions",
+        title: "New GitHub Copilot Agent",
+        subtitle: "Launch GitHub Copilot CLI session",
+        icon: <CopilotIcon className="w-4 h-4 text-[#38bdf8]" />,
+        action: () => onNewTerminal("copilot"),
+      },
+      {
+        id: "action-new-opencode",
+        category: "Tools & Actions",
+        title: "New OpenCode CLI Agent",
+        subtitle: "Launch OpenCode multi-provider terminal agent",
+        icon: <OpenCodeIcon className="w-4 h-4 text-[#f97316]" />,
+        action: () => onNewTerminal("opencode"),
       },
       {
         id: "action-new-shell",
@@ -315,6 +390,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: <Coins className="w-4 h-4 text-[#e3b341]" />,
         shortcut: "Ctrl+B t",
         action: () => onOpenTokenSpend(),
+      });
+    }
+
+    if (onOpenArchonGraph) {
+      items.push({
+        id: "action-archon-graph",
+        category: "Tools & Actions",
+        title: "Archon & SDD Spec Graph Inspector...",
+        subtitle: "Inspect Archon workflow DAGs, SDD tasks, and ADR decision trails",
+        icon: <GitFork className="w-4 h-4 text-[#58a6ff]" />,
+        shortcut: "Ctrl+B r",
+        action: () => onOpenArchonGraph(),
+      });
+    }
+
+    if (onOpenFactoryStation) {
+      items.push({
+        id: "action-factory-station",
+        category: "Tools & Actions",
+        title: "Machina Praxis Factory Station...",
+        subtitle: "AI Software Factory Cockpit: 6-Stage Pipeline DAG, Holdback Vault & Governed Holds",
+        icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
+        shortcut: "Ctrl+B f",
+        action: () => onOpenFactoryStation(),
       });
     }
 
@@ -463,6 +562,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       e.preventDefault();
       const target = filteredCommands[selectedIndex];
       if (target) {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         target.action();
         onClose();
       }

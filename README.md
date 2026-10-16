@@ -1,8 +1,8 @@
 # Quay 2 (Tauri Edition)
 
-Quay 2 is a high-performance Windows workspace and orchestrator for supervising and coordinating multiple **Claude Code**, **PowerShell**, and custom command sessions.
+Quay 2 is a high-performance Windows workspace and orchestrator for supervising and coordinating multiple autonomous AI agents (**Claude Code**, **Antigravity CLI**, **OpenAI Codex**, **Pi Coding Agent**, **Google Gemini CLI**, **xAI Grok**, **Aider**, **Kiro CLI**, **GitHub Copilot**, **OpenCode CLI**), **PowerShell**, and custom command sessions.
 
-Built with **Tauri v2**, **Rust ConPTY (`portable-pty`)**, **xterm.js**, and an embedded **`claude-mod-events`** HTTP bridge, Quay 2 replaces the low-level multiplexer hacks of terminal multiplexers (`psmux`) with a native desktop interface.
+Built with **Tauri v2**, **Rust ConPTY (`portable-pty`)**, **xterm.js**, an embedded **`claude-mod-events`** HTTP bridge, an autonomous **A2A MCP bus**, and an integrated **Archon & Spec-Driven Development (SDD) Graph Inspector**, Quay 2 replaces the low-level multiplexer hacks of terminal multiplexers (`psmux`) with a native desktop interface.
 
 ---
 
@@ -190,6 +190,7 @@ Every Claude session in Quay has access to these 4 tools out of the box:
 | `Ctrl+B A` | Run Pre-PR Audit Gate scanner (Secret & Leak scanner) |
 | `Ctrl+B H` | Open Claude Session History & Auto-Resume drawer |
 | `Ctrl+B T` | Open Live Token Spend Meter & Turn Chime settings |
+| `Ctrl+B R` | Open Archon & SDD Graph Inspector (DAGs, spec tasks, ADRs) |
 | `Ctrl+K` | Open Global Command Palette |
 | `Esc` | Close any open modal or drawer |
 

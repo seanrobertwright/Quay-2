@@ -21,6 +21,9 @@ import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
 import { SessionHistoryDrawer } from "./slices/sessions/SessionHistoryDrawer";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
+import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
+import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
+import { A2AToast } from "./slices/orchestrator/A2AToast";
 
 export function App() {
   const {
@@ -84,6 +87,10 @@ export function App() {
     setIsSessionHistoryOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
+    isArchonGraphOpen,
+    setIsArchonGraphOpen,
+    isFactoryStationOpen,
+    setIsFactoryStationOpen,
     claudeStats,
     refreshClaudeStats,
     resumeSession,
@@ -92,6 +99,7 @@ export function App() {
     renameTerminal,
     spawnTerminal,
     killTerminal,
+    relaunchTerminal,
     toggleTerminalLiveMode,
   } = useWorkspace();
 
@@ -329,6 +337,9 @@ export function App() {
         onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
+        onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
+        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onRelaunchTerminal={relaunchTerminal}
       />
 
       {/* Main Workspace Stage */}
@@ -368,7 +379,9 @@ export function App() {
         onOpenAuditModal={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
+        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onToggleLiveMode={toggleTerminalLiveMode}
+        onRelaunchTerminal={relaunchTerminal}
       />
 
       {/* Global Command Palette (Ctrl+K / Cmd+K) */}
@@ -412,6 +425,8 @@ export function App() {
         onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
+        onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
+        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onToggleLiveMode={
           activeTerminalId
             ? () => {
@@ -548,6 +563,36 @@ export function App() {
         stats={claudeStats}
         onRefresh={refreshClaudeStats}
         onClose={() => setIsTokenSpendOpen(false)}
+      />
+
+      {/* Archon & SDD Spec Graph Inspector Modal (^b r) */}
+      <ArchonGraphModal
+        isOpen={isArchonGraphOpen}
+        activeProject={activeProject}
+        terminals={terminals}
+        activeTerminalId={activeTerminalId}
+        onClose={() => setIsArchonGraphOpen(false)}
+        onSelectTerminal={selectTerminal}
+        onSpawnTerminal={spawnTerminal}
+        onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
+      />
+
+      {/* Machina Praxis AI Software Factory Cockpit Modal (^b f) */}
+      <FactoryStationModal
+        isOpen={isFactoryStationOpen}
+        activeProject={activeProject}
+        terminals={terminals}
+        activeTerminalId={activeTerminalId}
+        onClose={() => setIsFactoryStationOpen(false)}
+        onSelectTerminal={selectTerminal}
+        onSpawnTerminal={spawnTerminal}
+        onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
+      />
+
+      {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}
+      <A2AToast
+        terminals={terminals}
+        onSelectTerminal={selectTerminal}
       />
     </div>
   );

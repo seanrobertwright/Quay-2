@@ -1,4 +1,31 @@
-export type RunKind = "claude" | "antigravity" | "codex" | "powershell" | "command";
+export type RunKind =
+  | "claude"
+  | "antigravity"
+  | "codex"
+  | "pi"
+  | "gemini"
+  | "grok"
+  | "aider"
+  | "kiro"
+  | "copilot"
+  | "opencode"
+  | "powershell"
+  | "command";
+
+export function isAgentRunKind(kind?: RunKind | string | null): boolean {
+  return (
+    kind === "claude" ||
+    kind === "antigravity" ||
+    kind === "codex" ||
+    kind === "pi" ||
+    kind === "gemini" ||
+    kind === "grok" ||
+    kind === "aider" ||
+    kind === "kiro" ||
+    kind === "copilot" ||
+    kind === "opencode"
+  );
+}
 export type PermissionMode = "skip" | "normal";
 export type ClaudeStatus =
   | "starting"
