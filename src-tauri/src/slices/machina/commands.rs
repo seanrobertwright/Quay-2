@@ -1,8 +1,8 @@
 use tauri::{AppHandle, State};
 
 use super::models::{
-    MachinaStatusPayload, MachinaWorkOrder, RebindStageAgentRequest, ResolveHoldRequest,
-    SubmitWorkOrderRequest,
+    FactoryLoopMode, GateCalibrationReport, MachinaStatusPayload, MachinaWorkOrder,
+    RebindStageAgentRequest, ResolveHoldRequest, SubmitWorkOrderRequest, UpdateConstitutionRequest,
 };
 use super::supervisor::MachinaManager;
 
@@ -62,6 +62,33 @@ pub fn machina_trigger_epoch_recovery(
     app_handle: AppHandle,
 ) -> Result<MachinaStatusPayload, String> {
     Ok(machina.trigger_epoch_recovery(Some(&app_handle)))
+}
+
+#[tauri::command]
+pub fn machina_set_loop_mode(
+    mode: FactoryLoopMode,
+    machina: State<'_, MachinaManager>,
+    app_handle: AppHandle,
+) -> Result<MachinaStatusPayload, String> {
+    Ok(machina.set_loop_mode(mode, Some(&app_handle)))
+}
+
+#[tauri::command]
+pub fn machina_update_constitution(
+    request: UpdateConstitutionRequest,
+    machina: State<'_, MachinaManager>,
+    app_handle: AppHandle,
+) -> Result<MachinaStatusPayload, String> {
+    machina.update_constitution(request, Some(&app_handle))
+}
+
+#[tauri::command]
+pub fn machina_calibrate_gate(
+    project_path: String,
+    machina: State<'_, MachinaManager>,
+    app_handle: AppHandle,
+) -> Result<GateCalibrationReport, String> {
+    Ok(machina.calibrate_gate(&project_path, Some(&app_handle)))
 }
 
 #[tauri::command]

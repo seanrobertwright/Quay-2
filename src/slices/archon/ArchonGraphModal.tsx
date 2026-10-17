@@ -63,19 +63,34 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   const [targetTerminalId, setTargetTerminalId] = useState<string>(activeTerminalId || "");
   const [dispatchSuccessMsg, setDispatchSuccessMsg] = useState<string | null>(null);
 
-  // Sync target terminal
+  // Sync target terminal (prefer live non-exited terminals)
   useEffect(() => {
-    if (activeTerminalId) {
-      setTargetTerminalId(activeTerminalId);
-    } else if (terminals.length > 0) {
-      setTargetTerminalId(terminals[0].id);
+    const activeTerm = terminals.find((t) => t.id === activeTerminalId);
+    if (activeTerm && activeTerm.claude_status !== "exited") {
+      setTargetTerminalId(activeTerm.id);
+    } else {
+      const live = [...terminals].reverse().find((t) => t.claude_status !== "exited");
+      if (live) {
+        setTargetTerminalId(live.id);
+      } else if (terminals.length > 0) {
+        setTargetTerminalId(terminals[terminals.length - 1].id);
+      }
     }
   }, [activeTerminalId, terminals]);
 
-  // Load Archon and repo data when modal opens
+  // Load Archon and repo data when modal opens + live poll runs every 2.5s
   useEffect(() => {
     if (!isOpen) return;
     refreshData();
+    const timer = setInterval(async () => {
+      try {
+        const runsList = await invoke<ArchonRun[]>("archon_get_runs");
+        setRuns(runsList);
+      } catch {
+        // ignore transient poll error
+      }
+    }, 2500);
+    return () => clearInterval(timer);
   }, [isOpen, activeProject]);
 
   const refreshData = async () => {
@@ -127,6 +142,16 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   const currentWorkflow = useMemo(() => {
     return workflows.find((w) => w.id === selectedWorkflowId) || workflows[0] || null;
   }, [workflows, selectedWorkflowId]);
+
+  // Latest run for the selected workflow (or any currently running workflow)
+  const latestWorkflowRun = useMemo(() => {
+    if (!currentWorkflow) return runs[0] || null;
+    return (
+      runs.find((r) => r.workflow_name === currentWorkflow.name) ||
+      runs.find((r) => r.status === "running") ||
+      null
+    );
+  }, [runs, currentWorkflow]);
 
   // Layout Computation for Workflow DAG
   const dagLayout = useMemo(() => {
@@ -250,7 +275,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     }
 
     if (target) {
-      onWritePty(target, promptText + "\n");
+      onWritePty(target, promptText + "\r");
       onSelectTerminal(target);
       setDispatchSuccessMsg(`Assigned to terminal pane "${terminals.find((t) => t.id === target)?.name || target}"!`);
       setTimeout(() => setDispatchSuccessMsg(null), 3500);
@@ -264,6 +289,45 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
       });
       setDispatchSuccessMsg(`Spawning new Claude terminal to run task...`);
       setTimeout(() => setDispatchSuccessMsg(null), 3500);
+    }
+  };
+
+  // 1-Click: Execute real Archon Workflow Run in a Shell ConPTY Pane
+  const handleRunArchonWorkflow = (workflowName: string, message: string) => {
+    const liveTerminals = [...terminals].reverse().filter((t) => t.claude_status !== "exited");
+    // Prefer a live PowerShell / command shell terminal pane so archon.exe CLI executes directly
+    const shellTerm =
+      liveTerminals.find(
+        (t) =>
+          t.run_kind === "powershell" ||
+          t.run_kind === "command" ||
+          t.name.toLowerCase().includes("test") ||
+          t.name.toLowerCase().includes("shell") ||
+          t.name.toLowerCase().includes("runner")
+      ) ||
+      liveTerminals.find((t) => t.id === targetTerminalId) ||
+      liveTerminals[0] ||
+      terminals[terminals.length - 1];
+
+    const safeMsg = message.replace(/"/g, "'");
+    const cmd = `archon workflow run "${workflowName}" --cwd "${activeProject}" --no-worktree --model medium=haiku "${safeMsg}"`;
+
+    if (shellTerm) {
+      onWritePty(shellTerm.id, cmd + "\r\n");
+      onSelectTerminal(shellTerm.id);
+      setDispatchSuccessMsg(
+        `Launched Archon workflow "${workflowName}" in terminal "${shellTerm.name}" — live-polling Archon :3090 runs...`
+      );
+      setTimeout(() => setDispatchSuccessMsg(null), 6000);
+    } else {
+      onSpawnTerminal({
+        project_path: activeProject,
+        run_kind: "powershell",
+        name: "archon-runner",
+        custom_flags: "",
+      });
+      setDispatchSuccessMsg(`Spawned archon-runner shell pane for "${workflowName}"`);
+      setTimeout(() => setDispatchSuccessMsg(null), 4000);
     }
   };
 
@@ -412,6 +476,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-medium text-[#8b949e]">Workflow:</span>
                   <select
+                    data-testid="archon-workflow-select"
                     value={selectedWorkflowId}
                     onChange={(e) => {
                       setSelectedWorkflowId(e.target.value);
@@ -426,8 +491,23 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                     ))}
                   </select>
 
+                  <button
+                    type="button"
+                    data-testid="archon-run-workflow-btn"
+                    onClick={() =>
+                      handleRunArchonWorkflow(
+                        currentWorkflow?.name || "archon-validate",
+                        `Run governed workflow ${currentWorkflow?.name || "archon-validate"} on ${activeProject} and verify all unit tests and SPEC.md requirements.`
+                      )
+                    }
+                    className="px-3 py-1.5 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Run in Archon</span>
+                  </button>
+
                   {currentWorkflow?.description && (
-                    <span className="text-xs text-[#8b949e] truncate max-w-[500px]" title={currentWorkflow.description}>
+                    <span className="text-xs text-[#8b949e] truncate max-w-[360px]" title={currentWorkflow.description}>
                       {currentWorkflow.description}
                     </span>
                   )}
@@ -449,6 +529,60 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Live Archon Run Telemetry Strip */}
+              {latestWorkflowRun && (
+                <div className="px-6 py-2 border-b border-[#30363d] bg-[#0d1117] flex items-center justify-between text-xs shrink-0">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[#8b949e] font-medium">Latest Archon Run:</span>
+                    <span className="font-mono text-[#58a6ff] font-semibold">
+                      {latestWorkflowRun.id.slice(0, 8)}
+                    </span>
+                    <span className="font-mono text-white font-semibold">
+                      {latestWorkflowRun.workflow_name}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1.5 ${
+                        latestWorkflowRun.status === "completed"
+                          ? "bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40"
+                          : latestWorkflowRun.status === "running"
+                          ? "bg-[#1f6feb]/25 text-[#58a6ff] border border-[#58a6ff]/50 animate-pulse"
+                          : "bg-[#f85149]/20 text-[#ff7b72] border border-[#f85149]/40"
+                      }`}
+                    >
+                      {latestWorkflowRun.status === "running" && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#58a6ff] animate-ping" />
+                      )}
+                      {latestWorkflowRun.status}
+                    </span>
+                    {latestWorkflowRun.outcome && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-[#3fb950] border border-[#30363d]">
+                        outcome: {latestWorkflowRun.outcome}
+                      </span>
+                    )}
+                    {latestWorkflowRun.current_step_name && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#1f6feb]/15 text-[#58a6ff] border border-[#1f6feb]/30">
+                        active node: {latestWorkflowRun.current_step_name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-[11px] font-mono text-[#8b949e]">
+                    {latestWorkflowRun.codebase_name && (
+                      <span className="text-[#c9d1d9]">{latestWorkflowRun.codebase_name}</span>
+                    )}
+                    {latestWorkflowRun.nodes_total != null && (
+                      <span className="text-[#3fb950]">
+                        {latestWorkflowRun.nodes_completed ?? 0}/{latestWorkflowRun.nodes_total} nodes
+                      </span>
+                    )}
+                    {latestWorkflowRun.total_cost_usd != null && (
+                      <span className="text-[#e3b341] font-bold">
+                        ${latestWorkflowRun.total_cost_usd.toFixed(4)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Main SVG Graph & Node Detail Inspector */}
               <div className="flex-1 flex overflow-hidden">
@@ -502,6 +636,14 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                         const isDependent =
                           selectedNode?.depends_on?.includes(node.id) || false;
                         const kind = node.kind || "agent";
+                        const isLiveRunning =
+                          latestWorkflowRun?.workflow_name === currentWorkflow?.name &&
+                          latestWorkflowRun?.status === "running" &&
+                          (latestWorkflowRun.current_step_name === node.id ||
+                            latestWorkflowRun.active_nodes?.includes(node.id));
+                        const isRunCompleted =
+                          latestWorkflowRun?.workflow_name === currentWorkflow?.name &&
+                          latestWorkflowRun?.status === "completed";
 
                         return (
                           <div
@@ -515,10 +657,14 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                               height: `${node.height}px`,
                             }}
                             className={`p-3 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
-                              isSelected
+                              isLiveRunning
+                                ? "bg-[#1c2128] border-[#e3b341] shadow-lg ring-2 ring-[#e3b341]/50 -translate-y-0.5"
+                                : isSelected
                                 ? "bg-[#1c2128] border-[#58a6ff] shadow-lg ring-2 ring-[#58a6ff]/40 -translate-y-0.5"
                                 : isDependent
                                 ? "bg-[#161b22] border-[#388bfd] shadow-sm"
+                                : isRunCompleted
+                                ? "bg-[#161b22] border-[#238636]/70 hover:border-[#3fb950]"
                                 : "bg-[#161b22] border-[#30363d] hover:border-[#8b949e] hover:bg-[#21262d]"
                             }`}
                           >
@@ -526,20 +672,32 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                               <div className="flex items-center gap-1.5">
                                 {kind === "agent" && <Cpu className="w-3.5 h-3.5 text-[#58a6ff]" />}
                                 {kind === "exec" && <Terminal className="w-3.5 h-3.5 text-[#3fb950]" />}
-                                {kind === "loop_group" && <Repeat className="w-3.5 h-3.5 text-[#e3b341]" />}
+                                {(kind === "loop_group" || kind === "loop") && (
+                                  <Repeat className="w-3.5 h-3.5 text-[#e3b341]" />
+                                )}
                                 {kind === "halt" && <StopCircle className="w-3.5 h-3.5 text-[#ff7b72]" />}
-                                <span className="font-mono text-xs font-semibold text-white truncate max-w-[120px]">
+                                <span className="font-mono text-xs font-semibold text-white truncate max-w-[115px]">
                                   {node.id}
                                 </span>
                               </div>
-                              <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-[#21262d] text-[#8b949e] border border-[#30363d]">
-                                {kind}
-                              </span>
+                              {isLiveRunning ? (
+                                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-[#e3b341]/20 text-[#e3b341] border border-[#e3b341]/50 animate-pulse">
+                                  RUNNING
+                                </span>
+                              ) : isRunCompleted ? (
+                                <span className="text-[9px] uppercase font-semibold px-1.5 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40">
+                                  {kind} ✓
+                                </span>
+                              ) : (
+                                <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-[#21262d] text-[#8b949e] border border-[#30363d]">
+                                  {kind}
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center justify-between text-[11px] text-[#8b949e] pt-1 border-t border-[#30363d]/50">
                               <span className="truncate">
-                                {node.provider ? `${node.provider}/${node.model || "default"}` : "native task"}
+                                {node.provider ? `${node.provider}/${node.model || "default"}` : node.model ? `claude/${node.model}` : "native task"}
                               </span>
                               {node.depends_on && node.depends_on.length > 0 && (
                                 <span className="text-[10px] font-mono text-[#58a6ff]">
@@ -563,15 +721,15 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          handleAssignToAgent(
-                            currentWorkflow?.name || "workflow",
-                            `archon workflow run "${currentWorkflow?.name}"`
+                          handleRunArchonWorkflow(
+                            currentWorkflow?.name || "archon-validate",
+                            `Run workflow ${currentWorkflow?.name} on ${activeProject}`
                           )
                         }
                         className="px-4 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-xs font-semibold flex items-center gap-2"
                       >
                         <Play className="w-3.5 h-3.5" />
-                        <span>Run "{currentWorkflow?.name}" in Terminal</span>
+                        <span>Run "{currentWorkflow?.name}" in Archon</span>
                       </button>
                     </div>
                   )}
@@ -681,15 +839,15 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          handleAssignToAgent(
-                            selectedNode.id,
-                            `archon workflow run "${currentWorkflow?.name}"`
+                          handleRunArchonWorkflow(
+                            currentWorkflow?.name || "archon-validate",
+                            `Run governed workflow ${currentWorkflow?.name} on ${activeProject}`
                           )
                         }
-                        className="w-full py-2 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#c9d1d9] rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
                       >
-                        <Play className="w-3.5 h-3.5 text-[#3fb950]" />
-                        <span>Run Full Workflow in Terminal</span>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Run Full Workflow in Archon</span>
                       </button>
                     </div>
                   </div>
@@ -760,21 +918,37 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                                 </div>
                               </div>
 
-                              {!task.completed && (
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {!task.completed && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleAssignToAgent(
+                                        task.title,
+                                        `Implement task from ${task.file_name}:${task.line_number}: "${task.title}" using test-driven development.`
+                                      )
+                                    }
+                                    className="px-2 py-1 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#c9d1d9] rounded text-[11px] font-medium flex items-center gap-1 transition-colors"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-[#58a6ff]" />
+                                    <span>Agent</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
+                                  data-testid={`archon-sdd-run-${task.line_number}`}
                                   onClick={() =>
-                                    handleAssignToAgent(
-                                      task.title,
-                                      `Implement task from ${task.file_name}:${task.line_number}: "${task.title}" using test-driven development.`
+                                    handleRunArchonWorkflow(
+                                      "archon-validate",
+                                      `Validate SDD specification task ${task.file_name}:${task.line_number}: ${task.title}`
                                     )
                                   }
-                                  className="px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white rounded text-[11px] font-semibold flex items-center gap-1 shrink-0 transition-colors shadow-xs"
+                                  className="px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white rounded text-[11px] font-semibold flex items-center gap-1 transition-colors shadow-xs"
                                 >
-                                  <Sparkles className="w-3 h-3" />
-                                  <span>Implement</span>
+                                  <Play className="w-3 h-3 fill-current" />
+                                  <span>Run in Archon</span>
                                 </button>
-                              )}
+                              </div>
                             </div>
                           ))}
                       </div>
@@ -858,9 +1032,9 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
               <div className="pb-4 mb-4 border-b border-[#30363d] flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-white">Archon Workflow Runs</h3>
-                  <p className="text-xs text-[#8b949e]">Governed execution logs and spend history</p>
+                  <p className="text-xs text-[#8b949e]">Governed execution logs and spend history from Archon (:3090 / archon.db)</p>
                 </div>
-                <span className="text-xs text-[#8b949e] font-mono">{runs.length} runs recorded</span>
+                <span className="text-xs text-[#8b949e] font-mono">{runs.length} runs loaded</span>
               </div>
 
               {runs.length > 0 ? (
@@ -870,20 +1044,35 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                       key={run.id}
                       className="p-3.5 bg-[#161b22] border border-[#30363d] rounded-lg flex items-center justify-between hover:border-[#8b949e] transition-colors"
                     >
-                      <div className="space-y-1 max-w-[65%]">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1 max-w-[70%]">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs font-bold text-white">{run.workflow_name}</span>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
                               run.status === "completed"
                                 ? "bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40"
                                 : run.status === "running"
-                                ? "bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40"
+                                ? "bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 animate-pulse"
                                 : "bg-[#f85149]/20 text-[#ff7b72] border border-[#f85149]/40"
                             }`}
                           >
                             {run.status}
                           </span>
+                          {run.outcome && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-[#3fb950] border border-[#30363d]">
+                              {run.outcome}
+                            </span>
+                          )}
+                          {run.codebase_name && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#388bfd]/15 text-[#58a6ff] border border-[#388bfd]/30">
+                              {run.codebase_name}
+                            </span>
+                          )}
+                          {run.nodes_total != null && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-[#c9d1d9] border border-[#30363d]">
+                              {run.nodes_completed ?? 0}/{run.nodes_total} nodes
+                            </span>
+                          )}
                         </div>
 
                         {run.user_message && (
@@ -893,8 +1082,11 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                         )}
 
                         <div className="flex items-center gap-3 text-[10px] text-[#8b949e] font-mono">
-                          <span>Run: {run.id.slice(0, 8)}...</span>
-                          {run.working_path && <span>Branch/Path: {run.working_path.split(/[/\\]/).pop()}</span>}
+                          <span>Run ID: {run.id}</span>
+                          {run.working_path && <span>Path: {run.working_path}</span>}
+                          {run.current_step_name && (
+                            <span className="text-[#e3b341]">Step: {run.current_step_name}</span>
+                          )}
                         </div>
                       </div>
 

@@ -7,6 +7,17 @@ export type SidecarHealthState =
   | "DEGRADED"
   | "RESTARTING";
 
+export type FactoryLoopMode = "ACTIVE" | "PAUSED" | "HALTED";
+
+export type TriageState =
+  | "READY"
+  | "DESIGN_FIRST"
+  | "NEEDS_CONTRACT_WORK"
+  | "BLOCKED"
+  | "NO_ACTION";
+
+export type GateVerdictOutcome = "CAUGHT" | "ESCAPED" | "INCONCLUSIVE";
+
 export type WorkOrderStatus =
   | "QUEUED"
   | "IN_PROGRESS"
@@ -27,7 +38,10 @@ export type HoldReasonCode =
   | "CREDENTIAL_REQUIRED"
   | "PRICE_REQUIRED"
   | "EXPOSURE_EXCEEDED"
-  | "MAX_CORRECTIONS_EXCEEDED";
+  | "MAX_CORRECTIONS_EXCEEDED"
+  | "SCOPE_DRIFT"
+  | "PROTECTED_PATH_VIOLATION"
+  | "GATE_INCONCLUSIVE";
 
 export interface PraxisHoldCard {
   holdId: string;
@@ -48,6 +62,12 @@ export interface PraxisHoldCard {
   }[];
 }
 
+export interface RungVerdict {
+  rung: "static" | "unit" | "e2e" | "holdout" | string;
+  outcome: "PASS" | "FAIL" | "INCONCLUSIVE" | string;
+  detail: string;
+}
+
 export interface HoldbackValidationReport {
   vaultPath: string;
   vaultSha256: string;
@@ -55,6 +75,11 @@ export interface HoldbackValidationReport {
   outputPathConfinementPassed: boolean;
   allowedOutputPaths: string[];
   modifiedFiles: string[];
+  protectedPathsPassed?: boolean;
+  protectedPathViolations?: string[];
+  gateVerdict?: "PASS" | "FAIL" | "INCONCLUSIVE" | string;
+  rungVerdicts?: RungVerdict[];
+  candidateRevisionSha?: string;
   tier1BuildPassed: boolean;
   tier1RawOutput: string;
   tier2HoldbackPassed: boolean;
@@ -65,6 +90,34 @@ export interface HoldbackValidationReport {
     sanitizedMessage: string;
   }[];
   prePrSecretAuditPassed: boolean;
+}
+
+export interface MissionConstitution {
+  productSummary: string;
+  inScopeCapabilities: string[];
+  outOfScopeNever: string[];
+  hardInvariants: string[];
+  protectedPaths: string[];
+  lastReconciled: string;
+}
+
+export interface MutationDefectResult {
+  defectId: string;
+  targetRung: string;
+  caughtByRung?: string | null;
+  outcome: GateVerdictOutcome;
+  why: string;
+  detail: string;
+}
+
+export interface GateCalibrationReport {
+  calibratedAt: string;
+  totalDefects: number;
+  caughtCount: number;
+  escapedCount: number;
+  inconclusiveCount: number;
+  allRungsExercised: boolean;
+  results: MutationDefectResult[];
 }
 
 export interface PipelineStageNode {
@@ -94,6 +147,8 @@ export interface MachinaWorkOrder {
   title: string;
   templateId: string;
   status: WorkOrderStatus;
+  triageState?: TriageState;
+  dependsOn?: string[];
   branchName: string;
   worktreePath: string;
   epoch: number;

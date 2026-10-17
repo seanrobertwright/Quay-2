@@ -14,9 +14,10 @@ use slices::github::{
     list_github_prs,
 };
 use slices::machina::{
-    machina_accept_and_merge, machina_get_status, machina_list_work_orders,
+    machina_accept_and_merge, machina_calibrate_gate, machina_get_status, machina_list_work_orders,
     machina_rebind_stage_agent, machina_resolve_hold, machina_run_stage_validation,
-    machina_submit_work_order, machina_trigger_epoch_recovery, MachinaManager,
+    machina_set_loop_mode, machina_submit_work_order, machina_trigger_epoch_recovery,
+    machina_update_constitution, MachinaManager,
 };
 use slices::orchestrator::{
     a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt, A2ARouter,
@@ -125,6 +126,9 @@ pub fn run() {
             machina_accept_and_merge,
             machina_trigger_epoch_recovery,
             machina_run_stage_validation,
+            machina_set_loop_mode,
+            machina_update_constitution,
+            machina_calibrate_gate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

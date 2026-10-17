@@ -498,6 +498,15 @@ pub async fn handle_mcp_request(
                         .and_then(|v| v.as_str())
                         .unwrap_or("antigravity")
                         .to_string();
+                    let depends_on = arguments
+                        .get("depends_on")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<String>>()
+                        })
+                        .unwrap_or_default();
 
                     let req = crate::slices::machina::models::SubmitWorkOrderRequest {
                         project_path,
@@ -509,6 +518,7 @@ pub async fn handle_mcp_request(
                         budget_allowance_usd,
                         author_agent,
                         reviewer_agent,
+                        depends_on,
                     };
 
                     match ctx

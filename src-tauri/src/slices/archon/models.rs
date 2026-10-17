@@ -70,6 +70,8 @@ pub struct ArchonRun {
     pub user_message: Option<String>,
     pub status: String,
     #[serde(default)]
+    pub outcome: Option<String>,
+    #[serde(default)]
     pub working_path: Option<String>,
     #[serde(default)]
     pub started_at: Option<String>,
@@ -81,6 +83,12 @@ pub struct ArchonRun {
     pub codebase_name: Option<String>,
     #[serde(default)]
     pub current_step_name: Option<String>,
+    #[serde(default)]
+    pub active_nodes: Option<Vec<String>>,
+    #[serde(default)]
+    pub nodes_completed: Option<u32>,
+    #[serde(default)]
+    pub nodes_total: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

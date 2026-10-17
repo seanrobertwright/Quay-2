@@ -42,12 +42,16 @@ export interface ArchonRun {
   workflow_name: string;
   user_message?: string | null;
   status: string;
+  outcome?: string | null;
   working_path?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   total_cost_usd?: number | null;
   codebase_name?: string | null;
   current_step_name?: string | null;
+  active_nodes?: string[] | null;
+  nodes_completed?: number | null;
+  nodes_total?: number | null;
 }
 
 export interface SpecTask {
