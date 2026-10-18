@@ -210,6 +210,28 @@ fn file_fingerprint(path: &Path) -> Option<(u64, u128)> {
     Some((meta.len(), mtime))
 }
 
+/// Re-parses `path` into the cache unless its length and mtime are unchanged.
+fn refresh_entry(state: &mut ScanState, path: &Path) {
+    let Some((len, mtime_ms)) = file_fingerprint(path) else {
+        return;
+    };
+    let fresh = state
+        .files
+        .get(path)
+        .is_some_and(|e| e.len == len && e.mtime_ms == mtime_ms);
+    if !fresh {
+        let records = parse_file(path);
+        state.files.insert(
+            path.to_path_buf(),
+            FileEntry {
+                len,
+                mtime_ms,
+                records,
+            },
+        );
+    }
+}
+
 /// Rebuilds the per-day table from the transcripts under `projects_dir`, re-parsing only
 /// files whose length or mtime changed since the previous call. Responses on or before
 /// `exclude_through_day` are dropped (that range is covered by the legacy stats cache).
@@ -225,24 +247,7 @@ fn scan_transcripts(
     state.files.retain(|p, _| live.contains(p));
 
     for path in &paths {
-        let Some((len, mtime_ms)) = file_fingerprint(path) else {
-            continue;
-        };
-        let fresh = state
-            .files
-            .get(path)
-            .is_some_and(|e| e.len == len && e.mtime_ms == mtime_ms);
-        if !fresh {
-            let records = parse_file(path);
-            state.files.insert(
-                path.clone(),
-                FileEntry {
-                    len,
-                    mtime_ms,
-                    records,
-                },
-            );
-        }
+        refresh_entry(state, path);
     }
 
     let mut unique: HashMap<&str, ResponseRecord> = HashMap::new();
@@ -365,6 +370,43 @@ pub fn refresh_usage(
         days: ledger,
         transcript_files: scanned.transcript_files,
         sessions_on_disk: scanned.sessions_on_disk,
+    }
+}
+
+/// Spend recorded in the transcripts of one Claude Code project directory.
+pub struct DirSpend {
+    pub usd: f64,
+    pub responses: u64,
+    pub files: usize,
+}
+
+/// Prices the deduplicated responses in the transcripts under `dir` (recursively),
+/// sharing the per-file parse cache with `refresh_usage`.
+pub fn transcript_dir_spend(dir: &Path) -> DirSpend {
+    let mut paths = Vec::new();
+    collect_jsonl(dir, &mut paths);
+    let mut state = scan_state().lock().unwrap_or_else(|p| p.into_inner());
+    for path in &paths {
+        refresh_entry(&mut state, path);
+    }
+    let mut unique: HashMap<&str, ResponseRecord> = HashMap::new();
+    for path in &paths {
+        let Some(entry) = state.files.get(path) else {
+            continue;
+        };
+        for (key, rec) in &entry.records {
+            match unique.get_mut(key.as_str()) {
+                Some(existing) => existing.absorb(rec),
+                None => {
+                    unique.insert(key.as_str(), rec.clone());
+                }
+            }
+        }
+    }
+    DirSpend {
+        usd: unique.values().map(|r| cost_usd(&r.model, &r.usage)).sum(),
+        responses: unique.len() as u64,
+        files: paths.len(),
     }
 }
 

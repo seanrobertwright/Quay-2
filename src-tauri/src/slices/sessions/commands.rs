@@ -18,7 +18,7 @@ fn get_home_dir() -> Result<PathBuf, String> {
 }
 
 /// Claude Code's config directory: `CLAUDE_CONFIG_DIR` when set, else `~/.claude`.
-fn get_claude_dir() -> Result<PathBuf, String> {
+pub(crate) fn get_claude_dir() -> Result<PathBuf, String> {
     if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR")
         && !dir.trim().is_empty()
     {

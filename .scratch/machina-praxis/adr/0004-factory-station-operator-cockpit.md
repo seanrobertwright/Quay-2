@@ -1,6 +1,6 @@
 # ADR 0004: Unified 3-Zone Factory Station Operator Cockpit (`Ctrl+B F`)
 
-- **Status**: Accepted
+- **Status**: Accepted, amended by [ADR 0005](0005-quay-native-factory-engine.md) (2026-10-18)
 - **Date**: 2026-10-16
 - **Source Ticket**: [05: Prototype: Factory Station Cockpit UI (Ctrl+B F)](../issues/05-prototype-factory-station-cockpit-ui.md)
 

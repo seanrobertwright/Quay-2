@@ -1,282 +1,212 @@
 use serde::{Deserialize, Serialize};
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SidecarHealthState {
-    STOPPED,
-    STARTING,
-    READY,
-    DEGRADED,
-    RESTARTING,
-}
+use super::config::FactoryConfig;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum FactoryLoopMode {
+    /// Queued work orders start as soon as their dependencies are merged.
+    #[default]
     ACTIVE,
+    /// New and unblocked work orders stay queued; running work continues.
     PAUSED,
+    /// Running scaffolds and gates are cancelled, author terminals are killed,
+    /// and new work orders are refused.
     HALTED,
 }
 
-impl Default for FactoryLoopMode {
-    fn default() -> Self {
-        Self::ACTIVE
-    }
-}
-
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum TriageState {
-    READY,
-    DESIGN_FIRST,
-    NEEDS_CONTRACT_WORK,
-    BLOCKED,
-    NO_ACTION,
-}
-
-impl Default for TriageState {
-    fn default() -> Self {
-        Self::READY
-    }
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum GateVerdictOutcome {
-    CAUGHT,
-    ESCAPED,
-    INCONCLUSIVE,
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum WorkOrderStatus {
+    /// Waiting for dependencies to merge, or for the loop to become ACTIVE.
     QUEUED,
+    /// Creating the worktree, vaulting holdbacks and running setup commands.
+    SCAFFOLDING,
+    /// The worktree is ready and the author agent is working (or correcting).
     IN_PROGRESS,
+    /// Gate commands are running against the candidate commit.
+    GATING,
+    /// A human decision is needed; see `hold`.
     ON_HOLD,
+    /// The gate passed; waiting for a human to accept and merge.
+    AWAITING_ACCEPTANCE,
+    /// Squash-merged into the base branch.
     COMPLETED,
+    /// A scaffold or gate was cut off by an app restart or a HALT.
     INTERRUPTED,
+    /// Scaffolding failed; it can be retried after fixing the cause.
     FAILED,
+    /// An operator aborted the work order.
+    ABORTED,
+}
+
+impl WorkOrderStatus {
+    /// True for states no action can leave.
+    pub fn is_final(self) -> bool {
+        matches!(self, Self::COMPLETED | Self::ABORTED)
+    }
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum StageNodeStatus {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StageStatus {
     PENDING,
     RUNNING,
     PASSED,
-    ON_HOLD,
-    CORRECTION,
     FAILED,
+    ON_HOLD,
+}
+
+/// Stage ids in pipeline order.
+pub const STAGE_IDS: [&str; 6] = [
+    "admission",
+    "scaffold",
+    "implementation",
+    "gate",
+    "correction",
+    "acceptance",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageRecord {
+    pub id: String,
+    pub status: StageStatus,
+    pub started_at_ms: Option<i64>,
+    pub finished_at_ms: Option<i64>,
+    /// What actually happened in this stage, in one line.
+    pub detail: String,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum HoldReasonCode {
-    CREDENTIAL_REQUIRED,
-    PRICE_REQUIRED,
-    EXPOSURE_EXCEEDED,
-    MAX_CORRECTIONS_EXCEEDED,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum HoldReason {
+    /// The title or objective matches an `outOfScope` rule in `.machina/factory.json`.
     SCOPE_DRIFT,
-    PROTECTED_PATH_VIOLATION,
+    /// An allowed output path overlaps a protected path.
+    PROTECTED_PATH_OVERLAP,
+    /// The gate failed on the last allowed attempt.
+    MAX_CORRECTIONS_EXCEEDED,
+    /// The gate could not reach a verdict (no checks, timeouts, git or audit errors).
     GATE_INCONCLUSIVE,
+    /// Measured agent spend reached the work order's budget.
+    BUDGET_EXCEEDED,
+    /// Submitted by an agent over MCP; a human must admit it before anything runs.
+    AGENT_SUBMITTED,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HoldExitOption {
+pub struct HoldOption {
     pub id: String,
     pub label: String,
-    pub variant: String,
     pub description: String,
+    /// `primary`, `secondary` or `danger`.
+    pub variant: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PraxisHoldCard {
-    pub hold_id: String,
-    pub profile: String,
-    pub reason: HoldReasonCode,
-    pub stage_id: String,
-    pub attempt_id: String,
-    pub epoch: u64,
+pub struct HoldCard {
+    pub reason: HoldReason,
     pub summary: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub required_scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub requested_budget_delta_usd: Option<f64>,
-    pub created_at: String,
-    pub exit_options: Vec<HoldExitOption>,
+    pub created_at_ms: i64,
+    pub options: Vec<HoldOption>,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CheckOutcome {
+    PASS,
+    FAIL,
+    TIMEOUT,
+    /// The command could not be started, or was cancelled.
+    ERROR,
+    /// Not run because an earlier check failed.
+    SKIPPED,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SanitizedInvariant {
-    pub invariant_id: String,
-    pub title: String,
+pub struct CheckResult {
+    /// 0 = setup, 1 = Tier 1 (visible to the author), 2 = Tier 2 (holdbacks).
+    pub tier: u8,
+    pub name: String,
+    pub command: String,
+    pub outcome: CheckOutcome,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u64,
+    /// Output the author agent may see: the full tail for Tier 1, only
+    /// `HOLDOUT_FAIL:` lines or a generic line for Tier 2.
+    pub output: String,
+    /// Raw Tier 2 output tail, for the operator only. Never sent to agents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_output: Option<String>,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GateVerdict {
+    PASS,
+    FAIL,
+    INCONCLUSIVE,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditSummary {
     pub passed: bool,
-    pub sanitized_message: String,
+    pub blocker_count: usize,
+    pub warning_count: usize,
+    /// One line per blocker or warning.
+    pub findings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RungVerdict {
-    pub rung: String,
-    pub outcome: String,
-    pub detail: String,
+pub struct GateReport {
+    pub attempt: u32,
+    pub started_at_ms: i64,
+    pub finished_at_ms: i64,
+    /// Commit the gate judged; empty when the gate stopped before committing.
+    pub candidate_sha: String,
+    pub verdict: GateVerdict,
+    /// Why the verdict is what it is, one reason per line.
+    pub reasons: Vec<String>,
+    pub changed_files: Vec<String>,
+    pub scope_violations: Vec<String>,
+    pub protected_violations: Vec<String>,
+    pub audit: Option<AuditSummary>,
+    pub checks: Vec<CheckResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HoldbackValidationReport {
-    pub vault_path: String,
-    pub vault_sha256: String,
-    pub stripped_from_authoring_worktree: bool,
-    pub output_path_confinement_passed: bool,
-    pub allowed_output_paths: Vec<String>,
-    pub modified_files: Vec<String>,
-    #[serde(default = "default_true")]
-    pub protected_paths_passed: bool,
-    #[serde(default)]
-    pub protected_path_violations: Vec<String>,
-    #[serde(default = "default_gate_verdict")]
-    pub gate_verdict: String,
-    #[serde(default = "default_rung_verdicts")]
-    pub rung_verdicts: Vec<RungVerdict>,
-    #[serde(default = "default_candidate_sha")]
-    pub candidate_revision_sha: String,
-    pub tier1_build_passed: bool,
-    pub tier1_raw_output: String,
-    pub tier2_holdback_passed: bool,
-    pub tier2_sanitized_invariants: Vec<SanitizedInvariant>,
-    pub pre_pr_secret_audit_passed: bool,
+pub struct VaultInfo {
+    pub path: String,
+    /// SHA-256 over the sorted (relative path, contents) of every vaulted file.
+    pub sha256: String,
+    pub files: Vec<String>,
+    /// The holdbacks are committed to git, so the author can still read them
+    /// from history even though they are hidden from the worktree.
+    pub tracked_in_git: bool,
 }
 
-fn default_true() -> bool {
-    true
-}
-
-fn default_gate_verdict() -> String {
-    "PASS".to_string()
-}
-
-fn default_candidate_sha() -> String {
-    "d9080e0 (FACTORY_RUNTIME_CANDIDATE)".to_string()
-}
-
-pub fn default_rung_verdicts() -> Vec<RungVerdict> {
-    vec![
-        RungVerdict {
-            rung: "static".to_string(),
-            outcome: "PASS".to_string(),
-            detail: "tsc --noEmit & cargo check passed (0 warnings)".to_string(),
-        },
-        RungVerdict {
-            rung: "unit".to_string(),
-            outcome: "PASS".to_string(),
-            detail: "cargo test (22 passed, 0 failed)".to_string(),
-        },
-        RungVerdict {
-            rung: "e2e".to_string(),
-            outcome: "PASS".to_string(),
-            detail: "harness/END-TO-END.md user journeys verified".to_string(),
-        },
-        RungVerdict {
-            rung: "holdout".to_string(),
-            outcome: "PASS".to_string(),
-            detail: ".factory/holdout/HOLDOUT.md blind scenarios verified".to_string(),
-        },
-    ]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SpendSnapshot {
+    /// False when no spend source exists for the author agent.
+    pub measured: bool,
+    pub usd: f64,
+    pub responses: u64,
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MissionConstitution {
-    pub product_summary: String,
-    pub in_scope_capabilities: Vec<String>,
-    pub out_of_scope_never: Vec<String>,
-    pub hard_invariants: Vec<String>,
-    pub protected_paths: Vec<String>,
-    pub last_reconciled: String,
-}
-
-impl Default for MissionConstitution {
-    fn default() -> Self {
-        Self {
-            product_summary: "Quay 2 is a keyboard-first, multi-agent ConPTY terminal orchestrator and supervised AI Software Factory (Machina Praxis) for Windows desktop developers.".to_string(),
-            in_scope_capabilities: vec![
-                "Multi-agent ConPTY terminal orchestration & persistent scrollback recovery".to_string(),
-                "Loopback MCP tool bus & A2A v1.3.0 inter-agent message routing".to_string(),
-                "Machina Praxis 6-stage software factory with blind holdback vault & 4-rung verification".to_string(),
-                "Archon Context Graph & Wayfinder ADR/issue topology visualization".to_string(),
-            ],
-            out_of_scope_never: vec![
-                "Cloud-hosted multi-tenant SaaS execution or remote code hosting".to_string(),
-                "Unattended dark-factory auto-deploys that bypass human merge or holdback gates".to_string(),
-                "Embedded full text editor / IDE clone replacing VS Code or Neovim".to_string(),
-                "Cryptocurrency, token mining, or third-party billing marketplace".to_string(),
-                "Telemetry exfiltration or uploading repository source outside the operator machine".to_string(),
-            ],
-            hard_invariants: vec![
-                "The factory cannot modify governance files (MISSION.md, FACTORY_RULES.md, harness/**, .factory/**, .machina/holdbacks/**).".to_string(),
-                "Tier 2 holdback vectors and source files are physically stripped before authoring and never leaked in correction diagnostics.".to_string(),
-                "Reviewer / gate agent must never be the same agent identity that authored the candidate diff.".to_string(),
-                "Every gate verdict requires explicit CHECKS_OK completion evidence; timeouts or missing markers are scored INCONCLUSIVE.".to_string(),
-            ],
-            protected_paths: vec![
-                "MISSION.md".to_string(),
-                "FACTORY.md".to_string(),
-                "FACTORY_RULES.md".to_string(),
-                "harness/**".to_string(),
-                ".factory/**".to_string(),
-                ".machina/holdbacks/**".to_string(),
-                ".scratch/machina-praxis/**".to_string(),
-            ],
-            last_reconciled: "2026-10-16".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MutationDefectResult {
-    pub defect_id: String,
-    pub target_rung: String,
-    pub caught_by_rung: Option<String>,
-    pub outcome: GateVerdictOutcome,
-    pub why: String,
-    pub detail: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GateCalibrationReport {
-    pub calibrated_at: String,
-    pub total_defects: usize,
-    pub caught_count: usize,
-    pub escaped_count: usize,
-    pub inconclusive_count: usize,
-    pub all_rungs_exercised: bool,
-    pub results: Vec<MutationDefectResult>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PipelineStageNode {
-    pub id: String,
-    pub index: u32,
-    pub title: String,
-    pub subtitle: String,
-    pub status: StageNodeStatus,
-    pub bound_agent_kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bound_terminal_name: Option<String>,
-    pub attempt_ordinal: u32,
-    pub max_corrections: u32,
-    pub attempt_kind: String,
-    pub cost_usd: f64,
-    pub duration_sec: u64,
-    pub mcp_tool_name: String,
+pub struct WorkOrderEvent {
+    pub at_ms: i64,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,53 +214,74 @@ pub struct PipelineStageNode {
 pub struct MachinaWorkOrder {
     pub id: String,
     pub title: String,
-    pub template_id: String,
-    pub status: WorkOrderStatus,
-    #[serde(default)]
-    pub triage_state: TriageState,
-    #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub objective: String,
+    /// Top level of the main checkout the worktree was cut from.
+    pub repo_path: String,
+    pub base_branch: String,
+    /// Commit the branch was cut from.
+    pub base_sha: String,
     pub branch_name: String,
     pub worktree_path: String,
+    pub author_agent: String,
+    pub author_terminal_id: Option<String>,
+    pub allowed_output_paths: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub max_corrections: u32,
+    /// Gate runs so far, including the initial one.
+    pub attempts: u32,
+    pub budget_usd: f64,
+    pub spend: SpendSnapshot,
+    pub status: WorkOrderStatus,
+    pub stages: Vec<StageRecord>,
+    pub hold: Option<HoldCard>,
+    pub vault: Option<VaultInfo>,
+    /// Results of the config's setup commands from the latest scaffold.
+    pub setup_checks: Vec<CheckResult>,
+    pub last_gate: Option<GateReport>,
+    pub merge_commit: Option<String>,
+    /// The worktree directory has been removed (the branch is kept).
+    pub worktree_removed: bool,
+    pub error: Option<String>,
+    /// App epoch the work order was created in.
     pub epoch: u64,
-    pub budget_allowance_usd: f64,
-    pub spent_usd: f64,
-    pub active_leases: Vec<String>,
-    pub created_at: String,
-    pub stages: Vec<PipelineStageNode>,
-    pub active_hold: Option<PraxisHoldCard>,
-    pub validation_report: HoldbackValidationReport,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    /// Newest last, capped at `MAX_EVENTS`.
+    pub events: Vec<WorkOrderEvent>,
 }
+
+pub const MAX_EVENTS: usize = 200;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MachinaStatusPayload {
-    pub sidecar_state: SidecarHealthState,
     pub loop_mode: FactoryLoopMode,
+    /// Incremented every time Quay starts; work interrupted by a restart is
+    /// stamped with the epoch that found it.
     pub epoch: u64,
-    pub pid: u32,
-    pub origin: String,
-    pub praxis_root: String,
-    pub db_path: String,
-    pub total_spent_usd: f64,
-    pub total_budget_usd: f64,
-    pub active_holds_count: usize,
-    pub constitution: MissionConstitution,
-    pub calibration_report: GateCalibrationReport,
+    pub session_started_at_ms: i64,
+    pub state_path: String,
+    pub vault_root: String,
+    pub work_order_count: usize,
+    /// Sum of measured spend only; unmeasured agents are excluded.
+    pub measured_spend_usd: f64,
+    pub budget_usd: f64,
+    pub active_holds: usize,
+    pub running_jobs: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitWorkOrderRequest {
     pub project_path: String,
-    pub template_id: String,
     pub title: String,
+    pub objective: String,
     pub allowed_output_paths: Vec<String>,
-    pub holdback_suite: String,
-    pub max_corrections: u32,
-    pub budget_allowance_usd: f64,
+    #[serde(default)]
+    pub base_branch: Option<String>,
     pub author_agent: String,
-    pub reviewer_agent: String,
+    pub max_corrections: u32,
+    pub budget_usd: f64,
     #[serde(default)]
     pub depends_on: Vec<String>,
 }
@@ -344,16 +295,27 @@ pub struct ResolveHoldRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RebindStageAgentRequest {
-    pub work_order_id: String,
-    pub stage_id: String,
-    pub new_agent_kind: String,
+pub struct HoldbackSourceInfo {
+    pub path: String,
+    pub exists: bool,
+    pub file_count: usize,
+    pub tracked_in_git: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdateConstitutionRequest {
-    pub project_path: String,
-    pub constitution: MissionConstitution,
-    pub write_bootstrap_files: bool,
+pub struct ProjectFactoryInfo {
+    pub repo_path: String,
+    pub current_branch: Option<String>,
+    pub config_path: String,
+    pub config_exists: bool,
+    /// The parsed config, or the defaults when the file is missing or invalid.
+    pub config: FactoryConfig,
+    /// Set when the file exists but does not parse or validate.
+    pub config_error: Option<String>,
+    /// SHA-256 of the file as it is now; `None` when it does not exist.
+    pub config_sha256: Option<String>,
+    /// The operator approved exactly this file, so its commands may run.
+    pub config_approved: bool,
+    pub holdbacks: HoldbackSourceInfo,
 }

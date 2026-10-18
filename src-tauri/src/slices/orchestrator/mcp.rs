@@ -213,70 +213,47 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "machina_submit_work_order",
-                        "description": "Submit a governed Work Order to the Machina Praxis AI Software Factory. Extracts and strips .machina/holdbacks/ into the external vault and initializes the 6-stage pipeline.",
+                        "description": "Submit a work order to Machina, Quay's software factory. Machina creates a git worktree and branch for it under .machina/worktrees/ and vaults .machina/holdbacks/. A human launches the author agent and merges the result.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "project_path": { "type": "string" },
-                                "template_id": { "type": "string" },
+                                "project_path": { "type": "string", "description": "Any path inside the git repository." },
                                 "title": { "type": "string" },
+                                "objective": { "type": "string", "description": "What the author agent must do." },
                                 "allowed_output_paths": {
                                     "type": "array",
-                                    "items": { "type": "string" }
+                                    "items": { "type": "string" },
+                                    "description": "Repo-relative globs the author may change, e.g. src/slices/auth/**."
                                 },
-                                "holdback_suite": { "type": "string" },
-                                "max_corrections": { "type": "integer" },
-                                "budget_allowance_usd": { "type": "number" },
-                                "author_agent": { "type": "string" },
-                                "reviewer_agent": { "type": "string" }
+                                "base_branch": { "type": "string", "description": "Defaults to the main checkout's current branch." },
+                                "author_agent": { "type": "string", "description": "Agent CLI that will do the work, e.g. claude. Defaults to claude." },
+                                "max_corrections": { "type": "integer", "minimum": 0, "maximum": 10 },
+                                "budget_usd": { "type": "number", "exclusiveMinimum": 0 },
+                                "depends_on": { "type": "array", "items": { "type": "string" } }
                             },
-                            "required": ["title"]
+                            "required": ["project_path", "title", "objective", "allowed_output_paths", "budget_usd"]
                         }
                     },
                     {
-                        "name": "machina_get_stage_status",
-                        "description": "Get live status, active Governed Holds (aiws-hold-card/1), and sanitized Two-Tier Holdback diagnostics for a Machina Praxis Work Order.",
+                        "name": "machina_get_work_order",
+                        "description": "Read a Machina work order: objective, allowed and protected paths, attempts, and the latest gate findings. Holdback (Tier 2) details are withheld.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "work_order_id": { "type": "string" }
-                            }
-                        }
-                    },
-                    {
-                        "name": "machina_claim_attempt",
-                        "description": "Claim an INITIAL or CORRECTION stage attempt ordinal for a Machina Praxis Work Order.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "work_order_id": { "type": "string" },
-                                "stage_id": { "type": "string" }
-                            },
-                            "required": ["work_order_id", "stage_id"]
-                        }
-                    },
-                    {
-                        "name": "machina_submit_deliverable",
-                        "description": "Submit stage deliverables for a Machina Praxis Work Order and trigger the Two-Tier Holdback Validation Gate (Output-Path Confinement + Tier 1 Build + Tier 2 Blind Vault + Pre-PR Secret Audit).",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "work_order_id": { "type": "string" },
-                                "project_path": { "type": "string" }
+                                "work_order_id": { "type": "string", "description": "e.g. WO-3" }
                             },
                             "required": ["work_order_id"]
                         }
                     },
                     {
-                        "name": "machina_resolve_hold",
-                        "description": "Resolve an active Praxis Governed Hold (aiws-hold-card/1) by selecting an exit option (e.g. grant_lease, mock_only, abort_wo).",
+                        "name": "machina_submit_deliverable",
+                        "description": "Submit your work on a Machina work order to the gate. The gate commits the worktree, checks changed paths, runs the pre-PR audit and the project's configured build, test and holdback commands. It runs in the background; when you are the work order's author terminal, the verdict is typed into your terminal when it finishes.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "work_order_id": { "type": "string" },
-                                "option_id": { "type": "string" }
+                                "work_order_id": { "type": "string", "description": "e.g. WO-3" }
                             },
-                            "required": ["work_order_id", "option_id"]
+                            "required": ["work_order_id"]
                         }
                     }
                 ]
@@ -451,195 +428,72 @@ pub async fn handle_mcp_request(
                 }
 
                 "machina_submit_work_order" => {
-                    let project_path = arguments
-                        .get("project_path")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(".")
-                        .to_string();
-                    let template_id = arguments
-                        .get("template_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("feature-holdback-tdd")
-                        .to_string();
-                    let title = arguments
-                        .get("title")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Autonomous Factory Work Order")
-                        .to_string();
-                    let allowed_output_paths = arguments
-                        .get("allowed_output_paths")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                                .collect::<Vec<String>>()
-                        })
-                        .unwrap_or_else(|| vec!["src/**".to_string()]);
-                    let holdback_suite = arguments
-                        .get("holdback_suite")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(".machina/holdbacks/default.holdback.test.ts")
-                        .to_string();
-                    let max_corrections = arguments
-                        .get("max_corrections")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(3) as u32;
-                    let budget_allowance_usd = arguments
-                        .get("budget_allowance_usd")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(5.0);
-                    let author_agent = arguments
-                        .get("author_agent")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("claude")
-                        .to_string();
-                    let reviewer_agent = arguments
-                        .get("reviewer_agent")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("antigravity")
-                        .to_string();
-                    let depends_on = arguments
-                        .get("depends_on")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                                .collect::<Vec<String>>()
-                        })
-                        .unwrap_or_default();
-
-                    let req = crate::slices::machina::models::SubmitWorkOrderRequest {
-                        project_path,
-                        template_id,
-                        title,
-                        allowed_output_paths,
-                        holdback_suite,
-                        max_corrections,
-                        budget_allowance_usd,
-                        author_agent,
-                        reviewer_agent,
-                        depends_on,
+                    let mgr = ctx.machina_manager.clone();
+                    let parsed = machina_submit_request(&arguments);
+                    // Agent submissions always wait on hold for a human to admit them.
+                    let submitted_by = if caller_id == "agent" {
+                        "an unidentified MCP client".to_string()
+                    } else {
+                        format!("terminal {}", caller_id)
                     };
-
-                    match ctx
-                        .machina_manager
-                        .submit_work_order(req, Some(&ctx.app_handle))
-                    {
-                        Ok(wo) => {
-                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
-                            Ok(json!({
-                                "content": [{ "type": "text", "text": text }]
-                            }))
-                        }
+                    match parsed {
                         Err(e) => Err(e),
+                        Ok(req) => match tokio::task::spawn_blocking(move || mgr.submit_work_order(req, Some(submitted_by))).await {
+                            Ok(Ok(wo)) => Ok(json!({
+                                "content": [{
+                                    "type": "text",
+                                    "text": format!(
+                                        "Submitted {} ({:?}). It waits for a human to admit it in Machina; branch {} and worktree {} are created after that.",
+                                        wo.id, wo.status, wo.branch_name, wo.worktree_path
+                                    )
+                                }]
+                            })),
+                            Ok(Err(e)) => Err(e),
+                            Err(e) => Err(format!("Machina task failed: {}", e)),
+                        },
                     }
                 }
 
-                "machina_get_stage_status" => {
-                    let wo_id = arguments
-                        .get("work_order_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let list = ctx.machina_manager.list_work_orders();
-                    let payload = if wo_id.is_empty() {
-                        serde_json::to_string_pretty(&list).unwrap_or_default()
-                    } else if let Some(found) = list.into_iter().find(|w| w.id == wo_id) {
-                        serde_json::to_string_pretty(&found).unwrap_or_default()
-                    } else {
-                        return Json(JsonRpcResponse {
-                            jsonrpc: "2.0".to_string(),
-                            id,
-                            result: None,
-                            error: Some(JsonRpcError {
-                                code: -32602,
-                                message: format!("Work Order '{}' not found", wo_id),
-                                data: None,
-                            }),
-                        })
-                        .into_response();
-                    };
-
-                    Ok(json!({
-                        "content": [{ "type": "text", "text": payload }]
-                    }))
-                }
-
-                "machina_claim_attempt" => {
-                    let wo_id = arguments
-                        .get("work_order_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let stage_id = arguments
-                        .get("stage_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("implementation");
-
-                    match ctx.machina_manager.claim_attempt(
-                        wo_id,
-                        stage_id,
-                        &caller_id,
-                        Some(&ctx.app_handle),
-                    ) {
-                        Ok(res) => {
-                            let text = serde_json::to_string_pretty(&res).unwrap_or_default();
-                            Ok(json!({
-                                "content": [{ "type": "text", "text": text }]
-                            }))
-                        }
+                "machina_get_work_order" => {
+                    let wo_id = arguments.get("work_order_id").and_then(|v| v.as_str()).unwrap_or("");
+                    match crate::slices::machina::supervisor::parse_wo_id(wo_id)
+                        .and_then(|id| ctx.machina_manager.agent_view(&id))
+                    {
+                        Ok(view) => Ok(json!({
+                            "content": [{ "type": "text", "text": serde_json::to_string_pretty(&view).unwrap_or_default() }]
+                        })),
                         Err(e) => Err(e),
                     }
                 }
 
                 "machina_submit_deliverable" => {
-                    let wo_id = arguments
-                        .get("work_order_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let project_path = arguments
-                        .get("project_path")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(".");
-
-                    match ctx.machina_manager.run_stage_validation(
-                        wo_id,
-                        project_path,
-                        Some(&ctx.app_handle),
-                    ) {
-                        Ok(wo) => {
-                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
-                            Ok(json!({
-                                "content": [{ "type": "text", "text": text }]
-                            }))
-                        }
+                    let wo_id = arguments.get("work_order_id").and_then(|v| v.as_str()).unwrap_or("");
+                    match crate::slices::machina::supervisor::parse_wo_id(wo_id) {
                         Err(e) => Err(e),
-                    }
-                }
-
-                "machina_resolve_hold" => {
-                    let wo_id = arguments
-                        .get("work_order_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let option_id = arguments
-                        .get("option_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("grant_lease")
-                        .to_string();
-
-                    let req = crate::slices::machina::models::ResolveHoldRequest {
-                        work_order_id: wo_id,
-                        option_id,
-                    };
-
-                    match ctx.machina_manager.resolve_hold(req, Some(&ctx.app_handle)) {
-                        Ok(wo) => {
-                            let text = serde_json::to_string_pretty(&wo).unwrap_or_default();
-                            Ok(json!({
-                                "content": [{ "type": "text", "text": text }]
-                            }))
+                        Ok(id) => {
+                            let mgr = ctx.machina_manager.clone();
+                            let requested_by = (caller_id != "agent").then(|| caller_id.clone());
+                            let gate_id = id.clone();
+                            match tokio::task::spawn_blocking(move || mgr.start_gate(&gate_id, requested_by)).await {
+                                Ok(Ok(crate::slices::machina::supervisor::GateStart::Started(attempt))) => Ok(json!({
+                                    "content": [{
+                                        "type": "text",
+                                        "text": format!(
+                                            "Gate attempt {} for {} started. It runs in the background; stop editing files until the verdict arrives.",
+                                            attempt, id
+                                        )
+                                    }]
+                                })),
+                                Ok(Ok(crate::slices::machina::supervisor::GateStart::Held(why))) => Ok(json!({
+                                    "content": [{
+                                        "type": "text",
+                                        "text": format!("{} is on hold: {}. Stop and wait for a human.", id, why)
+                                    }]
+                                })),
+                                Ok(Err(e)) => Err(e),
+                                Err(e) => Err(format!("Machina task failed: {}", e)),
+                            }
                         }
-                        Err(e) => Err(e),
                     }
                 }
 
@@ -680,6 +534,59 @@ pub async fn handle_mcp_request(
         })
         .into_response(),
     }
+}
+
+/// Parses `machina_submit_work_order` arguments, rejecting wrong types instead of
+/// silently substituting defaults.
+fn machina_submit_request(
+    args: &Value,
+) -> Result<crate::slices::machina::models::SubmitWorkOrderRequest, String> {
+    let text = |key: &str| -> Result<String, String> {
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| format!("{} must be a string", key))
+    };
+    let strings = |key: &str| -> Result<Vec<String>, String> {
+        match args.get(key) {
+            None | Some(Value::Null) => Ok(Vec::new()),
+            Some(Value::Array(items)) => items
+                .iter()
+                .map(|x| x.as_str().map(str::to_string).ok_or_else(|| format!("{} must contain only strings", key)))
+                .collect(),
+            Some(_) => Err(format!("{} must be an array of strings", key)),
+        }
+    };
+    let max_corrections = match args.get("max_corrections") {
+        None | Some(Value::Null) => 3,
+        Some(v) => v
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or("max_corrections must be a whole number")?,
+    };
+    let budget_usd = args
+        .get("budget_usd")
+        .and_then(|v| v.as_f64())
+        .ok_or("budget_usd must be a number")?;
+    let author_agent = match args.get("author_agent") {
+        None | Some(Value::Null) => "claude".to_string(),
+        Some(_) => text("author_agent")?,
+    };
+    let base_branch = match args.get("base_branch") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(text("base_branch")?),
+    };
+    Ok(crate::slices::machina::models::SubmitWorkOrderRequest {
+        project_path: text("project_path")?,
+        title: text("title")?,
+        objective: text("objective")?,
+        allowed_output_paths: strings("allowed_output_paths")?,
+        base_branch,
+        author_agent,
+        max_corrections,
+        budget_usd,
+        depends_on: strings("depends_on")?,
+    })
 }
 
 #[cfg(test)]

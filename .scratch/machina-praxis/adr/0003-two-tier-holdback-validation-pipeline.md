@@ -1,6 +1,6 @@
 # ADR 0003: Two-Tier Worktree Holdback Vault & Sanitized Correction Loop
 
-- **Status**: Accepted
+- **Status**: Accepted, amended by [ADR 0005](0005-quay-native-factory-engine.md) (2026-10-18)
 - **Date**: 2026-10-16
 - **Source Ticket**: [04: Spec: Two-Tier Worktree Holdback & Correction Validation Engine](../issues/04-spec-two-tier-validation-and-holdback-engine.md)
 

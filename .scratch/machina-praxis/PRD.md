@@ -2,7 +2,7 @@
 
 **Project**: Quay 2 — Machina Praxis Integration  
 **Engine Foundation**: `@aiws/engine` (`E:\Projects\AI-WS-SDK\engine`, Node 24 + `node:sqlite`)  
-**Status**: Approved Specification & Interactive Cockpit Prototype Complete  
+**Status**: Specification. Implemented Quay-native per [ADR 0005](adr/0005-quay-native-factory-engine.md); the Praxis sidecar parts below are deferred.  
 **Trackers**: [Wayfinder Map (`00-map.md`)](file:///E:/Projects/Quay2/.scratch/machina-praxis/00-map.md) | [Domain Glossary (`CONTEXT.md`)](file:///E:/Projects/Quay2/.scratch/machina-praxis/CONTEXT.md)
 
 ---

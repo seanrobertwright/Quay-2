@@ -1,6 +1,8 @@
 pub mod dates;
 pub mod slices;
 
+use tauri::Emitter;
+
 use slices::archon::{
     archon_check_service, archon_get_run_detail, archon_get_runs, archon_get_workflows,
     archon_parse_repo_specs, archon_run_action,
@@ -16,10 +18,12 @@ use slices::github::{
     list_github_prs,
 };
 use slices::machina::{
-    machina_accept_and_merge, machina_calibrate_gate, machina_get_status, machina_list_work_orders,
-    machina_rebind_stage_agent, machina_resolve_hold, machina_run_stage_validation,
-    machina_set_loop_mode, machina_submit_work_order, machina_trigger_epoch_recovery,
-    machina_update_constitution, MachinaManager,
+    machina_abort, machina_accept_and_merge, machina_approve_project_config,
+    machina_bind_author_terminal,
+    machina_get_project_info, machina_get_status, machina_list_work_orders,
+    machina_preview_author_message, machina_remove_worktree, machina_resolve_hold,
+    machina_resume, machina_run_gate, machina_save_project_config, machina_send_to_author,
+    machina_set_loop_mode, machina_submit_work_order, MachinaManager,
 };
 use slices::orchestrator::{
     a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt, A2ARouter,
@@ -45,6 +49,7 @@ pub fn run() {
     let machina_manager = MachinaManager::new();
 
     let pty_manager_clone = pty_manager.clone();
+    let machina_pty = pty_manager.clone();
     let bridge_state_clone = bridge_state.clone();
     let a2a_router_clone = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
@@ -59,8 +64,15 @@ pub fn run() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
-            // Start Machina Praxis sidecar supervisor
-            machina_manager_clone.start_supervisor(app_handle.clone());
+            // Forward Machina changes as events and connect it to the terminals; this
+            // also starts queued work orders that are ready.
+            let machina_events = app_handle.clone();
+            machina_manager_clone.start_supervisor(
+                move |status| {
+                    let _ = machina_events.emit("machina-state-updated", status);
+                },
+                machina_pty,
+            );
 
             // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task
             tauri::async_runtime::spawn(async move {
@@ -125,14 +137,19 @@ pub fn run() {
             machina_get_status,
             machina_list_work_orders,
             machina_submit_work_order,
+            machina_bind_author_terminal,
+            machina_send_to_author,
+            machina_preview_author_message,
+            machina_run_gate,
             machina_resolve_hold,
-            machina_rebind_stage_agent,
             machina_accept_and_merge,
-            machina_trigger_epoch_recovery,
-            machina_run_stage_validation,
+            machina_abort,
+            machina_resume,
+            machina_remove_worktree,
             machina_set_loop_mode,
-            machina_update_constitution,
-            machina_calibrate_gate,
+            machina_get_project_info,
+            machina_save_project_config,
+            machina_approve_project_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

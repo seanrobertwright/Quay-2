@@ -1,174 +1,196 @@
 import { RunKind } from "../terminal/types";
 
-export type SidecarHealthState =
-  | "STOPPED"
-  | "STARTING"
-  | "READY"
-  | "DEGRADED"
-  | "RESTARTING";
+// Mirrors src-tauri/src/slices/machina/models.rs and config.rs. Option<T> arrives as null.
 
 export type FactoryLoopMode = "ACTIVE" | "PAUSED" | "HALTED";
 
-export type TriageState =
-  | "READY"
-  | "DESIGN_FIRST"
-  | "NEEDS_CONTRACT_WORK"
-  | "BLOCKED"
-  | "NO_ACTION";
-
-export type GateVerdictOutcome = "CAUGHT" | "ESCAPED" | "INCONCLUSIVE";
-
 export type WorkOrderStatus =
   | "QUEUED"
+  | "SCAFFOLDING"
   | "IN_PROGRESS"
+  | "GATING"
   | "ON_HOLD"
+  | "AWAITING_ACCEPTANCE"
   | "COMPLETED"
   | "INTERRUPTED"
-  | "FAILED";
+  | "FAILED"
+  | "ABORTED";
 
-export type StageNodeStatus =
-  | "PENDING"
-  | "RUNNING"
-  | "PASSED"
-  | "ON_HOLD"
-  | "CORRECTION"
-  | "FAILED";
+export type StageStatus = "PENDING" | "RUNNING" | "PASSED" | "FAILED" | "ON_HOLD";
 
-export type HoldReasonCode =
-  | "CREDENTIAL_REQUIRED"
-  | "PRICE_REQUIRED"
-  | "EXPOSURE_EXCEEDED"
-  | "MAX_CORRECTIONS_EXCEEDED"
+export type StageId =
+  | "admission"
+  | "scaffold"
+  | "implementation"
+  | "gate"
+  | "correction"
+  | "acceptance";
+
+export interface StageRecord {
+  id: StageId;
+  status: StageStatus;
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+  detail: string;
+}
+
+export type HoldReason =
   | "SCOPE_DRIFT"
-  | "PROTECTED_PATH_VIOLATION"
-  | "GATE_INCONCLUSIVE";
+  | "PROTECTED_PATH_OVERLAP"
+  | "MAX_CORRECTIONS_EXCEEDED"
+  | "GATE_INCONCLUSIVE"
+  | "BUDGET_EXCEEDED"
+  | "AGENT_SUBMITTED";
 
-export interface PraxisHoldCard {
-  holdId: string;
-  profile: "aiws-hold-card/1";
-  reason: HoldReasonCode;
-  stageId: string;
-  attemptId: string;
-  epoch: number;
+export interface HoldOption {
+  id: string;
+  label: string;
+  description: string;
+  variant: "primary" | "secondary" | "danger";
+}
+
+export interface HoldCard {
+  reason: HoldReason;
   summary: string;
-  requiredScope?: string;
-  requestedBudgetDeltaUsd?: number;
-  createdAt: string;
-  exitOptions: {
-    id: string;
-    label: string;
-    variant: "primary" | "warning" | "danger" | "secondary";
-    description: string;
-  }[];
+  createdAtMs: number;
+  options: HoldOption[];
 }
 
-export interface RungVerdict {
-  rung: "static" | "unit" | "e2e" | "holdout" | string;
-  outcome: "PASS" | "FAIL" | "INCONCLUSIVE" | string;
-  detail: string;
+export type CheckOutcome = "PASS" | "FAIL" | "TIMEOUT" | "ERROR" | "SKIPPED";
+
+export interface CheckResult {
+  /** 0 = setup, 1 = Tier 1, 2 = Tier 2 (holdbacks). */
+  tier: number;
+  name: string;
+  command: string;
+  outcome: CheckOutcome;
+  exitCode: number | null;
+  durationMs: number;
+  /** What the author agent may see. */
+  output: string;
+  /** Raw Tier 2 output, operator only. */
+  operatorOutput?: string;
 }
 
-export interface HoldbackValidationReport {
-  vaultPath: string;
-  vaultSha256: string;
-  strippedFromAuthoringWorktree: boolean;
-  outputPathConfinementPassed: boolean;
-  allowedOutputPaths: string[];
-  modifiedFiles: string[];
-  protectedPathsPassed?: boolean;
-  protectedPathViolations?: string[];
-  gateVerdict?: "PASS" | "FAIL" | "INCONCLUSIVE" | string;
-  rungVerdicts?: RungVerdict[];
-  candidateRevisionSha?: string;
-  tier1BuildPassed: boolean;
-  tier1RawOutput: string;
-  tier2HoldbackPassed: boolean;
-  tier2SanitizedInvariants: {
-    invariantId: string;
-    title: string;
-    passed: boolean;
-    sanitizedMessage: string;
-  }[];
-  prePrSecretAuditPassed: boolean;
+export type GateVerdict = "PASS" | "FAIL" | "INCONCLUSIVE";
+
+export interface AuditSummary {
+  passed: boolean;
+  blockerCount: number;
+  warningCount: number;
+  findings: string[];
 }
 
-export interface MissionConstitution {
-  productSummary: string;
-  inScopeCapabilities: string[];
-  outOfScopeNever: string[];
-  hardInvariants: string[];
-  protectedPaths: string[];
-  lastReconciled: string;
+export interface GateReport {
+  attempt: number;
+  startedAtMs: number;
+  finishedAtMs: number;
+  candidateSha: string;
+  verdict: GateVerdict;
+  reasons: string[];
+  changedFiles: string[];
+  scopeViolations: string[];
+  protectedViolations: string[];
+  audit: AuditSummary | null;
+  checks: CheckResult[];
 }
 
-export interface MutationDefectResult {
-  defectId: string;
-  targetRung: string;
-  caughtByRung?: string | null;
-  outcome: GateVerdictOutcome;
-  why: string;
-  detail: string;
+export interface VaultInfo {
+  path: string;
+  sha256: string;
+  files: string[];
+  trackedInGit: boolean;
 }
 
-export interface GateCalibrationReport {
-  calibratedAt: string;
-  totalDefects: number;
-  caughtCount: number;
-  escapedCount: number;
-  inconclusiveCount: number;
-  allRungsExercised: boolean;
-  results: MutationDefectResult[];
+export interface SpendSnapshot {
+  measured: boolean;
+  usd: number;
+  responses: number;
+  note: string;
 }
 
-export interface PipelineStageNode {
-  id:
-    | "ingestion"
-    | "scaffold"
-    | "implementation"
-    | "holdback_gate"
-    | "correction_loop"
-    | "acceptance";
-  index: number;
-  title: string;
-  subtitle: string;
-  status: StageNodeStatus;
-  boundAgentKind: RunKind;
-  boundTerminalName?: string;
-  attemptOrdinal: number;
-  maxCorrections: number;
-  attemptKind: "INITIAL" | "CORRECTION";
-  costUsd: number;
-  durationSec: number;
-  mcpToolName: string;
+export interface WorkOrderEvent {
+  atMs: number;
+  message: string;
 }
 
 export interface MachinaWorkOrder {
   id: string;
   title: string;
-  templateId: string;
-  status: WorkOrderStatus;
-  triageState?: TriageState;
-  dependsOn?: string[];
+  objective: string;
+  repoPath: string;
+  baseBranch: string;
+  baseSha: string;
   branchName: string;
   worktreePath: string;
+  authorAgent: RunKind;
+  authorTerminalId: string | null;
+  allowedOutputPaths: string[];
+  dependsOn: string[];
+  maxCorrections: number;
+  attempts: number;
+  budgetUsd: number;
+  spend: SpendSnapshot;
+  status: WorkOrderStatus;
+  stages: StageRecord[];
+  hold: HoldCard | null;
+  vault: VaultInfo | null;
+  setupChecks: CheckResult[];
+  lastGate: GateReport | null;
+  mergeCommit: string | null;
+  worktreeRemoved: boolean;
+  error: string | null;
   epoch: number;
-  budgetAllowanceUsd: number;
-  spentUsd: number;
-  activeLeases: string[];
-  createdAt: string;
-  stages: PipelineStageNode[];
-  activeHold?: PraxisHoldCard | null;
-  validationReport: HoldbackValidationReport;
+  createdAtMs: number;
+  updatedAtMs: number;
+  events: WorkOrderEvent[];
 }
 
-export interface FactoryTemplate {
-  id: string;
-  name: string;
-  description: string;
-  defaultOutputPaths: string[];
-  defaultHoldbackSuite: string;
-  defaultMaxCorrections: number;
-  defaultBudgetUsd: number;
-  defaultAuthorAgent: RunKind;
-  defaultReviewerAgent: RunKind;
+export interface MachinaStatus {
+  loopMode: FactoryLoopMode;
+  epoch: number;
+  sessionStartedAtMs: number;
+  statePath: string;
+  vaultRoot: string;
+  workOrderCount: number;
+  measuredSpendUsd: number;
+  budgetUsd: number;
+  activeHolds: number;
+  runningJobs: number;
 }
+
+export interface GateCommand {
+  name: string;
+  run: string;
+}
+
+export interface FactoryConfig {
+  version: number;
+  protectedPaths: string[];
+  outOfScope: string[];
+  setup: GateCommand[];
+  tier1: GateCommand[];
+  tier2: GateCommand[];
+  timeoutSec: number;
+}
+
+export interface ProjectFactoryInfo {
+  repoPath: string;
+  currentBranch: string | null;
+  configPath: string;
+  configExists: boolean;
+  config: FactoryConfig;
+  configError: string | null;
+  /** SHA-256 of the file as it is now; null when it does not exist. */
+  configSha256: string | null;
+  /** The operator approved exactly this file, so its commands may run. */
+  configApproved: boolean;
+  holdbacks: {
+    path: string;
+    exists: boolean;
+    fileCount: number;
+    trackedInGit: boolean;
+  };
+}
+
+export const FINAL_STATUSES: WorkOrderStatus[] = ["COMPLETED", "ABORTED"];

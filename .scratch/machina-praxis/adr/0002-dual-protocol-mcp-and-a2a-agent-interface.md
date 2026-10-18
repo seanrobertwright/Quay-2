@@ -1,6 +1,6 @@
 # ADR 0002: Dual Protocol Bridge (Loopback MCP Tools & A2A v1.3.0 Agent Card)
 
-- **Status**: Accepted
+- **Status**: Accepted, amended by [ADR 0005](0005-quay-native-factory-engine.md) (2026-10-18)
 - **Date**: 2026-10-16
 - **Source Ticket**: [02: Research: A2A v1.3.0 & Loopback MCP Dual-Binding Contract](../issues/02-research-a2a-mcp-dual-binding-contract.md)
 

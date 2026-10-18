@@ -577,16 +577,14 @@ export function App() {
         onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
       />
 
-      {/* Machina Praxis AI Software Factory Cockpit Modal (^b f) */}
+      {/* Machina software factory (^b f) */}
       <FactoryStationModal
         isOpen={isFactoryStationOpen}
         activeProject={activeProject}
         terminals={terminals}
-        activeTerminalId={activeTerminalId}
         onClose={() => setIsFactoryStationOpen(false)}
         onSelectTerminal={selectTerminal}
         onSpawnTerminal={spawnTerminal}
-        onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

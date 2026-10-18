@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "protectedPaths": [
+    ".machina/**"
+  ],
+  "outOfScope": [],
+  "setup": [],
+  "tier1": [],
+  "tier2": [],
+  "timeoutSec": 900
+}

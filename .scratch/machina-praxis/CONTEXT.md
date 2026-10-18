@@ -2,6 +2,8 @@
 
 This document defines the canonical domain language for **Machina Praxis**, unifying the terminology of the **Praxis Workflow Engine** (`@aiws/engine` in `E:\Projects\AI-WS-SDK`) with the **Quay 2 Multi-Agent Cockpit** (`E:\Projects\Quay2`).
 
+> **Implementation note (2026-10-18).** The factory now runs inside Quay without the Praxis sidecar; see [ADR 0005](adr/0005-quay-native-factory-engine.md). Terms below that belong to the sidecar (Praxis Sidecar, Sidecar Supervisor, Supervised Admission, Credential Lease, `engine.sqlite`) describe deferred work. Current meanings: **Epoch** counts Quay starts; the **Holdback Vault** lives in `%LOCALAPPDATA%\Quay2\machina\vault\<wo_id>\`; **Tier 1** and **Tier 2** are the `tier1` and `tier2` commands in `.machina/factory.json`.
+
 ---
 
 ## 1. Core Architectural Entities
