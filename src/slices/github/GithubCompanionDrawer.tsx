@@ -271,8 +271,9 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
 
   if (!isOpen) return null;
 
+  // URLs come from issue data, so only web links reach the system opener
   const handleOpenBrowser = (url: string) => {
-    if (url) {
+    if (/^https?:\/\//i.test(url)) {
       openUrl(url).catch(console.error);
     }
   };
