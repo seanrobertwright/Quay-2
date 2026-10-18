@@ -10,6 +10,7 @@ import {
   Loader2,
   Search,
   Play,
+  RotateCw,
 } from "lucide-react";
 
 interface TerminalViewProps {
@@ -105,6 +106,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
     exportScrollback,
     searchResult,
     focusTerminal,
+    repaintTerminal,
   } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch);
 
   // Hotkey listener for Ctrl+F when pane is focused
@@ -233,6 +235,19 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 ACTIVE
               </span>
             )}
+
+            {/* Repaint / Redraw Terminal */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                repaintTerminal();
+              }}
+              className="p-1 rounded text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#30363d] transition-colors cursor-pointer"
+              title="Redraw terminal screen (Ctrl+L)"
+            >
+              <RotateCw className="w-3 h-3" />
+            </button>
 
             {/* In-Pane Search Trigger */}
             <button

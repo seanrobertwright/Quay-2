@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
+import { isSamePath } from "../../utils/paths";
 
 interface StageProps {
   terminals: TerminalInfo[];
@@ -111,7 +112,7 @@ export const Stage: FC<StageProps> = ({
   const [isDragging, setIsDragging] = useState(false);
 
   // Filter terminals for active project
-  const visibleTerminals = terminals.filter((t) => t.project_path === activeProject);
+  const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
   const activeTerminal =
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
 
@@ -451,7 +452,7 @@ export const Stage: FC<StageProps> = ({
       >
         {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
         {terminals.map((term) => {
-          const isProjectActive = term.project_path === activeProject;
+          const isProjectActive = isSamePath(term.project_path, activeProject);
           let isVisible = false;
           let isFocused = false;
           let showPaneHeader = false;

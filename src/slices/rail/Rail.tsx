@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
+import { isSamePath, isSubpathOf } from "../../utils/paths";
 
 // The rail was a fixed 288px (`w-72`); the drag range is measured from that width
 const RAIL_BASE_WIDTH = 288;
@@ -186,9 +187,16 @@ export const Rail: React.FC<RailProps> = ({
   };
 
   // Find any terminals that match neither a registered project nor one of its worktrees
-  const knownPaths = new Set(projects.map((p) => p.path));
-  Object.values(projectWorktrees ?? {}).forEach((wts) => wts.forEach((wt) => knownPaths.add(wt.path)));
-  const orphanTerminals = terminals.filter((t) => !knownPaths.has(t.project_path));
+  const orphanTerminals = terminals.filter((t) => {
+    // Check if terminal belongs to any project directly
+    if (projects.some((p) => isSamePath(t.project_path, p.path))) return false;
+    // Check if terminal belongs to any known worktree
+    const allWorktrees = Object.values(projectWorktrees ?? {}).flat();
+    if (allWorktrees.some((wt) => isSamePath(t.project_path, wt.path))) return false;
+    // Check if terminal is located within any project directory tree (e.g. newly created Archon worktree)
+    if (projects.some((p) => isSubpathOf(t.project_path, p.path))) return false;
+    return true;
+  });
 
   // Tool launchers rendered as one icon row so the project tree keeps the vertical space
   const toolButtons: {
@@ -353,8 +361,8 @@ export const Rail: React.FC<RailProps> = ({
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
           {projects.map((proj, projIdx) => {
             const isCollapsed = !!collapsedProjects[proj.path];
-            const isProjectActive = proj.path === activeProject;
-            const projectTerminals = terminals.filter((t) => t.project_path === proj.path);
+            const isProjectActive = isSamePath(proj.path, activeProject);
+            const projectTerminals = terminals.filter((t) => isSamePath(t.project_path, proj.path));
             const projectWts = projectWorktrees?.[proj.path] || [];
             const secondaryWorktrees = projectWts.filter((wt) => !wt.is_main);
             const wtCollapsed = isWorktreesCollapsed(proj.path);
@@ -362,8 +370,8 @@ export const Rail: React.FC<RailProps> = ({
             // A collapsed header flags when it hides the active worktree or terminal
             const wtHidesActive = secondaryWorktrees.some(
               (wt) =>
-                wt.path === activeProject ||
-                terminals.some((t) => t.project_path === wt.path && t.id === activeTerminalId)
+                isSamePath(wt.path, activeProject) ||
+                terminals.some((t) => isSamePath(t.project_path, wt.path) && t.id === activeTerminalId)
             );
 
             return (
@@ -553,8 +561,8 @@ export const Rail: React.FC<RailProps> = ({
                             const branchName = wt.branch
                               ? wt.branch.replace("refs/heads/", "")
                               : wt.head.slice(0, 7);
-                            const isWtActive = activeProject === wt.path;
-                            const wtTerminals = terminals.filter((t) => t.project_path === wt.path);
+                            const isWtActive = isSamePath(activeProject, wt.path);
+                            const wtTerminals = terminals.filter((t) => isSamePath(t.project_path, wt.path));
 
                             return (
                               <div key={wt.path} className="flex flex-col">

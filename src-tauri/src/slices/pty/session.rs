@@ -110,8 +110,8 @@ impl PtySession {
         app_handle: AppHandle,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
-        let rows = request.rows.unwrap_or(30);
-        let cols = request.cols.unwrap_or(120);
+        let rows = request.rows.unwrap_or(45);
+        let cols = request.cols.unwrap_or(160);
 
         let pair = pty_system
             .openpty(PtySize {

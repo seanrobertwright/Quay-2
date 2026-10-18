@@ -57,6 +57,17 @@ function createClaudeUnicodeProvider(
   };
 }
 
+let globalTerminalCols = 160;
+let globalTerminalRows = 40;
+
+/**
+ * Returns the most recent fitted terminal dimensions across active panes so newly
+ * spawned terminals start with the exact right ConPTY size from frame 0.
+ */
+export function getGlobalTerminalDimensions(): { cols: number; rows: number } {
+  return { cols: globalTerminalCols, rows: globalTerminalRows };
+}
+
 export function useTerminal(
   terminalId: string,
   isVisible: boolean,
@@ -102,12 +113,23 @@ export function useTerminal(
         rows !== lastPtySizeRef.current.rows ||
         cols !== lastPtySizeRef.current.cols
       ) {
+        const isInitial = lastPtySizeRef.current.cols === 0;
         lastPtySizeRef.current = { rows, cols };
+        globalTerminalCols = cols;
+        globalTerminalRows = rows;
         invoke("resize_pty", {
           terminalId,
           rows,
           cols,
         }).catch(console.error);
+
+        // When resizing an existing interactive terminal, notify Claude Code/Ink TUI
+        // to cleanly redraw with form-feed Ctrl+L (\x0c) so ConPTY buffer reflow doesn't corrupt lines
+        if (!isInitial) {
+          setTimeout(() => {
+            invoke("write_pty", { terminalId, data: "\x0c" }).catch(() => {});
+          }, 60);
+        }
       }
     } catch (err) {
       console.error("Error syncing PTY size:", err);
@@ -440,6 +462,14 @@ export function useTerminal(
     return lines.join("\n");
   }, []);
 
+  const repaintTerminal = useCallback(() => {
+    if (!termRef.current) return;
+    try {
+      termRef.current.clear();
+      invoke("write_pty", { terminalId, data: "\x0c" }).catch(console.error);
+    } catch (_) {}
+  }, [terminalId]);
+
   return {
     containerRef,
     term: termRef.current,
@@ -449,5 +479,6 @@ export function useTerminal(
     exportScrollback,
     searchResult,
     focusTerminal,
+    repaintTerminal,
   };
 }

@@ -13,6 +13,8 @@ import { SwarmPreset } from "../orchestrator/swarmTypes";
 import { GitWorktree } from "../git/types";
 import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChime";
 import { ClaudeTokenStats } from "../sessions/types";
+import { isSamePath, isSubpathOf } from "../../utils/paths";
+import { getGlobalTerminalDimensions } from "../terminal/useTerminal";
 
 export type { Project };
 
@@ -315,7 +317,7 @@ export function useWorkspace() {
   const removeProject = async (path: string) => {
     try {
       // Clean up any terminals belonging to this project
-      const projectTerms = terminals.filter((t) => t.project_path === path);
+      const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path) || isSubpathOf(t.project_path, path));
       for (const term of projectTerms) {
         try {
           await invoke("kill_terminal", { terminalId: term.id });
@@ -323,15 +325,15 @@ export function useWorkspace() {
           console.error("Failed to kill terminal during project removal:", e);
         }
       }
-      setTerminals((prev) => prev.filter((t) => t.project_path !== path));
+      setTerminals((prev) => prev.filter((t) => !isSamePath(t.project_path, path) && !isSubpathOf(t.project_path, path)));
 
       const updated = await invoke<Project[]>("remove_project", { path });
       setProjects(updated);
 
-      if (activeProject === path) {
+      if (isSamePath(activeProject, path)) {
         const nextActive = updated[0]?.path || "";
         setActiveProject(nextActive);
-        const nextTerms = terminals.filter((t) => t.project_path === nextActive);
+        const nextTerms = terminals.filter((t) => isSamePath(t.project_path, nextActive));
         setActiveTerminalId(nextTerms[0]?.id || null);
       }
     } catch (err) {
@@ -343,11 +345,11 @@ export function useWorkspace() {
   const openWorkspaceSettings = (target?: Project | string) => {
     let proj: Project | undefined;
     if (typeof target === "string") {
-      proj = projects.find((p) => p.path === target);
+      proj = projects.find((p) => isSamePath(p.path, target));
     } else if (target) {
       proj = target;
     } else {
-      proj = projects.find((p) => p.path === activeProject);
+      proj = projects.find((p) => isSamePath(p.path, activeProject));
     }
     if (proj) {
       setWorkspaceSettingsTarget(proj);
@@ -372,7 +374,7 @@ export function useWorkspace() {
         envVars,
         defaultFlags: defaultFlags || null,
       });
-      setProjects((prev) => prev.map((p) => (p.path === path ? updated : p)));
+      setProjects((prev) => prev.map((p) => (isSamePath(p.path, path) ? updated : p)));
       return updated;
     } catch (err) {
       console.error("Failed to update project settings:", err);
@@ -383,6 +385,7 @@ export function useWorkspace() {
   // Launch a multi-agent swarm preset in active project
   const launchSwarm = async (preset: SwarmPreset) => {
     try {
+      const dims = getGlobalTerminalDimensions();
       const spawnedTerms: TerminalInfo[] = [];
       for (const agent of preset.agents) {
         const term = await invoke<TerminalInfo>("spawn_terminal", {
@@ -391,6 +394,8 @@ export function useWorkspace() {
             run_kind: agent.run_kind,
             name: agent.name,
             custom_flags: agent.custom_flags || null,
+            cols: dims.cols,
+            rows: dims.rows,
           },
         });
         spawnedTerms.push(term);
@@ -442,10 +447,25 @@ export function useWorkspace() {
     });
   }, [projects, refreshWorktrees]);
 
+  // Auto-refresh worktrees if any terminal belongs to a worktree subpath not yet cached
+  useEffect(() => {
+    projects.forEach((p) => {
+      const knownWts = projectWorktrees[p.path] || [];
+      const hasUnknownSubpath = terminals.some((t) => {
+        if (!isSubpathOf(t.project_path, p.path)) return false;
+        if (isSamePath(t.project_path, p.path)) return false;
+        return !knownWts.some((wt) => isSamePath(wt.path, t.project_path));
+      });
+      if (hasUnknownSubpath) {
+        refreshWorktrees(p.path);
+      }
+    });
+  }, [projects, terminals, projectWorktrees, refreshWorktrees]);
+
   // Open New Worktree modal
   const openNewWorktreeModal = (repoPath?: string, suggestedIssueNumber?: number) => {
     const targetPath = repoPath || activeProject;
-    const proj = projects.find((p) => p.path === targetPath) || {
+    const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
       name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
     };
     setWorktreeModalTarget({
@@ -479,12 +499,15 @@ export function useWorkspace() {
 
       let term: TerminalInfo | null = null;
       if (launchClaude) {
+        const dims = getGlobalTerminalDimensions();
         const branchClean = branch.replace(/^feat\//, "").replace(/^fix\//, "").replace(/^wayfinder\//, "");
         term = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
             project_path: created.path,
             run_kind: "claude",
             name: `wt-${branchClean}`,
+            cols: dims.cols,
+            rows: dims.rows,
           },
         });
         setTerminals((prev) => [...prev, term!]);
@@ -503,7 +526,7 @@ export function useWorkspace() {
   // Remove a worktree
   const removeWorktree = async (repoPath: string, worktreePath: string, force: boolean = false) => {
     try {
-      const matchingTerms = terminals.filter((t) => t.project_path === worktreePath);
+      const matchingTerms = terminals.filter((t) => isSamePath(t.project_path, worktreePath));
       for (const term of matchingTerms) {
         try {
           await invoke("kill_terminal", { terminalId: term.id });
@@ -556,7 +579,7 @@ export function useWorkspace() {
   };
 
   // Visible terminals for active project
-  const visibleTerminals = terminals.filter((t) => t.project_path === activeProject);
+  const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
 
   // Keep primary and secondary terminal IDs synced with visible terminals
   useEffect(() => {
@@ -616,7 +639,7 @@ export function useWorkspace() {
       setActiveProject(path);
 
       // Select terminal belonging to this project if one exists
-      const projectTerms = terminals.filter((t) => t.project_path === path);
+      const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path));
       if (projectTerms.length > 0) {
         const chosenId =
           targetTerminalId && projectTerms.some((t) => t.id === targetTerminalId)
@@ -646,7 +669,7 @@ export function useWorkspace() {
   const selectTerminal = useCallback(
     (id: string) => {
       const targetTerm = terminals.find((t) => t.id === id);
-      if (targetTerm && targetTerm.project_path && targetTerm.project_path !== activeProject) {
+      if (targetTerm && targetTerm.project_path && !isSamePath(targetTerm.project_path, activeProject)) {
         selectProject(targetTerm.project_path, id);
         return;
       }
@@ -802,11 +825,14 @@ export function useWorkspace() {
       setZoomedFromLayout(null);
     } else {
       try {
+        const dims = getGlobalTerminalDimensions();
         const newTerm = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
             project_path: activeProject,
             run_kind: "powershell",
             name: "powershell",
+            cols: dims.cols,
+            rows: dims.rows,
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
@@ -837,11 +863,14 @@ export function useWorkspace() {
       setZoomedFromLayout(null);
     } else {
       try {
+        const dims = getGlobalTerminalDimensions();
         const newTerm = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
             project_path: activeProject,
             run_kind: "powershell",
             name: "powershell",
+            cols: dims.cols,
+            rows: dims.rows,
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
@@ -872,7 +901,13 @@ export function useWorkspace() {
   // Spawn terminal
   const spawnTerminal = async (request: SpawnTerminalRequest) => {
     try {
-      const newTerm = await invoke<TerminalInfo>("spawn_terminal", { request });
+      const dims = getGlobalTerminalDimensions();
+      const enrichedRequest: SpawnTerminalRequest = {
+        cols: request.cols ?? dims.cols,
+        rows: request.rows ?? dims.rows,
+        ...request,
+      };
+      const newTerm = await invoke<TerminalInfo>("spawn_terminal", { request: enrichedRequest });
       setTerminals((prev) => [...prev, newTerm]);
       if (layout === "single") {
         setPrimaryTerminalId(newTerm.id);
