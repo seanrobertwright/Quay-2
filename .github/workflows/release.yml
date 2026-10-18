@@ -61,10 +61,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name || inputs.tag || 'v0.1.0' }}
-          releaseName: 'Quay 2 ${{ github.ref_name || inputs.tag || 'v0.1.0' }}'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Quay 2 ${{ github.ref_name }}'
           releaseBody: |
-            ## ⚓ Quay 2 Release
+            ## Quay 2 Release
             
             Welcome to Quay 2: Native Windows & Multi-Platform Autonomous AI Cockpit.
             
@@ -73,6 +73,6 @@ jobs:
             - **macOS**: `.dmg` & `.app`
             - **Linux**: `.AppImage` & `.deb`
             
-            Explore full documentation at [https://seanrobertwright.github.io/Quay-2/](https://seanrobertwright.github.io/Quay-2/)
+            Explore full documentation at https://seanrobertwright.github.io/Quay-2/
           releaseDraft: false
           prerelease: false
