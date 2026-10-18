@@ -9,6 +9,16 @@ export interface GithubLabel {
   description?: string | null;
 }
 
+/** An open issue that blocks another, from GitHub's native issue dependencies. */
+export interface GithubIssueRef {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  /** `owner/name` of the blocker's repository. */
+  repoNwo: string;
+}
+
 export interface GithubIssue {
   number: number;
   title: string;
@@ -18,6 +28,10 @@ export interface GithubIssue {
   assignees: GithubUser[];
   updatedAt: string;
   url: string;
+  /** Open blockers only; closed blockers no longer block. */
+  blockedBy: GithubIssueRef[];
+  /** GitHub's count of open blockers; can exceed `blockedBy.length`. */
+  openBlockerCount: number;
 }
 
 export interface GithubIssueDetail {
@@ -30,6 +44,10 @@ export interface GithubIssueDetail {
   assignees: GithubUser[];
   updatedAt: string;
   url: string;
+  /** Open blockers only; closed blockers no longer block. */
+  blockedBy: GithubIssueRef[];
+  /** GitHub's count of open blockers; can exceed `blockedBy.length`. */
+  openBlockerCount: number;
 }
 
 export interface GithubPullRequest {

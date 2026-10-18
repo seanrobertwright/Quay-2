@@ -14,6 +14,19 @@ pub struct GithubLabel {
     pub description: Option<String>,
 }
 
+/// An issue that blocks another issue, from GitHub's native issue dependencies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubIssueRef {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    #[serde(default)]
+    pub url: String,
+    /// `owner/name` of the blocker's repository; blockers may live in another repo.
+    #[serde(rename = "repoNwo", default)]
+    pub repo_nwo: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubIssue {
     pub number: u32,
@@ -28,6 +41,13 @@ pub struct GithubIssue {
     pub updated_at: String,
     #[serde(default)]
     pub url: String,
+    /// Open issues that block this one (closed blockers are dropped).
+    #[serde(rename = "blockedBy", default)]
+    pub blocked_by: Vec<GithubIssueRef>,
+    /// Count of open blockers reported by GitHub; can exceed `blocked_by.len()`
+    /// when the issue has more blockers than one query page returns.
+    #[serde(rename = "openBlockerCount", default)]
+    pub open_blocker_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +66,13 @@ pub struct GithubIssueDetail {
     pub updated_at: String,
     #[serde(default)]
     pub url: String,
+    /// Open issues that block this one (closed blockers are dropped).
+    #[serde(rename = "blockedBy", default)]
+    pub blocked_by: Vec<GithubIssueRef>,
+    /// Count of open blockers reported by GitHub; can exceed `blocked_by.len()`
+    /// when the issue has more blockers than one query page returns.
+    #[serde(rename = "openBlockerCount", default)]
+    pub open_blocker_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

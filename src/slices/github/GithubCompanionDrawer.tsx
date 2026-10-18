@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   GithubIssue,
   GithubIssueDetail,
+  GithubIssueRef,
   GithubPullRequest,
   GithubRepoInfo,
 } from "./types";
@@ -21,6 +22,94 @@ import {
   Maximize2,
   Minimize2,
 } from "lucide-react";
+
+interface BlockedTagProps {
+  blockedBy: GithubIssueRef[];
+  openBlockerCount: number;
+  repoNwo?: string | null;
+  /** "compact" lists blocker numbers inline (list rows); "full" also shows titles. */
+  variant: "compact" | "full";
+  onSelectBlocker: (blocker: GithubIssueRef) => void;
+}
+
+/** Red BLOCKED tag plus the open issues that block this one. Renders nothing when unblocked. */
+const BlockedTag: FC<BlockedTagProps> = ({
+  blockedBy,
+  openBlockerCount,
+  repoNwo,
+  variant,
+  onSelectBlocker,
+}) => {
+  const total = Math.max(openBlockerCount, blockedBy.length);
+  if (total === 0) return null;
+
+  const refLabel = (b: GithubIssueRef) =>
+    !b.repoNwo || b.repoNwo === repoNwo ? `#${b.number}` : `${b.repoNwo}#${b.number}`;
+  const hidden = total - blockedBy.length;
+  const tag = (
+    <span
+      className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-bold tracking-wide bg-[#f85149]/20 text-[#ff7b72] border border-[#f85149]/50"
+      title={`Blocked by ${total} open issue${total === 1 ? "" : "s"}`}
+    >
+      BLOCKED
+    </span>
+  );
+
+  if (variant === "compact") {
+    return (
+      <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10px] font-mono">
+        {tag}
+        <span className="text-[#8b949e]">by</span>
+        {blockedBy.map((b) => (
+          <button
+            key={`${b.repoNwo}#${b.number}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectBlocker(b);
+            }}
+            className="text-[#ff7b72] hover:text-white hover:underline"
+            title={b.title}
+          >
+            {refLabel(b)}
+          </button>
+        ))}
+        {hidden > 0 && <span className="text-[#8b949e]">+{hidden} more</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-2 rounded-md bg-[#f85149]/10 border border-[#f85149]/30 space-y-1.5">
+      <div className="flex items-center gap-2 text-[11px] text-[#ff7b72]">
+        {tag}
+        <span>
+          Blocked by {total} open issue{total === 1 ? "" : "s"}
+        </span>
+      </div>
+      <ul className="space-y-0.5">
+        {blockedBy.map((b) => (
+          <li key={`${b.repoNwo}#${b.number}`}>
+            <button
+              type="button"
+              onClick={() => onSelectBlocker(b)}
+              className="w-full text-left flex items-start gap-1.5 px-1.5 py-0.5 rounded text-[11px] hover:bg-[#21262d] transition-colors"
+              title={b.url}
+            >
+              <span className="font-mono font-bold text-[#ff7b72] shrink-0">{refLabel(b)}</span>
+              <span className="text-[#c9d1d9] line-clamp-1">{b.title}</span>
+            </button>
+          </li>
+        ))}
+        {hidden > 0 && (
+          <li className="px-1.5 text-[10px] text-[#8b949e]">
+            +{hidden} more not listed; open the issue on GitHub to see all of them
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+};
 
 interface GithubCompanionDrawerProps {
   isOpen: boolean;
@@ -185,6 +274,15 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const handleOpenBrowser = (url: string) => {
     if (url) {
       openUrl(url).catch(console.error);
+    }
+  };
+
+  // Same-repo blockers open in the detail panel; blockers in other repos open on GitHub
+  const handleSelectBlocker = (blocker: GithubIssueRef) => {
+    if (!blocker.repoNwo || blocker.repoNwo === repoInfo?.nwo) {
+      setSelectedIssueNumber(blocker.number);
+    } else {
+      handleOpenBrowser(blocker.url);
     }
   };
 
@@ -404,6 +502,14 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                           </div>
                         </div>
 
+                        <BlockedTag
+                          blockedBy={issue.blockedBy ?? []}
+                          openBlockerCount={issue.openBlockerCount ?? 0}
+                          repoNwo={repoInfo?.nwo}
+                          variant="compact"
+                          onSelectBlocker={handleSelectBlocker}
+                        />
+
                         {/* Labels */}
                         {issue.labels.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1.5">
@@ -464,6 +570,14 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                             <ExternalLink className="w-4 h-4" />
                           </button>
                         </div>
+
+                        <BlockedTag
+                          blockedBy={issueDetail.blockedBy ?? []}
+                          openBlockerCount={issueDetail.openBlockerCount ?? 0}
+                          repoNwo={repoInfo?.nwo}
+                          variant="full"
+                          onSelectBlocker={handleSelectBlocker}
+                        />
 
                         {/* 1-Click Agent Action Dispatch Buttons */}
                         <div className="flex flex-wrap gap-2 pt-1">
