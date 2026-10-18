@@ -39,8 +39,10 @@ import {
   ShieldAlert,
   GitFork,
   Cpu,
+  ArrowUpCircle,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
+import { APP_CURRENT_VERSION } from "../updater/updaterService";
 
 export interface CommandItem {
   id: string;
@@ -82,6 +84,7 @@ interface CommandPaletteProps {
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
+  onCheckForUpdates?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -111,6 +114,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenTokenSpend,
   onOpenArchonGraph,
   onOpenFactoryStation,
+  onCheckForUpdates,
   onToggleLiveMode,
   onAddProject,
 }) => {
@@ -425,6 +429,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         subtitle: "Switch between Skip (auto-approve) and Normal (approval modal)",
         icon: <ShieldCheck className="w-4 h-4 text-[#d29922]" />,
         action: () => onToggleLiveMode(),
+      });
+    }
+
+    if (onCheckForUpdates) {
+      items.push({
+        id: "action-check-updates",
+        category: "Tools & Actions",
+        title: "Check for Updates...",
+        subtitle: `Quay v${APP_CURRENT_VERSION} — check GitHub releases and updater`,
+        icon: <ArrowUpCircle className="w-4 h-4 text-[#58a6ff]" />,
+        shortcut: "Ctrl+B u",
+        action: () => onCheckForUpdates(),
       });
     }
 

@@ -12,7 +12,10 @@ import {
   Terminal,
   Variable,
   Check,
+  ArrowUpCircle,
+  Sparkles,
 } from "lucide-react";
+import { APP_CURRENT_VERSION } from "../updater/updaterService";
 
 interface WorkspaceSettingsModalProps {
   isOpen: boolean;
@@ -23,6 +26,7 @@ interface WorkspaceSettingsModalProps {
     envVars: Record<string, string>,
     defaultFlags?: string | null
   ) => Promise<void>;
+  onOpenUpdater?: () => void;
 }
 
 interface EnvRow {
@@ -53,6 +57,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   project,
   onClose,
   onSave,
+  onOpenUpdater,
 }) => {
   const [defaultFlags, setDefaultFlags] = useState("");
   const [envRows, setEnvRows] = useState<EnvRow[]>([]);
@@ -347,6 +352,31 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Software Updates Section */}
+          {onOpenUpdater && (
+            <div className="pt-3 border-t border-[#30363d]/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/25">
+                  <Sparkles className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-white">Quay Updates</span>
+                  <p className="text-[11px] text-[#8b949e]">
+                    Current version <span className="font-mono text-[#58a6ff]">v{APP_CURRENT_VERSION}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenUpdater}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#21262d] hover:bg-[#30363d] text-xs font-medium text-[#58a6ff] hover:text-white border border-[#30363d] transition-colors"
+              >
+                <ArrowUpCircle className="w-3.5 h-3.5" />
+                <span>Check for Updates</span>
+              </button>
+            </div>
+          )}
 
           {/* Footer Actions */}
           <div className="pt-4 border-t border-[#30363d] flex items-center justify-between">

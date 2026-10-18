@@ -26,6 +26,9 @@ import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
+import { UpdateModal } from "./slices/updater/UpdateModal";
+import { checkForUpdates } from "./slices/updater/updaterService";
+import { UpdateInfo } from "./slices/updater/types";
 
 export function App() {
   const {
@@ -93,6 +96,8 @@ export function App() {
     setIsArchonGraphOpen,
     isFactoryStationOpen,
     setIsFactoryStationOpen,
+    isUpdateModalOpen,
+    setIsUpdateModalOpen,
     claudeStats,
     refreshClaudeStats,
     resumeSession,
@@ -109,6 +114,24 @@ export function App() {
     useBridgeEvents();
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
+  const [detectedUpdate, setDetectedUpdate] = useState<UpdateInfo | null>(null);
+
+  // Background check for Quay software updates on launch (3.5s delay)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const info = await checkForUpdates();
+        if (info.available) {
+          setDetectedUpdate(info);
+          setIsUpdateModalOpen(true);
+        }
+      } catch (err) {
+        console.warn("Background update check error:", err);
+      }
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [setIsUpdateModalOpen]);
 
   // Auto-surface permission approval modal when a tool requests approval
   useEffect(() => {
@@ -480,6 +503,7 @@ export function App() {
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onCheckForUpdates={() => setIsUpdateModalOpen(true)}
         onToggleLiveMode={
           activeTerminalId
             ? () => {
@@ -498,6 +522,10 @@ export function App() {
         onClose={closeWorkspaceSettings}
         onSave={async (path, envVars, defaultFlags) => {
           await updateProjectSettings(path, envVars, defaultFlags);
+        }}
+        onOpenUpdater={() => {
+          closeWorkspaceSettings();
+          setIsUpdateModalOpen(true);
         }}
       />
 
@@ -645,6 +673,13 @@ export function App() {
       <A2AToast
         terminals={terminals}
         onSelectTerminal={selectTerminal}
+      />
+
+      {/* Software Update Checker & Installer Modal (^b u) */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        initialUpdate={detectedUpdate}
       />
     </div>
   );

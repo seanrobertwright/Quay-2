@@ -49,6 +49,7 @@ export function useWorkspace() {
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
 
   // Multi-terminal layout and split pane state
@@ -1134,6 +1135,14 @@ export function useWorkspace() {
           return;
         }
 
+        if (e.key.toLowerCase() === "u") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsUpdateModalOpen((prev) => !prev);
+          ctrlBActive = false;
+          return;
+        }
+
         if (e.key.toLowerCase() === "o") {
           e.preventDefault();
           e.stopPropagation();
@@ -1298,6 +1307,8 @@ export function useWorkspace() {
     setIsArchonGraphOpen,
     isFactoryStationOpen,
     setIsFactoryStationOpen,
+    isUpdateModalOpen,
+    setIsUpdateModalOpen,
     claudeStats,
     refreshClaudeStats,
     resumeSession,
