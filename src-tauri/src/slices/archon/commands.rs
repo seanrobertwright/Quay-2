@@ -5,8 +5,42 @@ use std::process::Command;
 use std::time::Duration;
 
 use super::models::{
-    AdrItem, ArchonRun, ArchonServiceStatus, ArchonWorkflow, RepoSpecSummary, SpecTask,
+    AdrItem, ArchonRun, ArchonRunDetail, ArchonServiceStatus, ArchonWorkflow, RepoSpecSummary,
+    SpecTask,
 };
+use super::monitor::{action_request, archon_request, build_run_detail, parse_run, validate_id};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// `Command` for the archon binary that never opens a console window.
+fn archon_command(bin: &Path) -> Command {
+    let mut cmd = Command::new(bin);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+/// The port the Archon web server is listening on (the configured port, else 3737).
+fn active_archon_port() -> Option<u16> {
+    let port = resolve_archon_port();
+    if is_port_listening(port) {
+        Some(port)
+    } else if port != 3737 && is_port_listening(3737) {
+        Some(3737)
+    } else {
+        None
+    }
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Archon task failed: {}", e))?
+}
 
 fn get_archon_home() -> Option<PathBuf> {
     dirs_home().map(|h| h.join(".archon"))
@@ -65,7 +99,11 @@ fn is_port_listening(port: u16) -> bool {
 }
 
 #[tauri::command]
-pub fn archon_check_service() -> Result<ArchonServiceStatus, String> {
+pub async fn archon_check_service() -> Result<ArchonServiceStatus, String> {
+    blocking(archon_check_service_sync).await
+}
+
+fn archon_check_service_sync() -> Result<ArchonServiceStatus, String> {
     let configured_port = resolve_archon_port();
     let bin_path = get_archon_binary().map(|p| p.to_string_lossy().to_string());
 
@@ -79,7 +117,7 @@ pub fn archon_check_service() -> Result<ArchonServiceStatus, String> {
     }
 
     let version = if let Some(ref path) = bin_path {
-        let output = Command::new(path).arg("--version").output().ok();
+        let output = archon_command(Path::new(path)).arg("--version").output().ok();
         output.and_then(|o| {
             if o.status.success() {
                 Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -109,162 +147,147 @@ pub fn archon_check_service() -> Result<ArchonServiceStatus, String> {
 }
 
 #[tauri::command]
-pub fn archon_get_workflows() -> Result<Vec<ArchonWorkflow>, String> {
-    let port = resolve_archon_port();
-    let active_port = if is_port_listening(port) {
-        port
-    } else if is_port_listening(3737) {
-        3737
-    } else {
-        port
-    };
+pub async fn archon_get_workflows() -> Result<Vec<ArchonWorkflow>, String> {
+    blocking(archon_get_workflows_sync).await
+}
 
-    // 1. Try querying Archon REST API endpoint /api/workflows via curl.exe
-    if is_port_listening(active_port) {
-        let url = format!("http://127.0.0.1:{}/api/workflows", active_port);
-        let output = Command::new("curl.exe")
-            .args(["-s", "--connect-timeout", "2", &url])
-            .output();
+fn archon_get_workflows_sync() -> Result<Vec<ArchonWorkflow>, String> {
+    // 1. Try the Archon REST API endpoint /api/workflows
+    if let Some(active_port) = active_archon_port()
+        && let Ok(parsed) = archon_request(active_port, "GET", "/api/workflows", None)
+        && let Some(list) = parsed.get("workflows").and_then(|w| w.as_array())
+    {
+        let mut workflows = Vec::new();
+        for item in list {
+            let inner = item.get("workflow").unwrap_or(item);
+            let name = inner["name"].as_str().unwrap_or_default().to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let id = inner["id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| name.clone());
+            let description = inner["description"].as_str().map(|s| s.to_string());
+            let provider = inner["provider"].as_str().map(|s| s.to_string());
+            let model = inner["model"].as_str().map(|s| s.to_string());
+            let source = item["source"]
+                .as_str()
+                .or_else(|| inner["source"].as_str())
+                .map(|s| s.to_string());
+            let inputs = inner.get("inputs").cloned();
+            let returns = inner["returns"].as_str().map(|s| s.to_string());
 
-        if let Ok(out) = output {
-            if out.status.success() && !out.stdout.is_empty() {
-                if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    if let Some(list) = parsed.get("workflows").and_then(|w| w.as_array()) {
-                        let mut workflows = Vec::new();
-                        for item in list {
-                            let inner = item.get("workflow").unwrap_or(item);
-                            let name = inner["name"].as_str().unwrap_or_default().to_string();
-                            if name.is_empty() {
-                                continue;
-                            }
-                            let id = inner["id"]
-                                .as_str()
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| name.clone());
-                            let description = inner["description"].as_str().map(|s| s.to_string());
-                            let provider = inner["provider"].as_str().map(|s| s.to_string());
-                            let model = inner["model"].as_str().map(|s| s.to_string());
-                            let source = item["source"]
-                                .as_str()
-                                .or_else(|| inner["source"].as_str())
-                                .map(|s| s.to_string());
-                            let inputs = inner.get("inputs").cloned();
-                            let returns = inner["returns"].as_str().map(|s| s.to_string());
+            let mut plan_nodes = Vec::new();
+            let nodes_arr = inner
+                .get("plan")
+                .and_then(|p| p.get("nodes"))
+                .and_then(|n| n.as_array())
+                .or_else(|| inner.get("nodes").and_then(|n| n.as_array()));
 
-                            let mut plan_nodes = Vec::new();
-                            let nodes_arr = inner
-                                .get("plan")
-                                .and_then(|p| p.get("nodes"))
-                                .and_then(|n| n.as_array())
-                                .or_else(|| inner.get("nodes").and_then(|n| n.as_array()));
-
-                            if let Some(arr) = nodes_arr {
-                                for n in arr {
-                                    let node_id = n["id"].as_str().unwrap_or_default().to_string();
-                                    if node_id.is_empty() {
-                                        continue;
-                                    }
-                                    let depends_on = n
-                                        .get("depends_on")
-                                        .and_then(|d| d.as_array())
-                                        .map(|a| {
-                                            a.iter()
-                                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                                .collect::<Vec<_>>()
-                                        });
-                                    let kind = n["kind"].as_str().map(|s| s.to_string());
-                                    let node_provider = n["provider"].as_str().map(|s| s.to_string());
-                                    let node_model = n["model"].as_str().map(|s| s.to_string());
-                                    let skills =
-                                        n.get("skills").and_then(|s| s.as_array()).map(|a| {
-                                            a.iter()
-                                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                                .collect::<Vec<_>>()
-                                        });
-                                    let when = n["when"].as_str().map(|s| s.to_string());
-                                    let reason = n["reason"].as_str().map(|s| s.to_string());
-                                    let script = n["script"].as_str().map(|s| s.to_string());
-                                    let node_desc = n["description"]
-                                        .as_str()
-                                        .or_else(|| n["reason"].as_str())
-                                        .or_else(|| {
-                                            n.get("source").and_then(|s| s["prompt"].as_str())
-                                        })
-                                        .or_else(|| {
-                                            n.get("source").and_then(|s| s["name"].as_str())
-                                        })
-                                        .or_else(|| n["script"].as_str())
-                                        .map(|s| {
-                                            s.lines()
-                                                .find(|l| !l.trim().is_empty())
-                                                .unwrap_or(s)
-                                                .trim_start_matches('#')
-                                                .trim()
-                                                .to_string()
-                                        });
-
-                                    plan_nodes.push(super::models::ArchonPlanNode {
-                                        id: node_id,
-                                        depends_on,
-                                        kind,
-                                        provider: node_provider,
-                                        model: node_model,
-                                        skills,
-                                        when,
-                                        reason,
-                                        script,
-                                        description: node_desc,
-                                    });
-                                }
-                            }
-
-                            let plan = if !plan_nodes.is_empty() {
-                                Some(super::models::ArchonPlan {
-                                    nodes: plan_nodes,
-                                    layers: None,
-                                    sinks: None,
-                                })
-                            } else {
-                                None
-                            };
-
-                            workflows.push(ArchonWorkflow {
-                                id,
-                                name,
-                                description,
-                                plan,
-                                inputs,
-                                returns,
-                                source,
-                                provider,
-                                model,
-                            });
-                        }
-
-                        // Prioritize installed multi-node workflows (e.g. seanrobertwright/lril-sdlc:implement) first
-                        workflows.sort_by(|a, b| {
-                            let a_installed = a.source.as_deref() == Some("installed");
-                            let b_installed = b.source.as_deref() == Some("installed");
-                            let a_nodes = a.plan.as_ref().map(|p| p.nodes.len()).unwrap_or(0);
-                            let b_nodes = b.plan.as_ref().map(|p| p.nodes.len()).unwrap_or(0);
-                            b_installed
-                                .cmp(&a_installed)
-                                .then_with(|| b_nodes.cmp(&a_nodes))
-                                .then_with(|| a.name.cmp(&b.name))
+            if let Some(arr) = nodes_arr {
+                for n in arr {
+                    let node_id = n["id"].as_str().unwrap_or_default().to_string();
+                    if node_id.is_empty() {
+                        continue;
+                    }
+                    let depends_on = n
+                        .get("depends_on")
+                        .and_then(|d| d.as_array())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<_>>()
+                        });
+                    let kind = n["kind"].as_str().map(|s| s.to_string());
+                    let node_provider = n["provider"].as_str().map(|s| s.to_string());
+                    let node_model = n["model"].as_str().map(|s| s.to_string());
+                    let skills =
+                        n.get("skills").and_then(|s| s.as_array()).map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect::<Vec<_>>()
+                        });
+                    let when = n["when"].as_str().map(|s| s.to_string());
+                    let reason = n["reason"].as_str().map(|s| s.to_string());
+                    let script = n["script"].as_str().map(|s| s.to_string());
+                    let node_desc = n["description"]
+                        .as_str()
+                        .or_else(|| n["reason"].as_str())
+                        .or_else(|| {
+                            n.get("source").and_then(|s| s["prompt"].as_str())
+                        })
+                        .or_else(|| {
+                            n.get("source").and_then(|s| s["name"].as_str())
+                        })
+                        .or_else(|| n["script"].as_str())
+                        .map(|s| {
+                            s.lines()
+                                .find(|l| !l.trim().is_empty())
+                                .unwrap_or(s)
+                                .trim_start_matches('#')
+                                .trim()
+                                .to_string()
                         });
 
-                        if !workflows.is_empty() {
-                            return Ok(workflows);
-                        }
-                    }
+                    plan_nodes.push(super::models::ArchonPlanNode {
+                        id: node_id,
+                        depends_on,
+                        kind,
+                        provider: node_provider,
+                        model: node_model,
+                        skills,
+                        when,
+                        reason,
+                        script,
+                        description: node_desc,
+                    });
                 }
             }
+
+            let plan = if !plan_nodes.is_empty() {
+                Some(super::models::ArchonPlan {
+                    nodes: plan_nodes,
+                    layers: None,
+                    sinks: None,
+                })
+            } else {
+                None
+            };
+
+            workflows.push(ArchonWorkflow {
+                id,
+                name,
+                description,
+                plan,
+                inputs,
+                returns,
+                source,
+                provider,
+                model,
+            });
+        }
+
+        // Prioritize installed multi-node workflows (e.g. owner/lril-sdlc:implement) first
+        workflows.sort_by(|a, b| {
+            let a_installed = a.source.as_deref() == Some("installed");
+            let b_installed = b.source.as_deref() == Some("installed");
+            let a_nodes = a.plan.as_ref().map(|p| p.nodes.len()).unwrap_or(0);
+            let b_nodes = b.plan.as_ref().map(|p| p.nodes.len()).unwrap_or(0);
+            b_installed
+                .cmp(&a_installed)
+                .then_with(|| b_nodes.cmp(&a_nodes))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+
+        if !workflows.is_empty() {
+            return Ok(workflows);
         }
     }
 
     // 2. Fallback to CLI: archon workflow list --json
     let bin = get_archon_binary().ok_or_else(|| "Archon binary not found".to_string())?;
-    let output = Command::new(bin)
+    let output = archon_command(&bin)
         .args(["workflow", "list", "--json"])
         .output()
         .map_err(|e| format!("Failed to execute archon workflow list: {}", e))?;
@@ -302,87 +325,26 @@ pub fn archon_get_workflows() -> Result<Vec<ArchonWorkflow>, String> {
 }
 
 fn parse_archon_runs_list(list: &[serde_json::Value]) -> Vec<ArchonRun> {
-    let mut runs = Vec::new();
-    for item in list {
-        let id = item["id"].as_str().unwrap_or_default().to_string();
-        let wf_name = item["workflow_name"].as_str().unwrap_or_default().to_string();
-        let msg = item["user_message"].as_str().map(|s| s.to_string());
-        let status = item["status"].as_str().unwrap_or("unknown").to_string();
-        let outcome = item["outcome"].as_str().map(|s| s.to_string());
-        let path = item["working_path"].as_str().map(|s| s.to_string());
-        let started = item["started_at"].as_str().map(|s| s.to_string());
-        let completed = item["completed_at"].as_str().map(|s| s.to_string());
-        let cost = item["total_cost_usd"]
-            .as_f64()
-            .or_else(|| item["metadata"]["total_cost_usd"].as_f64());
-        let codebase = item["codebase_name"].as_str().map(|s| s.to_string());
-        let current_step = item["current_step_name"].as_str().map(|s| s.to_string());
-        let active_nodes = item
-            .get("active_nodes")
-            .and_then(|a| a.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>()
-            });
-        let nodes_completed = item["metadata"]["node_counts"]["completed"]
-            .as_u64()
-            .map(|n| n as u32);
-        let nodes_total = item["metadata"]["node_counts"]["total"]
-            .as_u64()
-            .map(|n| n as u32);
-
-        runs.push(ArchonRun {
-            id,
-            workflow_name: wf_name,
-            user_message: msg,
-            status,
-            outcome,
-            working_path: path,
-            started_at: started,
-            completed_at: completed,
-            total_cost_usd: cost,
-            codebase_name: codebase,
-            current_step_name: current_step,
-            active_nodes,
-            nodes_completed,
-            nodes_total,
-        });
-    }
-    runs
+    list.iter().map(parse_run).collect()
 }
 
 #[tauri::command]
-pub fn archon_get_runs() -> Result<Vec<ArchonRun>, String> {
-    let port = resolve_archon_port();
-    let active_port = if is_port_listening(port) {
-        port
-    } else if is_port_listening(3737) {
-        3737
-    } else {
-        port
-    };
+pub async fn archon_get_runs() -> Result<Vec<ArchonRun>, String> {
+    blocking(archon_get_runs_sync).await
+}
 
+fn archon_get_runs_sync() -> Result<Vec<ArchonRun>, String> {
     // 1. Try local Archon Web Server (:3090) /api/dashboard/runs first (fast & lock-free)
-    if is_port_listening(active_port) {
-        let url = format!("http://127.0.0.1:{}/api/dashboard/runs?limit=30", active_port);
-        if let Ok(out) = Command::new("curl.exe")
-            .args(["-s", "--connect-timeout", "2", &url])
-            .output()
-        {
-            if out.status.success() && !out.stdout.is_empty() {
-                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    if let Some(list) = json.get("runs").and_then(|r| r.as_array()) {
-                        return Ok(parse_archon_runs_list(list));
-                    }
-                }
-            }
-        }
+    if let Some(port) = active_archon_port()
+        && let Ok(json) = archon_request(port, "GET", "/api/dashboard/runs?limit=30", None)
+        && let Some(list) = json.get("runs").and_then(|r| r.as_array())
+    {
+        return Ok(parse_archon_runs_list(list));
     }
 
     // 2. Fallback to CLI: archon workflow runs --all --json --limit 30
     let bin = get_archon_binary().ok_or_else(|| "Archon binary not found".to_string())?;
-    let output = Command::new(bin)
+    let output = archon_command(&bin)
         .args(["workflow", "runs", "--all", "--json", "--limit", "30"])
         .output()
         .map_err(|e| format!("Failed to execute archon workflow runs: {}", e))?;
@@ -399,6 +361,49 @@ pub fn archon_get_runs() -> Result<Vec<ArchonRun>, String> {
     }
 
     Ok(Vec::new())
+}
+
+/// One run's live state for the run monitor: node states, condensed log, conversation
+/// messages and any pending approval. Needs the Archon web server.
+#[tauri::command]
+pub async fn archon_get_run_detail(
+    run_id: String,
+    include_hooks: Option<bool>,
+) -> Result<ArchonRunDetail, String> {
+    validate_id("run", &run_id)?;
+    blocking(move || {
+        let port = active_archon_port()
+            .ok_or_else(|| "The Archon web server is not running (start it with 'archon serve').".to_string())?;
+        let detail = archon_request(port, "GET", &format!("/api/workflows/runs/{}", run_id), None)?;
+        let run = parse_run(&detail["run"]);
+        // The chat pane is best-effort: a missing conversation still shows graph and log.
+        let messages = run
+            .conversation_platform_id
+            .as_deref()
+            .filter(|id| validate_id("conversation", id).is_ok())
+            .and_then(|id| {
+                archon_request(port, "GET", &format!("/api/conversations/{}/messages?limit=200", id), None).ok()
+            });
+        Ok(build_run_detail(&detail, messages.as_ref(), include_hooks.unwrap_or(false)))
+    })
+    .await
+}
+
+/// Cancels, resumes or abandons a run, or answers its approval gate (`approve` /
+/// `reject`, with an optional comment).
+#[tauri::command]
+pub async fn archon_run_action(
+    run_id: String,
+    action: String,
+    text: Option<String>,
+) -> Result<(), String> {
+    let (path, body) = action_request(&run_id, &action, text.as_deref())?;
+    blocking(move || {
+        let port = active_archon_port()
+            .ok_or_else(|| "The Archon web server is not running (start it with 'archon serve').".to_string())?;
+        archon_request(port, "POST", &path, Some(&body)).map(|_| ())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -557,6 +562,36 @@ fn parse_adr_file(file_path: &Path, content: &str) -> Option<AdrItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Live check against a running Archon server:
+    /// `QUAY_ARCHON_RUN=<run id> cargo test --lib live_run_detail -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn live_run_detail() {
+        let run_id = std::env::var("QUAY_ARCHON_RUN").expect("set QUAY_ARCHON_RUN");
+        let started = std::time::Instant::now();
+        let d = archon_get_run_detail(run_id.clone(), None).await.unwrap();
+        println!("fetched in {:?}", started.elapsed());
+        if let Ok(dir) = std::env::var("QUAY_DUMP_DIR") {
+            let dir = std::path::Path::new(&dir);
+            let write = |name: &str, v: String| std::fs::write(dir.join(name), v).unwrap();
+            write(&format!("run_detail_{}.json", run_id), serde_json::to_string_pretty(&d).unwrap());
+            write("archon_get_runs.json", serde_json::to_string_pretty(&archon_get_runs().await.unwrap()).unwrap());
+            write("archon_get_workflows.json", serde_json::to_string_pretty(&archon_get_workflows().await.unwrap()).unwrap());
+        }
+        println!(
+            "{} {} outcome={:?} events={} hooks_hidden={} logs={} truncated={} messages={} conv={:?}",
+            d.run.workflow_name, d.run.status, d.run.outcome, d.total_events, d.hidden_hook_events,
+            d.logs.len(), d.logs_truncated, d.messages.len(), d.run.conversation_platform_id
+        );
+        for n in &d.nodes {
+            println!("  node {:<20} {:<10} {:?}ms ${:?} {:?}", n.node_id, n.state, n.duration_ms, n.cost_usd, n.model);
+        }
+        for l in d.logs.iter().rev().take(5) {
+            println!("  log [{}] {} | {:?} | {:?}", l.kind, l.label, l.detail, l.status);
+        }
+        println!("  error: {:?}", d.error);
+    }
 
     #[test]
     fn test_parse_markdown_tasks() {

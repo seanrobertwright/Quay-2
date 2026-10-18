@@ -52,7 +52,86 @@ export interface ArchonRun {
   active_nodes?: string[] | null;
   nodes_completed?: number | null;
   nodes_total?: number | null;
+  /** started_at as epoch ms (UTC), parsed on the Rust side. */
+  started_ms?: number | null;
+  completed_ms?: number | null;
+  /** Conversation that holds the run's chat messages. */
+  conversation_platform_id?: string | null;
 }
+
+export type ArchonNodeRunState = "running" | "completed" | "failed" | "skipped" | "cancelled";
+
+export interface ArchonNodeState {
+  /** Plan node id; loop children are `group.child`. */
+  node_id: string;
+  state: ArchonNodeRunState | string;
+  started_ms?: number | null;
+  duration_ms?: number | null;
+  cost_usd?: number | null;
+  model?: string | null;
+  /** Failure message, or the skip reason. */
+  detail?: string | null;
+}
+
+export type ArchonLogKind =
+  | "node"
+  | "tool"
+  | "task"
+  | "loop"
+  | "approval"
+  | "system"
+  | "warning"
+  | "error"
+  | "hook"
+  | "text";
+
+export interface ArchonLogEntry {
+  id: string;
+  ts_ms?: number | null;
+  kind: ArchonLogKind | string;
+  node_id?: string | null;
+  label: string;
+  detail?: string | null;
+  status?: "running" | "ok" | "failed" | "skipped" | null;
+  duration_ms?: number | null;
+}
+
+export interface ArchonChatMessage {
+  id: string;
+  role: string;
+  content: string;
+  ts_ms?: number | null;
+  category?: string | null;
+}
+
+export interface ArchonPendingApproval {
+  prompt: string;
+  node_id?: string | null;
+  requested_ms?: number | null;
+}
+
+export interface ArchonRunDetail {
+  run: ArchonRun;
+  last_activity_ms?: number | null;
+  error?: string | null;
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  cache_read_tokens?: number | null;
+  cache_write_tokens?: number | null;
+  nodes: ArchonNodeState[];
+  active_nodes: string[];
+  /** Oldest first; only the most recent entries. */
+  logs: ArchonLogEntry[];
+  total_events: number;
+  hidden_hook_events: number;
+  logs_truncated: boolean;
+  /** Oldest first. */
+  messages: ArchonChatMessage[];
+  pending_approval?: ArchonPendingApproval | null;
+  fetched_at_ms: number;
+}
+
+export type ArchonRunAction = "cancel" | "resume" | "abandon" | "approve" | "reject";
 
 export interface SpecTask {
   id: string;

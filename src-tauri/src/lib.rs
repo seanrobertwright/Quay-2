@@ -2,7 +2,8 @@ pub mod dates;
 pub mod slices;
 
 use slices::archon::{
-    archon_check_service, archon_get_runs, archon_get_workflows, archon_parse_repo_specs,
+    archon_check_service, archon_get_run_detail, archon_get_runs, archon_get_workflows,
+    archon_parse_repo_specs, archon_run_action,
 };
 use slices::audit::run_pre_pr_audit;
 use slices::bridge::{
@@ -118,6 +119,8 @@ pub fn run() {
             archon_check_service,
             archon_get_workflows,
             archon_get_runs,
+            archon_get_run_detail,
+            archon_run_action,
             archon_parse_repo_specs,
             machina_get_status,
             machina_list_work_orders,
