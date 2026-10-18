@@ -21,10 +21,10 @@ import {
   History,
   ShieldCheck,
   Coins,
-  GitFork,
   Cpu,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
+import { ArchonIcon } from "../archon/ArchonIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf } from "../../utils/paths";
 
@@ -239,7 +239,7 @@ export const Rail: React.FC<RailProps> = ({
       id: "archon",
       label: "Archon & SDD Graph",
       shortcut: "^b r",
-      icon: <GitFork className="w-4 h-4 text-[#58a6ff]" />,
+      icon: <ArchonIcon className="w-4 h-4" />,
       onClick: onOpenArchonGraph,
     });
   }

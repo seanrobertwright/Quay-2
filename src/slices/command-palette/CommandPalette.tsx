@@ -37,11 +37,11 @@ import {
   History,
   Coins,
   ShieldAlert,
-  GitFork,
   Cpu,
   ArrowUpCircle,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
+import { ArchonIcon } from "../archon/ArchonIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
 
 export interface CommandItem {
@@ -403,7 +403,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         category: "Tools & Actions",
         title: "Archon & SDD Spec Graph Inspector...",
         subtitle: "Inspect Archon workflow DAGs, SDD tasks, and ADR decision trails",
-        icon: <GitFork className="w-4 h-4 text-[#58a6ff]" />,
+        icon: <ArchonIcon className="w-4 h-4" />,
         shortcut: "Ctrl+B r",
         action: () => onOpenArchonGraph(),
       });

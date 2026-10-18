@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   X,
   RefreshCw,
-  GitFork,
   CheckCircle2,
   Clock,
   Play,
@@ -19,6 +18,7 @@ import {
   Square,
   BookOpen,
 } from "lucide-react";
+import { ArchonIcon } from "./ArchonIcon";
 import { ArchonServiceStatus, ArchonWorkflow, ArchonRun, RepoSpecSummary } from "./types";
 import { computeDagLayout } from "./dagLayout";
 import { ArchonRunMonitor } from "./ArchonRunMonitor";
@@ -272,7 +272,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
         <div className="h-14 px-6 border-b border-[#30363d] bg-[#161b22] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#58a6ff]/15 border border-[#58a6ff]/30 flex items-center justify-center">
-              <GitFork className="w-4 h-4 text-[#58a6ff]" />
+              <ArchonIcon className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
