@@ -24,3 +24,43 @@ _Avoid_: Hidden tests, regression suite, answer key
 **Fixture**:
 Scripted Quay state (sessions, settings, spend figures) used only to capture screenshots, never handed to a learner.
 _Avoid_: Starter, sample data
+
+**Step card**:
+One numbered step of a tutorial as it appears on the page: a card whose content sits in named slots, always in the same order. Every step is a step card, including the check-it-worked step.
+_Avoid_: Step block, step box, section
+
+**Slot**:
+A named part of a step card that holds one kind of content. A step card fills only the slots its step needs.
+_Avoid_: Field, part, region
+
+### Slots
+
+In the order they appear on a step card.
+
+**Do**:
+The slot listing the actions the learner takes in Quay, numbered. Every step card has Do, Paste, or both.
+_Avoid_: Instructions, actions
+
+**Paste**:
+The slot holding one copy-paste prompt, a single line, and naming the pane it goes into.
+_Avoid_: Prompt box, snippet, code block
+
+**You should see**:
+The slot holding the step's screenshot, captioned with what it shows. Every step card has one.
+_Avoid_: Expected output, result, screenshot slot
+
+**Must match**:
+The slot listing what the learner's run must share with the screenshot. It always comes with May differ, and every step card whose screenshot shows agent output has the pair.
+_Avoid_: Expected result, success criteria
+
+**May differ**:
+The slot listing what can vary between the learner's run and the screenshot, such as an agent's wording or how long it takes. It always comes with Must match.
+_Avoid_: Your output will differ, caveats
+
+**If not**:
+A collapsible fix in a step card, headed by the symptom the learner sees when the step goes wrong. A step card can have any number of them, including none.
+_Avoid_: Troubleshooting, FAQ, gotcha
+
+**You're done when**:
+The slot listing what must be true for the tutorial to count as finished. Only the check-it-worked step has it, and there it is required.
+_Avoid_: Pass criteria, success criteria, definition of done
