@@ -16,6 +16,7 @@ pub enum RunKind {
     OpenCode,
     PowerShell,
     Command,
+    Archon,
 }
 
 impl RunKind {
@@ -32,6 +33,7 @@ impl RunKind {
                 | RunKind::Kiro
                 | RunKind::Copilot
                 | RunKind::OpenCode
+                | RunKind::Archon
         )
     }
 
@@ -49,6 +51,7 @@ impl RunKind {
             RunKind::OpenCode => "opencode",
             RunKind::PowerShell => "powershell",
             RunKind::Command => "command",
+            RunKind::Archon => "archon",
         }
     }
 }

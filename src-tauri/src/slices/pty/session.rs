@@ -126,18 +126,70 @@ impl PtySession {
 
         let mut cmd = match request.run_kind {
             RunKind::PowerShell => {
+                #[cfg(windows)]
                 let mut c = CommandBuilder::new("pwsh.exe");
-                c.arg("-NoProfile");
-                c.arg("-NoLogo");
+                #[cfg(not(windows))]
+                let mut c = CommandBuilder::new("sh");
+
+                #[cfg(windows)]
+                {
+                    c.arg("-NoProfile");
+                    c.arg("-NoLogo");
+                    if let Some(ref text) = request.command_text {
+                        c.arg("-NoExit");
+                        c.arg("-Command");
+                        c.arg(text);
+                    }
+                }
                 c
             }
             RunKind::Command => {
+                #[cfg(windows)]
                 let mut c = CommandBuilder::new("pwsh.exe");
-                c.arg("-NoProfile");
-                c.arg("-NoLogo");
-                if let Some(ref text) = request.command_text {
-                    c.arg("-Command");
-                    c.arg(text);
+                #[cfg(not(windows))]
+                let mut c = CommandBuilder::new("sh");
+
+                #[cfg(windows)]
+                {
+                    c.arg("-NoProfile");
+                    c.arg("-NoLogo");
+                    if let Some(ref text) = request.command_text {
+                        c.arg("-NoExit");
+                        c.arg("-Command");
+                        c.arg(text);
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    if let Some(ref text) = request.command_text {
+                        c.arg("-c");
+                        c.arg(text);
+                    }
+                }
+                c
+            }
+            RunKind::Archon => {
+                #[cfg(windows)]
+                let mut c = CommandBuilder::new("pwsh.exe");
+                #[cfg(not(windows))]
+                let mut c = CommandBuilder::new("sh");
+
+                #[cfg(windows)]
+                {
+                    c.arg("-NoProfile");
+                    c.arg("-NoLogo");
+                    if let Some(ref text) = request.command_text {
+                        c.arg("-NoExit");
+                        c.arg("-Command");
+                        c.arg(text);
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    if let Some(ref text) = request.command_text {
+                        c.arg("-c");
+                        c.arg(text);
+                    }
                 }
                 c
             }
@@ -516,6 +568,7 @@ impl PtySession {
                 .as_deref()
                 .unwrap_or("cmd")
                 .to_string(),
+            RunKind::Archon => "archon".to_string(),
         });
 
         Ok(Self {

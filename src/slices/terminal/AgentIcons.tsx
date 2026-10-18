@@ -166,6 +166,26 @@ export const OpenCodeIcon: React.FC<{ className?: string }> = ({ className = "w-
   </svg>
 );
 
+/** Official Archon Autonomous Workflow Engine mark */
+export const ArchonIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-label="Archon"
+  >
+    <circle cx="12" cy="18" r="3" />
+    <circle cx="6" cy="6" r="3" />
+    <circle cx="18" cy="6" r="3" />
+    <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9" />
+    <path d="M12 12v3" />
+  </svg>
+);
+
 /** Helper to render the official icon with authentic brand colors */
 export const AgentIcon: React.FC<{ kind?: RunKind; className?: string }> = ({
   kind,
@@ -192,6 +212,8 @@ export const AgentIcon: React.FC<{ kind?: RunKind; className?: string }> = ({
       return <CopilotIcon className={`${className} text-[#38bdf8]`} />;
     case "opencode":
       return <OpenCodeIcon className={`${className} text-[#f97316]`} />;
+    case "archon":
+      return <ArchonIcon className={`${className} text-[#a371f7]`} />;
     case "powershell":
       return <PowerShellIcon className={`${className} text-[#58a6ff]`} />;
     case "command":

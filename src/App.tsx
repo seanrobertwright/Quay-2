@@ -22,6 +22,7 @@ import { AuditViolation } from "./slices/audit/types";
 import { SessionHistoryDrawer } from "./slices/sessions/SessionHistoryDrawer";
 import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
+import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
@@ -155,116 +156,168 @@ export function App() {
     return matched ? matched.path : activeProject;
   }, [activeProject, projects]);
 
-  // 1-Click: Implement issue in dedicated git worktree with Claude Code
-  const handleImplementIssue = async (issue: GithubIssue) => {
+  // 1-Click: Execute real Archon Workflow Run for an issue
+  const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
     const rootRepo = activeRootRepo;
-    const branchName = `feat/issue-${issue.number}`;
-    const cleanBranch = `issue-${issue.number}`;
+    const targetDir = activeProject !== activeRootRepo ? activeProject : rootRepo;
+    const isWorktree = activeProject !== activeRootRepo;
 
     try {
-      // Check if worktree for this branch already exists
-      const existingWts = projectWorktrees[rootRepo] || [];
-      const matchedWt = existingWts.find(
-        (wt) =>
-          wt.branch === `refs/heads/${branchName}` ||
-          wt.branch === branchName ||
-          wt.path.endsWith(cleanBranch)
-      );
+      // 1. Fetch available Archon workflows
+      let availableWorkflows: ArchonWorkflow[] = [];
+      try {
+        availableWorkflows = await invoke<ArchonWorkflow[]>("archon_get_workflows");
+      } catch (e) {
+        console.warn("Could not query Archon workflows:", e);
+      }
 
-      let targetTerminalId: string | null = null;
-      // A terminal spawned here is still starting, so the prompt waits for it to settle
-      let spawnedTerminal = false;
-
-      if (matchedWt) {
-        // Worktree already exists, switch active project to it
-        setActiveProject(matchedWt.path);
-        const existingTerm = terminals.find((t) => t.project_path === matchedWt.path);
-        if (existingTerm) {
-          selectTerminal(existingTerm.id);
-          targetTerminalId = existingTerm.id;
+      // 2. Select workflow:
+      let chosenWorkflow = workflowOverride;
+      if (!chosenWorkflow) {
+        if (
+          availableWorkflows.some(
+            (w) =>
+              w.name === "seanrobertwright/lril-sdlc:implement" ||
+              w.id === "seanrobertwright/lril-sdlc:implement"
+          )
+        ) {
+          chosenWorkflow = "seanrobertwright/lril-sdlc:implement";
+        } else if (
+          availableWorkflows.some(
+            (w) => w.name.endsWith("/lril-sdlc:implement") || w.id.endsWith("/lril-sdlc:implement")
+          )
+        ) {
+          chosenWorkflow = availableWorkflows.find((w) =>
+            w.name.endsWith("/lril-sdlc:implement")
+          )!.name;
+        } else if (
+          availableWorkflows.some((w) => w.name === "archon-fix-github-issue" || w.id === "archon-fix-github-issue")
+        ) {
+          chosenWorkflow = "archon-fix-github-issue";
+        } else if (availableWorkflows.some((w) => w.name === "archon-ship" || w.id === "archon-ship")) {
+          chosenWorkflow = "archon-ship";
+        } else if (availableWorkflows.some((w) => w.name === "archon-implement" || w.id === "archon-implement")) {
+          chosenWorkflow = "archon-implement";
         } else {
-          // Spawn Claude Code in that worktree
-          const spawned = await invoke<TerminalInfo>("spawn_terminal", {
-            request: {
-              project_path: matchedWt.path,
-              run_kind: "claude",
-              name: `wt-${cleanBranch}`,
-            },
-          });
-          selectTerminal(spawned.id);
-          targetTerminalId = spawned.id;
-          spawnedTerminal = true;
-        }
-      } else {
-        // Create new worktree and launch Claude
-        const res = await createWorktree(rootRepo, branchName, true, "main", true);
-        if (res?.terminal) {
-          targetTerminalId = res.terminal.id;
-          spawnedTerminal = true;
+          chosenWorkflow = "seanrobertwright/lril-sdlc:implement";
         }
       }
 
-      // Close the GitHub drawer to give focus to the terminal
-      setIsGithubDrawerOpen(false);
-
-      // Auto-dispatch user's proven workflow prompt into the terminal ConPTY
-      if (targetTerminalId) {
-        submitPromptToTerminal(
-          targetTerminalId,
-          `use archon and lril workflows to implement issue ${issue.number}`,
-          { awaitStartup: spawnedTerminal }
-        ).catch(console.error);
+      // 3. Build command
+      const safeTitle = issue.title.replace(/"/g, "'");
+      const wtFlag = isWorktree ? " --no-worktree" : "";
+      let cmd = "";
+      if (chosenWorkflow.includes("lril-sdlc:implement")) {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} --input ticket="${issue.number}" --input pr="true"`;
+      } else if (chosenWorkflow === "archon-ship" || chosenWorkflow === "archon-triage") {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} --input target="${issue.number}"`;
+      } else if (chosenWorkflow === "archon-fix-github-issue") {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} "Fix issue #${issue.number}: ${safeTitle}"`;
+      } else {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} "Issue #${issue.number}: ${safeTitle}"`;
       }
+
+      // 4. Spawn Archon runner terminal pane
+      await spawnTerminal({
+        project_path: targetDir,
+        run_kind: "archon",
+        name: `archon-${issue.number}`,
+        command_text: cmd,
+      });
+
+      setIsGithubDrawerOpen(false);
     } catch (err) {
-      console.error("Failed to implement issue:", err);
-      alert(`Failed to implement issue #${issue.number}: ${err}`);
+      console.error("Failed to run Archon workflow:", err);
+      alert(`Failed to run Archon workflow for issue #${issue.number}: ${err}`);
     }
   };
 
-  // 1-Click: Triage issue with Wayfinder
-  const handleTriageIssue = async (issue: GithubIssue) => {
-    const prompt = `/wayfinder ${issue.number} triage this issue`;
+  // 1-Click: Triage issue with Archon workflow
+  const handleTriageIssue = async (issue: GithubIssue, workflowOverride?: string) => {
+    const rootRepo = activeRootRepo;
+    const targetDir = activeProject !== activeRootRepo ? activeProject : rootRepo;
+    const isWorktree = activeProject !== activeRootRepo;
+
     try {
-      if (activeTerminalId) {
-        await submitPromptToTerminal(activeTerminalId, prompt);
-      } else {
-        // Spawn Claude terminal in active project
-        const spawned = await invoke<TerminalInfo>("spawn_terminal", {
-          request: {
-            project_path: activeProject,
-            run_kind: "claude",
-            name: `claude-triage`,
-          },
-        });
-        selectTerminal(spawned.id);
-        submitPromptToTerminal(spawned.id, prompt, { awaitStartup: true }).catch(console.error);
+      let availableWorkflows: ArchonWorkflow[] = [];
+      try {
+        availableWorkflows = await invoke<ArchonWorkflow[]>("archon_get_workflows");
+      } catch (e) {
+        console.warn("Could not query Archon workflows:", e);
       }
+
+      let chosenWorkflow = workflowOverride;
+      if (!chosenWorkflow) {
+        if (
+          availableWorkflows.some(
+            (w) =>
+              w.name === "seanrobertwright/lril-sdlc:triage" ||
+              w.id === "seanrobertwright/lril-sdlc:triage"
+          )
+        ) {
+          chosenWorkflow = "seanrobertwright/lril-sdlc:triage";
+        } else if (
+          availableWorkflows.some(
+            (w) => w.name.endsWith("/lril-sdlc:triage") || w.id.endsWith("/lril-sdlc:triage")
+          )
+        ) {
+          chosenWorkflow = availableWorkflows.find((w) =>
+            w.name.endsWith("/lril-sdlc:triage")
+          )!.name;
+        } else if (availableWorkflows.some((w) => w.name === "archon-triage" || w.id === "archon-triage")) {
+          chosenWorkflow = "archon-triage";
+        } else if (availableWorkflows.some((w) => w.name.includes("wayfinder"))) {
+          chosenWorkflow = availableWorkflows.find((w) => w.name.includes("wayfinder"))!.name;
+        } else {
+          chosenWorkflow = "seanrobertwright/lril-sdlc:triage";
+        }
+      }
+
+      const safeTitle = issue.title.replace(/"/g, "'");
+      const wtFlag = isWorktree ? " --no-worktree" : "";
+      let cmd = "";
+      if (chosenWorkflow.includes("lril-sdlc:triage") || chosenWorkflow === "archon-triage") {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} --input target="${issue.number}"`;
+      } else {
+        cmd = `archon workflow run "${chosenWorkflow}" --cwd "${targetDir}"${wtFlag} "Triage issue #${issue.number}: ${safeTitle}"`;
+      }
+
+      await spawnTerminal({
+        project_path: targetDir,
+        run_kind: "archon",
+        name: `triage-${issue.number}`,
+        command_text: cmd,
+      });
+
       setIsGithubDrawerOpen(false);
     } catch (err) {
-      console.error("Failed to triage issue:", err);
+      console.error("Failed to run Archon triage workflow:", err);
+      alert(`Failed to run Archon triage for issue #${issue.number}: ${err}`);
     }
   };
 
-  // 1-Click: Resolve merge conflicts in PR
-  const handleResolvePrConflicts = async (_pr: GithubPullRequest) => {
-    const prompt = `resolve the merge conflicts in this issue's PR.`;
+  // 1-Click: Resolve merge conflicts in PR with Archon workflow
+  const handleResolvePrConflicts = async (pr: GithubPullRequest) => {
+    const rootRepo = activeRootRepo;
+    const targetDir = activeProject !== activeRootRepo ? activeProject : rootRepo;
+    const isWorktree = activeProject !== activeRootRepo;
+
     try {
-      if (activeTerminalId) {
-        await submitPromptToTerminal(activeTerminalId, prompt);
-      } else {
-        const spawned = await invoke<TerminalInfo>("spawn_terminal", {
-          request: {
-            project_path: activeProject,
-            run_kind: "claude",
-            name: `claude-conflict`,
-          },
-        });
-        selectTerminal(spawned.id);
-        submitPromptToTerminal(spawned.id, prompt, { awaitStartup: true }).catch(console.error);
-      }
+      const safeTitle = pr.title.replace(/"/g, "'");
+      const wtFlag = isWorktree ? " --no-worktree" : "";
+      const cmd = `archon workflow run "archon-resolve-conflicts" --cwd "${targetDir}"${wtFlag} "Resolve merge conflicts in PR #${pr.number}: ${safeTitle}"`;
+
+      await spawnTerminal({
+        project_path: targetDir,
+        run_kind: "archon",
+        name: `conflict-pr-${pr.number}`,
+        command_text: cmd,
+      });
+
       setIsGithubDrawerOpen(false);
     } catch (err) {
-      console.error("Failed to resolve PR conflicts:", err);
+      console.error("Failed to resolve PR conflicts with Archon:", err);
+      alert(`Failed to resolve PR conflicts for PR #${pr.number}: ${err}`);
     }
   };
 
@@ -538,6 +591,7 @@ export function App() {
         onTriageIssue={handleTriageIssue}
         onCreateWorktreeForIssue={handleCreateWorktreeForIssue}
         onResolvePrConflicts={handleResolvePrConflicts}
+        onOpenArchonMonitor={() => setIsArchonGraphOpen(true)}
       />
 
       {/* Pre-PR Audit Gate Modal (^b a) */}

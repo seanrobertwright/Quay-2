@@ -251,12 +251,15 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     } else {
       onSpawnTerminal({
         project_path: activeProject,
-        run_kind: "powershell",
-        name: "archon-runner",
+        run_kind: "archon",
+        name: `archon-${workflowName.split("/").pop()?.split(":").pop() || "run"}`,
+        command_text: cmd,
         custom_flags: "",
       });
-      setDispatchSuccessMsg(`Spawned archon-runner shell pane for "${workflowName}"`);
-      setTimeout(() => setDispatchSuccessMsg(null), 4000);
+      setFollowRunAfterMs(Date.now());
+      setActiveTab("runs");
+      setDispatchSuccessMsg(`Launched Archon workflow "${workflowName}" in new terminal pane`);
+      setTimeout(() => setDispatchSuccessMsg(null), 5000);
     }
   };
 

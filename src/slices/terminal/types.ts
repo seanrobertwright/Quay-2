@@ -10,7 +10,8 @@ export type RunKind =
   | "copilot"
   | "opencode"
   | "powershell"
-  | "command";
+  | "command"
+  | "archon";
 
 export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   return (
@@ -23,7 +24,8 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
     kind === "aider" ||
     kind === "kiro" ||
     kind === "copilot" ||
-    kind === "opencode"
+    kind === "opencode" ||
+    kind === "archon"
   );
 }
 export type PermissionMode = "skip" | "normal";

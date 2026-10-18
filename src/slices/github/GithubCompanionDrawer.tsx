@@ -9,6 +9,7 @@ import {
   GithubRepoInfo,
 } from "./types";
 import { GithubIcon } from "./GithubIcon";
+import { ArchonWorkflow, ArchonRun } from "../archon/types";
 import {
   X,
   GitPullRequest,
@@ -21,6 +22,8 @@ import {
   Zap,
   Maximize2,
   Minimize2,
+  Workflow,
+  ChevronDown,
 } from "lucide-react";
 
 interface BlockedTagProps {
@@ -116,10 +119,11 @@ interface GithubCompanionDrawerProps {
   repoPath: string;
   projectName: string;
   onClose: () => void;
-  onImplementIssue: (issue: GithubIssue) => void;
-  onTriageIssue: (issue: GithubIssue) => void;
+  onImplementIssue: (issue: GithubIssue, workflowOverride?: string) => void;
+  onTriageIssue: (issue: GithubIssue, workflowOverride?: string) => void;
   onCreateWorktreeForIssue: (issue: GithubIssue) => void;
   onResolvePrConflicts?: (pr: GithubPullRequest) => void;
+  onOpenArchonMonitor?: () => void;
 }
 
 export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
@@ -131,6 +135,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   onTriageIssue,
   onCreateWorktreeForIssue,
   onResolvePrConflicts,
+  onOpenArchonMonitor,
 }) => {
   const [activeTab, setActiveTab] = useState<"issues" | "prs">("issues");
   const [issues, setIssues] = useState<GithubIssue[]>([]);
@@ -138,6 +143,9 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const [repoInfo, setRepoInfo] = useState<GithubRepoInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [archonWorkflows, setArchonWorkflows] = useState<ArchonWorkflow[]>([]);
+  const [archonRuns, setArchonRuns] = useState<ArchonRun[]>([]);
+  const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
 
   // Search & filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,6 +187,18 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
         limit: 30,
       });
       setPrs(prList || []);
+
+      // Load Archon workflows & runs (best-effort)
+      try {
+        const [wfs, rns] = await Promise.all([
+          invoke<ArchonWorkflow[]>("archon_get_workflows").catch(() => []),
+          invoke<ArchonRun[]>("archon_get_runs").catch(() => []),
+        ]);
+        setArchonWorkflows(wfs || []);
+        setArchonRuns(rns || []);
+      } catch {
+        // Archon not running or not installed
+      }
     } catch (err: any) {
       console.error("Failed to load GitHub data:", err);
       setError(err?.toString() || "Failed to load GitHub data via gh CLI");
@@ -269,6 +289,20 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
     );
   }, [prs, searchQuery]);
 
+  // Active Archon run for currently selected issue
+  const activeRunForIssue = useMemo(() => {
+    if (!issueDetail) return null;
+    const issueNumStr = issueDetail.number.toString();
+    return archonRuns.find(
+      (r) =>
+        (r.status === "running" || r.status === "paused") &&
+        (r.user_message?.includes(`#${issueNumStr}`) ||
+          r.user_message?.includes(issueNumStr) ||
+          r.working_path?.includes(`ticket-${issueNumStr}`) ||
+          r.working_path?.includes(`issue-${issueNumStr}`))
+    );
+  }, [archonRuns, issueDetail]);
+
   if (!isOpen) return null;
 
   // URLs come from issue data, so only web links reach the system opener
@@ -315,6 +349,17 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onOpenArchonMonitor && (
+              <button
+                type="button"
+                onClick={onOpenArchonMonitor}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-[#a371f7] bg-[#a371f7]/10 hover:bg-[#a371f7]/20 border border-[#a371f7]/30 rounded font-medium transition-colors"
+                title="Open Archon Run Monitor (^b r)"
+              >
+                <Workflow className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Archon Monitor</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={refreshData}
@@ -580,13 +625,36 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                           onSelectBlocker={handleSelectBlocker}
                         />
 
+                        {/* Active Archon Run Status Banner */}
+                        {activeRunForIssue && (
+                          <div className="flex items-center justify-between px-3 py-1.5 rounded-md bg-[#a371f7]/15 border border-[#a371f7]/40 text-xs">
+                            <div className="flex items-center gap-2 text-[#d2a8ff]">
+                              <span className="w-2 h-2 rounded-full bg-[#3fb950] animate-pulse" />
+                              <span className="font-semibold font-mono">Archon Run Active</span>
+                              <span className="text-[#8b949e] font-mono text-[11px]">
+                                ({activeRunForIssue.workflow_name})
+                              </span>
+                            </div>
+                            {onOpenArchonMonitor && (
+                              <button
+                                type="button"
+                                onClick={onOpenArchonMonitor}
+                                className="flex items-center gap-1 text-[11px] text-[#58a6ff] hover:underline"
+                              >
+                                <span>Monitor</span>
+                                <span>→</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+
                         {/* 1-Click Agent Action Dispatch Buttons */}
-                        <div className="flex flex-wrap gap-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
                           <button
                             type="button"
                             onClick={() => onImplementIssue(issueDetail)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold shadow-xs transition-colors"
-                            title="Spawn Claude Code in worktree to implement with Archon & LRIL"
+                            title="Launch Archon implementation workflow in dedicated terminal pane"
                           >
                             <Zap className="w-3.5 h-3.5 fill-current text-white" />
                             <span>Implement with Archon</span>
@@ -596,11 +664,60 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                             type="button"
                             onClick={() => onTriageIssue(issueDetail)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] border border-[#30363d] text-xs font-medium transition-colors"
-                            title="Run /wayfinder triage workflow"
+                            title="Run Archon triage workflow on this issue"
                           >
                             <Sparkles className="w-3.5 h-3.5" />
-                            <span>Wayfinder Triage</span>
+                            <span>Archon Triage</span>
                           </button>
+
+                          {/* Workflows Dropdown */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowWorkflowMenu((prev) => !prev)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#21262d] hover:bg-[#30363d] text-[#a371f7] border border-[#30363d] text-xs font-medium transition-colors"
+                              title="Select and run any installed Archon workflow for this issue"
+                            >
+                              <Workflow className="w-3.5 h-3.5" />
+                              <span>Workflows</span>
+                              <ChevronDown className="w-3 h-3 opacity-60" />
+                            </button>
+                            {showWorkflowMenu && (
+                              <div className="absolute left-0 mt-1 w-72 bg-[#161b22] border border-[#30363d] rounded-md shadow-2xl py-1 z-50 text-xs divide-y divide-[#30363d]/50 max-h-72 overflow-y-auto">
+                                <div className="px-3 py-1.5 text-[10px] text-[#8b949e] uppercase font-mono font-bold tracking-wider">
+                                  Run Workflow on #{issueDetail.number}
+                                </div>
+                                <div className="py-1">
+                                  {archonWorkflows.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs text-[#8b949e]">
+                                      No workflows discovered. Is Archon running?
+                                    </div>
+                                  ) : (
+                                    archonWorkflows.map((wf) => (
+                                      <button
+                                        key={wf.id || wf.name}
+                                        type="button"
+                                        onClick={() => {
+                                          setShowWorkflowMenu(false);
+                                          onImplementIssue(issueDetail, wf.id || wf.name);
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-[#21262d] text-white flex flex-col gap-0.5 transition-colors"
+                                      >
+                                        <span className="font-mono text-[#58a6ff] font-medium">
+                                          {wf.name}
+                                        </span>
+                                        {wf.description && (
+                                          <span className="text-[10px] text-[#8b949e] line-clamp-2">
+                                            {wf.description}
+                                          </span>
+                                        )}
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
 
                           <button
                             type="button"
@@ -690,9 +807,11 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onResolvePrConflicts(pr)}
-                                className="px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white text-[11px] font-medium border border-[#30363d] transition-colors"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#a371f7]/15 hover:bg-[#a371f7]/25 text-[#d2a8ff] hover:text-white text-[11px] font-medium border border-[#a371f7]/30 transition-colors"
+                                title="Run Archon PR conflict resolution workflow"
                               >
-                                Resolve in Claude
+                                <Zap className="w-3 h-3 text-[#d2a8ff]" />
+                                Resolve with Archon
                               </button>
                             )}
                           </div>
