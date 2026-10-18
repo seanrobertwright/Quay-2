@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Terminal, Shield, AlertTriangle, X, Sliders } from "lucide-react";
 import { RunKind, PermissionMode, SpawnTerminalRequest, isAgentRunKind } from "./types";
 import {
@@ -23,13 +23,40 @@ interface NewTerminalModalProps {
   onSpawn: (request: SpawnTerminalRequest) => void;
 }
 
-const AGENT_MODELS: Record<string, { label: string; value: string }[]> = {
-  claude: [
-    { label: "Default (Claude 3.7 Sonnet)", value: "" },
-    { label: "Claude 3.7 Sonnet", value: "--model claude-3-7-sonnet-20250219" },
-    { label: "Claude 3.5 Sonnet", value: "--model claude-3-5-sonnet-20241022" },
-    { label: "Claude 3.5 Haiku", value: "--model claude-3-5-haiku-20241022" },
-  ],
+interface ModelOption {
+  label: string;
+  /** CLI flags passed verbatim; "" means the agent's own default. */
+  value: string;
+  /** Renders as an <optgroup>; options without a group come first. */
+  group?: string;
+}
+
+// Claude Code model ids. Retired ids (Claude 3.x) make Claude Code fail its first request
+// and fall back to the account default, so only ids the API still serves belong here.
+const CLAUDE_MODELS: ModelOption[] = [
+  { label: "Default (your Claude Code /model setting)", value: "" },
+  { label: "Claude Fable 5.1 (most capable)", value: "--model claude-fable-5-1", group: "Current" },
+  { label: "Claude Opus 5.5", value: "--model claude-opus-5-5", group: "Current" },
+  { label: "Claude Sonnet 5.5", value: "--model claude-sonnet-5-5", group: "Current" },
+  { label: "Claude Haiku 5.5", value: "--model claude-haiku-5-5", group: "Current" },
+  { label: "Latest Fable (alias: fable)", value: "--model fable", group: "Aliases (track the latest)" },
+  { label: "Latest Opus (alias: opus)", value: "--model opus", group: "Aliases (track the latest)" },
+  { label: "Latest Sonnet (alias: sonnet)", value: "--model sonnet", group: "Aliases (track the latest)" },
+  { label: "Latest Haiku (alias: haiku)", value: "--model haiku", group: "Aliases (track the latest)" },
+  { label: "Claude Fable 5", value: "--model claude-fable-5", group: "Previous generations" },
+  { label: "Claude Opus 5", value: "--model claude-opus-5", group: "Previous generations" },
+  { label: "Claude Opus 4.8", value: "--model claude-opus-4-8", group: "Previous generations" },
+  { label: "Claude Opus 4.7", value: "--model claude-opus-4-7", group: "Previous generations" },
+  { label: "Claude Opus 4.6", value: "--model claude-opus-4-6", group: "Previous generations" },
+  { label: "Claude Opus 4.5", value: "--model claude-opus-4-5", group: "Previous generations" },
+  { label: "Claude Sonnet 5", value: "--model claude-sonnet-5", group: "Previous generations" },
+  { label: "Claude Sonnet 4.6", value: "--model claude-sonnet-4-6", group: "Previous generations" },
+  { label: "Claude Sonnet 4.5", value: "--model claude-sonnet-4-5", group: "Previous generations" },
+  { label: "Claude Haiku 4.5", value: "--model claude-haiku-4-5", group: "Previous generations" },
+];
+
+const AGENT_MODELS: Record<string, ModelOption[]> = {
+  claude: CLAUDE_MODELS,
   antigravity: [
     { label: "Default (Gemini 2.5 Pro)", value: "" },
     { label: "Gemini 2.5 Pro", value: "--model gemini-2.5-pro" },
@@ -45,7 +72,7 @@ const AGENT_MODELS: Record<string, { label: string; value: string }[]> = {
   ],
   pi: [
     { label: "Default (Smart Multi-Provider)", value: "" },
-    { label: "Claude 3.7 Sonnet (Thinking High)", value: "--model sonnet:high" },
+    { label: "Claude Sonnet, latest (Thinking High)", value: "--model sonnet:high" },
     { label: "High Thinking Mode", value: "--thinking high" },
     { label: "Max Thinking Mode", value: "--thinking max" },
     { label: "GPT-4o", value: "--model gpt-4o" },
@@ -63,8 +90,9 @@ const AGENT_MODELS: Record<string, { label: string; value: string }[]> = {
     { label: "Grok Vision", value: "--model grok-vision-beta" },
   ],
   aider: [
-    { label: "Default (Claude 3.7 Sonnet)", value: "" },
-    { label: "Claude 3.7 Sonnet (Thinking)", value: "--model claude-3-7-sonnet-20250219 --thinking-tokens 4096" },
+    { label: "Default (aider's configured model)", value: "" },
+    { label: "Claude Sonnet 5.5", value: "--model anthropic/claude-sonnet-5-5" },
+    { label: "Claude Opus 5.5", value: "--model anthropic/claude-opus-5-5" },
     { label: "DeepSeek R1", value: "--model openrouter/deepseek/deepseek-r1" },
     { label: "GPT-4o", value: "--model gpt-4o" },
   ],
@@ -82,19 +110,45 @@ const AGENT_MODELS: Record<string, { label: string; value: string }[]> = {
   ],
   copilot: [
     { label: "Default (GitHub Copilot CLI)", value: "" },
-    { label: "Claude 3.7 Sonnet (Copilot)", value: "--model claude-3.7-sonnet" },
+    { label: "Claude Sonnet 5.5 (Copilot)", value: "--model claude-sonnet-5.5" },
     { label: "GPT-4o (Copilot)", value: "--model gpt-4o" },
     { label: "o3-mini (Reasoning)", value: "--model o3-mini" },
   ],
   opencode: [
     { label: "Default (OpenCode TUI)", value: "" },
-    { label: "Claude 3.7 Sonnet (Anthropic)", value: "-m anthropic/claude-3-7-sonnet" },
-    { label: "Claude 3.5 Sonnet (Anthropic)", value: "-m anthropic/claude-3-5-sonnet" },
+    { label: "Claude Sonnet 5.5 (Anthropic)", value: "-m anthropic/claude-sonnet-5-5" },
+    { label: "Claude Opus 5.5 (Anthropic)", value: "-m anthropic/claude-opus-5-5" },
     { label: "OpenAI GPT-4o", value: "-m openai/gpt-4o" },
     { label: "Google Gemini 2.0 Flash", value: "-m google/gemini-2.0-flash" },
     { label: "DeepSeek Chat (DeepSeek)", value: "-m deepseek/deepseek-chat" },
     { label: "Continue Previous Session", value: "--continue" },
   ],
+};
+
+/** Ungrouped options first, then one <optgroup> per group in first-seen order. */
+const renderModelOptions = (options: ModelOption[]) => {
+  const ungrouped = options.filter((o) => !o.group);
+  const groups = Array.from(new Set(options.filter((o) => o.group).map((o) => o.group as string)));
+  return (
+    <>
+      {ungrouped.map((m) => (
+        <option key={m.label} value={m.value}>
+          {m.label}
+        </option>
+      ))}
+      {groups.map((g) => (
+        <optgroup key={g} label={g}>
+          {options
+            .filter((o) => o.group === g)
+            .map((m) => (
+              <option key={m.label} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </>
+  );
 };
 
 export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
@@ -109,6 +163,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
   const [customFlags, setCustomFlags] = useState("");
   const [commandText, setCommandText] = useState("");
   const [name, setName] = useState("");
+  const modelSelectId = useId();
 
   const isAgent = isAgentRunKind(runKind);
 
@@ -456,20 +511,25 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
 
               {/* Model Preset Selection */}
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1">
-                  Model Architecture
+                <label
+                  htmlFor={modelSelectId}
+                  className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1"
+                >
+                  Model
                 </label>
                 <select
+                  id={modelSelectId}
                   value={selectedModelFlag}
                   onChange={(e) => setSelectedModelFlag(e.target.value)}
                   className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                 >
-                  {AGENT_MODELS[runKind as keyof typeof AGENT_MODELS]?.map((m) => (
-                    <option key={m.label} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
+                  {renderModelOptions(AGENT_MODELS[runKind] ?? [])}
                 </select>
+                <p className="mt-1 text-[10px] font-mono text-[#8b949e]">
+                  {selectedModelFlag
+                    ? `Launches with ${selectedModelFlag}`
+                    : "No --model flag: the agent uses its own configured default"}
+                </p>
               </div>
 
               {/* Extra CLI Flags */}

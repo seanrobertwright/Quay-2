@@ -31,7 +31,7 @@ Quay 2 is structured into cohesive end-to-end vertical feature slices across bot
 2. **`rail`**: Left-hand navigation panel matching Quay design:
    - Projects list with active project indicator (`▸`).
    - Terminals list with Run Kind icons (`claude`, `pwsh`, `› cmd`).
-   - Permission mode pill badge (`SKIP` in red).
+   - Permission mode pill badge (`SKIP` in red) and the launch model (for example `sonnet-4-6`) when a terminal was started with `--model`.
    - Worktrees under each project start collapsed; a blue dot on the header marks one that hides the active terminal.
    - A compact tool row at the bottom (GitHub, sessions, audit, Archon, Machina, command palette, A2A) with the all-time spend beside it.
    - Live Claude status indicators (`Starting`, `Working`, `Waiting ◆`, `Idle`, `Exited`).

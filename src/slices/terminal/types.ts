@@ -50,6 +50,24 @@ export interface TerminalInfo {
   current_tool?: string | null;
   tool_detail?: string | null;
   custom_name?: boolean;
+  /** Extra CLI flags the terminal was launched with; reused on relaunch. */
+  custom_flags?: string | null;
+  command_text?: string | null;
+}
+
+/**
+ * The model a terminal was launched with, read from its `--model X`, `--model=X` or `-m X`
+ * flag, or null when it runs the agent's default model.
+ */
+export function launchModel(flags?: string | null): string | null {
+  if (!flags) return null;
+  const tokens = flags.trim().split(/\s+/);
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.startsWith("--model=")) return t.slice("--model=".length) || null;
+    if ((t === "--model" || t === "-m") && i + 1 < tokens.length) return tokens[i + 1];
+  }
+  return null;
 }
 
 export interface SpawnTerminalRequest {
