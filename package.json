@@ -1,13 +1,17 @@
 {
-  "name": "tauri-app",
-  "private": true,
+  "name": "quay2",
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "author": "Sean Robert Wright",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -30,6 +34,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitepress": "^1.6.4"
   }
 }

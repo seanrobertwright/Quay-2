@@ -13,6 +13,9 @@ dist-ssr
 *.local
 target/
 src-tauri/target/
+docs/.vitepress/dist
+docs/.vitepress/cache
+.vitepress/
 
 # Editor directories and files
 .vscode/*
