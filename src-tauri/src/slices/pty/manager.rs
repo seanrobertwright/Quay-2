@@ -93,6 +93,8 @@ impl PtyManager {
                         task_title: item.task_title,
                         current_tool: None,
                         custom_name: item.custom_name,
+                        custom_flags: item.custom_flags,
+                        command_text: item.command_text,
                     };
                     info_map.insert(item.id, info);
                 }
@@ -118,7 +120,8 @@ impl PtyManager {
                 task_title: info.task_title.clone(),
                 custom_name: info.custom_name,
                 auto_approved_count: info.auto_approved_count,
-                command_text: None,
+                command_text: info.command_text.clone(),
+                custom_flags: info.custom_flags.clone(),
                 last_updated: now,
             })
             .collect();
@@ -166,6 +169,8 @@ impl PtyManager {
             task_title: None,
             current_tool: None,
             custom_name: request.name.is_some(),
+            custom_flags: request.custom_flags.clone(),
+            command_text: request.command_text.clone(),
         };
 
         self.dormant_buffers.lock().remove(&terminal_id);
@@ -181,6 +186,7 @@ impl PtyManager {
         terminal_id: &str,
         bridge_port: u16,
         bridge_token: String,
+        env_vars: Option<HashMap<String, String>>,
         app_handle: AppHandle,
     ) -> Result<TerminalInfo, String> {
         let info = {
@@ -202,11 +208,11 @@ impl PtyManager {
             project_path: info.project_path.clone(),
             run_kind: info.run_kind,
             permission_mode: Some(info.permission_mode),
-            command_text: None,
+            command_text: info.command_text.clone(),
             rows: None,
             cols: None,
-            env_vars: None,
-            custom_flags: None,
+            env_vars,
+            custom_flags: info.custom_flags.clone(),
         };
 
         let session = PtySession::spawn(
@@ -410,6 +416,8 @@ mod tests {
             task_title: None,
             current_tool: None,
             custom_name: false,
+            custom_flags: None,
+            command_text: None,
         };
 
         manager.terminals_info.lock().insert(term_id.clone(), initial_info);

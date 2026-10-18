@@ -1,4 +1,4 @@
-import { useState, MouseEvent } from "react";
+import { useState, useId, MouseEvent, ReactNode } from "react";
 import { TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
@@ -87,6 +87,9 @@ export const Rail: React.FC<RailProps> = ({
   onOpenFactoryStation,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
+  // Worktree lists start collapsed; an entry of `false` means the user expanded it
+  const [collapsedWorktrees, setCollapsedWorktrees] = useState<Record<string, boolean>>({});
+  const railId = useId();
 
   const toggleCollapse = (path: string, e?: MouseEvent) => {
     e?.stopPropagation();
@@ -96,9 +99,94 @@ export const Rail: React.FC<RailProps> = ({
     }));
   };
 
-  // Find any terminals that might not match any registered project
+  const isWorktreesCollapsed = (path: string) => {
+    // Default mode is collapsed
+    return collapsedWorktrees[path] !== false;
+  };
+
+  const toggleWorktreesCollapse = (path: string, e?: MouseEvent) => {
+    e?.stopPropagation();
+    setCollapsedWorktrees((prev) => ({
+      ...prev,
+      [path]: prev[path] === false ? true : false,
+    }));
+  };
+
+  // Find any terminals that match neither a registered project nor one of its worktrees
   const knownPaths = new Set(projects.map((p) => p.path));
+  Object.values(projectWorktrees ?? {}).forEach((wts) => wts.forEach((wt) => knownPaths.add(wt.path)));
   const orphanTerminals = terminals.filter((t) => !knownPaths.has(t.project_path));
+
+  // Tool launchers rendered as one icon row so the project tree keeps the vertical space
+  const toolButtons: {
+    id: string;
+    label: string;
+    shortcut?: string;
+    icon: ReactNode;
+    onClick: () => void;
+    accent?: boolean;
+  }[] = [];
+  if (onOpenGithubDrawer) {
+    toolButtons.push({
+      id: "github",
+      label: "GitHub Issues & PRs",
+      shortcut: "^b i",
+      icon: <GithubIcon className="w-4 h-4 text-white" />,
+      onClick: onOpenGithubDrawer,
+    });
+  }
+  if (onOpenSessionHistory) {
+    toolButtons.push({
+      id: "sessions",
+      label: "Session History",
+      shortcut: "^b h",
+      icon: <History className="w-4 h-4 text-[#58a6ff]" />,
+      onClick: onOpenSessionHistory,
+    });
+  }
+  if (onOpenPrePrAudit) {
+    toolButtons.push({
+      id: "audit",
+      label: "Pre-PR Audit Gate",
+      shortcut: "^b a",
+      icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />,
+      onClick: onOpenPrePrAudit,
+    });
+  }
+  if (onOpenArchonGraph) {
+    toolButtons.push({
+      id: "archon",
+      label: "Archon & SDD Graph",
+      shortcut: "^b r",
+      icon: <GitFork className="w-4 h-4 text-[#58a6ff]" />,
+      onClick: onOpenArchonGraph,
+    });
+  }
+  if (onOpenFactoryStation) {
+    toolButtons.push({
+      id: "machina",
+      label: "Machina Praxis",
+      shortcut: "^b f",
+      icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
+      onClick: onOpenFactoryStation,
+      accent: true,
+    });
+  }
+  if (onOpenCommandPalette) {
+    toolButtons.push({
+      id: "palette",
+      label: "Command Palette",
+      shortcut: "Ctrl+K",
+      icon: <Command className="w-4 h-4 text-[#58a6ff]" />,
+      onClick: onOpenCommandPalette,
+    });
+  }
+  toolButtons.push({
+    id: "a2a",
+    label: "A2A Orchestration Bus",
+    icon: <Network className="w-4 h-4 text-[#c9d1d9]" />,
+    onClick: onOpenA2APanel,
+  });
 
   return (
     <aside className="w-72 bg-[#0d1117] border-r border-[#30363d] flex flex-col h-full select-none text-[#c9d1d9]">
@@ -159,12 +247,20 @@ export const Rail: React.FC<RailProps> = ({
 
         {/* Tree Container */}
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {projects.map((proj) => {
+          {projects.map((proj, projIdx) => {
             const isCollapsed = !!collapsedProjects[proj.path];
             const isProjectActive = proj.path === activeProject;
             const projectTerminals = terminals.filter((t) => t.project_path === proj.path);
             const projectWts = projectWorktrees?.[proj.path] || [];
             const secondaryWorktrees = projectWts.filter((wt) => !wt.is_main);
+            const wtCollapsed = isWorktreesCollapsed(proj.path);
+            const wtListId = `${railId}-worktrees-${projIdx}`;
+            // A collapsed header flags when it hides the active worktree or terminal
+            const wtHidesActive = secondaryWorktrees.some(
+              (wt) =>
+                wt.path === activeProject ||
+                terminals.some((t) => t.project_path === wt.path && t.id === activeTerminalId)
+            );
 
             return (
               <div
@@ -304,10 +400,34 @@ export const Rail: React.FC<RailProps> = ({
                     {secondaryWorktrees.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-[#30363d]/40">
                         <div className="flex items-center justify-between px-1 py-1 text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider">
-                          <span className="flex items-center gap-1 text-[#58a6ff]">
+                          <button
+                            type="button"
+                            onClick={(e) => toggleWorktreesCollapse(proj.path, e)}
+                            aria-expanded={!wtCollapsed}
+                            aria-controls={wtListId}
+                            className="flex items-center gap-1 text-[#58a6ff] hover:text-white uppercase tracking-wider transition-colors"
+                            title={
+                              wtCollapsed && wtHidesActive
+                                ? "Expand worktrees (contains the active terminal)"
+                                : wtCollapsed
+                                ? "Expand worktrees"
+                                : "Collapse worktrees"
+                            }
+                          >
+                            {wtCollapsed ? (
+                              <ChevronRight className="w-3 h-3 text-[#8b949e]" />
+                            ) : (
+                              <ChevronDown className="w-3 h-3 text-[#8b949e]" />
+                            )}
                             <GitBranch className="w-3 h-3" />
                             <span>Worktrees ({secondaryWorktrees.length})</span>
-                          </span>
+                            {wtCollapsed && wtHidesActive && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-[#58a6ff]"
+                                aria-label="contains the active terminal"
+                              />
+                            )}
+                          </button>
                           {onOpenNewWorktree && (
                             <button
                               type="button"
@@ -323,7 +443,8 @@ export const Rail: React.FC<RailProps> = ({
                           )}
                         </div>
 
-                        <div className="space-y-1 mt-1">
+                        {!wtCollapsed && (
+                          <div id={wtListId} className="space-y-1 mt-1">
                           {secondaryWorktrees.map((wt) => {
                             const branchName = wt.branch
                               ? wt.branch.replace("refs/heads/", "")
@@ -430,6 +551,7 @@ export const Rail: React.FC<RailProps> = ({
                             );
                           })}
                         </div>
+                      )}
                       </div>
                     )}
                   </div>
@@ -469,136 +591,46 @@ export const Rail: React.FC<RailProps> = ({
         </div>
       </div>
 
-      {/* Bottom Mission Control / A2A Router Bar */}
-      <div className="p-3 border-t border-[#30363d] bg-[#161b22] flex flex-col gap-2">
-        {onOpenGithubDrawer && (
-          <button
-            onClick={onOpenGithubDrawer}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Open GitHub Issues & Pull Requests (^b i)"
-          >
-            <div className="flex items-center gap-2">
-              <GithubIcon className="w-3.5 h-3.5 text-white" />
-              <span>GitHub Issues & PRs</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-              Ctrl+B i
-            </kbd>
-          </button>
-        )}
-
-        {onOpenSessionHistory && (
-          <button
-            onClick={onOpenSessionHistory}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Browse & Auto-Resume Past Claude Sessions (^b h)"
-          >
-            <div className="flex items-center gap-2">
-              <History className="w-3.5 h-3.5 text-[#58a6ff]" />
-              <span>Session History</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-              Ctrl+B h
-            </kbd>
-          </button>
-        )}
-
-        {onOpenPrePrAudit && (
-          <button
-            onClick={onOpenPrePrAudit}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Pre-PR Leak & Secret Audit Gate (^b a)"
-          >
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#f85149]" />
-              <span>Pre-PR Audit Gate</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-              Ctrl+B a
-            </kbd>
-          </button>
-        )}
-
-        {onOpenArchonGraph && (
-          <button
-            onClick={onOpenArchonGraph}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Archon Workflow DAG & SDD Spec Inspector (Ctrl+B R)"
-          >
-            <div className="flex items-center gap-2">
-              <GitFork className="w-3.5 h-3.5 text-[#58a6ff]" />
-              <span>Archon & SDD Graph</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-              Ctrl+B r
-            </kbd>
-          </button>
-        )}
-
-        {onOpenFactoryStation && (
-          <button
-            onClick={onOpenFactoryStation}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#c9d1d9] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#58a6ff]/40"
-            title="Machina Praxis AI Software Factory Cockpit (Ctrl+B F)"
-          >
-            <div className="flex items-center gap-2">
-              <Cpu className="w-3.5 h-3.5 text-[#58a6ff]" />
-              <span className="font-semibold text-white">Machina Praxis</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#58a6ff] border border-[#30363d]">
-              Ctrl+B f
-            </kbd>
-          </button>
-        )}
-
-        {onOpenTokenSpend && (
-          <button
-            onClick={onOpenTokenSpend}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Token Spend & Audio Turn Chime Settings (^b t)"
-          >
-            <div className="flex items-center gap-2">
-              <Coins className="w-3.5 h-3.5 text-[#e3b341]" />
-              <span>Token Spend & Chimes</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-mono text-[#e3b341] font-semibold">
-                ${(claudeStats?.total_cost_usd ?? 0).toFixed(2)}
-              </span>
-              <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-                ^b t
-              </kbd>
-            </div>
-          </button>
-        )}
-
-        {onOpenCommandPalette && (
-          <button
-            onClick={onOpenCommandPalette}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 bg-[#0d1117] hover:bg-[#21262d] text-[#8b949e] hover:text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-            title="Open Global Command Palette (Ctrl+K)"
-          >
-            <div className="flex items-center gap-2">
-              <Command className="w-3.5 h-3.5 text-[#58a6ff]" />
-              <span>Command Palette</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 rounded bg-[#161b22] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-              Ctrl+K
-            </kbd>
-          </button>
-        )}
-
-        <button
-          onClick={onOpenA2APanel}
-          className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-[#21262d] hover:bg-[#30363d] text-white rounded-md text-xs font-medium transition-colors border border-[#30363d]"
-        >
-          <Network className="w-3.5 h-3.5 text-[#58a6ff]" />
-          <span>A2A Orchestration Bus</span>
-        </button>
+      {/* Bottom Mission Control: one compact icon toolbar + status line */}
+      <div className="px-2 py-1.5 border-t border-[#30363d] bg-[#161b22] flex flex-col gap-1">
+        <div role="toolbar" aria-label="Quay tools" className="flex items-center justify-between">
+          {toolButtons.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              onClick={tool.onClick}
+              aria-label={tool.label}
+              title={tool.shortcut ? `${tool.label} (${tool.shortcut})` : tool.label}
+              className={`p-1.5 rounded-md transition-colors hover:bg-[#21262d] ${
+                tool.accent ? "ring-1 ring-[#58a6ff]/40 bg-[#0d1117]" : ""
+              }`}
+            >
+              {tool.icon}
+            </button>
+          ))}
+        </div>
 
         <div className="flex items-center justify-between text-[10px] text-[#8b949e] px-1 font-mono">
-          <span>Shortcuts: ^b n / ^b 1..9</span>
-          <span className="flex items-center gap-1">
+          {onOpenTokenSpend ? (
+            <button
+              type="button"
+              onClick={onOpenTokenSpend}
+              aria-label="Token Spend & Chimes"
+              title={`All-time API-equivalent Claude spend · today (UTC) $${(
+                claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
+              ).toFixed(2)} (^b t)`}
+              className="flex items-center gap-1 px-1 -mx-1 rounded hover:bg-[#21262d] hover:text-white transition-colors"
+            >
+              <Coins className="w-3 h-3 text-[#e3b341]" />
+              <span className="text-[#e3b341] font-semibold">
+                ${(claudeStats?.total_cost_usd ?? 0).toFixed(2)}
+              </span>
+            </button>
+          ) : (
+            <span />
+          )}
+          <span title="New terminal: ^b n · Jump to terminal: ^b 1..9">^b n · ^b 1..9</span>
+          <span className="flex items-center gap-1" title="Windows ConPTY backend">
             <Activity className="w-3 h-3 text-[#3fb950]" />
             <span>ConPTY</span>
           </span>

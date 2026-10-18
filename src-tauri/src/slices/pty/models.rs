@@ -88,6 +88,12 @@ pub struct TerminalInfo {
     pub current_tool: Option<String>,
     #[serde(default)]
     pub custom_name: bool,
+    /// Extra CLI flags the terminal was launched with (model, resume, ...); reused on relaunch.
+    #[serde(default)]
+    pub custom_flags: Option<String>,
+    /// Command line for `Command` terminals; reused on relaunch.
+    #[serde(default)]
+    pub command_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -128,6 +134,8 @@ pub struct PersistedTerminalSession {
     pub auto_approved_count: u32,
     #[serde(default)]
     pub command_text: Option<String>,
+    #[serde(default)]
+    pub custom_flags: Option<String>,
     #[serde(default)]
     pub last_updated: u64,
 }

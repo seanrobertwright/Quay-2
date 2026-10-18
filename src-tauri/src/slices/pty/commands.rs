@@ -99,10 +99,19 @@ pub async fn relaunch_terminal(
     terminal_id: String,
     pty_manager: State<'_, PtyManager>,
     bridge_state: State<'_, BridgeState>,
+    workspace_manager: State<'_, crate::slices::workspace::manager::WorkspaceManager>,
     app_handle: AppHandle,
 ) -> Result<TerminalInfo, String> {
+    // Relaunch re-reads workspace env vars so a restarted terminal matches a fresh spawn.
+    // Its launch flags come from the stored terminal info, so they are not re-merged here.
+    let env_vars = pty_manager
+        .get_info(&terminal_id)
+        .and_then(|info| workspace_manager.get_project_settings(&info.project_path))
+        .map(|(env, _flags)| env)
+        .filter(|env| !env.is_empty());
+
     let port = bridge_state.port();
     let token = bridge_state.token_for(&terminal_id);
-    pty_manager.relaunch(&terminal_id, port, token, app_handle)
+    pty_manager.relaunch(&terminal_id, port, token, env_vars, app_handle)
 }
 

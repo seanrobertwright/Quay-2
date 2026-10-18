@@ -116,7 +116,27 @@ export const Stage: FC<StageProps> = ({
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
 
   if (!activeTerminal || visibleTerminals.length === 0) {
-    return <Placeholder onNewTerminal={onNewTerminal} />;
+    return (
+      <>
+        <Placeholder onNewTerminal={onNewTerminal} />
+        {terminals.length > 0 && (
+          <div className="hidden" aria-hidden="true">
+            {terminals.map((term) => (
+              <TerminalView
+                key={term.id}
+                terminalId={term.id}
+                isVisible={false}
+                isFocused={false}
+                terminal={term}
+                allTerminals={visibleTerminals}
+                showPaneHeader={false}
+                style={{ display: "none" }}
+              />
+            ))}
+          </div>
+        )}
+      </>
+    );
   }
 
   let focusedTerminal = activeTerminal;
@@ -424,13 +444,14 @@ export const Stage: FC<StageProps> = ({
         />
       )}
 
-      {/* Main Terminal Viewport (Persistently mounts all terminals) */}
+      {/* Main Terminal Viewport (Persistently mounts all terminals across all projects) */}
       <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden bg-[#0d1117] p-1.5"
       >
-        {/* Render visible terminals */}
-        {visibleTerminals.map((term) => {
+        {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
+        {terminals.map((term) => {
+          const isProjectActive = term.project_path === activeProject;
           let isVisible = false;
           let isFocused = false;
           let showPaneHeader = false;
@@ -438,7 +459,12 @@ export const Stage: FC<StageProps> = ({
           let onPaneSelect: (() => void) | undefined = undefined;
           let onSwitchTerm: ((newId: string) => void) | undefined = undefined;
 
-          if (layout === "single") {
+          if (!isProjectActive) {
+            isVisible = false;
+            isFocused = false;
+            showPaneHeader = false;
+            paneStyle = { display: "none" };
+          } else if (layout === "single") {
             isVisible = term.id === (primaryTerminalId || activeTerminalId);
             isFocused = isVisible;
             showPaneHeader = false;

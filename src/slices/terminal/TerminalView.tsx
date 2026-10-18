@@ -1,4 +1,4 @@
-import { FC, CSSProperties, MouseEvent, useState, useEffect } from "react";
+import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
 import { TerminalInfo, isAgentRunKind } from "./types";
@@ -93,6 +93,10 @@ export const TerminalView: FC<TerminalViewProps> = ({
     };
   }, [terminalId, isAgent]);
 
+  const handleToggleSearch = useCallback(() => {
+    setIsSearchOpen((prev) => !prev);
+  }, []);
+
   const {
     containerRef,
     findNext,
@@ -101,9 +105,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
     exportScrollback,
     searchResult,
     focusTerminal,
-  } = useTerminal(terminalId, isVisible, isFocused, () => {
-    setIsSearchOpen((prev) => !prev);
-  });
+  } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch);
 
   // Hotkey listener for Ctrl+F when pane is focused
   useEffect(() => {
@@ -171,7 +173,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
       onMouseDown={() => {
         focusTerminal();
       }}
-      className={`overflow-hidden transition-all bg-[#0d1117] ${
+      className={`overflow-hidden transition-colors bg-[#0d1117] ${
         isVisible ? "flex flex-col" : "hidden"
       } ${
         showPaneHeader

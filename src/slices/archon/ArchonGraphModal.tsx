@@ -19,13 +19,9 @@ import {
   Square,
   BookOpen,
 } from "lucide-react";
-import {
-  ArchonServiceStatus,
-  ArchonWorkflow,
-  ArchonPlanNode,
-  ArchonRun,
-  RepoSpecSummary,
-} from "./types";
+import { ArchonServiceStatus, ArchonWorkflow, ArchonRun, RepoSpecSummary } from "./types";
+import { computeDagLayout } from "./dagLayout";
+import { ArchonRunMonitor } from "./ArchonRunMonitor";
 import { TerminalInfo } from "../terminal/types";
 
 interface ArchonGraphModalProps {
@@ -62,6 +58,9 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [targetTerminalId, setTargetTerminalId] = useState<string>(activeTerminalId || "");
   const [dispatchSuccessMsg, setDispatchSuccessMsg] = useState<string | null>(null);
+  // Run monitor selection, and the dispatch time of a run we are waiting to appear
+  const [monitorRunId, setMonitorRunId] = useState<string | null>(null);
+  const [followRunAfterMs, setFollowRunAfterMs] = useState<number | null>(null);
 
   // Sync target terminal (prefer live non-exited terminals)
   useEffect(() => {
@@ -143,6 +142,35 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     return workflows.find((w) => w.id === selectedWorkflowId) || workflows[0] || null;
   }, [workflows, selectedWorkflowId]);
 
+  // Default monitor selection: a running run, else the newest
+  useEffect(() => {
+    if (monitorRunId && runs.some((r) => r.id === monitorRunId)) return;
+    const running = runs.find((r) => r.status === "running" || r.status === "paused");
+    const fallback = running ?? runs[0];
+    if (fallback) setMonitorRunId(fallback.id);
+  }, [runs, monitorRunId]);
+
+  // After "Run in Archon", jump to the new run once Archon reports it (give up after 2 min).
+  // The 10s margin absorbs clock skew between Quay and the Archon server.
+  useEffect(() => {
+    if (followRunAfterMs === null) return;
+    const fresh = runs
+      .filter((r) => r.started_ms != null && r.started_ms >= followRunAfterMs - 10_000)
+      .sort((a, b) => (b.started_ms ?? 0) - (a.started_ms ?? 0))[0];
+    if (fresh) {
+      setMonitorRunId(fresh.id);
+      setFollowRunAfterMs(null);
+      return;
+    }
+    const giveUp = setTimeout(() => setFollowRunAfterMs(null), 120_000);
+    return () => clearTimeout(giveUp);
+  }, [runs, followRunAfterMs]);
+
+  const watchRun = (runId: string) => {
+    setMonitorRunId(runId);
+    setActiveTab("runs");
+  };
+
   // Latest run for the selected workflow (or any currently running workflow)
   const latestWorkflowRun = useMemo(() => {
     if (!currentWorkflow) return runs[0] || null;
@@ -154,112 +182,10 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
   }, [runs, currentWorkflow]);
 
   // Layout Computation for Workflow DAG
-  const dagLayout = useMemo(() => {
-    if (!currentWorkflow || !currentWorkflow.plan || !currentWorkflow.plan.nodes) {
-      return { nodesWithCoords: [], edges: [], width: 700, height: 400 };
-    }
-
-    const nodes = currentWorkflow.plan.nodes;
-    const nodeMap = new Map<string, ArchonPlanNode>();
-    nodes.forEach((n) => nodeMap.set(n.id, n));
-
-    // Calculate topological depth (layer index)
-    const layerMap = new Map<string, number>();
-
-    const getDepth = (id: string, visited = new Set<string>()): number => {
-      if (layerMap.has(id)) return layerMap.get(id)!;
-      if (visited.has(id)) return 0;
-      visited.add(id);
-
-      const n = nodeMap.get(id);
-      if (!n || !n.depends_on || n.depends_on.length === 0) {
-        layerMap.set(id, 0);
-        return 0;
-      }
-
-      let maxParentDepth = 0;
-      for (const parentId of n.depends_on) {
-        maxParentDepth = Math.max(maxParentDepth, getDepth(parentId, new Set(visited)) + 1);
-      }
-      layerMap.set(id, maxParentDepth);
-      return maxParentDepth;
-    };
-
-    nodes.forEach((n) => getDepth(n.id));
-
-    // Group nodes by layer
-    const layers: string[][] = [];
-    nodes.forEach((n) => {
-      const l = layerMap.get(n.id) || 0;
-      while (layers.length <= l) {
-        layers.push([]);
-      }
-      layers[l].push(n.id);
-    });
-
-    // Compute coordinate positions
-    const NODE_WIDTH = 210;
-    const NODE_HEIGHT = 80;
-    const HORIZONTAL_GAP = 90;
-    const VERTICAL_GAP = 30;
-    const START_X = 40;
-    const START_Y = 40;
-
-    const coords = new Map<string, { x: number; y: number }>();
-    let maxLayerHeight = 0;
-
-    layers.forEach((layerNodes, layerIdx) => {
-      const layerHeight = layerNodes.length * NODE_HEIGHT + (layerNodes.length - 1) * VERTICAL_GAP;
-      maxLayerHeight = Math.max(maxLayerHeight, layerHeight);
-
-      layerNodes.forEach((nodeId, rowIdx) => {
-        const x = START_X + layerIdx * (NODE_WIDTH + HORIZONTAL_GAP);
-        const y = START_Y + rowIdx * (NODE_HEIGHT + VERTICAL_GAP);
-        coords.set(nodeId, { x, y });
-      });
-    });
-
-    const nodesWithCoords = nodes.map((node) => {
-      const pt = coords.get(node.id) || { x: 0, y: 0 };
-      return {
-        ...node,
-        x: pt.x,
-        y: pt.y,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-      };
-    });
-
-    // Compute cubic Bezier edge curves
-    const edges: { fromId: string; toId: string; path: string }[] = [];
-    nodes.forEach((node) => {
-      if (node.depends_on) {
-        const toPt = coords.get(node.id);
-        if (toPt) {
-          node.depends_on.forEach((parent) => {
-            const fromPt = coords.get(parent);
-            if (fromPt) {
-              const x1 = fromPt.x + NODE_WIDTH;
-              const y1 = fromPt.y + NODE_HEIGHT / 2;
-              const x2 = toPt.x;
-              const y2 = toPt.y + NODE_HEIGHT / 2;
-              const cx1 = x1 + (x2 - x1) / 2;
-              const cy1 = y1;
-              const cx2 = x1 + (x2 - x1) / 2;
-              const cy2 = y2;
-              const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
-              edges.push({ fromId: parent, toId: node.id, path });
-            }
-          });
-        }
-      }
-    });
-
-    const totalWidth = START_X * 2 + layers.length * (NODE_WIDTH + HORIZONTAL_GAP);
-    const totalHeight = Math.max(START_Y * 2 + maxLayerHeight, 420);
-
-    return { nodesWithCoords, edges, width: totalWidth, height: totalHeight };
-  }, [currentWorkflow]);
+  const dagLayout = useMemo(
+    () => computeDagLayout(currentWorkflow?.plan?.nodes ?? []),
+    [currentWorkflow]
+  );
 
   // Selected Node details
   const selectedNode = useMemo(() => {
@@ -315,8 +241,10 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     if (shellTerm) {
       onWritePty(shellTerm.id, cmd + "\r\n");
       onSelectTerminal(shellTerm.id);
+      setFollowRunAfterMs(Date.now());
+      setActiveTab("runs");
       setDispatchSuccessMsg(
-        `Launched Archon workflow "${workflowName}" in terminal "${shellTerm.name}" — live-polling Archon :3090 runs...`
+        `Launched Archon workflow "${workflowName}" in terminal "${shellTerm.name}". The run monitor opens it as soon as Archon reports it.`
       );
       setTimeout(() => setDispatchSuccessMsg(null), 6000);
     } else {
@@ -418,7 +346,10 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                 }`}
               >
                 <Clock className="w-3.5 h-3.5 text-[#e3b341]" />
-                <span>Runs History ({runs.length})</span>
+                <span>
+                  Run Monitor ({runs.length}
+                  {runs.some((r) => r.status === "running") ? " · live" : ""})
+                </span>
               </button>
             </div>
 
@@ -580,6 +511,13 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                         ${latestWorkflowRun.total_cost_usd.toFixed(4)}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => watchRun(latestWorkflowRun.id)}
+                      className="px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] border border-[#30363d] font-sans text-[11px] font-medium"
+                    >
+                      {latestWorkflowRun.status === "running" ? "Watch live" : "Open in monitor"}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1026,95 +964,15 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
             </div>
           )}
 
-          {/* TAB 4: ARCHON RUNS HISTORY */}
+          {/* TAB 4: LIVE RUN MONITOR (graph / log / chat, like the Archon web UI) */}
           {activeTab === "runs" && (
-            <div className="flex-1 p-6 overflow-y-auto">
-              <div className="pb-4 mb-4 border-b border-[#30363d] flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Archon Workflow Runs</h3>
-                  <p className="text-xs text-[#8b949e]">Governed execution logs and spend history from Archon (:3090 / archon.db)</p>
-                </div>
-                <span className="text-xs text-[#8b949e] font-mono">{runs.length} runs loaded</span>
-              </div>
-
-              {runs.length > 0 ? (
-                <div className="space-y-2.5">
-                  {runs.map((run) => (
-                    <div
-                      key={run.id}
-                      className="p-3.5 bg-[#161b22] border border-[#30363d] rounded-lg flex items-center justify-between hover:border-[#8b949e] transition-colors"
-                    >
-                      <div className="space-y-1 max-w-[70%]">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-white">{run.workflow_name}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                              run.status === "completed"
-                                ? "bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40"
-                                : run.status === "running"
-                                ? "bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 animate-pulse"
-                                : "bg-[#f85149]/20 text-[#ff7b72] border border-[#f85149]/40"
-                            }`}
-                          >
-                            {run.status}
-                          </span>
-                          {run.outcome && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-[#3fb950] border border-[#30363d]">
-                              {run.outcome}
-                            </span>
-                          )}
-                          {run.codebase_name && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#388bfd]/15 text-[#58a6ff] border border-[#388bfd]/30">
-                              {run.codebase_name}
-                            </span>
-                          )}
-                          {run.nodes_total != null && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-[#c9d1d9] border border-[#30363d]">
-                              {run.nodes_completed ?? 0}/{run.nodes_total} nodes
-                            </span>
-                          )}
-                        </div>
-
-                        {run.user_message && (
-                          <p className="text-xs text-[#8b949e] truncate" title={run.user_message}>
-                            "{run.user_message}"
-                          </p>
-                        )}
-
-                        <div className="flex items-center gap-3 text-[10px] text-[#8b949e] font-mono">
-                          <span>Run ID: {run.id}</span>
-                          {run.working_path && <span>Path: {run.working_path}</span>}
-                          {run.current_step_name && (
-                            <span className="text-[#e3b341]">Step: {run.current_step_name}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="text-right space-y-1">
-                        {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
-                          <span className="text-xs font-bold text-[#e3b341] font-mono block">
-                            ${run.total_cost_usd.toFixed(4)}
-                          </span>
-                        )}
-                        {run.started_at && (
-                          <span className="text-[10px] text-[#8b949e] block">
-                            {new Date(run.started_at).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="h-64 flex flex-col items-center justify-center text-center p-8 text-[#8b949e]">
-                  <Clock className="w-10 h-10 text-[#30363d] mb-3" />
-                  <h4 className="text-sm font-semibold text-white mb-1">No Past Runs Recorded</h4>
-                  <p className="text-xs max-w-sm">
-                    Workflow executions initiated via `archon workflow run` will be displayed here.
-                  </p>
-                </div>
-              )}
-            </div>
+            <ArchonRunMonitor
+              runs={runs}
+              workflows={workflows}
+              selectedRunId={monitorRunId}
+              onSelectRun={setMonitorRunId}
+              serviceOnline={!!serviceStatus?.running}
+            />
           )}
         </div>
       </div>

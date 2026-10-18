@@ -30,7 +30,75 @@ pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     output_buffer: Arc<Mutex<(String, u64)>>,
+    current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
+}
+
+/// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
+/// (1..3 trailing bytes) across `read()` calls so split box-drawing or emoji characters
+/// are never corrupted into U+FFFD replacement characters.
+fn decode_utf8_streaming(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
+    pending.extend_from_slice(chunk);
+    let mut out = String::with_capacity(pending.len());
+    let mut pos = 0;
+    while pos < pending.len() {
+        match std::str::from_utf8(&pending[pos..]) {
+            Ok(valid) => {
+                out.push_str(valid);
+                pos = pending.len();
+                break;
+            }
+            Err(err) => {
+                let valid_len = err.valid_up_to();
+                if valid_len > 0 {
+                    if let Ok(valid) = std::str::from_utf8(&pending[pos..pos + valid_len]) {
+                        out.push_str(valid);
+                    }
+                    pos += valid_len;
+                }
+                match err.error_len() {
+                    Some(invalid_len) => {
+                        out.push('\u{FFFD}');
+                        pos += invalid_len;
+                    }
+                    None => {
+                        // Incomplete multi-byte sequence at end of buffer; wait for next read()
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    pending.drain(..pos);
+    out
+}
+
+/// Caps the scrollback buffer at `max_len` bytes on a valid UTF-8 boundary and avoids
+/// slicing through the middle of an ANSI escape sequence.
+fn trim_output_buffer(buf: &mut String, max_len: usize) {
+    if buf.len() <= max_len {
+        return;
+    }
+    let excess = buf.len() - max_len;
+    let mut cut = excess;
+    while cut < buf.len() && !buf.is_char_boundary(cut) {
+        cut += 1;
+    }
+    let lookahead_end = (cut + 64).min(buf.len());
+    let window = &buf.as_bytes()[cut..lookahead_end];
+    if let Some(esc_pos) = window.iter().position(|&b| b == 0x1b || b == b'\n') {
+        if esc_pos > 0
+            && window[..esc_pos].iter().all(|&b| {
+                b.is_ascii_digit() || b == b';' || b == b'?' || (0x40..=0x7e).contains(&b)
+            })
+        {
+            let next_cut = cut + esc_pos;
+            if buf.is_char_boundary(next_cut) {
+                cut = next_cut;
+            }
+        }
+    }
+    buf.drain(..cut);
 }
 
 impl PtySession {
@@ -289,6 +357,7 @@ impl PtySession {
         };
 
         let output_buffer = Arc::new(Mutex::new((initial_data, 0u64)));
+        let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
 
         // Background thread for reading PTY output
@@ -301,6 +370,7 @@ impl PtySession {
 
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
+                let mut pending_utf8 = Vec::with_capacity(8);
                 let mut current_seq = 0u64;
                 let mut session_started_emitted = false;
                 let mut log_file = std::fs::OpenOptions::new()
@@ -313,7 +383,10 @@ impl PtySession {
                     match reader.read(&mut buf) {
                         Ok(0) => break, // EOF
                         Ok(n) => {
-                            let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                            let text = decode_utf8_streaming(&mut pending_utf8, &buf[..n]);
+                            if text.is_empty() {
+                                continue;
+                            }
 
                             if let Some(ref mut file) = log_file {
                                 use std::io::Write;
@@ -350,14 +423,7 @@ impl PtySession {
                                 guard.0.push_str(&text);
                                 guard.1 = seq;
                                 // Cap buffer at 256KB to avoid unbounded memory usage
-                                if guard.0.len() > 256 * 1024 {
-                                    let excess = guard.0.len() - 256 * 1024;
-                                    let mut cut = excess;
-                                    while cut < guard.0.len() && !guard.0.is_char_boundary(cut) {
-                                        cut += 1;
-                                    }
-                                    guard.0.drain(..cut);
-                                }
+                                trim_output_buffer(&mut guard.0, 256 * 1024);
                             }
 
                             let _ = app_handle.emit(
@@ -461,6 +527,7 @@ impl PtySession {
             master: pair.master,
             writer,
             output_buffer,
+            current_size,
             is_alive,
         })
     }
@@ -476,6 +543,16 @@ impl PtySession {
     }
 
     pub fn resize(&self, rows: u16, cols: u16) -> Result<(), String> {
+        if rows == 0 || cols == 0 {
+            return Ok(());
+        }
+        {
+            let mut size = self.current_size.lock();
+            if *size == (rows, cols) {
+                return Ok(());
+            }
+            *size = (rows, cols);
+        }
         self.master
             .resize(PtySize {
                 rows,
@@ -568,17 +645,41 @@ mod tests {
         // such that 256 * 1024 falls in the middle of a multi-byte character
         buffer.push_str("🌟 Gusting... 322 tokens ━ Claude Code");
 
-        if buffer.len() > 256 * 1024 {
-            let excess = buffer.len() - 256 * 1024;
-            let mut cut = excess;
-            while cut < buffer.len() && !buffer.is_char_boundary(cut) {
-                cut += 1;
-            }
-            buffer.drain(..cut);
-        }
+        trim_output_buffer(&mut buffer, 256 * 1024);
 
         assert!(buffer.len() <= 256 * 1024);
         assert!(buffer.is_char_boundary(0));
+    }
+
+    #[test]
+    fn test_decode_utf8_streaming_split_multibyte() {
+        let sample = "│ seanrobertwright/AI-WS-SDK        r: refresh ⚙️\r\n🪾 worktree AI-WS-SDK";
+        let bytes = sample.as_bytes();
+        let mut pending = Vec::new();
+        let mut reconstructed = String::new();
+
+        // Feed 1 byte at a time so every 3-byte and 4-byte UTF-8 sequence is split across calls
+        for b in bytes {
+            reconstructed.push_str(&decode_utf8_streaming(&mut pending, &[*b]));
+        }
+        assert!(pending.is_empty());
+        assert_eq!(reconstructed, sample);
+    }
+
+    #[test]
+    fn test_trim_output_buffer_avoids_splitting_csi_sequence() {
+        let prefix = "A".repeat(100);
+        // Suppose excess cuts right inside "\x1b[24;80H" at "24;80H"
+        let tail = "\x1b[24;80H\x1b[32mHello World";
+        let mut buf = format!("{}{}", prefix, tail);
+        let max_len = tail.len() - 3; // cuts 3 bytes into `tail` ("4;80H\x1b[32mHello World")
+
+        trim_output_buffer(&mut buf, max_len);
+        assert!(
+            buf.starts_with("\x1b[32mHello World"),
+            "Expected buffer to advance to next ESC, got: {:?}",
+            buf
+        );
     }
 }
 

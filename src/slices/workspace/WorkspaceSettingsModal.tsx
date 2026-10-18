@@ -33,7 +33,7 @@ interface EnvRow {
 }
 
 const COMMON_FLAGS = [
-  { label: "Claude 3.7 Sonnet", flag: "--model claude-3-7-sonnet-20250219" },
+  { label: "Claude Sonnet 5.5", flag: "--model claude-sonnet-5-5" },
   { label: "Skip Permissions", flag: "--dangerously-skip-permissions" },
   { label: "Verbose", flag: "--verbose" },
   { label: "Print Output", flag: "--print" },
@@ -224,7 +224,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
               type="text"
               value={defaultFlags}
               onChange={(e) => setDefaultFlags(e.target.value)}
-              placeholder="e.g. --model claude-3-7-sonnet-20250219 --dangerously-skip-permissions"
+              placeholder="e.g. --model claude-sonnet-5-5 --dangerously-skip-permissions"
               className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-[#c9d1d9] placeholder-[#484f58] focus:outline-hidden focus:border-[#58a6ff] focus:ring-1 focus:ring-[#58a6ff]"
             />
 

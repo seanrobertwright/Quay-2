@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, MouseEvent, KeyboardEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types";
 import { AgentIcon } from "../terminal/AgentIcons";
 import {
   Terminal as TerminalIcon,
@@ -40,6 +40,9 @@ export const TerminalRow = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isAgent = isAgentRunKind(terminal.run_kind);
+  const launchedModel = launchModel(terminal.custom_flags);
+  // "claude-sonnet-4-6" -> "sonnet-4-6"; provider prefixes like "anthropic/" are dropped
+  const modelLabel = launchedModel?.split("/").pop()?.replace(/^claude-/, "") ?? null;
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -350,8 +353,17 @@ export const TerminalRow = ({
       </div>
 
       {/* Sub Row: Live Status and Tool Badge */}
-      <div className="pl-4.5 flex items-center min-w-0 overflow-hidden">
+      <div className="pl-4.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
         {renderStatus()}
+        {/* Launch model (absent when the agent runs its default model) */}
+        {isAgent && modelLabel && (
+          <span
+            className="ml-auto px-1 py-0.2 rounded text-[9px] font-mono bg-[#388bfd]/15 text-[#79c0ff] border border-[#388bfd]/40 shrink-0 truncate max-w-[96px]"
+            title={`Launched with --model ${launchedModel}`}
+          >
+            {modelLabel}
+          </span>
+        )}
       </div>
     </div>
   );

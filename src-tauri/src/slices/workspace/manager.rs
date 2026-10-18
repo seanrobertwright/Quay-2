@@ -299,13 +299,13 @@ mod tests {
         let res = manager.update_project_settings(
             "C:\\Test\\Alpha",
             envs.clone(),
-            Some("--model claude-3-7-sonnet".to_string()),
+            Some("--model claude-sonnet-5-5".to_string()),
         );
         assert!(res.is_ok());
 
         let (retrieved_envs, flags) = manager.get_project_settings("C:\\Test\\Alpha").unwrap();
         assert_eq!(retrieved_envs.get("ANTHROPIC_API_KEY").map(|s| s.as_str()), Some("sk-test-123"));
-        assert_eq!(flags.as_deref(), Some("--model claude-3-7-sonnet"));
+        assert_eq!(flags.as_deref(), Some("--model claude-sonnet-5-5"));
     }
 }
 

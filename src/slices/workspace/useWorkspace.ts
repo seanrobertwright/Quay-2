@@ -116,6 +116,12 @@ export function useWorkspace() {
     refreshClaudeStats();
   }, [refreshProjects, refreshTerminals, refreshClaudeStats]);
 
+  // Keep the spend figure current; rescans only re-read transcripts that changed
+  useEffect(() => {
+    const timer = setInterval(refreshClaudeStats, 120_000);
+    return () => clearInterval(timer);
+  }, [refreshClaudeStats]);
+
   // Listen for terminal process exits
   useEffect(() => {
     const unlistenPromise = listen<PtyExitPayload>("terminal-exited", (event) => {
