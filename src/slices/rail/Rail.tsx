@@ -594,20 +594,38 @@ export const Rail: React.FC<RailProps> = ({
       {/* Bottom Mission Control: one compact icon toolbar + status line */}
       <div className="px-2 py-1.5 border-t border-[#30363d] bg-[#161b22] flex flex-col gap-1">
         <div role="toolbar" aria-label="Quay tools" className="flex items-center justify-between">
-          {toolButtons.map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              onClick={tool.onClick}
-              aria-label={tool.label}
-              title={tool.shortcut ? `${tool.label} (${tool.shortcut})` : tool.label}
-              className={`p-1.5 rounded-md transition-colors hover:bg-[#21262d] ${
-                tool.accent ? "ring-1 ring-[#58a6ff]/40 bg-[#0d1117]" : ""
-              }`}
-            >
-              {tool.icon}
-            </button>
-          ))}
+          {toolButtons.map((tool, toolIdx) => {
+            const shortcutId = `${railId}-tool-${tool.id}-shortcut`;
+            // Styled tooltip instead of `title`, which WebView2 does not always show;
+            // it opens toward the rail's middle so the window edge never clips it
+            const opensRight = toolIdx < toolButtons.length / 2;
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={tool.onClick}
+                aria-label={tool.label}
+                aria-describedby={tool.shortcut ? shortcutId : undefined}
+                className={`group/tool relative p-1.5 rounded-md transition-colors hover:bg-[#21262d] ${
+                  tool.accent ? "ring-1 ring-[#58a6ff]/40 bg-[#0d1117]" : ""
+                }`}
+              >
+                {tool.icon}
+                <span
+                  className={`pointer-events-none absolute bottom-full mb-1.5 z-50 whitespace-nowrap rounded border border-[#30363d] bg-[#161b22] px-2 py-1 text-[11px] text-[#c9d1d9] shadow-lg opacity-0 transition-opacity group-hover/tool:opacity-100 group-hover/tool:delay-150 group-focus-visible/tool:opacity-100 ${
+                    opensRight ? "left-0" : "right-0"
+                  }`}
+                >
+                  {tool.label}
+                  {tool.shortcut && (
+                    <span id={shortcutId} className="ml-1.5 font-mono text-[#8b949e]">
+                      {tool.shortcut}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex items-center justify-between text-[10px] text-[#8b949e] px-1 font-mono">
