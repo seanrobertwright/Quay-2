@@ -236,7 +236,9 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
             type="button"
             onClick={onOpenTokenSpend}
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#e3b341] hover:text-[#f2cc60] font-mono text-[11px] font-semibold cursor-pointer border border-[#30363d] transition-colors"
-            title="Live Token Spend & Turn Chime Settings (^b t)"
+            title={`All-time API-equivalent Claude spend · today (UTC) $${(
+              claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
+            ).toFixed(2)} (^b t)`}
           >
             <Coins className="w-3.5 h-3.5 text-[#e3b341]" />
             <span>${(claudeStats?.total_cost_usd ?? 0).toFixed(2)}</span>

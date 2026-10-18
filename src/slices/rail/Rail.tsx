@@ -616,7 +616,9 @@ export const Rail: React.FC<RailProps> = ({
               type="button"
               onClick={onOpenTokenSpend}
               aria-label="Token Spend & Chimes"
-              title="Token Spend & Audio Turn Chime Settings (^b t)"
+              title={`All-time API-equivalent Claude spend · today (UTC) $${(
+                claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
+              ).toFixed(2)} (^b t)`}
               className="flex items-center gap-1 px-1 -mx-1 rounded hover:bg-[#21262d] hover:text-white transition-colors"
             >
               <Coins className="w-3 h-3 text-[#e3b341]" />
