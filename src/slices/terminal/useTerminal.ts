@@ -149,6 +149,8 @@ export function useTerminal(
       },
       allowTransparency: true,
       scrollback: 5000,
+      // `term.unicode` is a proposed API; without this the width provider below never registers
+      allowProposedApi: true,
     });
 
     // Register custom Unicode width provider so "⚙️" (U+2699 U+FE0F) and emojis match Claude Code / Ink
