@@ -23,6 +23,7 @@ import { ArchonServiceStatus, ArchonWorkflow, ArchonRun, RepoSpecSummary } from 
 import { computeDagLayout } from "./dagLayout";
 import { ArchonRunMonitor } from "./ArchonRunMonitor";
 import { TerminalInfo } from "../terminal/types";
+import { submitPromptToTerminal } from "../terminal/submitPrompt";
 
 interface ArchonGraphModalProps {
   isOpen: boolean;
@@ -201,7 +202,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     }
 
     if (target) {
-      onWritePty(target, promptText + "\r");
+      submitPromptToTerminal(target, promptText).catch(console.error);
       onSelectTerminal(target);
       setDispatchSuccessMsg(`Assigned to terminal pane "${terminals.find((t) => t.id === target)?.name || target}"!`);
       setTimeout(() => setDispatchSuccessMsg(null), 3500);

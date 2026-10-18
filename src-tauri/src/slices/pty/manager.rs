@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use parking_lot::Mutex;
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -10,6 +11,9 @@ use super::models::{
     TerminalOutputPayload,
 };
 use super::session::PtySession;
+
+/// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
+const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
 fn get_sessions_dir() -> PathBuf {
     #[cfg(test)]
@@ -246,6 +250,28 @@ impl PtyManager {
         } else {
             Err(format!("Terminal {} not found or inactive", terminal_id))
         }
+    }
+
+    /// Types `prompt` into an agent terminal, then presses Enter in a separate write.
+    /// Agent TUIs read text and Enter that arrive in one chunk as a paste and leave it
+    /// unsent, so Enter follows after `PROMPT_SUBMIT_DELAY` on a background thread.
+    pub fn submit_prompt(&self, terminal_id: &str, prompt: &str) -> Result<(), String> {
+        self.write(terminal_id, prompt)?;
+        let sessions = self.sessions.clone();
+        let terminal_id = terminal_id.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(PROMPT_SUBMIT_DELAY);
+            let sessions = sessions.lock();
+            match sessions.get(&terminal_id) {
+                Some(session) => {
+                    if let Err(e) = session.write("\r") {
+                        tracing::warn!("Failed to submit prompt in PTY {}: {}", terminal_id, e);
+                    }
+                }
+                None => tracing::warn!("PTY {} closed before its prompt was submitted", terminal_id),
+            }
+        });
+        Ok(())
     }
 
     pub fn resize(&self, terminal_id: &str, rows: u16, cols: u16) -> Result<(), String> {

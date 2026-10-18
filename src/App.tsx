@@ -24,6 +24,7 @@ import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
+import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 
 export function App() {
   const {
@@ -171,6 +172,8 @@ export function App() {
       );
 
       let targetTerminalId: string | null = null;
+      // A terminal spawned here is still starting, so the prompt waits for it to settle
+      let spawnedTerminal = false;
 
       if (matchedWt) {
         // Worktree already exists, switch active project to it
@@ -190,12 +193,14 @@ export function App() {
           });
           selectTerminal(spawned.id);
           targetTerminalId = spawned.id;
+          spawnedTerminal = true;
         }
       } else {
         // Create new worktree and launch Claude
         const res = await createWorktree(rootRepo, branchName, true, "main", true);
         if (res?.terminal) {
           targetTerminalId = res.terminal.id;
+          spawnedTerminal = true;
         }
       }
 
@@ -204,10 +209,11 @@ export function App() {
 
       // Auto-dispatch user's proven workflow prompt into the terminal ConPTY
       if (targetTerminalId) {
-        const prompt = `use archon and lril workflows to implement issue ${issue.number}\n`;
-        setTimeout(() => {
-          invoke("write_pty", { terminalId: targetTerminalId, data: prompt }).catch(console.error);
-        }, 1200);
+        submitPromptToTerminal(
+          targetTerminalId,
+          `use archon and lril workflows to implement issue ${issue.number}`,
+          { awaitStartup: spawnedTerminal }
+        ).catch(console.error);
       }
     } catch (err) {
       console.error("Failed to implement issue:", err);
@@ -217,10 +223,10 @@ export function App() {
 
   // 1-Click: Triage issue with Wayfinder
   const handleTriageIssue = async (issue: GithubIssue) => {
-    const prompt = `/wayfinder ${issue.number} triage this issue\n`;
+    const prompt = `/wayfinder ${issue.number} triage this issue`;
     try {
       if (activeTerminalId) {
-        await invoke("write_pty", { terminalId: activeTerminalId, data: prompt });
+        await submitPromptToTerminal(activeTerminalId, prompt);
       } else {
         // Spawn Claude terminal in active project
         const spawned = await invoke<TerminalInfo>("spawn_terminal", {
@@ -231,9 +237,7 @@ export function App() {
           },
         });
         selectTerminal(spawned.id);
-        setTimeout(() => {
-          invoke("write_pty", { terminalId: spawned.id, data: prompt }).catch(console.error);
-        }, 1200);
+        submitPromptToTerminal(spawned.id, prompt, { awaitStartup: true }).catch(console.error);
       }
       setIsGithubDrawerOpen(false);
     } catch (err) {
@@ -243,10 +247,10 @@ export function App() {
 
   // 1-Click: Resolve merge conflicts in PR
   const handleResolvePrConflicts = async (_pr: GithubPullRequest) => {
-    const prompt = `resolve the merge conflicts in this issue's PR.\n`;
+    const prompt = `resolve the merge conflicts in this issue's PR.`;
     try {
       if (activeTerminalId) {
-        await invoke("write_pty", { terminalId: activeTerminalId, data: prompt });
+        await submitPromptToTerminal(activeTerminalId, prompt);
       } else {
         const spawned = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
@@ -256,9 +260,7 @@ export function App() {
           },
         });
         selectTerminal(spawned.id);
-        setTimeout(() => {
-          invoke("write_pty", { terminalId: spawned.id, data: prompt }).catch(console.error);
-        }, 1200);
+        submitPromptToTerminal(spawned.id, prompt, { awaitStartup: true }).catch(console.error);
       }
       setIsGithubDrawerOpen(false);
     } catch (err) {
@@ -282,11 +284,11 @@ export function App() {
       )
       .join("\n");
 
-    const prompt = `Please fix the following pre-PR audit violations in our git repository:\n\n${summary}\n\nPlease sanitize or clean up these files so they pass the pre-PR audit gate.\n`;
+    const prompt = `Please fix the following pre-PR audit violations in our git repository:\n\n${summary}\n\nPlease sanitize or clean up these files so they pass the pre-PR audit gate.`;
 
     try {
       if (activeTerminalId) {
-        await invoke("write_pty", { terminalId: activeTerminalId, data: prompt });
+        await submitPromptToTerminal(activeTerminalId, prompt);
       } else {
         const spawned = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
@@ -296,9 +298,7 @@ export function App() {
           },
         });
         selectTerminal(spawned.id);
-        setTimeout(() => {
-          invoke("write_pty", { terminalId: spawned.id, data: prompt }).catch(console.error);
-        }, 1200);
+        submitPromptToTerminal(spawned.id, prompt, { awaitStartup: true }).catch(console.error);
       }
       setIsAuditModalOpen(false);
     } catch (err) {

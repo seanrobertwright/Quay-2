@@ -124,8 +124,7 @@ impl A2ARouter {
                 format!("[Peer agent ({})]: {}", from_name, clean_content)
             };
 
-            let data_to_write = format!("{}\r\n", pty_prompt);
-            if let Err(e) = pty.write(&target_terminal_id, &data_to_write) {
+            if let Err(e) = pty.submit_prompt(&target_terminal_id, &pty_prompt) {
                 tracing::warn!("Failed writing A2A prompt to PTY {}: {}", target_terminal_id, e);
             } else {
                 // Update receiver agent status to Working
@@ -267,8 +266,7 @@ impl A2ARouter {
 
                 // 2. Inject directly into ConPTY stdin so the agent receives the broadcast notice immediately!
                 let pty_prompt = format!("[Broadcast Notice]: {}", clean_text);
-                let data_to_write = format!("{}\r\n", pty_prompt);
-                if let Err(e) = pty_manager.write(&t.id, &data_to_write) {
+                if let Err(e) = pty_manager.submit_prompt(&t.id, &pty_prompt) {
                     tracing::warn!("Failed writing broadcast to PTY {}: {}", t.id, e);
                 } else {
                     pty_manager.update_status(&t.id, ClaudeStatus::Working);

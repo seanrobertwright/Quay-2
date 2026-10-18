@@ -981,7 +981,7 @@ impl MachinaManager {
             .clone()
             .ok_or_else(|| format!("{} has no author terminal; launch one first", wo.id))?;
         let pty = self.pty.lock().clone().ok_or("Terminals are not ready yet")?;
-        pty.write(&terminal, &format!("{}\r", text))?;
+        pty.submit_prompt(&terminal, text)?;
         self.with_wo(id, |wo, _| {
             push_event(wo, format!("Sent to the author: {}", text.chars().take(160).collect::<String>()));
             Ok(())
