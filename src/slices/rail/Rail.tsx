@@ -1,4 +1,4 @@
-import { useState, useId, MouseEvent, ReactNode } from "react";
+import { useState, useEffect, useId, MouseEvent, KeyboardEvent, ReactNode } from "react";
 import { TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
@@ -26,6 +26,26 @@ import {
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
+
+// The rail was a fixed 288px (`w-72`); the drag range is measured from that width
+const RAIL_BASE_WIDTH = 288;
+const RAIL_MIN_WIDTH = RAIL_BASE_WIDTH + 50;
+const RAIL_MAX_WIDTH = RAIL_BASE_WIDTH + 300;
+const RAIL_KEYBOARD_STEP = 16;
+const RAIL_WIDTH_KEY = "quay_rail_width";
+
+const clampRailWidth = (width: number) =>
+  Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, Math.round(width)));
+
+// Falls back to the minimum width when storage is unavailable or holds anything but digits
+function loadRailWidth(): number {
+  try {
+    const saved = localStorage.getItem(RAIL_WIDTH_KEY);
+    return saved && /^\d+$/.test(saved) ? clampRailWidth(Number(saved)) : RAIL_MIN_WIDTH;
+  } catch {
+    return RAIL_MIN_WIDTH;
+  }
+}
 
 interface RailProps {
   projects: Project[];
@@ -90,6 +110,59 @@ export const Rail: React.FC<RailProps> = ({
   // Worktree lists start collapsed; an entry of `false` means the user expanded it
   const [collapsedWorktrees, setCollapsedWorktrees] = useState<Record<string, boolean>>({});
   const railId = useId();
+  const [railWidth, setRailWidth] = useState<number>(loadRailWidth);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Persist once a drag ends rather than on every mouse move
+  useEffect(() => {
+    if (isResizing) return;
+    try {
+      localStorage.setItem(RAIL_WIDTH_KEY, String(railWidth));
+    } catch {
+      // Storage can be unavailable; the width still applies for this session
+    }
+  }, [railWidth, isResizing]);
+
+  // Draggable rail edge mouse down handler
+  const handleResizeMouseDown = (e: MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = railWidth;
+    setIsResizing(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    const onMouseMove = (moveEvent: globalThis.MouseEvent) => {
+      setRailWidth(clampRailWidth(startWidth + moveEvent.clientX - startX));
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
+
+  const handleResizeKeyDown = (e: KeyboardEvent) => {
+    const next =
+      e.key === "ArrowLeft"
+        ? railWidth - RAIL_KEYBOARD_STEP
+        : e.key === "ArrowRight"
+        ? railWidth + RAIL_KEYBOARD_STEP
+        : e.key === "Home"
+        ? RAIL_MIN_WIDTH
+        : e.key === "End"
+        ? RAIL_MAX_WIDTH
+        : null;
+    if (next === null) return;
+    e.preventDefault();
+    setRailWidth(clampRailWidth(next));
+  };
 
   const toggleCollapse = (path: string, e?: MouseEvent) => {
     e?.stopPropagation();
@@ -189,7 +262,38 @@ export const Rail: React.FC<RailProps> = ({
   });
 
   return (
-    <aside className="w-72 bg-[#0d1117] border-r border-[#30363d] flex flex-col h-full select-none text-[#c9d1d9]">
+    <aside
+      id={`${railId}-panel`}
+      style={{ width: railWidth }}
+      className="relative shrink-0 bg-[#0d1117] border-r border-[#30363d] flex flex-col h-full select-none text-[#c9d1d9]"
+    >
+      {/* Draggable rail edge: drag, arrow keys, or Home/End resize; double click resets */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-controls={`${railId}-panel`}
+        aria-valuenow={railWidth}
+        aria-valuemin={RAIL_MIN_WIDTH}
+        aria-valuemax={RAIL_MAX_WIDTH}
+        tabIndex={0}
+        onMouseDown={handleResizeMouseDown}
+        onDoubleClick={() => setRailWidth(RAIL_MIN_WIDTH)}
+        onKeyDown={handleResizeKeyDown}
+        className={`group absolute top-0 bottom-0 -right-[5px] w-[10px] z-30 cursor-col-resize flex justify-center outline-none transition-colors ${
+          isResizing ? "bg-[#58a6ff]/20" : "hover:bg-[#58a6ff]/10"
+        }`}
+        title="Drag to resize sidebar (Double click to reset)"
+      >
+        <div
+          className={`w-[2px] h-full transition-colors ${
+            isResizing
+              ? "bg-[#58a6ff]"
+              : "bg-transparent group-hover:bg-[#58a6ff] group-focus-visible:bg-[#58a6ff]"
+          }`}
+        />
+      </div>
+
       {/* App Branding & Quay Logo */}
       <div className="h-12 px-4 border-b border-[#30363d] flex items-center justify-between bg-[#161b22]">
         <div className="flex items-center gap-2">
