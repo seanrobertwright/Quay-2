@@ -1,12 +1,17 @@
 import { defineConfig } from 'vitepress';
+import { withMermaid } from 'vitepress-plugin-mermaid';
 
 // https://vitepress.dev/reference/site-config
-export default defineConfig({
-  title: "Quay 2",
-  description: "Native Windows Autonomous Multi-Agent Workspace & Orchestrator",
-  base: "/Quay-2/",
-  cleanUrls: true,
-  lastUpdated: true,
+export default withMermaid(
+  defineConfig({
+    title: "Quay 2",
+    description: "Native Windows Autonomous Multi-Agent Workspace & Orchestrator",
+    base: "/Quay-2/",
+    cleanUrls: true,
+    lastUpdated: true,
+    mermaid: {
+      theme: 'dark',
+    },
 
   head: [
     ['link', { rel: 'icon', href: '/Quay-2/logo.svg' }],
@@ -117,4 +122,5 @@ export default defineConfig({
       text: 'Edit this page on GitHub',
     },
   },
-});
+})
+);

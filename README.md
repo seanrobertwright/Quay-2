@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚓ Quay 2
+<img src="docs/public/logo.svg" width="96" height="96" alt="Quay 2 Logo" />
+
+# Quay 2
 
 ### The Native Windows Orchestrator & Cockpit for Autonomous Multi-Agent AI Engineering
 
