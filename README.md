@@ -32,6 +32,7 @@ Quay 2 is structured into cohesive end-to-end vertical feature slices across bot
    - Projects list with active project indicator (`▸`).
    - Terminals list with Run Kind icons (`claude`, `pwsh`, `› cmd`).
    - Permission mode pill badge (`SKIP` in red).
+   - Worktrees under each project start collapsed; a blue dot on the header marks one that hides the active terminal.
    - A compact tool row at the bottom (GitHub, sessions, audit, Archon, Machina, command palette, A2A) with the all-time spend beside it.
    - Live Claude status indicators (`Starting`, `Working`, `Waiting ◆`, `Idle`, `Exited`).
    - Auto-approved tool action counter.

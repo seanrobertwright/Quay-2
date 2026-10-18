@@ -1,4 +1,4 @@
-import { useState, MouseEvent, ReactNode } from "react";
+import { useState, useId, MouseEvent, ReactNode } from "react";
 import { TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
@@ -87,6 +87,9 @@ export const Rail: React.FC<RailProps> = ({
   onOpenFactoryStation,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
+  // Worktree lists start collapsed; an entry of `false` means the user expanded it
+  const [collapsedWorktrees, setCollapsedWorktrees] = useState<Record<string, boolean>>({});
+  const railId = useId();
 
   const toggleCollapse = (path: string, e?: MouseEvent) => {
     e?.stopPropagation();
@@ -96,8 +99,22 @@ export const Rail: React.FC<RailProps> = ({
     }));
   };
 
-  // Find any terminals that might not match any registered project
+  const isWorktreesCollapsed = (path: string) => {
+    // Default mode is collapsed
+    return collapsedWorktrees[path] !== false;
+  };
+
+  const toggleWorktreesCollapse = (path: string, e?: MouseEvent) => {
+    e?.stopPropagation();
+    setCollapsedWorktrees((prev) => ({
+      ...prev,
+      [path]: prev[path] === false ? true : false,
+    }));
+  };
+
+  // Find any terminals that match neither a registered project nor one of its worktrees
   const knownPaths = new Set(projects.map((p) => p.path));
+  Object.values(projectWorktrees ?? {}).forEach((wts) => wts.forEach((wt) => knownPaths.add(wt.path)));
   const orphanTerminals = terminals.filter((t) => !knownPaths.has(t.project_path));
 
   // Tool launchers rendered as one icon row so the project tree keeps the vertical space
@@ -230,12 +247,20 @@ export const Rail: React.FC<RailProps> = ({
 
         {/* Tree Container */}
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {projects.map((proj) => {
+          {projects.map((proj, projIdx) => {
             const isCollapsed = !!collapsedProjects[proj.path];
             const isProjectActive = proj.path === activeProject;
             const projectTerminals = terminals.filter((t) => t.project_path === proj.path);
             const projectWts = projectWorktrees?.[proj.path] || [];
             const secondaryWorktrees = projectWts.filter((wt) => !wt.is_main);
+            const wtCollapsed = isWorktreesCollapsed(proj.path);
+            const wtListId = `${railId}-worktrees-${projIdx}`;
+            // A collapsed header flags when it hides the active worktree or terminal
+            const wtHidesActive = secondaryWorktrees.some(
+              (wt) =>
+                wt.path === activeProject ||
+                terminals.some((t) => t.project_path === wt.path && t.id === activeTerminalId)
+            );
 
             return (
               <div
@@ -375,10 +400,34 @@ export const Rail: React.FC<RailProps> = ({
                     {secondaryWorktrees.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-[#30363d]/40">
                         <div className="flex items-center justify-between px-1 py-1 text-[10px] font-semibold text-[#8b949e] uppercase tracking-wider">
-                          <span className="flex items-center gap-1 text-[#58a6ff]">
+                          <button
+                            type="button"
+                            onClick={(e) => toggleWorktreesCollapse(proj.path, e)}
+                            aria-expanded={!wtCollapsed}
+                            aria-controls={wtListId}
+                            className="flex items-center gap-1 text-[#58a6ff] hover:text-white uppercase tracking-wider transition-colors"
+                            title={
+                              wtCollapsed && wtHidesActive
+                                ? "Expand worktrees (contains the active terminal)"
+                                : wtCollapsed
+                                ? "Expand worktrees"
+                                : "Collapse worktrees"
+                            }
+                          >
+                            {wtCollapsed ? (
+                              <ChevronRight className="w-3 h-3 text-[#8b949e]" />
+                            ) : (
+                              <ChevronDown className="w-3 h-3 text-[#8b949e]" />
+                            )}
                             <GitBranch className="w-3 h-3" />
                             <span>Worktrees ({secondaryWorktrees.length})</span>
-                          </span>
+                            {wtCollapsed && wtHidesActive && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-[#58a6ff]"
+                                aria-label="contains the active terminal"
+                              />
+                            )}
+                          </button>
                           {onOpenNewWorktree && (
                             <button
                               type="button"
@@ -394,7 +443,8 @@ export const Rail: React.FC<RailProps> = ({
                           )}
                         </div>
 
-                        <div className="space-y-1 mt-1">
+                        {!wtCollapsed && (
+                          <div id={wtListId} className="space-y-1 mt-1">
                           {secondaryWorktrees.map((wt) => {
                             const branchName = wt.branch
                               ? wt.branch.replace("refs/heads/", "")
@@ -501,6 +551,7 @@ export const Rail: React.FC<RailProps> = ({
                             );
                           })}
                         </div>
+                      )}
                       </div>
                     )}
                   </div>
