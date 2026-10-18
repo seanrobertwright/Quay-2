@@ -1,10 +1,61 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, IUnicodeVersionProvider } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
+
+const EMOJI_PRESENTATION_RE = /\p{Emoji_Presentation}/u;
+
+/**
+ * Creates an xterm.js Unicode provider that matches Claude Code (Ink / string-width)
+ * cell widths for emojis and Variation Selector-16 (U+FE0F, e.g. "⚙️", "⚠️", "⏸️").
+ * Without this, xterm's default UnicodeV6 treats U+2699 U+FE0F ("⚙️") as 1 cell wide
+ * while Claude Code counts it as 2 cells wide, shifting subsequent auto-wrapped rows
+ * left by 1 column.
+ */
+function createClaudeUnicodeProvider(
+  baseProvider: IUnicodeVersionProvider
+): IUnicodeVersionProvider {
+  return {
+    version: "11-claude",
+    wcwidth(codepoint: number): 0 | 1 | 2 {
+      const baseWidth = baseProvider.wcwidth(codepoint);
+      if (baseWidth === 0 || baseWidth === 2) {
+        return baseWidth;
+      }
+      // Supplementary plane pictographs / emojis and BMP Emoji_Presentation glyphs
+      if (
+        (codepoint >= 0x1f000 && codepoint <= 0x1faff) ||
+        (codepoint >= 0x2300 &&
+          codepoint <= 0x2bff &&
+          EMOJI_PRESENTATION_RE.test(String.fromCodePoint(codepoint)))
+      ) {
+        return 2;
+      }
+      return baseWidth;
+    },
+    charProperties(codepoint: number, preceding: number): number {
+      // U+FE0F (Variation Selector-16) widens a preceding 1-cell character (like U+2699 ⚙) to 2 cells
+      if (codepoint === 0xfe0f && preceding !== 0) {
+        // Property bit layout in xterm UnicodeService: (charKind << 3) | (width << 1) | (shouldJoin ? 1 : 0)
+        return (2 << 1) | 1;
+      }
+      let width = this.wcwidth(codepoint);
+      let shouldJoin = width === 0 && preceding !== 0;
+      if (shouldJoin) {
+        const oldWidth = (preceding >> 1) & 3;
+        if (oldWidth === 0) {
+          shouldJoin = false;
+        } else if (oldWidth > width) {
+          width = oldWidth as 0 | 1 | 2;
+        }
+      }
+      return (width << 1) | (shouldJoin ? 1 : 0);
+    },
+  };
+}
 
 export function useTerminal(
   terminalId: string,
@@ -16,12 +67,56 @@ export function useTerminal(
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const lastPtySizeRef = useRef<{ rows: number; cols: number }>({
+    rows: 0,
+    cols: 0,
+  });
+
+  // Keep latest props in refs so the main Terminal instance is never disposed on React re-renders
+  const onToggleSearchRef = useRef(onToggleSearch);
+  onToggleSearchRef.current = onToggleSearch;
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
+
   const [searchResult, setSearchResult] = useState<
     { index: number; count: number } | undefined
   >(undefined);
 
+  // Fit xterm to its container and only notify Rust ConPTY when (rows, cols) actually changed
+  const syncPtySize = useCallback(() => {
+    const container = containerRef.current;
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!container || !term || !fitAddon || !isVisibleRef.current) return;
+    if (container.clientWidth <= 0 || container.clientHeight <= 0) return;
+
+    try {
+      fitAddon.fit();
+      const rows = term.rows;
+      const cols = term.cols;
+      if (rows <= 0 || cols <= 0) return;
+
+      if (
+        rows !== lastPtySizeRef.current.rows ||
+        cols !== lastPtySizeRef.current.cols
+      ) {
+        lastPtySizeRef.current = { rows, cols };
+        invoke("resize_pty", {
+          terminalId,
+          rows,
+          cols,
+        }).catch(console.error);
+      }
+    } catch (err) {
+      console.error("Error syncing PTY size:", err);
+    }
+  }, [terminalId]);
+
   useEffect(() => {
     if (!containerRef.current) return;
+    lastPtySizeRef.current = { rows: 0, cols: 0 };
 
     // Initialize xterm.js instance with Quay dark palette
     const term = new Terminal({
@@ -56,6 +151,26 @@ export function useTerminal(
       scrollback: 5000,
     });
 
+    // Register custom Unicode width provider so "⚙️" (U+2699 U+FE0F) and emojis match Claude Code / Ink
+    try {
+      const coreUnicode = (
+        term as unknown as {
+          _core?: {
+            unicodeService?: {
+              _providers?: Record<string, IUnicodeVersionProvider>;
+            };
+          };
+        }
+      )._core?.unicodeService;
+      const baseProvider = coreUnicode?._providers?.["6"];
+      if (baseProvider && term.unicode) {
+        term.unicode.register(createClaudeUnicodeProvider(baseProvider));
+        term.unicode.activeVersion = "11-claude";
+      }
+    } catch (err) {
+      console.warn("Could not register custom unicode provider:", err);
+    }
+
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();
     term.loadAddon(fitAddon);
@@ -66,8 +181,11 @@ export function useTerminal(
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
 
+    // Fit immediately BEFORE writing initial output so buffer replay uses real dimensions
+    syncPtySize();
+
     // Immediately request focus if active on mount
-    if (isVisible && isFocused) {
+    if (isVisibleRef.current && isFocusedRef.current) {
       requestAnimationFrame(() => {
         try {
           term.focus();
@@ -90,9 +208,7 @@ export function useTerminal(
     term.attachCustomKeyEventHandler((e) => {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        if (onToggleSearch) {
-          onToggleSearch();
-        }
+        onToggleSearchRef.current?.();
         return false;
       }
       return true;
@@ -117,7 +233,7 @@ export function useTerminal(
       if (event.payload.terminal_id !== terminalId) return;
 
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
-      if (!firstPtyOutputFocused && isVisible && isFocused) {
+      if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
         requestAnimationFrame(() => {
           try {
@@ -137,16 +253,17 @@ export function useTerminal(
       }
     });
 
-    // Fetch initial buffer
+    // Fetch initial buffer once on mount
     invoke<TerminalOutputPayload>("get_terminal_output", { terminalId })
       .then((res) => {
+        syncPtySize();
         if (res && res.data) {
           term.write(res.data);
           highestSeq = res.last_seq;
         }
         initialLoaded = true;
 
-        if (isVisible && isFocused) {
+        if (isVisibleRef.current && isFocusedRef.current) {
           try {
             term.focus();
             term.textarea?.focus({ preventScroll: true });
@@ -167,59 +284,37 @@ export function useTerminal(
         initialLoaded = true;
       });
 
-    // Immediate fit on mount if container is already sized
-    try {
-      if (containerRef.current?.clientWidth && containerRef.current?.clientHeight) {
-        fitAddon.fit();
-        invoke("resize_pty", {
-          terminalId,
-          rows: term.rows,
-          cols: term.cols,
-        }).catch(console.error);
-      }
-    } catch (_) {}
-
-    // Settle fit shortly after mount
+    // Settle fit shortly after mount (only resizes PTY if dimensions changed)
     const fitTimer = setTimeout(() => {
-      try {
-        fitAddon.fit();
-        invoke("resize_pty", {
-          terminalId,
-          rows: term.rows,
-          cols: term.cols,
-        }).catch(console.error);
-      } catch (err) {
-        console.error("Error initial fit:", err);
-      }
+      syncPtySize();
     }, 20);
 
-    // Watch resize of container
+    // Watch resize of container (debounced via rAF and guarded by lastPtySizeRef)
+    let resizeRaf: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      if (containerRef.current?.clientWidth && containerRef.current?.clientHeight) {
-        try {
-          fitAddon.fit();
-          invoke("resize_pty", {
-            terminalId,
-            rows: term.rows,
-            cols: term.cols,
-          }).catch(console.error);
-        } catch (err) {
-          console.error("Error on resize fit:", err);
-        }
+      if (resizeRaf !== null) {
+        cancelAnimationFrame(resizeRaf);
       }
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        syncPtySize();
+      });
     });
 
     resizeObserver.observe(containerRef.current);
 
     return () => {
       clearTimeout(fitTimer);
+      if (resizeRaf !== null) {
+        cancelAnimationFrame(resizeRaf);
+      }
       resizeObserver.disconnect();
       onDataDispose.dispose();
       onResultsDispose.dispose();
       unlistenPromise.then((unlisten) => unlisten());
       term.dispose();
     };
-  }, [terminalId, onToggleSearch]);
+  }, [terminalId, syncPtySize]);
 
   // Robust focus method that targets both xterm core and helper textarea
   const focusTerminal = useCallback(() => {
@@ -254,22 +349,11 @@ export function useTerminal(
     };
   }, [focusTerminal]);
 
-  // Focus and refit when becomes visible or gains active pane focus
+  // Refit when terminal becomes visible; only resize PTY if dimensions changed
   useEffect(() => {
     if (isVisible && termRef.current && fitAddonRef.current) {
       const fitTimer = setTimeout(() => {
-        try {
-          fitAddonRef.current?.fit();
-          if (termRef.current) {
-            invoke("resize_pty", {
-              terminalId,
-              rows: termRef.current.rows,
-              cols: termRef.current.cols,
-            }).catch(console.error);
-          }
-        } catch (err) {
-          console.error("Fit on visibility error:", err);
-        }
+        syncPtySize();
       }, 30);
 
       let cancelFocus: (() => void) | undefined;
@@ -282,7 +366,7 @@ export function useTerminal(
         cancelFocus?.();
       };
     }
-  }, [isVisible, isFocused, terminalId, scheduleFocus]);
+  }, [isVisible, isFocused, syncPtySize, scheduleFocus]);
 
   // Global event listener for custom "quay:focus-terminal" triggers
   useEffect(() => {
