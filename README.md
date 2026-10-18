@@ -32,6 +32,7 @@ Quay 2 is structured into cohesive end-to-end vertical feature slices across bot
    - Projects list with active project indicator (`▸`).
    - Terminals list with Run Kind icons (`claude`, `pwsh`, `› cmd`).
    - Permission mode pill badge (`SKIP` in red).
+   - A compact tool row at the bottom (GitHub, sessions, audit, Archon, Machina, command palette, A2A) with the all-time spend beside it.
    - Live Claude status indicators (`Starting`, `Working`, `Waiting ◆`, `Idle`, `Exited`).
    - Auto-approved tool action counter.
 3. **`stage`**: Main viewport area:
@@ -87,7 +88,7 @@ Every Claude session in Quay has access to these 4 tools out of the box:
 #### Option B: Operator Mission Control (UI-Assisted)
 
 1. **Open the A2A Panel**:
-   - Click **"A2A Orchestration Bus"** in the bottom left Navigation Rail, or press `Ctrl+K` and select **"A2A Orchestration Bus"**.
+   - Click the **A2A Orchestration Bus** icon (the network icon at the right end of the tool row at the bottom of the Navigation Rail), or press `Ctrl+K` and select **"A2A Orchestration Bus"**.
 2. **Configure Your Dispatch**:
    - **From**: Select the sending terminal (or check **"Dispatch as User"** to send as the human supervisor).
    - **To**: Select the recipient terminal.
