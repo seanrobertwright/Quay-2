@@ -15,7 +15,7 @@ target/
 src-tauri/target/
 docs/.vitepress/dist
 docs/.vitepress/cache
-.vitepress/
+/.vitepress/
 
 # Editor directories and files
 .vscode/*
