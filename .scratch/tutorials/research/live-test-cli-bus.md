@@ -248,6 +248,44 @@ Antigravity both submitted: OpenCode's session went `busy` and answered, Antigra
 250 ms gap (`PROMPT_SUBMIT_DELAY` in `PtyManager::submit_prompt`), from a different
 process, so the maintainer's in-Quay checklist on the ticket still stands for all three.
 
+
+## 5. Antigravity `msg` truncation length
+
+Ticket: [Task: Measure the Antigravity OSC 7501 `msg` truncation length](https://github.com/seanrobertwright/Quay-2/issues/56).
+Measured 2026-10-18 on Antigravity CLI 1.4.2, `agy` with no permission flag, `AGY_CLI_OSC7501=on`,
+in a 220x60 ConPTY driven by pywinpty 3.0.5 from a throwaway git repo. Each prompt was typed,
+Enter sent two seconds later, and the `done` sequence's `msg` base64-decoded.
+
+| Asked for | Answer length shown on screen | Decoded `msg` | Result |
+| --- | --- | --- | --- |
+| integers 1 to 100, space-separated | 291 chars (screen reached 100) | 200 chars | cut after `69 7`, then `…` |
+| integers 1 to 500 | 1891 chars (screen reached 500) | 200 chars | same cut |
+| integers 1 to 1500 | 6392 chars (screen reached 1500) | 200 chars | same cut |
+| `naïve` 60 times (two-byte `ï`) | 359 chars, 419 bytes | 200 chars, 233 bytes | cut after 199 chars, then `…` |
+
+- **The limit is 200 characters, counted in characters, not bytes.** `msg` holds the first 199
+  characters of the answer followed by `…` (U+2026). The two-byte `ï` case decodes to 200
+  characters and 233 bytes, so the count is per character. (Whether a character outside the
+  Basic Multilingual Plane counts as one or two was not tested.)
+- The decoded text is an exact prefix of the answer: no words dropped, no whitespace collapsed.
+- A `done` whose `msg` is shorter than 200 characters is the whole answer (the four-character
+  `pong` in section 2). So Quay can tell a cut reply by exactly two signs together: a decoded
+  length of 200 and a final U+2026.
+- `blocked` messages seen so far were under the limit (`Trust this folder?`, 18 characters;
+  `Approve RunCommand: python -c "..."`, 79 characters). The same cap presumably applies.
+- Incidental: asked for 4000 integers, Antigravity reached for a shell command instead of
+  writing them, and the OSC stream showed `state=blocked:kind=permission` with
+  `msg=Approve RunCommand: python -c "print(' '.join(str(i) for i in range(1, 4001)))"`. So a
+  tool approval prompt surfaces as `blocked:kind=permission` carrying the command text.
+
+Consequence for the responder level in [Decide: What does the live test change in the bus design?](https://github.com/seanrobertwright/Quay-2/issues/54):
+an Antigravity reply through `wait_for_reply` is good for at most 199 characters, a sentence
+or two. Anything longer goes through the file mailbox, and the Polyglot Trio role prompts
+should say so. The OSC parser marks a 200-character `msg` ending in U+2026 as cut off.
+
+Evidence (outside the repo, in the session's scratch folder): `measure.py`, `measure_mb.py`,
+`run1.log`, `run2.log`, and `evidence/` with the raw captures, decoded messages and event JSON.
+
 ## Files
 
 Harness and evidence live outside the repo in the test's temp folder: `mcp-dummy.mjs`
