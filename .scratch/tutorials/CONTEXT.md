@@ -138,7 +138,7 @@ A chain of messages sent without waiting, where each peer passes the next step o
 _Avoid_: Pipeline, handoff chain, daisy chain
 
 **Broadcast**:
-One line typed at once into every other peer in the sender's project. Nobody waits on a broadcast, so it gets no reply; each peer's answer shows only in the trail. A broadcast sent from Mission Control reaches every peer.
+One line typed at once into every other peer in the sender's project. Nobody waits on a broadcast, so it gets no reply; each peer's answer shows only in the trail. A broadcast sent from Mission Control reaches every peer in the active project.
 _Avoid_: Announcement, alert, notice (except the literal `[Broadcast Notice]:` prefix)
 
 ### Testing a tutorial
