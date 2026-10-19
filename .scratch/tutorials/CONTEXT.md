@@ -100,3 +100,21 @@ _Avoid_: Response, return value, turn output
 **File mailbox**:
 A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply.
 _Avoid_: Handoff file, drop file, shared file
+
+### Testing a tutorial
+
+**Test run**:
+One complete pass through a tutorial by a person following only its rendered page, from getting the starter project to the check-it-worked step. A tutorial is published only after a test run passes, and the run measures the Time and Tokens the page shows.
+_Avoid_: Dry run, playtest, QA pass
+
+**Fresh-eyes read**:
+An agent's reading of a tutorial page before its test run, listing every step that relies on something the page doesn't say. It reads; it never drives Quay.
+_Avoid_: Review, lint, proofread
+
+**Test account**:
+The Windows user account where test runs happen. It holds only what tutorials' "Before you start" lists tell a learner to install, and Quay's own data is wiped before each run.
+_Avoid_: Clean profile, test machine, sandbox
+
+**Run fingerprint**:
+A tutorial's identity as far as a test run is concerned: everything that changes what the learner and the agents do (its Do and Paste slots, its starter project and its check suite), and nothing that only changes how the page reads. Every test run is recorded against one fingerprint.
+_Avoid_: Version, content hash, revision
