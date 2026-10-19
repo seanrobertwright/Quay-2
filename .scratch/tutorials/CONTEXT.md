@@ -78,3 +78,25 @@ _Avoid_: Roster, context block, preamble
 **Launch prompt**:
 Everything an agent CLI receives as its first turn when a swarm launches: a role line, the role prompt, the team briefing and the instruction to confirm its role and wait. Passed on the command line, never typed into the terminal.
 _Avoid_: Initial prompt, kickoff prompt, seed prompt
+
+### The A2A bus
+
+**Peer**:
+An agent terminal on the A2A bus. Every peer can be sent a message. A peer is either a full peer or a listener. An Archon terminal is not a peer: it runs a workflow and has no prompt for a message to land in.
+_Avoid_: Node, participant, member
+
+**Full peer**:
+A peer that can send messages, answer a sender who waits for its reply, and show whether it is working or idle.
+_Avoid_: A2A-enabled agent, first-class agent
+
+**Listener**:
+A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply.
+_Avoid_: Receive-only agent, passive agent, half peer
+
+**Reply**:
+A full peer's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
+_Avoid_: Response, return value, turn output
+
+**File mailbox**:
+A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply.
+_Avoid_: Handoff file, drop file, shared file
