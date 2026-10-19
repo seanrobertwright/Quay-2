@@ -98,12 +98,16 @@ _Avoid_: User preset, saved swarm, personal preset
 ### The A2A bus
 
 **Peer**:
-An agent terminal on the A2A bus. Every peer can be sent a message. A peer is either a full peer or a listener. An Archon terminal is not a peer: it runs a workflow and has no prompt for a message to land in.
+An agent terminal on the A2A bus. Every peer can be sent a message. A peer is a full peer, a responder or a listener. An Archon terminal is not a peer: it runs a workflow and has no prompt for a message to land in.
 _Avoid_: Node, participant, member
 
 **Full peer**:
 A peer that can send messages, answer a sender who waits for its reply, and show whether it is working or idle.
 _Avoid_: A2A-enabled agent, first-class agent
+
+**Responder**:
+A peer that can answer a sender who waits for its reply and show whether it is working or idle, but can't send messages, so it never starts a conversation. Antigravity is a responder.
+_Avoid_: Answer-only agent, semi-peer
 
 **Listener**:
 A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply. A Claude Code peer counts as a listener while Quay hasn't heard from its event-bridge plugin.
@@ -118,12 +122,16 @@ The one-line notice a Claude Code pane shows when Quay hasn't heard from that pa
 _Avoid_: Missing-plugin warning, plugin error, install banner
 
 **Reply**:
-A full peer's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
+A full peer's or a responder's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
 _Avoid_: Response, return value, turn output
 
 **File mailbox**:
 A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply.
 _Avoid_: Handoff file, drop file, shared file
+
+**Relay**:
+A chain of messages sent without waiting, where each peer passes the next step on with a new message.
+_Avoid_: Pipeline, handoff chain, daisy chain
 
 ### Testing a tutorial
 
