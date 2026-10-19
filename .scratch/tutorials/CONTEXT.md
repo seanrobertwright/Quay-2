@@ -90,8 +90,16 @@ A peer that can send messages, answer a sender who waits for its reply, and show
 _Avoid_: A2A-enabled agent, first-class agent
 
 **Listener**:
-A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply.
+A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply. A Claude Code peer counts as a listener while Quay hasn't heard from its event-bridge plugin.
 _Avoid_: Receive-only agent, passive agent, half peer
+
+**Event-bridge plugin**:
+The Claude Code plugin, installed by the learner, that tells Quay what a Claude Code peer is doing. Without it, a Claude Code peer can be sent messages but can't answer them, and Quay can't show whether it is working.
+_Avoid_: Mod, claude-mod-events, the bridge
+
+**Plugin hint**:
+The one-line notice a Claude Code pane shows when Quay hasn't heard from that pane's event-bridge plugin, giving the install line and how to load it. It goes away the moment the plugin is heard.
+_Avoid_: Missing-plugin warning, plugin error, install banner
 
 **Reply**:
 A full peer's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
