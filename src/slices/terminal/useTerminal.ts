@@ -59,6 +59,7 @@ function createClaudeUnicodeProvider(
 
 let globalTerminalCols = 160;
 let globalTerminalRows = 40;
+const fittedTerminalDimensions = new Map<string, { cols: number; rows: number }>();
 
 /**
  * Returns the most recent fitted terminal dimensions across active panes so newly
@@ -66,6 +67,15 @@ let globalTerminalRows = 40;
  */
 export function getGlobalTerminalDimensions(): { cols: number; rows: number } {
   return { cols: globalTerminalCols, rows: globalTerminalRows };
+}
+
+/**
+ * Returns the size this terminal's xterm pane was last fitted to, falling back to the
+ * global dimensions. A relaunched PTY must start at this size: the pane stays mounted,
+ * so its own fit sees no change and never re-sends the size.
+ */
+export function getTerminalDimensions(terminalId: string): { cols: number; rows: number } {
+  return fittedTerminalDimensions.get(terminalId) ?? getGlobalTerminalDimensions();
 }
 
 export function useTerminal(
@@ -115,6 +125,7 @@ export function useTerminal(
       ) {
         const isInitial = lastPtySizeRef.current.cols === 0;
         lastPtySizeRef.current = { rows, cols };
+        fittedTerminalDimensions.set(terminalId, { rows, cols });
         globalTerminalCols = cols;
         globalTerminalRows = rows;
         invoke("resize_pty", {
@@ -336,6 +347,7 @@ export function useTerminal(
       onDataDispose.dispose();
       onResultsDispose.dispose();
       unlistenPromise.then((unlisten) => unlisten());
+      fittedTerminalDimensions.delete(terminalId);
       term.dispose();
     };
   }, [terminalId, syncPtySize]);

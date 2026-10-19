@@ -14,7 +14,7 @@ import { GitWorktree } from "../git/types";
 import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChime";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf } from "../../utils/paths";
-import { getGlobalTerminalDimensions } from "../terminal/useTerminal";
+import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 
 export type { Project };
 
@@ -558,12 +558,15 @@ export function useWorkspace() {
     const targetPath = projectPath || activeProject;
     try {
       const shortId = sessionId.slice(0, 8);
+      const dims = getGlobalTerminalDimensions();
       const term = await invoke<TerminalInfo>("spawn_terminal", {
         request: {
           project_path: targetPath,
           run_kind: "claude",
           name: `res-${shortId}`,
           custom_flags: `--resume ${sessionId}`,
+          cols: dims.cols,
+          rows: dims.rows,
         },
       });
       setTerminals((prev) => [...prev, term]);
@@ -1020,7 +1023,12 @@ export function useWorkspace() {
   // Relaunch an exited or restored dormant terminal
   const relaunchTerminal = async (terminalId: string) => {
     try {
-      const updated = await invoke<TerminalInfo>("relaunch_terminal", { terminalId });
+      const dims = getTerminalDimensions(terminalId);
+      const updated = await invoke<TerminalInfo>("relaunch_terminal", {
+        terminalId,
+        rows: dims.rows,
+        cols: dims.cols,
+      });
       setTerminals((prev) => prev.map((t) => (t.id === terminalId ? updated : t)));
       setActiveTerminalId(terminalId);
 
