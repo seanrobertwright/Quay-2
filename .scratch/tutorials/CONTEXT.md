@@ -64,3 +64,17 @@ _Avoid_: Troubleshooting, FAQ, gotcha
 **You're done when**:
 The slot listing what must be true for the tutorial to count as finished. Only the check-it-worked step has it, and there it is required.
 _Avoid_: Pass criteria, success criteria, definition of done
+
+### The Swarm launcher
+
+**Role prompt**:
+The text a swarm's author writes for one agent, saying who it is, what it owns, what it leaves to teammates and how it works. Built-in presets carry one per agent; a custom swarm's is optional.
+_Avoid_: System prompt, persona, instructions
+
+**Team briefing**:
+The part of a launch prompt that Quay generates at launch: each teammate's session name and role, and the `quay_*` tools for agents that have them. Never written by hand.
+_Avoid_: Roster, context block, preamble
+
+**Launch prompt**:
+Everything an agent CLI receives as its first turn when a swarm launches: a role line, the role prompt, the team briefing and the instruction to confirm its role and wait. Passed on the command line, never typed into the terminal.
+_Avoid_: Initial prompt, kickoff prompt, seed prompt
