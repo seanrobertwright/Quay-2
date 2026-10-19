@@ -22,8 +22,12 @@ Tests a tutorial keeps from its agents and hands to the learner only at the chec
 _Avoid_: Hidden tests, regression suite, answer key
 
 **Fixture**:
-Scripted Quay state (sessions, settings, spend figures) used only to capture screenshots, never handed to a learner.
-_Avoid_: Starter, sample data
+Scripted Quay state used only to capture screenshots and never handed to a learner: a settings or spend folder, or a recording of one terminal's whole run of a tutorial, played back in place of a live agent.
+_Avoid_: Starter, sample data, mock, replay data
+
+**Step marker**:
+The named point in a fixture's recording where one step of the tutorial begins. Its name is the name of that step's screenshot, and the step card's You should see slot shows it.
+_Avoid_: Timestamp, checkpoint, bookmark
 
 **Step card**:
 One numbered step of a tutorial as it appears on the page: a card whose content sits in named slots, always in the same order. Every step is a step card, including the check-it-worked step.
