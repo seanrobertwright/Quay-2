@@ -31,7 +31,7 @@ export default withMermaid(
       { text: 'Machina', link: '/features/machina-praxis' },
       { text: 'Reference', link: '/reference/shortcuts' },
       {
-        text: 'v0.1.0',
+        text: 'v0.2.0',
         items: [
           { text: 'Changelog', link: 'https://github.com/seanrobertwright/Quay-2/commits/master' },
           { text: 'Contributing', link: '/community/contributing' },
