@@ -17,6 +17,7 @@ import { NewWorktreeModal } from "./slices/git/NewWorktreeModal";
 import { GithubCompanionDrawer } from "./slices/github/GithubCompanionDrawer";
 import { GithubIssue, GithubPullRequest } from "./slices/github/types";
 import { TerminalInfo } from "./slices/terminal/types";
+import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
 import { SessionHistoryDrawer } from "./slices/sessions/SessionHistoryDrawer";
@@ -366,11 +367,14 @@ export function App() {
       if (activeTerminalId) {
         await submitPromptToTerminal(activeTerminalId, prompt);
       } else {
+        const dims = getGlobalTerminalDimensions();
         const spawned = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
             project_path: activeProject,
             run_kind: "claude",
             name: "audit-fixer",
+            cols: dims.cols,
+            rows: dims.rows,
           },
         });
         selectTerminal(spawned.id);

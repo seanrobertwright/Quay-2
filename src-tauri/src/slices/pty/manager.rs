@@ -188,6 +188,8 @@ impl PtyManager {
     pub fn relaunch(
         &self,
         terminal_id: &str,
+        rows: Option<u16>,
+        cols: Option<u16>,
         bridge_port: u16,
         bridge_token: String,
         env_vars: Option<HashMap<String, String>>,
@@ -213,8 +215,8 @@ impl PtyManager {
             run_kind: info.run_kind,
             permission_mode: Some(info.permission_mode),
             command_text: info.command_text.clone(),
-            rows: None,
-            cols: None,
+            rows,
+            cols,
             env_vars,
             custom_flags: info.custom_flags.clone(),
         };

@@ -97,6 +97,8 @@ pub async fn rename_terminal(
 #[tauri::command]
 pub async fn relaunch_terminal(
     terminal_id: String,
+    rows: Option<u16>,
+    cols: Option<u16>,
     pty_manager: State<'_, PtyManager>,
     bridge_state: State<'_, BridgeState>,
     workspace_manager: State<'_, crate::slices::workspace::manager::WorkspaceManager>,
@@ -112,6 +114,9 @@ pub async fn relaunch_terminal(
 
     let port = bridge_state.port();
     let token = bridge_state.token_for(&terminal_id);
-    pty_manager.relaunch(&terminal_id, port, token, env_vars, app_handle)
+    // The pane's fitted size; a zero dimension falls back to the session default.
+    let rows = rows.filter(|&n| n > 0);
+    let cols = cols.filter(|&n| n > 0);
+    pty_manager.relaunch(&terminal_id, rows, cols, port, token, env_vars, app_handle)
 }
 
