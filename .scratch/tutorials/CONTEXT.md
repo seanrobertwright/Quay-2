@@ -22,8 +22,8 @@ Tests a tutorial keeps from its agents and hands to the learner only at the chec
 _Avoid_: Hidden tests, regression suite, answer key
 
 **Fixture**:
-Scripted Quay state (sessions, settings, spend figures) used only to capture screenshots, never handed to a learner.
-_Avoid_: Starter, sample data
+Scripted Quay state used only to capture screenshots and never handed to a learner: a settings or spend folder, or a recording of one terminal's whole run of a tutorial, played back in place of a live agent.
+_Avoid_: Starter, sample data, mock, replay data
 
 **Step card**:
 One numbered step of a tutorial as it appears on the page: a card whose content sits in named slots, always in the same order. Every step is a step card, including the check-it-worked step.
@@ -48,6 +48,10 @@ _Avoid_: Prompt box, snippet, code block
 **You should see**:
 The slot holding the step's screenshot, captioned with what it shows. Every step card has one.
 _Avoid_: Expected output, result, screenshot slot
+
+**Clip**:
+A short, silent recording of Quay in motion that a step card may show in You should see alongside its screenshot, when the lesson is a sequence a still can't show. A tutorial has at most one, and it runs at real speed for ten seconds or less.
+_Avoid_: GIF, video, animation, screencast
 
 **Must match**:
 The slot listing what the learner's run must share with the screenshot. It always comes with May differ, and every step card whose screenshot shows agent output has the pair.
@@ -90,8 +94,16 @@ A peer that can send messages, answer a sender who waits for its reply, and show
 _Avoid_: A2A-enabled agent, first-class agent
 
 **Listener**:
-A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply.
+A peer that can be sent a message but can't answer. A sender who waits on a listener gets no reply. A Claude Code peer counts as a listener while Quay hasn't heard from its event-bridge plugin.
 _Avoid_: Receive-only agent, passive agent, half peer
+
+**Event-bridge plugin**:
+The Claude Code plugin, installed by the learner, that tells Quay what a Claude Code peer is doing. Without it, a Claude Code peer can be sent messages but can't answer them, and Quay can't show whether it is working.
+_Avoid_: Mod, claude-mod-events, the bridge
+
+**Plugin hint**:
+The one-line notice a Claude Code pane shows when Quay hasn't heard from that pane's event-bridge plugin, giving the install line and how to load it. It goes away the moment the plugin is heard.
+_Avoid_: Missing-plugin warning, plugin error, install banner
 
 **Reply**:
 A full peer's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
