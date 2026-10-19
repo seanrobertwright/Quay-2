@@ -48,7 +48,11 @@ _Avoid_: Prompt box, snippet, code block
 **You should see**:
 The slot holding the step's screenshot, captioned with what it shows. Every step card has one.
 _Avoid_: Expected output, result, screenshot slot
-\n**Clip**:\nA short, silent recording of Quay in motion that a step card may show in You should see alongside its screenshot, when the lesson is a sequence a still can't show. A tutorial has at most one, and it runs at real speed for ten seconds or less.\n_Avoid_: GIF, video, animation, screencast\n
+
+**Clip**:
+A short, silent recording of Quay in motion that a step card may show in You should see alongside its screenshot, when the lesson is a sequence a still can't show. A tutorial has at most one, and it runs at real speed for ten seconds or less.
+_Avoid_: GIF, video, animation, screencast
+
 **Must match**:
 The slot listing what the learner's run must share with the screenshot. It always comes with May differ, and every step card whose screenshot shows agent output has the pair.
 _Avoid_: Expected result, success criteria
