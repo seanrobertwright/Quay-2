@@ -87,6 +87,14 @@ _Avoid_: Roster, context block, preamble
 Everything an agent CLI receives as its first turn when a swarm launches: a role line, the role prompt, the team briefing and the instruction to confirm its role and wait. Passed on the command line, never typed into the terminal.
 _Avoid_: Initial prompt, kickoff prompt, seed prompt
 
+**Built-in preset**:
+A swarm that ships with Quay and appears in the launcher for every user. Its agents, layout and role prompts live in the code, and the docs list them from there.
+_Avoid_: Default swarm, stock preset, template
+
+**Custom swarm**:
+A swarm the user assembles in the launcher's builder and can save on their own machine. It appears only in their launcher.
+_Avoid_: User preset, saved swarm, personal preset
+
 ### The A2A bus
 
 **Peer**:
