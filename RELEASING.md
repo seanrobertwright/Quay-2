@@ -13,24 +13,29 @@ Quay 2 uses **Tauri v2's native updater** coupled with GitHub Releases:
 
 ---
 
-## 1. One-Time Setup: GitHub Actions Signing Secret
+## 1. One-Time Setup: Signing Key and GitHub Secrets
 
-To allow GitHub Actions to sign update bundles and output `latest.json`, add the Minisign private key to GitHub Secrets:
+Update bundles are signed with a Minisign key pair. The public key is committed in `src-tauri/tauri.conf.json` as `plugins.updater.pubkey`, and an installed Quay accepts only updates signed by the matching private key. The private key and its password never go in the repository. They are kept by the maintainer and stored in two GitHub Actions secrets.
 
-1. Navigate to: **[GitHub Repository Settings → Secrets and variables → Actions](https://github.com/seanrobertwright/Quay-2/settings/secrets/actions)**
-2. Click **New repository secret**.
-3. **Name**: `TAURI_SIGNING_PRIVATE_KEY`
-4. **Secret Value**:
-   ```text
-   dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5R00yaG1pTHBTblR4RWhaem5tSzVyL1B2SmJ1ZllnNmFJUHlObWh5bWtpY0FBQkFBQUFBQUFBQUFBQUlBQUFBQXVVRjZHWThKT3FVNDhEUi9sTk56dmY2T0tMNE1tVWM2Vlp4SXhacDRDL1V2Qnh0QWZFR1JxWk1UVG9wcHh4UG10d1lUNFBCWmNiV3hMdVJCVFhBdzIrNk1GY3FCdUsvVGNGR0YrTmVyZnYzQ0Y0TUhNb3J0eC9hV3RRTXowSGpnVDg0eVo0UGkvVms9Cg==
+The secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` are already set. Repeat these steps only to set up a new key pair:
+
+1. Generate the key pair outside the repository, and choose a password when asked:
+   ```powershell
+   pnpm tauri signer generate -w "$env:USERPROFILE\.tauri\quay2-updater.key"
    ```
-5. Click **Add secret**.
+   This writes the private key to `quay2-updater.key` and the public key to `quay2-updater.key.pub`.
+2. Store the private key and its password in a password manager. Without them, no further update can be signed for installed copies.
+3. Add both as repository secrets. The second command prompts for the password:
+   ```powershell
+   Get-Content "$env:USERPROFILE\.tauri\quay2-updater.key" -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY
+   gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+   ```
+4. Copy the contents of `quay2-updater.key.pub` into `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, and commit it.
 
-> [!NOTE]
-> The matching public key is already hardcoded and committed in `src-tauri/tauri.conf.json`:
-> ```text
-> dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxMDYwNDFBQUVFQzEzMDUKUldRRkUreXVHZ1FHVVhvNlhVRzc2N1NhVlRUb1hYL050TEhIRVFFYk9vYm1lQlQrZytWN0VQSU0K
-> ```
+> [!WARNING]
+> An installed copy checks updates against the public key it was built with. Once a release has shipped with a public key, the release that switches to a new key must still be signed with the old private key.
+>
+> The key pair that appeared in this file before v0.2.0 is retired. It was published in the repository, and no release was ever signed with it.
 
 ---
 
@@ -86,10 +91,10 @@ You can also launch a release without creating a local git tag:
 The workflow `.github/workflows/release.yml` will automatically:
 1. Check out code and install Node 20, pnpm, Rust stable, and platform webkit/indicator libraries.
 2. Build distributable bundles for:
-   * **Windows**: `Quay_0.2.0_x64-setup.exe` (NSIS) and `.msi`
-   * **macOS**: `Quay_0.2.0_universal.dmg` and `.app`
-   * **Linux**: `quay_0.2.0_amd64.AppImage` and `.deb`
-3. Sign packages and compile the `latest.json` updater manifest.
+   * **Windows**: `Quay_0.2.0_x64-setup.exe` (NSIS) and `Quay_0.2.0_x64_en-US.msi`
+   * **macOS** (Apple silicon): `Quay_0.2.0_aarch64.dmg` and `Quay_aarch64.app.tar.gz`
+   * **Linux**: `Quay_0.2.0_amd64.AppImage`, `Quay_0.2.0_amd64.deb` and `Quay-0.2.0-1.x86_64.rpm`
+3. Sign the updater bundles (a `.sig` beside each) and compile the `latest.json` updater manifest.
 4. Publish a GitHub Release under **[Releases](https://github.com/seanrobertwright/Quay-2/releases)** with all binaries attached.
 
 ---

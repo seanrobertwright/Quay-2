@@ -38,7 +38,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxMDYwNDFBQUVFQzEzMDUKUldRRkUreXVHZ1FHVVhvNlhVRzc2N1NhVlRUb1hYL050TEhIRVFFYk9vYm1lQlQrZytWN0VQSU0K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM3MUMxM0YyNTMxMDMwMjgKUldRb01CQlQ4aE1jeDh3Ukp2dS9BZ3h1dytXZ1FCYWJVYSt6YU5mcmo1dGJMSUV6Q0paYk1qUXQK",
       "endpoints": [
         "https://github.com/seanrobertwright/Quay-2/releases/latest/download/latest.json"
       ]
