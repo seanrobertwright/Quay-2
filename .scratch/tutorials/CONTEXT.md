@@ -122,8 +122,12 @@ The one-line notice a Claude Code pane shows when Quay hasn't heard from that pa
 _Avoid_: Missing-plugin warning, plugin error, install banner
 
 **Reply**:
-A full peer's or a responder's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting.
+A full peer's or a responder's answer, handed straight back to the sender who waited for it. A reply only carries an answer that is ready before the sender stops waiting. When nobody waited, the trail calls the peer's response an answer.
 _Avoid_: Response, return value, turn output
+
+**Answer**:
+What a peer said in its first turn after a message nobody waited on, a message sent without waiting or a broadcast. Mission Control's trail records it; the sender never sees it.
+_Avoid_: Reply (when nobody waited), reaction, response
 
 **File mailbox**:
 A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply.
@@ -132,6 +136,10 @@ _Avoid_: Handoff file, drop file, shared file
 **Relay**:
 A chain of messages sent without waiting, where each peer passes the next step on with a new message.
 _Avoid_: Pipeline, handoff chain, daisy chain
+
+**Broadcast**:
+One line typed at once into every other peer in the sender's project. Nobody waits on a broadcast, so it gets no reply; each peer's answer shows only in the trail. A broadcast sent from Mission Control reaches every peer.
+_Avoid_: Announcement, alert, notice (except the literal `[Broadcast Notice]:` prefix)
 
 ### Testing a tutorial
 
