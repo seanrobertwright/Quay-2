@@ -228,9 +228,9 @@ pub async fn create_git_worktree(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Runs the check `git worktree remove` makes before it deletes anything without
-/// `--force`: `git status --porcelain --ignore-submodules=none` in the worktree.
-/// Returns git's refusal followed by the status lines when there are modified or
+/// Runs the uncommitted-changes check `git worktree remove` makes, without `--force`,
+/// before it deletes anything: `git status --porcelain --ignore-submodules=none`.
+/// Returns git's refusal followed by up to `MAX_STATUS_LINES` status lines when there are modified or
 /// untracked files, `None` when the worktree is clean, and `Err` when git status fails.
 pub fn uncommitted_changes(worktree_path: &str) -> Result<Option<String>, String> {
     let mut cmd = create_git_command(worktree_path);

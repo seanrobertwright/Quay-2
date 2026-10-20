@@ -15,6 +15,7 @@ import { useSavedSwarms } from "./slices/orchestrator/useSavedSwarms";
 import { CommandPalette } from "./slices/command-palette/CommandPalette";
 import { DiffViewerDrawer } from "./slices/bridge/DiffViewerDrawer";
 import { NewWorktreeModal } from "./slices/git/NewWorktreeModal";
+import { RemoveWorktreeDialog, WorktreeRemovalPrompt } from "./slices/git/RemoveWorktreeDialog";
 import { GithubCompanionDrawer } from "./slices/github/GithubCompanionDrawer";
 import { GithubIssue, GithubPullRequest } from "./slices/github/types";
 import { TerminalInfo } from "./slices/terminal/types";
@@ -121,6 +122,25 @@ export function App() {
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [detectedUpdate, setDetectedUpdate] = useState<UpdateInfo | null>(null);
+  const [worktreeRemovalPrompt, setWorktreeRemovalPrompt] = useState<WorktreeRemovalPrompt | null>(
+    null
+  );
+
+  // Remove a worktree from the rail. Git's refusal or error opens the Remove anyway dialog.
+  const handleRemoveWorktree = async (repoPath: string, worktreePath: string) => {
+    try {
+      const result = await removeWorktree(repoPath, worktreePath);
+      if (result.status === "blocked") {
+        setWorktreeRemovalPrompt({ repoPath, worktreePath, message: result.message });
+      }
+    } catch (err) {
+      setWorktreeRemovalPrompt({
+        repoPath,
+        worktreePath,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   // Background check for Quay software updates on launch (3.5s delay)
   useEffect(() => {
@@ -412,7 +432,7 @@ export function App() {
         onOpenSwarm={() => setIsSwarmModalOpen(true)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
-        onRemoveWorktree={(repoPath, wtPath) => removeWorktree(repoPath, wtPath)}
+        onRemoveWorktree={handleRemoveWorktree}
         onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
         onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
@@ -597,6 +617,16 @@ export function App() {
         isOpen={isA2AOpen}
         terminals={terminals}
         onClose={() => setIsA2AOpen(false)}
+      />
+
+      {/* Worktree removal refused by git: show its error and offer Remove anyway */}
+      <RemoveWorktreeDialog
+        prompt={worktreeRemovalPrompt}
+        onCancel={() => setWorktreeRemovalPrompt(null)}
+        onRemoveAnyway={async ({ repoPath, worktreePath }) => {
+          await removeWorktree(repoPath, worktreePath, true);
+          setWorktreeRemovalPrompt(null);
+        }}
       />
 
       {/* Git Worktree Creation Modal (^b w) */}
