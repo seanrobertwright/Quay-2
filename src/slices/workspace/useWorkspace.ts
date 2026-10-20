@@ -570,7 +570,7 @@ export function useWorkspace() {
 
       await refreshWorktrees(repoPath);
 
-      if (activeProject === worktreePath) {
+      if (isSamePath(activeProject, worktreePath)) {
         setActiveProject(repoPath);
       }
       return result;
