@@ -41,12 +41,13 @@ struct SwarmsFile {
 /// (`BUILTIN_SWARM_PRESETS`). A saved swarm may not take one of these names.
 /// `builtin_titles_match_the_launcher` fails when the two lists drift apart.
 pub const BUILTIN_SWARM_TITLES: &[&str] = &[
-    "Polyglot Agent Trio",
-    "Full-Stack Pair",
     "Dev & Watcher",
     "TDD Swarm",
+    "Full-Stack Pair",
+    "Bug Hunter",
+    "Red/Blue Team",
     "Tri-Agent Council",
-    "Frontier Agent Federation",
+    "Polyglot Agent Trio",
 ];
 
 /// `STAGE_LAYOUTS` in `src/slices/terminal/types.ts`. A draft with any other layout
