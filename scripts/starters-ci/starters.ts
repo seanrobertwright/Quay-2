@@ -28,6 +28,8 @@ type ScriptState = {
   outputIncludes?: string[];
   producesFiles?: string[];
 } & ({ expect: "pass" } | { expect: "fail"; exitCode?: number });
+/** Paths in the starter that must be there or not, and lines a file must not hold. */
+type FilesState = { present?: string[]; absent?: string[]; linesAbsent?: Record<string, string[]> };
 /** A patch the learner applies late in the tutorial, and exactly the tests it must break. */
 type PatchState = { file: string; failingTests: string[] };
 type ExpectedState = {
@@ -37,6 +39,7 @@ type ExpectedState = {
   scripts?: ScriptState[];
   checkSuite?: CheckSuiteState;
   patch?: PatchState;
+  files?: FilesState;
 };
 
 const EXPECTED_STATE_FILE = "expected-state.json";
@@ -84,9 +87,13 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
       filter: (source) => basename(source) !== "node_modules",
     });
     const inProject = (argv: string[]) => run({ argv, cwd: work, env: state.env ?? {} });
+    // Files are checked as the learner receives them, before anything runs.
+    const failures = state.files === undefined ? [] : compareFiles(state.files, work);
     const install = inProject(["npm", "ci"]);
-    if (install.exitCode !== 0) return [`npm ci exited ${install.exitCode}${outputTail(install.output)}`];
-    const failures: string[] = [];
+    if (install.exitCode !== 0) {
+      failures.push(`npm ci exited ${install.exitCode}${outputTail(install.output)}`);
+      return failures;
+    }
     const typecheck = inProject(["npx", "--no", "tsc", "--noEmit"]);
     failures.push(...compareTypecheck(state.typecheck, typecheck));
     const tests = inProject(["npm", "test", "--", ...vitestReporterArgs(report("tests"))]);
@@ -143,6 +150,24 @@ function comparePatchedTests(expected: PatchState, result: CommandResult, report
 
 function vitestReporterArgs(reportFile: string): string[] {
   return ["--reporter=default", "--reporter=json", `--outputFile=${reportFile}`];
+}
+
+function compareFiles(expected: FilesState, work: string): string[] {
+  const failures: string[] = [];
+  for (const path of expected.present ?? []) {
+    if (!existsSync(join(work, path))) failures.push(`files: ${path} is missing`);
+  }
+  for (const path of expected.absent ?? []) {
+    if (existsSync(join(work, path))) failures.push(`files: ${path} is present and must not be`);
+  }
+  for (const [path, forbidden] of Object.entries(expected.linesAbsent ?? {})) {
+    if (!existsSync(join(work, path))) continue;
+    const lines = readFileSync(join(work, path), "utf8").split(/\r?\n/).map((line) => line.trim());
+    for (const line of forbidden) {
+      if (lines.includes(line)) failures.push(`files: ${path} has the line "${line}" and must not`);
+    }
+  }
+  return failures;
 }
 
 function compareScript(expected: ScriptState, result: CommandResult, work: string): string[] {

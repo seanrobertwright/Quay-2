@@ -6,9 +6,11 @@ import { dirname, join } from "node:path";
 import { checkStarters, type Command, type CommandResult } from "./starters.ts";
 
 // Writes a tutorials folder, `{ "<slug>/starter/package.json": "..." }`, into a fresh temp dir.
-function tutorials(files: Record<string, string>): string {
+// A path given `undefined` is left out.
+function tutorials(files: Record<string, string | undefined>): string {
   const root = mkdtempSync(join(tmpdir(), "starters-ci-test-"));
   for (const [path, content] of Object.entries(files)) {
+    if (content === undefined) continue;
     const full = join(root, path);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
@@ -119,7 +121,7 @@ test("tests green: a skeleton whose one todo counts as green passes (Swarm 2)", 
 });
 
 // A tutorials folder holding one starter, `slug`, with `state` as its expected state.
-function oneStarter(slug: string, state: unknown, extra: Record<string, string> = {}): string {
+function oneStarter(slug: string, state: unknown, extra: Record<string, string | undefined> = {}): string {
   return tutorials({
     [`${slug}/starter/package.json`]: exactPackage,
     [`${slug}/expected-state.json`]: JSON.stringify(state),
@@ -329,5 +331,46 @@ test("ships green with a patch: a patch that no longer applies fails the starter
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
     "broadcast: git apply patches/late-change.patch exited 1\nerror: patch failed: src/price.ts:3",
+  ]);
+});
+
+const swarm6 = {
+  typecheck: { expect: "pass" },
+  tests: { expect: "pass", passed: 8 },
+  checkSuite: { script: "check", expect: "fail", failed: 6, total: 6 },
+  files: { present: [".env.example"], absent: [".env"], linesAbsent: { ".gitignore": [".env"] } },
+};
+const swarm6Files = {
+  "red-team-blue-team/starter/.env.example": "NOTES_DB=data/notes.db\n",
+  "red-team-blue-team/starter/.gitignore": "node_modules/\ndata/*.db\n",
+  "red-team-blue-team/check/holes.test.ts": "// six tests",
+};
+
+test("Swarm 6: its red check run and its .env.example pass", () => {
+  const dir = oneStarter("red-team-blue-team", swarm6, swarm6Files);
+  const runner = fakeRunner({
+    "npm test": { vitest: { passed: 8 } },
+    "npm run check": { vitest: { failed: 6 } },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
+  assert.ok(runner.labels().includes("npm run check"));
+});
+
+test("Swarm 6: a closed hole, a missing .env.example, a shipped .env or a .env ignore line fails the starter", () => {
+  const dir = oneStarter("red-team-blue-team", swarm6, {
+    ...swarm6Files,
+    "red-team-blue-team/starter/.env.example": undefined,
+    "red-team-blue-team/starter/.env": "NOTES_DB=data/notes.db\n",
+    "red-team-blue-team/starter/.gitignore": "node_modules/\r\n.env\r\n",
+  });
+  const runner = fakeRunner({
+    "npm test": { vitest: { passed: 8 } },
+    "npm run check": { vitest: { failed: 5, passed: 1 } },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
+    "red-team-blue-team: files: .env.example is missing",
+    "red-team-blue-team: files: .env is present and must not be",
+    'red-team-blue-team: files: .gitignore has the line ".env" and must not',
+    "red-team-blue-team: check suite: expected 6 of 6 failing, got 5 of 6",
   ]);
 });
