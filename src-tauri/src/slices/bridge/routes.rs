@@ -55,6 +55,13 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
         .and_then(|auth| auth.strip_prefix("Bearer "))
 }
 
+/// Runs the loopback host and origin check, then returns the request's bearer token.
+fn loopback_bearer(headers: &HeaderMap) -> Result<&str, (StatusCode, &'static str)> {
+    validate_host_and_origin(headers)?;
+    extract_bearer_token(headers)
+        .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header"))
+}
+
 /// Checks a `/v1/events` batch before any of it is applied: the request must be
 /// loopback, carry a bearer token, and every event's `tag` must name the terminal
 /// that token belongs to. One failing event rejects the whole batch.
@@ -63,10 +70,7 @@ pub fn authorize_events(
     headers: &HeaderMap,
     events: &[Envelope],
 ) -> Result<(), (StatusCode, &'static str)> {
-    validate_host_and_origin(headers)?;
-
-    let token = extract_bearer_token(headers)
-        .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header"))?;
+    let token = loopback_bearer(headers)?;
 
     for envelope in events {
         let tag = envelope.tag.as_deref().unwrap_or("");
@@ -84,10 +88,7 @@ pub fn authenticate_mcp_caller(
     headers: &HeaderMap,
     terminal_ids: impl IntoIterator<Item = String>,
 ) -> Result<String, (StatusCode, &'static str)> {
-    validate_host_and_origin(headers)?;
-
-    let token = extract_bearer_token(headers)
-        .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header"))?;
+    let token = loopback_bearer(headers)?;
 
     terminal_ids
         .into_iter()
@@ -367,7 +368,6 @@ pub fn create_router(ctx: AppContext) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     fn event_for(tag: &str) -> Envelope {
         Envelope {
