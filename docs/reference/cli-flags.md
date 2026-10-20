@@ -18,7 +18,7 @@ claude.cmd [OPTIONS] [CUSTOM_FLAGS]
 | :--- | :--- | :--- |
 | `--model <model_id>` | Specifies the Anthropic model (`claude-opus-5-5`, `claude-sonnet-5-5`, etc.) | Set whenever a specific model is chosen in the modal |
 | `--dangerously-skip-permissions` | Bypasses interactive confirmation for file edits and bash commands | Set when "Skip Permissions" checkbox is enabled |
-| `--mcp-config <json>` | Inline JSON configuration connecting Claude Code to Quay's loopback A2A MCP bus, with the terminal's bearer token | Injected for all Claude Code sessions |
+| `--mcp-config <json>` | Inline JSON configuration connecting Claude Code to Quay's loopback A2A MCP bus; its token header reads `${CLAUDE_EVENTS_TOKEN}` | Injected for all Claude Code sessions |
 
 > [!IMPORTANT]
 > **Argument Ordering**: To prevent Commander.js variadic parsing from swallowing flags, `--model` and `--dangerously-skip-permissions` are always positioned *before* `--mcp-config`.

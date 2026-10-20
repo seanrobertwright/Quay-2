@@ -36,15 +36,16 @@ pub struct PtySession {
 
 /// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
 /// of JSON. It is passed inline rather than as a file path so the terminal's bearer
-/// token never touches disk.
-pub fn mcp_config_arg(bridge_port: u16, bridge_token: &str) -> String {
+/// token never touches disk, and the header names `${CLAUDE_EVENTS_TOKEN}`, which
+/// Claude Code expands from its environment, so the token stays out of the command line.
+pub fn mcp_config_arg(bridge_port: u16) -> String {
     serde_json::json!({
         "mcpServers": {
             "quay": {
                 "type": "http",
                 "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
                 "headers": {
-                    "Authorization": format!("Bearer {}", bridge_token)
+                    "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}"
                 }
             }
         }
@@ -229,7 +230,7 @@ impl PtySession {
 
                 // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration
                 c.arg("--mcp-config");
-                c.arg(mcp_config_arg(bridge_port, &bridge_token));
+                c.arg(mcp_config_arg(bridge_port));
 
                 c
             }
@@ -732,8 +733,8 @@ mod tests {
     }
 
     #[test]
-    fn mcp_config_arg_is_inline_json_carrying_the_terminal_token() {
-        let arg = mcp_config_arg(4123, "tok-abc");
+    fn mcp_config_arg_is_inline_json_that_reads_the_token_from_the_environment() {
+        let arg = mcp_config_arg(4123);
 
         assert!(!arg.contains('\n'), "inline config must be one line: {:?}", arg);
         let parsed: serde_json::Value = serde_json::from_str(&arg).expect("inline config is JSON");
@@ -744,7 +745,7 @@ mod tests {
                     "quay": {
                         "type": "http",
                         "url": "http://127.0.0.1:4123/mcp",
-                        "headers": { "Authorization": "Bearer tok-abc" }
+                        "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" }
                     }
                 }
             })
