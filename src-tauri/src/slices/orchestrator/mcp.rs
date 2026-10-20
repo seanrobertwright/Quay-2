@@ -12,7 +12,6 @@ use tauri::Emitter;
 use super::models::A2ADispatchRequest;
 use super::router::A2ARouter;
 use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
-use crate::slices::pty::models::ClaudeStatus;
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -52,24 +51,6 @@ pub async fn handle_mcp_request(
 
     match req.method.as_str() {
         "initialize" => {
-            ctx.pty_manager.update_status(caller_id, ClaudeStatus::Idle);
-            let _ = ctx.app_handle.emit(
-                "bridge-event",
-                crate::slices::bridge::Envelope {
-                    v: 1,
-                    boot: "".to_string(),
-                    seq: 0,
-                    ts: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64,
-                    session_id: caller_id.to_string(),
-                    tag: Some(caller_id.to_string()),
-                    event_type: "session.started".to_string(),
-                    data: serde_json::Value::Null,
-                },
-            );
-
             let requested_version = req
                 .params
                 .as_ref()

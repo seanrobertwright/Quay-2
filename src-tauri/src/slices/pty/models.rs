@@ -150,6 +150,18 @@ pub struct TerminalInfo {
     pub command_text: Option<String>,
     #[serde(default)]
     pub created_at: u64,
+    /// Whether the pane shows the plugin hint: this launch's silence clock ran out
+    /// before any event from the event-bridge plugin arrived.
+    #[serde(default)]
+    pub plugin_hint: bool,
+}
+
+/// A terminal's status after Quay's plugin rules moved it, sent as `terminal-status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalStatusPayload {
+    pub terminal_id: String,
+    pub claude_status: ClaudeStatus,
+    pub plugin_hint: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
