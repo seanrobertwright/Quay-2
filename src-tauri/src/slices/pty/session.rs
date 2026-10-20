@@ -110,10 +110,24 @@ fn claude_program() -> &'static str {
     program
 }
 
+/// Appends a decoded chunk to the replay buffer and returns the chunk's seq, one above the
+/// buffer's last. The count carries on from whatever seq the buffer started at, so a relaunched
+/// session keeps numbering above what its still-mounted pane has already seen.
+fn append_output(buffer: &mut (String, u64), text: &str, max_len: usize) -> u64 {
+    buffer.0.push_str(text);
+    buffer.1 += 1;
+    trim_output_buffer(&mut buffer.0, max_len);
+    buffer.1
+}
+
 impl PtySession {
+    /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
+    /// under this id (0 for a new terminal); output from this session is numbered above it,
+    /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
+        start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
@@ -417,7 +431,7 @@ impl PtySession {
             String::new()
         };
 
-        let output_buffer = Arc::new(Mutex::new((initial_data, 0u64)));
+        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
         let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
 
@@ -432,7 +446,6 @@ impl PtySession {
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
-                let mut current_seq = 0u64;
                 let mut session_started_emitted = false;
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
@@ -475,17 +488,9 @@ impl PtySession {
                                 );
                             }
 
-                            current_seq += 1;
-                            let seq = current_seq;
-
-                            // Buffer recent output for newly-mounting xterm instances
-                            {
-                                let mut guard = output_buffer.lock();
-                                guard.0.push_str(&text);
-                                guard.1 = seq;
-                                // Cap buffer at 256KB to avoid unbounded memory usage
-                                trim_output_buffer(&mut guard.0, 256 * 1024);
-                            }
+                            // Buffer recent output for newly-mounting xterm instances,
+                            // capped at 256KB to avoid unbounded memory usage
+                            let seq = append_output(&mut output_buffer.lock(), &text, 256 * 1024);
 
                             let _ = app_handle.emit(
                                 "pty-output",
@@ -637,6 +642,11 @@ impl PtySession {
     pub fn is_alive(&self) -> bool {
         self.is_alive.load(Ordering::SeqCst)
     }
+
+    /// The seq of the last output chunk this session sent.
+    pub fn last_seq(&self) -> u64 {
+        self.output_buffer.lock().1
+    }
 }
 
 #[cfg(test)]
@@ -719,6 +729,23 @@ mod tests {
 
         assert!(buffer.len() <= 256 * 1024);
         assert!(buffer.is_char_boundary(0));
+    }
+
+    #[test]
+    fn test_append_output_continues_from_start_seq() {
+        // A relaunched session's buffer starts at the old session's last seq
+        let mut buffer = ("old scrollback".to_string(), 41u64);
+
+        assert_eq!(append_output(&mut buffer, "PS> ", 256 * 1024), 42);
+        assert_eq!(append_output(&mut buffer, "echo hi", 256 * 1024), 43);
+        assert_eq!(buffer.1, 43);
+        assert_eq!(buffer.0, "old scrollbackPS> echo hi");
+    }
+
+    #[test]
+    fn test_append_output_new_terminal_starts_at_one() {
+        let mut buffer = (String::new(), 0u64);
+        assert_eq!(append_output(&mut buffer, "hello", 256 * 1024), 1);
     }
 
     #[test]
