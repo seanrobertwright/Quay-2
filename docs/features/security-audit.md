@@ -37,7 +37,7 @@ The gate runs `git diff HEAD`, which covers staged and unstaged changes to track
 
 Each added line is checked for:
 
-- **Personal paths.** The Quay 2 maintainer's own Windows username, or an absolute path under drive C's `Users` folder, written with either slash, is a blocker. A `file:///` URI that points at drive C or E is a warning.
+- **Personal paths.** The Quay 2 maintainer's own Windows username anywhere in the line, or an absolute path under drive C's `Users` folder, written with either slash, is a blocker. A `file:///` URI that points at drive C or E is a warning.
 - **Tokens and keys.** A GitHub personal access token, found by its classic or fine-grained prefix, is a blocker. So is an Anthropic API key, found by its prefix. So is an OpenSSH, RSA or unlabelled private key header. The report masks a matched token and redacts a matched key.
 - **Long lines.** An added line longer than 2,500 bytes is a warning, since it is often a pasted bundle or base64 blob.
 
