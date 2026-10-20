@@ -13,7 +13,7 @@ import { SwarmPreset } from "../orchestrator/swarmTypes";
 import { GitWorktree } from "../git/types";
 import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChime";
 import { ClaudeTokenStats } from "../sessions/types";
-import { isSamePath, isSubpathOf } from "../../utils/paths";
+import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 
 export type { Project };
@@ -472,9 +472,10 @@ export function useWorkspace() {
     });
   }, [projects, terminals, projectWorktrees, refreshWorktrees]);
 
-  // Open New Worktree modal
+  // Open New Worktree modal. Without a repoPath it targets the active project's root,
+  // so a worktree is never nested inside the selected worktree.
   const openNewWorktreeModal = (repoPath?: string, suggestedIssueNumber?: number) => {
-    const targetPath = repoPath || activeProject;
+    const targetPath = repoPath || resolveRootRepo(activeProject, projects, projectWorktrees);
     const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
       name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
     };

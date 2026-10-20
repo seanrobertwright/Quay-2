@@ -31,6 +31,7 @@ import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
+import { resolveRootRepo } from "./utils/paths";
 
 export function App() {
   const {
@@ -174,15 +175,10 @@ export function App() {
     workspaceSettingsTarget || projects.find((p) => p.path === activeProject) || null;
 
   // Resolve base repository root if activeProject is a child worktree folder
-  const activeRootRepo = useMemo(() => {
-    const matched = projects.find(
-      (p) =>
-        activeProject === p.path ||
-        activeProject.startsWith(p.path + "\\") ||
-        activeProject.startsWith(p.path + "/")
-    );
-    return matched ? matched.path : activeProject;
-  }, [activeProject, projects]);
+  const activeRootRepo = useMemo(
+    () => resolveRootRepo(activeProject, projects, projectWorktrees),
+    [activeProject, projects, projectWorktrees]
+  );
 
   // 1-Click: Execute real Archon Workflow Run for an issue
   const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
