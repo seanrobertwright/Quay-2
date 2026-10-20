@@ -12,7 +12,10 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "node scripts/pack-starters.mjs && vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "docs:test": "node --test scripts/pack-starters.test.mjs"
+    "docs:test": "node --test scripts/pack-starters.test.mjs",
+    "starters:check": "node scripts/starters-ci/check-starters.ts",
+    "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
+    "starters:typecheck": "tsc -p scripts/starters-ci"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

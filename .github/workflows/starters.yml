@@ -1,0 +1,50 @@
+name: Starters
+
+# Every tutorial's starter project installs, type-checks and has its tests in the state its
+# tutorial expects. Each starter's expected state is examples/tutorials/<slug>/expected-state.json;
+# scripts/starters-ci/README.md describes the format.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'examples/**'
+      - 'scripts/starters-ci/**'
+      - '.github/workflows/starters.yml'
+  pull_request:
+    paths:
+      - 'examples/**'
+      - 'scripts/starters-ci/**'
+      - '.github/workflows/starters.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starters-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  starters:
+    name: Starters in their expected state
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The tutorials ask for Node 24 or later, which also runs the checker's TypeScript as it is.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test the checker
+        run: node --test "scripts/starters-ci/*.test.ts"
+
+      - name: Check every starter
+        run: node scripts/starters-ci/check-starters.ts
