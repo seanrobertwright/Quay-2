@@ -22,7 +22,22 @@ type TestsState = { expect: "pass"; passed?: number; todo?: number } | { expect:
 type TypecheckState = { expect: "pass" } | { expect: "fail"; lineStartsWith: string };
 /** How the check suite runs: an npm script, or Vitest with these arguments. */
 type CheckSuiteState = ({ script: string } | { vitest: string[] }) & TestsState;
-type ExpectedState = { typecheck: TypecheckState; tests: TestsState; checkSuite?: CheckSuiteState };
+/** A named npm script and how it must end: its exit, text its output holds, files it leaves. */
+type ScriptState = {
+  name: string;
+  outputIncludes?: string[];
+  producesFiles?: string[];
+} & ({ expect: "pass" } | { expect: "fail"; exitCode?: number });
+/** A patch the learner applies late in the tutorial, and exactly the tests it must break. */
+type PatchState = { file: string; failingTests: string[] };
+type ExpectedState = {
+  env?: Record<string, string>;
+  typecheck: TypecheckState;
+  tests: TestsState;
+  scripts?: ScriptState[];
+  checkSuite?: CheckSuiteState;
+  patch?: PatchState;
+};
 
 const EXPECTED_STATE_FILE = "expected-state.json";
 
@@ -59,41 +74,97 @@ export function checkStarters(options: CheckOptions): CheckReport {
 
 /** Runs one starter in a throwaway copy and returns how it missed its expected state. */
 function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): string[] {
-  const work = mkdtempSync(join(tmpdir(), `starter-${basename(tutorialDir)}-`));
+  // The project is the learner's copy of the starter; Vitest's reports go beside it, not in it.
+  const root = mkdtempSync(join(tmpdir(), `starter-${basename(tutorialDir)}-`));
+  const work = join(root, "project");
+  const report = (name: string) => join(root, `${name}.json`);
   try {
     cpSync(join(tutorialDir, "starter"), work, {
       recursive: true,
       filter: (source) => basename(source) !== "node_modules",
     });
-    const exec = (argv: string[]) => run({ argv, cwd: work, env: {} });
-    const install = exec(["npm", "ci"]);
-    if (install.exitCode !== 0) return [`npm ci exited ${install.exitCode}`];
+    const inProject = (argv: string[]) => run({ argv, cwd: work, env: state.env ?? {} });
+    const install = inProject(["npm", "ci"]);
+    if (install.exitCode !== 0) return [`npm ci exited ${install.exitCode}${outputTail(install.output)}`];
     const failures: string[] = [];
-    const typecheck = exec(["npx", "--no", "tsc", "--noEmit"]);
+    const typecheck = inProject(["npx", "--no", "tsc", "--noEmit"]);
     failures.push(...compareTypecheck(state.typecheck, typecheck));
-    const reportFile = join(work, ".starters-ci-tests.json");
-    const tests = exec(["npm", "test", "--", ...vitestReporterArgs(reportFile)]);
-    failures.push(...compareTests("tests", state.tests, tests, reportFile));
+    const tests = inProject(["npm", "test", "--", ...vitestReporterArgs(report("tests"))]);
+    failures.push(...compareTests("tests", state.tests, tests, report("tests")));
+
+    for (const script of state.scripts ?? []) {
+      const result = inProject(["npm", "run", script.name]);
+      failures.push(...compareScript(script, result, work));
+    }
 
     if (state.checkSuite !== undefined) {
       // The learner unzips the check suite into the project so check/ sits beside src/.
       cpSync(join(tutorialDir, "check"), join(work, "check"), { recursive: true });
-      const checkReportFile = join(work, ".starters-ci-check.json");
       const command =
         "script" in state.checkSuite
           ? ["npm", "run", state.checkSuite.script, "--"]
           : ["npx", "--no", "vitest", ...state.checkSuite.vitest];
-      const check = exec([...command, ...vitestReporterArgs(checkReportFile)]);
-      failures.push(...compareTests("check suite", state.checkSuite, check, checkReportFile));
+      const check = inProject([...command, ...vitestReporterArgs(report("check"))]);
+      failures.push(...compareTests("check suite", state.checkSuite, check, report("check")));
+    }
+
+    if (state.patch !== undefined) {
+      // Last, because it changes the project: the learner's late commit in the tutorial.
+      const apply = inProject(["git", "apply", state.patch.file]);
+      if (apply.exitCode !== 0) {
+        failures.push(`git apply ${state.patch.file} exited ${apply.exitCode}${outputTail(apply.output)}`);
+        return failures;
+      }
+      const patched = inProject(["npm", "test", "--", ...vitestReporterArgs(report("patched"))]);
+      failures.push(...comparePatchedTests(state.patch, patched, report("patched")));
     }
     return failures;
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
+}
+
+function comparePatchedTests(expected: PatchState, result: CommandResult, reportFile: string): string[] {
+  const name = `after ${expected.file}`;
+  const counts = readVitestReport(reportFile);
+  if (counts === undefined) {
+    return [`${name}: Vitest wrote no JSON report (exit ${result.exitCode})${outputTail(result.output)}`];
+  }
+  const named = (test: FailedTest) => expected.failingTests.some((n) => n === test.title || n === test.fullName);
+  const exact =
+    counts.failedTests.every(named) &&
+    expected.failingTests.every((n) => counts.failedTests.some((test) => n === test.title || n === test.fullName));
+  if (exact) return [];
+  const quote = (names: string[]) => (names.length > 0 ? names.map((n) => `"${n}"`).join(", ") : "none");
+  return [
+    `${name}: expected exactly ${quote(expected.failingTests)} to fail, got ${quote(counts.failedTests.map((test) => test.title))}`,
+  ];
 }
 
 function vitestReporterArgs(reportFile: string): string[] {
   return ["--reporter=default", "--reporter=json", `--outputFile=${reportFile}`];
+}
+
+function compareScript(expected: ScriptState, result: CommandResult, work: string): string[] {
+  const name = `npm run ${expected.name}`;
+  const failures: string[] = [];
+  if (expected.expect === "pass" && result.exitCode !== 0) {
+    failures.push(`${name}: expected exit 0, got ${result.exitCode}${outputTail(result.output)}`);
+  }
+  if (expected.expect === "fail") {
+    if (expected.exitCode !== undefined && result.exitCode !== expected.exitCode) {
+      failures.push(`${name}: expected exit ${expected.exitCode}, got ${result.exitCode}`);
+    } else if (result.exitCode === 0) {
+      failures.push(`${name}: expected it to fail, it exited 0`);
+    }
+  }
+  for (const text of expected.outputIncludes ?? []) {
+    if (!result.output.includes(text)) failures.push(`${name}: output lacks "${text}"`);
+  }
+  for (const path of expected.producesFiles ?? []) {
+    if (!existsSync(join(work, path))) failures.push(`${name}: expected it to leave ${path}, which is missing`);
+  }
+  return failures;
 }
 
 function compareTypecheck(expected: TypecheckState, result: CommandResult): string[] {
@@ -108,7 +179,8 @@ function compareTypecheck(expected: TypecheckState, result: CommandResult): stri
   return [`typecheck: ${want}, it exited ${result.exitCode} without one${outputTail(result.output)}`];
 }
 
-type TestCounts ={ failed: number; passed: number; todo: number; total: number };
+type FailedTest = { title: string; fullName: string };
+type TestCounts = { failed: number; passed: number; todo: number; total: number; failedTests: FailedTest[] };
 
 /** Compares one Vitest run, through the JSON report it wrote, with the state it should be in. */
 function compareTests(name: string, expected: TestsState, result: CommandResult, reportFile: string): string[] {
@@ -142,11 +214,19 @@ function compareTests(name: string, expected: TestsState, result: CommandResult,
 function readVitestReport(reportFile: string): TestCounts | undefined {
   if (!existsSync(reportFile)) return undefined;
   const report = JSON.parse(readFileSync(reportFile, "utf8")) as {
-    testResults: { assertionResults: { status: string }[] }[];
+    testResults: { assertionResults: { status: string; title: string; fullName: string }[] }[];
   };
-  const statuses = report.testResults.flatMap((file) => file.assertionResults.map((test) => test.status));
-  const count = (status: string) => statuses.filter((s) => s === status).length;
-  return { failed: count("failed"), passed: count("passed"), todo: count("todo"), total: statuses.length };
+  const tests = report.testResults.flatMap((file) => file.assertionResults);
+  const count = (status: string) => tests.filter((test) => test.status === status).length;
+  return {
+    failed: count("failed"),
+    passed: count("passed"),
+    todo: count("todo"),
+    total: tests.length,
+    failedTests: tests
+      .filter((test) => test.status === "failed")
+      .map((test) => ({ title: test.title, fullName: test.fullName })),
+  };
 }
 
 function outputTail(output: string): string {

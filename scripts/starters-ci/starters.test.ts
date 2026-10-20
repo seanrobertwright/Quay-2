@@ -48,14 +48,17 @@ function vitestReport(run: VitestRun): string {
 type Scripted = { exitCode?: number; output?: string; vitest?: VitestRun; writes?: Record<string, string> };
 
 // A runner that answers each command line from `script`, keyed by the command line without the
-// reporter arguments the checker adds, and records every command it was given. Command lines not
-// in `script` succeed with no output.
-function fakeRunner(script: Record<string, Scripted> = {}) {
+// reporter arguments the checker adds, and records every command it was given. A list answers
+// successive runs of the same command line in turn. Command lines not in `script` succeed with no
+// output.
+function fakeRunner(script: Record<string, Scripted | Scripted[]> = {}) {
   const calls: Command[] = [];
   const run = (command: Command): CommandResult => {
+    const runsBefore = calls.filter((call) => label(call) === label(command)).length;
     calls.push(command);
     const outputFile = command.argv.find((arg) => arg.startsWith("--outputFile="))?.slice("--outputFile=".length);
-    const scripted = script[label(command)] ?? {};
+    const answer = script[label(command)];
+    const scripted = (Array.isArray(answer) ? answer[runsBefore] : answer) ?? {};
     for (const [path, content] of Object.entries(scripted.writes ?? {})) {
       mkdirSync(dirname(join(command.cwd, path)), { recursive: true });
       writeFileSync(join(command.cwd, path), content);
@@ -216,5 +219,115 @@ test("check suite failing against the starter: a green check run fails the start
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
     "bug-hunt: check suite: expected 4 of 6 failing, got 0 of 6",
+  ]);
+});
+
+const a2a9 = {
+  typecheck: { expect: "pass" },
+  tests: { expect: "pass" },
+  scripts: [
+    {
+      name: "check:readme",
+      expect: "fail",
+      exitCode: 1,
+      outputIncludes: ["FAIL sample 1", "0 of 1 samples ran as written"],
+      producesFiles: [".readme-samples/report.md"],
+    },
+  ],
+};
+
+test("named scripts expected to fail while npm test and typecheck stay green: the docs' premise passes (A2A 9)", () => {
+  const dir = oneStarter("docs-that-cant-lie", a2a9);
+  const runner = fakeRunner({
+    "npm test": { vitest: { passed: 5 } },
+    "npm run check:readme": {
+      exitCode: 1,
+      output: "FAIL sample 1\n0 of 1 samples ran as written\n",
+      writes: { ".readme-samples/report.md": "# Report" },
+    },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
+  assert.ok(runner.labels().includes("npm run check:readme"));
+});
+
+test("named scripts expected to fail: another exit code, missing output or no report fails the starter (A2A 9)", () => {
+  const dir = oneStarter("docs-that-cant-lie", a2a9);
+  const runner = fakeRunner({
+    "npm test": { vitest: { passed: 5 } },
+    "npm run check:readme": { exitCode: 2, output: "FAIL sample 1\n" },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
+    "docs-that-cant-lie: npm run check:readme: expected exit 1, got 2",
+    'docs-that-cant-lie: npm run check:readme: output lacks "0 of 1 samples ran as written"',
+    "docs-that-cant-lie: npm run check:readme: expected it to leave .readme-samples/report.md, which is missing",
+  ]);
+});
+
+test("a per-starter environment reaches every command, the bench included (A2A 6, BENCH_TIME_MS=500)", () => {
+  const dir = oneStarter("fire-then-poll", {
+    env: { BENCH_TIME_MS: "500" },
+    typecheck: { expect: "pass" },
+    tests: { expect: "pass", passed: 6 },
+    scripts: [{ name: "bench", expect: "pass" }],
+  });
+  const runner = fakeRunner({ "npm test": { vitest: { passed: 6 } } });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
+  assert.deepEqual(
+    runner.calls.map((call) => [label(call), call.env]),
+    [
+      ["npm ci", { BENCH_TIME_MS: "500" }],
+      ["npx --no tsc --noEmit", { BENCH_TIME_MS: "500" }],
+      ["npm test", { BENCH_TIME_MS: "500" }],
+      ["npm run bench", { BENCH_TIME_MS: "500" }],
+    ],
+  );
+});
+
+const a2a7 = {
+  typecheck: { expect: "pass" },
+  tests: { expect: "pass" },
+  patch: { file: "patches/late-change.patch", failingTests: ["pads cents under ten with a zero"] },
+};
+const latePatch = { "broadcast/starter/patches/late-change.patch": "--- a/src/price.ts\n+++ b/src/price.ts\n" };
+
+test("ships green, and the named patch breaks exactly the named test (A2A 7)", () => {
+  const dir = oneStarter("broadcast", a2a7, latePatch);
+  const runner = fakeRunner({
+    "npm test": [
+      { vitest: { passed: ["pads cents under ten with a zero", "formats whole euros"] } },
+      { vitest: { passed: ["formats whole euros"], failed: ["pads cents under ten with a zero"] } },
+    ],
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
+  assert.deepEqual(runner.labels(), [
+    "npm ci",
+    "npx --no tsc --noEmit",
+    "npm test",
+    "git apply patches/late-change.patch",
+    "npm test",
+  ]);
+});
+
+test("ships green with a patch: a patch that breaks another test too fails the starter (A2A 7)", () => {
+  const dir = oneStarter("broadcast", a2a7, latePatch);
+  const runner = fakeRunner({
+    "npm test": [
+      { vitest: { passed: ["pads cents under ten with a zero", "formats whole euros"] } },
+      { vitest: { failed: ["pads cents under ten with a zero", "formats whole euros"] } },
+    ],
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
+    'broadcast: after patches/late-change.patch: expected exactly "pads cents under ten with a zero" to fail, got "pads cents under ten with a zero", "formats whole euros"',
+  ]);
+});
+
+test("ships green with a patch: a patch that no longer applies fails the starter (A2A 7)", () => {
+  const dir = oneStarter("broadcast", a2a7, latePatch);
+  const runner = fakeRunner({
+    "npm test": { vitest: { passed: 2 } },
+    "git apply patches/late-change.patch": { exitCode: 1, output: "error: patch failed: src/price.ts:3" },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
+    "broadcast: git apply patches/late-change.patch exited 1\nerror: patch failed: src/price.ts:3",
   ]);
 });
