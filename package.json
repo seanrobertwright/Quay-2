@@ -11,7 +11,10 @@
     "tauri": "tauri",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "starters:check": "node scripts/starters-ci/check-starters.ts",
+    "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
+    "starters:typecheck": "tsc -p scripts/starters-ci"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
