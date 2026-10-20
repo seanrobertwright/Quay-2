@@ -542,6 +542,19 @@ impl PtyManager {
         Some(status_payload(info))
     }
 
+    /// Hides the plugin hint for the rest of the terminal's current launch, and returns
+    /// the terminal's status, which stays as it was.
+    pub fn dismiss_plugin_hint(&self, terminal_id: &str) -> Option<TerminalStatusPayload> {
+        let mut watches = self.plugin_watches.lock();
+        if let Some(watch) = watches.get_mut(terminal_id) {
+            watch.dismiss_hint();
+        }
+        let mut info_map = self.terminals_info.lock();
+        let info = info_map.get_mut(terminal_id)?;
+        info.plugin_hint = false;
+        Some(status_payload(info))
+    }
+
     /// Shows the terminal Working after an A2A message reached it. A terminal shown as
     /// Unknown stays Unknown: without the plugin Quay cannot see the turn end.
     pub fn mark_a2a_delivered(&self, terminal_id: &str) {
@@ -943,6 +956,25 @@ mod tests {
 
         assert_eq!(status_of(&manager, "term-a2a-heard"), ClaudeStatus::Working);
         assert_eq!(status_of(&manager, "term-a2a-unknown"), ClaudeStatus::Unknown);
+    }
+
+    #[test]
+    fn dismissing_the_hint_hides_it_for_the_launch_and_leaves_the_terminal_unknown() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-plugin-dismissed", RunKind::Claude);
+        let first_output = Instant::now();
+        silent_for_thirty_seconds(&manager, "term-plugin-dismissed", launch, first_output);
+
+        manager.dismiss_plugin_hint("term-plugin-dismissed");
+        manager.check_plugin_silence(
+            "term-plugin-dismissed",
+            launch,
+            first_output + Duration::from_secs(300),
+        );
+
+        let info = manager.get_info("term-plugin-dismissed").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Unknown);
+        assert!(!info.plugin_hint);
     }
 
     #[test]

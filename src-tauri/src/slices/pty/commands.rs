@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use super::manager::PtyManager;
 use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalOutputPayload};
@@ -92,6 +92,20 @@ pub async fn rename_terminal(
     pty_manager: State<'_, PtyManager>,
 ) -> Result<(), String> {
     pty_manager.rename(&terminal_id, &name)
+}
+
+/// Hides the plugin hint in the terminal's pane until it is relaunched.
+#[tauri::command]
+pub async fn dismiss_plugin_hint(
+    terminal_id: String,
+    pty_manager: State<'_, PtyManager>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let status = pty_manager
+        .dismiss_plugin_hint(&terminal_id)
+        .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
+    let _ = app_handle.emit("terminal-status", status);
+    Ok(())
 }
 
 #[tauri::command]

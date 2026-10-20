@@ -167,6 +167,13 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
               </span>
             )}
 
+            {terminal.claude_status === "unknown" && (
+              <span className="flex min-w-0 items-center gap-1.5 text-[#8b949e]">
+                <span className="w-2 h-2 shrink-0 rounded-full bg-[#8b949e]" />
+                <span className="truncate">Unknown</span>
+              </span>
+            )}
+
             {terminal.claude_status === "exited" && (
               <span className="truncate text-[#ff7b72] font-mono">
                 Exited with code {terminal.exit_code ?? "?"}

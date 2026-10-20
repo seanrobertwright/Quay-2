@@ -19,6 +19,7 @@ pub struct PluginWatch {
     launch: u64,
     run_kind: RunKind,
     heard: bool,
+    hint_dismissed: bool,
     first_output_at: Option<Instant>,
 }
 
@@ -28,6 +29,7 @@ impl PluginWatch {
             launch: NEXT_LAUNCH.fetch_add(1, Ordering::SeqCst),
             run_kind,
             heard: false,
+            hint_dismissed: false,
             first_output_at: None,
         }
     }
@@ -46,13 +48,20 @@ impl PluginWatch {
         self.run_kind == RunKind::Claude
     }
 
-    /// Whether, at `now`, the silence clock has run out with nothing heard.
+    /// Whether, at `now`, the silence clock has run out with nothing heard and the
+    /// hint not dismissed.
     pub fn silence_due(&self, now: Instant) -> bool {
         self.run_kind == RunKind::Claude
             && !self.heard
+            && !self.hint_dismissed
             && self
                 .first_output_at
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
+    }
+
+    /// Keeps the plugin hint away for the rest of this launch.
+    pub fn dismiss_hint(&mut self) {
+        self.hint_dismissed = true;
     }
 
     /// Marks the plugin heard and returns the status after an authenticated plugin

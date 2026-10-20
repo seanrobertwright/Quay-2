@@ -71,6 +71,15 @@ export interface TerminalInfo {
   custom_flags?: string | null;
   command_text?: string | null;
   created_at?: number;
+  /** Whether the pane shows the plugin hint: this launch went 30 seconds without a plugin event. */
+  plugin_hint?: boolean;
+}
+
+/** A terminal's status after the backend's plugin rules moved it, sent as `terminal-status`. */
+export interface TerminalStatusPayload {
+  terminal_id: string;
+  claude_status: ClaudeStatus;
+  plugin_hint: boolean;
 }
 
 /**
