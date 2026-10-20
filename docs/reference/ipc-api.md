@@ -37,6 +37,11 @@ Terminates a ConPTY session and forcefully closes child process trees.
 - **Arguments**:
   - `id`: string
 
+### `dismiss_plugin_hint`
+Hides the plugin hint in a Claude terminal's pane until the terminal is relaunched. The terminal's status stays as it was. The backend sends the result as a `terminal-status` event (`terminal_id`, `claude_status`, `plugin_hint`), the same event it sends when a plugin event or 30 silent seconds move a terminal's status.
+- **Arguments**:
+  - `terminalId`: string
+
 ---
 
 ## 2. GitHub Companion (`github`)
