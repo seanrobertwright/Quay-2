@@ -58,6 +58,36 @@ fn resolve_terminal_name(identifier: &str, pty_manager: Option<&PtyManager>) -> 
     trimmed.to_string()
 }
 
+/// Refuses a peer message whose sender and receiver resolve to the same terminal: it would
+/// type the sender's own message back into its prompt, and a sender waiting on itself never
+/// gets a reply. A message dispatched as the user has no sending peer, so it is never refused.
+fn refuse_dispatch_to_self(
+    request: &A2ADispatchRequest,
+    pty_manager: Option<&PtyManager>,
+) -> Result<(), String> {
+    if request.as_user.unwrap_or(false) {
+        return Ok(());
+    }
+    let (from_id, to_id) = match pty_manager {
+        Some(pty) => (
+            resolve_terminal_id(&request.from_terminal, pty),
+            resolve_terminal_id(&request.to_terminal, pty),
+        ),
+        None => (
+            request.from_terminal.trim().to_string(),
+            request.to_terminal.trim().to_string(),
+        ),
+    };
+    if from_id == to_id {
+        let name = resolve_terminal_name(&from_id, pty_manager);
+        return Err(format!(
+            "Refused: {} can't send a message to itself. Pick a different To Agent.",
+            name
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct A2ARouter {
     messages: Arc<Mutex<Vec<A2AMessage>>>,
@@ -77,6 +107,8 @@ impl A2ARouter {
         request: A2ADispatchRequest,
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
+        refuse_dispatch_to_self(&request, pty_manager)?;
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -90,7 +122,13 @@ impl A2ARouter {
             request.to_terminal.clone()
         };
 
-        let from_name = resolve_terminal_name(&request.from_terminal, pty_manager);
+        // A message dispatched as the user comes from the operator, not a peer, so the trail
+        // credits "You" whatever From Agent held.
+        let from_name = if request.as_user.unwrap_or(false) {
+            "You".to_string()
+        } else {
+            resolve_terminal_name(&request.from_terminal, pty_manager)
+        };
         let to_name = resolve_terminal_name(&target_terminal_id, pty_manager);
 
         // Inject directly into target terminal's ConPTY stdin so the agent executes immediately!
@@ -134,6 +172,9 @@ impl A2ARouter {
         pty_manager: Option<&PtyManager>,
         timeout_secs: u64,
     ) -> Result<String, String> {
+        // Refuse before registering a reply listener, so a refused send leaves none behind.
+        refuse_dispatch_to_self(&request, pty_manager)?;
+
         let (tx, rx) = oneshot::channel();
 
         let resolved_target = if let Some(pty) = pty_manager {
@@ -310,6 +351,69 @@ mod tests {
         let msg = router.dispatch(request, None).unwrap();
         assert!(msg.as_user);
         assert_eq!(msg.content, "cargo test --all");
+    }
+
+    #[test]
+    fn test_a2a_dispatch_as_user_is_credited_to_you() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "user".to_string(),
+            to_terminal: "term-answerer".to_string(),
+            prompt: "Say hello".to_string(),
+            as_user: Some(true),
+        };
+
+        let msg = router.dispatch(request, None).unwrap();
+        assert_eq!(msg.from_name.as_deref(), Some("You"));
+        assert_eq!(msg.to_name.as_deref(), Some("term-answerer"));
+        assert_eq!(router.get_messages()[0].from_name.as_deref(), Some("You"));
+    }
+
+    #[test]
+    fn test_a2a_dispatch_as_user_is_never_refused_as_self() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-answerer".to_string(),
+            to_terminal: "term-answerer".to_string(),
+            prompt: "Say hello".to_string(),
+            as_user: Some(true),
+        };
+
+        assert!(router.dispatch(request, None).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_a2a_dispatch_and_wait_to_self_is_refused() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-agent-1".to_string(),
+            prompt: "Wait on yourself".to_string(),
+            as_user: Some(false),
+        };
+
+        let err = router.dispatch_and_wait(request, None, 1).await.unwrap_err();
+        assert!(err.contains("itself"), "unexpected refusal message: {err}");
+        assert!(router.get_messages().is_empty());
+    }
+
+    #[test]
+    fn test_a2a_dispatch_to_self_is_refused_and_nothing_is_sent() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-agent-1".to_string(),
+            prompt: "Talk to yourself".to_string(),
+            as_user: Some(false),
+        };
+
+        let err = router.dispatch(request, None).unwrap_err();
+        assert!(err.contains("itself"), "unexpected refusal message: {err}");
+        assert!(router.get_messages().is_empty());
     }
 
     #[test]
