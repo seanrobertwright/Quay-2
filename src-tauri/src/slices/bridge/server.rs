@@ -8,18 +8,20 @@ use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 
-/// Binds the bridge's listener on loopback. Port 0 asks the OS for a random port.
-pub async fn bind_bridge_listener(port: u16) -> Result<TcpListener, String> {
-    TcpListener::bind(("127.0.0.1", port)).await.map_err(|e| {
-        if port == 0 {
-            format!("Failed to bind bridge HTTP listener: {}", e)
-        } else {
+/// Binds the bridge's listener on loopback: on the pinned port when there is
+/// one, otherwise on a random port from the OS.
+pub async fn bind_bridge_listener(pinned: Option<u16>) -> Result<TcpListener, String> {
+    match pinned {
+        None => TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .map_err(|e| format!("Failed to bind bridge HTTP listener: {}", e)),
+        Some(port) => TcpListener::bind(("127.0.0.1", port)).await.map_err(|e| {
             format!(
                 "Failed to bind bridge HTTP listener on pinned port {} ({}={}): {}",
                 port, BRIDGE_PORT_VAR, port, e
             )
-        }
-    })
+        }),
+    }
 }
 
 pub struct BridgeServer;
@@ -31,9 +33,9 @@ impl BridgeServer {
         a2a_router: A2ARouter,
         machina_manager: MachinaManager,
         app_handle: AppHandle,
-        port: u16,
+        pinned_port: Option<u16>,
     ) -> Result<u16, String> {
-        let listener = bind_bridge_listener(port).await?;
+        let listener = bind_bridge_listener(pinned_port).await?;
 
         let local_addr = listener
             .local_addr()
@@ -72,7 +74,7 @@ mod tests {
         let occupier = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let busy = occupier.local_addr().unwrap().port();
 
-        let err = bind_bridge_listener(busy).await.unwrap_err();
+        let err = bind_bridge_listener(Some(busy)).await.unwrap_err();
 
         assert!(err.contains(&busy.to_string()), "{err}");
         assert!(err.contains("QUAY_BRIDGE_PORT"), "{err}");

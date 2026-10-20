@@ -80,7 +80,7 @@ pub fn run() {
             // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task.
             // A bad QUAY_BRIDGE_PORT stops the bridge instead of falling back to random.
             match parse_bridge_port(std::env::var(BRIDGE_PORT_VAR)) {
-                Ok(port) => {
+                Ok(pinned_port) => {
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) = BridgeServer::start(
                             bridge_state_clone,
@@ -88,7 +88,7 @@ pub fn run() {
                             a2a_router_clone,
                             machina_manager_clone,
                             app_handle,
-                            port,
+                            pinned_port,
                         )
                         .await
                         {
