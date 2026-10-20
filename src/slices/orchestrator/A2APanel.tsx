@@ -41,8 +41,8 @@ interface A2APanelProps {
   onClose: () => void;
 }
 
-// The sender recorded for a message dispatched as the user; the trail credits it to "You".
-const USER_SENDER = "user";
+const agentOptionLabel = (t: TerminalInfo) =>
+  `${t.name} (${t.run_kind}) • [${t.claude_status.toUpperCase()}] ${t.task_title ? `("${t.task_title}")` : ""}`;
 
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
@@ -147,15 +147,14 @@ export const A2APanel: FC<A2APanelProps> = ({
 
   const handleSendPrompt = async (e?: FormEvent) => {
     e?.preventDefault();
-    const from = asUser ? USER_SENDER : fromTerminal;
-    if (!from || !toTerminal || !prompt.trim()) return;
+    if (!fromTerminal || !toTerminal || !prompt.trim()) return;
 
     setIsSending(true);
     setSendError(null);
     try {
       await invoke("a2a_send_prompt", {
         request: {
-          from_terminal: from,
+          from_terminal: fromTerminal,
           to_terminal: toTerminal,
           prompt,
           as_user: asUser,
@@ -306,7 +305,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                     <label htmlFor={fromSelectId} className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
                     <select
                       id={fromSelectId}
-                      value={asUser ? USER_SENDER : fromTerminal}
+                      value={asUser ? "" : fromTerminal}
                       disabled={asUser}
                       onChange={(e) => {
                         setFromTerminal(e.target.value);
@@ -315,11 +314,11 @@ export const A2APanel: FC<A2APanelProps> = ({
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {asUser ? (
-                        <option value={USER_SENDER}>You</option>
+                        <option value="">You</option>
                       ) : (
                         projectAgents.map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                            {agentOptionLabel(t)}
                           </option>
                         ))
                       )}
@@ -343,7 +342,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                         .filter((t) => asUser || t.id !== fromTerminal)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                            {agentOptionLabel(t)}
                           </option>
                         ))}
                     </select>
