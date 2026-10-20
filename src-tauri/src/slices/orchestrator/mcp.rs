@@ -315,7 +315,7 @@ pub async fn handle_mcp_request(
 
                         if wait {
                             match a2a_router
-                                .dispatch_and_wait(request, &ctx.bridge_state, Some(&ctx.pty_manager), 60)
+                                .dispatch_and_wait(request, Some(&ctx.pty_manager), 60)
                                 .await
                             {
                                 Ok(reply) => {
@@ -340,7 +340,7 @@ pub async fn handle_mcp_request(
                                 Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
                             }
                         } else {
-                            match a2a_router.dispatch(request, &ctx.bridge_state, Some(&ctx.pty_manager)) {
+                            match a2a_router.dispatch(request, Some(&ctx.pty_manager)) {
                                 Ok(msg) => {
                                     let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
                                     let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
@@ -364,7 +364,7 @@ pub async fn handle_mcp_request(
                     if text.is_empty() {
                         Err("Missing text argument".to_string())
                     } else {
-                        let msgs = a2a_router.broadcast_toast(text, &ctx.bridge_state, &ctx.pty_manager);
+                        let msgs = a2a_router.broadcast_toast(text, &ctx.pty_manager);
                         for msg in &msgs {
                             let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
                             let _ = ctx.app_handle.emit("a2a-message-dispatched", msg.clone());

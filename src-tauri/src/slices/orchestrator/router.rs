@@ -6,8 +6,6 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
-use crate::slices::bridge::models::Command;
-use crate::slices::bridge::state::BridgeState;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
 
@@ -77,7 +75,6 @@ impl A2ARouter {
     pub fn dispatch(
         &self,
         request: A2ADispatchRequest,
-        bridge_state: &BridgeState,
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
         let now = SystemTime::now()
@@ -96,26 +93,7 @@ impl A2ARouter {
         let from_name = resolve_terminal_name(&request.from_terminal, pty_manager);
         let to_name = resolve_terminal_name(&target_terminal_id, pty_manager);
 
-        let formatted_prompt = if request.as_user.unwrap_or(false) {
-            request.prompt.clone()
-        } else {
-            format!(
-                "[Message from peer agent in {}]:\n{}",
-                from_name, request.prompt
-            )
-        };
-
-        // 1. Enqueue in BridgeState for claude-mod-events bridge queue
-        let cmd = Command {
-            id: format!("cmd-{}", Uuid::new_v4().simple()),
-            command_type: "prompt".to_string(),
-            text: Some(formatted_prompt),
-            as_user: request.as_user,
-        };
-
-        bridge_state.enqueue_command(&target_terminal_id, cmd);
-
-        // 2. Inject directly into target terminal's ConPTY stdin so the agent executes immediately!
+        // Inject directly into target terminal's ConPTY stdin so the agent executes immediately!
         if let Some(pty) = pty_manager {
             let pty_prompt = if request.as_user.unwrap_or(false) {
                 request.prompt.trim().replace("\r\n", " ").replace('\n', " ")
@@ -153,7 +131,6 @@ impl A2ARouter {
     pub async fn dispatch_and_wait(
         &self,
         request: A2ADispatchRequest,
-        bridge_state: &BridgeState,
         pty_manager: Option<&PtyManager>,
         timeout_secs: u64,
     ) -> Result<String, String> {
@@ -175,7 +152,7 @@ impl A2ARouter {
         }
 
         // Dispatch prompt to target agent
-        let _ = self.dispatch(request.clone(), bridge_state, pty_manager)?;
+        let _ = self.dispatch(request.clone(), pty_manager)?;
 
         // Await target agent's turn completion with timeout
         match tokio::time::timeout(Duration::from_secs(timeout_secs), rx).await {
@@ -241,7 +218,6 @@ impl A2ARouter {
     pub fn broadcast_toast(
         &self,
         text: &str,
-        bridge_state: &BridgeState,
         pty_manager: &PtyManager,
     ) -> Vec<A2AMessage> {
         let now = SystemTime::now()
@@ -255,16 +231,7 @@ impl A2ARouter {
 
         for t in terminals {
             if t.run_kind.is_agent() && t.claude_status != ClaudeStatus::Exited {
-                // 1. Enqueue in BridgeState for mock / polling bridge consumers
-                let cmd = Command {
-                    id: format!("toast-{}", Uuid::new_v4().simple()),
-                    command_type: "toast".to_string(),
-                    text: Some(text.to_string()),
-                    as_user: None,
-                };
-                bridge_state.enqueue_command(&t.id, cmd);
-
-                // 2. Inject directly into ConPTY stdin so the agent receives the broadcast notice immediately!
+                // 1. Inject directly into ConPTY stdin so the agent receives the broadcast notice immediately!
                 let pty_prompt = format!("[Broadcast Notice]: {}", clean_text);
                 if let Err(e) = pty_manager.submit_prompt(&t.id, &pty_prompt) {
                     tracing::warn!("Failed writing broadcast to PTY {}: {}", t.id, e);
@@ -273,7 +240,7 @@ impl A2ARouter {
                     tracing::info!("Broadcast notice injected into PTY {}", t.id);
                 }
 
-                // 3. Create A2AMessage for message history and UI updates
+                // 2. Create A2AMessage for message history and UI updates
                 let msg = A2AMessage {
                     id: format!("broadcast-{}", Uuid::new_v4().simple()),
                     from_terminal: "broadcast".to_string(),
@@ -312,9 +279,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_a2a_dispatch_peer_formatting() {
+    fn test_a2a_dispatch_records_peer_message() {
         let router = A2ARouter::new();
-        let bridge_state = BridgeState::new();
 
         let request = A2ADispatchRequest {
             from_terminal: "term-agent-1".to_string(),
@@ -323,23 +289,16 @@ mod tests {
             as_user: Some(false),
         };
 
-        let msg = router.dispatch(request, &bridge_state, None).unwrap();
+        let msg = router.dispatch(request, None).unwrap();
         assert_eq!(msg.status, A2AMessageStatus::Dispatched);
         assert_eq!(msg.from_terminal, "term-agent-1");
         assert_eq!(msg.to_terminal, "term-agent-2");
-
-        // Verify command in BridgeState queue for term-agent-2
-        let drained = bridge_state.drain_commands("term-agent-2");
-        assert_eq!(drained.len(), 1);
-        assert_eq!(drained[0].command_type, "prompt");
-        assert!(drained[0].text.as_ref().unwrap().contains("[Message from peer agent in term-agent-1]:"));
-        assert!(drained[0].text.as_ref().unwrap().contains("Please review PR #12"));
+        assert_eq!(msg.content, "Please review PR #12");
     }
 
     #[test]
     fn test_a2a_dispatch_as_user() {
         let router = A2ARouter::new();
-        let bridge_state = BridgeState::new();
 
         let request = A2ADispatchRequest {
             from_terminal: "term-agent-1".to_string(),
@@ -348,19 +307,14 @@ mod tests {
             as_user: Some(true),
         };
 
-        let msg = router.dispatch(request, &bridge_state, None).unwrap();
+        let msg = router.dispatch(request, None).unwrap();
         assert!(msg.as_user);
-
-        let drained = bridge_state.drain_commands("term-agent-2");
-        assert_eq!(drained.len(), 1);
-        assert_eq!(drained[0].text.as_deref(), Some("cargo test --all"));
-        assert_eq!(drained[0].as_user, Some(true));
+        assert_eq!(msg.content, "cargo test --all");
     }
 
     #[test]
     fn test_a2a_resolve_pending_reply_updates_history() {
         let router = A2ARouter::new();
-        let bridge_state = BridgeState::new();
 
         let request = A2ADispatchRequest {
             from_terminal: "term-a".to_string(),
@@ -369,7 +323,7 @@ mod tests {
             as_user: None,
         };
 
-        let _ = router.dispatch(request, &bridge_state, None).unwrap();
+        let _ = router.dispatch(request, None).unwrap();
 
         let updated = router.resolve_pending_reply("term-b", "Result is 4".to_string());
         assert!(updated.is_some());
@@ -387,7 +341,6 @@ mod tests {
     #[test]
     fn test_a2a_clear_messages() {
         let router = A2ARouter::new();
-        let bridge_state = BridgeState::new();
 
         let request = A2ADispatchRequest {
             from_terminal: "term-1".to_string(),
@@ -396,7 +349,7 @@ mod tests {
             as_user: None,
         };
 
-        let _ = router.dispatch(request, &bridge_state, None).unwrap();
+        let _ = router.dispatch(request, None).unwrap();
         assert_eq!(router.get_messages().len(), 1);
 
         router.clear_messages();
@@ -406,10 +359,9 @@ mod tests {
     #[test]
     fn test_a2a_broadcast_toast() {
         let router = A2ARouter::new();
-        let bridge_state = BridgeState::new();
         let pty_manager = PtyManager::new();
 
-        let msgs = router.broadcast_toast("Database migration complete", &bridge_state, &pty_manager);
+        let msgs = router.broadcast_toast("Database migration complete", &pty_manager);
         // PtyManager has 0 sessions initially
         assert_eq!(msgs.len(), 0);
         assert_eq!(router.get_messages().len(), 0);
