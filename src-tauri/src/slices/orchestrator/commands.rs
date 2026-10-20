@@ -49,3 +49,12 @@ pub async fn a2a_clear_messages(
     let _ = app_handle.emit("a2a-messages-cleared", ());
     Ok(())
 }
+
+/// The launch prompt for each agent of a swarm about to launch, in roster order, or null
+/// for an agent whose CLI takes none.
+#[tauri::command]
+pub async fn swarm_launch_prompts(
+    members: Vec<super::launch_prompt::SwarmMember>,
+) -> Result<Vec<Option<String>>, String> {
+    Ok(super::launch_prompt::compose_launch_prompts(&members))
+}

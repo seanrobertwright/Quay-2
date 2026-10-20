@@ -68,6 +68,29 @@ fn read_saved_scrollback(terminal_id: &str) -> (String, u64) {
     }
 }
 
+/// The spawn request that restarts a terminal from its stored info. It carries no launch
+/// prompt: that was the first turn of the terminal's first run, and is never resent.
+fn relaunch_request(
+    info: &TerminalInfo,
+    rows: Option<u16>,
+    cols: Option<u16>,
+    env_vars: Option<HashMap<String, String>>,
+) -> SpawnTerminalRequest {
+    SpawnTerminalRequest {
+        id: Some(info.id.clone()),
+        name: Some(info.name.clone()),
+        project_path: info.project_path.clone(),
+        run_kind: info.run_kind,
+        permission_mode: Some(info.permission_mode),
+        command_text: info.command_text.clone(),
+        rows,
+        cols,
+        env_vars,
+        custom_flags: info.custom_flags.clone(),
+        initial_prompt: None,
+    }
+}
+
 #[derive(Clone)]
 pub struct PtyManager {
     sessions: Arc<Mutex<HashMap<String, PtySession>>>,
@@ -180,9 +203,11 @@ impl PtyManager {
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
+        let start_seq = self.last_seq(&terminal_id);
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
+            start_seq,
             bridge_port,
             bridge_token,
             app_handle,
@@ -237,28 +262,21 @@ impl PtyManager {
             })?
         };
 
+        // Read before the old session goes: its pane stays mounted and has seen up to this seq
+        let start_seq = self.last_seq(terminal_id);
+
         // If an active session is running, terminate it before relaunching
         {
             let mut sessions = self.sessions.lock();
             sessions.remove(terminal_id);
         }
 
-        let request = SpawnTerminalRequest {
-            id: Some(terminal_id.to_string()),
-            name: Some(info.name.clone()),
-            project_path: info.project_path.clone(),
-            run_kind: info.run_kind,
-            permission_mode: Some(info.permission_mode),
-            command_text: info.command_text.clone(),
-            rows,
-            cols,
-            env_vars,
-            custom_flags: info.custom_flags.clone(),
-        };
+        let request = relaunch_request(&info, rows, cols, env_vars);
 
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
+            start_seq,
             bridge_port,
             bridge_token,
             app_handle,
@@ -318,6 +336,19 @@ impl PtyManager {
         } else {
             Err(format!("Terminal {} not found or inactive", terminal_id))
         }
+    }
+
+    /// The last output seq sent under `terminal_id`, from its session or its dormant buffer
+    /// (0 when there is neither). A session that replaces it numbers its output above this.
+    fn last_seq(&self, terminal_id: &str) -> u64 {
+        if let Some(session) = self.sessions.lock().get(terminal_id) {
+            return session.last_seq();
+        }
+        self.dormant_buffers
+            .lock()
+            .get(terminal_id)
+            .map(|(_, seq)| *seq)
+            .unwrap_or(0)
     }
 
     pub fn get_output(&self, terminal_id: &str) -> Result<TerminalOutputPayload, String> {
@@ -464,6 +495,18 @@ mod tests {
     use crate::slices::pty::models::{PermissionMode, RunKind};
 
     #[test]
+    fn test_last_seq_reads_dormant_buffer_then_defaults_to_zero() {
+        let manager = PtyManager::new();
+        manager
+            .dormant_buffers
+            .lock()
+            .insert("term-dormant".to_string(), ("restored".to_string(), 7));
+
+        assert_eq!(manager.last_seq("term-dormant"), 7);
+        assert_eq!(manager.last_seq("term-unknown"), 0);
+    }
+
+    #[test]
     fn test_pty_manager_rename_and_task_title() {
         let manager = PtyManager::new();
         let term_id = "term-123".to_string();
@@ -514,6 +557,38 @@ mod tests {
         let info = manager.get_info(&term_id).unwrap();
         assert_eq!(info.name, "My Custom Agent");
         assert_eq!(info.task_title.as_deref(), Some("Refactor database models"));
+    }
+
+    #[test]
+    fn relaunching_a_terminal_does_not_resend_its_launch_prompt() {
+        let info = TerminalInfo {
+            id: "term-relaunch".to_string(),
+            name: "lead-dev".to_string(),
+            project_path: "E:\\Projects\\Test".to_string(),
+            run_kind: RunKind::Codex,
+            permission_mode: PermissionMode::Skip,
+            live_mode: PermissionMode::Skip,
+            claude_status: ClaudeStatus::Exited,
+            auto_approved_count: 0,
+            exit_code: Some(0),
+            task_title: Some("Role: Lead Developer".to_string()),
+            current_tool: None,
+            custom_name: true,
+            custom_flags: Some("--model gpt-5".to_string()),
+            command_text: None,
+            created_at: 1000,
+        };
+
+        let request = relaunch_request(&info, Some(30), Some(100), None);
+
+        assert_eq!(request.initial_prompt, None);
+        assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
+        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok");
+        let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(
+            args,
+            ["codex.exe", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5"]
+        );
     }
 
     #[test]

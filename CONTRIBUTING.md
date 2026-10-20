@@ -112,8 +112,11 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ### 4. Documentation Build Test
 ```powershell
+pnpm docs:test
 pnpm docs:build
 ```
+
+`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. `docs:test` runs the packing script's tests.
 
 ---
 
