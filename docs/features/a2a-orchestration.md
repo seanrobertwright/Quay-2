@@ -110,7 +110,7 @@ Inspects health, auto-approved tool count, and active execution status of a spec
 
 In addition to autonomous agent-to-agent chatter, human operators can intervene at any time:
 
-1. Click the **Network (A2A)** icon in the bottom rail toolbar, or press `Ctrl+K` -> **"A2A Orchestration Bus"**.
+1. Click the **Mission Control** icon (the network icon) in the bottom rail toolbar, press `Ctrl+B M`, or press `Ctrl+K` and choose **Mission Control**. Press `Esc` to close it.
 2. **From**: Select any running agent or check **"Dispatch as User"**.
 3. **To**: Select recipient agent.
 4. **Message**: Type instructions.

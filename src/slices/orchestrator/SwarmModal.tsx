@@ -8,7 +8,7 @@ import {
   savedSwarmToPreset,
 } from "./swarmTypes";
 import { AgentIcon } from "../terminal/AgentIcons";
-import { StageLayout } from "../terminal/types";
+import { StageLayout, takesLaunchPrompt } from "../terminal/types";
 import {
   X,
   Bot,
@@ -24,6 +24,16 @@ import {
   Trash2,
   Save,
 } from "lucide-react";
+
+const NO_LAUNCH_PROMPT_HINT =
+  "This CLI takes no launch prompt, so it starts without its role or team briefing. Paste its role by hand.";
+
+/** Marks a roster row whose CLI starts without a launch prompt. */
+const NoLaunchPromptNote: React.FC = () => (
+  <span className="shrink-0 whitespace-nowrap text-[10px] text-[#d29922]" title={NO_LAUNCH_PROMPT_HINT}>
+    No launch prompt
+  </span>
+);
 
 interface SwarmModalProps {
   isOpen: boolean;
@@ -287,6 +297,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                 <span className="text-[#8b949e] font-mono text-[10px]">
                   ({agent.name})
                 </span>
+                {!takesLaunchPrompt(agent.run_kind) && <NoLaunchPromptNote />}
               </div>
             ))}
           </div>
@@ -512,6 +523,8 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                         placeholder="session-name"
                         className="w-28 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-[#58a6ff] font-mono text-[11px]"
                       />
+
+                      {!takesLaunchPrompt(ag.run_kind) && <NoLaunchPromptNote />}
 
                       {customAgents.length > 2 && (
                         <button

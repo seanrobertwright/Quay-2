@@ -21,7 +21,7 @@ pub struct SavedSwarmAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_flags: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub initial_prompt: Option<String>,
+    pub role_prompt: Option<String>,
 }
 
 /// What the builder form sends: a swarm without an id. The store assigns the id.
@@ -178,7 +178,7 @@ mod tests {
             name: name.to_string(),
             run_kind,
             custom_flags: None,
-            initial_prompt: None,
+            role_prompt: None,
         }
     }
 
@@ -195,7 +195,7 @@ mod tests {
         let (store, _) = temp_store();
         let mut reviewer = agent("Reviewer", "rev", RunKind::Codex);
         reviewer.custom_flags = Some("--full-auto".to_string());
-        reviewer.initial_prompt = Some("You review.".to_string());
+        reviewer.role_prompt = Some("You review.".to_string());
 
         let saved = store
             .save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude), reviewer.clone()]))

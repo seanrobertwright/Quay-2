@@ -6,7 +6,9 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use super::models::{PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload};
+use super::models::{
+    LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
+};
 
 #[derive(Clone, Serialize)]
 pub struct PtyOutputPayload {
@@ -32,6 +34,25 @@ pub struct PtySession {
     output_buffer: Arc<Mutex<(String, u64)>>,
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
+}
+
+/// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
+/// of JSON. It is passed inline rather than as a file path so the terminal's bearer
+/// token never touches disk, and the header names `${CLAUDE_EVENTS_TOKEN}`, which
+/// Claude Code expands from its environment, so the token stays out of the command line.
+pub fn mcp_config_arg(bridge_port: u16) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            "quay": {
+                "type": "http",
+                "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+                "headers": {
+                    "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}"
+                }
+            }
+        }
+    })
+    .to_string()
 }
 
 /// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
@@ -101,10 +122,299 @@ fn trim_output_buffer(buf: &mut String, max_len: usize) {
     buf.drain(..cut);
 }
 
+/// The Claude Code executable for this platform: `claude.exe` on Windows, `claude` elsewhere.
+fn claude_program() -> &'static str {
+    #[cfg(windows)]
+    let program = "claude.exe";
+    #[cfg(not(windows))]
+    let program = "claude";
+    program
+}
+
+/// Appends a decoded chunk to the replay buffer and returns the chunk's seq, one above the
+/// buffer's last. The count carries on from whatever seq the buffer started at, so a relaunched
+/// session keeps numbering above what its still-mounted pane has already seen.
+fn append_output(buffer: &mut (String, u64), text: &str, max_len: usize) -> u64 {
+    buffer.0.push_str(text);
+    buffer.1 += 1;
+    trim_output_buffer(&mut buffer.0, max_len);
+    buffer.1
+}
+
+/// The request's launch prompt, when it has one and its CLI takes one.
+fn launch_prompt(request: &SpawnTerminalRequest) -> Option<&str> {
+    request
+        .initial_prompt
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+        .filter(|_| request.run_kind.launch_prompt_form().is_some())
+}
+
+/// Env var that carries the launch prompt into pwsh for CLIs that start through `cmd.exe /c`.
+const LAUNCH_PROMPT_ENV: &str = "QUAY_LAUNCH_PROMPT";
+
+/// Quotes `text` as a PowerShell single-quoted literal, which expands nothing.
+fn pwsh_literal(text: &str) -> String {
+    let mut quoted = String::with_capacity(text.len() + 2);
+    quoted.push('\'');
+    for ch in text.chars() {
+        // PowerShell also closes a single-quoted string on the typographic single quotes
+        if matches!(ch, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            quoted.push(ch);
+        }
+        quoted.push(ch);
+    }
+    quoted.push('\'');
+    quoted
+}
+
+/// Whether `cmd` starts its CLI as `cmd.exe /c <cli>`, as the npm-shim CLIs do.
+fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
+    let argv = cmd.get_argv();
+    argv.len() >= 2 && argv[0] == "cmd.exe" && argv[1] == "/c"
+}
+
+/// Turns a `cmd.exe /c <cli> <args>` command into a pwsh one that reads the launch prompt
+/// from an env var. cmd.exe ends a command line at its first newline and an npm `.cmd`
+/// shim re-parses its arguments, so a multi-line prompt can't survive that route; pwsh
+/// runs the CLI's `.ps1` shim, which hands each argument on intact.
+fn start_through_pwsh(cmd: &mut CommandBuilder, form: Option<LaunchPromptForm>, prompt: &str) {
+    let mut script = String::from("&");
+    for arg in cmd.get_argv().iter().skip(2) {
+        script.push(' ');
+        script.push_str(&pwsh_literal(&arg.to_string_lossy()));
+    }
+    if let Some(LaunchPromptForm::Flag(flag)) = form {
+        script.push(' ');
+        script.push_str(&pwsh_literal(flag));
+    }
+    script.push_str(" $env:");
+    script.push_str(LAUNCH_PROMPT_ENV);
+
+    #[cfg(windows)]
+    let program = "pwsh.exe";
+    #[cfg(not(windows))]
+    let program = "pwsh";
+    *cmd.get_argv_mut() = [program, "-NoProfile", "-NoLogo", "-Command", script.as_str()]
+        .iter()
+        .map(|arg| arg.into())
+        .collect();
+    cmd.env(LAUNCH_PROMPT_ENV, prompt);
+}
+
+/// A shell terminal: pwsh on Windows, sh elsewhere, running `command_text` and staying
+/// open when there is one.
+fn shell_command(command_text: Option<&str>) -> CommandBuilder {
+    #[cfg(windows)]
+    {
+        let mut c = CommandBuilder::new("pwsh.exe");
+        c.arg("-NoProfile");
+        c.arg("-NoLogo");
+        if let Some(text) = command_text {
+            c.arg("-NoExit");
+            c.arg("-Command");
+            c.arg(text);
+        }
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        let mut c = CommandBuilder::new("sh");
+        if let Some(text) = command_text {
+            c.arg("-c");
+            c.arg(text);
+        }
+        c
+    }
+}
+
+/// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
+/// the launch prompt and, last, Quay's MCP config.
+pub(crate) fn build_command(
+    request: &SpawnTerminalRequest,
+    terminal_id: &str,
+    bridge_port: u16,
+    bridge_token: &str,
+) -> CommandBuilder {
+    let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
+
+    let mut cmd = match request.run_kind {
+        // On Unix a PowerShell terminal opens a bare shell and ignores its command text
+        RunKind::PowerShell => {
+            shell_command(request.command_text.as_deref().filter(|_| cfg!(windows)))
+        }
+        RunKind::Command | RunKind::Archon => shell_command(request.command_text.as_deref()),
+        RunKind::Claude => {
+            let mut c = CommandBuilder::new(claude_program());
+            // Inject event-bridge environment variables
+            c.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
+            c.env("CLAUDE_EVENTS_TOKEN", &bridge_token);
+            c.env("CLAUDE_EVENTS_TAG", &terminal_id);
+            c.env("CLAUDE_EVENTS_TOOLS", "full");
+
+            if perm == PermissionMode::Skip {
+                c.arg("--dangerously-skip-permissions");
+                // Skip mode turns host permission checks off too, so Claude doesn't block waiting on them
+                c.env("CLAUDE_EVENTS_PERMISSIONS", "off");
+            } else {
+                c.env("CLAUDE_EVENTS_PERMISSIONS", "host");
+            }
+
+            c
+        }
+        RunKind::Antigravity => {
+            let mut c = CommandBuilder::new("agy.exe");
+            if perm == PermissionMode::Skip {
+                c.arg("--dangerously-skip-permissions");
+            }
+            c
+        }
+        RunKind::Codex => {
+            let mut c = CommandBuilder::new("codex.exe");
+            if perm == PermissionMode::Skip {
+                c.arg("--dangerously-bypass-approvals-and-sandbox");
+            }
+            c
+        }
+        RunKind::Pi => {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/c");
+            c.arg("pi");
+            if perm == PermissionMode::Skip {
+                c.arg("--approve");
+            }
+            c
+        }
+        RunKind::Gemini => {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/c");
+            c.arg("gemini");
+            c
+        }
+        RunKind::Grok => {
+            // Check if user has ~/.grok/bin/agent.exe installed
+            let grok_path = std::env::var("USERPROFILE")
+                .ok()
+                .map(|home| std::path::PathBuf::from(home).join(".grok").join("bin").join("agent.exe"))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "agent.exe".to_string());
+            CommandBuilder::new(grok_path)
+        }
+        RunKind::Aider => {
+            let mut c = CommandBuilder::new("aider.exe");
+            if perm == PermissionMode::Skip {
+                c.arg("--yes-always");
+            }
+            c
+        }
+        RunKind::Kiro => {
+            let kiro_path = std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(|local| std::path::PathBuf::from(local).join("Kiro-Cli").join("kiro-cli.exe"))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "kiro-cli.exe".to_string());
+            let mut c = CommandBuilder::new(kiro_path);
+            c.arg("chat");
+            if perm == PermissionMode::Skip {
+                c.arg("--trust-all-tools");
+            }
+            c
+        }
+        RunKind::Copilot => {
+            let copilot_local = std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(|local| std::path::PathBuf::from(local).join("GitHub CLI").join("copilot").join("copilot.exe"))
+                .filter(|p| p.exists());
+
+            if let Some(path) = copilot_local {
+                let mut c = CommandBuilder::new(path.to_string_lossy().to_string());
+                if perm == PermissionMode::Skip {
+                    c.arg("--allow-all-tools");
+                }
+                c
+            } else {
+                let gh_path = std::path::PathBuf::from("C:\\Program Files\\GitHub CLI\\gh.exe");
+                let program = if gh_path.exists() {
+                    gh_path.to_string_lossy().to_string()
+                } else {
+                    "gh.exe".to_string()
+                };
+                let mut c = CommandBuilder::new(program);
+                c.arg("copilot");
+                c
+            }
+        }
+        RunKind::OpenCode => {
+            let opencode_path = std::env::var("USERPROFILE")
+                .ok()
+                .map(|home| std::path::PathBuf::from(home).join(".bun").join("bin").join("opencode.exe"))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "opencode.exe".to_string());
+            let mut c = CommandBuilder::new(opencode_path);
+            if perm == PermissionMode::Skip {
+                c.arg("--auto");
+            }
+            c
+        }
+    };
+
+    // Inject workspace / custom environment variables
+    if let Some(ref envs) = request.env_vars {
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+    }
+
+    // Inject custom CLI launch flags (for any supported agent)
+    if request.run_kind.is_agent() {
+        if let Some(ref flags) = request.custom_flags {
+            for flag in flags.split_whitespace() {
+                cmd.arg(flag);
+            }
+        }
+    }
+
+    // The launch prompt is one argument, never split, so multi-line prompts survive
+    if let Some(prompt) = launch_prompt(request) {
+        let form = request.run_kind.launch_prompt_form();
+        if starts_through_cmd(&cmd) {
+            start_through_pwsh(&mut cmd, form, prompt);
+        } else {
+            match form {
+                Some(LaunchPromptForm::Positional) => cmd.arg(prompt),
+                Some(LaunchPromptForm::Flag(flag)) => {
+                    cmd.arg(flag);
+                    cmd.arg(prompt);
+                }
+                None => {}
+            }
+        }
+    }
+
+    // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration.
+    // `--mcp-config` takes several values and would read a bare argument after it as
+    // another config file, so it goes after the custom flags and the launch prompt.
+    if request.run_kind.gets_quay_mcp() {
+        cmd.arg("--mcp-config");
+        cmd.arg(mcp_config_arg(bridge_port));
+    }
+
+    cmd.cwd(&request.project_path);
+
+    cmd
+}
+
 impl PtySession {
+    /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
+    /// under this id (0 for a new terminal); output from this session is numbered above it,
+    /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
+        start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
@@ -124,231 +434,7 @@ impl PtySession {
 
         let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
 
-        let mut cmd = match request.run_kind {
-            RunKind::PowerShell => {
-                #[cfg(windows)]
-                let mut c = CommandBuilder::new("pwsh.exe");
-                #[cfg(not(windows))]
-                let mut c = CommandBuilder::new("sh");
-
-                #[cfg(windows)]
-                {
-                    c.arg("-NoProfile");
-                    c.arg("-NoLogo");
-                    if let Some(ref text) = request.command_text {
-                        c.arg("-NoExit");
-                        c.arg("-Command");
-                        c.arg(text);
-                    }
-                }
-                c
-            }
-            RunKind::Command => {
-                #[cfg(windows)]
-                let mut c = CommandBuilder::new("pwsh.exe");
-                #[cfg(not(windows))]
-                let mut c = CommandBuilder::new("sh");
-
-                #[cfg(windows)]
-                {
-                    c.arg("-NoProfile");
-                    c.arg("-NoLogo");
-                    if let Some(ref text) = request.command_text {
-                        c.arg("-NoExit");
-                        c.arg("-Command");
-                        c.arg(text);
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    if let Some(ref text) = request.command_text {
-                        c.arg("-c");
-                        c.arg(text);
-                    }
-                }
-                c
-            }
-            RunKind::Archon => {
-                #[cfg(windows)]
-                let mut c = CommandBuilder::new("pwsh.exe");
-                #[cfg(not(windows))]
-                let mut c = CommandBuilder::new("sh");
-
-                #[cfg(windows)]
-                {
-                    c.arg("-NoProfile");
-                    c.arg("-NoLogo");
-                    if let Some(ref text) = request.command_text {
-                        c.arg("-NoExit");
-                        c.arg("-Command");
-                        c.arg(text);
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    if let Some(ref text) = request.command_text {
-                        c.arg("-c");
-                        c.arg(text);
-                    }
-                }
-                c
-            }
-            RunKind::Claude => {
-                let mut c = CommandBuilder::new("claude.exe");
-                // Inject event-bridge environment variables
-                c.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
-                c.env("CLAUDE_EVENTS_TOKEN", &bridge_token);
-                c.env("CLAUDE_EVENTS_TAG", &terminal_id);
-                c.env("CLAUDE_EVENTS_TOOLS", "full");
-
-                if perm == PermissionMode::Skip {
-                    c.arg("--dangerously-skip-permissions");
-                    // Per ADR 0006: host permissions off for skip mode so Claude doesn't block on tool checks
-                    c.env("CLAUDE_EVENTS_PERMISSIONS", "off");
-                } else {
-                    c.env("CLAUDE_EVENTS_PERMISSIONS", "host");
-                }
-
-                // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration
-                let mcp_config = serde_json::json!({
-                    "mcpServers": {
-                        "quay": {
-                            "type": "http",
-                            "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
-                            "headers": {
-                                "Authorization": format!("Bearer {}", bridge_token)
-                            }
-                        }
-                    }
-                });
-
-                let temp_dir = std::env::temp_dir();
-                let mcp_path = temp_dir.join(format!("quay-mcp-{}.json", terminal_id));
-                if let Ok(content) = serde_json::to_string_pretty(&mcp_config) {
-                    if std::fs::write(&mcp_path, content).is_ok() {
-                        c.arg("--mcp-config");
-                        c.arg(mcp_path.to_string_lossy().to_string());
-                    }
-                }
-
-                c
-            }
-            RunKind::Antigravity => {
-                let mut c = CommandBuilder::new("agy.exe");
-                if perm == PermissionMode::Skip {
-                    c.arg("--dangerously-skip-permissions");
-                }
-                c
-            }
-            RunKind::Codex => {
-                let mut c = CommandBuilder::new("codex.exe");
-                if perm == PermissionMode::Skip {
-                    c.arg("--dangerously-bypass-approvals-and-sandbox");
-                }
-                c
-            }
-            RunKind::Pi => {
-                let mut c = CommandBuilder::new("cmd.exe");
-                c.arg("/c");
-                c.arg("pi");
-                if perm == PermissionMode::Skip {
-                    c.arg("--approve");
-                }
-                c
-            }
-            RunKind::Gemini => {
-                let mut c = CommandBuilder::new("cmd.exe");
-                c.arg("/c");
-                c.arg("gemini");
-                c
-            }
-            RunKind::Grok => {
-                // Check if user has ~/.grok/bin/agent.exe installed
-                let grok_path = std::env::var("USERPROFILE")
-                    .ok()
-                    .map(|home| std::path::PathBuf::from(home).join(".grok").join("bin").join("agent.exe"))
-                    .filter(|p| p.exists())
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "agent.exe".to_string());
-                CommandBuilder::new(grok_path)
-            }
-            RunKind::Aider => {
-                let mut c = CommandBuilder::new("aider.exe");
-                if perm == PermissionMode::Skip {
-                    c.arg("--yes-always");
-                }
-                c
-            }
-            RunKind::Kiro => {
-                let kiro_path = std::env::var("LOCALAPPDATA")
-                    .ok()
-                    .map(|local| std::path::PathBuf::from(local).join("Kiro-Cli").join("kiro-cli.exe"))
-                    .filter(|p| p.exists())
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "kiro-cli.exe".to_string());
-                let mut c = CommandBuilder::new(kiro_path);
-                c.arg("chat");
-                if perm == PermissionMode::Skip {
-                    c.arg("--trust-all-tools");
-                }
-                c
-            }
-            RunKind::Copilot => {
-                let copilot_local = std::env::var("LOCALAPPDATA")
-                    .ok()
-                    .map(|local| std::path::PathBuf::from(local).join("GitHub CLI").join("copilot").join("copilot.exe"))
-                    .filter(|p| p.exists());
-
-                if let Some(path) = copilot_local {
-                    let mut c = CommandBuilder::new(path.to_string_lossy().to_string());
-                    if perm == PermissionMode::Skip {
-                        c.arg("--allow-all-tools");
-                    }
-                    c
-                } else {
-                    let gh_path = std::path::PathBuf::from("C:\\Program Files\\GitHub CLI\\gh.exe");
-                    let program = if gh_path.exists() {
-                        gh_path.to_string_lossy().to_string()
-                    } else {
-                        "gh.exe".to_string()
-                    };
-                    let mut c = CommandBuilder::new(program);
-                    c.arg("copilot");
-                    c
-                }
-            }
-            RunKind::OpenCode => {
-                let opencode_path = std::env::var("USERPROFILE")
-                    .ok()
-                    .map(|home| std::path::PathBuf::from(home).join(".bun").join("bin").join("opencode.exe"))
-                    .filter(|p| p.exists())
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "opencode.exe".to_string());
-                let mut c = CommandBuilder::new(opencode_path);
-                if perm == PermissionMode::Skip {
-                    c.arg("--auto");
-                }
-                c
-            }
-        };
-
-        // Inject workspace / custom environment variables
-        if let Some(ref envs) = request.env_vars {
-            for (k, v) in envs {
-                cmd.env(k, v);
-            }
-        }
-
-        // Inject custom CLI launch flags (for any supported agent)
-        if request.run_kind.is_agent() {
-            if let Some(ref flags) = request.custom_flags {
-                for flag in flags.split_whitespace() {
-                    cmd.arg(flag);
-                }
-            }
-        }
-
-        cmd.cwd(&request.project_path);
+        let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token);
 
         let mut child = pair
             .slave
@@ -408,7 +494,7 @@ impl PtySession {
             String::new()
         };
 
-        let output_buffer = Arc::new(Mutex::new((initial_data, 0u64)));
+        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
         let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
 
@@ -423,7 +509,6 @@ impl PtySession {
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
-                let mut current_seq = 0u64;
                 let mut session_started_emitted = false;
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
@@ -466,17 +551,9 @@ impl PtySession {
                                 );
                             }
 
-                            current_seq += 1;
-                            let seq = current_seq;
-
-                            // Buffer recent output for newly-mounting xterm instances
-                            {
-                                let mut guard = output_buffer.lock();
-                                guard.0.push_str(&text);
-                                guard.1 = seq;
-                                // Cap buffer at 256KB to avoid unbounded memory usage
-                                trim_output_buffer(&mut guard.0, 256 * 1024);
-                            }
+                            // Buffer recent output for newly-mounting xterm instances,
+                            // capped at 256KB to avoid unbounded memory usage
+                            let seq = append_output(&mut output_buffer.lock(), &text, 256 * 1024);
 
                             let _ = app_handle.emit(
                                 "pty-output",
@@ -507,10 +584,6 @@ impl PtySession {
             std::thread::spawn(move || {
                 let exit_status = child.wait();
                 is_alive.store(false, Ordering::SeqCst);
-
-                // Clean up temporary MCP config file if exists
-                let temp_mcp = std::env::temp_dir().join(format!("quay-mcp-{}.json", terminal_id));
-                let _ = std::fs::remove_file(temp_mcp);
 
                 // Compact log file if it exceeds 2MB to keep disk space bounded
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
@@ -628,12 +701,25 @@ impl PtySession {
     pub fn is_alive(&self) -> bool {
         self.is_alive.load(Ordering::SeqCst)
     }
+
+    /// The seq of the last output chunk this session sent.
+    pub fn last_seq(&self) -> u64 {
+        self.output_buffer.lock().1
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Read;
+
+    #[test]
+    fn claude_program_matches_the_platform_binary_name() {
+        #[cfg(windows)]
+        assert_eq!(claude_program(), "claude.exe");
+        #[cfg(not(windows))]
+        assert_eq!(claude_program(), "claude");
+    }
 
     #[test]
     fn test_spawn_claude_version() {
@@ -647,7 +733,7 @@ mod tests {
             })
             .expect("openpty failed");
 
-        let mut cmd = CommandBuilder::new("claude.exe");
+        let mut cmd = CommandBuilder::new(claude_program());
         cmd.arg("--version");
         let mut child = pair.slave.spawn_command(cmd).expect("spawn claude failed");
         drop(pair.slave);
@@ -686,6 +772,246 @@ mod tests {
         assert!(status.success());
     }
 
+    const MULTI_LINE_PROMPT: &str =
+        "Role: Lead Developer\nYou are the \"Lead Developer\".\n  Teammates: a & b | c\nWait for the user's task.";
+
+    fn spawn_request(run_kind: RunKind) -> SpawnTerminalRequest {
+        SpawnTerminalRequest {
+            id: None,
+            name: None,
+            project_path: ".".to_string(),
+            run_kind,
+            permission_mode: Some(PermissionMode::Skip),
+            command_text: None,
+            rows: None,
+            cols: None,
+            env_vars: None,
+            custom_flags: None,
+            initial_prompt: None,
+        }
+    }
+
+    fn argv(cmd: &CommandBuilder) -> Vec<String> {
+        cmd.get_argv()
+            .iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn claude_gets_custom_flags_and_launch_prompt_before_mcp_config() {
+        let mut request = spawn_request(RunKind::Claude);
+        request.custom_flags = Some("--model claude-sonnet-5-5".to_string());
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+
+        let args = argv(&build_command(&request, "term-claude-prompt", 1234, "tok"));
+
+        assert_eq!(args.len(), 7, "{:?}", args);
+        assert_eq!(
+            args[..6],
+            [
+                claude_program(),
+                "--dangerously-skip-permissions",
+                "--model",
+                "claude-sonnet-5-5",
+                MULTI_LINE_PROMPT,
+                "--mcp-config",
+            ]
+        );
+        assert_eq!(args[6], mcp_config_arg(1234));
+    }
+
+    fn args_with_prompt(run_kind: RunKind, prompt: Option<&str>) -> Vec<String> {
+        let mut request = spawn_request(run_kind);
+        request.initial_prompt = prompt.map(str::to_string);
+        // The program path of some CLIs depends on what is installed, so compare from argv[1]
+        argv(&build_command(&request, "term-forms", 1234, "tok"))[1..].to_vec()
+    }
+
+    #[test]
+    fn each_cli_takes_the_launch_prompt_in_its_own_form() {
+        let p = MULTI_LINE_PROMPT;
+        assert_eq!(
+            args_with_prompt(RunKind::Codex, Some(p)),
+            ["--dangerously-bypass-approvals-and-sandbox", p]
+        );
+        assert_eq!(args_with_prompt(RunKind::OpenCode, Some(p)), ["--auto", "--prompt", p]);
+        assert_eq!(
+            args_with_prompt(RunKind::Kiro, Some(p)),
+            ["chat", "--trust-all-tools", p]
+        );
+        let copilot = args_with_prompt(RunKind::Copilot, Some(p));
+        assert_eq!(copilot[copilot.len() - 2..], ["-i", p]);
+    }
+
+    #[test]
+    fn clis_without_launch_prompt_support_get_no_prompt_argument() {
+        for run_kind in [
+            RunKind::Antigravity,
+            RunKind::Grok,
+            RunKind::Aider,
+            RunKind::PowerShell,
+            RunKind::Command,
+        ] {
+            assert_eq!(
+                args_with_prompt(run_kind, Some(MULTI_LINE_PROMPT)),
+                args_with_prompt(run_kind, None),
+                "{:?} must ignore the launch prompt",
+                run_kind
+            );
+        }
+    }
+
+    #[test]
+    fn a_spawn_without_a_launch_prompt_gets_todays_arguments() {
+        // Expected values are the arguments each CLI was started with before launch prompts
+        assert_eq!(
+            args_with_prompt(RunKind::Codex, None),
+            ["--dangerously-bypass-approvals-and-sandbox"]
+        );
+        assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi", "--approve"]);
+        assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
+        assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--auto"]);
+        assert_eq!(args_with_prompt(RunKind::Kiro, None), ["chat", "--trust-all-tools"]);
+        assert_eq!(
+            args_with_prompt(RunKind::Antigravity, None),
+            ["--dangerously-skip-permissions"]
+        );
+        assert_eq!(args_with_prompt(RunKind::Aider, None), ["--yes-always"]);
+        let claude = args_with_prompt(RunKind::Claude, None);
+        assert_eq!(claude[..2], ["--dangerously-skip-permissions", "--mcp-config"]);
+        assert_eq!(claude.len(), 3);
+        // A blank prompt counts as none
+        assert_eq!(
+            args_with_prompt(RunKind::Codex, Some("  \n")),
+            ["--dangerously-bypass-approvals-and-sandbox"]
+        );
+    }
+
+    #[test]
+    fn shell_terminals_get_todays_arguments() {
+        let shell_args = |run_kind: RunKind, text: Option<&str>| {
+            let mut request = spawn_request(run_kind);
+            request.command_text = text.map(str::to_string);
+            argv(&build_command(&request, "term-shell", 1234, "tok"))
+        };
+        for run_kind in [RunKind::PowerShell, RunKind::Command, RunKind::Archon] {
+            #[cfg(windows)]
+            {
+                assert_eq!(shell_args(run_kind, None), ["pwsh.exe", "-NoProfile", "-NoLogo"]);
+                assert_eq!(
+                    shell_args(run_kind, Some("pnpm dev")),
+                    ["pwsh.exe", "-NoProfile", "-NoLogo", "-NoExit", "-Command", "pnpm dev"]
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(shell_args(run_kind, None), ["sh"]);
+                let expected: &[&str] = if run_kind == RunKind::PowerShell {
+                    &["sh"]
+                } else {
+                    &["sh", "-c", "pnpm dev"]
+                };
+                assert_eq!(shell_args(run_kind, Some("pnpm dev")), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn npm_shim_clis_take_the_launch_prompt_through_pwsh_not_cmd() {
+        // cmd.exe ends a command line at its first newline, so a multi-line launch prompt
+        // reaches pi and gemini through pwsh, which hands the shim each argument intact
+        let mut request = spawn_request(RunKind::Pi);
+        request.custom_flags = Some("--model it's".to_string());
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+        let cmd = build_command(&request, "term-pi", 1234, "tok");
+        assert_eq!(
+            argv(&cmd)[1..],
+            [
+                "-NoProfile",
+                "-NoLogo",
+                "-Command",
+                "& 'pi' '--approve' '--model' 'it''s' $env:QUAY_LAUNCH_PROMPT",
+            ]
+        );
+        assert_eq!(
+            cmd.get_env("QUAY_LAUNCH_PROMPT").map(|v| v.to_string_lossy().to_string()),
+            Some(MULTI_LINE_PROMPT.to_string())
+        );
+
+        let gemini = args_with_prompt(RunKind::Gemini, Some(MULTI_LINE_PROMPT));
+        assert_eq!(gemini[3], "& 'gemini' '-i' $env:QUAY_LAUNCH_PROMPT");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_multi_line_launch_prompt_reaches_an_npm_shim_cli_intact() {
+        // A stand-in pi.ps1 shim records the arguments it was handed
+        let dir = std::env::temp_dir().join(format!("quay-launch-prompt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("args.json");
+        let _ = std::fs::remove_file(&out);
+        std::fs::write(
+            dir.join("pi.ps1"),
+            format!(
+                "ConvertTo-Json -InputObject @($args) | Set-Content -Encoding utf8 -LiteralPath '{}'",
+                out.display()
+            ),
+        )
+        .unwrap();
+
+        let mut request = spawn_request(RunKind::Pi);
+        let path = std::env::var("PATH").unwrap_or_default();
+        request.env_vars = Some(
+            [("PATH".to_string(), format!("{};{}", dir.display(), path))]
+                .into_iter()
+                .collect(),
+        );
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+        let cmd = build_command(&request, "term-pi-e2e", 1234, "tok");
+
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty failed");
+        let mut child = pair.slave.spawn_command(cmd).expect("spawn pwsh failed");
+        drop(pair.slave);
+        // Drain the PTY so the child never blocks on a full output pipe,
+        // and answer ConPTY's cursor-position query (DSR 6n) so the child starts
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let screen = Arc::new(Mutex::new(String::new()));
+        let screen_seen = screen.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 1024];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                if text.contains("[6n") {
+                    let _ = writer.write_all(b"[1;1R");
+                    let _ = writer.flush();
+                }
+                screen_seen.lock().push_str(&text);
+            }
+        });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let recorded = loop {
+            if let Ok(text) = std::fs::read_to_string(&out) {
+                if let Ok(args) = serde_json::from_str::<Vec<String>>(text.trim_start_matches('\u{feff}')) {
+                    break args;
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "pi.ps1 never recorded its arguments: {}", screen.lock());
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(recorded, ["--approve", MULTI_LINE_PROMPT]);
+    }
+
     #[test]
     fn test_buffer_drain_multibyte_utf8() {
         let mut buffer = String::new();
@@ -702,6 +1028,23 @@ mod tests {
 
         assert!(buffer.len() <= 256 * 1024);
         assert!(buffer.is_char_boundary(0));
+    }
+
+    #[test]
+    fn test_append_output_continues_from_start_seq() {
+        // A relaunched session's buffer starts at the old session's last seq
+        let mut buffer = ("old scrollback".to_string(), 41u64);
+
+        assert_eq!(append_output(&mut buffer, "PS> ", 256 * 1024), 42);
+        assert_eq!(append_output(&mut buffer, "echo hi", 256 * 1024), 43);
+        assert_eq!(buffer.1, 43);
+        assert_eq!(buffer.0, "old scrollbackPS> echo hi");
+    }
+
+    #[test]
+    fn test_append_output_new_terminal_starts_at_one() {
+        let mut buffer = (String::new(), 0u64);
+        assert_eq!(append_output(&mut buffer, "hello", 256 * 1024), 1);
     }
 
     #[test]
@@ -732,6 +1075,26 @@ mod tests {
             buf.starts_with("\x1b[32mHello World"),
             "Expected buffer to advance to next ESC, got: {:?}",
             buf
+        );
+    }
+
+    #[test]
+    fn mcp_config_arg_is_inline_json_that_reads_the_token_from_the_environment() {
+        let arg = mcp_config_arg(4123);
+
+        assert!(!arg.contains('\n'), "inline config must be one line: {:?}", arg);
+        let parsed: serde_json::Value = serde_json::from_str(&arg).expect("inline config is JSON");
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "mcpServers": {
+                    "quay": {
+                        "type": "http",
+                        "url": "http://127.0.0.1:4123/mcp",
+                        "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" }
+                    }
+                }
+            })
         );
     }
 }

@@ -38,7 +38,7 @@ const legacyEntryToDraft = (entry: unknown): SwarmDraft | null => {
       name: agent.name,
       run_kind: runKind,
       custom_flags: optionalString(agent.custom_flags),
-      initial_prompt: optionalString(agent.initial_prompt),
+      role_prompt: optionalString(agent.role_prompt ?? agent.initial_prompt),
     });
   }
   return { title: entry.title.trim(), layout, agents };

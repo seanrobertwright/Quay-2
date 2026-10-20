@@ -30,6 +30,21 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
     kind === "archon"
   );
 }
+/**
+ * Whether the CLI takes a launch prompt on its command line. Mirrors
+ * `RunKind::launch_prompt_form` in the backend, which decides what is actually sent.
+ */
+export function takesLaunchPrompt(kind?: RunKind | string | null): boolean {
+  return (
+    kind === "claude" ||
+    kind === "codex" ||
+    kind === "pi" ||
+    kind === "gemini" ||
+    kind === "kiro" ||
+    kind === "copilot" ||
+    kind === "opencode"
+  );
+}
 export type PermissionMode = "skip" | "normal";
 export type ClaudeStatus =
   | "starting"
@@ -88,6 +103,8 @@ export interface SpawnTerminalRequest {
   cols?: number;
   env_vars?: Record<string, string>;
   custom_flags?: string;
+  /** The launch prompt, passed to the CLI as one argument; a relaunch never resends it. */
+  initial_prompt?: string | null;
 }
 
 export interface PtyOutputPayload {

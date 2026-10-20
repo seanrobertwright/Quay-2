@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod launch_prompt;
 pub mod mcp;
 pub mod models;
 pub mod router;

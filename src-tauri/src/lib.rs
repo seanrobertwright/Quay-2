@@ -8,6 +8,7 @@ use slices::archon::{
     archon_parse_repo_specs, archon_run_action,
 };
 use slices::audit::run_pre_pr_audit;
+use slices::bridge::port::{parse_bridge_port, BRIDGE_PORT_VAR};
 use slices::bridge::{
     get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
     BridgeServer, BridgeState,
@@ -27,7 +28,8 @@ use slices::machina::{
 };
 use slices::orchestrator::{
     a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt,
-    list_saved_swarms, remove_saved_swarm, save_swarm, A2ARouter, SwarmStore,
+    list_saved_swarms, remove_saved_swarm, save_swarm, swarm_launch_prompts, A2ARouter,
+    SwarmStore,
 };
 use slices::pty::{
     get_terminal_output, kill_terminal, list_terminals, relaunch_terminal, rename_terminal,
@@ -78,20 +80,27 @@ pub fn run() {
                 machina_pty,
             );
 
-            // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = BridgeServer::start(
-                    bridge_state_clone,
-                    pty_manager_clone,
-                    a2a_router_clone,
-                    machina_manager_clone,
-                    app_handle,
-                )
-                .await
-                {
-                    tracing::error!("Failed to start bridge server: {}", e);
+            // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task.
+            // A bad QUAY_BRIDGE_PORT stops the bridge instead of falling back to random.
+            match parse_bridge_port(std::env::var(BRIDGE_PORT_VAR)) {
+                Ok(pinned_port) => {
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = BridgeServer::start(
+                            bridge_state_clone,
+                            pty_manager_clone,
+                            a2a_router_clone,
+                            machina_manager_clone,
+                            app_handle,
+                            pinned_port,
+                        )
+                        .await
+                        {
+                            tracing::error!("Failed to start bridge server: {}", e);
+                        }
+                    });
                 }
-            });
+                Err(e) => tracing::error!("Bridge server not started: {}", e),
+            }
 
             Ok(())
         })
@@ -120,6 +129,7 @@ pub fn run() {
             list_saved_swarms,
             save_swarm,
             remove_saved_swarm,
+            swarm_launch_prompts,
             resolve_permission,
             get_pending_permissions,
             set_terminal_live_mode,

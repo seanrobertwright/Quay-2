@@ -97,6 +97,10 @@ _Avoid_: User preset, saved swarm, personal preset
 
 ### The A2A bus
 
+**Mission Control**:
+The panel where the user sends a peer a message, broadcasts to peers and reads the trail of messages on the A2A bus. It is the panel's one name: its header, the rail tooltip and the command palette all say Mission Control. `Ctrl+B M` opens it and `Esc` closes it.
+_Avoid_: A2A Orchestration Bus, Agent-to-Agent (A2A) Bus, A2A panel, operator modal
+
 **Peer**:
 An agent terminal on the A2A bus. Every peer can be sent a message. A peer is a full peer, a responder or a listener. An Archon terminal is not a peer: it runs a workflow and has no prompt for a message to land in.
 _Avoid_: Node, participant, member

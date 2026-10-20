@@ -316,9 +316,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: "action-a2a-bus",
         category: "Tools & Actions",
-        title: "Agent-to-Agent (A2A) Bus",
-        subtitle: "Inter-agent messaging and orchestration panel",
+        title: "Mission Control",
+        subtitle: "Send messages to agents and read the A2A bus's message trail",
         icon: <Network className="w-4 h-4 text-[#bc8cff]" />,
+        shortcut: "Ctrl+B m",
         action: () => onOpenA2A(),
       },
       {

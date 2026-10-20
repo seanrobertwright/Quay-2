@@ -6,6 +6,8 @@ on:
       - master
     paths:
       - 'docs/**'
+      - 'examples/**'
+      - 'scripts/pack-starters.mjs'
       - '.github/workflows/deploy-docs.yml'
       - 'package.json'
       - 'pnpm-lock.yaml'
