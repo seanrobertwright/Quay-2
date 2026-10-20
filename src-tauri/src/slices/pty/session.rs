@@ -130,6 +130,12 @@ fn pwsh_literal(text: &str) -> String {
     quoted
 }
 
+/// Whether `cmd` starts its CLI as `cmd.exe /c <cli>`, as the npm-shim CLIs do.
+fn starts_through_cmd(cmd: &CommandBuilder) -> bool {
+    let argv = cmd.get_argv();
+    argv.len() >= 2 && argv[0] == "cmd.exe" && argv[1] == "/c"
+}
+
 /// Turns a `cmd.exe /c <cli> <args>` command into a pwsh one that reads the launch prompt
 /// from an env var. cmd.exe ends a command line at its first newline and an npm `.cmd`
 /// shim re-parses its arguments, so a multi-line prompt can't survive that route; pwsh
@@ -158,6 +164,32 @@ fn start_through_pwsh(cmd: &mut CommandBuilder, form: Option<LaunchPromptForm>, 
     cmd.env(LAUNCH_PROMPT_ENV, prompt);
 }
 
+/// A shell terminal: pwsh on Windows, sh elsewhere, running `command_text` and staying
+/// open when there is one.
+fn shell_command(command_text: Option<&str>) -> CommandBuilder {
+    #[cfg(windows)]
+    {
+        let mut c = CommandBuilder::new("pwsh.exe");
+        c.arg("-NoProfile");
+        c.arg("-NoLogo");
+        if let Some(text) = command_text {
+            c.arg("-NoExit");
+            c.arg("-Command");
+            c.arg(text);
+        }
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        let mut c = CommandBuilder::new("sh");
+        if let Some(text) = command_text {
+            c.arg("-c");
+            c.arg(text);
+        }
+        c
+    }
+}
+
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
 /// the launch prompt and, last, Quay's MCP config.
 pub(crate) fn build_command(
@@ -169,74 +201,11 @@ pub(crate) fn build_command(
     let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
 
     let mut cmd = match request.run_kind {
+        // On Unix a PowerShell terminal opens a bare shell and ignores its command text
         RunKind::PowerShell => {
-            #[cfg(windows)]
-            let mut c = CommandBuilder::new("pwsh.exe");
-            #[cfg(not(windows))]
-            let mut c = CommandBuilder::new("sh");
-
-            #[cfg(windows)]
-            {
-                c.arg("-NoProfile");
-                c.arg("-NoLogo");
-                if let Some(ref text) = request.command_text {
-                    c.arg("-NoExit");
-                    c.arg("-Command");
-                    c.arg(text);
-                }
-            }
-            c
+            shell_command(request.command_text.as_deref().filter(|_| cfg!(windows)))
         }
-        RunKind::Command => {
-            #[cfg(windows)]
-            let mut c = CommandBuilder::new("pwsh.exe");
-            #[cfg(not(windows))]
-            let mut c = CommandBuilder::new("sh");
-
-            #[cfg(windows)]
-            {
-                c.arg("-NoProfile");
-                c.arg("-NoLogo");
-                if let Some(ref text) = request.command_text {
-                    c.arg("-NoExit");
-                    c.arg("-Command");
-                    c.arg(text);
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                if let Some(ref text) = request.command_text {
-                    c.arg("-c");
-                    c.arg(text);
-                }
-            }
-            c
-        }
-        RunKind::Archon => {
-            #[cfg(windows)]
-            let mut c = CommandBuilder::new("pwsh.exe");
-            #[cfg(not(windows))]
-            let mut c = CommandBuilder::new("sh");
-
-            #[cfg(windows)]
-            {
-                c.arg("-NoProfile");
-                c.arg("-NoLogo");
-                if let Some(ref text) = request.command_text {
-                    c.arg("-NoExit");
-                    c.arg("-Command");
-                    c.arg(text);
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                if let Some(ref text) = request.command_text {
-                    c.arg("-c");
-                    c.arg(text);
-                }
-            }
-            c
-        }
+        RunKind::Command | RunKind::Archon => shell_command(request.command_text.as_deref()),
         RunKind::Claude => {
             let mut c = CommandBuilder::new("claude.exe");
             // Inject event-bridge environment variables
@@ -373,7 +342,7 @@ pub(crate) fn build_command(
     // The launch prompt is one argument, never split, so multi-line prompts survive
     if let Some(prompt) = launch_prompt(request) {
         let form = request.run_kind.launch_prompt_form();
-        if matches!(request.run_kind, RunKind::Pi | RunKind::Gemini) {
+        if starts_through_cmd(&cmd) {
             start_through_pwsh(&mut cmd, form, prompt);
         } else {
             match form {
@@ -893,6 +862,35 @@ mod tests {
             args_with_prompt(RunKind::Codex, Some("  \n")),
             ["--dangerously-bypass-approvals-and-sandbox"]
         );
+    }
+
+    #[test]
+    fn shell_terminals_get_todays_arguments() {
+        let shell_args = |run_kind: RunKind, text: Option<&str>| {
+            let mut request = spawn_request(run_kind);
+            request.command_text = text.map(str::to_string);
+            argv(&build_command(&request, "term-shell", 1234, "tok"))
+        };
+        for run_kind in [RunKind::PowerShell, RunKind::Command, RunKind::Archon] {
+            #[cfg(windows)]
+            {
+                assert_eq!(shell_args(run_kind, None), ["pwsh.exe", "-NoProfile", "-NoLogo"]);
+                assert_eq!(
+                    shell_args(run_kind, Some("pnpm dev")),
+                    ["pwsh.exe", "-NoProfile", "-NoLogo", "-NoExit", "-Command", "pnpm dev"]
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                assert_eq!(shell_args(run_kind, None), ["sh"]);
+                let expected: &[&str] = if run_kind == RunKind::PowerShell {
+                    &["sh"]
+                } else {
+                    &["sh", "-c", "pnpm dev"]
+                };
+                assert_eq!(shell_args(run_kind, Some("pnpm dev")), expected);
+            }
+        }
     }
 
     #[test]
