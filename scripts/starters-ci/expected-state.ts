@@ -6,7 +6,7 @@ export type TestsState =
   | { expect: "fail"; failed: number; total?: number };
 export type TypecheckState = { expect: "pass" } | { expect: "fail"; lineStartsWith: string };
 /** How the check suite runs: an npm script, or Vitest with these arguments. */
-export type CheckSuiteState = ({ script: string } | { vitest: string[] }) & TestsState;
+export type CheckSuiteState = ({ script: string; vitest?: never } | { vitest: string[]; script?: never }) & TestsState;
 /** A named npm script and how it must end: its exit, text its output holds, files it leaves. */
 export type ScriptState = {
   name: string;

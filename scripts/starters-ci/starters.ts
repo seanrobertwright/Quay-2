@@ -95,11 +95,11 @@ function checkTutorialFolder(tutorialDir: string): { state?: ExpectedState; fail
     failures.push(`patch.file: starter/${state.patch.file} is missing`);
   }
   const scripts = (manifest.scripts ?? {}) as Record<string, unknown>;
-  const named = [
+  const requiredScripts = [
     ...(state.scripts ?? []).map((script, i) => [`scripts[${i}].name`, script.name]),
-    ...(state.checkSuite !== undefined && "script" in state.checkSuite ? [["checkSuite.script", state.checkSuite.script]] : []),
+    ...(state.checkSuite?.script !== undefined ? [["checkSuite.script", state.checkSuite.script]] : []),
   ];
-  for (const [field, name] of named) {
+  for (const [field, name] of requiredScripts) {
     if (typeof scripts[name] !== "string") failures.push(`${field}: starter/package.json has no "${name}" script`);
   }
   return { state, failures };
@@ -138,13 +138,17 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
   // The project is the learner's copy of the starter; Vitest's reports go beside it, not in it.
   const root = mkdtempSync(join(tmpdir(), `starter-${basename(tutorialDir)}-`));
   const work = join(root, "project");
-  const report = (name: string) => join(root, `${name}.json`);
   try {
     cpSync(join(tutorialDir, "starter"), work, {
       recursive: true,
       filter: (source) => basename(source) !== "node_modules",
     });
     const inProject = (argv: string[]) => run({ argv, cwd: work, env: state.env ?? {} });
+    const runVitest = (argv: string[], reportName: string): VitestRun => {
+      const reportFile = join(root, `${reportName}.json`);
+      const result = inProject([...argv, "--reporter=default", "--reporter=json", `--outputFile=${reportFile}`]);
+      return { result, counts: readVitestReport(reportFile) };
+    };
     // Files are checked as the learner receives them, before anything runs.
     const failures = state.files === undefined ? [] : compareFiles(state.files, work);
     const install = inProject(["npm", "ci"]);
@@ -155,8 +159,7 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
     // tsc prints its "Found N errors" summary only when pretty, and a CI log is not a terminal.
     const typecheck = inProject(["npx", "--no", "--", "tsc", "--noEmit", "--pretty"]);
     failures.push(...compareTypecheck(state.typecheck, typecheck));
-    const tests = inProject(["npm", "test", "--", ...vitestReporterArgs(report("tests"))]);
-    failures.push(...compareTests("tests", state.tests, tests, report("tests")));
+    failures.push(...compareTests("tests", state.tests, runVitest(["npm", "test", "--"], "tests")));
 
     for (const script of state.scripts ?? []) {
       const result = inProject(["npm", "run", script.name]);
@@ -167,11 +170,10 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
       // The learner unzips the check suite into the project so check/ sits beside src/.
       cpSync(join(tutorialDir, "check"), join(work, "check"), { recursive: true });
       const command =
-        "script" in state.checkSuite
+        state.checkSuite.script !== undefined
           ? ["npm", "run", state.checkSuite.script, "--"]
           : ["npx", "--no", "--", "vitest", ...state.checkSuite.vitest];
-      const check = inProject([...command, ...vitestReporterArgs(report("check"))]);
-      failures.push(...compareTests("check suite", state.checkSuite, check, report("check")));
+      failures.push(...compareTests("check suite", state.checkSuite, runVitest(command, "check")));
     }
 
     if (state.patch !== undefined) {
@@ -183,8 +185,7 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
         failures.push(`git apply ${state.patch.file} exited ${apply.exitCode}${outputTail(apply.output)}`);
         return failures;
       }
-      const patched = inProject(["npm", "test", "--", ...vitestReporterArgs(report("patched"))]);
-      failures.push(...comparePatchedTests(state.patch, patched, report("patched")));
+      failures.push(...comparePatchedTests(state.patch, runVitest(["npm", "test", "--"], "patched")));
     }
     return failures;
   } finally {
@@ -193,25 +194,23 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
   }
 }
 
-function comparePatchedTests(expected: PatchState, result: CommandResult, reportFile: string): string[] {
+function comparePatchedTests(expected: PatchState, run: VitestRun): string[] {
   const name = `after ${expected.file}`;
-  const counts = readVitestReport(reportFile);
-  if (counts === undefined) {
-    return [`${name}: Vitest wrote no JSON report (exit ${result.exitCode})${outputTail(result.output)}`];
-  }
-  const named = (test: FailedTest) => expected.failingTests.some((n) => n === test.title || n === test.fullName);
+  if (run.counts === undefined) return [noReport(name, run.result)];
+  const { failedTests } = run.counts;
   const exact =
-    counts.failedTests.every(named) &&
-    expected.failingTests.every((n) => counts.failedTests.some((test) => n === test.title || n === test.fullName));
+    failedTests.every((test) => expected.failingTests.some((n) => matchesName(test, n))) &&
+    expected.failingTests.every((n) => failedTests.some((test) => matchesName(test, n)));
   if (exact) return [];
-  const quote = (names: string[]) => (names.length > 0 ? names.map((n) => `"${n}"`).join(", ") : "none");
+  const listNames = (names: string[]) => (names.length > 0 ? names.map((n) => `"${n}"`).join(", ") : "none");
   return [
-    `${name}: expected exactly ${quote(expected.failingTests)} to fail, got ${quote(counts.failedTests.map((test) => test.title))}`,
+    `${name}: expected exactly ${listNames(expected.failingTests)} to fail, got ${listNames(failedTests.map((test) => test.title))}`,
   ];
 }
 
-function vitestReporterArgs(reportFile: string): string[] {
-  return ["--reporter=default", "--reporter=json", `--outputFile=${reportFile}`];
+/** A test is named by its own title or by its full name, describe blocks included. */
+function matchesName(test: FailedTest, name: string): boolean {
+  return name === test.title || name === test.fullName;
 }
 
 function compareFiles(expected: FilesState, work: string): string[] {
@@ -268,13 +267,17 @@ function compareTypecheck(expected: TypecheckState, result: CommandResult): stri
 
 type FailedTest = { title: string; fullName: string };
 type TestCounts = { failed: number; passed: number; todo: number; total: number; failedTests: FailedTest[] };
+/** One Vitest run: how the process ended and, when Vitest wrote its JSON report, what it counted. */
+type VitestRun = { result: CommandResult; counts?: TestCounts };
+
+function noReport(name: string, result: CommandResult): string {
+  return `${name}: Vitest wrote no JSON report (exit ${result.exitCode})${outputTail(result.output)}`;
+}
 
 /** Compares one Vitest run, through the JSON report it wrote, with the state it should be in. */
-function compareTests(name: string, expected: TestsState, result: CommandResult, reportFile: string): string[] {
-  const counts = readVitestReport(reportFile);
-  if (counts === undefined) {
-    return [`${name}: Vitest wrote no JSON report (exit ${result.exitCode})${outputTail(result.output)}`];
-  }
+function compareTests(name: string, expected: TestsState, run: VitestRun): string[] {
+  const { result, counts } = run;
+  if (counts === undefined) return [noReport(name, result)];
   const got = `${counts.failed} failing, ${counts.passed} passed, ${counts.todo} todo`;
   if (expected.expect === "pass") {
     const want = [
