@@ -3,11 +3,13 @@ use std::path::PathBuf;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+use crate::slices::pty::models::RunKind;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SavedSwarm {
     pub id: String,
     pub title: String,
-    pub layout: String,
+    pub layout: StageLayout,
     pub agents: Vec<SavedSwarmAgent>,
 }
 
@@ -15,7 +17,7 @@ pub struct SavedSwarm {
 pub struct SavedSwarmAgent {
     pub role: String,
     pub name: String,
-    pub run_kind: String,
+    pub run_kind: RunKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_flags: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -26,7 +28,7 @@ pub struct SavedSwarmAgent {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SwarmDraft {
     pub title: String,
-    pub layout: String,
+    pub layout: StageLayout,
     pub agents: Vec<SavedSwarmAgent>,
 }
 
@@ -47,8 +49,17 @@ pub const BUILTIN_SWARM_TITLES: &[&str] = &[
     "Frontier Agent Federation",
 ];
 
-/// The `StageLayout` values in `src/slices/terminal/types.ts`.
-const LAYOUTS: &[&str] = &["single", "split-horizontal", "split-vertical", "grid"];
+/// `STAGE_LAYOUTS` in `src/slices/terminal/types.ts`. A draft with any other layout
+/// is refused where it arrives. `stage_layouts_match_the_launcher` fails when the two
+/// lists drift apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StageLayout {
+    Single,
+    SplitHorizontal,
+    SplitVertical,
+    Grid,
+}
 
 /// The name is the overwrite key: two titles name the same swarm when they match
 /// after trimming, ignoring case.
@@ -97,9 +108,6 @@ impl SwarmStore {
         }
         if BUILTIN_SWARM_TITLES.iter().any(|b| same_name(b, &title)) {
             return Err(format!("\"{}\" is a built-in preset. Choose another name.", title));
-        }
-        if !LAYOUTS.contains(&draft.layout.as_str()) {
-            return Err(format!("Unknown swarm layout: {}", draft.layout));
         }
         if draft.agents.is_empty() {
             return Err("A swarm needs at least one agent.".to_string());
@@ -164,11 +172,11 @@ mod tests {
         assert_eq!(store.list().unwrap(), Vec::<SavedSwarm>::new());
     }
 
-    fn agent(role: &str, name: &str, run_kind: &str) -> SavedSwarmAgent {
+    fn agent(role: &str, name: &str, run_kind: RunKind) -> SavedSwarmAgent {
         SavedSwarmAgent {
             role: role.to_string(),
             name: name.to_string(),
-            run_kind: run_kind.to_string(),
+            run_kind,
             custom_flags: None,
             initial_prompt: None,
         }
@@ -177,7 +185,7 @@ mod tests {
     fn draft(title: &str, agents: Vec<SavedSwarmAgent>) -> SwarmDraft {
         SwarmDraft {
             title: title.to_string(),
-            layout: "split-horizontal".to_string(),
+            layout: StageLayout::SplitHorizontal,
             agents,
         }
     }
@@ -185,51 +193,51 @@ mod tests {
     #[test]
     fn a_first_save_stores_the_swarm_with_an_id() {
         let (store, _) = temp_store();
-        let mut reviewer = agent("Reviewer", "rev", "codex");
+        let mut reviewer = agent("Reviewer", "rev", RunKind::Codex);
         reviewer.custom_flags = Some("--full-auto".to_string());
         reviewer.initial_prompt = Some("You review.".to_string());
 
         let saved = store
-            .save(draft("Review Pair", vec![agent("Builder", "builder", "claude"), reviewer.clone()]))
+            .save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude), reviewer.clone()]))
             .unwrap();
 
         assert_eq!(saved.len(), 1);
         assert!(!saved[0].id.is_empty());
         assert_eq!(saved[0].title, "Review Pair");
-        assert_eq!(saved[0].layout, "split-horizontal");
-        assert_eq!(saved[0].agents, vec![agent("Builder", "builder", "claude"), reviewer]);
+        assert_eq!(saved[0].layout, StageLayout::SplitHorizontal);
+        assert_eq!(saved[0].agents, vec![agent("Builder", "builder", RunKind::Claude), reviewer]);
         assert_eq!(store.list().unwrap(), saved);
     }
 
     #[test]
     fn saving_under_an_existing_name_replaces_that_swarm_and_keeps_its_id() {
         let (store, _) = temp_store();
-        let first = store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).unwrap();
-        store.save(draft("Other Crew", vec![agent("Solo", "solo", "claude")])).unwrap();
+        let first = store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
+        store.save(draft("Other Crew", vec![agent("Solo", "solo", RunKind::Claude)])).unwrap();
         let original_id = first[0].id.clone();
 
-        let mut update = draft("Review Pair", vec![agent("Builder", "builder", "codex"), agent("Shell", "sh", "powershell")]);
-        update.layout = "grid".to_string();
+        let mut update = draft("Review Pair", vec![agent("Builder", "builder", RunKind::Codex), agent("Shell", "sh", RunKind::PowerShell)]);
+        update.layout = StageLayout::Grid;
         let saved = store.save(update).unwrap();
 
         let titles: Vec<&str> = saved.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(titles, vec!["Review Pair", "Other Crew"]);
         assert_eq!(saved[0].id, original_id);
-        assert_eq!(saved[0].layout, "grid");
-        assert_eq!(saved[0].agents, vec![agent("Builder", "builder", "codex"), agent("Shell", "sh", "powershell")]);
+        assert_eq!(saved[0].layout, StageLayout::Grid);
+        assert_eq!(saved[0].agents, vec![agent("Builder", "builder", RunKind::Codex), agent("Shell", "sh", RunKind::PowerShell)]);
         assert_eq!(store.list().unwrap(), saved);
     }
 
     #[test]
     fn the_name_match_ignores_case_and_surrounding_spaces() {
         let (store, _) = temp_store();
-        store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).unwrap();
+        store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
-        let saved = store.save(draft("  review pair ", vec![agent("Builder", "builder", "codex")])).unwrap();
+        let saved = store.save(draft("  review pair ", vec![agent("Builder", "builder", RunKind::Codex)])).unwrap();
 
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].title, "review pair");
-        assert_eq!(saved[0].agents[0].run_kind, "codex");
+        assert_eq!(saved[0].agents[0].run_kind, RunKind::Codex);
     }
 
     #[test]
@@ -237,7 +245,7 @@ mod tests {
         let (store, path) = temp_store();
 
         for blank in ["", "   "] {
-            let err = store.save(draft(blank, vec![agent("Builder", "builder", "claude")])).unwrap_err();
+            let err = store.save(draft(blank, vec![agent("Builder", "builder", RunKind::Claude)])).unwrap_err();
             assert_eq!(err, "Give the swarm a name.");
         }
         assert!(!path.exists());
@@ -246,10 +254,10 @@ mod tests {
     #[test]
     fn a_built_in_preset_title_is_refused_in_any_case() {
         let (store, _) = temp_store();
-        store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).unwrap();
+        store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
         for taken in ["TDD Swarm", "  dev & watcher "] {
-            let err = store.save(draft(taken, vec![agent("Builder", "builder", "claude")])).unwrap_err();
+            let err = store.save(draft(taken, vec![agent("Builder", "builder", RunKind::Claude)])).unwrap_err();
             assert!(err.contains("built-in preset"), "unexpected error: {err}");
         }
         let titles: Vec<String> = store.list().unwrap().into_iter().map(|s| s.title).collect();
@@ -271,10 +279,38 @@ mod tests {
     }
 
     #[test]
+    fn stage_layouts_match_the_launcher() {
+        let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/slices/terminal/types.ts");
+        let source = std::fs::read_to_string(&source_path).unwrap();
+        let launcher_layouts: Vec<String> = source
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("export const STAGE_LAYOUTS = ["))
+            .expect("types.ts declares STAGE_LAYOUTS on one line")
+            .split(']')
+            .next()
+            .unwrap()
+            .split(',')
+            .map(|item| item.trim().trim_matches('"').to_string())
+            .collect();
+        let store_layouts: Vec<String> = [
+            StageLayout::Single,
+            StageLayout::SplitHorizontal,
+            StageLayout::SplitVertical,
+            StageLayout::Grid,
+        ]
+        .iter()
+        .map(|layout| serde_json::to_value(layout).unwrap().as_str().unwrap().to_string())
+        .collect();
+
+        assert_eq!(launcher_layouts, store_layouts);
+    }
+
+    #[test]
     fn remove_deletes_only_the_named_swarm() {
         let (store, _) = temp_store();
-        store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).unwrap();
-        let both = store.save(draft("Other Crew", vec![agent("Solo", "solo", "claude")])).unwrap();
+        store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
+        let both = store.save(draft("Other Crew", vec![agent("Solo", "solo", RunKind::Claude)])).unwrap();
 
         let left = store.remove(&both[0].id).unwrap();
 
@@ -285,19 +321,31 @@ mod tests {
     #[test]
     fn a_built_in_preset_cannot_be_removed() {
         let (store, _) = temp_store();
-        store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).unwrap();
+        store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
         assert!(store.remove("tdd-swarm").is_err());
         assert_eq!(store.list().unwrap().len(), 1);
     }
 
     #[test]
-    fn an_unknown_layout_or_an_empty_roster_is_refused() {
+    fn a_draft_with_an_unknown_layout_or_cli_is_refused_where_it_arrives() {
+        let parse = |layout: &str, run_kind: &str| {
+            serde_json::from_value::<SwarmDraft>(serde_json::json!({
+                "title": "Review Pair",
+                "layout": layout,
+                "agents": [{ "role": "Builder", "name": "builder", "run_kind": run_kind }],
+            }))
+        };
+
+        assert!(parse("split-vertical", "opencode").is_ok());
+        assert!(parse("triple", "claude").is_err());
+        assert!(parse("grid", "notepad").is_err());
+    }
+
+    #[test]
+    fn an_empty_roster_is_refused() {
         let (store, path) = temp_store();
 
-        let mut odd_layout = draft("Review Pair", vec![agent("Builder", "builder", "claude")]);
-        odd_layout.layout = "triple".to_string();
-        assert!(store.save(odd_layout).is_err());
         assert!(store.save(draft("Review Pair", Vec::new())).is_err());
         assert!(!path.exists());
     }
@@ -308,7 +356,7 @@ mod tests {
         std::fs::write(&path, "not json").unwrap();
 
         assert!(store.list().is_err());
-        assert!(store.save(draft("Review Pair", vec![agent("Builder", "builder", "claude")])).is_err());
+        assert!(store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json");
     }
 }

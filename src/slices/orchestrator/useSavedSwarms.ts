@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { StageLayout } from "../terminal/types";
+import { RUN_KINDS, STAGE_LAYOUTS } from "../terminal/types";
 import {
   SavedSwarm,
   SwarmAgentConfig,
@@ -14,8 +14,6 @@ import {
 /** Where custom presets lived before swarms.json. Imported once, then deleted. */
 const LEGACY_STORAGE_KEY = "quay2_custom_swarm_presets";
 
-const LAYOUTS: StageLayout[] = ["single", "split-horizontal", "split-vertical", "grid"];
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -26,22 +24,19 @@ const legacyEntryToDraft = (entry: unknown): SwarmDraft | null => {
   if (!isRecord(entry) || typeof entry.title !== "string" || swarmNameError(entry.title)) {
     return null;
   }
-  const layout = LAYOUTS.find((l) => l === entry.layout);
+  const layout = STAGE_LAYOUTS.find((l) => l === entry.layout);
   if (!layout || !Array.isArray(entry.agents) || entry.agents.length === 0) return null;
   const agents: SwarmAgentConfig[] = [];
   for (const agent of entry.agents) {
-    if (
-      !isRecord(agent) ||
-      typeof agent.role !== "string" ||
-      typeof agent.name !== "string" ||
-      typeof agent.run_kind !== "string"
-    ) {
+    if (!isRecord(agent) || typeof agent.role !== "string" || typeof agent.name !== "string") {
       return null;
     }
+    const runKind = RUN_KINDS.find((k) => k === agent.run_kind);
+    if (!runKind) return null;
     agents.push({
       role: agent.role,
       name: agent.name,
-      run_kind: agent.run_kind as SwarmAgentConfig["run_kind"],
+      run_kind: runKind,
       custom_flags: optionalString(agent.custom_flags),
       initial_prompt: optionalString(agent.initial_prompt),
     });
@@ -53,7 +48,7 @@ const legacyEntryToDraft = (entry: unknown): SwarmDraft | null => {
  * Saves every importable entry under the legacy key into swarms.json, then deletes the key.
  * The key stays when any save fails, so the next load retries; saves upsert by name, so a
  * retry can't duplicate a swarm. Entries that can never be saved (blank or built-in name,
- * unknown layout, empty roster, unreadable JSON) are dropped with the key.
+ * unknown layout or CLI, empty roster, unreadable JSON) are dropped with the key.
  */
 const importLegacySwarms = async () => {
   const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
