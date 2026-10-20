@@ -289,9 +289,8 @@ export const TerminalRow = ({
                   e.stopPropagation();
                   setIsEditing(true);
                 }}
-                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 text-[#8b949e] hover:text-white rounded transition-opacity"
+                className="opacity-0 group-hover:opacity-100 p-0.5 text-[#8b949e] hover:text-white rounded transition-opacity"
                 title="Rename session"
-                aria-label={`Rename session ${terminal.name}`}
               >
                 <Edit2 className="w-2.5 h-2.5" />
               </button>
@@ -338,7 +337,6 @@ export const TerminalRow = ({
               }}
               className="p-0.5 text-[#3fb950] hover:text-[#56d364] hover:bg-[#238636]/20 rounded transition-colors"
               title="Relaunch agent process"
-              aria-label={`Relaunch agent process ${terminal.name}`}
             >
               <Play className="w-3 h-3 fill-current" />
             </button>
