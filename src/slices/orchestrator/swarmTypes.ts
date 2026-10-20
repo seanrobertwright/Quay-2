@@ -1,4 +1,4 @@
-import { StageLayout, RunKind } from "../terminal/types";
+import { StageLayout, RunKind, LaunchPromptRunKind } from "../terminal/types";
 
 export interface SwarmAgentConfig {
   role: string;
@@ -27,12 +27,12 @@ const TEAMMATE_CLAUSE =
 type BuiltinRolePrompt = `You are ${string}\nYou own ${string}\nYou leave ${string}\nYou work by ${string} ${typeof TEAMMATE_CLAUSE}`;
 
 /**
- * A built-in agent. One whose CLI takes a launch prompt (see `takesLaunchPrompt`) carries a
- * role prompt; Antigravity and the shells carry none, because they get no launch prompt.
+ * A built-in agent. One whose CLI takes a launch prompt (see `LAUNCH_PROMPT_RUN_KINDS`)
+ * carries a role prompt; any other agent carries none, because it gets no launch prompt.
  */
 type BuiltinAgent =
-  | (SwarmAgentConfig & { run_kind: "claude" | "codex"; role_prompt: BuiltinRolePrompt })
-  | (SwarmAgentConfig & { run_kind: "antigravity" | "powershell"; role_prompt?: never });
+  | (SwarmAgentConfig & { run_kind: LaunchPromptRunKind; role_prompt: BuiltinRolePrompt })
+  | (SwarmAgentConfig & { run_kind: Exclude<RunKind, LaunchPromptRunKind>; role_prompt?: never });
 
 /** Builds a built-in role prompt, one slot to a line, with the teammate clause last. */
 function rolePrompt(slots: {
