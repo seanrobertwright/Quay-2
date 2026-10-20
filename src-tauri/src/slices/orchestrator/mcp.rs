@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
@@ -44,47 +44,30 @@ pub struct JsonRpcError {
 pub async fn handle_mcp_request(
     State(ctx): State<Arc<AppContext>>,
     State(a2a_router): State<Arc<A2ARouter>>,
-    headers: HeaderMap,
+    caller_id: String,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
     let id = req.id.unwrap_or(Value::Null);
 
-    // Identify calling terminal from Authorization Bearer token
-    let caller_token = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "));
-
-    let caller_id = caller_token
-        .and_then(|token| {
-            ctx.pty_manager.list().into_iter().find(|t| {
-                ctx.bridge_state.verify_token(&t.id, token)
-            })
-        })
-        .map(|t| t.id)
-        .unwrap_or_else(|| "agent".to_string());
-
     match req.method.as_str() {
         "initialize" => {
-            if caller_id != "agent" {
-                ctx.pty_manager.update_status(&caller_id, ClaudeStatus::Idle);
-                let _ = ctx.app_handle.emit(
-                    "bridge-event",
-                    crate::slices::bridge::Envelope {
-                        v: 1,
-                        boot: "".to_string(),
-                        seq: 0,
-                        ts: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis() as u64,
-                        session_id: caller_id.clone(),
-                        tag: Some(caller_id.clone()),
-                        event_type: "session.started".to_string(),
-                        data: serde_json::Value::Null,
-                    },
-                );
-            }
+            ctx.pty_manager.update_status(&caller_id, ClaudeStatus::Idle);
+            let _ = ctx.app_handle.emit(
+                "bridge-event",
+                crate::slices::bridge::Envelope {
+                    v: 1,
+                    boot: "".to_string(),
+                    seq: 0,
+                    ts: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64,
+                    session_id: caller_id.clone(),
+                    tag: Some(caller_id.clone()),
+                    event_type: "session.started".to_string(),
+                    data: serde_json::Value::Null,
+                },
+            );
 
             let requested_version = req
                 .params
@@ -431,11 +414,7 @@ pub async fn handle_mcp_request(
                     let mgr = ctx.machina_manager.clone();
                     let parsed = machina_submit_request(&arguments);
                     // Agent submissions always wait on hold for a human to admit them.
-                    let submitted_by = if caller_id == "agent" {
-                        "an unidentified MCP client".to_string()
-                    } else {
-                        format!("terminal {}", caller_id)
-                    };
+                    let submitted_by = format!("terminal {}", caller_id);
                     match parsed {
                         Err(e) => Err(e),
                         Ok(req) => match tokio::task::spawn_blocking(move || mgr.submit_work_order(req, Some(submitted_by))).await {
@@ -472,7 +451,7 @@ pub async fn handle_mcp_request(
                         Err(e) => Err(e),
                         Ok(id) => {
                             let mgr = ctx.machina_manager.clone();
-                            let requested_by = (caller_id != "agent").then(|| caller_id.clone());
+                            let requested_by = Some(caller_id.clone());
                             let gate_id = id.clone();
                             match tokio::task::spawn_blocking(move || mgr.start_gate(&gate_id, requested_by)).await {
                                 Ok(Ok(crate::slices::machina::supervisor::GateStart::Started(attempt))) => Ok(json!({

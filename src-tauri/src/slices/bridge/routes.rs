@@ -77,6 +77,24 @@ pub fn authorize_events(
     Ok(())
 }
 
+/// Identifies the terminal behind an `/mcp` call: the request must be loopback and
+/// carry the bearer token of one of `terminal_ids`. Returns that terminal's id.
+pub fn authenticate_mcp_caller(
+    bridge_state: &BridgeState,
+    headers: &HeaderMap,
+    terminal_ids: impl IntoIterator<Item = String>,
+) -> Result<String, (StatusCode, &'static str)> {
+    validate_host_and_origin(headers)?;
+
+    let token = extract_bearer_token(headers)
+        .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header"))?;
+
+    terminal_ids
+        .into_iter()
+        .find(|id| bridge_state.verify_token(id, token))
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -308,11 +326,19 @@ pub async fn handle_mcp(
     headers: HeaderMap,
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
+    let terminal_ids = ctx.pty_manager.list().into_iter().map(|t| t.id);
+    let caller_id = match authenticate_mcp_caller(&ctx.bridge_state, &headers, terminal_ids) {
+        Ok(id) => id,
+        Err(rejection) => return rejection.into_response(),
+    };
     let a2a = Arc::new(ctx.a2a_router.clone());
-    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), headers, Json(req)).await
+    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller_id, Json(req)).await
 }
 
-pub async fn handle_mcp_get() -> Response {
+pub async fn handle_mcp_get(headers: HeaderMap) -> Response {
+    if let Err(rejection) = validate_host_and_origin(&headers) {
+        return rejection.into_response();
+    }
     (
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "application/json")],
@@ -432,5 +458,68 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mcp_calls_without_a_token_are_unauthorized() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+
+        let result = authenticate_mcp_caller(&state, &loopback_headers(None), ["term-a".to_string()]);
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn mcp_calls_with_an_unknown_token_are_unauthorized() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+
+        let result = authenticate_mcp_caller(
+            &state,
+            &loopback_headers(Some("not-the-token")),
+            ["term-a".to_string()],
+        );
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn mcp_calls_from_a_browser_origin_are_forbidden() {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        let mut headers = loopback_headers(Some(&token_a));
+        headers.insert("origin", "http://evil.example".parse().unwrap());
+
+        let result = authenticate_mcp_caller(&state, &headers, ["term-a".to_string()]);
+
+        assert_eq!(result.unwrap_err().0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn mcp_calls_to_a_non_loopback_host_are_forbidden() {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        let mut headers = loopback_headers(Some(&token_a));
+        headers.insert("host", "evil.example:4000".parse().unwrap());
+
+        let result = authenticate_mcp_caller(&state, &headers, ["term-a".to_string()]);
+
+        assert_eq!(result.unwrap_err().0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn mcp_calls_are_attributed_to_the_terminal_whose_token_they_carry() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+        let token_b = state.token_for("term-b");
+
+        let result = authenticate_mcp_caller(
+            &state,
+            &loopback_headers(Some(&token_b)),
+            ["term-a".to_string(), "term-b".to_string()],
+        );
+
+        assert_eq!(result.unwrap(), "term-b");
     }
 }
