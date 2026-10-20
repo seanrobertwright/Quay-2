@@ -343,9 +343,11 @@ export const TerminalRow = ({
           )}
 
           <button
+            type="button"
             onClick={onClose}
-            className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#ff7b72] rounded transition-opacity"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 hover:text-[#ff7b72] rounded transition-opacity"
             title="Close terminal"
+            aria-label={`Close terminal ${terminal.name}`}
           >
             <X className="w-3 h-3" />
           </button>
