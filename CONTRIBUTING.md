@@ -24,7 +24,7 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`archon`**: Archon & Spec-Driven Development (SDD) runtime bridge, DAG inspection, live event streaming, and ADR viewer.
 - **`machina`**: Native Machina Praxis AI Software Factory supervisor, SQLite schema migrations, and work order lifecycle manager.
 - **`sessions`**: Claude Code transcript scanner, token spend accounting, deduplication engine, and disk caching.
-- **`audit`**: Pre-PR leak and credential scanner, destructive command detection gate.
+- **`audit`**: Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths.
 - **`workspace`**: Project directory registration, configuration persistence, and worktree discovery.
 
 ### Frontend Slices (`src/slices/`)
