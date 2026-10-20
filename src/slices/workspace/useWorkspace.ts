@@ -386,14 +386,24 @@ export function useWorkspace() {
   const launchSwarm = async (preset: SwarmPreset) => {
     try {
       const dims = getGlobalTerminalDimensions();
+      // One launch prompt per agent, null where the CLI takes none
+      const launchPrompts = await invoke<(string | null)[]>("swarm_launch_prompts", {
+        members: preset.agents.map((agent) => ({
+          name: agent.name,
+          role: agent.role,
+          run_kind: agent.run_kind,
+          role_prompt: agent.role_prompt || null,
+        })),
+      });
       const spawnedTerms: TerminalInfo[] = [];
-      for (const agent of preset.agents) {
+      for (const [index, agent] of preset.agents.entries()) {
         const term = await invoke<TerminalInfo>("spawn_terminal", {
           request: {
             project_path: activeProject,
             run_kind: agent.run_kind,
             name: agent.name,
             custom_flags: agent.custom_flags || null,
+            initial_prompt: launchPrompts[index] ?? null,
             cols: dims.cols,
             rows: dims.rows,
           },

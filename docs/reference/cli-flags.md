@@ -21,7 +21,7 @@ claude.cmd [OPTIONS] [CUSTOM_FLAGS]
 | `--mcp-config <path>` | Points to dynamic JSON configuration connecting Claude Code to Quay's loopback A2A MCP bus | Injected for all Claude Code sessions |
 
 > [!IMPORTANT]
-> **Argument Ordering**: To prevent Commander.js variadic parsing from swallowing flags, `--model` and `--dangerously-skip-permissions` are always positioned *before* `--mcp-config`.
+> **Argument Ordering**: `--mcp-config` takes several values and would read a bare argument after it as another config file, so `--dangerously-skip-permissions`, custom flags such as `--model` and a swarm agent's launch prompt are always positioned *before* `--mcp-config`.
 
 ---
 
