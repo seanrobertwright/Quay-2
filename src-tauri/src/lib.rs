@@ -13,7 +13,10 @@ use slices::bridge::{
     get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
     BridgeServer, BridgeState,
 };
-use slices::git::{create_git_worktree, is_git_repo, list_git_worktrees, remove_git_worktree};
+use slices::git::{
+    check_git_worktree_clean, create_git_worktree, is_git_repo, list_git_worktrees,
+    remove_git_worktree,
+};
 use slices::github::{
     check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
     list_github_prs,
@@ -136,6 +139,7 @@ pub fn run() {
             is_git_repo,
             list_git_worktrees,
             create_git_worktree,
+            check_git_worktree_clean,
             remove_git_worktree,
             check_gh_cli_installed,
             get_github_repo_info,
