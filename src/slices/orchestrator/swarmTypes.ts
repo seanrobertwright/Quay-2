@@ -183,3 +183,35 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
     ],
   },
 ];
+
+/** A custom swarm as stored in swarms.json. The card's description and badge are generated. */
+export interface SavedSwarm {
+  id: string;
+  title: string;
+  layout: StageLayout;
+  agents: SwarmAgentConfig[];
+}
+
+/** What the builder form saves: the store assigns the id on the first save. */
+export type SwarmDraft = Omit<SavedSwarm, "id">;
+
+/** The name is the overwrite key: names match after trimming, ignoring case. */
+export const sameSwarmName = (a: string, b: string) =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** The inline message for a name that can't be saved, or null when it can. Mirrors the Rust store. */
+export const swarmNameError = (name: string): string | null => {
+  const title = name.trim();
+  if (!title) return "Give the swarm a name.";
+  if (BUILTIN_SWARM_PRESETS.some((b) => sameSwarmName(b.title, title))) {
+    return `"${title}" is a built-in preset. Choose another name.`;
+  }
+  return null;
+};
+
+export const savedSwarmToPreset = (swarm: SavedSwarm): SwarmPreset => ({
+  ...swarm,
+  description: `Custom ${swarm.agents.length}-agent swarm in ${swarm.layout} layout`,
+  badge: `${swarm.agents.length} Agents`,
+  tagColor: "#f0883e",
+});
