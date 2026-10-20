@@ -36,6 +36,25 @@ pub struct PtySession {
     is_alive: Arc<AtomicBool>,
 }
 
+/// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
+/// of JSON. It is passed inline rather than as a file path so the terminal's bearer
+/// token never touches disk, and the header names `${CLAUDE_EVENTS_TOKEN}`, which
+/// Claude Code expands from its environment, so the token stays out of the command line.
+pub fn mcp_config_arg(bridge_port: u16) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            "quay": {
+                "type": "http",
+                "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+                "headers": {
+                    "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}"
+                }
+            }
+        }
+    })
+    .to_string()
+}
+
 /// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
 /// (1..3 trailing bytes) across `read()` calls so split box-drawing or emoji characters
 /// are never corrupted into U+FFFD replacement characters.
@@ -101,6 +120,25 @@ fn trim_output_buffer(buf: &mut String, max_len: usize) {
         }
     }
     buf.drain(..cut);
+}
+
+/// The Claude Code executable for this platform: `claude.exe` on Windows, `claude` elsewhere.
+fn claude_program() -> &'static str {
+    #[cfg(windows)]
+    let program = "claude.exe";
+    #[cfg(not(windows))]
+    let program = "claude";
+    program
+}
+
+/// Appends a decoded chunk to the replay buffer and returns the chunk's seq, one above the
+/// buffer's last. The count carries on from whatever seq the buffer started at, so a relaunched
+/// session keeps numbering above what its still-mounted pane has already seen.
+fn append_output(buffer: &mut (String, u64), text: &str, max_len: usize) -> u64 {
+    buffer.0.push_str(text);
+    buffer.1 += 1;
+    trim_output_buffer(&mut buffer.0, max_len);
+    buffer.1
 }
 
 /// The request's launch prompt, when it has one and its CLI takes one.
@@ -207,7 +245,7 @@ pub(crate) fn build_command(
         }
         RunKind::Command | RunKind::Archon => shell_command(request.command_text.as_deref()),
         RunKind::Claude => {
-            let mut c = CommandBuilder::new("claude.exe");
+            let mut c = CommandBuilder::new(claude_program());
             // Inject event-bridge environment variables
             c.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
             c.env("CLAUDE_EVENTS_TOKEN", &bridge_token);
@@ -216,7 +254,7 @@ pub(crate) fn build_command(
 
             if perm == PermissionMode::Skip {
                 c.arg("--dangerously-skip-permissions");
-                // Per ADR 0006: host permissions off for skip mode so Claude doesn't block on tool checks
+                // Skip mode turns host permission checks off too, so Claude doesn't block waiting on them
                 c.env("CLAUDE_EVENTS_PERMISSIONS", "off");
             } else {
                 c.env("CLAUDE_EVENTS_PERMISSIONS", "host");
@@ -360,26 +398,8 @@ pub(crate) fn build_command(
     // `--mcp-config` takes several values and would read a bare argument after it as
     // another config file, so it goes after the custom flags and the launch prompt.
     if request.run_kind.gets_quay_mcp() {
-        let mcp_config = serde_json::json!({
-            "mcpServers": {
-                "quay": {
-                    "type": "http",
-                    "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
-                    "headers": {
-                        "Authorization": format!("Bearer {}", bridge_token)
-                    }
-                }
-            }
-        });
-
-        let temp_dir = std::env::temp_dir();
-        let mcp_path = temp_dir.join(format!("quay-mcp-{}.json", terminal_id));
-        if let Ok(content) = serde_json::to_string_pretty(&mcp_config) {
-            if std::fs::write(&mcp_path, content).is_ok() {
-                cmd.arg("--mcp-config");
-                cmd.arg(mcp_path.to_string_lossy().to_string());
-            }
-        }
+        cmd.arg("--mcp-config");
+        cmd.arg(mcp_config_arg(bridge_port));
     }
 
     cmd.cwd(&request.project_path);
@@ -388,9 +408,13 @@ pub(crate) fn build_command(
 }
 
 impl PtySession {
+    /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
+    /// under this id (0 for a new terminal); output from this session is numbered above it,
+    /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
+        start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
@@ -470,7 +494,7 @@ impl PtySession {
             String::new()
         };
 
-        let output_buffer = Arc::new(Mutex::new((initial_data, 0u64)));
+        let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
         let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
 
@@ -485,7 +509,6 @@ impl PtySession {
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
-                let mut current_seq = 0u64;
                 let mut session_started_emitted = false;
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
@@ -528,17 +551,9 @@ impl PtySession {
                                 );
                             }
 
-                            current_seq += 1;
-                            let seq = current_seq;
-
-                            // Buffer recent output for newly-mounting xterm instances
-                            {
-                                let mut guard = output_buffer.lock();
-                                guard.0.push_str(&text);
-                                guard.1 = seq;
-                                // Cap buffer at 256KB to avoid unbounded memory usage
-                                trim_output_buffer(&mut guard.0, 256 * 1024);
-                            }
+                            // Buffer recent output for newly-mounting xterm instances,
+                            // capped at 256KB to avoid unbounded memory usage
+                            let seq = append_output(&mut output_buffer.lock(), &text, 256 * 1024);
 
                             let _ = app_handle.emit(
                                 "pty-output",
@@ -569,10 +584,6 @@ impl PtySession {
             std::thread::spawn(move || {
                 let exit_status = child.wait();
                 is_alive.store(false, Ordering::SeqCst);
-
-                // Clean up temporary MCP config file if exists
-                let temp_mcp = std::env::temp_dir().join(format!("quay-mcp-{}.json", terminal_id));
-                let _ = std::fs::remove_file(temp_mcp);
 
                 // Compact log file if it exceeds 2MB to keep disk space bounded
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
@@ -690,12 +701,25 @@ impl PtySession {
     pub fn is_alive(&self) -> bool {
         self.is_alive.load(Ordering::SeqCst)
     }
+
+    /// The seq of the last output chunk this session sent.
+    pub fn last_seq(&self) -> u64 {
+        self.output_buffer.lock().1
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Read;
+
+    #[test]
+    fn claude_program_matches_the_platform_binary_name() {
+        #[cfg(windows)]
+        assert_eq!(claude_program(), "claude.exe");
+        #[cfg(not(windows))]
+        assert_eq!(claude_program(), "claude");
+    }
 
     #[test]
     fn test_spawn_claude_version() {
@@ -709,7 +733,7 @@ mod tests {
             })
             .expect("openpty failed");
 
-        let mut cmd = CommandBuilder::new("claude.exe");
+        let mut cmd = CommandBuilder::new(claude_program());
         cmd.arg("--version");
         let mut child = pair.slave.spawn_command(cmd).expect("spawn claude failed");
         drop(pair.slave);
@@ -786,7 +810,7 @@ mod tests {
         assert_eq!(
             args[..6],
             [
-                "claude.exe",
+                claude_program(),
                 "--dangerously-skip-permissions",
                 "--model",
                 "claude-sonnet-5-5",
@@ -794,7 +818,7 @@ mod tests {
                 "--mcp-config",
             ]
         );
-        assert!(args[6].ends_with("quay-mcp-term-claude-prompt.json"));
+        assert_eq!(args[6], mcp_config_arg(1234));
     }
 
     fn args_with_prompt(run_kind: RunKind, prompt: Option<&str>) -> Vec<String> {
@@ -1007,6 +1031,23 @@ mod tests {
     }
 
     #[test]
+    fn test_append_output_continues_from_start_seq() {
+        // A relaunched session's buffer starts at the old session's last seq
+        let mut buffer = ("old scrollback".to_string(), 41u64);
+
+        assert_eq!(append_output(&mut buffer, "PS> ", 256 * 1024), 42);
+        assert_eq!(append_output(&mut buffer, "echo hi", 256 * 1024), 43);
+        assert_eq!(buffer.1, 43);
+        assert_eq!(buffer.0, "old scrollbackPS> echo hi");
+    }
+
+    #[test]
+    fn test_append_output_new_terminal_starts_at_one() {
+        let mut buffer = (String::new(), 0u64);
+        assert_eq!(append_output(&mut buffer, "hello", 256 * 1024), 1);
+    }
+
+    #[test]
     fn test_decode_utf8_streaming_split_multibyte() {
         let sample = "│ seanrobertwright/AI-WS-SDK        r: refresh ⚙️\r\n🪾 worktree AI-WS-SDK";
         let bytes = sample.as_bytes();
@@ -1034,6 +1075,26 @@ mod tests {
             buf.starts_with("\x1b[32mHello World"),
             "Expected buffer to advance to next ESC, got: {:?}",
             buf
+        );
+    }
+
+    #[test]
+    fn mcp_config_arg_is_inline_json_that_reads_the_token_from_the_environment() {
+        let arg = mcp_config_arg(4123);
+
+        assert!(!arg.contains('\n'), "inline config must be one line: {:?}", arg);
+        let parsed: serde_json::Value = serde_json::from_str(&arg).expect("inline config is JSON");
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "mcpServers": {
+                    "quay": {
+                        "type": "http",
+                        "url": "http://127.0.0.1:4123/mcp",
+                        "headers": { "Authorization": "Bearer ${CLAUDE_EVENTS_TOKEN}" }
+                    }
+                }
+            })
         );
     }
 }

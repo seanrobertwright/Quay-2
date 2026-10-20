@@ -1200,6 +1200,14 @@ export function useWorkspace() {
           return;
         }
 
+        if (e.key.toLowerCase() === "m") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsA2AOpen(true);
+          ctrlBActive = false;
+          return;
+        }
+
         if (e.key.toLowerCase() === "o") {
           e.preventDefault();
           e.stopPropagation();

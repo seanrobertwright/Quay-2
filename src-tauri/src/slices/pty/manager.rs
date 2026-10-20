@@ -203,9 +203,11 @@ impl PtyManager {
             .clone()
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
+        let start_seq = self.last_seq(&terminal_id);
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
+            start_seq,
             bridge_port,
             bridge_token,
             app_handle,
@@ -260,6 +262,9 @@ impl PtyManager {
             })?
         };
 
+        // Read before the old session goes: its pane stays mounted and has seen up to this seq
+        let start_seq = self.last_seq(terminal_id);
+
         // If an active session is running, terminate it before relaunching
         {
             let mut sessions = self.sessions.lock();
@@ -271,6 +276,7 @@ impl PtyManager {
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
+            start_seq,
             bridge_port,
             bridge_token,
             app_handle,
@@ -330,6 +336,19 @@ impl PtyManager {
         } else {
             Err(format!("Terminal {} not found or inactive", terminal_id))
         }
+    }
+
+    /// The last output seq sent under `terminal_id`, from its session or its dormant buffer
+    /// (0 when there is neither). A session that replaces it numbers its output above this.
+    fn last_seq(&self, terminal_id: &str) -> u64 {
+        if let Some(session) = self.sessions.lock().get(terminal_id) {
+            return session.last_seq();
+        }
+        self.dormant_buffers
+            .lock()
+            .get(terminal_id)
+            .map(|(_, seq)| *seq)
+            .unwrap_or(0)
     }
 
     pub fn get_output(&self, terminal_id: &str) -> Result<TerminalOutputPayload, String> {
@@ -474,6 +493,18 @@ impl PtyManager {
 mod tests {
     use super::*;
     use crate::slices::pty::models::{PermissionMode, RunKind};
+
+    #[test]
+    fn test_last_seq_reads_dormant_buffer_then_defaults_to_zero() {
+        let manager = PtyManager::new();
+        manager
+            .dormant_buffers
+            .lock()
+            .insert("term-dormant".to_string(), ("restored".to_string(), 7));
+
+        assert_eq!(manager.last_seq("term-dormant"), 7);
+        assert_eq!(manager.last_seq("term-unknown"), 0);
+    }
 
     #[test]
     fn test_pty_manager_rename_and_task_title() {
