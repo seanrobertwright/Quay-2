@@ -10,7 +10,7 @@ This document captures the strategic features, architectural proposals, and futu
 * **Expanded Multi-Agent Engine**: Unified terminal support for **10 first-class AI coding agents**: **Claude Code**, **Antigravity CLI**, **Codex CLI**, **Pi Coding Agent**, **Google Gemini CLI**, **xAI Grok CLI**, **Aider Pair Programmer**, **Kiro CLI**, **GitHub Copilot CLI**, and **OpenCode CLI** with authentic brand iconography, model presets, thinking level selectors, and auto-approval modes.
 * **Archon & Spec-Driven Development (SDD) Graph Inspector (`Ctrl+B R`)**: Interactive task dependency DAG viewer connecting to local Archon service (`http://127.0.0.1:3090` / `3737`), parsing project specification files (`SPEC.md`, `CONTEXT.md`, `IDEAS.md`), visualizing Architecture Decision Records (`docs/adr/`), and providing 1-click **"Assign to Agent"** and **"Run Workflow"** execution.
 * **Autonomous Agent-to-Agent (A2A) Bus**: Built-in loopback MCP server (`http://127.0.0.1:<port>/mcp`) exposing `quay_list_agents`, `quay_send_message`, `quay_broadcast`, and `quay_get_agent_status` for autonomous peer collaboration without human relays.
-* **1-Click Multi-Agent Swarm Presets**: Frontier Federation, TDD Swarm, Full-Stack Pair, and Multi-Agent Trio layouts.
+* **1-Click Multi-Agent Swarm Presets**: Dev & Watcher, TDD Swarm, Full-Stack Pair, Bug Hunter, Red/Blue Team, Tri-Agent Council, and Polyglot Agent Trio layouts.
 * **Git Worktrees**: 1-click isolated worktree provisioning and Claude Code auto-launch.
 * **Pre-PR Audit Gate**: Secret and API key leak detection before opening PRs (`Ctrl+B A`).
 * **Session History & Auto-Resume**: Direct session inspection with `--resume <id>` relaunching (`Ctrl+B H`).

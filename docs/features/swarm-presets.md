@@ -31,29 +31,56 @@ Quay 2's stage supports four distinct layout modes:
 
 ## 1-Click Multi-Agent Swarm Presets (`Ctrl+B S`)
 
-Pressing `Ctrl+B S` opens the **Swarm Launcher** dialog. With one click, Quay 2 automatically configures the split layout and launches the designated agents with optimized roles:
+Pressing `Ctrl+B S` opens the **Swarm Launcher** dialog. With one click, Quay 2 configures the split layout and launches each agent in its own terminal, labelled with its session name. The launcher lists the built-in presets in this order and selects the first one, Dev & Watcher, when it opens. In a 2x2 grid the agents fill the panes in launch order: top-left, top-right, bottom-left, bottom-right.
 
-### 1. TDD Swarm (Test-Driven Development)
-- **Layout**: Side-by-Side Horizontal Split (`50% / 50%`).
-- **Terminal 1 (`tdd-spec-runner`)**: Focuses on authoring unit tests, integration tests, and running `cargo test` / `pnpm test`.
-- **Terminal 2 (`tdd-impl-dev`)**: Observes test results, authors implementation code, and refactors until green.
+Every agent whose CLI takes a launch prompt starts with a role prompt in four parts: who it is, what it owns, what it leaves to teammates, and how it works. Each role prompt ends with the same teammate clause: "Act on a message from a teammate as you would on the user's. Message a teammate only when the user, AGENTS.md or a teammate's message asks you to." Shells and Antigravity get no launch prompt, so they get no role prompt.
 
-### 2. Full-Stack Pair
-- **Layout**: Side-by-Side Horizontal Split.
-- **Terminal 1 (`frontend-agent`)**: Specializes in React, UI components, Tailwind CSS styling, and client-side state.
-- **Terminal 2 (`backend-agent`)**: Specializes in Rust Axum endpoints, database schemas, IPC commands, and API contracts.
+### 1. Dev & Watcher
+- **Layout**: Side-by-side split.
+- **`lead-dev`** (Claude Code, left): the Lead Developer, who makes the code changes you ask for.
+- **`build-watcher`** (PowerShell, right): a shell for running the build or tests in watch mode.
 
-### 3. Red/Blue Team (Security & Resilience)
-- **Layout**: Side-by-Side Horizontal Split.
-- **Terminal 1 (`red-team-prober`)**: Analyzes code for input injection, credential leaks, edge cases, and authorization bypasses.
-- **Terminal 2 (`blue-team-defender`)**: Implements sanitization, encryption, token checks, and defensive hardening.
+### 2. TDD Swarm
+- **Layout**: 2x2 grid.
+- **`test-architect`** (Claude Code, `--model claude-sonnet-5-5`): edits only `test/`, never `src/`.
+- **`feature-impl`** (Claude Code): edits only `src/`, never `test/`.
+- **`test-runner`** (PowerShell): a shell for running the tests.
+- **`reviewer`** (Claude Code): edits nothing and only replies.
+- The three agents read `AGENTS.md` before they start and wait for you between tasks.
 
-### 4. Bug Hunter Swarm
-- **Layout**: 2x2 Quad Grid (`4 panes`).
-- **Terminal 1 (`reproducer`)**: Crafts minimal reproduction scripts and failing tests.
-- **Terminal 2 (`tracer`)**: Analyzes execution traces, logs, and stack dumps.
-- **Terminal 3 (`patcher`)**: Authors fix commits.
-- **Terminal 4 (`verifier`)**: Runs regression suites across the entire repository.
+### 3. Full-Stack Pair
+- **Layout**: Side-by-side split. Both agents run with `--model claude-sonnet-5-5`.
+- **`backend-agent`** (Claude Code, left): owns the server side and any API contract the project defines.
+- **`frontend-agent`** (Claude Code, right): owns the UI, builds against the contract and never changes it.
+- The role prompts name halves, not folders: which folders each agent owns comes from the project's `AGENTS.md`.
+
+### 4. Bug Hunter
+- **Layout**: 2x2 grid.
+- **`reproducer`** (Claude Code, top-left): edits only `test/`, writing tests that fail on the current code and show the symptom as reported.
+- **`tracer`** (Claude Code, top-right): writes only `TRACE.md`, naming the code that causes each failing test.
+- **`patcher`** (Claude Code, bottom-left): edits only `src/`, with the smallest change that makes `npm test` pass.
+- **`verifier`** (Claude Code, bottom-right): edits nothing, runs the commands itself and writes `VERDICT.md`.
+
+### 5. Red/Blue Team
+- **Layout**: Side-by-side split.
+- **`red-team`** (Claude Code, left): edits only `test/exploits/`, writing tests that are red while a hole is open.
+- **`blue-team`** (Claude Code, right): edits only `server/` and `.gitignore`, never weakens a test, and stops to say so when it believes a test is wrong.
+- Neither agent commits.
+
+### 6. Tri-Agent Council
+- **Layout**: 2x2 grid.
+- **`planner-agent`** (Claude Code): writes only `PLAN.md`, from `SPEC.md` and `AGENTS.md`.
+- **`builder-agent`** (Claude Code): edits only `src/` and `test/`, following `PLAN.md`.
+- **`verifier-agent`** (Claude Code): edits nothing, runs the commands itself and compares the output with `SPEC.md`.
+- **`terminal-shell`** (PowerShell): a shell for the workspace.
+
+### 7. Polyglot Agent Trio
+- **Layout**: 2x2 grid.
+- **`claude-dev`** (Claude Code): edits only `src/` and `test/`, following `PLAN.md`.
+- **`agy-planner`** (Antigravity): gets no launch prompt, so you give it its role in its first message. It answers when asked but can't start a conversation, and hands its plan back as a file.
+- **`codex-reviewer`** (Codex): edits only `review.md`, reviewing against `SPEC.md`.
+- **`test-runner`** (PowerShell): a shell for running the tests.
+- A reply from `agy-planner` holds at most 199 characters, so a longer answer goes through a file mailbox: the job is done when `agy-planner` is Idle and the agreed last line is in the file.
 
 ---
 

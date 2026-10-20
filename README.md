@@ -89,10 +89,13 @@ flowchart LR
   - 2x2 Quad Grid Layout (`Ctrl+B G`)
   - Zoom Active Pane (`Ctrl+B Z`)
 - **1-Click Multi-Agent Swarms** (`Ctrl+B S`):
-  - *TDD Swarm*: Pair programming between test author and implementation developer.
-  - *Full-Stack Pair*: Frontend UI specialist coordinated with backend API developer.
-  - *Red/Blue Team*: Security auditor probing defenses alongside developer.
-  - *Bug Hunter*: Reproduce, analyze, and patch bugs concurrently.
+  - *Dev & Watcher*: One Claude Code developer beside a shell running the build or tests.
+  - *TDD Swarm*: Test architect, feature implementer and reviewer, with a shell for the tests.
+  - *Full-Stack Pair*: A backend agent that owns the API contract beside a frontend agent that builds against it.
+  - *Bug Hunter*: Four agents that reproduce, trace, patch and verify a bug in turns.
+  - *Red/Blue Team*: A red team pinning each hole with a failing test beside a blue team fixing the server.
+  - *Tri-Agent Council*: Planner, builder and verifier, with a workspace shell.
+  - *Polyglot Agent Trio*: Claude implements, Antigravity plans and Codex reviews, with a shell for tests.
 
 ### 🌿 Git Worktrees Integration
 - Create and manage isolated Git worktree branches without leaving Quay (`Ctrl+B W`).
