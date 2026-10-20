@@ -7,22 +7,21 @@
 
 Two agents pass one message, so you can see every slot a step card has.
 
-<div class="tutorial-glance">
-  <div><span class="tutorial-glance__label">Time</span><span class="tutorial-glance__value">~10 min</span></div>
-  <div><span class="tutorial-glance__label">Tokens</span><span class="tutorial-glance__value">~15k</span></div>
-  <div><span class="tutorial-glance__label">Agents</span><span class="tutorial-glance__value">2 × Claude</span></div>
-  <div><span class="tutorial-glance__label">Level</span><span class="tutorial-glance__value">Starter</span></div>
-</div>
+::: glance
+- **Time** ~10 min
+- **Tokens** ~15k
+- **Agents** 2 × Claude
+- **Level** Starter
+:::
 
 **You'll learn:** how a step card's slots read, from Do to You're done when.
 
+::: before
 ## Before you start
-
-<div class="tutorial-checklist">
-  <label><input type="checkbox"> <span><strong>Quay 2</strong> is installed (<a href="/Quay-2/guide/installation">Installation & Setup</a>).</span></label>
-  <label><input type="checkbox"> <span><strong>Claude Code</strong> is signed in. <code>claude --version</code></span></label>
-  <label><input type="checkbox"> <span>You are using the <strong>starter project</strong>, because agents run in Skip mode and edit files without asking.</span></label>
-</div>
+- **Quay 2** is installed ([Installation & Setup](/guide/installation)).
+- **Claude Code** is signed in. `claude --version`
+- You are using the **starter project**, because agents run in Skip mode and edit files without asking.
+:::
 
 ::: step
 
@@ -135,8 +134,8 @@ Tell me exactly what answerer replied in Mission Control's trail.
 
 :::
 
-<a class="tutorial-next" href="/Quay-2/tutorials/swarm/tdd-swarm-kata/">
-  <small>Next up · Swarm 2</small>
-  <strong>TDD Swarm kata →</strong>
-  <span>The next tutorial in series order. A2A 10's card links back to the Tutorials landing page.</span>
-</a>
+::: next
+[Swarm 2: TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/)
+
+The next tutorial in series order. A2A 10's card links back to the Tutorials landing page.
+:::

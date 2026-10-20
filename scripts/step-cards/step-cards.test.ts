@@ -111,6 +111,97 @@ test('a troubleshooting section breaks no-troubleshooting', async () => {
   ]);
 });
 
+test('an at-a-glance strip without Time, Tokens, Agents and Level tiles, in that order, breaks glance', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/glance.md')), [{ rule: 'glance', step: null, title: null }]);
+});
+
+test('a Level other than Starter, Intermediate or Advanced breaks glance-level', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/glance-level.md')), [
+    { rule: 'glance-level', step: null, title: null },
+  ]);
+});
+
+test("a page with no You'll learn line before step 1 breaks you-will-learn", async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/you-will-learn.md')), [
+    { rule: 'you-will-learn', step: null, title: null },
+  ]);
+});
+
+test('a Before you start that is not a heading and one list breaks before-you-start', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/before-you-start.md')), [
+    { rule: 'before-you-start', step: null, title: null },
+  ]);
+});
+
+test('a Next up card that does not open with one link breaks next-up', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/next-up.md')), [{ rule: 'next-up', step: null, title: null }]);
+});
+
+test('page parts out of place break their own rule', () => {
+  const page = md.parse(
+    [
+      '# Swarm 1: Out of place',
+      '::: step',
+      '## 1. Get the starter project',
+      '::: do',
+      'Unzip it.',
+      ':::',
+      '::: see',
+      'The rail.',
+      ':::',
+      '::: done',
+      'It worked.',
+      ':::',
+      ':::',
+      "**You'll learn:** too late.",
+      '::: glance',
+      '- **Time** ~5 min',
+      '- **Tokens** ~5k',
+      '- **Agents** 1 × Claude',
+      '- **Level** Starter',
+      ':::',
+      '::: before',
+      '## Before you start',
+      '- Quay 2 is installed.',
+      ':::',
+    ].join('\n'),
+    {},
+  );
+  assert.deepEqual(
+    checkStepCards(page).map((violation) => violation.rule),
+    ['glance', 'you-will-learn', 'before-you-start', 'next-up'],
+  );
+});
+
+test('the page parts render as the glance strip, the Before you start checklist and the Next up card', () => {
+  const html = md.render(
+    [
+      '::: glance',
+      '- **Time** ~5 min',
+      '- **Level** Starter',
+      ':::',
+      '::: before',
+      '## Before you start',
+      '- **Quay 2** is installed.',
+      '- Claude Code is signed in.',
+      ':::',
+      '::: next',
+      '[Swarm 2: TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/)',
+      ':::',
+    ].join('\n'),
+    {},
+  );
+  assert.match(html, /^<div class="tutorial-glance">\n<ul>\n<li><strong>Time<\/strong> ~5 min<\/li>/);
+  assert.match(
+    html,
+    /<div class="tutorial-checklist">\n<h2 id="before-you-start" tabindex="-1">Before you start .*?<\/h2>\n<ul>\n<li><label><input type="checkbox"> <span><strong>Quay 2<\/strong> is installed.<\/span><\/label><\/li>\n<li><label><input type="checkbox"> <span>Claude Code is signed in.<\/span><\/label><\/li>\n<\/ul>\n<\/div>/,
+  );
+  assert.match(
+    html,
+    /<nav class="tutorial-next" aria-label="Next up"><p class="tutorial-next__label">Next up<\/p>\n<p><a href="\/tutorials\/swarm\/tdd-swarm-kata\/">Swarm 2: TDD Swarm kata<\/a><\/p>\n<\/nav>/,
+  );
+});
+
 test('each container renders as its labelled part of a step card', () => {
   const html = md.render(
     [

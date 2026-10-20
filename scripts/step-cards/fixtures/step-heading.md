@@ -1,5 +1,19 @@
 # Swarm 1: Step-heading fixture
 
+::: glance
+- **Time** ~5 min
+- **Tokens** ~5k
+- **Agents** 1 × Claude
+- **Level** Starter
+:::
+
+**You'll learn:** nothing; this page is a slot-check fixture.
+
+::: before
+## Before you start
+- Quay 2 is installed.
+:::
+
 ::: step
 
 ## 1. Get the starter project
@@ -56,4 +70,8 @@ Every test passes.
 - ✅ Every test passes.
 :::
 
+:::
+
+::: next
+[Swarm 2: TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/)
 :::

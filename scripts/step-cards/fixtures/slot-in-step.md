@@ -1,5 +1,19 @@
 # Swarm 1: Slot-in-step fixture
 
+::: glance
+- **Time** ~5 min
+- **Tokens** ~5k
+- **Agents** 1 × Claude
+- **Level** Starter
+:::
+
+**You'll learn:** nothing; this page is a slot-check fixture.
+
+::: before
+## Before you start
+- Quay 2 is installed.
+:::
+
 ::: do
 1. This Do slot sits outside any step.
 :::
@@ -39,4 +53,8 @@ Every test passes.
 - ✅ Every test passes.
 :::
 
+:::
+
+::: next
+[Swarm 2: TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/)
 :::
