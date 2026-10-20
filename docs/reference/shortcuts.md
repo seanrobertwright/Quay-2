@@ -43,9 +43,9 @@ Quay 2 swallows the `Ctrl+B` prefix, as tmux does, so the focused terminal pane 
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | `Ctrl+B W` | **Create Worktree** | Opens Git Worktree branch creation dialog |
-| `Ctrl+B D` | **Git Diff** | Opens visual git diff and file change viewer |
+| `Ctrl+B D` | **Diff Inspector** | Opens the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
 | `Ctrl+B I` | **GitHub Companion** | Toggles GitHub Issues & PR triage drawer |
-| `Ctrl+B A` | **Pre-PR Audit** | Runs secret scanner and destructive command audit gate |
+| `Ctrl+B A` | **Pre-PR Audit** | Runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
 | `Ctrl+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
 | `Ctrl+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
@@ -53,3 +53,5 @@ Quay 2 swallows the `Ctrl+B` prefix, as tmux does, so the focused terminal pane 
 | `Ctrl+B M` | **Mission Control** | Opens Mission Control, where you send messages to agents on the A2A bus and read its message trail |
 | `Ctrl+K` | **Command Palette** | Opens global command launcher and searchable palette |
 | `Esc` | **Dismiss / Close** | Closes any open modal, dialog, or drawer |
+
+The Diff Inspector is not a branch diff. It lists the Edit and Write tool calls in the newest 500 or so events Quay has received from the event-bridge plugin since it started.

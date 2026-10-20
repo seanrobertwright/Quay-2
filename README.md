@@ -111,7 +111,7 @@ flowchart LR
 - Subtle audio chimes notify you when an agent finishes its turn or requires attention.
 
 ### 🛡️ Pre-PR Audit Gate & Safety Guardrails
-- Automated security audit gate (`Ctrl+B A`) scanning git diffs for leaked secrets, tokens, private keys, and high-risk destructive commands (`rm -rf`, `git push --force`).
+- Pre-PR Audit Gate (`Ctrl+B A`) scanning changed file names and the git diff for secrets, key files and personal paths. See [Pre-PR Audit Gate](https://seanrobertwright.github.io/Quay-2/features/security-audit).
 - Distinct visual badges for terminals running with `--dangerously-skip-permissions`.
 
 ---
@@ -132,7 +132,7 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+B O` | **Cycle Focus** | Move focus to next pane |
 | `Ctrl+B X` | **Close / Unsplit** | Return to single active terminal |
 | `Ctrl+B S` | **Swarm Presets** | Launch multi-agent swarm arrangements |
-| `Ctrl+B D` | **Git Diff** | Open visual git diff & file changes inspector |
+| `Ctrl+B D` | **Diff Inspector** | Open the log of agents' Edit and Write tool calls |
 | `Ctrl+B W` | **New Worktree** | Create an isolated branch worktree |
 | `Ctrl+B I` | **GitHub Companion** | Open GitHub Issues & PR drawer |
 | `Ctrl+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |

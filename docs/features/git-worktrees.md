@@ -12,13 +12,14 @@ Running multiple autonomous AI coding agents in the same working directory creat
 E:\Projects\Quay2\                <-- Main Repository (master branch)
 ├── .git/
 ├── src/
-│
-E:\Projects\Quay2-worktrees\
-├── feat-auth\                    <-- Isolated Worktree (Branch: feat/auth, Agent: Claude)
-│   └── (clean working tree)
-└── fix-conpty\                   <-- Isolated Worktree (Branch: fix/conpty, Agent: Antigravity)
-    └── (clean working tree)
+└── .worktrees\
+    ├── feat-auth\                <-- Isolated Worktree (Branch: feat/auth)
+    │   └── (clean working tree)
+    └── fix-conpty\               <-- Isolated Worktree (Branch: fix/conpty)
+        └── (clean working tree)
 ```
+
+Quay 2 creates each worktree in a `.worktrees` folder inside the project, in a folder named after the branch.
 
 By assigning each autonomous agent to its own dedicated worktree:
 - **Zero Collision Risk**: Multiple agents edit, compile, test, and commit concurrently without clobbering each other's unstaged files.
@@ -29,10 +30,11 @@ By assigning each autonomous agent to its own dedicated worktree:
 
 ## 1-Click Worktree Creation (`Ctrl+B W`)
 
-Pressing `Ctrl+B W` opens the **Create Git Worktree** modal:
-1. **Branch Name**: Enter a new or existing branch name (e.g. `feat/oauth2`).
-2. **Directory Name**: Quay automatically proposes a clean directory path adjacent to your repository root.
-3. **Launch Terminal**: Optionally check "Launch Agent in Worktree" to automatically open a Claude Code terminal inside the new directory immediately.
+Pressing `Ctrl+B W` opens the **New Git Worktree** dialog for the active project. The dialog's footer shows the project folder it will use.
+
+1. **Branch Name**: Enter a branch name (e.g. `feat/oauth2`), or click a prefix button (`+feat/issue-`, `+fix/issue-`, `+wayfinder/issue-`) to start one. The label beside the field shows the folder the worktree will get, `.worktrees/<branch>`, with each `/` or `\` in the branch name replaced by `-`. For example, `feat/oauth2` goes in `.worktrees/feat-oauth2`.
+2. **Create as new branch**: Checked by default. Quay creates the branch from the base branch in the **from** field, which defaults to `main`. Uncheck it to check out an existing branch instead.
+3. **Launch Claude Code terminal immediately**: Checked by default. Quay opens a Claude Code terminal inside the new worktree as soon as it is created.
 4. Click **Create Worktree**.
 
 ---

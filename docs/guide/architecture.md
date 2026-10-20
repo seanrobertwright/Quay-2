@@ -32,7 +32,7 @@ graph TB
         MachinaB["machina: Praxis SQLite Factory Engine"]
         GithubB["github: Native gh CLI & GraphQL"]
         SessionB["sessions: Token Scanner & Deduplication"]
-        AuditB["audit: Secret & Destructive Command Scanner"]
+        AuditB["audit: Pre-PR Secret & Leak Scanner"]
     end
 
     subgraph OS["Windows Operating System"]
@@ -94,8 +94,9 @@ graph TB
 - Maintains an instant disk cache in `%LOCALAPPDATA%\Quay2\token_stats_cache.json`.
 
 ### 8. `audit` — Safety & Secret Scanner
-- Intercepts proposed commands and git diffs before execution.
-- Flags dangerous patterns: destructive file deletion (`rm -rf /`), forced git pushes (`git push --force`), and exposed API keys/tokens.
+- Runs `git status --porcelain` and flags sensitive file names: `.env` paths other than `.env.example`, `.pem` and `.key` files, and `id_rsa` paths.
+- Scans the added lines of the git diff for personal paths, GitHub and Anthropic tokens, private key headers and very long lines.
+- Does not watch or filter terminal commands. See [Pre-PR Audit Gate](/features/security-audit).
 
 ---
 
