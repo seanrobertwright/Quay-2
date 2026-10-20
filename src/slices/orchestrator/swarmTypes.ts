@@ -5,7 +5,8 @@ export interface SwarmAgentConfig {
   name: string;
   run_kind: RunKind;
   custom_flags?: string;
-  initial_prompt?: string;
+  /** The authored role prompt; the launch prompt carries it after the role line. */
+  role_prompt?: string;
 }
 
 export interface SwarmPreset {

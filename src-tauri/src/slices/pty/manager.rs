@@ -68,6 +68,29 @@ fn read_saved_scrollback(terminal_id: &str) -> (String, u64) {
     }
 }
 
+/// The spawn request that restarts a terminal from its stored info. It carries no launch
+/// prompt: that was the first turn of the terminal's first run, and is never resent.
+fn relaunch_request(
+    info: &TerminalInfo,
+    rows: Option<u16>,
+    cols: Option<u16>,
+    env_vars: Option<HashMap<String, String>>,
+) -> SpawnTerminalRequest {
+    SpawnTerminalRequest {
+        id: Some(info.id.clone()),
+        name: Some(info.name.clone()),
+        project_path: info.project_path.clone(),
+        run_kind: info.run_kind,
+        permission_mode: Some(info.permission_mode),
+        command_text: info.command_text.clone(),
+        rows,
+        cols,
+        env_vars,
+        custom_flags: info.custom_flags.clone(),
+        initial_prompt: None,
+    }
+}
+
 #[derive(Clone)]
 pub struct PtyManager {
     sessions: Arc<Mutex<HashMap<String, PtySession>>>,
@@ -248,18 +271,7 @@ impl PtyManager {
             sessions.remove(terminal_id);
         }
 
-        let request = SpawnTerminalRequest {
-            id: Some(terminal_id.to_string()),
-            name: Some(info.name.clone()),
-            project_path: info.project_path.clone(),
-            run_kind: info.run_kind,
-            permission_mode: Some(info.permission_mode),
-            command_text: info.command_text.clone(),
-            rows,
-            cols,
-            env_vars,
-            custom_flags: info.custom_flags.clone(),
-        };
+        let request = relaunch_request(&info, rows, cols, env_vars);
 
         let session = PtySession::spawn(
             request,
@@ -545,6 +557,38 @@ mod tests {
         let info = manager.get_info(&term_id).unwrap();
         assert_eq!(info.name, "My Custom Agent");
         assert_eq!(info.task_title.as_deref(), Some("Refactor database models"));
+    }
+
+    #[test]
+    fn relaunching_a_terminal_does_not_resend_its_launch_prompt() {
+        let info = TerminalInfo {
+            id: "term-relaunch".to_string(),
+            name: "lead-dev".to_string(),
+            project_path: "E:\\Projects\\Test".to_string(),
+            run_kind: RunKind::Codex,
+            permission_mode: PermissionMode::Skip,
+            live_mode: PermissionMode::Skip,
+            claude_status: ClaudeStatus::Exited,
+            auto_approved_count: 0,
+            exit_code: Some(0),
+            task_title: Some("Role: Lead Developer".to_string()),
+            current_tool: None,
+            custom_name: true,
+            custom_flags: Some("--model gpt-5".to_string()),
+            command_text: None,
+            created_at: 1000,
+        };
+
+        let request = relaunch_request(&info, Some(30), Some(100), None);
+
+        assert_eq!(request.initial_prompt, None);
+        assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
+        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok");
+        let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(
+            args,
+            ["codex.exe", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5"]
+        );
     }
 
     #[test]
