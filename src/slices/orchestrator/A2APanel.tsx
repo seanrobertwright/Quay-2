@@ -104,6 +104,21 @@ export const A2APanel: FC<A2APanelProps> = ({
     };
   }, [isOpen]);
 
+  // Esc closes the panel. The listener exists only while the panel is open, and it
+  // runs in the capture phase so the Esc never reaches the focused terminal pane,
+  // where Claude Code would read it as "interrupt".
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, onClose]);
+
   const loadMessages = async () => {
     try {
       const msgs = await invoke<A2AMessage[]>("a2a_get_messages");
@@ -189,15 +204,16 @@ export const A2APanel: FC<A2APanelProps> = ({
             <Network className="w-5 h-5 text-[#58a6ff]" />
             <div>
               <h2 className="text-base font-semibold text-white leading-tight">
-                A2A Orchestration Bus
+                Mission Control
               </h2>
               <p className="text-[11px] text-[#8b949e]">
-                Autonomous Peer-to-Peer Agent Collaboration & Embedded MCP Server
+                Send messages to the agents on the A2A bus and follow their trail
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close Mission Control"
             className="text-[#8b949e] hover:text-white p-1.5 hover:bg-[#21262d] rounded transition-colors"
             title="Close Panel (Esc)"
           >
@@ -206,31 +222,45 @@ export const A2APanel: FC<A2APanelProps> = ({
         </div>
 
         <div className="p-6 overflow-y-auto space-y-5">
-          {/* Active MCP Tools info banner */}
+          {/* Bus levels banner */}
           <div className="p-3.5 bg-[#0d1117] border border-[#30363d] rounded-lg">
             <div className="flex items-center gap-2 text-xs font-semibold text-white mb-1.5">
               <Cpu className="w-4 h-4 text-[#3fb950]" />
-              <span>Injected Quay MCP Server (Active)</span>
+              <span>Peers on the A2A bus</span>
             </div>
+            <p className="text-xs text-[#8b949e] mb-2 leading-relaxed">
+              Every peer on the bus can be sent a message. What it can do back depends on its level:
+            </p>
+            <ul className="text-xs text-[#8b949e] mb-2.5 space-y-1 leading-relaxed">
+              <li>
+                <strong className="text-white">Full peer</strong>: sends messages, answers a sender who waits for its reply, and shows whether it is working or idle.
+              </li>
+              <li>
+                <strong className="text-white">Responder</strong>: answers a sender who waits and shows whether it is working or idle, but can't send messages, so it never starts a conversation.
+              </li>
+              <li>
+                <strong className="text-white">Listener</strong>: can be sent a message but can't answer. A sender who waits on a listener gets no reply.
+              </li>
+            </ul>
             <p className="text-xs text-[#8b949e] mb-2.5 leading-relaxed">
-              Every AI agent terminal (Claude Code, Antigravity, or Codex) is provisioned with the loopback <code className="text-[#58a6ff]">quay</code> MCP server. Running agents can autonomously invoke these tools:
+              Quay gives Claude Code terminals the <code className="text-[#58a6ff]">quay</code> MCP server and its tools. A Claude Code peer can't answer until Quay hears from its event-bridge plugin.
             </p>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_list_agents</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Discover peer agents, tasks, & statuses</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">List Quay's terminals with their run kind and status</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_send_message</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Dispatch tasks & await peer agent replies</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Send a peer a message, optionally waiting for its reply</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Send toast alerts to all active agents</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running agent terminal</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Query active tools & auto-approved counts</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Check one peer's status and auto-approved action count</p>
               </div>
             </div>
           </div>

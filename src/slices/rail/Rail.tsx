@@ -264,7 +264,8 @@ export const Rail: React.FC<RailProps> = ({
   }
   toolButtons.push({
     id: "a2a",
-    label: "A2A Orchestration Bus",
+    label: "Mission Control",
+    shortcut: "^b m",
     icon: <Network className="w-4 h-4 text-[#c9d1d9]" />,
     onClick: onOpenA2APanel,
   });
