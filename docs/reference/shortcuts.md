@@ -2,6 +2,8 @@
 
 Quay 2 is engineered for complete keyboard navigability. Inspired by `tmux`, all primary window, stage, and tool commands use the `Ctrl+B` prefix chord.
 
+Quay 2 swallows the `Ctrl+B` prefix, as tmux does, so the focused terminal pane never receives it. Pressing `Ctrl+B` in a Claude Code pane starts the chord and does not background the running task.
+
 ---
 
 ## Workspace & Terminal Switching
