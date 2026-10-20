@@ -175,7 +175,9 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
     }
 
     if (state.patch !== undefined) {
-      // Last, because it changes the project: the learner's late commit in the tutorial.
+      // Last, because it changes the project: the learner's late commit in the tutorial. The
+      // check suite comes out first so the patched npm test runs the same tests the first did.
+      rmSync(join(work, "check"), { recursive: true, force: true });
       const apply = inProject(["git", "apply", state.patch.file]);
       if (apply.exitCode !== 0) {
         failures.push(`git apply ${state.patch.file} exited ${apply.exitCode}${outputTail(apply.output)}`);
@@ -186,7 +188,8 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
     }
     return failures;
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    // Windows can hold a file a moment after the process that opened it exits.
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 

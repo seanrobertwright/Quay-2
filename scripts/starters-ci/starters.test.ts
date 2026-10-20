@@ -483,3 +483,25 @@ test("typecheck red with an exact line: colours split inside the line still matc
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
 });
+
+test("ships green with a patch: the patched test run leaves the check suite out, as npm test did", () => {
+  const dir = oneStarter(
+    "broadcast",
+    { ...a2a7, checkSuite: { vitest: ["run", "check"], expect: "fail", failed: 1 } },
+    { ...latePatch, "broadcast/check/price.check.test.ts": "// one test" },
+  );
+  const runner = fakeRunner({
+    "npm test": [
+      { vitest: { passed: ["pads cents under ten with a zero"] } },
+      { vitest: { failed: ["pads cents under ten with a zero"] } },
+    ],
+    "npx --no -- vitest run check": { vitest: { failed: 1 } },
+  });
+  const checkPresent: boolean[] = [];
+  const run = (command: Command) => {
+    if (label(command) === "npm test") checkPresent.push(existsSync(join(command.cwd, "check")));
+    return runner.run(command);
+  };
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run, log: quiet }).failures, []);
+  assert.deepEqual(checkPresent, [false, false]);
+});
