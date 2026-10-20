@@ -81,50 +81,102 @@ export function registerStepCardContainers(md: MarkdownRenderer): void {
 interface Slot {
   name: SlotName;
   info: string;
+  /** The slot's direct children, opening and self-contained block tokens only. */
+  children: Token[];
 }
 
 interface Step {
   number: number;
+  /** The text of the `##` heading the step opens with, if it opens with one. */
+  heading: string | null;
   title: string | null;
   slots: Slot[];
+  /** Steps and slots opened inside this step anywhere but as its direct children. */
+  misplaced: number;
 }
 
-function readSteps(tokens: Token[]): Step[] {
-  const steps: Step[] = [];
+interface Page {
+  steps: Step[];
+  /** Slots opened outside every step. */
+  misplaced: number;
+}
+
+function readPage(tokens: Token[]): Page {
+  const page: Page = { steps: [], misplaced: 0 };
   let step: Step | null = null;
   let stepLevel = 0;
+  let slot: Slot | null = null;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    if (token.type === 'container_step_open') {
-      step = { number: steps.length + 1, title: null, slots: [] };
-      stepLevel = token.level;
-      steps.push(step);
-    } else if (token.type === 'container_step_close') {
-      step = null;
-    } else if (step && token.level === stepLevel + 1) {
-      if (token.type === 'heading_open' && step.title === null && step.slots.length === 0) {
-        step.title = tokens[i + 1].content.replace(/^\d+\.\s*/, '');
+    const opened = /^container_([a-z]+)_open$/.exec(token.type)?.[1];
+    if (!step) {
+      if (opened === 'step') {
+        const heading = tokens[i + 1].tag === 'h2' && tokens[i + 1].nesting === 1 ? tokens[i + 2].content : null;
+        step = { number: page.steps.length + 1, heading, title: null, slots: [], misplaced: 0 };
+        step.title = heading?.replace(/^\d+\.\s*/, '') ?? null;
+        stepLevel = token.level;
+        page.steps.push(step);
+      } else if (opened) {
+        page.misplaced++;
       }
-      const slot = /^container_([a-z]+)_open$/.exec(token.type);
-      if (slot) step.slots.push({ name: slot[1] as SlotName, info: token.info });
+    } else if (token.type === 'container_step_close' && token.level === stepLevel) {
+      step = null;
+    } else if (token.level === stepLevel + 1) {
+      if (opened === 'step') {
+        step.misplaced++;
+      } else if (opened) {
+        slot = { name: opened as SlotName, info: token.info, children: [] };
+        step.slots.push(slot);
+      } else if (/^container_[a-z]+_close$/.test(token.type)) {
+        slot = null;
+      }
+    } else if (opened) {
+      step.misplaced++;
+    } else if (slot && token.level === stepLevel + 2 && token.nesting !== -1) {
+      slot.children.push(token);
     }
   }
-  return steps;
+  return page;
 }
 
 export function checkStepCards(tokens: Token[]): StepCardViolation[] {
   const violations: StepCardViolation[] = [];
-  const steps = readSteps(tokens);
+  const { steps, misplaced } = readPage(tokens);
+  const headings = tokens.flatMap((token, i) => (token.type === 'heading_open' ? [{ tag: token.tag, text: tokens[i + 1].content }] : []));
+  if (!/^(Swarm|A2A) [1-9]\d*: \S/.test(headings.find((heading) => heading.tag === 'h1')?.text ?? '')) {
+    violations.push({ rule: 'page-title', step: null, title: null });
+  }
+  if (headings.some((heading) => /troubleshooting/i.test(heading.text))) {
+    violations.push({ rule: 'no-troubleshooting', step: null, title: null });
+  }
+  if (steps.length > 0 && steps[0].title !== 'Get the starter project') {
+    violations.push({ rule: 'first-step', step: 1, title: steps[0].title });
+  }
+  for (let i = 0; i < misplaced; i++) violations.push({ rule: 'slot-in-step', step: null, title: null });
   for (const step of steps) {
     const has = (name: SlotName) => step.slots.some((slot) => slot.name === name);
     const broke = (rule: string) => violations.push({ rule, step: step.number, title: step.title });
     const last = step.number === steps.length;
+    if (!new RegExp(`^${step.number}\\.\\s+\\S`).test(step.heading ?? '')) broke('step-heading');
+    for (let i = 0; i < step.misplaced; i++) broke('slot-in-step');
+    const order = step.slots.map((slot) => SLOTS.indexOf(slot.name));
+    if (order.some((at, i) => i > 0 && (at < order[i - 1] || (at === order[i - 1] && SLOTS[at] !== 'ifnot')))) {
+      broke('slot-order');
+    }
     if (!has('do') && !has('paste')) broke('do-or-paste');
     if (!has('see')) broke('see-required');
     if (has('must') !== has('may')) broke('must-may-pair');
     // A Paste slot hands a prompt to an agent, or to a peer through a Quay field, so its step shows
     // agent output. The check can't see output from a step with only Do.
     else if (has('paste') && !has('must')) broke('must-may-agent-output');
+    for (const paste of step.slots.filter((slot) => slot.name === 'paste')) {
+      if (paste.info === '') broke('paste-target');
+      const [prompt, ...rest] = paste.children;
+      if (prompt?.type !== 'fence' || rest.length > 0 || !/^[^\n]+\n?$/.test(prompt.content)) {
+        broke('paste-one-prompt');
+      }
+    }
+    if (step.slots.some((slot) => slot.name === 'ifnot' && slot.info === '')) broke('ifnot-symptom');
     if (last && !has('done')) broke('done-required');
     if (!last && has('done')) broke('done-last-only');
   }

@@ -50,3 +50,63 @@ test('a Paste step with no Must match and May differ breaks must-may-agent-outpu
     { rule: 'must-may-agent-output', step: 2, title: 'Ask the agent' },
   ]);
 });
+
+test('a Paste slot holding anything but one single-line prompt breaks paste-one-prompt', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/paste-one-prompt.md')), [
+    { rule: 'paste-one-prompt', step: 2, title: 'Paste two prompts' },
+    { rule: 'paste-one-prompt', step: 3, title: 'Paste a prompt over two lines' },
+    { rule: 'paste-one-prompt', step: 4, title: 'Paste prose instead of a prompt' },
+  ]);
+});
+
+test('a Paste slot that names no pane or field breaks paste-target', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/paste-target.md')), [
+    { rule: 'paste-target', step: 2, title: 'Paste without saying where' },
+  ]);
+});
+
+test('an If not that names no symptom breaks ifnot-symptom', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/ifnot-symptom.md')), [
+    { rule: 'ifnot-symptom', step: 1, title: 'Get the starter project' },
+  ]);
+});
+
+test('a slot outside a step, or inside another slot, breaks slot-in-step', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/slot-in-step.md')), [
+    { rule: 'slot-in-step', step: null, title: null },
+    { rule: 'slot-in-step', step: 1, title: 'Get the starter project' },
+  ]);
+});
+
+test('slots out of order, or a slot twice, break slot-order', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/slot-order.md')), [
+    { rule: 'slot-order', step: 1, title: 'Get the starter project' },
+    { rule: 'slot-order', step: 2, title: 'Run the tests' },
+  ]);
+});
+
+test('a step that does not open with its numbered heading breaks step-heading', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/step-heading.md')), [
+    { rule: 'step-heading', step: 2, title: 'Run the tests' },
+    { rule: 'step-heading', step: 3, title: null },
+    { rule: 'step-heading', step: 4, title: 'Check it worked' },
+  ]);
+});
+
+test('a title not shaped <Series> <n>: <Title> breaks page-title', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/page-title.md')), [
+    { rule: 'page-title', step: null, title: null },
+  ]);
+});
+
+test('a step 1 other than Get the starter project breaks first-step', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/first-step.md')), [
+    { rule: 'first-step', step: 1, title: 'Open the project' },
+  ]);
+});
+
+test('a troubleshooting section breaks no-troubleshooting', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/no-troubleshooting.md')), [
+    { rule: 'no-troubleshooting', step: null, title: null },
+  ]);
+});
