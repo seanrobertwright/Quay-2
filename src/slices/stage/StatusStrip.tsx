@@ -1,4 +1,4 @@
-import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { TerminalInfo, PermissionMode, isAgentRunKind } from "../terminal/types";
 import {
   Loader2,
   ShieldCheck,
@@ -30,6 +30,58 @@ interface StatusStripProps {
   onOpenPermissionModal?: () => void;
 }
 
+const LIVE_MODES: Record<
+  PermissionMode,
+  { label: string; Icon: typeof ShieldCheck; className: string }
+> = {
+  skip: {
+    label: "Skip",
+    Icon: Sparkles,
+    className: "bg-[#3fb950]/15 text-[#3fb950] border-[#3fb950]/30 hover:bg-[#3fb950]/25",
+  },
+  normal: {
+    label: "Normal",
+    Icon: ShieldCheck,
+    className:
+      "bg-[#d29922]/15 text-[#d29922] border-[#d29922]/30 hover:bg-[#d29922]/25 font-semibold",
+  },
+};
+
+interface StripButtonProps {
+  Icon: React.FC<{ className?: string }>;
+  label: string;
+  count?: number;
+  title: string;
+  className: string;
+  onClick: () => void;
+}
+
+/**
+ * A link-style strip button. Its label stays whole at the capture widths and
+ * collapses to the icon only on a stage narrower than 56rem; the count, title
+ * and accessible name always stay.
+ */
+const StripButton: React.FC<StripButtonProps> = ({
+  Icon,
+  label,
+  count,
+  title,
+  className,
+  onClick,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex shrink-0 items-center gap-1 hover:underline cursor-pointer ${className}`}
+    title={title}
+    aria-label={count === undefined ? label : `${label} (${count})`}
+  >
+    <Icon className="w-3.5 h-3.5 shrink-0" />
+    <span className="@max-[56rem]:hidden">{label}</span>
+    {count !== undefined && <span className="shrink-0">({count})</span>}
+  </button>
+);
+
 export const StatusStrip: React.FC<StatusStripProps> = ({
   terminal,
   activeTool,
@@ -56,18 +108,19 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   const idleText = terminal.task_title
     ? `Ready — Task: "${terminal.task_title}"`
     : "Ready for next prompt";
-  const modeLabel = terminal.live_mode === "skip" ? "Mode: Skip" : "Mode: Normal";
-  const diffsLabel = `Diffs${diffCount > 0 ? ` (${diffCount})` : ""}`;
+  const liveMode = LIVE_MODES[terminal.live_mode];
 
-  // The strip stays one h-8 line at every width. It is a size container, so its
-  // labels follow the stage's width (window minus rail), not the window's: below
-  // 90rem the mode switch and the secondary buttons show only their icons and
-  // counts and the project path narrows, and below 64rem the approval pill does
-  // too. Every click target stays, and long text (terminal name, status, project
-  // path) truncates with a title tooltip.
+  // The strip stays one h-8 line at every width. It is a size container, so it
+  // responds to the stage's width (window minus rail), not the window's. When
+  // room runs short, text truncates with an ellipsis and a title tooltip rather
+  // than wrapping: the project path gives way first, then "auto-approved", then
+  // "Approval Required", and the status text keeps a minimum width. The mode
+  // name and the button labels stay whole. Only on a stage narrower than 56rem
+  // (narrower than either capture width, e.g. with the rail dragged wide) do the
+  // labels collapse to their icons; every item, count and click target stays.
   return (
     <div className="@container h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-between gap-4 overflow-hidden whitespace-nowrap text-xs text-[#8b949e] shrink-0 select-none">
-      <div className="flex flex-1 min-w-[12rem] items-center gap-3 @min-[64rem]:gap-4 overflow-hidden">
+      <div className="flex flex-1 min-w-[11rem] @min-[56rem]:min-w-[12rem] @min-[64rem]:min-w-[16rem] items-center gap-3 overflow-hidden">
         {/* Terminal Run Kind & Name */}
         <div className="flex shrink-0 items-center gap-1.5 font-medium text-white">
           <span className="truncate max-w-[10rem]" title={terminal.name}>
@@ -123,19 +176,19 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         )}
       </div>
 
-      <div className="flex min-w-0 items-center gap-2 @min-[64rem]:gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         {/* Pending Approvals Alert Pill */}
         {pendingCount !== undefined && pendingCount > 0 && onOpenPermissionModal && (
           <button
             type="button"
             onClick={onOpenPermissionModal}
-            className="flex shrink-0 items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#d29922] text-[#0d1117] font-bold text-[11px] animate-pulse cursor-pointer shadow-md hover:bg-[#e3b341] transition-colors"
-            title="Click to review pending tool approvals"
+            className="flex min-w-[3.5rem] shrink-[10] items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#d29922] text-[#0d1117] font-bold text-[11px] animate-pulse cursor-pointer shadow-md hover:bg-[#e3b341] transition-colors"
+            title={`Approval Required (${pendingCount}). Click to review pending tool approvals`}
             aria-label={`Approval Required (${pendingCount})`}
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span className="hidden @min-[64rem]:inline">Approval Required</span>
-            <span>({pendingCount})</span>
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate @max-[56rem]:hidden">Approval Required</span>
+            <span className="shrink-0">({pendingCount})</span>
           </button>
         )}
 
@@ -144,105 +197,77 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           <button
             type="button"
             onClick={onToggleLiveMode}
-            className={`flex shrink-0 items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono cursor-pointer border transition-colors ${
-              terminal.live_mode === "skip"
-                ? "bg-[#3fb950]/15 text-[#3fb950] border-[#3fb950]/30 hover:bg-[#3fb950]/25"
-                : "bg-[#d29922]/15 text-[#d29922] border-[#d29922]/30 hover:bg-[#d29922]/25 font-semibold"
-            }`}
-            title="Click to toggle between Skip (Auto-Approve) and Normal (Interactive Gatekeeper)"
-            aria-label={modeLabel}
+            className={`flex shrink-0 items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono cursor-pointer border transition-colors ${liveMode.className}`}
+            title={`Mode: ${liveMode.label}. Click to toggle between Skip (Auto-Approve) and Normal (Interactive Gatekeeper)`}
+            aria-label={`Mode: ${liveMode.label}`}
           >
-            {terminal.live_mode === "skip" ? (
-              <Sparkles className="w-3 h-3 text-[#3fb950]" />
-            ) : (
-              <ShieldCheck className="w-3 h-3 text-[#d29922]" />
-            )}
-            <span className="hidden @min-[90rem]:inline">{modeLabel}</span>
+            <liveMode.Icon className="w-3 h-3 shrink-0" />
+            <span className="@max-[56rem]:hidden">{liveMode.label}</span>
           </button>
         )}
 
         {/* Auto approved count */}
         {isAgent && (
           <div
-            className="flex shrink-0 items-center gap-1 text-[#8b949e] hover:text-[#c9d1d9] cursor-pointer"
+            className="flex min-w-[2.5rem] shrink-[20] items-center gap-1 text-[#8b949e] hover:text-[#c9d1d9] cursor-pointer"
             onClick={onOpenActionLog}
             title={`${terminal.auto_approved_count} auto-approved. Click to view Action Log`}
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#3fb950]" />
-            <strong className="text-white font-mono">{terminal.auto_approved_count}</strong>
-            <span className="hidden @min-[90rem]:inline">auto-approved</span>
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#3fb950]" />
+            <strong className="shrink-0 text-white font-mono">{terminal.auto_approved_count}</strong>
+            <span className="truncate @max-[56rem]:hidden">auto-approved</span>
           </div>
         )}
 
-        {/* Action Log Drawer Trigger */}
         {isAgent && (
-          <button
-            type="button"
-            onClick={onOpenActionLog}
-            className="flex shrink-0 items-center gap-1 text-[#58a6ff] hover:underline cursor-pointer"
+          <StripButton
+            Icon={ListOrdered}
+            label="Action Log"
             title="Action Log"
-            aria-label="Action Log"
-          >
-            <ListOrdered className="w-3.5 h-3.5" />
-            <span className="hidden @min-[90rem]:inline">Action Log</span>
-          </button>
+            className="text-[#58a6ff]"
+            onClick={onOpenActionLog}
+          />
         )}
 
-        {/* Diff Inspector Trigger */}
         {onOpenDiffInspector && (
-          <button
-            type="button"
-            onClick={onOpenDiffInspector}
-            className="flex shrink-0 items-center gap-1 text-[#3fb950] hover:underline cursor-pointer"
+          <StripButton
+            Icon={GitCompare}
+            label="Diffs"
+            count={diffCount > 0 ? diffCount : undefined}
             title="Inspect Visual Diff & File Changes"
-            aria-label={diffsLabel}
-          >
-            <GitCompare className="w-3.5 h-3.5" />
-            <span className="hidden @min-[90rem]:inline">Diffs</span>
-            {diffCount > 0 && <span>({diffCount})</span>}
-          </button>
+            className="text-[#3fb950]"
+            onClick={onOpenDiffInspector}
+          />
         )}
 
-        {/* GitHub Issues & PR Companion Trigger */}
         {onOpenGithubDrawer && (
-          <button
-            type="button"
-            onClick={onOpenGithubDrawer}
-            className="flex shrink-0 items-center gap-1 text-[#c9d1d9] hover:text-white hover:underline cursor-pointer"
+          <StripButton
+            Icon={GithubIcon}
+            label="GitHub"
             title="GitHub Issues & Pull Requests Companion (^b i)"
-            aria-label="GitHub"
-          >
-            <GithubIcon className="w-3.5 h-3.5" />
-            <span className="hidden @min-[90rem]:inline">GitHub</span>
-          </button>
+            className="text-[#c9d1d9] hover:text-white"
+            onClick={onOpenGithubDrawer}
+          />
         )}
 
-        {/* Pre-PR Audit Trigger */}
         {onOpenAuditModal && (
-          <button
-            type="button"
-            onClick={onOpenAuditModal}
-            className="flex shrink-0 items-center gap-1 text-[#f85149] hover:text-[#ff7b72] hover:underline cursor-pointer"
+          <StripButton
+            Icon={ShieldAlert}
+            label="Audit"
             title="Run Pre-PR Audit Leak & Claim Scanner (^b a)"
-            aria-label="Audit"
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span className="hidden @min-[90rem]:inline">Audit</span>
-          </button>
+            className="text-[#f85149] hover:text-[#ff7b72]"
+            onClick={onOpenAuditModal}
+          />
         )}
 
-        {/* Session History Trigger */}
         {onOpenSessionHistory && (
-          <button
-            type="button"
-            onClick={onOpenSessionHistory}
-            className="flex shrink-0 items-center gap-1 text-[#c9d1d9] hover:text-white hover:underline cursor-pointer"
+          <StripButton
+            Icon={History}
+            label="History"
             title="Browse & Auto-Resume Past Claude Sessions (^b h)"
-            aria-label="History"
-          >
-            <History className="w-3.5 h-3.5" />
-            <span className="hidden @min-[90rem]:inline">History</span>
-          </button>
+            className="text-[#c9d1d9] hover:text-white"
+            onClick={onOpenSessionHistory}
+          />
         )}
 
         {/* Live Token Spend Ticker Pill */}
@@ -260,9 +285,9 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           </button>
         )}
 
-        <div className="flex min-w-[4rem] items-center gap-1 text-[#8b949e] font-mono text-[11px]">
+        <div className="flex min-w-[4rem] shrink-[100] items-center gap-1 text-[#8b949e] font-mono text-[11px]">
           <FileCode className="w-3 h-3 shrink-0" />
-          <span className="min-w-0 truncate max-w-[8rem] @min-[90rem]:max-w-[200px]" title={terminal.project_path}>
+          <span className="min-w-0 truncate max-w-[200px]" title={terminal.project_path}>
             {terminal.project_path}
           </span>
         </div>
