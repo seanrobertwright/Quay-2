@@ -59,9 +59,24 @@ function collectZips(files) {
     if (zip.folder !== folder) {
       fail(`${zip.folder} and ${folder} would both be packed as ${name}`);
     }
-    zip.files.push({ path: file, entry });
+    zip.files.push({ source: join(examplesDir, file), entry });
   }
   return zips;
+}
+
+// The fields a local file header and its central directory record share, from
+// "version needed to extract" through the name length. The local header holds
+// them from byte 4, the central record from byte 6.
+function writeSharedHeader(header, at, { stored, crc, body, data, name }) {
+  header.writeUInt16LE(20, at); // version needed to extract
+  header.writeUInt16LE(0x0800, at + 2); // names are UTF-8
+  header.writeUInt16LE(stored ? 0 : 8, at + 4); // stored or deflated
+  header.writeUInt16LE(0, at + 6); // 00:00:00
+  header.writeUInt16LE(0x21, at + 8); // 1980-01-01
+  header.writeUInt32LE(crc, at + 10);
+  header.writeUInt32LE(body.length, at + 14);
+  header.writeUInt32LE(data.length, at + 18);
+  header.writeUInt16LE(name.length, at + 22);
 }
 
 // A minimal zip writer: deflated entries, UTF-8 names, and a fixed timestamp
@@ -76,34 +91,17 @@ function writeZip(path, entries) {
     const stored = deflated.length >= data.length;
     const body = stored ? data : deflated;
     const name = Buffer.from(entry, "utf8");
-    const crc = crc32(data);
+    const fields = { stored, crc: crc32(data), body, data, name };
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4); // version needed to extract
-    local.writeUInt16LE(0x0800, 6); // names are UTF-8
-    local.writeUInt16LE(stored ? 0 : 8, 8);
-    local.writeUInt16LE(0, 10); // 00:00:00
-    local.writeUInt16LE(0x21, 12); // 1980-01-01
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(body.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(name.length, 26);
-    local.writeUInt16LE(0, 28);
+    writeSharedHeader(local, 4, fields);
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(20, 4); // version made by
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0x0800, 8);
-    central.writeUInt16LE(stored ? 0 : 8, 10);
-    central.writeUInt16LE(0, 12);
-    central.writeUInt16LE(0x21, 14);
-    central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(body.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(name.length, 28);
-    central.writeUInt32LE(offset, 42);
+    writeSharedHeader(central, 6, fields);
+    central.writeUInt32LE(offset, 42); // where the local header starts
 
     locals.push(local, name, body);
     centrals.push(central, name);
@@ -126,8 +124,6 @@ const zips = existsSync(examplesDir) ? collectZips(listFiles()) : new Map();
 rmSync(outDir, { recursive: true, force: true });
 if (zips.size > 0) mkdirSync(outDir, { recursive: true });
 for (const [name, { files }] of zips) {
-  const entries = files
-    .map(({ path, entry }) => ({ source: join(examplesDir, path), entry }))
-    .sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
+  const entries = files.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
   writeZip(join(outDir, name), entries);
 }
