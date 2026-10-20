@@ -1,0 +1,117 @@
+/* Tutorial pages: the step-card containers registered in step-cards.ts, and the page parts around
+   them. Every selector is scoped to these classes, so other pages look as they did. */
+
+/* At-a-glance strip: Time, Tokens, Agents and Level tiles */
+.vp-doc .tutorial-glance {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 20px 0;
+}
+.vp-doc .tutorial-glance > div {
+  padding: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .tutorial-glance__label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .tutorial-glance__value {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .vp-doc .tutorial-glance { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Before you start checklist */
+.vp-doc .tutorial-checklist {
+  padding: 16px 20px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .tutorial-checklist label {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+}
+.vp-doc .tutorial-checklist input { flex: none; }
+
+/* Step card. Must match and May differ share a row; everything else spans the card. */
+.vp-doc .step-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 10px;
+  margin: 28px 0;
+  padding: 4px 20px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-left: 4px solid var(--vp-c-brand-1);
+  border-radius: 10px;
+}
+.vp-doc .step-card > * { grid-column: 1 / -1; min-width: 0; }
+.vp-doc .step-card > .step-card__slot--must,
+.vp-doc .step-card > .step-card__slot--may { grid-column: auto; }
+.vp-doc .step-card--last { border-left-color: var(--vp-c-green-1); }
+.vp-doc .step-card h2 {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+@media (max-width: 640px) {
+  .vp-doc .step-card > .step-card__slot--must,
+  .vp-doc .step-card > .step-card__slot--may { grid-column: 1 / -1; }
+}
+
+.vp-doc .step-card__slot { margin-top: 14px; }
+.vp-doc .step-card__label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .step-card__slot--must,
+.vp-doc .step-card__slot--may {
+  padding: 2px 14px;
+  border-radius: 6px;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .step-card__slot--must .step-card__label { color: var(--vp-c-green-1); }
+.vp-doc .step-card__slot--done {
+  padding: 2px 14px;
+  border: 1px solid var(--vp-c-green-1);
+  border-radius: 6px;
+}
+.vp-doc .step-card__slot--done .step-card__label { color: var(--vp-c-green-1); }
+
+/* A Paste prompt is one line, since Quay flattens newlines, so it wraps instead of scrolling. */
+.vp-doc .step-card__slot--paste div[class*='language-'] pre,
+.vp-doc .step-card__slot--paste div[class*='language-'] code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vp-doc .step-card__ifnot { margin: 14px 0 0; }
+
+/* Next up card */
+.vp-doc a.tutorial-next {
+  display: block;
+  margin: 32px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 10px;
+  text-decoration: none;
+}
+.vp-doc a.tutorial-next small { display: block; color: var(--vp-c-text-2); }
+.vp-doc a.tutorial-next strong { display: block; font-size: 18px; }
+.vp-doc a.tutorial-next span { display: block; color: var(--vp-c-text-1); }

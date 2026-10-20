@@ -94,10 +94,40 @@ function lineText(state: Parameters<BlockRule>[0], line: number): string {
   return state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
 }
 
+const LABELS: Record<Exclude<SlotName, 'ifnot'>, string> = {
+  do: 'Do',
+  paste: 'Paste into',
+  see: 'You should see',
+  must: 'Must match',
+  may: 'May differ',
+  done: 'You’re done when',
+};
+
 export function registerStepCardContainers(md: MarkdownRenderer): void {
   md.block.ruler.before('fence', 'step_card_containers', containerRule, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],
   });
+  const rules = md.renderer.rules;
+
+  rules.step_card_step_open = (tokens, idx) => {
+    const later = tokens.slice(idx + 1).some((token) => token.type === 'step_card_step_open' && token.level === tokens[idx].level);
+    return `<section class="step-card${later ? '' : ' step-card--last'}">\n`;
+  };
+  rules.step_card_step_close = () => '</section>\n';
+
+  for (const slot of SLOTS) {
+    if (slot === 'ifnot') continue;
+    rules[`step_card_${slot}_open`] = (tokens, idx) => {
+      const info = tokens[idx].info;
+      const label = slot === 'paste' && info !== '' ? `${LABELS.paste} ${md.renderInline(info)}` : LABELS[slot];
+      return `<div class="step-card__slot step-card__slot--${slot}"><p class="step-card__label">${label}</p>\n`;
+    };
+    rules[`step_card_${slot}_close`] = () => '</div>\n';
+  }
+
+  rules.step_card_ifnot_open = (tokens, idx) =>
+    `<details class="details custom-block step-card__ifnot"><summary>If not: ${md.renderInline(tokens[idx].info)}</summary>\n`;
+  rules.step_card_ifnot_close = () => '</details>\n';
 }
 
 interface Slot {

@@ -110,3 +110,61 @@ test('a troubleshooting section breaks no-troubleshooting', async () => {
     { rule: 'no-troubleshooting', step: null, title: null },
   ]);
 });
+
+test('each container renders as its labelled part of a step card', () => {
+  const html = md.render(
+    [
+      '::: step',
+      '## 1. Get the starter project',
+      '::: do',
+      'Unzip it.',
+      ':::',
+      '::: paste Mission Control',
+      '```text',
+      'Say hello.',
+      '```',
+      ':::',
+      '::: see',
+      'The rail.',
+      ':::',
+      '::: must',
+      'A greeting.',
+      ':::',
+      '::: may',
+      'The wording.',
+      ':::',
+      '::: ifnot `asker` has no quay tools',
+      'Launch it again.',
+      ':::',
+      ':::',
+      '::: step',
+      '## 2. Check it worked',
+      '::: paste `asker`',
+      '```text',
+      'Say hello.',
+      '```',
+      ':::',
+      '::: done',
+      'Every test passes.',
+      ':::',
+      ':::',
+    ].join('\n'),
+    {},
+  );
+  const labels = [...html.matchAll(/<p class="step-card__label">(.*?)<\/p>/g)].map((match) => match[1]);
+  assert.deepEqual(labels, [
+    'Do',
+    'Paste into Mission Control',
+    'You should see',
+    'Must match',
+    'May differ',
+    'Paste into <code>asker</code>',
+    'You’re done when',
+  ]);
+  assert.match(html, /<details class="details custom-block step-card__ifnot"><summary>If not: <code>asker<\/code> has no quay tools<\/summary>\n<p>Launch it again.<\/p>\n<\/details>/);
+  assert.deepEqual(
+    [...html.matchAll(/<section class="([^"]*)">/g)].map((match) => match[1]),
+    ['step-card', 'step-card step-card--last'],
+  );
+  assert.match(html, /<div class="step-card__slot step-card__slot--paste"><p class="step-card__label">Paste into Mission Control<\/p>\n<div class="language-text/);
+});
