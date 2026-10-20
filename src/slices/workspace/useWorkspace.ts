@@ -24,6 +24,14 @@ interface PtyExitPayload {
   exit_code?: number | null;
 }
 
+/**
+ * Whether the terminal is Starting and goes Idle on its own output. Other agent kinds do;
+ * a Claude terminal waits for the event-bridge plugin instead.
+ */
+function leavesStartingOnOutput(t: TerminalInfo): boolean {
+  return t.run_kind !== "claude" && t.claude_status === "starting";
+}
+
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<string>("E:\\Projects\\Quay2");
@@ -274,7 +282,7 @@ export function useWorkspace() {
       const { terminal_id } = event.payload;
       setTerminals((prev) => {
         const target = prev.find((t) => t.id === terminal_id);
-        if (target && target.run_kind !== "claude" && target.claude_status === "starting") {
+        if (target && leavesStartingOnOutput(target)) {
           return prev.map((t) =>
             t.id === terminal_id ? { ...t, claude_status: "idle" } : t
           );
@@ -995,7 +1003,7 @@ export function useWorkspace() {
       setTimeout(() => {
         setTerminals((prev) =>
           prev.map((t) =>
-            t.id === newTerm.id && t.run_kind !== "claude" && t.claude_status === "starting"
+            t.id === newTerm.id && leavesStartingOnOutput(t)
               ? { ...t, claude_status: "idle" }
               : t
           )
