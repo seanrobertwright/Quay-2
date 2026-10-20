@@ -1,6 +1,16 @@
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import {
+  ExpectedStateError,
+  parseExpectedState,
+  type ExpectedState,
+  type FilesState,
+  type PatchState,
+  type ScriptState,
+  type TestsState,
+  type TypecheckState,
+} from "./expected-state.ts";
 
 /** One process the checker starts. `env` holds only the starter's own variables. */
 export type Command = { argv: string[]; cwd: string; env: Record<string, string> };
@@ -17,30 +27,6 @@ export type CheckOptions = {
 
 /** The starters checked, by slug, and every way one of them missed its expected state. */
 export type CheckReport = { starters: string[]; failures: string[] };
-
-type TestsState = { expect: "pass"; passed?: number; todo?: number } | { expect: "fail"; failed: number; total?: number };
-type TypecheckState = { expect: "pass" } | { expect: "fail"; lineStartsWith: string };
-/** How the check suite runs: an npm script, or Vitest with these arguments. */
-type CheckSuiteState = ({ script: string } | { vitest: string[] }) & TestsState;
-/** A named npm script and how it must end: its exit, text its output holds, files it leaves. */
-type ScriptState = {
-  name: string;
-  outputIncludes?: string[];
-  producesFiles?: string[];
-} & ({ expect: "pass" } | { expect: "fail"; exitCode?: number });
-/** Paths in the starter that must be there or not, and lines a file must not hold. */
-type FilesState = { present?: string[]; absent?: string[]; linesAbsent?: Record<string, string[]> };
-/** A patch the learner applies late in the tutorial, and exactly the tests it must break. */
-type PatchState = { file: string; failingTests: string[] };
-type ExpectedState = {
-  env?: Record<string, string>;
-  typecheck: TypecheckState;
-  tests: TestsState;
-  scripts?: ScriptState[];
-  checkSuite?: CheckSuiteState;
-  patch?: PatchState;
-  files?: FilesState;
-};
 
 const EXPECTED_STATE_FILE = "expected-state.json";
 
@@ -63,8 +49,16 @@ export function checkStarters(options: CheckOptions): CheckReport {
       failures.push(`${slug}: no ${EXPECTED_STATE_FILE} beside starter/; every starter needs an expected-state entry`);
       continue;
     }
-    states.set(slug, JSON.parse(readFileSync(stateFile, "utf8")) as ExpectedState);
+    try {
+      states.set(slug, readExpectedState(stateFile));
+    } catch (error) {
+      failures.push(`${slug}: ${EXPECTED_STATE_FILE}: ${(error as Error).message}`);
+    }
+    for (const failure of checkExactVersions(join(tutorialDir, "starter", "package.json"))) {
+      failures.push(`${slug}: ${failure}`);
+    }
   }
+  // Nothing runs until every starter's files are in order, so a bad entry fails in seconds.
   if (failures.length > 0) return { starters: slugs, failures };
 
   for (const [slug, state] of states) {
@@ -73,6 +67,36 @@ export function checkStarters(options: CheckOptions): CheckReport {
     }
   }
   return { starters: slugs, failures };
+}
+
+function readExpectedState(stateFile: string): ExpectedState {
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(stateFile, "utf8"));
+  } catch (error) {
+    throw new ExpectedStateError("", `not valid JSON (${(error as Error).message})`);
+  }
+  return parseExpectedState(json);
+}
+
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+// An exact semver version: no ^, ~, x, *, comparator, range, tag or URL.
+const EXACT_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/** Every dependency in the starter's package.json that names a range instead of one version. */
+function checkExactVersions(packageFile: string): string[] {
+  if (!existsSync(packageFile)) return ["starter/package.json is missing"];
+  const manifest = JSON.parse(readFileSync(packageFile, "utf8")) as Record<string, unknown>;
+  const failures: string[] = [];
+  for (const field of DEPENDENCY_FIELDS) {
+    const dependencies = (manifest[field] ?? {}) as Record<string, unknown>;
+    for (const [name, version] of Object.entries(dependencies)) {
+      if (typeof version !== "string" || !EXACT_VERSION.test(version)) {
+        failures.push(`package.json: ${field}.${name} is ${JSON.stringify(version)}; starters pin exact versions`);
+      }
+    }
+  }
+  return failures;
 }
 
 /** Runs one starter in a throwaway copy and returns how it missed its expected state. */

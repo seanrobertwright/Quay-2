@@ -374,3 +374,63 @@ test("Swarm 6: a closed hole, a missing .env.example, a shipped .env or a .env i
     "red-team-blue-team: check suite: expected 6 of 6 failing, got 5 of 6",
   ]);
 });
+
+test("a dependency on a range instead of an exact version fails the starter, before running anything", () => {
+  const dir = tutorials({
+    "first-swarm/starter/package.json": JSON.stringify({
+      dependencies: { hono: "4.12.1" },
+      devDependencies: { vitest: "^4.1.5", typescript: "~6.0.3", "@types/node": "24.12.0" },
+    }),
+    "first-swarm/expected-state.json": JSON.stringify({
+      typecheck: { expect: "pass" },
+      tests: { expect: "fail", failed: 5 },
+    }),
+  });
+  const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
+  assert.deepEqual(report.failures, [
+    'first-swarm: package.json: devDependencies.vitest is "^4.1.5"; starters pin exact versions',
+    'first-swarm: package.json: devDependencies.typescript is "~6.0.3"; starters pin exact versions',
+  ]);
+});
+
+test("a malformed expected state fails with a message naming the starter and the field, before running anything", () => {
+  const green = { typecheck: { expect: "pass" }, tests: { expect: "pass" } };
+  const cases: [unknown, string][] = [
+    [{ typecheck: { expect: "pass" }, tests: { expect: "fail" } }, 'tests.failed: required when tests.expect is "fail"'],
+    [{ typecheck: { expect: "pass" }, tests: { expect: "flaky" } }, 'tests.expect: must be "pass" or "fail", got "flaky"'],
+    [{ ...green, checksuite: {} }, "checksuite: unknown field"],
+    [{ ...green, tests: { expect: "pass", passd: 3 } }, "tests.passd: unknown field"],
+    [{ typecheck: { expect: "pass" }, tests: { expect: "fail", failed: "5" } }, 'tests.failed: must be a whole number, got "5"'],
+    [{ typecheck: { expect: "pass" }, tests: { expect: "fail", failed: 7, total: 6 } }, "tests.failed: 7 is more than tests.total 6"],
+    [{ tests: { expect: "pass" } }, "typecheck: required"],
+    [{ ...green, typecheck: { expect: "fail" } }, 'typecheck.lineStartsWith: required when typecheck.expect is "fail"'],
+    [[], "must be a JSON object"],
+    [{ ...green, env: { "BENCH-TIME": "500" } }, "env.BENCH-TIME: must be an environment variable name"],
+    [{ ...green, env: { BENCH_TIME_MS: 500 } }, "env.BENCH_TIME_MS: must be a string, got 500"],
+    [{ ...green, scripts: [{ name: "bench" }] }, 'scripts[0].expect: must be "pass" or "fail", got undefined'],
+    [{ ...green, scripts: [{ name: "bench", expect: "pass", exitCode: 0 }] }, 'scripts[0].exitCode: only allowed when scripts[0].expect is "fail"'],
+    [{ ...green, scripts: [{ name: "bench; rm -rf /", expect: "pass" }] }, 'scripts[0].name: must be an npm script name, got "bench; rm -rf /"'],
+    [{ ...green, files: { present: ["../secret"] } }, 'files.present[0]: must be a relative path inside the starter, got "../secret"'],
+    [
+      { ...green, checkSuite: { script: "check", vitest: ["run"], expect: "fail", failed: 1 } },
+      "checkSuite: give exactly one of script or vitest",
+    ],
+    [
+      { typecheck: { expect: "pass" }, tests: { expect: "fail", failed: 1 }, patch: { file: "a.patch", failingTests: ["x"] } },
+      'patch: needs tests.expect "pass"; the patch breaks a starter that ships green',
+    ],
+    [{ ...green, patch: { file: "a.patch", failingTests: [] } }, "patch.failingTests: must name at least one test"],
+  ];
+  for (const [state, message] of cases) {
+    const dir = oneStarter("tdd-relay", state);
+    const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
+    assert.deepEqual(report.failures, [`tdd-relay: expected-state.json: ${message}`], JSON.stringify(state));
+  }
+});
+
+test("an expected state that is not JSON fails naming the starter", () => {
+  const dir = tutorials({ "tdd-relay/starter/package.json": exactPackage, "tdd-relay/expected-state.json": "{ tests: " });
+  const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
+  assert.equal(report.failures.length, 1);
+  assert.match(report.failures[0], /^tdd-relay: expected-state\.json: not valid JSON/);
+});
