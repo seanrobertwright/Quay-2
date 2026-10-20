@@ -1,14 +1,21 @@
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
+import type { ConfigEnv } from 'vite';
+import { stepCards } from './step-cards.ts';
 
 // https://vitepress.dev/reference/site-config
-export default withMermaid(
+export default ({ command }: ConfigEnv) => withMermaid(
   defineConfig({
     title: "Quay 2",
     description: "Native Windows Autonomous Multi-Agent Workspace & Orchestrator",
     base: "/Quay-2/",
     cleanUrls: true,
     lastUpdated: true,
+    // The step-card example page renders under `docs:dev` only, never in the published site.
+    srcExclude: command === 'build' ? ['_examples/**'] : [],
+    markdown: {
+      config: stepCards,
+    },
     mermaid: {
       theme: 'dark',
     },

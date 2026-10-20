@@ -7,8 +7,30 @@ const SLOTS = ['do', 'paste', 'see', 'must', 'may', 'ifnot', 'done'] as const;
 type SlotName = (typeof SLOTS)[number];
 const CONTAINERS: readonly string[] = ['step', ...SLOTS];
 
+/** Each rule a tutorial page must follow, as the build reports it when broken. */
+export const STEP_CARD_RULES = {
+  'page-title': 'the title reads <Series> <n>: <Title>, for example "A2A 1: Hello, A2A"',
+  'first-step': 'step 1 is "Get the starter project"',
+  'no-troubleshooting': "there is no troubleshooting section; each fix is an If not in the step it belongs to",
+  'slot-in-step': 'slots sit directly inside a step, and steps do not nest',
+  'step-heading': 'each step opens with its numbered heading, "## <n>. <Title>"',
+  'slot-order': "a step's slots come once each, in the order Do, Paste, You should see, Must match, May differ, If not, You're done when; only If not may repeat",
+  'do-or-paste': 'every step has Do, Paste, or both',
+  'paste-target': 'Paste names the pane or Quay field it goes into, as in "::: paste Mission Control"',
+  'paste-one-prompt': 'Paste holds one copy-paste prompt: a single fenced code block of one line',
+  'see-required': 'You should see is required',
+  'must-may-pair': 'Must match and May differ come as both or neither',
+  'must-may-agent-output': 'Must match and May differ are required on any step with agent output, which is any step with Paste',
+  'ifnot-symptom': 'If not names the symptom it fixes, as in "::: ifnot asker says it has no quay tools"',
+  'done-required': "You're done when is required on the last step",
+  'done-last-only': "You're done when is on the last step only",
+} as const;
+
+export type StepCardRule = keyof typeof STEP_CARD_RULES;
+
 export interface StepCardViolation {
-  rule: string;
+  rule: StepCardRule;
+  /** The step's position on the page, or null when the rule is about the page. */
   step: number | null;
   title: string | null;
 }
@@ -52,13 +74,13 @@ const containerRule: BlockRule = (state, startLine, endLine, silent) => {
   state.parentType = 'container' as typeof state.parentType;
   state.lineMax = nextLine;
 
-  const open = state.push(`container_${opener[2]}_open`, 'div', 1);
+  const open = state.push(`step_card_${opener[2]}_open`, 'div', 1);
   open.markup = opener[1];
   open.block = true;
   open.info = opener[3] ?? '';
   open.map = [startLine, nextLine];
   state.md.block.tokenize(state, startLine + 1, nextLine);
-  const close = state.push(`container_${opener[2]}_close`, 'div', -1);
+  const close = state.push(`step_card_${opener[2]}_close`, 'div', -1);
   close.markup = opener[1];
   close.block = true;
 
@@ -108,7 +130,7 @@ function readPage(tokens: Token[]): Page {
   let slot: Slot | null = null;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    const opened = /^container_([a-z]+)_open$/.exec(token.type)?.[1];
+    const opened = /^step_card_([a-z]+)_open$/.exec(token.type)?.[1];
     if (!step) {
       if (opened === 'step') {
         const heading = tokens[i + 1].tag === 'h2' && tokens[i + 1].nesting === 1 ? tokens[i + 2].content : null;
@@ -119,7 +141,7 @@ function readPage(tokens: Token[]): Page {
       } else if (opened) {
         page.misplaced++;
       }
-    } else if (token.type === 'container_step_close' && token.level === stepLevel) {
+    } else if (token.type === 'step_card_step_close' && token.level === stepLevel) {
       step = null;
     } else if (token.level === stepLevel + 1) {
       if (opened === 'step') {
@@ -127,7 +149,7 @@ function readPage(tokens: Token[]): Page {
       } else if (opened) {
         slot = { name: opened as SlotName, info: token.info, children: [] };
         step.slots.push(slot);
-      } else if (/^container_[a-z]+_close$/.test(token.type)) {
+      } else if (/^step_card_[a-z]+_close$/.test(token.type)) {
         slot = null;
       }
     } else if (opened) {
@@ -155,7 +177,7 @@ export function checkStepCards(tokens: Token[]): StepCardViolation[] {
   for (let i = 0; i < misplaced; i++) violations.push({ rule: 'slot-in-step', step: null, title: null });
   for (const step of steps) {
     const has = (name: SlotName) => step.slots.some((slot) => slot.name === name);
-    const broke = (rule: string) => violations.push({ rule, step: step.number, title: step.title });
+    const broke = (rule: StepCardRule) => violations.push({ rule, step: step.number, title: step.title });
     const last = step.number === steps.length;
     if (!new RegExp(`^${step.number}\\.\\s+\\S`).test(step.heading ?? '')) broke('step-heading');
     for (let i = 0; i < step.misplaced; i++) broke('slot-in-step');
@@ -181,4 +203,29 @@ export function checkStepCards(tokens: Token[]): StepCardViolation[] {
     if (!last && has('done')) broke('done-last-only');
   }
   return violations;
+}
+
+export function formatStepCardViolations(file: string, violations: StepCardViolation[]): string {
+  const lines = violations.map(({ rule, step, title }) => {
+    const where = step === null ? 'page' : title === null ? `step ${step}` : `step ${step} "${title}"`;
+    return `  ${where}: ${STEP_CARD_RULES[rule]} (${rule})`;
+  });
+  return `${file} breaks the step-card rules:\n${lines.join('\n')}`;
+}
+
+/**
+ * Registers the step-card containers and the slot check. A page that uses any of the containers
+ * is checked as a tutorial page, and one that breaks a rule fails to render, which fails
+ * `docs:build`. Pages that use none of them render as before.
+ */
+export function stepCards(md: MarkdownRenderer): void {
+  registerStepCardContainers(md);
+  md.core.ruler.push('step_card_check', (state) => {
+    if (!state.tokens.some((token) => token.type.startsWith('step_card_'))) return;
+    const violations = checkStepCards(state.tokens);
+    if (violations.length > 0) {
+      const env = state.env as { relativePath?: string; path?: string };
+      throw new Error(formatStepCardViolations(env.relativePath ?? env.path ?? 'A page', violations));
+    }
+  });
 }
