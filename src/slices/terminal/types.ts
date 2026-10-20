@@ -55,6 +55,7 @@ export interface TerminalInfo {
   /** Extra CLI flags the terminal was launched with; reused on relaunch. */
   custom_flags?: string | null;
   command_text?: string | null;
+  created_at?: number;
 }
 
 /**

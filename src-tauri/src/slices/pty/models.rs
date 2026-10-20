@@ -97,6 +97,8 @@ pub struct TerminalInfo {
     /// Command line for `Command` terminals; reused on relaunch.
     #[serde(default)]
     pub command_text: Option<String>,
+    #[serde(default)]
+    pub created_at: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,4 +143,6 @@ pub struct PersistedTerminalSession {
     pub custom_flags: Option<String>,
     #[serde(default)]
     pub last_updated: u64,
+    #[serde(default)]
+    pub created_at: u64,
 }
