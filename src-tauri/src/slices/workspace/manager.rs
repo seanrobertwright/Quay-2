@@ -22,17 +22,21 @@ pub struct PersistedProject {
     pub default_flags: Option<String>,
 }
 
-fn get_storage_path() -> PathBuf {
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let dir = Path::new(&local_app_data).join("Quay2");
-        let _ = std::fs::create_dir_all(&dir);
-        dir.join("workspaces.json")
+/// The directory Quay keeps its JSON files in: `%LOCALAPPDATA%\Quay2`, or
+/// `%USERPROFILE%\.quay2` when `LOCALAPPDATA` is unset.
+pub fn storage_dir() -> PathBuf {
+    let dir = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        Path::new(&local_app_data).join("Quay2")
     } else {
         let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-        let dir = Path::new(&home).join(".quay2");
-        let _ = std::fs::create_dir_all(&dir);
-        dir.join("workspaces.json")
-    }
+        Path::new(&home).join(".quay2")
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn get_storage_path() -> PathBuf {
+    storage_dir().join("workspaces.json")
 }
 
 #[derive(Clone)]
