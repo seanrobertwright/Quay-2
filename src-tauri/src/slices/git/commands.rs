@@ -230,8 +230,9 @@ pub async fn create_git_worktree(
 
 /// Runs the uncommitted-changes check `git worktree remove` makes, without `--force`,
 /// before it deletes anything: `git status --porcelain --ignore-submodules=none`.
-/// Returns git's refusal followed by up to `MAX_STATUS_LINES` status lines when there are modified or
-/// untracked files, `None` when the worktree is clean, and `Err` when git status fails.
+/// Returns the refusal `git worktree remove` would print, in git's wording, followed by up to
+/// `MAX_STATUS_LINES` status lines when there are modified or untracked files, `None` when the
+/// worktree is clean, and `Err` when git status fails.
 pub fn uncommitted_changes(worktree_path: &str) -> Result<Option<String>, String> {
     let mut cmd = create_git_command(worktree_path);
     cmd.args(["status", "--porcelain", "--ignore-submodules=none"]);

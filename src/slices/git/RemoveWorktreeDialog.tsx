@@ -4,7 +4,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 export interface WorktreeRemovalPrompt {
   repoPath: string;
   worktreePath: string;
-  /** Git's error, shown verbatim. */
+  /** Git's error, or the uncommitted-changes refusal in git's wording, shown as is. */
   message: string;
 }
 
@@ -86,8 +86,9 @@ export const RemoveWorktreeDialog: React.FC<RemoveWorktreeDialogProps> = ({
             {prompt.message}
           </pre>
           <p className="text-xs text-[#8b949e]">
-            Remove anyway runs <code className="font-mono">git worktree remove --force</code>, which
-            discards the worktree's uncommitted changes and closes its terminals.
+            Remove anyway closes the worktree's terminals and runs{" "}
+            <code className="font-mono">git worktree remove --force</code>, which discards its
+            uncommitted changes.
           </p>
           {error && (
             <pre
