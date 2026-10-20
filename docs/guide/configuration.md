@@ -19,16 +19,17 @@ All machine-local state and caches are stored in standard Windows AppData locati
 
 ## Environment Variables
 
-Quay 2 injects several environment variables into every spawned terminal session to enable telemetry and A2A routing:
+Quay 2 injects these environment variables into Claude Code terminals to enable telemetry and tool approvals:
 
-| Variable | Injected By Quay | Description |
-| :--- | :--- | :--- |
-| `CLAUDE_EVENTS_URL` | Yes | HTTP loopback URL for event ingestion (`http://127.0.0.1:<port>/v1/events`) |
-| `CLAUDE_EVENTS_TOKEN` | Yes | Cryptographically random Bearer authorization token for loopback security |
-| `CLAUDE_EVENTS_TAG` | Yes | Unique terminal identifier (`term-<uuid>`) |
-| `ANTHROPIC_MODEL` | Optional | Forced model override when launched via the model picker (e.g. `claude-opus-5-5`) |
-| `QUAY_TERMINAL_ID` | Yes | Internal terminal identifier for A2A bus addressing |
-| `QUAY_BRIDGE_PORT` | Yes | Active port of the embedded Axum HTTP bridge |
+| Variable | Description |
+| :--- | :--- |
+| `CLAUDE_EVENTS_URL` | Bridge address on loopback (`http://127.0.0.1:<port>`) |
+| `CLAUDE_EVENTS_TOKEN` | Bearer token the bridge checks on incoming requests |
+| `CLAUDE_EVENTS_TAG` | The terminal id, so events reach the right terminal |
+| `CLAUDE_EVENTS_TOOLS` | `full` |
+| `CLAUDE_EVENTS_PERMISSIONS` | `host` routes tool approvals to Quay; `off` when "Skip Permissions" is enabled |
+
+Quay 2 also reads `QUAY_BRIDGE_PORT` from its own environment at startup to pin the bridge port. See [Quay Startup Environment Variables](../reference/cli-flags.md#quay-startup-environment-variables).
 
 ---
 
