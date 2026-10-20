@@ -12,6 +12,22 @@ export default withMermaid(
     mermaid: {
       theme: 'dark',
     },
+    // vitepress-plugin-mermaid pre-bundles mermaid's CommonJS deps by bare name, which pnpm
+    // doesn't hoist, so `docs:dev` served them raw and every page rendered blank. Resolve them
+    // through mermaid instead. The cytoscape plugins and dayjs duration load only for mindmap,
+    // architecture and gantt diagrams.
+    vite: {
+      optimizeDeps: {
+        include: [
+          'mermaid > dayjs',
+          'mermaid > dayjs/plugin/duration.js',
+          'mermaid > @braintree/sanitize-url',
+          'mermaid > elkjs/lib/elk.bundled.js',
+          'mermaid > cytoscape-cose-bilkent',
+          'mermaid > cytoscape-fcose',
+        ],
+      },
+    },
 
   head: [
     ['link', { rel: 'icon', href: '/Quay-2/logo.svg' }],
