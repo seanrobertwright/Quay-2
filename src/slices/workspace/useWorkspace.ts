@@ -1049,7 +1049,7 @@ export function useWorkspace() {
   };
 
 
-  // Keyboard shortcut listener (Ctrl+K, and ^b followed by n % " ' g s d w i a h t $ r f u o z x 1..9)
+  // Keyboard shortcut listener: Ctrl+K, and the ^b prefix chords handled by the branches below
   useEffect(() => {
     let ctrlBActive = false;
     let ctrlBTimer: any = null;
