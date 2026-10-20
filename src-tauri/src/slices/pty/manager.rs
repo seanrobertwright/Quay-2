@@ -15,6 +15,19 @@ use super::session::PtySession;
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
+static LAST_CREATED_AT: Mutex<u64> = Mutex::new(0);
+
+pub fn next_created_at() -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut last = LAST_CREATED_AT.lock();
+    let next = if now > *last { now } else { *last + 1 };
+    *last = next;
+    next
+}
+
 fn get_sessions_dir() -> PathBuf {
     #[cfg(test)]
     {
@@ -80,9 +93,24 @@ impl PtyManager {
                 let mut info_map = self.terminals_info.lock();
                 let mut dormant_map = self.dormant_buffers.lock();
 
-                for item in list {
+                for (idx, item) in list.into_iter().enumerate() {
                     let (scrollback, seq) = read_saved_scrollback(&item.id);
                     dormant_map.insert(item.id.clone(), (scrollback, seq));
+
+                    let created_at = if item.created_at > 0 {
+                        item.created_at
+                    } else if item.last_updated > 0 {
+                        item.last_updated + idx as u64
+                    } else {
+                        next_created_at()
+                    };
+
+                    {
+                        let mut last = LAST_CREATED_AT.lock();
+                        if created_at > *last {
+                            *last = created_at;
+                        }
+                    }
 
                     let info = TerminalInfo {
                         id: item.id.clone(),
@@ -99,6 +127,7 @@ impl PtyManager {
                         custom_name: item.custom_name,
                         custom_flags: item.custom_flags,
                         command_text: item.command_text,
+                        created_at,
                     };
                     info_map.insert(item.id, info);
                 }
@@ -113,7 +142,7 @@ impl PtyManager {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let list: Vec<PersistedTerminalSession> = info_map
+        let mut list: Vec<PersistedTerminalSession> = info_map
             .values()
             .map(|info| PersistedTerminalSession {
                 id: info.id.clone(),
@@ -127,8 +156,11 @@ impl PtyManager {
                 command_text: info.command_text.clone(),
                 custom_flags: info.custom_flags.clone(),
                 last_updated: now,
+                created_at: info.created_at,
             })
             .collect();
+
+        list.sort_by_key(|s| s.created_at);
 
         let meta_path = get_sessions_dir().join("sessions.json");
         if let Ok(json) = serde_json::to_string_pretty(&list) {
@@ -156,6 +188,8 @@ impl PtyManager {
             app_handle,
         )?;
 
+        let created_at = next_created_at();
+
         let info = TerminalInfo {
             id: terminal_id.clone(),
             name: session.name.clone(),
@@ -175,6 +209,7 @@ impl PtyManager {
             custom_name: request.name.is_some(),
             custom_flags: request.custom_flags.clone(),
             command_text: request.command_text.clone(),
+            created_at,
         };
 
         self.dormant_buffers.lock().remove(&terminal_id);
@@ -347,7 +382,9 @@ impl PtyManager {
     }
 
     pub fn list(&self) -> Vec<TerminalInfo> {
-        self.terminals_info.lock().values().cloned().collect()
+        let mut list: Vec<TerminalInfo> = self.terminals_info.lock().values().cloned().collect();
+        list.sort_by_key(|t| t.created_at);
+        list
     }
 
     pub fn get_info(&self, terminal_id: &str) -> Option<TerminalInfo> {
@@ -446,6 +483,7 @@ mod tests {
             custom_name: false,
             custom_flags: None,
             command_text: None,
+            created_at: 1000,
         };
 
         manager.terminals_info.lock().insert(term_id.clone(), initial_info);
@@ -476,5 +514,45 @@ mod tests {
         let info = manager.get_info(&term_id).unwrap();
         assert_eq!(info.name, "My Custom Agent");
         assert_eq!(info.task_title.as_deref(), Some("Refactor database models"));
+    }
+
+    #[test]
+    fn test_pty_manager_list_preserves_creation_order() {
+        let manager = PtyManager::new();
+        manager.terminals_info.lock().clear();
+        let ids_and_times = vec![
+            ("term-third", 3000),
+            ("term-first", 1000),
+            ("term-fourth", 4000),
+            ("term-second", 2000),
+        ];
+
+        for (id, created_at) in ids_and_times {
+            let info = TerminalInfo {
+                id: id.to_string(),
+                name: id.to_string(),
+                project_path: "E:\\Projects\\Test".to_string(),
+                run_kind: RunKind::Claude,
+                permission_mode: PermissionMode::Normal,
+                live_mode: PermissionMode::Normal,
+                claude_status: ClaudeStatus::Starting,
+                auto_approved_count: 0,
+                exit_code: None,
+                task_title: None,
+                current_tool: None,
+                custom_name: false,
+                custom_flags: None,
+                command_text: None,
+                created_at,
+            };
+            manager.terminals_info.lock().insert(id.to_string(), info);
+        }
+
+        let listed = manager.list();
+        let listed_ids: Vec<&str> = listed.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(
+            listed_ids,
+            vec!["term-first", "term-second", "term-third", "term-fourth"]
+        );
     }
 }
