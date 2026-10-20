@@ -24,6 +24,7 @@ pnpm tauri dev
 # 3. Run documentation locally
 pnpm docs:dev
 
-# 4. Build documentation site
+# 4. Test the starter packing script, then build the documentation site
+pnpm docs:test
 pnpm docs:build
 ```
