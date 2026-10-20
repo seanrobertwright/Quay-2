@@ -5,25 +5,47 @@ type BlockRule = Parameters<MarkdownRenderer['block']['ruler']['before']>[2];
 
 const SLOTS = ['do', 'paste', 'see', 'must', 'may', 'ifnot', 'done'] as const;
 type SlotName = (typeof SLOTS)[number];
-const CONTAINERS: readonly string[] = ['step', ...SLOTS];
+const CONTAINERS = ['step', ...SLOTS] as const;
+type ContainerName = (typeof CONTAINERS)[number];
+
+/** Each slot's name as the page and the build's messages show it. */
+const LABELS: Record<SlotName, string> = {
+  do: 'Do',
+  paste: 'Paste',
+  see: 'You should see',
+  must: 'Must match',
+  may: 'May differ',
+  ifnot: 'If not',
+  done: 'You’re done when',
+};
+
+// Each container's tokens are `step_card_<name>_open` and `step_card_<name>_close`, so a VitePress
+// `::: tip` inside a step is never mistaken for a slot. These two are the only places that know it.
+function containerTokenType(name: ContainerName, edge: 'open' | 'close'): string {
+  return `step_card_${name}_${edge}`;
+}
+
+const CONTAINER_TOKENS = new Map(
+  CONTAINERS.flatMap((name) => (['open', 'close'] as const).map((edge) => [containerTokenType(name, edge), { name, edge }] as const)),
+);
 
 /** Each rule a tutorial page must follow, as the build reports it when broken. */
 export const STEP_CARD_RULES = {
   'page-title': 'the title reads <Series> <n>: <Title>, for example "A2A 1: Hello, A2A"',
   'first-step': 'step 1 is "Get the starter project"',
-  'no-troubleshooting': "there is no troubleshooting section; each fix is an If not in the step it belongs to",
+  'no-troubleshooting': `there is no troubleshooting section; each fix is an ${LABELS.ifnot} in the step it belongs to`,
   'slot-in-step': 'slots sit directly inside a step, and steps do not nest',
   'step-heading': 'each step opens with its numbered heading, "## <n>. <Title>"',
-  'slot-order': "a step's slots come once each, in the order Do, Paste, You should see, Must match, May differ, If not, You're done when; only If not may repeat",
-  'do-or-paste': 'every step has Do, Paste, or both',
-  'paste-target': 'Paste names the pane or Quay field it goes into, as in "::: paste Mission Control"',
-  'paste-one-prompt': 'Paste holds one copy-paste prompt: a single fenced code block of one line',
-  'see-required': 'You should see is required',
-  'must-may-pair': 'Must match and May differ come as both or neither',
-  'must-may-agent-output': 'Must match and May differ are required on any step with agent output, which is any step with Paste',
-  'ifnot-symptom': 'If not names the symptom it fixes, as in "::: ifnot asker says it has no quay tools"',
-  'done-required': "You're done when is required on the last step",
-  'done-last-only': "You're done when is on the last step only",
+  'slot-order': `a step's slots come once each, in the order ${SLOTS.map((slot) => LABELS[slot]).join(', ')}; only ${LABELS.ifnot} may repeat`,
+  'do-or-paste': `every step has ${LABELS.do}, ${LABELS.paste}, or both`,
+  'paste-target': `${LABELS.paste} names the pane or Quay field it goes into, as in "::: paste Mission Control"`,
+  'paste-one-prompt': `${LABELS.paste} holds one copy-paste prompt: a single fenced code block of one line`,
+  'see-required': `${LABELS.see} is required`,
+  'must-may-pair': `${LABELS.must} and ${LABELS.may} come as both or neither`,
+  'must-may-agent-output': `${LABELS.must} and ${LABELS.may} are required on any step with agent output, which is any step with ${LABELS.paste}`,
+  'ifnot-symptom': `${LABELS.ifnot} names the symptom it fixes, as in "::: ifnot asker says it has no quay tools"`,
+  'done-required': `${LABELS.done} is required on the last step`,
+  'done-last-only': `${LABELS.done} is on the last step only`,
 } as const;
 
 export type StepCardRule = keyof typeof STEP_CARD_RULES;
@@ -41,7 +63,8 @@ export interface StepCardViolation {
 const containerRule: BlockRule = (state, startLine, endLine, silent) => {
   if (state.sCount[startLine] - state.blkIndent >= 4) return false;
   const opener = /^(:{3,})\s*([a-z]+)(?:\s+(.*?))?\s*$/.exec(lineText(state, startLine));
-  if (!opener || !CONTAINERS.includes(opener[2])) return false;
+  const name = CONTAINERS.find((container) => container === opener?.[2]);
+  if (!opener || !name) return false;
   if (silent) return true;
 
   let depth = 1;
@@ -74,13 +97,13 @@ const containerRule: BlockRule = (state, startLine, endLine, silent) => {
   state.parentType = 'container' as typeof state.parentType;
   state.lineMax = nextLine;
 
-  const open = state.push(`step_card_${opener[2]}_open`, 'div', 1);
+  const open = state.push(containerTokenType(name, 'open'), 'div', 1);
   open.markup = opener[1];
   open.block = true;
   open.info = opener[3] ?? '';
   open.map = [startLine, nextLine];
   state.md.block.tokenize(state, startLine + 1, nextLine);
-  const close = state.push(`step_card_${opener[2]}_close`, 'div', -1);
+  const close = state.push(containerTokenType(name, 'close'), 'div', -1);
   close.markup = opener[1];
   close.block = true;
 
@@ -94,40 +117,31 @@ function lineText(state: Parameters<BlockRule>[0], line: number): string {
   return state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
 }
 
-const LABELS: Record<Exclude<SlotName, 'ifnot'>, string> = {
-  do: 'Do',
-  paste: 'Paste into',
-  see: 'You should see',
-  must: 'Must match',
-  may: 'May differ',
-  done: 'You’re done when',
-};
-
 export function registerStepCardContainers(md: MarkdownRenderer): void {
   md.block.ruler.before('fence', 'step_card_containers', containerRule, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],
   });
   const rules = md.renderer.rules;
 
-  rules.step_card_step_open = (tokens, idx) => {
-    const later = tokens.slice(idx + 1).some((token) => token.type === 'step_card_step_open' && token.level === tokens[idx].level);
+  rules[containerTokenType('step', 'open')] = (tokens, idx) => {
+    const later = tokens.slice(idx + 1).some((token) => token.type === containerTokenType('step', 'open') && token.level === tokens[idx].level);
     return `<section class="step-card${later ? '' : ' step-card--last'}">\n`;
   };
-  rules.step_card_step_close = () => '</section>\n';
+  rules[containerTokenType('step', 'close')] = () => '</section>\n';
 
   for (const slot of SLOTS) {
     if (slot === 'ifnot') continue;
-    rules[`step_card_${slot}_open`] = (tokens, idx) => {
+    rules[containerTokenType(slot, 'open')] = (tokens, idx) => {
       const info = tokens[idx].info;
-      const label = slot === 'paste' && info !== '' ? `${LABELS.paste} ${md.renderInline(info)}` : LABELS[slot];
+      const label = slot === 'paste' && info !== '' ? `${LABELS.paste} into ${md.renderInline(info)}` : LABELS[slot];
       return `<div class="step-card__slot step-card__slot--${slot}"><p class="step-card__label">${label}</p>\n`;
     };
-    rules[`step_card_${slot}_close`] = () => '</div>\n';
+    rules[containerTokenType(slot, 'close')] = () => '</div>\n';
   }
 
-  rules.step_card_ifnot_open = (tokens, idx) =>
-    `<details class="details custom-block step-card__ifnot"><summary>If not: ${md.renderInline(tokens[idx].info)}</summary>\n`;
-  rules.step_card_ifnot_close = () => '</details>\n';
+  rules[containerTokenType('ifnot', 'open')] = (tokens, idx) =>
+    `<details class="details custom-block step-card__ifnot"><summary>${LABELS.ifnot}: ${md.renderInline(tokens[idx].info)}</summary>\n`;
+  rules[containerTokenType('ifnot', 'close')] = () => '</details>\n';
 }
 
 interface Slot {
@@ -160,7 +174,8 @@ function readPage(tokens: Token[]): Page {
   let slot: Slot | null = null;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    const opened = /^step_card_([a-z]+)_open$/.exec(token.type)?.[1];
+    const container = CONTAINER_TOKENS.get(token.type);
+    const opened = container?.edge === 'open' ? container.name : undefined;
     if (!step) {
       if (opened === 'step') {
         const heading = tokens[i + 1].tag === 'h2' && tokens[i + 1].nesting === 1 ? tokens[i + 2].content : null;
@@ -171,15 +186,15 @@ function readPage(tokens: Token[]): Page {
       } else if (opened) {
         page.misplaced++;
       }
-    } else if (token.type === 'step_card_step_close' && token.level === stepLevel) {
+    } else if (container?.name === 'step' && container.edge === 'close' && token.level === stepLevel) {
       step = null;
     } else if (token.level === stepLevel + 1) {
       if (opened === 'step') {
         step.misplaced++;
       } else if (opened) {
-        slot = { name: opened as SlotName, info: token.info, children: [] };
+        slot = { name: opened, info: token.info, children: [] };
         step.slots.push(slot);
-      } else if (/^step_card_[a-z]+_close$/.test(token.type)) {
+      } else if (container?.edge === 'close') {
         slot = null;
       }
     } else if (opened) {
@@ -251,7 +266,7 @@ export function formatStepCardViolations(file: string, violations: StepCardViola
 export function stepCards(md: MarkdownRenderer): void {
   registerStepCardContainers(md);
   md.core.ruler.push('step_card_check', (state) => {
-    if (!state.tokens.some((token) => token.type.startsWith('step_card_'))) return;
+    if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
     const violations = checkStepCards(state.tokens);
     if (violations.length > 0) {
       const env = state.env as { relativePath?: string; path?: string };
