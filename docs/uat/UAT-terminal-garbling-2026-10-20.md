@@ -72,48 +72,27 @@ a jumpy cursor.
 
 ### Tool 1 — PROBE (xterm size versus pane size)
 
-This reads, for every visible pane, how many columns and rows xterm is drawing and how many would fit.
-It changes nothing.
-
-1. Click an empty part of the left sidebar, then press `F12` (or right-click the sidebar and choose
-   **Inspect**). Open the **Console** tab.
-2. Paste the snippet below and press Enter. If the console refuses to paste, type `allow pasting`,
-   press Enter, and paste again.
-3. A table prints. The last line is a text version of it, so copy that line into Notes.
-4. To run it again later, click in the console, press the up arrow, then Enter.
-
-```js
-(() => { const out = []; document.querySelectorAll('.xterm').forEach((x) => { const host = x.parentElement; const cs = getComputedStyle(host); const w = parseInt(cs.width), h = parseInt(cs.height); if (!w) return; const scr = x.querySelector('.xterm-screen').getBoundingClientRect(); const m = x.querySelector('.xterm-char-measure-element'); const dpr = devicePixelRatio; const devCell = m ? Math.floor((m.getBoundingClientRect().width / 32) * dpr) : NaN; const cols = Math.round((scr.width * dpr) / devCell); const rows = x.querySelectorAll('.xterm-rows > div').length; const cellW = scr.width / cols, cellH = scr.height / rows; const pane = host.parentElement.parentElement; const label = pane.querySelector('select')?.selectedOptions[0]?.text || pane.querySelector('.h-7 .font-medium')?.textContent || 'single pane'; const fitCols = Math.floor((w - 14) / cellW), fitRows = Math.floor(h / cellH); out.push({ pane: label, cols, rows, fitCols, fitRows, ok: cols === fitCols && rows === fitRows, gapRightPx: Math.round(w - scr.width), gapBottomPx: Math.round(h - scr.height), cellW: +cellW.toFixed(2), dpr }); }); console.table(out); return JSON.stringify(out); })()
-```
+PROBE is a snippet you paste into Quay's DevTools console. For every visible pane it reads how many
+columns and rows xterm is drawing and how many would fit, and changes nothing. **Test 1.5 sets it up
+step by step.** After that, each test that needs it says how to run it again: open the **Console**
+and press the up arrow to bring the snippet back.
 
 `ok: true` means xterm fills its pane. `ok: false` means xterm itself is the wrong size, which is the
 "terminal smaller than its window" symptom (**G5**) at the xterm level.
 
 ### Tool 2 — RULER (what size the program thinks it is), PowerShell terminals only
 
-Type this into a **PowerShell Console** terminal inside Quay:
-
-```powershell
-$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width
-```
-
-The `#` line should reach exactly to the right edge on **one** line. If it stops short, the program
+A one-line PowerShell command; every test that uses it gives the command in full. It prints the size
+the program inside the pane has been told, then a line of `#` exactly that wide. The `#` line should reach exactly to the right edge on **one** line. If it stops short, the program
 thinks the terminal is narrower than it is (**G5**). If it wraps onto a second line, the program thinks
 it is wider (**G6**). Write the `PTY says` numbers in Notes next to PROBE's `cols` and `rows`.
 
 ### Tool 3 — output generators, PowerShell terminals only
 
-- **STREAM**: about six seconds of steady output, many small pieces:
+- **STREAM**: about six seconds of steady output in many small pieces.
+- **BIG**: more than 256 KB of coloured output, larger than Quay's replay buffer.
 
-  ```powershell
-  1..400 | ForEach-Object { "line $_ " + ('=' * 60); Start-Sleep -Milliseconds 15 }
-  ```
-
-- **BIG**: more than 256 KB of coloured output, larger than Quay's replay buffer:
-
-  ```powershell
-  $e = [char]27; 1..6000 | ForEach-Object { "$e[3$($_ % 7 + 1)mrow $_ $e[0m" + ('x' * 50) }
-  ```
+The tests that use them give the command in full.
 
 ### Claude Code configurations A to D
 
@@ -132,7 +111,8 @@ may stay on its first state. That is expected and is not a failure.
 
 ### Starting a terminal (used by every test)
 
-"Start **X** labelled `name`" means: make sure project **uat-p** is selected in the left sidebar, then
+Every terminal in this checklist goes in project **quay-uat-p**, and each test says so. "Start **X**
+labelled `name`" means: click **quay-uat-p** in the left sidebar so it is selected, then
 click **New Terminal** in the top bar, click the **X** tile (**Claude**, **Antigravity**, **Codex**,
 **OpenCode**, **Kiro**, **Copilot** or **PowerShell Console**), fill in **Custom CLI Arguments
 (Optional)** if a config says so, type `name` into **Terminal Label (Optional)**, and click
@@ -143,8 +123,8 @@ An agent is **ready** when its input box is showing and the screen has stopped c
 
 ### The resize recipe (R)
 
-Several tests say "run R on terminal X". Do every step with a three-second wait after it, and check that
-X is clean after each wait:
+Several tests run this recipe on one terminal; each of them lists the steps in full. For reference,
+with a three-second wait and a check after every step:
 
 1. **R1**: click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane
    headers, put X in the left pane and `ps-1` in the right pane.
@@ -240,7 +220,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Trust dialogs and sign-in screens must not appear in the middle of a later test.
 - **Before you start:** 1.3 passed.
 - **Steps:**
-  1. Start **Claude** labelled `warmup-claude`. Answer any "trust this folder" prompt. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `warmup-claude`. Answer any "trust this folder" prompt. Wait until ready.
   2. Do the same for **Antigravity** (`warmup-agy`), **Codex** (`warmup-codex`) and your OpenCode, Kiro or
      Copilot (`warmup-x`).
   3. Close all four terminals with the **X** (**Close terminal**) on each rail row.
@@ -263,8 +243,20 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
   cell size.
 - **Before you start:** 1.4 passed. The Quay window is at its normal (not maximised) size.
 - **Steps:**
-  1. Start **PowerShell Console** labelled `ps-1`. Leave the layout as a single pane.
-  2. Run PROBE (Tool 1).
+  1. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `ps-1`. Leave the layout as a single pane.
+  2. Open DevTools: click an empty part of the left rail, then press `F12` (or right-click the rail
+     and choose **Inspect**). Click the **Console** tab.
+  3. Click in the console, paste the PROBE snippet below, and press Enter. If the console refuses
+     to paste, type `allow pasting`, press Enter, and paste again.
+  4. A table prints, followed by one line of text that holds the same numbers. That last line is the
+     one to copy.
+  5. Leave DevTools open if you like; if you close it, `F12` brings it back with the snippet still in
+     its history (press the up arrow in the console).
+
+  ```js
+  (() => { const out = []; document.querySelectorAll('.xterm').forEach((x) => { const host = x.parentElement; const cs = getComputedStyle(host); const w = parseInt(cs.width), h = parseInt(cs.height); if (!w) return; const scr = x.querySelector('.xterm-screen').getBoundingClientRect(); const m = x.querySelector('.xterm-char-measure-element'); const dpr = devicePixelRatio; const devCell = m ? Math.floor((m.getBoundingClientRect().width / 32) * dpr) : NaN; const cols = Math.round((scr.width * dpr) / devCell); const rows = x.querySelectorAll('.xterm-rows > div').length; const cellW = scr.width / cols, cellH = scr.height / rows; const pane = host.parentElement.parentElement; const label = pane.querySelector('select')?.selectedOptions[0]?.text || pane.querySelector('.h-7 .font-medium')?.textContent || 'single pane'; const fitCols = Math.floor((w - 14) / cellW), fitRows = Math.floor(h / cellH); out.push({ pane: label, cols, rows, fitCols, fitRows, ok: cols === fitCols && rows === fitRows, gapRightPx: Math.round(w - scr.width), gapBottomPx: Math.round(h - scr.height), cellW: +cellW.toFixed(2), dpr }); }); console.table(out); return JSON.stringify(out); })()
+  ```
+
 - **PASS looks like:** One row, with `ok: true`. **Copy the line into Notes even on Pass**, because its
   `cellW` and `dpr` are the baseline for Sections 8 and 10.
 - **If it does not work:** If `ok` is `false`, paste the line. The rest of the checklist is still worth
@@ -284,9 +276,9 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Confirm the program inside the pane is told the same size xterm draws.
 - **Before you start:** 1.5 done; `ps-1` is showing.
 - **Steps:**
-  1. Run RULER (Tool 2) in `ps-1`.
-- **PASS looks like:** `PTY says` shows the same columns and rows as PROBE's `cols` and `rows`, and
-  the `#` line exactly fills one line.
+  1. Click inside `ps-1`, run RULER: type `$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width` and press Enter.
+- **PASS looks like:** `PTY says` shows the same columns and rows as the `cols` and `rows` PROBE printed
+  in test 1.5, and the `#` line exactly fills one line.
 - **If it does not work:** Write both pairs of numbers in Notes, and say whether the `#` line stopped
   short or wrapped.
 
@@ -307,8 +299,8 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** A relaunched terminal shows its new output at once, even when the old run printed a lot.
 - **Before you start:** Section 1 done. Single pane layout.
 - **Steps:**
-  1. Start **PowerShell Console** labelled `relaunch-busy`.
-  2. Run STREAM (Tool 3) and wait until `line 400` appears.
+  1. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `relaunch-busy`.
+  2. Run STREAM: type `1..400 | ForEach-Object { "line $_ " + ('=' * 60); Start-Sleep -Milliseconds 15 }` and press Enter. Wait until `line 400` appears.
   3. Type `exit` and press Enter. A **Session Inactive** ribbon appears at the top of the pane.
   4. Click **Relaunch Agent** on the ribbon, then wait 5 seconds.
   5. Type `echo relaunched` and press Enter.
@@ -332,7 +324,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** The same check when the first run printed almost nothing.
 - **Before you start:** 2.1 answered.
 - **Steps:**
-  1. Start **PowerShell Console** labelled `relaunch-quiet`. Wait for its prompt.
+  1. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `relaunch-quiet`. Wait for its prompt.
   2. Type `exit` and press Enter right away.
   3. Click **Relaunch Agent**, then wait 5 seconds.
 - **PASS looks like:** A complete new prompt appears below the old output within 5 seconds, and no new
@@ -354,7 +346,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Relaunching Claude in your normal setup gives a usable, clean screen.
 - **Before you start:** 2.2 answered.
 - **Steps:**
-  1. Start **Claude** (config A, no arguments) labelled `relaunch-A`. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `relaunch-A`, leaving **Custom CLI Arguments (Optional)** empty (config A). Wait until ready.
   2. Send `Reply with only the word ready` and wait for the reply.
   3. Type `/exit` and press Enter. Wait for **Session Inactive**.
   4. Click **Relaunch Agent** and wait 15 seconds.
@@ -378,7 +370,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** The same relaunch on the main-screen layout with mods off.
 - **Before you start:** 2.3 answered.
 - **Steps:**
-  1. Start **Claude** with `--safe-mode` (config C) labelled `relaunch-C`. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `relaunch-C`, with `--safe-mode` typed into **Custom CLI Arguments (Optional)** (config C). Wait until ready.
   2. Do steps 2 to 5 of test 2.3 in this terminal.
 - **PASS looks like:** Same as 2.3: a clean new Claude screen below the earlier transcript, with
   `hello` in the input box.
@@ -398,7 +390,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Relaunch works for agy.
 - **Before you start:** 2.4 answered.
 - **Steps:**
-  1. Start **Antigravity** labelled `relaunch-agy`. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Antigravity** labelled `relaunch-agy`. Wait until ready.
   2. Send `Reply with only the word ready` and wait for the reply.
   3. Exit agy: press `Ctrl`+`C`, and again if it asks. Note in Notes what made it exit. Wait for
      **Session Inactive**.
@@ -420,7 +412,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Relaunch works for Codex.
 - **Before you start:** 2.5 answered.
 - **Steps:**
-  1. Start **Codex** labelled `relaunch-codex`. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Codex** labelled `relaunch-codex`. Wait until ready.
   2. Send `Reply with only the word ready` and wait for the reply.
   3. Type `/quit` and press Enter. If that does nothing, press `Ctrl`+`C` twice. Note which worked.
   4. Click **Relaunch Agent** and wait 15 seconds, then type `hello` without sending it.
@@ -485,7 +477,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** A fullscreen Claude pane survives a rebuild.
 - **Before you start:** 3.1 answered.
 - **Steps:**
-  1. Start **Claude** config A labelled `rebuild-A`. Wait until ready.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `rebuild-A`, leaving **Custom CLI Arguments (Optional)** empty (config A). Wait until ready.
   2. Send `List the numbers 1 to 40, one per line` and wait for the reply.
   3. Click **quay-uat-empty**, then **quay-uat-p**, then `rebuild-A`. Wait 3 seconds.
 - **PASS looks like:** One clean Claude screen with an intact input box. Stray text above or around it
@@ -506,7 +498,9 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** The same rebuild on the main-screen layout with mods off.
 - **Before you start:** 3.2 answered.
 - **Steps:**
-  1. Start **Claude** config C labelled `rebuild-C` and do steps 2 and 3 of 3.2 in it.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `rebuild-C`, with `--safe-mode` typed into **Custom CLI Arguments (Optional)** (config C). Wait until ready.
+  2. Send `List the numbers 1 to 40, one per line` and wait for the reply.
+  3. Click **quay-uat-empty**, then **quay-uat-p**, then `rebuild-C`. Wait 3 seconds.
 - **PASS looks like:** The transcript, numbers 1 to 40, reads cleanly in order, and the input box below
   it is intact.
 - **If it does not work:** As in 3.2.
@@ -525,7 +519,11 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Replaying output recorded at several sizes into one new pane.
 - **Before you start:** 3.3 answered.
 - **Steps:**
-  1. Show `rebuild-C` and run R1 to R4 of the resize recipe on it (split, 30%, 70%, single).
+  1. Show `rebuild-C`, then run steps R1 to R4 of the resize recipe on it:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `rebuild-C` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `rebuild-C` fills the stage, and wait 3 seconds.
   2. Send `List the numbers 41 to 60, one per line` and wait for the reply.
   3. Click **quay-uat-empty**, then **quay-uat-p**, then `rebuild-C`. Wait 3 seconds.
 - **PASS looks like:** The whole transcript, 1 to 60, is readable, and earlier lines are not drawn over
@@ -548,8 +546,8 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
   characters behind.
 - **Before you start:** 3.4 answered.
 - **Steps:**
-  1. Start **PowerShell Console** labelled `big`, run BIG (Tool 3) and wait for the prompt to return
-     (about 10 to 30 seconds).
+  1. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `big`. Run BIG: type `$e = [char]27; 1..6000 | ForEach-Object { "$e[3$($_ % 7 + 1)mrow $_ $e[0m" + ('x' * 50) }` and press Enter, then
+     wait for the prompt to return (about 10 to 30 seconds).
   2. Click **quay-uat-empty**, then **quay-uat-p**, then `big`. Wait 3 seconds.
   3. Scroll the pane all the way to the top with the mouse wheel.
 - **PASS looks like:** The very first line is a whole coloured `row NNNN xxxx...` line (or part of one
@@ -570,7 +568,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Switching between terminals in the same project (no rebuild) loses nothing.
 - **Before you start:** 3.5 answered. Single pane layout.
 - **Steps:**
-  1. Show `ps-1`, type STREAM and press Enter, then **immediately** click `big` in the rail.
+  1. Show `ps-1`, run STREAM: type `1..400 | ForEach-Object { "line $_ " + ('=' * 60); Start-Sleep -Milliseconds 15 }` and press Enter, then **immediately** click `big` in the rail.
   2. Wait 10 seconds, then click `ps-1` again.
   3. Scroll up through the output.
 - **PASS looks like:** Lines `line 1` to `line 400` are all present in order, each on its own line, and
@@ -594,7 +592,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** Baseline for this section: a new Claude pane in the simplest case.
 - **Before you start:** Section 3 done. Single pane layout, window at normal size.
 - **Steps:**
-  1. Start **Claude** config A labelled `first-A`. Watch it closely as it appears, then wait 10 seconds.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `first-A`, leaving **Custom CLI Arguments (Optional)** empty (config A). Watch it closely as it appears, then wait 10 seconds.
 - **PASS looks like:** From its first visible frame Claude draws at the full pane width: the input box
   spans the pane, nothing is drawn twice, and nothing jumps sideways.
 - **If it does not work:** Say whether the problem was only in the first second or still there after
@@ -616,12 +614,12 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Steps:**
   1. Click **2x2 Grid Layout** in the top bar and put `ps-1`, `big`, `first-A` and `rebuild-C` in the
      four slots using the pane dropdowns. Wait 3 seconds.
-  2. Start **PowerShell Console** labelled `from-grid`.
+  2. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `from-grid`.
   3. Click **Single Pane (Ctrl+B x)**, then click `from-grid` in the rail. Wait 3 seconds.
-  4. Run RULER in `from-grid` and run PROBE.
+  4. Click inside `from-grid`, run RULER: type `$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width` and press Enter. Then run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints).
 - **PASS looks like:** `PTY says` matches PROBE's `cols` and `rows`, and the `#` line fills one line
   exactly.
-- **If it does not work:** Write both pairs of numbers. Then press `Ctrl`+`L`, run RULER again, and
+- **If it does not work:** Write both pairs of numbers. Then press `Ctrl`+`L`, run the RULER command again, and
   note whether the numbers now match.
 
 <!-- uat:answer:start id=4.2 -->
@@ -639,10 +637,10 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Before you start:** 4.2 answered.
 - **Steps:**
   1. Return to **2x2 Grid Layout** with four terminals in the slots. Wait 3 seconds.
-  2. Start **Claude** config A labelled `grid-born-A`.
+  2. Click **quay-uat-p** in the rail, then start **Claude** labelled `grid-born-A`, leaving **Custom CLI Arguments (Optional)** empty (config A).
   3. Click **Single Pane (Ctrl+B x)** and click `grid-born-A` in the rail. Wait 10 seconds.
 - **PASS looks like:** Claude fills the full pane width with a clean screen.
-- **If it does not work:** Record the symptoms and PROBE. Try Redraw and note the result.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Try Redraw and note the result.
 
 <!-- uat:answer:start id=4.3 -->
 - [ ] **Status:** _not answered_
@@ -658,7 +656,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** The grid-born case for agy.
 - **Before you start:** 4.3 answered.
 - **Steps:**
-  1. Repeat 4.3 with **Antigravity** labelled `grid-born-agy`.
+  1. Repeat 4.3 with **Antigravity** labelled `grid-born-agy`, also in **quay-uat-p**.
 - **PASS looks like:** agy fills the full pane width with a clean screen.
 - **If it does not work:** As in 4.3.
 
@@ -676,7 +674,7 @@ Write the first step where garbling appeared (for example `Appeared: R2, at once
 - **Goal:** The grid-born case for Codex.
 - **Before you start:** 4.4 answered.
 - **Steps:**
-  1. Repeat 4.3 with **Codex** labelled `grid-born-codex`.
+  1. Repeat 4.3 with **Codex** labelled `grid-born-codex`, also in **quay-uat-p**.
 - **PASS looks like:** Codex fills the full pane width with a clean screen.
 - **If it does not work:** As in 4.3.
 
@@ -701,9 +699,10 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** Claude redraws cleanly when its pane halves in width.
 - **Before you start:** Section 4 done. Single pane showing `first-A`.
 - **Steps:**
-  1. Do R1 (side-by-side split, `first-A` left, `ps-1` right). Wait 3 seconds.
+  1. Click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the pane-header dropdowns, put
+     `first-A` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
 - **PASS looks like:** Both panes are clean, and Claude's input box fits the left pane.
-- **If it does not work:** Record the symptoms and PROBE. Try Redraw and note the result.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Try Redraw and note the result.
 
 <!-- uat:answer:start id=5.1 -->
 - [ ] **Status:** _not answered_
@@ -741,7 +740,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   1. Drag the divider quickly left and right for about 5 seconds, release near the middle, and wait
      3 seconds.
 - **PASS looks like:** Both panes are clean after the wait.
-- **If it does not work:** Record the symptoms and PROBE. Note whether Redraw fixes it.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Note whether Redraw fixes it.
 
 <!-- uat:answer:start id=5.3 -->
 - [ ] **Status:** _not answered_
@@ -798,9 +797,9 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   Claude docks its side panes (110 and 144 columns).
 - **Before you start:** 5.5 answered. Single pane showing `first-A`.
 - **Steps:**
-  1. Run PROBE and note `cols`.
-  2. Maximise the Quay window, wait 3 seconds, and run PROBE.
-  3. Restore the window, wait 3 seconds, and run PROBE.
+  1. Run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints), and note `cols`.
+  2. Maximise the Quay window, wait 3 seconds, and run PROBE again.
+  3. Restore the window, wait 3 seconds, and run PROBE again.
 - **PASS looks like:** Claude is clean after each wait, and PROBE shows `ok: true` each time. Put all
   three `cols` values in Notes, even on Pass.
 - **If it does not work:** Note whether the damage came on maximising or on restoring.
@@ -822,7 +821,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   1. Click the Quay window, press `Win`+`Left`, and wait 3 seconds.
   2. Press `Win`+`Up` (or drag it back) to restore, and wait 3 seconds.
 - **PASS looks like:** Claude is clean after each wait.
-- **If it does not work:** Record the symptoms and PROBE.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints).
 
 <!-- uat:answer:start id=5.7 -->
 - [ ] **Status:** _not answered_
@@ -841,7 +840,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   1. Drag the right edge of the Quay window inward by about a third, then back out, in one slow
      movement. Release and wait 3 seconds.
 - **PASS looks like:** Claude is clean.
-- **If it does not work:** Record the symptoms and PROBE.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints).
 
 <!-- uat:answer:start id=5.8 -->
 - [ ] **Status:** _not answered_
@@ -858,7 +857,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Before you start:** 5.8 answered.
 - **Steps:**
   1. Minimise Quay, wait 10 seconds, and restore it from the taskbar. Wait 3 seconds.
-- **PASS looks like:** Claude is clean and PROBE shows `ok: true`.
+- **PASS looks like:** Claude is clean and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints) shows `ok: true`.
 - **If it does not work:** Record the symptoms and PROBE.
 
 <!-- uat:answer:start id=5.9 -->
@@ -896,10 +895,11 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   skip-mode agent pane is focused, so clicking between panes changes the stage height.
 - **Before you start:** 5.10 answered.
 - **Steps:**
-  1. Do R1 (`first-A` left, `ps-1` right). Click inside `first-A` and confirm the banner is showing.
+  1. Click **Side-by-Side Split (Ctrl+B %)** and use the pane-header dropdowns to put `first-A`
+     left and `ps-1` right. Click inside `first-A` and confirm the banner is showing.
   2. Click inside `ps-1` (the banner disappears) and wait 3 seconds.
   3. Click inside `first-A` (the banner returns) and wait 3 seconds. Repeat steps 2 and 3 twice more.
-- **PASS looks like:** Both panes are clean after every wait, and PROBE shows `ok: true` for both.
+- **PASS looks like:** Both panes are clean after every wait, and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints) shows `ok: true` for both.
 - **If it does not work:** Record PROBE right after a switch, and say which pane was damaged.
 
 <!-- uat:answer:start id=5.11 -->
@@ -918,7 +918,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Steps:**
   1. Click **2x2 Grid Layout** and put `first-A`, `rebuild-C`, `grid-born-agy` and `grid-born-codex`
      in the four slots. Wait 5 seconds.
-- **PASS looks like:** All four panes are clean, and PROBE shows `ok: true` for all four.
+- **PASS looks like:** All four panes are clean, and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints) shows `ok: true` for all four.
 - **If it does not work:** Name the damaged pane or panes.
 
 <!-- uat:answer:start id=5.12 -->
@@ -959,7 +959,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   3. Click `first-A` in the rail and wait 3 seconds.
   4. Restore the window.
 - **PASS looks like:** `first-A` is clean at step 3, and again after step 4.
-- **If it does not work:** Record the symptoms and PROBE at step 3.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints) at step 3.
 
 <!-- uat:answer:start id=5.14 -->
 - [ ] **Status:** _not answered_
@@ -975,7 +975,8 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** The Redraw button itself must not damage a fullscreen Claude pane.
 - **Before you start:** 5.14 answered.
 - **Steps:**
-  1. Do R1 with `first-A` left. Wait 3 seconds.
+  1. Click **Side-by-Side Split (Ctrl+B %)** and use the pane-header dropdowns to put `first-A`
+     left and `ps-1` right. Wait 3 seconds.
   2. Click **Redraw terminal screen (Ctrl+L)** in the `first-A` pane header. Wait 3 seconds.
 - **PASS looks like:** Claude's screen is redrawn whole and clean, and the input box still works.
 - **If it does not work:** Record the symptoms.
@@ -1018,8 +1019,14 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** The full resize recipe in your normal Claude setup.
 - **Before you start:** Section 5 done. Close every Claude terminal so the rail is clear.
 - **Steps:**
-  1. Start **Claude** config A labelled `mods-A`. Wait until ready. Send `Reply with only the word ready`.
-  2. Run R (R1 to R5) on `mods-A`.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `mods-A`, leaving **Custom CLI Arguments (Optional)** empty
+     (config A). Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `mods-A`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `mods-A` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `mods-A` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `mods-A` is clean after every step.
 - **If it does not work:** Note the first step that garbled.
 
@@ -1037,7 +1044,14 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** Same mods, other layout.
 - **Before you start:** 6.1 answered.
 - **Steps:**
-  1. Start **Claude** config B (`--settings {"tui":"default"}`) labelled `mods-B` and repeat 6.1's steps.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `mods-B`, with `--settings {"tui":"default"}` typed into
+     **Custom CLI Arguments (Optional)** (config B). Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `mods-B`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `mods-B` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `mods-B` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `mods-B` is clean after every step.
 - **If it does not work:** Note the first step that garbled.
 
@@ -1055,7 +1069,14 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** No mods, main screen.
 - **Before you start:** 6.2 answered.
 - **Steps:**
-  1. Start **Claude** config C (`--safe-mode`) labelled `mods-C` and repeat 6.1's steps.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `mods-C`, with `--safe-mode` typed into **Custom CLI Arguments
+     (Optional)** (config C). Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `mods-C`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `mods-C` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `mods-C` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `mods-C` is clean after every step.
 - **If it does not work:** Note the first step that garbled.
 
@@ -1073,8 +1094,14 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** No mods, fullscreen.
 - **Before you start:** 6.3 answered.
 - **Steps:**
-  1. Start **Claude** config D (`--safe-mode --settings {"tui":"fullscreen"}`) labelled `mods-D` and
-     repeat 6.1's steps.
+  1. Click **quay-uat-p** in the rail, then start **Claude** labelled `mods-D`, with `--safe-mode --settings {"tui":"fullscreen"}` typed
+     into **Custom CLI Arguments (Optional)** (config D). Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `mods-D`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `mods-D` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `mods-D` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `mods-D` is clean after every step.
 - **If it does not work:** Note the first step that garbled.
 
@@ -1093,7 +1120,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   The re-layout must draw cleanly.
 - **Before you start:** 6.4 answered. Single pane showing `mods-A`, window at normal size.
 - **Steps:**
-  1. Run PROBE and note `cols`.
+  1. Run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints), and note `cols`.
   2. Maximise the window, wait 5 seconds, and run PROBE again.
 - **PASS looks like:** Claude is clean. Note in Notes whether side panes appeared and the `cols` before
   and after. If `cols` is still under 144 when maximised, mark **Not done** and give the number.
@@ -1155,7 +1182,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
   1. Click **Single Pane (Ctrl+B x)** and show `ps-1`, so `mods-A` is hidden.
   2. Wait 2 minutes, then click `mods-A` in the rail and wait 3 seconds.
 - **PASS looks like:** `mods-A` is clean.
-- **If it does not work:** Record the symptoms and PROBE.
+- **If it does not work:** Record the symptoms and PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints).
 
 <!-- uat:answer:start id=6.8 -->
 - [ ] **Status:** _not answered_
@@ -1257,7 +1284,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Before you start:** Section 7 done. Side-by-side split with `mods-A` left and `ps-1` right.
 - **Steps:**
   1. Drag the Quay window by its title bar fully onto the other monitor. Wait 5 seconds.
-  2. Run PROBE, and run RULER in `ps-1`.
+  2. Run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Then click inside `ps-1`, run RULER: type `$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width` and press Enter.
 - **PASS looks like:** Both panes are clean, PROBE shows `ok: true` with a different `dpr` from the
   baseline in 1.5, and RULER's `PTY says` matches PROBE for `ps-1`.
 - **If it does not work:** Paste PROBE and the RULER numbers.
@@ -1277,7 +1304,7 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Before you start:** 8.1 answered.
 - **Steps:**
   1. Drag the window back to the first monitor. Wait 5 seconds.
-  2. Run PROBE, and run RULER in `ps-1`.
+  2. Run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Then click inside `ps-1`, run RULER: type `$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width` and press Enter.
 - **PASS looks like:** Both panes are clean, PROBE shows `ok: true` with `dpr` and `cellW` equal to the
   baseline in 1.5, and RULER matches PROBE.
 - **If it does not work:** As in 8.1.
@@ -1299,8 +1326,13 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** The resize recipe on agy.
 - **Before you start:** Section 8 done.
 - **Steps:**
-  1. Start **Antigravity** labelled `agy-r`. Wait until ready. Send `Reply with only the word ready`.
-  2. Run R (R1 to R5) on `agy-r`.
+  1. Click **quay-uat-p** in the rail, then start **Antigravity** labelled `agy-r`. Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `agy-r`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `agy-r` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `agy-r` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `agy-r` is clean after every step.
 - **If it does not work:** Note the first step that garbled, and whether Redraw or `Ctrl`+`L` fixes it.
 
@@ -1336,8 +1368,13 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** The resize recipe on Codex.
 - **Before you start:** 9.2 answered.
 - **Steps:**
-  1. Start **Codex** labelled `codex-r`. Wait until ready. Send `Reply with only the word ready`.
-  2. Run R (R1 to R5) on `codex-r`.
+  1. Click **quay-uat-p** in the rail, then start **Codex** labelled `codex-r`. Wait until ready. Send `Reply with only the word ready`.
+  2. Run the resize recipe on `codex-r`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `codex-r` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `codex-r` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `codex-r` is clean after every step.
 - **If it does not work:** As in 9.1.
 
@@ -1373,9 +1410,14 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** The resize recipe on your third agent. Write which one you used at the start of Notes.
 - **Before you start:** 9.4 answered.
 - **Steps:**
-  1. Start **OpenCode**, **Kiro** or **Copilot** labelled `x-r`. Wait until ready. Send
+  1. Click **quay-uat-p** in the rail, then start **OpenCode**, **Kiro** or **Copilot** labelled `x-r`. Wait until ready. Send
      `Reply with only the word ready`.
-  2. Run R (R1 to R5) on `x-r`.
+  2. Run the resize recipe on `x-r`, checking that it is clean after every wait:
+     - **R1:** click **Side-by-Side Split (Ctrl+B %)** in the top bar. Using the dropdowns in the pane headers, put `x-r` in the left pane and `ps-1` in the right pane. Wait 3 seconds.
+     - **R2:** drag the divider between the panes to about 30%, let go, and wait 3 seconds.
+     - **R3:** drag it to about 70%, let go, and wait 3 seconds.
+     - **R4:** click **Single Pane (Ctrl+B x)** so `x-r` fills the stage, and wait 3 seconds.
+     - **R5:** maximise the Quay window, wait 3 seconds, then restore it and wait 3 seconds.
 - **PASS looks like:** `x-r` is clean after every step.
 - **If it does not work:** As in 9.1.
 
@@ -1477,7 +1519,8 @@ you no longer need with their rail **X** whenever the rail gets crowded, but kee
 - **Goal:** Panes created right after start-up must use the final font and cell size.
 - **Before you start:** 10.2 answered. The window is at its normal size on the first monitor.
 - **Steps:**
-  1. Start **PowerShell Console** labelled `cold`, show it in a single pane, and run PROBE and RULER.
+  1. Click **quay-uat-p** in the rail, then start **PowerShell Console** labelled `cold` and show it in a single pane.
+  2. Run PROBE (press `F12` if DevTools is closed, click the **Console** tab, press the up arrow until the snippet from test 1.5 shows, press Enter, and copy the last line it prints). Then click inside `cold`, run RULER: type `$s = $Host.UI.RawUI.WindowSize; "PTY says $($s.Width) cols x $($s.Height) rows"; '#' * $s.Width` and press Enter.
 - **PASS looks like:** PROBE shows `ok: true`, `cellW` matches the baseline in 1.5, and RULER matches
   PROBE.
 - **If it does not work:** Paste both.
