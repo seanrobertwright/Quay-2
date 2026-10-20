@@ -77,6 +77,25 @@ impl RunKind {
             RunKind::Archon => "archon",
         }
     }
+
+    /// The CLI's name as a person reads it, as in a team briefing.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            RunKind::Claude => "Claude",
+            RunKind::Antigravity => "Antigravity",
+            RunKind::Codex => "Codex",
+            RunKind::Pi => "Pi",
+            RunKind::Gemini => "Gemini",
+            RunKind::Grok => "Grok",
+            RunKind::Aider => "Aider",
+            RunKind::Kiro => "Kiro",
+            RunKind::Copilot => "Copilot",
+            RunKind::OpenCode => "OpenCode",
+            RunKind::PowerShell => "PowerShell",
+            RunKind::Command => "Command",
+            RunKind::Archon => "Archon",
+        }
+    }
 }
 
 /// Where a CLI's launch prompt goes on its command line.

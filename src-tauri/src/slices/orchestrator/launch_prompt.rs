@@ -86,27 +86,9 @@ fn teammate_line(teammate: &SwarmMember) -> String {
     format!(
         "{} ({}, {})",
         teammate.name.trim(),
-        cli_name(teammate.run_kind),
+        teammate.run_kind.display_name(),
         role_of(teammate)
     )
-}
-
-fn cli_name(run_kind: RunKind) -> &'static str {
-    match run_kind {
-        RunKind::Claude => "Claude",
-        RunKind::Antigravity => "Antigravity",
-        RunKind::Codex => "Codex",
-        RunKind::Pi => "Pi",
-        RunKind::Gemini => "Gemini",
-        RunKind::Grok => "Grok",
-        RunKind::Aider => "Aider",
-        RunKind::Kiro => "Kiro",
-        RunKind::Copilot => "Copilot",
-        RunKind::OpenCode => "OpenCode",
-        RunKind::PowerShell => "PowerShell",
-        RunKind::Command => "Command",
-        RunKind::Archon => "Archon",
-    }
 }
 
 #[cfg(test)]
