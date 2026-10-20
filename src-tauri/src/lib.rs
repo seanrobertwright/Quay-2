@@ -26,7 +26,8 @@ use slices::machina::{
     machina_set_loop_mode, machina_submit_work_order, MachinaManager,
 };
 use slices::orchestrator::{
-    a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt, A2ARouter,
+    a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt,
+    swarm_launch_prompts, A2ARouter,
 };
 use slices::pty::{
     get_terminal_output, kill_terminal, list_terminals, relaunch_terminal, rename_terminal,
@@ -115,6 +116,7 @@ pub fn run() {
             a2a_broadcast_toast,
             a2a_get_messages,
             a2a_clear_messages,
+            swarm_launch_prompts,
             resolve_permission,
             get_pending_permissions,
             set_terminal_live_mode,
