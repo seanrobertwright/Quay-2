@@ -556,10 +556,11 @@ impl PtyManager {
     /// Unknown stays Unknown: without the plugin Quay cannot see the turn end.
     pub fn mark_a2a_delivered(&self, terminal_id: &str) {
         let mut info_map = self.terminals_info.lock();
-        if let Some(info) = info_map.get_mut(terminal_id) {
-            if info.claude_status != ClaudeStatus::Unknown {
-                info.claude_status = ClaudeStatus::Working;
-            }
+        if let Some(info) = info_map
+            .get_mut(terminal_id)
+            .filter(|info| info.claude_status != ClaudeStatus::Unknown)
+        {
+            info.claude_status = ClaudeStatus::Working;
         }
     }
 
