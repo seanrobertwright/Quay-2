@@ -81,18 +81,30 @@ pub fn authorize_events(
     Ok(())
 }
 
+/// The id of a terminal whose bearer token an `/mcp` call carried. Only
+/// `authenticate_mcp_caller` can build one, so code that takes it cannot skip that check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedTerminal(String);
+
+impl AuthenticatedTerminal {
+    pub fn id(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Identifies the terminal behind an `/mcp` call: the request must be loopback and
-/// carry the bearer token of one of `terminal_ids`. Returns that terminal's id.
+/// carry the bearer token of one of `terminal_ids`. Returns that terminal.
 pub fn authenticate_mcp_caller(
     bridge_state: &BridgeState,
     headers: &HeaderMap,
     terminal_ids: impl IntoIterator<Item = String>,
-) -> Result<String, (StatusCode, &'static str)> {
+) -> Result<AuthenticatedTerminal, (StatusCode, &'static str)> {
     let token = loopback_bearer(headers)?;
 
     terminal_ids
         .into_iter()
         .find(|id| bridge_state.verify_token(id, token))
+        .map(AuthenticatedTerminal)
         .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
 }
 
@@ -328,12 +340,12 @@ pub async fn handle_mcp(
     Json(req): Json<crate::slices::orchestrator::mcp::JsonRpcRequest>,
 ) -> Response {
     let terminal_ids = ctx.pty_manager.list().into_iter().map(|t| t.id);
-    let caller_id = match authenticate_mcp_caller(&ctx.bridge_state, &headers, terminal_ids) {
+    let caller = match authenticate_mcp_caller(&ctx.bridge_state, &headers, terminal_ids) {
         Ok(id) => id,
         Err(rejection) => return rejection.into_response(),
     };
     let a2a = Arc::new(ctx.a2a_router.clone());
-    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller_id, Json(req)).await
+    crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller, Json(req)).await
 }
 
 pub async fn handle_mcp_get(headers: HeaderMap) -> Response {
@@ -520,6 +532,6 @@ mod tests {
             ["term-a".to_string(), "term-b".to_string()],
         );
 
-        assert_eq!(result.unwrap(), "term-b");
+        assert_eq!(result.unwrap().id(), "term-b");
     }
 }

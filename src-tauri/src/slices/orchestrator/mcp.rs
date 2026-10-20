@@ -11,7 +11,7 @@ use tauri::Emitter;
 
 use super::models::A2ADispatchRequest;
 use super::router::A2ARouter;
-use crate::slices::bridge::routes::AppContext;
+use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
 use crate::slices::pty::models::ClaudeStatus;
 
 #[derive(Debug, Deserialize)]
@@ -44,14 +44,15 @@ pub struct JsonRpcError {
 pub async fn handle_mcp_request(
     State(ctx): State<Arc<AppContext>>,
     State(a2a_router): State<Arc<A2ARouter>>,
-    caller_id: String,
+    caller: AuthenticatedTerminal,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
+    let caller_id = caller.id();
     let id = req.id.unwrap_or(Value::Null);
 
     match req.method.as_str() {
         "initialize" => {
-            ctx.pty_manager.update_status(&caller_id, ClaudeStatus::Idle);
+            ctx.pty_manager.update_status(caller_id, ClaudeStatus::Idle);
             let _ = ctx.app_handle.emit(
                 "bridge-event",
                 crate::slices::bridge::Envelope {
@@ -62,8 +63,8 @@ pub async fn handle_mcp_request(
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis() as u64,
-                    session_id: caller_id.clone(),
-                    tag: Some(caller_id.clone()),
+                    session_id: caller_id.to_string(),
+                    tag: Some(caller_id.to_string()),
                     event_type: "session.started".to_string(),
                     data: serde_json::Value::Null,
                 },
@@ -307,7 +308,7 @@ pub async fn handle_mcp_request(
                         Err("Missing target_terminal_id or message argument".to_string())
                     } else {
                         let request = A2ADispatchRequest {
-                            from_terminal: caller_id.clone(),
+                            from_terminal: caller_id.to_string(),
                             to_terminal: target_id.to_string(),
                             prompt: message.to_string(),
                             as_user: Some(false),
@@ -451,7 +452,7 @@ pub async fn handle_mcp_request(
                         Err(e) => Err(e),
                         Ok(id) => {
                             let mgr = ctx.machina_manager.clone();
-                            let requested_by = Some(caller_id.clone());
+                            let requested_by = Some(caller_id.to_string());
                             let gate_id = id.clone();
                             match tokio::task::spawn_blocking(move || mgr.start_gate(&gate_id, requested_by)).await {
                                 Ok(Ok(crate::slices::machina::supervisor::GateStart::Started(attempt))) => Ok(json!({
