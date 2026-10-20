@@ -101,6 +101,15 @@ fn trim_output_buffer(buf: &mut String, max_len: usize) {
     buf.drain(..cut);
 }
 
+/// The Claude Code executable for this platform: `claude.exe` on Windows, `claude` elsewhere.
+fn claude_program() -> &'static str {
+    #[cfg(windows)]
+    let program = "claude.exe";
+    #[cfg(not(windows))]
+    let program = "claude";
+    program
+}
+
 impl PtySession {
     pub fn spawn(
         request: SpawnTerminalRequest,
@@ -194,7 +203,7 @@ impl PtySession {
                 c
             }
             RunKind::Claude => {
-                let mut c = CommandBuilder::new("claude.exe");
+                let mut c = CommandBuilder::new(claude_program());
                 // Inject event-bridge environment variables
                 c.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
                 c.env("CLAUDE_EVENTS_TOKEN", &bridge_token);
@@ -203,7 +212,7 @@ impl PtySession {
 
                 if perm == PermissionMode::Skip {
                     c.arg("--dangerously-skip-permissions");
-                    // Per ADR 0006: host permissions off for skip mode so Claude doesn't block on tool checks
+                    // Skip mode turns host permission checks off too, so Claude doesn't block waiting on them
                     c.env("CLAUDE_EVENTS_PERMISSIONS", "off");
                 } else {
                     c.env("CLAUDE_EVENTS_PERMISSIONS", "host");
@@ -636,6 +645,14 @@ mod tests {
     use std::io::Read;
 
     #[test]
+    fn claude_program_matches_the_platform_binary_name() {
+        #[cfg(windows)]
+        assert_eq!(claude_program(), "claude.exe");
+        #[cfg(not(windows))]
+        assert_eq!(claude_program(), "claude");
+    }
+
+    #[test]
     fn test_spawn_claude_version() {
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -647,7 +664,7 @@ mod tests {
             })
             .expect("openpty failed");
 
-        let mut cmd = CommandBuilder::new("claude.exe");
+        let mut cmd = CommandBuilder::new(claude_program());
         cmd.arg("--version");
         let mut child = pair.slave.spawn_command(cmd).expect("spawn claude failed");
         drop(pair.slave);
