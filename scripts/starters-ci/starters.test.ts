@@ -83,7 +83,11 @@ function label(command: Command): string {
   return argv.join(" ");
 }
 
-const exactPackage = JSON.stringify({ name: "starter", devDependencies: { vitest: "4.1.5", typescript: "6.0.3" } });
+const exactPackage = JSON.stringify({
+  name: "starter",
+  scripts: { test: "vitest run", check: "vitest run --dir check", "check:readme": "node check-readme.ts", bench: "vitest bench --run" },
+  devDependencies: { vitest: "4.1.5", typescript: "6.0.3" },
+});
 
 test("passes with no starters when the tutorials folder does not exist", () => {
   const report = checkStarters({
@@ -433,4 +437,28 @@ test("an expected state that is not JSON fails naming the starter", () => {
   const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
   assert.equal(report.failures.length, 1);
   assert.match(report.failures[0], /^tdd-relay: expected-state\.json: not valid JSON/);
+});
+
+test("an expected state that disagrees with the files on disk fails, before running anything", () => {
+  const green = { typecheck: { expect: "pass" }, tests: { expect: "pass" } };
+  const cases: [Record<string, string | undefined>, unknown, string][] = [
+    [{}, { ...green, checkSuite: { vitest: ["run", "check"], expect: "fail", failed: 4 } }, "checkSuite: tdd-relay/check/ is missing"],
+    [{ "tdd-relay/check/a.test.ts": "" }, green, "check/: tdd-relay/check/ exists but expected-state.json has no checkSuite"],
+    [{}, { ...green, patch: { file: "patches/late.patch", failingTests: ["x"] } }, "patch.file: starter/patches/late.patch is missing"],
+    [{}, { ...green, scripts: [{ name: "lint", expect: "pass" }] }, 'scripts[0].name: starter/package.json has no "lint" script'],
+    [{ "tdd-relay/starter/package.json": undefined, "tdd-relay/starter/README.md": "" }, green, "starter/package.json is missing"],
+  ];
+  for (const [files, state, message] of cases) {
+    const dir = oneStarter("tdd-relay", state, files);
+    const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
+    assert.deepEqual(report.failures, [`tdd-relay: ${message}`], message);
+  }
+});
+
+test("a tutorial folder with an expected state but no starter fails, before running anything", () => {
+  const dir = tutorials({
+    "tdd-relay/expected-state.json": JSON.stringify({ typecheck: { expect: "pass" }, tests: { expect: "pass" } }),
+  });
+  const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
+  assert.deepEqual(report.failures, ["tdd-relay: no starter/ folder; every tutorial folder holds one"]);
 });

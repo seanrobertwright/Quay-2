@@ -43,20 +43,9 @@ export function checkStarters(options: CheckOptions): CheckReport {
   const failures: string[] = [];
   const states = new Map<string, ExpectedState>();
   for (const slug of slugs) {
-    const tutorialDir = join(options.tutorialsDir, slug);
-    const stateFile = join(tutorialDir, EXPECTED_STATE_FILE);
-    if (!existsSync(stateFile)) {
-      failures.push(`${slug}: no ${EXPECTED_STATE_FILE} beside starter/; every starter needs an expected-state entry`);
-      continue;
-    }
-    try {
-      states.set(slug, readExpectedState(stateFile));
-    } catch (error) {
-      failures.push(`${slug}: ${EXPECTED_STATE_FILE}: ${(error as Error).message}`);
-    }
-    for (const failure of checkExactVersions(join(tutorialDir, "starter", "package.json"))) {
-      failures.push(`${slug}: ${failure}`);
-    }
+    const checked = checkTutorialFolder(join(options.tutorialsDir, slug));
+    if (checked.state !== undefined) states.set(slug, checked.state);
+    failures.push(...checked.failures.map((failure) => `${slug}: ${failure}`));
   }
   // Nothing runs until every starter's files are in order, so a bad entry fails in seconds.
   if (failures.length > 0) return { starters: slugs, failures };
@@ -67,6 +56,53 @@ export function checkStarters(options: CheckOptions): CheckReport {
     }
   }
   return { starters: slugs, failures };
+}
+
+/**
+ * Checks one tutorial folder without running anything: its expected state parses, agrees with
+ * the files beside it, and its starter pins exact versions.
+ */
+function checkTutorialFolder(tutorialDir: string): { state?: ExpectedState; failures: string[] } {
+  const slug = basename(tutorialDir);
+  const starterDir = join(tutorialDir, "starter");
+  if (!existsSync(starterDir)) return { failures: ["no starter/ folder; every tutorial folder holds one"] };
+  const stateFile = join(tutorialDir, EXPECTED_STATE_FILE);
+  if (!existsSync(stateFile)) {
+    return { failures: [`no ${EXPECTED_STATE_FILE} beside starter/; every starter needs an expected-state entry`] };
+  }
+  let state: ExpectedState;
+  try {
+    state = readExpectedState(stateFile);
+  } catch (error) {
+    return { failures: [`${EXPECTED_STATE_FILE}: ${(error as Error).message}`] };
+  }
+  const packageFile = join(starterDir, "package.json");
+  if (!existsSync(packageFile)) return { failures: ["starter/package.json is missing"] };
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = JSON.parse(readFileSync(packageFile, "utf8")) as Record<string, unknown>;
+  } catch (error) {
+    return { failures: [`starter/package.json is not valid JSON (${(error as Error).message})`] };
+  }
+
+  const failures = checkExactVersions(manifest);
+  const hasCheckFolder = existsSync(join(tutorialDir, "check"));
+  if (state.checkSuite !== undefined && !hasCheckFolder) failures.push(`checkSuite: ${slug}/check/ is missing`);
+  if (state.checkSuite === undefined && hasCheckFolder) {
+    failures.push(`check/: ${slug}/check/ exists but ${EXPECTED_STATE_FILE} has no checkSuite`);
+  }
+  if (state.patch !== undefined && !existsSync(join(starterDir, state.patch.file))) {
+    failures.push(`patch.file: starter/${state.patch.file} is missing`);
+  }
+  const scripts = (manifest.scripts ?? {}) as Record<string, unknown>;
+  const named = [
+    ...(state.scripts ?? []).map((script, i) => [`scripts[${i}].name`, script.name]),
+    ...(state.checkSuite !== undefined && "script" in state.checkSuite ? [["checkSuite.script", state.checkSuite.script]] : []),
+  ];
+  for (const [field, name] of named) {
+    if (typeof scripts[name] !== "string") failures.push(`${field}: starter/package.json has no "${name}" script`);
+  }
+  return { state, failures };
 }
 
 function readExpectedState(stateFile: string): ExpectedState {
@@ -84,9 +120,7 @@ const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependenc
 const EXACT_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 
 /** Every dependency in the starter's package.json that names a range instead of one version. */
-function checkExactVersions(packageFile: string): string[] {
-  if (!existsSync(packageFile)) return ["starter/package.json is missing"];
-  const manifest = JSON.parse(readFileSync(packageFile, "utf8")) as Record<string, unknown>;
+function checkExactVersions(manifest: Record<string, unknown>): string[] {
   const failures: string[] = [];
   for (const field of DEPENDENCY_FIELDS) {
     const dependencies = (manifest[field] ?? {}) as Record<string, unknown>;
