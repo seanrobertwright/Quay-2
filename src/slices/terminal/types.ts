@@ -1,17 +1,19 @@
-export type RunKind =
-  | "claude"
-  | "antigravity"
-  | "codex"
-  | "pi"
-  | "gemini"
-  | "grok"
-  | "aider"
-  | "kiro"
-  | "copilot"
-  | "opencode"
-  | "powershell"
-  | "command"
-  | "archon";
+export const RUN_KINDS = [
+  "claude",
+  "antigravity",
+  "codex",
+  "pi",
+  "gemini",
+  "grok",
+  "aider",
+  "kiro",
+  "copilot",
+  "opencode",
+  "powershell",
+  "command",
+  "archon",
+] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
 
 export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   return (
@@ -51,7 +53,9 @@ export type ClaudeStatus =
   | "idle"
   | "exited"
   | "unknown";
-export type StageLayout = "single" | "split-horizontal" | "split-vertical" | "grid";
+// Kept on one line: the saved-swarm store's `stage_layouts_match_the_launcher` test reads it.
+export const STAGE_LAYOUTS = ["single", "split-horizontal", "split-vertical", "grid"] as const;
+export type StageLayout = (typeof STAGE_LAYOUTS)[number];
 
 export interface TerminalInfo {
   id: string;

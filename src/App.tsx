@@ -11,6 +11,7 @@ import { A2APanel } from "./slices/orchestrator/A2APanel";
 import { PermissionModal } from "./slices/bridge/PermissionModal";
 import { WorkspaceSettingsModal } from "./slices/workspace/WorkspaceSettingsModal";
 import { SwarmModal } from "./slices/orchestrator/SwarmModal";
+import { useSavedSwarms } from "./slices/orchestrator/useSavedSwarms";
 import { CommandPalette } from "./slices/command-palette/CommandPalette";
 import { DiffViewerDrawer } from "./slices/bridge/DiffViewerDrawer";
 import { NewWorktreeModal } from "./slices/git/NewWorktreeModal";
@@ -113,6 +114,9 @@ export function App() {
 
   const { events, activeTools, pendingPermissions, resolvePermission, getTerminalEvents } =
     useBridgeEvents();
+
+  // One instance shared by the swarm builder and the command palette
+  const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
 
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [detectedUpdate, setDetectedUpdate] = useState<UpdateInfo | null>(null);
@@ -497,6 +501,7 @@ export function App() {
         onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
         onOpenSwarmModal={() => setIsSwarmModalOpen(true)}
         onLaunchSwarmPreset={launchSwarm}
+        savedSwarms={savedSwarms}
         onOpenActionLog={() => setIsActionLogOpen(true)}
         onOpenA2A={() => setIsA2AOpen(true)}
         onOpenDiffInspector={() => setIsDiffInspectorOpen(true)}
@@ -539,6 +544,9 @@ export function App() {
         activeProject={activeProject}
         onClose={() => setIsSwarmModalOpen(false)}
         onLaunchSwarm={launchSwarm}
+        savedSwarms={savedSwarms}
+        onSaveSwarm={saveSwarm}
+        onRemoveSwarm={removeSwarm}
       />
 
       {/* Visual Diff & File Change Inspector Drawer */}

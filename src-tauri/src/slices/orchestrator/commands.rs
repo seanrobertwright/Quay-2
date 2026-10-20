@@ -2,6 +2,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::models::{A2ADispatchRequest, A2AMessage};
 use super::router::A2ARouter;
+use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
 
 #[tauri::command]
@@ -48,6 +49,27 @@ pub async fn a2a_clear_messages(
     router.clear_messages();
     let _ = app_handle.emit("a2a-messages-cleared", ());
     Ok(())
+}
+
+#[tauri::command]
+pub async fn list_saved_swarms(store: State<'_, SwarmStore>) -> Result<Vec<SavedSwarm>, String> {
+    store.list()
+}
+
+#[tauri::command]
+pub async fn save_swarm(
+    swarm: SwarmDraft,
+    store: State<'_, SwarmStore>,
+) -> Result<Vec<SavedSwarm>, String> {
+    store.save(swarm)
+}
+
+#[tauri::command]
+pub async fn remove_saved_swarm(
+    id: String,
+    store: State<'_, SwarmStore>,
+) -> Result<Vec<SavedSwarm>, String> {
+    store.remove(&id)
 }
 
 /// The launch prompt for each agent of a swarm about to launch, in roster order, or null

@@ -28,7 +28,8 @@ use slices::machina::{
 };
 use slices::orchestrator::{
     a2a_broadcast_toast, a2a_clear_messages, a2a_get_messages, a2a_send_prompt,
-    swarm_launch_prompts, A2ARouter,
+    list_saved_swarms, remove_saved_swarm, save_swarm, swarm_launch_prompts, A2ARouter,
+    SwarmStore,
 };
 use slices::pty::{
     get_terminal_output, kill_terminal, list_terminals, relaunch_terminal, rename_terminal,
@@ -64,6 +65,7 @@ pub fn run() {
         .manage(bridge_state)
         .manage(workspace_manager)
         .manage(a2a_router)
+        .manage(SwarmStore::new())
         .manage(machina_manager)
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -124,6 +126,9 @@ pub fn run() {
             a2a_broadcast_toast,
             a2a_get_messages,
             a2a_clear_messages,
+            list_saved_swarms,
+            save_swarm,
+            remove_saved_swarm,
             swarm_launch_prompts,
             resolve_permission,
             get_pending_permissions,

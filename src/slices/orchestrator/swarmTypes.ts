@@ -184,3 +184,32 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
     ],
   },
 ];
+
+/** A custom swarm as stored in swarms.json. The card's description and badge are generated. */
+export interface SavedSwarm {
+  id: string;
+  title: string;
+  layout: StageLayout;
+  agents: SwarmAgentConfig[];
+}
+
+/** What the builder form saves: the store assigns the id on the first save. */
+export type SwarmDraft = Omit<SavedSwarm, "id">;
+
+/** The name is the overwrite key: names match after trimming, ignoring case. */
+export const sameSwarmName = (a: string, b: string) =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * Whether the store would take this name: not blank and not a built-in preset's title.
+ * The store's refusal is what the form shows; this only lets the import skip names it can't save.
+ */
+export const isSaveableSwarmName = (name: string) =>
+  name.trim() !== "" && !BUILTIN_SWARM_PRESETS.some((b) => sameSwarmName(b.title, name));
+
+export const savedSwarmToPreset = (swarm: SavedSwarm): SwarmPreset => ({
+  ...swarm,
+  description: `Custom ${swarm.agents.length}-agent swarm in ${swarm.layout} layout`,
+  badge: `${swarm.agents.length} Agents`,
+  tagColor: "#f0883e",
+});

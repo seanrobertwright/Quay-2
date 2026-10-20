@@ -71,6 +71,7 @@ interface CommandPaletteProps {
   onOpenWorkspaceSettings: () => void;
   onOpenSwarmModal: () => void;
   onLaunchSwarmPreset: (preset: SwarmPreset) => void;
+  savedSwarms: SwarmPreset[];
   onOpenActionLog: () => void;
   onOpenA2A: () => void;
   onOpenDiffInspector: () => void;
@@ -104,6 +105,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenWorkspaceSettings,
   onOpenSwarmModal,
   onLaunchSwarmPreset,
+  savedSwarms,
   onOpenActionLog,
   onOpenA2A,
   onOpenDiffInspector,
@@ -445,8 +447,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
-    // 3. Swarm Presets (1-Click)
-    for (const preset of BUILTIN_SWARM_PRESETS) {
+    // 3. Swarm Presets (1-Click): saved swarms first, then the built-ins
+    for (const preset of [...savedSwarms, ...BUILTIN_SWARM_PRESETS]) {
       items.push({
         id: `swarm-${preset.id}`,
         category: "Swarms",
@@ -536,6 +538,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenWorkspaceSettings,
     onOpenSwarmModal,
     onLaunchSwarmPreset,
+    savedSwarms,
     onOpenActionLog,
     onOpenA2A,
     onOpenDiffInspector,
