@@ -8,6 +8,7 @@ import {
   swarmNameError,
 } from "./swarmTypes";
 import { AgentIcon } from "../terminal/AgentIcons";
+import { StageLayout } from "../terminal/types";
 import {
   X,
   Bot,
@@ -41,6 +42,10 @@ const defaultAgent = (n: number): SwarmAgentConfig => ({
   custom_flags: "",
 });
 
+const DEFAULT_TITLE = "Custom Swarm";
+const DEFAULT_LAYOUT: StageLayout = "split-horizontal";
+const defaultRoster = () => [defaultAgent(1), defaultAgent(2)];
+
 /** The next row number not already used by an `agent-N` session name. */
 const nextAgentNumber = (agents: SwarmAgentConfig[]) => {
   let n = agents.length + 1;
@@ -71,9 +76,9 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   const nameErrorId = useId();
 
   // Custom preset form state
-  const [customTitle, setCustomTitle] = useState("Custom Swarm");
-  const [customLayout, setCustomLayout] = useState<"split-horizontal" | "split-vertical" | "grid">("split-horizontal");
-  const [customAgents, setCustomAgents] = useState<SwarmAgentConfig[]>([defaultAgent(1), defaultAgent(2)]);
+  const [customTitle, setCustomTitle] = useState(DEFAULT_TITLE);
+  const [customLayout, setCustomLayout] = useState<StageLayout>(DEFAULT_LAYOUT);
+  const [customAgents, setCustomAgents] = useState<SwarmAgentConfig[]>(defaultRoster);
 
   const clearRemoveTimer = () => {
     if (removeTimer.current !== null) {
@@ -83,6 +88,15 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   };
 
   useEffect(() => clearRemoveTimer, []);
+
+  // The form opens on its defaults each time the launcher does, not on the last swarm loaded.
+  useEffect(() => {
+    if (isOpen) return;
+    setCustomTitle(DEFAULT_TITLE);
+    setCustomLayout(DEFAULT_LAYOUT);
+    setCustomAgents(defaultRoster());
+    setNameError(null);
+  }, [isOpen]);
 
   // Handle ESC
   useEffect(() => {
@@ -104,12 +118,13 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
 
   const selectPreset = (preset: SwarmPreset) => {
     setSelectedPresetId(preset.id);
-    // A custom card loads into the form, so editing is select, change, Update.
+    // A custom card opens in the form, so editing is select, change, Update.
     if (savedSwarms.some((p) => p.id === preset.id)) {
       setCustomTitle(preset.title);
-      if (preset.layout !== "single") setCustomLayout(preset.layout);
+      setCustomLayout(preset.layout);
       setCustomAgents(preset.agents.map((a) => ({ ...a })));
       setNameError(null);
+      setIsCustomMode(true);
     }
   };
 
