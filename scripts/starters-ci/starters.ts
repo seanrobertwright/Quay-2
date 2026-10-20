@@ -152,7 +152,8 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
       failures.push(`npm ci exited ${install.exitCode}${outputTail(install.output)}`);
       return failures;
     }
-    const typecheck = inProject(["npx", "--no", "tsc", "--noEmit"]);
+    // tsc prints its "Found N errors" summary only when pretty, and a CI log is not a terminal.
+    const typecheck = inProject(["npx", "--no", "--", "tsc", "--noEmit", "--pretty"]);
     failures.push(...compareTypecheck(state.typecheck, typecheck));
     const tests = inProject(["npm", "test", "--", ...vitestReporterArgs(report("tests"))]);
     failures.push(...compareTests("tests", state.tests, tests, report("tests")));
@@ -168,7 +169,7 @@ function checkStarter(tutorialDir: string, state: ExpectedState, run: Runner): s
       const command =
         "script" in state.checkSuite
           ? ["npm", "run", state.checkSuite.script, "--"]
-          : ["npx", "--no", "vitest", ...state.checkSuite.vitest];
+          : ["npx", "--no", "--", "vitest", ...state.checkSuite.vitest];
       const check = inProject([...command, ...vitestReporterArgs(report("check"))]);
       failures.push(...compareTests("check suite", state.checkSuite, check, report("check")));
     }
@@ -257,7 +258,7 @@ function compareTypecheck(expected: TypecheckState, result: CommandResult): stri
   }
   const want = `expected tsc --noEmit to fail with a line starting "${expected.lineStartsWith}"`;
   if (result.exitCode === 0) return [`typecheck: ${want}, it exited 0`];
-  const lines = result.output.split(/\r?\n/);
+  const lines = stripColours(result.output).split(/\r?\n/);
   if (lines.some((line) => line.startsWith(expected.lineStartsWith))) return [];
   return [`typecheck: ${want}, it exited ${result.exitCode} without one${outputTail(result.output)}`];
 }
@@ -313,6 +314,13 @@ function readVitestReport(reportFile: string): TestCounts | undefined {
 }
 
 function outputTail(output: string): string {
-  const tail = output.trimEnd().split(/\r?\n/).slice(-20).join("\n");
+  const tail = stripColours(output).trimEnd().split(/\r?\n/).slice(-20).join("\n");
   return tail ? `\n${tail}` : "";
+}
+
+// ANSI SGR sequences, the colours tsc --pretty writes even when its output is not a terminal.
+const COLOUR = new RegExp(`${String.fromCharCode(27)}\[[0-9;]*m`, "g");
+
+function stripColours(output: string): string {
+  return output.replace(COLOUR, "");
 }

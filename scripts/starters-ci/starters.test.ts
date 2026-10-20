@@ -120,7 +120,7 @@ test("tests green: a skeleton whose one todo counts as green passes (Swarm 2)", 
   const runner = fakeRunner({ "npm test": { vitest: { todo: 1 } } });
   const report = checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet });
   assert.deepEqual(report, { starters: ["tdd-swarm-kata"], failures: [] });
-  assert.deepEqual(runner.labels(), ["npm ci", "npx --no tsc --noEmit", "npm test"]);
+  assert.deepEqual(runner.labels(), ["npm ci", "npx --no -- tsc --noEmit --pretty", "npm test"]);
   for (const call of runner.calls) assert.ok(!call.cwd.startsWith(dir), "commands run in a copy of the starter");
 });
 
@@ -166,7 +166,7 @@ const swarm7 = {
 test("typecheck red with an exact line plus a test count: the planted errors pass (Swarm 7)", () => {
   const dir = oneStarter("js-to-typescript", swarm7);
   const runner = fakeRunner({
-    "npx --no tsc --noEmit": { exitCode: 2, output: "src/a.ts(1,1): error TS7006\r\n\r\nFound 24 errors in 6 files.\r\n" },
+    "npx --no -- tsc --noEmit --pretty": { exitCode: 2, output: "src/a.ts(1,1): error TS7006\r\n\r\nFound 24 errors in 6 files.\r\n" },
     "npm test": { vitest: { passed: 12 } },
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
@@ -175,7 +175,7 @@ test("typecheck red with an exact line plus a test count: the planted errors pas
 test("typecheck red with an exact line: another error count fails the starter (Swarm 7)", () => {
   const dir = oneStarter("js-to-typescript", swarm7);
   const runner = fakeRunner({
-    "npx --no tsc --noEmit": { exitCode: 2, output: "Found 240 errors in 6 files.\n" },
+    "npx --no -- tsc --noEmit --pretty": { exitCode: 2, output: "Found 240 errors in 6 files.\n" },
     "npm test": { vitest: { passed: 12 } },
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
@@ -201,7 +201,7 @@ test("check suite failing against the starter: it runs from check/ beside src/ a
   const dir = oneStarter("bug-hunt", swarm5, { "bug-hunt/check/cart.check.test.ts": "// six tests" });
   const runner = fakeRunner({
     "npm test": { vitest: { passed: 7 } },
-    "npx --no vitest run check": { vitest: { failed: 4, passed: 2 } },
+    "npx --no -- vitest run check": { vitest: { failed: 4, passed: 2 } },
   });
   const checkPresent: Record<string, boolean> = {};
   const run = (command: Command) => {
@@ -211,9 +211,9 @@ test("check suite failing against the starter: it runs from check/ beside src/ a
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run, log: quiet }).failures, []);
   assert.deepEqual(checkPresent, {
     "npm ci": false,
-    "npx --no tsc --noEmit": false,
+    "npx --no -- tsc --noEmit --pretty": false,
     "npm test": false,
-    "npx --no vitest run check": true,
+    "npx --no -- vitest run check": true,
   });
 });
 
@@ -221,7 +221,7 @@ test("check suite failing against the starter: a green check run fails the start
   const dir = oneStarter("bug-hunt", swarm5, { "bug-hunt/check/cart.check.test.ts": "// six tests" });
   const runner = fakeRunner({
     "npm test": { vitest: { passed: 7 } },
-    "npx --no vitest run check": { vitest: { passed: 6 } },
+    "npx --no -- vitest run check": { vitest: { passed: 6 } },
   });
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, [
     "bug-hunt: check suite: expected 4 of 6 failing, got 0 of 6",
@@ -282,7 +282,7 @@ test("a per-starter environment reaches every command, the bench included (A2A 6
     runner.calls.map((call) => [label(call), call.env]),
     [
       ["npm ci", { BENCH_TIME_MS: "500" }],
-      ["npx --no tsc --noEmit", { BENCH_TIME_MS: "500" }],
+      ["npx --no -- tsc --noEmit --pretty", { BENCH_TIME_MS: "500" }],
       ["npm test", { BENCH_TIME_MS: "500" }],
       ["npm run bench", { BENCH_TIME_MS: "500" }],
     ],
@@ -307,7 +307,7 @@ test("ships green, and the named patch breaks exactly the named test (A2A 7)", (
   assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
   assert.deepEqual(runner.labels(), [
     "npm ci",
-    "npx --no tsc --noEmit",
+    "npx --no -- tsc --noEmit --pretty",
     "npm test",
     "git apply patches/late-change.patch",
     "npm test",
@@ -461,4 +461,25 @@ test("a tutorial folder with an expected state but no starter fails, before runn
   });
   const report = checkStarters({ tutorialsDir: dir, run: () => assert.fail("no command should run"), log: quiet });
   assert.deepEqual(report.failures, ["tdd-relay: no starter/ folder; every tutorial folder holds one"]);
+});
+
+test("typecheck red with an exact line: the line matches through tsc's --pretty colours (Swarm 7)", () => {
+  const dir = oneStarter("js-to-typescript", swarm7);
+  const runner = fakeRunner({
+    "npx --no -- tsc --noEmit --pretty": {
+      exitCode: 2,
+      output: "\u001b[96msrc/a.ts\u001b[0m:1:1 - error\n\nFound 24 errors in 6 files.\u001b[90m\u001b[0m\n",
+    },
+    "npm test": { vitest: { passed: 12 } },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
+});
+
+test("typecheck red with an exact line: colours split inside the line still match (Swarm 7)", () => {
+  const dir = oneStarter("js-to-typescript", swarm7);
+  const runner = fakeRunner({
+    "npx --no -- tsc --noEmit --pretty": { exitCode: 2, output: "Found \u001b[1m24\u001b[0m errors in 6 files.\n" },
+    "npm test": { vitest: { passed: 12 } },
+  });
+  assert.deepEqual(checkStarters({ tutorialsDir: dir, run: runner.run, log: quiet }).failures, []);
 });
