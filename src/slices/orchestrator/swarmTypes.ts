@@ -199,15 +199,12 @@ export type SwarmDraft = Omit<SavedSwarm, "id">;
 export const sameSwarmName = (a: string, b: string) =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** The inline message for a name that can't be saved, or null when it can. Mirrors the Rust store. */
-export const swarmNameError = (name: string): string | null => {
-  const title = name.trim();
-  if (!title) return "Give the swarm a name.";
-  if (BUILTIN_SWARM_PRESETS.some((b) => sameSwarmName(b.title, title))) {
-    return `"${title}" is a built-in preset. Choose another name.`;
-  }
-  return null;
-};
+/**
+ * Whether the store would take this name: not blank and not a built-in preset's title.
+ * The store's refusal is what the form shows; this only lets the import skip names it can't save.
+ */
+export const isSaveableSwarmName = (name: string) =>
+  name.trim() !== "" && !BUILTIN_SWARM_PRESETS.some((b) => sameSwarmName(b.title, name));
 
 export const savedSwarmToPreset = (swarm: SavedSwarm): SwarmPreset => ({
   ...swarm,

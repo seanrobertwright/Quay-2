@@ -5,7 +5,7 @@ import {
   SwarmDraft,
   BUILTIN_SWARM_PRESETS,
   sameSwarmName,
-  swarmNameError,
+  savedSwarmToPreset,
 } from "./swarmTypes";
 import { AgentIcon } from "../terminal/AgentIcons";
 import { StageLayout } from "../terminal/types";
@@ -129,9 +129,8 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   };
 
   const handleSave = async () => {
-    const error = swarmNameError(customTitle);
-    setNameError(error);
-    if (error) return;
+    // The store refuses a blank or built-in name; its message shows under the field.
+    setNameError(null);
     setIsSaving(true);
     try {
       const saved = await onSaveSwarm({
@@ -177,13 +176,14 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
     setIsLaunching(true);
     try {
       if (isCustomMode) {
-        await onLaunchSwarm({
-          id: "custom-unsaved",
-          title: customTitle.trim() || "Custom Swarm",
-          description: `Custom ${customAgents.length}-agent swarm in ${customLayout} layout`,
-          layout: customLayout,
-          agents: customAgents,
-        });
+        await onLaunchSwarm(
+          savedSwarmToPreset({
+            id: "custom-unsaved",
+            title: customTitle.trim() || DEFAULT_TITLE,
+            layout: customLayout,
+            agents: customAgents,
+          })
+        );
       } else {
         await onLaunchSwarm(selectedPreset);
       }
@@ -277,9 +277,9 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
             Team Roster ({preset.agents.length}):
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {preset.agents.map((agent, i) => (
+            {preset.agents.map((agent) => (
               <div
-                key={i}
+                key={agent.name}
                 className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[11px]"
               >
                 <AgentIcon kind={agent.run_kind} className="w-3.5 h-3.5 shrink-0" />

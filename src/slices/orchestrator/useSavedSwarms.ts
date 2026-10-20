@@ -7,8 +7,8 @@ import {
   SwarmDraft,
   SwarmPreset,
   sameSwarmName,
+  isSaveableSwarmName,
   savedSwarmToPreset,
-  swarmNameError,
 } from "./swarmTypes";
 
 /** Where custom presets lived before swarms.json. Imported once, then deleted. */
@@ -21,7 +21,7 @@ const optionalString = (value: unknown) => (typeof value === "string" ? value : 
 
 /** A legacy localStorage entry as a draft the store accepts, or null when it can't be saved. */
 const legacyEntryToDraft = (entry: unknown): SwarmDraft | null => {
-  if (!isRecord(entry) || typeof entry.title !== "string" || swarmNameError(entry.title)) {
+  if (!isRecord(entry) || typeof entry.title !== "string" || !isSaveableSwarmName(entry.title)) {
     return null;
   }
   const layout = STAGE_LAYOUTS.find((l) => l === entry.layout);
