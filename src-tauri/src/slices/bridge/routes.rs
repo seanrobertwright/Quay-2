@@ -11,7 +11,8 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 
 use super::models::{
-    CommandsResponse, EventsBatchRequest, PermissionRequestPayload, PermissionResponsePayload,
+    CommandsResponse, Envelope, EventsBatchRequest, PermissionRequestPayload,
+    PermissionResponsePayload,
 };
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
@@ -54,12 +55,34 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
         .and_then(|auth| auth.strip_prefix("Bearer "))
 }
 
+/// Checks a `/v1/events` batch before any of it is applied: the request must be
+/// loopback, carry a bearer token, and every event's `tag` must name the terminal
+/// that token belongs to. One failing event rejects the whole batch.
+pub fn authorize_events(
+    bridge_state: &BridgeState,
+    headers: &HeaderMap,
+    events: &[Envelope],
+) -> Result<(), (StatusCode, &'static str)> {
+    validate_host_and_origin(headers)?;
+
+    let token = extract_bearer_token(headers)
+        .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header"))?;
+
+    for envelope in events {
+        let tag = envelope.tag.as_deref().unwrap_or("");
+        if !bridge_state.verify_token(tag, token) {
+            return Err((StatusCode::UNAUTHORIZED, "Invalid Bearer token"));
+        }
+    }
+    Ok(())
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
     Json(payload): Json<EventsBatchRequest>,
 ) -> Result<Response, (StatusCode, &'static str)> {
-    validate_host_and_origin(&headers)?;
+    authorize_events(&ctx.bridge_state, &headers, &payload.events)?;
 
     for envelope in payload.events {
         let tag = envelope.tag.clone();
@@ -313,4 +336,101 @@ pub fn create_router(ctx: AppContext) -> Router {
         .route("/.well-known/agent.json", get(handle_machina_agent_card))
         .route("/a2a/machina-praxis", get(handle_machina_agent_card))
         .with_state(Arc::new(ctx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+
+    fn event_for(tag: &str) -> Envelope {
+        Envelope {
+            v: 1,
+            boot: "boot-1".to_string(),
+            seq: 1,
+            ts: 0,
+            session_id: "sess-1".to_string(),
+            tag: Some(tag.to_string()),
+            event_type: "turn.completed".to_string(),
+            data: serde_json::json!({ "answer": "done" }),
+        }
+    }
+
+    fn loopback_headers(token: Option<&str>) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", "127.0.0.1:4000".parse().unwrap());
+        if let Some(token) = token {
+            headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
+        }
+        headers
+    }
+
+    #[test]
+    fn events_without_a_token_are_unauthorized() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+
+        let result = authorize_events(&state, &loopback_headers(None), &[event_for("term-a")]);
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn events_with_a_wrong_token_are_unauthorized() {
+        let state = BridgeState::new();
+        state.token_for("term-a");
+
+        let result = authorize_events(
+            &state,
+            &loopback_headers(Some("not-the-token")),
+            &[event_for("term-a")],
+        );
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn events_tagged_as_another_terminal_are_unauthorized() {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        state.token_for("term-b");
+
+        let result = authorize_events(
+            &state,
+            &loopback_headers(Some(&token_a)),
+            &[event_for("term-b")],
+        );
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn a_batch_with_one_foreign_event_is_rejected_whole() {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        state.token_for("term-b");
+
+        let result = authorize_events(
+            &state,
+            &loopback_headers(Some(&token_a)),
+            &[event_for("term-a"), event_for("term-b")],
+        );
+
+        assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn events_with_their_terminals_token_are_accepted() {
+        let state = BridgeState::new();
+        let token_a = state.token_for("term-a");
+        state.token_for("term-b");
+
+        let result = authorize_events(
+            &state,
+            &loopback_headers(Some(&token_a)),
+            &[event_for("term-a"), event_for("term-a")],
+        );
+
+        assert!(result.is_ok());
+    }
 }
