@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quay 2 terminal garbling — User Acceptance Test</title>
+<style>
+/* UAT form styles. Shared by the Python and Node generators (inlined into the HTML). */
+
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --ink: #14181f;
+  --ink-2: #4a5261;
+  --ink-3: #757e8e;
+  --line: #d8dce3;
+  --line-2: #e8ebef;
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+  --pass: #17803d;
+  --pass-bg: #e7f6ec;
+  --fail: #c02626;
+  --fail-bg: #fdeaea;
+  --skip: #8a6100;
+  --skip-bg: #fbf1dc;
+  --concern: #7c3aed;
+  --concern-bg: #f2ecfe;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .1);
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --panel: #1c2027;
+    --panel-2: #23282f;
+    --ink: #e9ecf1;
+    --ink-2: #b3bac6;
+    --ink-3: #8b93a1;
+    --line: #333a44;
+    --line-2: #2a3038;
+    --accent: #5b8cff;
+    --accent-ink: #0b0e13;
+    --pass: #57d98a;
+    --pass-bg: #17301f;
+    --fail: #ff8080;
+    --fail-bg: #331a1a;
+    --skip: #e5b955;
+    --skip-bg: #332a12;
+    --concern: #c4a4ff;
+    --concern-bg: #271f3a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 var(--sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+code, pre, kbd { font-family: var(--mono); font-size: .92em; }
+code { background: var(--panel-2); padding: .12em .38em; border-radius: 5px; border: 1px solid var(--line-2); }
+pre { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; }
+pre code { background: none; border: 0; padding: 0; }
+a { color: var(--accent); }
+
+/* ---------- top bar ---------- */
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.topbar-inner {
+  max-width: 1400px; margin: 0 auto; padding: 10px 20px;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+}
+.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+.topbar .file { font: 12px/1.3 var(--mono); color: var(--ink-3); }
+.spacer { flex: 1 1 auto; }
+
+.counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill {
+  font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--ink-2);
+  white-space: nowrap;
+}
+.pill.pass { background: var(--pass-bg); color: var(--pass); border-color: transparent; }
+.pill.fail { background: var(--fail-bg); color: var(--fail); border-color: transparent; }
+.pill.notdone { background: var(--skip-bg); color: var(--skip); border-color: transparent; }
+.pill.concern { background: var(--concern-bg); color: var(--concern); border-color: transparent; }
+
+.progress { width: 100%; height: 6px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+
+button {
+  font: inherit; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+  border-radius: 8px; padding: 8px 14px;
+}
+button:hover { border-color: var(--ink-3); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px;
+}
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+button.primary:disabled { opacity: .5; cursor: not-allowed; }
+button.ghost { background: transparent; }
+button.small { padding: 5px 10px; font-size: 13.5px; }
+
+.savestate { font-size: 13px; color: var(--ink-3); min-width: 90px; }
+.savestate.dirty { color: var(--skip); }
+.savestate.saved { color: var(--pass); }
+
+/* ---------- layout ---------- */
+
+.layout { max-width: 1400px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } .toc { display: none; } }
+
+.toc {
+  position: sticky; top: 84px; max-height: calc(100vh - 108px); overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;
+}
+.toc h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 4px 6px 10px; }
+.toc a { display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 7px; text-decoration: none; color: var(--ink-2); font-size: 14px; }
+.toc a:hover { background: var(--panel-2); color: var(--ink); }
+.toc .tocnum { font: 12px var(--mono); color: var(--ink-3); min-width: 20px; }
+.toc .dots { margin-left: auto; display: flex; gap: 2px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.dot.pass { background: var(--pass); }
+.dot.fail { background: var(--fail); }
+.dot.notdone { background: var(--skip); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; margin-bottom: 18px; box-shadow: var(--shadow); }
+.panel h2 { margin-top: 0; }
+
+.intro { color: var(--ink-2); }
+.intro h2 { font-size: 19px; color: var(--ink); }
+.intro h3 { font-size: 16px; color: var(--ink); }
+
+.banner { border-left: 4px solid var(--skip); background: var(--skip-bg); color: var(--skip); padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-weight: 550; }
+.banner.err { border-color: var(--fail); background: var(--fail-bg); color: var(--fail); }
+
+.filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.filters .lbl { font-size: 13px; color: var(--ink-3); font-weight: 600; }
+.chip { border-radius: 999px; padding: 5px 12px; font-size: 13.5px; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+/* ---------- sections and tests ---------- */
+
+.section { margin-bottom: 30px; scroll-margin-top: 90px; }
+.section > h2 { font-size: 21px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--line); letter-spacing: -.01em; }
+
+.test {
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line);
+  border-radius: var(--radius); padding: 16px 20px; margin-bottom: 14px; box-shadow: var(--shadow);
+  scroll-margin-top: 90px;
+}
+.test[data-status="pass"] { border-left-color: var(--pass); }
+.test[data-status="fail"] { border-left-color: var(--fail); }
+.test[data-status="notdone"] { border-left-color: var(--skip); }
+.test.hidden { display: none; }
+.test.flash { animation: flash 1.2s ease; }
+@keyframes flash { from { background: var(--concern-bg); } to { background: var(--panel); } }
+
+.test > h3 { margin: 0 0 10px; font-size: 17px; display: flex; gap: 10px; align-items: baseline; }
+.test > h3 .tid { font: 600 14px var(--mono); color: var(--ink-3); }
+
+.body { color: var(--ink-2); font-size: 15.2px; }
+.body ul, .body ol { padding-left: 24px; }
+.body li { margin: 4px 0; }
+.body li::marker { color: var(--ink-3); font-weight: 600; }
+.body strong { color: var(--ink); }
+.body p { margin: 8px 0; }
+
+.answer { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
+
+.statusrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.statusrow .lbl { font-size: 13px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+.radio { display: inline-flex; }
+.radio input { position: absolute; opacity: 0; width: 0; height: 0; }
+.radio span {
+  display: inline-block; padding: 8px 16px; border: 1px solid var(--line); border-radius: 8px;
+  font-weight: 600; font-size: 14.5px; background: var(--panel-2); color: var(--ink-2); user-select: none;
+}
+.radio:hover span { border-color: var(--ink-3); }
+.radio input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+/* the starting state: clearly selected, but visibly not an answer */
+.radio span.unanswered { font-weight: 500; font-style: italic; color: var(--ink-3); }
+.radio input:checked + span.unanswered {
+  background: var(--panel); border-color: var(--ink-3); border-style: dashed; color: var(--ink-2);
+}
+.radio input:checked + span.pass { background: var(--pass); border-color: transparent; color: #fff; }
+.radio input:checked + span.fail { background: var(--fail); border-color: transparent; color: #fff; }
+.radio input:checked + span.notdone { background: var(--skip); border-color: transparent; color: #fff; }
+
+.field { margin-bottom: 10px; }
+.field > label { display: block; font-size: 13px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.field .hint { font-size: 13px; color: var(--ink-3); font-weight: 400; text-transform: none; letter-spacing: 0; }
+textarea, input[type="text"], select {
+  width: 100%; font: inherit; font-size: 15px; color: var(--ink); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; resize: vertical;
+}
+textarea { min-height: 62px; }
+select { width: auto; min-width: 150px; }
+.required-miss textarea, .required-miss select { border-color: var(--fail); background: var(--fail-bg); }
+
+.concernbox { background: var(--concern-bg); border: 1px solid color-mix(in srgb, var(--concern) 30%, transparent); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.concernbox > label { color: var(--concern); }
+.concernrow { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.concernrow label { font-size: 13px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+
+/* ---------- screenshots ---------- */
+
+.shots { margin-top: 8px; }
+.dropzone {
+  border: 2px dashed var(--line); border-radius: 8px; padding: 10px 12px; text-align: center;
+  color: var(--ink-3); font-size: 13.5px; cursor: pointer; background: var(--panel-2);
+}
+.dropzone:hover, .dropzone.over { border-color: var(--accent); color: var(--accent); }
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.thumb { position: relative; width: 116px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel-2); }
+.thumb img { display: block; width: 100%; height: 78px; object-fit: cover; cursor: zoom-in; }
+.thumb .cap { font: 11px var(--mono); color: var(--ink-3); padding: 3px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb .rm { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0; line-height: 1; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; border: 0; font-size: 14px; }
+
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 30px; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+
+/* ---------- findings ---------- */
+
+.finding { border: 1px solid var(--concern); border-left-width: 4px; border-radius: var(--radius); padding: 14px 18px; margin-bottom: 12px; background: var(--panel); }
+.finding h4 { margin: 0 0 10px; font-size: 15px; color: var(--concern); }
+.addfinding { margin: 4px 0 18px; }
+
+/* ---------- submit dialog ---------- */
+
+.overlay { position: fixed; inset: 0; background: rgba(10, 12, 16, .55); display: flex; align-items: center; justify-content: center; z-index: 90; padding: 20px; }
+.modal { background: var(--panel); border-radius: 14px; border: 1px solid var(--line); max-width: 720px; width: 100%; max-height: 86vh; overflow-y: auto; padding: 24px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.modal h2 { margin-top: 0; }
+.modal ul { padding-left: 20px; }
+.modal li { margin: 6px 0; }
+.modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+.modal .cmd { display: block; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font: 14px var(--mono); word-break: break-all; margin: 10px 0; }
+.jump { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0; font-weight: 600; cursor: pointer; }
+
+.footerbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 20px 0 60px; }
+.tester { display: flex; gap: 8px; align-items: center; }
+.tester input { width: 220px; }
+
+@media print {
+  .topbar, .toc, .filters, .dropzone, .addfinding, button { display: none !important; }
+  .layout { grid-template-columns: 1fr; }
+  .test { break-inside: avoid; }
+}
+
+/* ---------- annotate-in-the-app ---------- */
+
+.openrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 2px; }
+.openbtn {
+  display: inline-block; text-decoration: none; font-weight: 650; font-size: 14.5px;
+  background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 8px 15px;
+}
+.openbtn:hover { filter: brightness(1.08); }
+.openurl { font: 12.5px var(--mono); color: var(--ink-3); word-break: break-all; }
+
+details.setup { border-left: 4px solid var(--accent); }
+details.setup summary { font-weight: 650; cursor: pointer; font-size: 15.5px; }
+details.setup p { color: var(--ink-2); }
+details.setup ol { color: var(--ink-2); padding-left: 22px; }
+details.setup li { margin: 8px 0; }
+details.setup .hint { font-size: 13.5px; color: var(--ink-3); }
+kbd {
+  font: 12px var(--mono); background: var(--panel-2); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px;
+}
+a.bmlet {
+  display: inline-block; text-decoration: none; font-weight: 650; cursor: grab;
+  background: var(--concern-bg); color: var(--concern);
+  border: 1px dashed var(--concern); border-radius: 8px; padding: 6px 13px;
+}
+a.bmlet:active { cursor: grabbing; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 120;
+  background: var(--ink); color: var(--bg); font-weight: 600; font-size: 14.5px;
+  padding: 11px 20px; border-radius: 999px; box-shadow: 0 6px 24px rgba(0, 0, 0, .3);
+}
+
+</style>
+</head>
+<body>
+<noscript><p style="padding:20px">This checklist form needs JavaScript switched on.</p></noscript>
+<script id="uat-model" type="application/json">{"file":"UAT-terminal-garbling-2026-10-20.md","slug":"UAT-terminal-garbling-2026-10-20","title":"Quay 2 terminal garbling — User Acceptance Test","app":"Quay 2 — terminal garbling","level":"intermediate","generated":"2026-10-20","intro":"\u003ch3>How to use this checklist\u003c/h3>\n\u003cp>This checklist answers one question: \u003cstrong>when, and how, does a Quay terminal pane get garbled?\u003c/strong> Each test performs one trigger (relaunch, a project switch, a resize, a mod, a monitor change) and asks whether the pane is still clean afterwards. A \u003cstrong>Fail\u003c/strong> here is useful data, not a disappointment. Record every garble you see, even a small one.\u003c/p>\n\u003cp>\u003cstrong>Time:\u003c/strong> about 90 minutes. The sections run highest-suspicion first, so if you have to stop, use \u003cstrong>Submit what I have so far\u003c/strong> and the most important answers are already in. \u003cstrong>Save my work\u003c/strong> keeps everything between sittings.\u003c/p>\n\u003cp>\u003cstrong>What you need:\u003c/strong>\u003c/p>\n\u003cul>\n\u003cli>Windows 11 with this repo checked out at \u003ccode>E:\\Projects\\Quay2\u003c/code>, and the dev prerequisites from \u003ccode>CONTRIBUTING.md\u003c/code>: Node 20+, \u003ccode>pnpm\u003c/code> 10+, Rust 1.85+ (MSVC), and Visual Studio 2022 C++ build tools.\n\u003c/li>\n\u003cli>PowerShell 7 (\u003ccode>pwsh\u003c/code>) on your PATH.\n\u003c/li>\n\u003cli>Claude Code, Antigravity (\u003ccode>agy\u003c/code>) and Codex installed \u003cstrong>and signed in\u003c/strong>. Section 9 also uses one of OpenCode, Kiro or Copilot, whichever you have.\n\u003c/li>\n\u003cli>Two monitors with \u003cstrong>different\u003c/strong> display scaling (for example 100% and 150%), for Section 8.\n\u003c/li>\n\u003cli>Do \u003cstrong>not\u003c/strong> run this in a project where real agents are working. The tests open and close many terminals.\n\u003c/li>\n\u003c/ul>\n\u003ch4>Recording a result\u003c/h4>\n\u003cp>A pane is \u003cstrong>clean\u003c/strong> when, after the wait time the test gives, none of the symptoms below is visible. Wait the full time before you judge, because agents often redraw a second or two after a change.\u003c/p>\n\u003cul>\n\u003cli>\u003cstrong>G1, stacked or overlapping:\u003c/strong> old frames drawn on top of new ones, such as two input boxes, repeated status lines, or text over text.\n\u003c/li>\n\u003cli>\u003cstrong>G2, shifted columns or bad wrap:\u003c/strong> text offset by one or more columns, box borders broken or jagged, lines wrapping at the wrong place.\n\u003c/li>\n\u003cli>\u003cstrong>G3, missing or stale output:\u003c/strong> the screen does not update, part of a redraw never arrives, blank areas, or typing does not echo.\n\u003c/li>\n\u003cli>\u003cstrong>G4, odd characters:\u003c/strong> stray fragments such as \u003ccode>[0m\u003c/code>, \u003ccode>;1H\u003c/code> or \u003ccode>[?25l\u003c/code>, the replacement character (a diamond with a question mark), or letters that do not belong.\n\u003c/li>\n\u003cli>\u003cstrong>G5, undersized:\u003c/strong> the program draws narrower or shorter than the pane, leaving an empty strip at the right or bottom wider than about one character.\n\u003c/li>\n\u003cli>\u003cstrong>G6, oversized:\u003c/strong> content is cut off at the right or bottom edge, or a full-width line wraps onto a second line.\n\u003c/li>\n\u003cli>\u003cstrong>G7, other:\u003c/strong> anything else. Describe it.\n\u003c/li>\n\u003c/ul>\n\u003cp>For every \u003cstrong>Fail\u003c/strong>, start the \u003cstrong>Notes\u003c/strong> with this line and fill it in:\u003c/p>\n\u003cpre>\u003ccode>Symptoms: G? | Appeared: &lt;which step, and how long after&gt; | Redraw fixed it: yes / no / partly | PROBE: &lt;paste&gt;\u003c/code>\u003c/pre>\n\u003cul>\n\u003cli>\u003cstrong>Redraw\u003c/strong>: in a split layout, click the circular-arrow button in the pane header (tooltip \u003cstrong>Redraw terminal screen (Ctrl+L)\u003c/strong>). In a single pane there is no header, so click inside the terminal and press \u003ccode>Ctrl\u003c/code>+\u003ccode>L\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>PROBE\u003c/strong>: run the size probe below and paste the line it returns.\n\u003c/li>\n\u003cli>Always attach a screenshot of a garbled pane (\u003ccode>Win\u003c/code>+\u003ccode>Shift\u003c/code>+\u003ccode>S\u003c/code>, then \u003ccode>Ctrl\u003c/code>+\u003ccode>V\u003c/code> into the picture box).\n\u003c/li>\n\u003c/ul>\n\u003cp>Use the purple look-and-feel box for anything odd that is not garbling, such as flicker, a slow redraw or a jumpy cursor.\u003c/p>\n\u003ch4>Tool 1 — PROBE (xterm size versus pane size)\u003c/h4>\n\u003cp>This reads, for every visible pane, how many columns and rows xterm is drawing and how many would fit. It changes nothing.\u003c/p>\n\u003col>\n\u003cli>Click an empty part of the left sidebar, then press \u003ccode>F12\u003c/code> (or right-click the sidebar and choose \u003cstrong>Inspect\u003c/strong>). Open the \u003cstrong>Console\u003c/strong> tab.\n\u003c/li>\n\u003cli>Paste the snippet below and press Enter. If the console refuses to paste, type \u003ccode>allow pasting\u003c/code>, press Enter, and paste again.\n\u003c/li>\n\u003cli>A table prints. The last line is a text version of it, so copy that line into Notes.\n\u003c/li>\n\u003cli>To run it again later, click in the console, press the up arrow, then Enter.\n\u003c/li>\n\u003c/ol>\n\u003cpre>\u003ccode>(() =&gt; { const out = []; document.querySelectorAll('.xterm').forEach((x) =&gt; { const host = x.parentElement; const cs = getComputedStyle(host); const w = parseInt(cs.width), h = parseInt(cs.height); if (!w) return; const scr = x.querySelector('.xterm-screen').getBoundingClientRect(); const m = x.querySelector('.xterm-char-measure-element'); const dpr = devicePixelRatio; const devCell = m ? Math.floor((m.getBoundingClientRect().width / 32) * dpr) : NaN; const cols = Math.round((scr.width * dpr) / devCell); const rows = x.querySelectorAll('.xterm-rows &gt; div').length; const cellW = scr.width / cols, cellH = scr.height / rows; const pane = host.parentElement.parentElement; const label = pane.querySelector('select')?.selectedOptions[0]?.text || pane.querySelector('.h-7 .font-medium')?.textContent || 'single pane'; const fitCols = Math.floor((w - 14) / cellW), fitRows = Math.floor(h / cellH); out.push({ pane: label, cols, rows, fitCols, fitRows, ok: cols === fitCols &amp;&amp; rows === fitRows, gapRightPx: Math.round(w - scr.width), gapBottomPx: Math.round(h - scr.height), cellW: +cellW.toFixed(2), dpr }); }); console.table(out); return JSON.stringify(out); })()\u003c/code>\u003c/pre>\n\u003cp>\u003ccode>ok: true\u003c/code> means xterm fills its pane. \u003ccode>ok: false\u003c/code> means xterm itself is the wrong size, which is the \"terminal smaller than its window\" symptom (\u003cstrong>G5\u003c/strong>) at the xterm level.\u003c/p>\n\u003ch4>Tool 2 — RULER (what size the program thinks it is), PowerShell terminals only\u003c/h4>\n\u003cp>Type this into a \u003cstrong>PowerShell Console\u003c/strong> terminal inside Quay:\u003c/p>\n\u003cpre>\u003ccode>$s = $Host.UI.RawUI.WindowSize; \"PTY says $($s.Width) cols x $($s.Height) rows\"; '#' * $s.Width\u003c/code>\u003c/pre>\n\u003cp>The \u003ccode>#\u003c/code> line should reach exactly to the right edge on \u003cstrong>one\u003c/strong> line. If it stops short, the program thinks the terminal is narrower than it is (\u003cstrong>G5\u003c/strong>). If it wraps onto a second line, the program thinks it is wider (\u003cstrong>G6\u003c/strong>). Write the \u003ccode>PTY says\u003c/code> numbers in Notes next to PROBE's \u003ccode>cols\u003c/code> and \u003ccode>rows\u003c/code>.\u003c/p>\n\u003ch4>Tool 3 — output generators, PowerShell terminals only\u003c/h4>\n\u003cul>\n\u003cli>\u003cstrong>STREAM\u003c/strong>: about six seconds of steady output, many small pieces:\n\u003c/li>\n\u003c/ul>\n\u003cpre>\u003ccode>  1..400 | ForEach-Object { \"line $_ \" + ('=' * 60); Start-Sleep -Milliseconds 15 }\u003c/code>\u003c/pre>\n\u003cul>\n\u003cli>\u003cstrong>BIG\u003c/strong>: more than 256 KB of coloured output, larger than Quay's replay buffer:\n\u003c/li>\n\u003c/ul>\n\u003cpre>\u003ccode>  $e = [char]27; 1..6000 | ForEach-Object { \"$e[3$($_ % 7 + 1)mrow $_ $e[0m\" + ('x' * 50) }\u003c/code>\u003c/pre>\n\u003ch4>Claude Code configurations A to D\u003c/h4>\n\u003cp>Your Claude Code settings use the fullscreen layout and have the claude-mods mods enabled. Several tests repeat a trigger in four configurations so we can tell a mod problem from a layout problem. Type the flags exactly into \u003cstrong>Custom CLI Arguments (Optional)\u003c/strong> when you start the terminal:\u003c/p>\n\u003cul>\n\u003cli>\u003cstrong>A\u003c/strong>: leave the field empty. Mods on, fullscreen layout (alternate screen, mouse tracking).\n\u003c/li>\n\u003cli>\u003cstrong>B\u003c/strong>: \u003ccode>--settings {\"tui\":\"default\"}\u003c/code>. Mods on, main screen.\n\u003c/li>\n\u003cli>\u003cstrong>C\u003c/strong>: \u003ccode>--safe-mode\u003c/code>. Mods off (all plugins off), main screen.\n\u003c/li>\n\u003cli>\u003cstrong>D\u003c/strong>: \u003ccode>--safe-mode --settings {\"tui\":\"fullscreen\"}\u003c/code>. Mods off, fullscreen layout.\n\u003c/li>\n\u003c/ul>\n\u003cp>These four were checked against \u003ccode>claude.exe\u003c/code> on this machine: A and D enter the alternate screen, B and C do not. In C and D the event-bridge plugin is off too, so Quay's status badge for that terminal may stay on its first state. That is expected and is not a failure.\u003c/p>\n\u003ch4>Starting a terminal (used by every test)\u003c/h4>\n\u003cp>\"Start \u003cstrong>X\u003c/strong> labelled \u003ccode>name\u003c/code>\" means: make sure project \u003cstrong>uat-p\u003c/strong> is selected in the left sidebar, then click \u003cstrong>New Terminal\u003c/strong> in the top bar, click the \u003cstrong>X\u003c/strong> tile (\u003cstrong>Claude\u003c/strong>, \u003cstrong>Antigravity\u003c/strong>, \u003cstrong>Codex\u003c/strong>, \u003cstrong>OpenCode\u003c/strong>, \u003cstrong>Kiro\u003c/strong>, \u003cstrong>Copilot\u003c/strong> or \u003cstrong>PowerShell Console\u003c/strong>), fill in \u003cstrong>Custom CLI Arguments (Optional)\u003c/strong> if a config says so, type \u003ccode>name\u003c/code> into \u003cstrong>Terminal Label (Optional)\u003c/strong>, and click \u003cstrong>Start Terminal (Enter)\u003c/strong>. Leave \u003cstrong>Skip Permissions (Default)\u003c/strong> and the Model setting alone.\u003c/p>\n\u003cp>An agent is \u003cstrong>ready\u003c/strong> when its input box is showing and the screen has stopped changing, usually 5 to 15 seconds.\u003c/p>\n\u003ch4>The resize recipe (R)\u003c/h4>\n\u003cp>Several tests say \"run R on terminal X\". Do every step with a three-second wait after it, and check that X is clean after each wait:\u003c/p>\n\u003col>\n\u003cli>\u003cstrong>R1\u003c/strong>: click \u003cstrong>Side-by-Side Split (Ctrl+B %)\u003c/strong> in the top bar. Using the dropdowns in the pane headers, put X in the left pane and \u003ccode>ps-1\u003c/code> in the right pane.\n\u003c/li>\n\u003cli>\u003cstrong>R2\u003c/strong>: drag the divider between the panes to about 30% and let go.\n\u003c/li>\n\u003cli>\u003cstrong>R3\u003c/strong>: drag it to about 70% and let go.\n\u003c/li>\n\u003cli>\u003cstrong>R4\u003c/strong>: click \u003cstrong>Single Pane (Ctrl+B x)\u003c/strong>. X should be the pane showing.\n\u003c/li>\n\u003cli>\u003cstrong>R5\u003c/strong>: maximise the Quay window, wait, then restore it to its normal size.\n\u003c/li>\n\u003c/ol>\n\u003cp>Write the first step where garbling appeared (for example \u003ccode>Appeared: R2, at once\u003c/code>).\u003c/p>\n\u003ch3>Words used in this document\u003c/h3>\n\u003cul>\n\u003cli>\u003cstrong>Pane\u003c/strong>: one terminal's rectangle on the stage. A split shows two panes and the grid shows four.\n\u003c/li>\n\u003cli>\u003cstrong>Rail\u003c/strong>: the left sidebar listing projects and terminals.\n\u003c/li>\n\u003cli>\u003cstrong>Stage\u003c/strong>: the area to the right of the rail where panes are drawn.\n\u003c/li>\n\u003cli>\u003cstrong>uat-p / uat-empty\u003c/strong>: the two scratch projects Section 1 creates. uat-empty never gets a terminal, and clicking it is how several tests make Quay rebuild every pane.\n\u003c/li>\n\u003cli>\u003cstrong>Relaunch\u003c/strong>: restarting a terminal that has exited, using the \u003cstrong>Relaunch Agent\u003c/strong> button on its \u003cstrong>Session Inactive\u003c/strong> ribbon, or the \u003cstrong>Relaunch\u003c/strong> link in its rail row.\n\u003c/li>\n\u003cli>\u003cstrong>Fullscreen layout / main screen\u003c/strong>: the two ways Claude Code draws (see configs A to D).\n\u003c/li>\n\u003cli>\u003cstrong>Mods\u003c/strong>: Claude Code plugins that draw into its screen. Yours include side panes (Archon, GitHub, Outputs, Sources, Dev servers, What's next), the two animated \u003cstrong>hud\u003c/strong> lines under the prompt, bands above the prompt (shelf, quick-reply, presets, session namer, lint-test gate) and turn-chime toasts.\n\u003c/li>\n\u003c/ul>","outro":"\u003ch3>Cleanup (not a test)\u003c/h3>\n\u003cul>\n\u003cli>Close the test terminals with their rail \u003cstrong>X\u003c/strong>.\n\u003c/li>\n\u003cli>Remove \u003cstrong>quay-uat-p\u003c/strong> and \u003cstrong>quay-uat-empty\u003c/strong> from the rail with their remove buttons (\u003cstrong>Remove workspace ...\u003c/strong>), then delete the folders: \u003ccode>Remove-Item -Recurse -Force \"$HOME\\quay-uat-p\", \"$HOME\\quay-uat-empty\"\u003c/code>. \u003cstrong>This deletes those two folders permanently.\u003c/strong> They hold only test files.\n\u003c/li>\n\u003c/ul>\n\u003ch3>Not in scope (deferred — do NOT test)\u003c/h3>\n\u003cul>\n\u003cli>\u003cstrong>Gemini, Pi, Grok, Aider\u003c/strong>: not installed on the test machine.\n\u003c/li>\n\u003cli>\u003cstrong>The released v0.2.0 installer\u003c/strong>: this run uses the dev build so DevTools is available.\n\u003c/li>\n\u003cli>\u003cstrong>Swarm-launched terminals\u003c/strong>: they go through the same spawn and pane code as \u003cstrong>New Terminal\u003c/strong>, so they are covered indirectly.\n\u003c/li>\n\u003cli>\u003cstrong>Terminal search (Ctrl+F)\u003c/strong> and the Archon, Machina and GitHub drawers: these are overlays that do not resize panes.\n\u003c/li>\n\u003c/ul>\n\u003ch3>What each section probes (for whoever processes the results)\u003c/h3>\n\u003cp>These are suspicions drawn from reading the code at commit \u003ccode>5993069\u003c/code>. Each one is a hypothesis to check against the results, not a confirmed bug.\u003c/p>\n\u003cul>\n\u003cli>\u003cstrong>Relaunch (Section 2, 9.7, 10.2).\u003c/strong> Relaunch keeps the pane mounted, so \u003ccode>useTerminal\u003c/code> keeps its \u003ccode>highestSeq\u003c/code> from the old process. \u003ccode>PtySession::spawn\u003c/code> starts the new process's \u003ccode>seq\u003c/code> at 1, and the \u003ccode>pty-output\u003c/code> listener drops every chunk whose \u003ccode>seq\u003c/code> is not above \u003ccode>highestSeq\u003c/code>. A pane that saw N chunks would hide the new process's first N chunks, and the old screen is not cleared either. A terminal restored from disk starts at \u003ccode>last_seq\u003c/code> 0 (\u003ccode>read_saved_scrollback\u003c/code>), so 10.2 is the control for 2.3. 2.1 against 2.2 separates \"many old chunks\" from \"few\".\n\u003c/li>\n\u003cli>\u003cstrong>Pane rebuild (Section 3, 9.2, 9.4, 9.6).\u003c/strong> When the active project has no terminals, \u003ccode>Stage\u003c/code> returns its \u003ccode>Placeholder\u003c/code> branch, which is a different element tree, so every \u003ccode>TerminalView\u003c/code> unmounts. Coming back mounts fresh xterm instances that replay up to 256 KB of raw output (\u003ccode>get_terminal_output\u003c/code>) recorded at whatever sizes the PTY had, into a pane of today's size.\n\u003c/li>\n\u003cli>\u003cstrong>Buffer cut (3.5, 10.1).\u003c/strong> \u003ccode>trim_output_buffer\u003c/code> and \u003ccode>read_saved_scrollback\u003c/code> drop the oldest bytes. A cut can land inside an escape sequence, or drop the alternate-screen switch that later bytes depend on.\n\u003c/li>\n\u003cli>\u003cstrong>First frame (Section 4).\u003c/strong> \u003ccode>spawn_terminal\u003c/code> is given \u003ccode>getGlobalTerminalDimensions\u003c/code>, the size of whichever pane was fitted last anywhere (for example a grid quarter). \u003ccode>syncPtySize\u003c/code> sends the first fit without the follow-up \u003ccode>Ctrl+L\u003c/code>, so a program that drew its first frame at the old size is never asked to redraw.\n\u003c/li>\n\u003cli>\u003cstrong>Resize (Section 5).\u003c/strong> Each size change sends \u003ccode>resize_pty\u003c/code> and then \u003ccode>Ctrl+L\u003c/code> 60 ms later, so a drag sends a burst. Programs that do not treat \u003ccode>Ctrl+L\u003c/code> as \"redraw\" keep stale frames. Hidden panes skip \u003ccode>syncPtySize\u003c/code> until they are shown. \u003ccode>SkipBanner\u003c/code> changes the stage height when focus moves between panes (5.11).\n\u003c/li>\n\u003cli>\u003cstrong>Mods and layout (Section 6).\u003c/strong> With \u003ccode>tui: fullscreen\u003c/code>, Claude Code enters the alternate screen, enables mouse tracking and uses synchronized output (measured with a ConPTY probe). Mods dock side panes from 110 columns, and unasked panes from 144. hud redraws all the time. Configs A to D separate mods from layout.\n\u003c/li>\n\u003cli>\u003cstrong>Widths (Section 7).\u003c/strong> \u003ccode>createClaudeUnicodeProvider\u003c/code> widens VS16 and emoji to two cells. ConPTY and each agent have their own width tables, and any disagreement shows up as shifted columns.\n\u003c/li>\n\u003cli>\u003cstrong>Cell metrics (Section 8, 10.3).\u003c/strong> A scale change or a late font change alters the cell size. Panes refit only when their container's size changes (\u003ccode>ResizeObserver\u003c/code>).\n\u003c/li>\n\u003c/ul>\n\u003ch3>Sign-off\u003c/h3>\n\u003cul>\n\u003cli>Tester name: ______  Date: ______\n\u003c/li>\n\u003c/ul>","annotator":"","sections":[{"id":"1","title":"Setup and baseline","tests":[{"id":"1.1","title":"Start the Quay dev build","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Run Quay from source so DevTools is available.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Nothing.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Open PowerShell in \u003ccode>E:\\Projects\\Quay2\u003c/code> and run \u003ccode>pnpm install\u003c/code>.\n\u003c/li>\n\u003cli>Run \u003ccode>pnpm tauri dev\u003c/code>. Leave this terminal open for the whole run, since closing it closes Quay. The first build can take several minutes.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> A window titled \u003cstrong>Quay — Claude Code Workspace &amp; Orchestrator\u003c/strong> opens.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the last error lines from the PowerShell window. Nothing else in this checklist can run without it.\n\u003c/li>\n\u003c/ul>"},{"id":"1.2","title":"Create and add the two scratch projects","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> One project to work in, and one empty project used to force pane rebuilds.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 1.1 passed.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>In a separate PowerShell window, run: \u003ccode>New-Item -ItemType Directory -Force \"$HOME\\quay-uat-p\", \"$HOME\\quay-uat-empty\" | Out-Null; git -C \"$HOME\\quay-uat-p\" init\u003c/code>\n\u003c/li>\n\u003cli>In Quay, click \u003cstrong>Add\u003c/strong> (tooltip \u003cstrong>Add Project Workspace\u003c/strong>) at the top of the rail and add the folder \u003ccode>quay-uat-p\u003c/code> from your home folder. Repeat for \u003ccode>quay-uat-empty\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both projects appear in the rail as \u003cstrong>quay-uat-p\u003c/strong> and \u003cstrong>quay-uat-empty\u003c/strong>, and the count badge next to each shows \u003ccode>0\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the error the Add Project dialog shows.\n\u003c/li>\n\u003c/ul>"},{"id":"1.3","title":"uat-p has no workspace launch flags","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Make sure the A to D flags are the only flags Claude gets.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 1.2 passed.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>In the \u003cstrong>quay-uat-p\u003c/strong> row of the rail, click the gear (tooltip \u003cstrong>Workspace Settings (Env Vars &amp; Flags) for quay-uat-p\u003c/strong>).\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The custom flags field is empty and no environment variables are listed.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Clear the flags, save, and note what was there.\n\u003c/li>\n\u003c/ul>"},{"id":"1.4","title":"Get every agent past its first-run prompts","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Trust dialogs and sign-in screens must not appear in the middle of a later test.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 1.3 passed.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> labelled \u003ccode>warmup-claude\u003c/code>. Answer any \"trust this folder\" prompt. Wait until ready.\n\u003c/li>\n\u003cli>Do the same for \u003cstrong>Antigravity\u003c/strong> (\u003ccode>warmup-agy\u003c/code>), \u003cstrong>Codex\u003c/strong> (\u003ccode>warmup-codex\u003c/code>) and your OpenCode, Kiro or Copilot (\u003ccode>warmup-x\u003c/code>).\n\u003c/li>\n\u003cli>Close all four terminals with the \u003cstrong>X\u003c/strong> (\u003cstrong>Close terminal\u003c/strong>) on each rail row.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> All four agents reached their input prompt in uat-p.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note which agent stopped at which screen. Mark tests for that agent \u003cstrong>Not done\u003c/strong>.\n\u003c/li>\n\u003c/ul>"},{"id":"1.5","title":"Baseline: a fresh PowerShell pane fills its space","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Confirm PROBE reads correctly on a pane that should be perfect, and record your normal cell size.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 1.4 passed. The Quay window is at its normal (not maximised) size.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>ps-1\u003c/code>. Leave the layout as a single pane.\n\u003c/li>\n\u003cli>Run PROBE (Tool 1).\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One row, with \u003ccode>ok: true\u003c/code>. \u003cstrong>Copy the line into Notes even on Pass\u003c/strong>, because its \u003ccode>cellW\u003c/code> and \u003ccode>dpr\u003c/code> are the baseline for Sections 8 and 10.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> If \u003ccode>ok\u003c/code> is \u003ccode>false\u003c/code>, paste the line. The rest of the checklist is still worth running.\n\u003c/li>\n\u003c/ul>"},{"id":"1.6","title":"Baseline: PowerShell agrees with xterm about the size","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Confirm the program inside the pane is told the same size xterm draws.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 1.5 done; \u003ccode>ps-1\u003c/code> is showing.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Run RULER (Tool 2) in \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>PTY says\u003c/code> shows the same columns and rows as PROBE's \u003ccode>cols\u003c/code> and \u003ccode>rows\u003c/code>, and the \u003ccode>#\u003c/code> line exactly fills one line.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Write both pairs of numbers in Notes, and say whether the \u003ccode>#\u003c/code> line stopped short or wrapped.\n\u003c/li>\n\u003c/ul>"}]},{"id":"2","title":"Relaunch (reported by the user)","tests":[{"id":"2.1","title":"Relaunched PowerShell shows its prompt, after a busy first run","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A relaunched terminal shows its new output at once, even when the old run printed a lot.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 1 done. Single pane layout.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>relaunch-busy\u003c/code>.\n\u003c/li>\n\u003cli>Run STREAM (Tool 3) and wait until \u003ccode>line 400\u003c/code> appears.\n\u003c/li>\n\u003cli>Type \u003ccode>exit\u003c/code> and press Enter. A \u003cstrong>Session Inactive\u003c/strong> ribbon appears at the top of the pane.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong> on the ribbon, then wait 5 seconds.\n\u003c/li>\n\u003cli>Type \u003ccode>echo relaunched\u003c/code> and press Enter.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Within 5 seconds of step 4 a new \u003ccode>PS ...&gt;\u003c/code> prompt is visible, and step 5 shows your typing and prints \u003ccode>relaunched\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record G3 if nothing new appeared. Then press Enter about 20 more times and note whether output starts appearing at some point (roughly how many presses). Finally, click \u003cstrong>quay-uat-empty\u003c/strong> in the rail, click \u003cstrong>quay-uat-p\u003c/strong> again, and note whether the prompt shows up now.\n\u003c/li>\n\u003c/ul>"},{"id":"2.2","title":"Relaunched PowerShell shows its prompt, after a quiet first run","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The same check when the first run printed almost nothing.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>relaunch-quiet\u003c/code>. Wait for its prompt.\n\u003c/li>\n\u003cli>Type \u003ccode>exit\u003c/code> and press Enter right away.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong>, then wait 5 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> A complete new prompt appears below the old output within 5 seconds, and no new text overwrites old text higher up.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note whether the prompt is missing completely, appears only partly, or appears after you type a few characters.\n\u003c/li>\n\u003c/ul>"},{"id":"2.3","title":"Relaunched Claude Code (config A) draws a clean screen","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Relaunching Claude in your normal setup gives a usable, clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> (config A, no arguments) labelled \u003ccode>relaunch-A\u003c/code>. Wait until ready.\n\u003c/li>\n\u003cli>Send \u003ccode>Reply with only the word ready\u003c/code> and wait for the reply.\n\u003c/li>\n\u003cli>Type \u003ccode>/exit\u003c/code> and press Enter. Wait for \u003cstrong>Session Inactive\u003c/strong>.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong> and wait 15 seconds.\n\u003c/li>\n\u003cli>Type \u003ccode>hello\u003c/code> into the input box, without sending it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The pane shows one complete Claude Code screen: an intact input box with whole borders, no pieces of the earlier session drawn over it, and \u003ccode>hello\u003c/code> appears in the box.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms. Try Redraw (\u003ccode>Ctrl\u003c/code>+\u003ccode>L\u003c/code>) and note the result. Then click \u003cstrong>quay-uat-empty\u003c/strong> and back to \u003cstrong>quay-uat-p\u003c/strong>, and note whether the screen is clean after that.\n\u003c/li>\n\u003c/ul>"},{"id":"2.4","title":"Relaunched Claude Code (config C) draws a clean screen","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The same relaunch on the main-screen layout with mods off.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> with \u003ccode>--safe-mode\u003c/code> (config C) labelled \u003ccode>relaunch-C\u003c/code>. Wait until ready.\n\u003c/li>\n\u003cli>Do steps 2 to 5 of test 2.3 in this terminal.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Same as 2.3: a clean new Claude screen below the earlier transcript, with \u003ccode>hello\u003c/code> in the input box.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3.\n\u003c/li>\n\u003c/ul>"},{"id":"2.5","title":"Relaunched Antigravity draws a clean screen","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Relaunch works for agy.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.4 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Antigravity\u003c/strong> labelled \u003ccode>relaunch-agy\u003c/code>. Wait until ready.\n\u003c/li>\n\u003cli>Send \u003ccode>Reply with only the word ready\u003c/code> and wait for the reply.\n\u003c/li>\n\u003cli>Exit agy: press \u003ccode>Ctrl\u003c/code>+\u003ccode>C\u003c/code>, and again if it asks. Note in Notes what made it exit. Wait for \u003cstrong>Session Inactive\u003c/strong>.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong> and wait 15 seconds, then type \u003ccode>hello\u003c/code> without sending it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One complete agy screen with an intact input area and \u003ccode>hello\u003c/code> in it.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3.\n\u003c/li>\n\u003c/ul>"},{"id":"2.6","title":"Relaunched Codex draws a clean screen","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Relaunch works for Codex.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.5 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Codex\u003c/strong> labelled \u003ccode>relaunch-codex\u003c/code>. Wait until ready.\n\u003c/li>\n\u003cli>Send \u003ccode>Reply with only the word ready\u003c/code> and wait for the reply.\n\u003c/li>\n\u003cli>Type \u003ccode>/quit\u003c/code> and press Enter. If that does nothing, press \u003ccode>Ctrl\u003c/code>+\u003ccode>C\u003c/code> twice. Note which worked.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong> and wait 15 seconds, then type \u003ccode>hello\u003c/code> without sending it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One complete Codex screen with an intact input area and \u003ccode>hello\u003c/code> in it.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3.\n\u003c/li>\n\u003c/ul>"},{"id":"2.7","title":"Relaunch from the rail link behaves like the ribbon button","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The rail's \u003cstrong>Relaunch\u003c/strong> link gives the same clean result.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 2.6 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>In \u003ccode>relaunch-A\u003c/code> (Claude config A), type \u003ccode>/exit\u003c/code> and wait for it to exit.\n\u003c/li>\n\u003cli>In the rail, click the small \u003cstrong>Relaunch\u003c/strong> link next to \u003ccode>exited\u003c/code> in the \u003ccode>relaunch-A\u003c/code> row.\n\u003c/li>\n\u003cli>Wait 15 seconds and type \u003ccode>hello\u003c/code> without sending it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> A clean Claude screen, as in 2.3.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3. Also note whether this second relaunch looks worse than the first.\n\u003c/li>\n\u003c/ul>"}]},{"id":"3","title":"Pane rebuild and replay","tests":[{"id":"3.1","title":"Rebuilt PowerShell pane matches what was there before","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Switching to an empty project and back must not damage a pane.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 2 done. Single pane, showing \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>In \u003ccode>ps-1\u003c/code> run \u003ccode>Get-ChildItem $env:SystemRoot | Select-Object -First 30\u003c/code>, then take a screenshot.\n\u003c/li>\n\u003cli>Click \u003cstrong>quay-uat-empty\u003c/strong> in the rail (the stage shows \u003cstrong>Launch Terminal\u003c/strong>), then click \u003cstrong>quay-uat-p\u003c/strong> and select \u003ccode>ps-1\u003c/code> again.\n\u003c/li>\n\u003cli>Wait 3 seconds and take a second screenshot.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The listing and the prompt look the same as before, aligned the same way.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Attach both screenshots.\n\u003c/li>\n\u003c/ul>"},{"id":"3.2","title":"Rebuilt Claude Code pane (config A) is clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A fullscreen Claude pane survives a rebuild.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 3.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config A labelled \u003ccode>rebuild-A\u003c/code>. Wait until ready.\n\u003c/li>\n\u003cli>Send \u003ccode>List the numbers 1 to 40, one per line\u003c/code> and wait for the reply.\n\u003c/li>\n\u003cli>Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>rebuild-A\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One clean Claude screen with an intact input box. Stray text above or around it from earlier frames counts as a Fail (G1).\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms, then try Redraw and note the result.\n\u003c/li>\n\u003c/ul>"},{"id":"3.3","title":"Rebuilt Claude Code pane (config C) is clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The same rebuild on the main-screen layout with mods off.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 3.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config C labelled \u003ccode>rebuild-C\u003c/code> and do steps 2 and 3 of 3.2 in it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The transcript, numbers 1 to 40, reads cleanly in order, and the input box below it is intact.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 3.2.\n\u003c/li>\n\u003c/ul>"},{"id":"3.4","title":"Rebuild after the pane changed size during its life","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Replaying output recorded at several sizes into one new pane.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 3.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>rebuild-C\u003c/code> and run R1 to R4 of the resize recipe on it (split, 30%, 70%, single).\n\u003c/li>\n\u003cli>Send \u003ccode>List the numbers 41 to 60, one per line\u003c/code> and wait for the reply.\n\u003c/li>\n\u003cli>Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>rebuild-C\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The whole transcript, 1 to 60, is readable, and earlier lines are not drawn over later ones.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note which part is damaged: the oldest output, the middle, or the current screen.\n\u003c/li>\n\u003c/ul>"},{"id":"3.5","title":"Overflowing the replay buffer leaves no fragments at the top","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> When old output is dropped from the 256 KB replay buffer, the cut must not leave odd characters behind.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 3.4 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>big\u003c/code>, run BIG (Tool 3) and wait for the prompt to return (about 10 to 30 seconds).\n\u003c/li>\n\u003cli>Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>big\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003cli>Scroll the pane all the way to the top with the mouse wheel.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The very first line is a whole coloured \u003ccode>row NNNN xxxx...\u003c/code> line (or part of one with no stray codes). No fragments such as \u003ccode>[3\u003c/code>, \u003ccode>;1m\u003c/code> or \u003ccode>m\u003c/code> begin the line.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record G4 and screenshot the top of the pane.\n\u003c/li>\n\u003c/ul>"},{"id":"3.6","title":"A hidden terminal keeps everything it printed while hidden","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Switching between terminals in the same project (no rebuild) loses nothing.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 3.5 answered. Single pane layout.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>ps-1\u003c/code>, type STREAM and press Enter, then \u003cstrong>immediately\u003c/strong> click \u003ccode>big\u003c/code> in the rail.\n\u003c/li>\n\u003cli>Wait 10 seconds, then click \u003ccode>ps-1\u003c/code> again.\n\u003c/li>\n\u003cli>Scroll up through the output.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Lines \u003ccode>line 1\u003c/code> to \u003ccode>line 400\u003c/code> are all present in order, each on its own line, and a prompt follows \u003ccode>line 400\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first missing or damaged line number.\n\u003c/li>\n\u003c/ul>"}]},{"id":"4","title":"The first frame of a new terminal","tests":[{"id":"4.1","title":"New Claude Code (config A) in a single pane: first frame clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Baseline for this section: a new Claude pane in the simplest case.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 3 done. Single pane layout, window at normal size.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config A labelled \u003ccode>first-A\u003c/code>. Watch it closely as it appears, then wait 10 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> From its first visible frame Claude draws at the full pane width: the input box spans the pane, nothing is drawn twice, and nothing jumps sideways.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Say whether the problem was only in the first second or still there after 10 seconds.\n\u003c/li>\n\u003c/ul>"},{"id":"4.2","title":"New PowerShell started from a grid is told the right size","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A terminal created while the stage is a 2×2 grid gets the size of the pane it is shown in.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 4.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>2x2 Grid Layout\u003c/strong> in the top bar and put \u003ccode>ps-1\u003c/code>, \u003ccode>big\u003c/code>, \u003ccode>first-A\u003c/code> and \u003ccode>rebuild-C\u003c/code> in the four slots using the pane dropdowns. Wait 3 seconds.\n\u003c/li>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>from-grid\u003c/code>.\n\u003c/li>\n\u003cli>Click \u003cstrong>Single Pane (Ctrl+B x)\u003c/strong>, then click \u003ccode>from-grid\u003c/code> in the rail. Wait 3 seconds.\n\u003c/li>\n\u003cli>Run RULER in \u003ccode>from-grid\u003c/code> and run PROBE.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>PTY says\u003c/code> matches PROBE's \u003ccode>cols\u003c/code> and \u003ccode>rows\u003c/code>, and the \u003ccode>#\u003c/code> line fills one line exactly.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Write both pairs of numbers. Then press \u003ccode>Ctrl\u003c/code>+\u003ccode>L\u003c/code>, run RULER again, and note whether the numbers now match.\n\u003c/li>\n\u003c/ul>"},{"id":"4.3","title":"New Claude Code (config A) started from a grid: first frame clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The same grid-born case for Claude.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 4.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Return to \u003cstrong>2x2 Grid Layout\u003c/strong> with four terminals in the slots. Wait 3 seconds.\n\u003c/li>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config A labelled \u003ccode>grid-born-A\u003c/code>.\n\u003c/li>\n\u003cli>Click \u003cstrong>Single Pane (Ctrl+B x)\u003c/strong> and click \u003ccode>grid-born-A\u003c/code> in the rail. Wait 10 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude fills the full pane width with a clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE. Try Redraw and note the result.\n\u003c/li>\n\u003c/ul>"},{"id":"4.4","title":"New Antigravity started from a grid: first frame clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The grid-born case for agy.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 4.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Repeat 4.3 with \u003cstrong>Antigravity\u003c/strong> labelled \u003ccode>grid-born-agy\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> agy fills the full pane width with a clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 4.3.\n\u003c/li>\n\u003c/ul>"},{"id":"4.5","title":"New Codex started from a grid: first frame clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The grid-born case for Codex.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 4.4 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Repeat 4.3 with \u003cstrong>Codex\u003c/strong> labelled \u003ccode>grid-born-codex\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Codex fills the full pane width with a clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 4.3.\n\u003c/li>\n\u003c/ul>"}]},{"id":"5","title":"Resizing","tests":[{"id":"5.1","title":"Splitting side by side","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Claude redraws cleanly when its pane halves in width.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 4 done. Single pane showing \u003ccode>first-A\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Do R1 (side-by-side split, \u003ccode>first-A\u003c/code> left, \u003ccode>ps-1\u003c/code> right). Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean, and Claude's input box fits the left pane.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE. Try Redraw and note the result.\n\u003c/li>\n\u003c/ul>"},{"id":"5.2","title":"Dragging the divider slowly","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A slow drag across the whole range.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.1 answered, still split.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the divider slowly from the far left (20%) to the far right (80%) over about 5 seconds, release, and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean after the wait.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Also note what you saw during the drag.\n\u003c/li>\n\u003c/ul>"},{"id":"5.3","title":"Dragging the divider fast, back and forth","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A burst of many resizes.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the divider quickly left and right for about 5 seconds, release near the middle, and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean after the wait.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE. Note whether Redraw fixes it.\n\u003c/li>\n\u003c/ul>"},{"id":"5.4","title":"Stacked split","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Halving the height rather than the width.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>Stacked Split (Ctrl+B \")\u003c/strong> with \u003ccode>first-A\u003c/code> on top and \u003ccode>ps-1\u003c/code> below. Wait 3 seconds.\n\u003c/li>\n\u003cli>Drag the horizontal divider to about 30%, release, and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean after each wait.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note which step.\n\u003c/li>\n\u003c/ul>"},{"id":"5.5","title":"Resize while Claude is streaming a reply","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A resize in the middle of a stream of output.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.4 answered. Side-by-side split with \u003ccode>first-A\u003c/code> left.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>In \u003ccode>first-A\u003c/code> send \u003ccode>Write 60 numbered lines, each a short sentence about the sea\u003c/code>.\n\u003c/li>\n\u003cli>While the reply is still arriving, drag the divider to 30%, then to 70%.\n\u003c/li>\n\u003cli>Wait until the reply finishes, plus 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The finished reply reads cleanly with no repeated or overlapping lines, and the input box is intact.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first damaged line number.\n\u003c/li>\n\u003c/ul>"},{"id":"5.6","title":"Maximise and restore the window","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A large width change in one step. On a wide monitor this also crosses the widths where Claude docks its side panes (110 and 144 columns).\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.5 answered. Single pane showing \u003ccode>first-A\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Run PROBE and note \u003ccode>cols\u003c/code>.\n\u003c/li>\n\u003cli>Maximise the Quay window, wait 3 seconds, and run PROBE.\n\u003c/li>\n\u003cli>Restore the window, wait 3 seconds, and run PROBE.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean after each wait, and PROBE shows \u003ccode>ok: true\u003c/code> each time. Put all three \u003ccode>cols\u003c/code> values in Notes, even on Pass.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note whether the damage came on maximising or on restoring.\n\u003c/li>\n\u003c/ul>"},{"id":"5.7","title":"Snap the window to half the screen","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Windows snap resizing.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.6 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click the Quay window, press \u003ccode>Win\u003c/code>+\u003ccode>Left\u003c/code>, and wait 3 seconds.\n\u003c/li>\n\u003cli>Press \u003ccode>Win\u003c/code>+\u003ccode>Up\u003c/code> (or drag it back) to restore, and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean after each wait.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE.\n\u003c/li>\n\u003c/ul>"},{"id":"5.8","title":"Drag the window edge","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A continuous resize from the window frame.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.7 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the right edge of the Quay window inward by about a third, then back out, in one slow movement. Release and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE.\n\u003c/li>\n\u003c/ul>"},{"id":"5.9","title":"Minimise and restore","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Hiding the window completely and bringing it back.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.8 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Minimise Quay, wait 10 seconds, and restore it from the taskbar. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean and PROBE shows \u003ccode>ok: true\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE.\n\u003c/li>\n\u003c/ul>"},{"id":"5.10","title":"Drag the rail width","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Resizing the sidebar changes the stage width.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.9 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the rail's right edge (tooltip \u003cstrong>Drag to resize sidebar (Double click to reset)\u003c/strong>) as far right as it goes, release, and wait 3 seconds.\n\u003c/li>\n\u003cli>Double-click the same edge to reset it, and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean after each wait.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note which step.\n\u003c/li>\n\u003c/ul>"},{"id":"5.11","title":"Focus switching that shows or hides the skip-permissions banner","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The red \u003cstrong>Dangerously Skipping Permissions\u003c/strong> banner above the panes appears only while a skip-mode agent pane is focused, so clicking between panes changes the stage height.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.10 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Do R1 (\u003ccode>first-A\u003c/code> left, \u003ccode>ps-1\u003c/code> right). Click inside \u003ccode>first-A\u003c/code> and confirm the banner is showing.\n\u003c/li>\n\u003cli>Click inside \u003ccode>ps-1\u003c/code> (the banner disappears) and wait 3 seconds.\n\u003c/li>\n\u003cli>Click inside \u003ccode>first-A\u003c/code> (the banner returns) and wait 3 seconds. Repeat steps 2 and 3 twice more.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean after every wait, and PROBE shows \u003ccode>ok: true\u003c/code> for both.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record PROBE right after a switch, and say which pane was damaged.\n\u003c/li>\n\u003c/ul>"},{"id":"5.12","title":"2×2 grid with four different agents","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Four agents resized into quarters at once.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.11 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>2x2 Grid Layout\u003c/strong> and put \u003ccode>first-A\u003c/code>, \u003ccode>rebuild-C\u003c/code>, \u003ccode>grid-born-agy\u003c/code> and \u003ccode>grid-born-codex\u003c/code> in the four slots. Wait 5 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> All four panes are clean, and PROBE shows \u003ccode>ok: true\u003c/code> for all four.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Name the damaged pane or panes.\n\u003c/li>\n\u003c/ul>"},{"id":"5.13","title":"Zoom a grid pane and restore","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Going from a quarter to the full stage and back.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.12 answered, grid showing.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click inside \u003ccode>first-A\u003c/code>, then click \u003cstrong>Zoom active pane (Ctrl+B z)\u003c/strong> in the top bar. Wait 3 seconds.\n\u003c/li>\n\u003cli>Click \u003cstrong>Restore split layout (Ctrl+B z)\u003c/strong>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>first-A\u003c/code> is clean zoomed, and all four panes are clean after restoring.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note which step and which pane.\n\u003c/li>\n\u003c/ul>"},{"id":"5.14","title":"A hidden terminal resized while hidden","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A pane hidden during a window resize must catch up when shown.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.13 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>Single Pane (Ctrl+B x)\u003c/strong> and show \u003ccode>ps-1\u003c/code> (so \u003ccode>first-A\u003c/code> is hidden).\n\u003c/li>\n\u003cli>Maximise the window and wait 3 seconds.\n\u003c/li>\n\u003cli>Click \u003ccode>first-A\u003c/code> in the rail and wait 3 seconds.\n\u003c/li>\n\u003cli>Restore the window.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>first-A\u003c/code> is clean at step 3, and again after step 4.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE at step 3.\n\u003c/li>\n\u003c/ul>"},{"id":"5.15","title":"Redraw on a clean Claude pane (config A) keeps it clean","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The Redraw button itself must not damage a fullscreen Claude pane.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.14 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Do R1 with \u003ccode>first-A\u003c/code> left. Wait 3 seconds.\n\u003c/li>\n\u003cli>Click \u003cstrong>Redraw terminal screen (Ctrl+L)\u003c/strong> in the \u003ccode>first-A\u003c/code> pane header. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude's screen is redrawn whole and clean, and the input box still works.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms.\n\u003c/li>\n\u003c/ul>"},{"id":"5.16","title":"Redraw on a main-screen Claude pane (config C) keeps the transcript","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Redraw should repaint the screen without erasing the conversation.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 5.15 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Use the left pane dropdown to show \u003ccode>rebuild-C\u003c/code>. Scroll up and confirm the numbers 1 to 60 are there.\n\u003c/li>\n\u003cli>Click \u003cstrong>Redraw terminal screen (Ctrl+L)\u003c/strong> in its header and wait 3 seconds. Scroll up.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The earlier transcript (the numbers) is still in the pane's scrollback, and the current screen is clean.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Say whether the transcript was erased completely or only damaged.\n\u003c/li>\n\u003c/ul>"}]},{"id":"6","title":"Claude Code mods and layout","tests":[{"id":"6.1","title":"Resize recipe in config A (mods on, fullscreen)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The full resize recipe in your normal Claude setup.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 5 done. Close every Claude terminal so the rail is clear.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config A labelled \u003ccode>mods-A\u003c/code>. Wait until ready. Send \u003ccode>Reply with only the word ready\u003c/code>.\n\u003c/li>\n\u003cli>Run R (R1 to R5) on \u003ccode>mods-A\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>mods-A\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first step that garbled.\n\u003c/li>\n\u003c/ul>"},{"id":"6.2","title":"Resize recipe in config B (mods on, main screen)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Same mods, other layout.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config B (\u003ccode>--settings {\"tui\":\"default\"}\u003c/code>) labelled \u003ccode>mods-B\u003c/code> and repeat 6.1's steps.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>mods-B\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first step that garbled.\n\u003c/li>\n\u003c/ul>"},{"id":"6.3","title":"Resize recipe in config C (mods off, main screen)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> No mods, main screen.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config C (\u003ccode>--safe-mode\u003c/code>) labelled \u003ccode>mods-C\u003c/code> and repeat 6.1's steps.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>mods-C\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first step that garbled.\n\u003c/li>\n\u003c/ul>"},{"id":"6.4","title":"Resize recipe in config D (mods off, fullscreen)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> No mods, fullscreen.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Claude\u003c/strong> config D (\u003ccode>--safe-mode --settings {\"tui\":\"fullscreen\"}\u003c/code>) labelled \u003ccode>mods-D\u003c/code> and repeat 6.1's steps.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>mods-D\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first step that garbled.\n\u003c/li>\n\u003c/ul>"},{"id":"6.5","title":"Side panes docking as the window widens (config A)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> When the pane passes about 144 columns, mods dock their side panes beside the transcript. The re-layout must draw cleanly.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.4 answered. Single pane showing \u003ccode>mods-A\u003c/code>, window at normal size.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Run PROBE and note \u003ccode>cols\u003c/code>.\n\u003c/li>\n\u003cli>Maximise the window, wait 5 seconds, and run PROBE again.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Claude is clean. Note in Notes whether side panes appeared and the \u003ccode>cols\u003c/code> before and after. If \u003ccode>cols\u003c/code> is still under 144 when maximised, mark \u003cstrong>Not done\u003c/strong> and give the number.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Screenshot it. Say whether the damage is in the transcript, a side pane, or the border between them.\n\u003c/li>\n\u003c/ul>"},{"id":"6.6","title":"Side panes undocking as the window narrows (config A)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The reverse re-layout.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.5 answered, window maximised.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>Side-by-Side Split (Ctrl+B %)\u003c/strong> with \u003ccode>mods-A\u003c/code> on the left, so its pane drops well below 110 columns. Wait 5 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The side panes are gone or moved inline, and the pane is clean.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 6.5.\n\u003c/li>\n\u003c/ul>"},{"id":"6.7","title":"The hud lines animating for two minutes, visible","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The hud mod redraws its two lines all the time. Damage must not build up over time.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.6 answered. Split, \u003ccode>mods-A\u003c/code> left and visible.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Leave Quay alone for 2 minutes while watching \u003ccode>mods-A\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> After 2 minutes the hud lines and the input box are exactly where they started, with nothing duplicated or smeared.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note roughly when the damage first appeared.\n\u003c/li>\n\u003c/ul>"},{"id":"6.8","title":"The hud lines animating for two minutes, hidden","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A pane that kept animating while hidden must be clean when shown again.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.7 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Click \u003cstrong>Single Pane (Ctrl+B x)\u003c/strong> and show \u003ccode>ps-1\u003c/code>, so \u003ccode>mods-A\u003c/code> is hidden.\n\u003c/li>\n\u003cli>Wait 2 minutes, then click \u003ccode>mods-A\u003c/code> in the rail and wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>mods-A\u003c/code> is clean.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms and PROBE.\n\u003c/li>\n\u003c/ul>"},{"id":"6.9","title":"Quick-reply band appearing and disappearing","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> A band that appears above the prompt changes how many rows the transcript gets.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 6.8 answered, \u003ccode>mods-A\u003c/code> showing.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Send \u003ccode>Ask me one yes-or-no question and wait for my answer\u003c/code>. Wait for the question; a row of reply buttons should appear above the prompt.\n\u003c/li>\n\u003cli>Answer \u003ccode>yes\u003c/code> and wait for the reply, plus 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The pane is clean while the band shows and after it goes. If no band appeared, mark \u003cstrong>Not done\u003c/strong> and say so.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note whether the damage came when the band appeared or when it left.\n\u003c/li>\n\u003c/ul>"}]},{"id":"7","title":"Character widths","tests":[{"id":"7.1","title":"Emoji with a variation selector take two columns","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> \u003ccode>⚙️\u003c/code> (a gear followed by an invisible width marker) must take two columns, as agents assume.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 6 done. Show \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Run: \u003ccode>\"$([char]0x2699)$([char]0xFE0F)\" * 5 + '|'; '0123456789|'\u003c/code>\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The two \u003ccode>|\u003c/code> characters line up in the same column, one directly above the other.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Screenshot it, and say whether the top \u003ccode>|\u003c/code> is to the left or right of the bottom one.\n\u003c/li>\n\u003c/ul>"},{"id":"7.2","title":"Pictographic emoji take two columns","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The same check for a plain emoji.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 7.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Run: \u003ccode>[char]::ConvertFromUtf32(0x1F642) * 5 + '|'; '0123456789|'\u003c/code>\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The two \u003ccode>|\u003c/code> characters line up.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 7.1.\n\u003c/li>\n\u003c/ul>"},{"id":"7.3","title":"Emoji in a Claude reply do not shift Claude's layout","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Width disagreements show up as shifted borders after emoji appear.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 7.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>mods-A\u003c/code> in a single pane. Send: \u003ccode>Reply with exactly five lines, each starting with one of these and then a short word: ⚙️ ⚠️ ⏸️ ✅ 🙂\u003c/code>\n\u003c/li>\n\u003cli>Wait for the reply, plus 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> The reply lines start at the left margin, the input box borders are straight and whole, and no line after the emoji is shifted.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Screenshot it, and note which emoji's line is shifted.\n\u003c/li>\n\u003c/ul>"}]},{"id":"8","title":"Display scaling","tests":[{"id":"8.1","title":"Moving Quay to the monitor with different scaling","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Character cells change size when the scale changes. Panes must refit.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 7 done. Side-by-side split with \u003ccode>mods-A\u003c/code> left and \u003ccode>ps-1\u003c/code> right.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the Quay window by its title bar fully onto the other monitor. Wait 5 seconds.\n\u003c/li>\n\u003cli>Run PROBE, and run RULER in \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean, PROBE shows \u003ccode>ok: true\u003c/code> with a different \u003ccode>dpr\u003c/code> from the baseline in 1.5, and RULER's \u003ccode>PTY says\u003c/code> matches PROBE for \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Paste PROBE and the RULER numbers.\n\u003c/li>\n\u003c/ul>"},{"id":"8.2","title":"Moving Quay back to the first monitor","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The reverse move.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 8.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Drag the window back to the first monitor. Wait 5 seconds.\n\u003c/li>\n\u003cli>Run PROBE, and run RULER in \u003ccode>ps-1\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Both panes are clean, PROBE shows \u003ccode>ok: true\u003c/code> with \u003ccode>dpr\u003c/code> and \u003ccode>cellW\u003c/code> equal to the baseline in 1.5, and RULER matches PROBE.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 8.1.\n\u003c/li>\n\u003c/ul>"}]},{"id":"9","title":"Other agents","tests":[{"id":"9.1","title":"Antigravity: resize recipe","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The resize recipe on agy.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Section 8 done.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Antigravity\u003c/strong> labelled \u003ccode>agy-r\u003c/code>. Wait until ready. Send \u003ccode>Reply with only the word ready\u003c/code>.\n\u003c/li>\n\u003cli>Run R (R1 to R5) on \u003ccode>agy-r\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>agy-r\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Note the first step that garbled, and whether Redraw or \u003ccode>Ctrl\u003c/code>+\u003ccode>L\u003c/code> fixes it.\n\u003c/li>\n\u003c/ul>"},{"id":"9.2","title":"Antigravity: pane rebuild","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> agy survives a rebuild.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>agy-r\u003c/code>. Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>agy-r\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One clean agy screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Record the symptoms, and try Redraw.\n\u003c/li>\n\u003c/ul>"},{"id":"9.3","title":"Codex: resize recipe","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The resize recipe on Codex.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.2 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>Codex\u003c/strong> labelled \u003ccode>codex-r\u003c/code>. Wait until ready. Send \u003ccode>Reply with only the word ready\u003c/code>.\n\u003c/li>\n\u003cli>Run R (R1 to R5) on \u003ccode>codex-r\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>codex-r\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 9.1.\n\u003c/li>\n\u003c/ul>"},{"id":"9.4","title":"Codex: pane rebuild","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Codex survives a rebuild.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.3 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>codex-r\u003c/code>. Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>codex-r\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One clean Codex screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 9.2.\n\u003c/li>\n\u003c/ul>"},{"id":"9.5","title":"OpenCode, Kiro or Copilot: resize recipe","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The resize recipe on your third agent. Write which one you used at the start of Notes.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.4 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>OpenCode\u003c/strong>, \u003cstrong>Kiro\u003c/strong> or \u003cstrong>Copilot\u003c/strong> labelled \u003ccode>x-r\u003c/code>. Wait until ready. Send \u003ccode>Reply with only the word ready\u003c/code>.\n\u003c/li>\n\u003cli>Run R (R1 to R5) on \u003ccode>x-r\u003c/code>.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> \u003ccode>x-r\u003c/code> is clean after every step.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 9.1.\n\u003c/li>\n\u003c/ul>"},{"id":"9.6","title":"OpenCode, Kiro or Copilot: pane rebuild","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> The third agent survives a rebuild.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.5 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Show \u003ccode>x-r\u003c/code>. Click \u003cstrong>quay-uat-empty\u003c/strong>, then \u003cstrong>quay-uat-p\u003c/strong>, then \u003ccode>x-r\u003c/code>. Wait 3 seconds.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 9.2.\n\u003c/li>\n\u003c/ul>"},{"id":"9.7","title":"OpenCode, Kiro or Copilot: relaunch","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Relaunch on the third agent.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 9.6 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Exit \u003ccode>x-r\u003c/code> using its own quit command or \u003ccode>Ctrl\u003c/code>+\u003ccode>C\u003c/code>, and note which worked. Wait for \u003cstrong>Session Inactive\u003c/strong>.\n\u003c/li>\n\u003cli>Click \u003cstrong>Relaunch Agent\u003c/strong>, wait 15 seconds, and type \u003ccode>hello\u003c/code> without sending it.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One complete screen with an intact input area and \u003ccode>hello\u003c/code> in it.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3.\n\u003c/li>\n\u003c/ul>"}]},{"id":"10","title":"After restarting Quay (run last)","tests":[{"id":"10.1","title":"Restored scrollback reads cleanly","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Scrollback restored from disk after a restart contains no fragments or overlaps.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> Sections 1 to 9 done.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Close the Quay window. If \u003ccode>pnpm tauri dev\u003c/code> is still running in its PowerShell window, press \u003ccode>Ctrl\u003c/code>+\u003ccode>C\u003c/code> there. Then run \u003ccode>pnpm tauri dev\u003c/code> again.\n\u003c/li>\n\u003cli>Select \u003cstrong>quay-uat-p\u003c/strong>, then click \u003ccode>big\u003c/code>, then \u003ccode>ps-1\u003c/code>, then \u003ccode>mods-A\u003c/code>, waiting 3 seconds on each and scrolling through each.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> Each shows \u003cstrong>Session Inactive\u003c/strong> with readable earlier output: no G1 or G4, and \u003ccode>big\u003c/code> begins with a whole \u003ccode>row\u003c/code> line.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Name the terminal or terminals, and screenshot the damaged part.\n\u003c/li>\n\u003c/ul>"},{"id":"10.2","title":"Relaunch from restored state (Claude config A)","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Relaunching a terminal restored from disk gives a clean screen.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 10.1 answered.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>With \u003ccode>mods-A\u003c/code> showing, click \u003cstrong>Relaunch Agent\u003c/strong>. Wait 15 seconds and type \u003ccode>hello\u003c/code> without sending.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> One complete Claude screen with an intact input box and \u003ccode>hello\u003c/code> in it.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> As in 2.3. Also say whether it looked better or worse than 2.3.\n\u003c/li>\n\u003c/ul>"},{"id":"10.3","title":"Cold start: the first new pane measures the same as the baseline","url":"","body":"\u003cul>\n\u003cli>\u003cstrong>Goal:\u003c/strong> Panes created right after start-up must use the final font and cell size.\n\u003c/li>\n\u003cli>\u003cstrong>Before you start:\u003c/strong> 10.2 answered. The window is at its normal size on the first monitor.\n\u003c/li>\n\u003cli>\u003cstrong>Steps:\u003c/strong>\n\u003col>\n\u003cli>Start \u003cstrong>PowerShell Console\u003c/strong> labelled \u003ccode>cold\u003c/code>, show it in a single pane, and run PROBE and RULER.\n\u003c/li>\n\u003c/ol>\n\u003c/li>\n\u003cli>\u003cstrong>PASS looks like:\u003c/strong> PROBE shows \u003ccode>ok: true\u003c/code>, \u003ccode>cellW\u003c/code> matches the baseline in 1.5, and RULER matches PROBE.\n\u003c/li>\n\u003cli>\u003cstrong>If it does not work:\u003c/strong> Paste both.\n\u003c/li>\n\u003c/ul>"}]}]}</script>
+<script>
+/* UAT form runtime. Shared by the Python and Node generators (inlined into the HTML).
+   Talks to the local helper server: GET api/state, POST api/save, api/upload, api/submit.
+   If no server is present (file:// or server stopped) it degrades to localStorage-only
+   and disables Submit, telling the tester exactly what to run. */
+(function () {
+  'use strict';
+
+  var MODEL = JSON.parse(document.getElementById('uat-model').textContent);
+  var LS_KEY = 'uat:' + MODEL.file;
+  var SEVERITIES = [['', '— pick one —'], ['cosmetic', 'Cosmetic — it just looks off'],
+                    ['annoying', 'Annoying — it works but it bugs me'],
+                    ['blocker', 'Blocks me — I could not carry on because of it']];
+  var STATUS_LABEL = { '': 'Not answered yet', pass: 'Pass', fail: 'Fail', notdone: 'Not done' };
+  var LEVEL_LABEL = {
+    novice: 'written for a first-time tester',
+    intermediate: 'written for a confident computer user',
+    expert: 'written for a developer or QA engineer'
+  };
+
+  var state = { tester: '', answers: {}, findings: [], nextFinding: 1, annotCursor: 0 };
+  var online = false, dirty = false, lastOwner = null, filter = 'all';
+  var els = {};
+  var TESTS = [];
+  MODEL.sections.forEach(function (s) { s.tests.forEach(function (t) { TESTS.push({ t: t, s: s }); }); });
+
+  /* ------------------------------------------------------------------ utils */
+
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === 'html') e.innerHTML = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function ans(id) {
+    if (!state.answers[id]) state.answers[id] = { status: '', notes: '', concern: '', severity: '', screenshots: [] };
+    if (!state.answers[id].screenshots) state.answers[id].screenshots = [];
+    return state.answers[id];
+  }
+  function post(path, body) {
+    return fetch(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, data: j }; }); });
+  }
+
+  /* ------------------------------------------------------------- persistence */
+
+  function markDirty() {
+    dirty = true;
+    els.savestate.textContent = 'unsaved changes';
+    els.savestate.className = 'savestate dirty';
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* quota — server save still works */ }
+  }
+  function markSaved(msg) {
+    dirty = false;
+    els.savestate.textContent = msg || 'saved';
+    els.savestate.className = 'savestate saved';
+  }
+
+  function save(silent) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+    if (!online) { markSaved('saved in browser'); return Promise.resolve(); }
+    return post('api/save', { state: state }).then(function (r) {
+      if (r.ok) markSaved('saved ' + new Date().toLocaleTimeString());
+      else if (!silent) alert('Could not save: ' + (r.data.error || 'unknown error'));
+    }).catch(function () {
+      online = false; offlineBanner();
+      if (!silent) alert('Lost contact with the helper program. Your work is still stored in this browser.\n' +
+                         'Restart the helper and click Save again.');
+    });
+  }
+
+  /* -------------------------------------------------------------- validation */
+
+  function validate(partial) {
+    var problems = [];
+    if (!state.tester.trim()) problems.push({ id: null, msg: 'Type your name in the "Tester" box at the bottom.' });
+    TESTS.forEach(function (row) {
+      var id = row.t.id, a = ans(id);
+      if (!a.status) {
+        if (!partial) problems.push({ id: id, msg: 'Test ' + id + ' has no answer yet (Pass, Fail or Not done).' });
+        return;
+      }
+      if (a.status === 'fail' && a.notes.trim().length < 10)
+        problems.push({ id: id, msg: 'Test ' + id + ' is marked Fail — describe what happened in "What happened" (at least a sentence).' });
+      if (a.status === 'notdone' && a.notes.trim().length < 10)
+        problems.push({ id: id, msg: 'Test ' + id + ' is marked Not done — say why you could not do it.' });
+      if (a.concern.trim() && !a.severity)
+        problems.push({ id: id, msg: 'Test ' + id + ' has a look-and-feel comment — choose how much it bothers you.' });
+    });
+    state.findings.forEach(function (f) {
+      if (!f.title.trim()) problems.push({ id: f.id, msg: 'Finding ' + f.id + ' needs a short title.' });
+      if (!f.description.trim()) problems.push({ id: f.id, msg: 'Finding ' + f.id + ' needs a description of what you saw.' });
+      if (!f.severity) problems.push({ id: f.id, msg: 'Finding ' + f.id + ' needs a severity.' });
+    });
+    return problems;
+  }
+
+  /* ------------------------------------------------------------------ counts */
+
+  function counts() {
+    var c = { pass: 0, fail: 0, notdone: 0, unanswered: 0, concerns: 0 };
+    TESTS.forEach(function (row) {
+      var a = ans(row.t.id);
+      if (a.status) c[a.status]++; else c.unanswered++;
+      if (a.concern.trim()) c.concerns++;
+    });
+    return c;
+  }
+
+  function refresh() {
+    var c = counts(), total = TESTS.length, done = total - c.unanswered;
+    els.cPass.textContent = c.pass + ' pass';
+    els.cFail.textContent = c.fail + ' fail';
+    els.cSkip.textContent = c.notdone + ' not done';
+    els.cConcern.textContent = c.concerns + ' concern' + (c.concerns === 1 ? '' : 's');
+    els.cLeft.textContent = c.unanswered + ' left';
+    els.bar.style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+    els.progressLabel.textContent = done + ' of ' + total + ' answered';
+    document.querySelectorAll('.dot[data-for]').forEach(function (d) {
+      var a = ans(d.getAttribute('data-for'));
+      d.className = 'dot' + (a.status ? ' ' + a.status : '');
+    });
+    applyFilter();
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('.test').forEach(function (card) {
+      var a = ans(card.getAttribute('data-id')), show = true;
+      if (filter === 'unanswered') show = !a.status;
+      else if (filter === 'fail') show = a.status === 'fail';
+      else if (filter === 'concern') show = !!a.concern.trim();
+      card.classList.toggle('hidden', !show);
+    });
+  }
+
+  /* ------------------------------------------------------------- screenshots */
+
+  function addShots(ownerId, files, render) {
+    var list = Array.prototype.slice.call(files).filter(function (f) { return f && /^image\//.test(f.type); });
+    if (!list.length) return;
+    var bucket = ownerScreens(ownerId);
+    if (bucket.length + list.length > 6) { alert('You can attach up to 6 pictures here.'); return; }
+    list.forEach(function (file) {
+      if (file.size > 8 * 1024 * 1024) { alert('That picture is bigger than 8 MB — please use a smaller one.'); return; }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var dataUrl = fr.result;
+        if (!online) {
+          bucket.push({ path: dataUrl, name: file.name || 'pasted image', local: true });
+          markDirty(); render();
+          return;
+        }
+        post('api/upload', { owner: ownerId, dataUrl: dataUrl, filename: file.name || 'pasted.png' })
+          .then(function (r) {
+            if (r.ok && r.data.path) { bucket.push({ path: r.data.path, name: r.data.path.split('/').pop() }); markDirty(); render(); }
+            else alert('Could not save that picture: ' + (r.data.error || 'unknown error'));
+          }).catch(function () { alert('Could not save that picture — is the helper program still running?'); });
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function ownerScreens(ownerId) {
+    if (ownerId.charAt(0) === 'F') {
+      var f = state.findings.filter(function (x) { return x.id === ownerId; })[0];
+      if (!f.screenshots) f.screenshots = [];
+      return f.screenshots;
+    }
+    return ans(ownerId).screenshots;
+  }
+
+  function shotWidget(ownerId) {
+    var wrap = h('div', { class: 'shots' });
+    var thumbs = h('div', { class: 'thumbs' });
+    var input = h('input', { type: 'file', accept: 'image/*', multiple: 'multiple', style: 'display:none' });
+    var zone = h('div', {
+      class: 'dropzone', tabindex: '0',
+      text: 'Add a picture — click here to choose a file, drag one in, or copy a screenshot and press Ctrl+V (Cmd+V on a Mac)'
+    });
+    function render() {
+      thumbs.innerHTML = '';
+      ownerScreens(ownerId).forEach(function (s, i) {
+        var img = h('img', { src: s.path, alt: 'screenshot ' + (i + 1), loading: 'lazy',
+          onclick: function () { lightbox(s.path); } });
+        thumbs.appendChild(h('div', { class: 'thumb' }, [
+          img,
+          h('div', { class: 'cap', text: s.name || ('image ' + (i + 1)) }),
+          h('button', { class: 'rm', title: 'Remove this picture', type: 'button', text: '×',
+            onclick: function () { ownerScreens(ownerId).splice(i, 1); markDirty(); render(); } })
+        ]));
+      });
+    }
+    zone.addEventListener('click', function () { input.click(); });
+    zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', function () { zone.classList.remove('over'); });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault(); zone.classList.remove('over');
+      addShots(ownerId, e.dataTransfer.files, render);
+    });
+    input.addEventListener('change', function () { addShots(ownerId, input.files, render); input.value = ''; });
+    wrap.appendChild(h('label', { text: 'Pictures (optional)', style: 'display:block;font-size:13px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px' }));
+    wrap.appendChild(zone); wrap.appendChild(thumbs); wrap.appendChild(input);
+    wrap._render = render;
+    render();
+    return wrap;
+  }
+
+  function lightbox(src) {
+    var box = h('div', { class: 'lightbox', onclick: function () { box.remove(); } }, [h('img', { src: src, alt: '' })]);
+    document.body.appendChild(box);
+  }
+
+  /* ------------------------------------------------------------------- cards */
+
+  function field(labelText, hint, node) {
+    return h('div', { class: 'field' }, [
+      h('label', {}, [document.createTextNode(labelText), hint ? h('span', { class: 'hint', text: '  ' + hint }) : null]),
+      node
+    ]);
+  }
+
+  function testCard(t, section) {
+    var a = ans(t.id);
+    var card = h('div', { class: 'test', id: 'test-' + t.id, 'data-id': t.id, 'data-status': a.status || '' });
+
+    card.appendChild(h('h3', {}, [h('span', { class: 'tid', text: t.id }), document.createTextNode(t.title)]));
+    card.appendChild(h('div', { class: 'body', html: t.body }));
+
+    if (t.url) {
+      card.appendChild(h('div', { class: 'openrow' }, [
+        h('a', {
+          class: 'openbtn', href: 'goto?test=' + encodeURIComponent(t.id), target: '_blank',
+          rel: 'noopener', text: 'Open this screen and annotate it ↗'
+        }),
+        h('span', { class: 'openurl', text: t.url })
+      ]));
+    }
+
+    var answer = h('div', { class: 'answer' });
+
+    // status — '' is the starting state and is shown as its own chip, so an
+    // untouched test reads as "not answered yet" rather than as a blank row
+    var row = h('div', { class: 'statusrow' }, [h('span', { class: 'lbl', text: 'Result' })]);
+    ['', 'pass', 'fail', 'notdone'].forEach(function (v) {
+      var input = h('input', {
+        type: 'radio', name: 'st-' + t.id, value: v, checked: a.status === v,
+        title: v ? null : 'I have not got to this test yet'
+      });
+      input.addEventListener('change', function () {
+        a.status = v; card.setAttribute('data-status', v); markDirty(); refresh(); syncRequired();
+      });
+      row.appendChild(h('label', { class: 'radio' }, [
+        input, h('span', { class: v || 'unanswered', text: STATUS_LABEL[v] })
+      ]));
+    });
+    answer.appendChild(row);
+
+    // notes
+    var notes = h('textarea', { placeholder: 'If it failed, write down exactly what you saw — the wording of any error message helps most.' });
+    notes.value = a.notes;
+    notes.addEventListener('input', function () { a.notes = notes.value; markDirty(); syncRequired(); });
+    var notesField = field('What happened', '(required if you chose Fail or Not done)', notes);
+    answer.appendChild(notesField);
+
+    // look and feel concern
+    var concern = h('textarea', { placeholder: 'Anything about how this looks or feels that you are not happy with? Wording, colours, layout, speed, confusing labels...' });
+    concern.value = a.concern;
+    var sev = h('select', {});
+    SEVERITIES.forEach(function (s) { sev.appendChild(h('option', { value: s[0], text: s[1], selected: a.severity === s[0] })); });
+    sev.addEventListener('change', function () { a.severity = sev.value; markDirty(); refresh(); syncRequired(); });
+    concern.addEventListener('input', function () { a.concern = concern.value; markDirty(); refresh(); syncRequired(); });
+    var cbox = h('div', { class: 'concernbox' }, [
+      h('label', { text: 'Look & feel comment (optional — a test can pass and still bother you)' }),
+      concern,
+      h('div', { class: 'concernrow' }, [h('label', { text: 'How much does it bother you?' }), sev])
+    ]);
+    answer.appendChild(cbox);
+
+    answer.appendChild(shotWidget(t.id));
+    card.appendChild(answer);
+
+    function syncRequired() {
+      var needNotes = (a.status === 'fail' || a.status === 'notdone') && a.notes.trim().length < 10;
+      notesField.classList.toggle('required-miss', needNotes);
+      cbox.classList.toggle('required-miss', !!a.concern.trim() && !a.severity);
+    }
+    syncRequired();
+    return card;
+  }
+
+  function findingCard(f) {
+    var card = h('div', { class: 'finding', id: 'test-' + f.id });
+    var title = h('input', { type: 'text', placeholder: 'One line: what is wrong? e.g. "The menu disappears when the window is narrow"' });
+    title.value = f.title;
+    title.addEventListener('input', function () { f.title = title.value; markDirty(); });
+    var desc = h('textarea', { placeholder: 'What were you doing, what did you expect, and what happened instead?' });
+    desc.value = f.description;
+    desc.addEventListener('input', function () { f.description = desc.value; markDirty(); });
+    var sev = h('select', {});
+    SEVERITIES.forEach(function (s) { sev.appendChild(h('option', { value: s[0], text: s[1], selected: f.severity === s[0] })); });
+    sev.addEventListener('change', function () { f.severity = sev.value; markDirty(); });
+
+    card.appendChild(h('h4', {}, [
+      document.createTextNode('Finding ' + f.id + (f.section ? ' — reported from Section ' + f.section : '')),
+      h('button', { class: 'ghost small', type: 'button', text: 'delete', style: 'float:right',
+        onclick: function () {
+          if (!confirm('Delete finding ' + f.id + '?')) return;
+          state.findings = state.findings.filter(function (x) { return x !== f; });
+          card.remove(); markDirty();
+        } })
+    ]));
+    card.appendChild(field('What is wrong', '', title));
+    card.appendChild(field('Tell us more', '', desc));
+    card.appendChild(field('How much does it bother you?', '', sev));
+    card.appendChild(shotWidget(f.id));
+    return card;
+  }
+
+  function addFinding(sectionId, container) {
+    var f = { id: 'F' + state.nextFinding++, section: sectionId || '', title: '', description: '', severity: '', screenshots: [] };
+    state.findings.push(f);
+    var card = findingCard(f);
+    (container || els.findings).appendChild(card);
+    markDirty();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var input = card.querySelector('input[type="text"]'); if (input) input.focus();
+  }
+
+  /* ------------------------------------------------------------ annotations */
+
+  /* The annotator posts to the helper from the app's own tab; when the tester
+     comes back here we collect whatever arrived and fold it into their answers. */
+
+  function bookmarkletHref() {
+    return 'javascript:(function(){window.__uatHelper='
+      + encodeURIComponent(JSON.stringify(location.origin))
+      + ';' + encodeURIComponent(MODEL.annotator) + '})();void 0;';
+  }
+
+  function annotationNote(a) {
+    var lines = ['— Annotated ' + a.at + (a.url ? ' · ' + a.url : '')
+                 + (a.viewport ? ' · ' + a.viewport : '')];
+    a.pins.forEach(function (p) {
+      var where = p.selector ? '  [' + p.selector + (p.text ? ' “' + p.text + '”' : '') + ']' : '';
+      lines.push('  ' + circled(p.n) + ' ' + p.comment + where);
+    });
+    (a.consoleErrors || []).forEach(function (e) { lines.push('  ! console: ' + e); });
+    if (a.browser) lines.push('  browser: ' + a.browser);
+    return lines.join('\n');
+  }
+
+  function circled(n) {
+    return (n >= 1 && n <= 20) ? String.fromCharCode(0x245F + n) : '(' + n + ')';
+  }
+
+  function mergeAnnotations(items) {
+    if (!items || !items.length) return 0;
+    var touched = {};
+    items.forEach(function (a) {
+      var t = ans(a.test);
+      if (a.image) t.screenshots.push({ path: a.image, name: a.image.split('/').pop() });
+      t.notes = (t.notes ? t.notes.replace(/\s+$/, '') + '\n' : '') + annotationNote(a);
+      touched[a.test] = true;
+      var card = document.getElementById('test-' + a.test);
+      if (card) {
+        var ta = card.querySelector('textarea');
+        if (ta) ta.value = t.notes;
+        var shots = card.querySelector('.shots');
+        if (shots && shots._render) shots._render();
+        card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+      }
+    });
+    markDirty();
+    refresh();
+    save(true);
+    return Object.keys(touched).length;
+  }
+
+  function collectAnnotations(announce) {
+    if (!online || !MODEL.annotator) return;
+    fetch('api/annotations?after=' + (state.annotCursor || 0), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.items || !j.items.length) return;
+        state.annotCursor = j.cursor;
+        var n = mergeAnnotations(j.items);
+        if (announce !== false) {
+          toast(j.items.length + ' annotation' + (j.items.length === 1 ? '' : 's')
+            + ' added to ' + n + ' test' + (n === 1 ? '' : 's') + '.');
+        }
+      })
+      .catch(function () { /* helper went away; the banner already says so */ });
+  }
+
+  function toast(msg) {
+    var t = h('div', { class: 'toast', text: msg });
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 6000);
+  }
+
+  /* -------------------------------------------------------------------- shell */
+
+  function offlineBanner() {
+    if ($('#offline-banner')) return;
+    var b = h('div', { class: 'banner', id: 'offline-banner' }, [
+      h('strong', { text: 'The helper program is not running. ' }),
+      document.createTextNode('Your answers are being kept in this browser only, and the Submit button is switched off. ' +
+        'To turn it back on, start the helper (see the instructions at the top of this page), then reload this page — ' +
+        'your answers will still be here.')
+    ]);
+    els.main.insertBefore(b, els.main.firstChild);
+    if (els.submit) { els.submit.disabled = true; els.submit.title = 'Start the helper program first'; }
+    if (els.partial) { els.partial.disabled = true; }
+  }
+
+  function build() {
+    var top = h('div', { class: 'topbar' }, [
+      h('div', { class: 'topbar-inner' }, [
+        h('div', {}, [
+          h('h1', { text: MODEL.title }),
+          h('div', {
+            class: 'file',
+            text: MODEL.file + (LEVEL_LABEL[MODEL.level] ? '  ·  ' + LEVEL_LABEL[MODEL.level] : '')
+          })
+        ]),
+        h('div', { class: 'spacer' }),
+        els.counts = h('div', { class: 'counts' }, [
+          els.cPass = h('span', { class: 'pill pass', text: '0 pass' }),
+          els.cFail = h('span', { class: 'pill fail', text: '0 fail' }),
+          els.cSkip = h('span', { class: 'pill notdone', text: '0 not done' }),
+          els.cConcern = h('span', { class: 'pill concern', text: '0 concerns' }),
+          els.cLeft = h('span', { class: 'pill', text: '0 left' })
+        ]),
+        els.savestate = h('span', { class: 'savestate', text: 'not saved yet' }),
+        h('button', { type: 'button', text: 'Save my work', onclick: function () { save(false); } }),
+        els.submit = h('button', { class: 'primary', type: 'button', text: 'Submit', onclick: function () { submit(false); } })
+      ]),
+      h('div', { style: 'max-width:1400px;margin:0 auto;padding:0 20px 10px;display:flex;gap:12px;align-items:center' }, [
+        h('div', { class: 'progress', style: 'flex:1' }, [els.bar = h('span', { style: 'width:0%' })]),
+        els.progressLabel = h('span', { class: 'file', text: '' })
+      ])
+    ]);
+    document.body.appendChild(top);
+
+    var toc = h('nav', { class: 'toc' }, [h('h2', { text: 'Sections' })]);
+    MODEL.sections.forEach(function (s) {
+      var dots = h('span', { class: 'dots' });
+      s.tests.forEach(function (t) { dots.appendChild(h('span', { class: 'dot', 'data-for': t.id })); });
+      toc.appendChild(h('a', { href: '#section-' + s.id }, [
+        h('span', { class: 'tocnum', text: s.id }), h('span', { text: s.title }), dots
+      ]));
+    });
+    toc.appendChild(h('a', { href: '#findings' }, [h('span', { class: 'tocnum', text: '⚑' }), h('span', { text: 'Other findings' })]));
+
+    els.main = h('main', {});
+    var layout = h('div', { class: 'layout' }, [toc, els.main]);
+    document.body.appendChild(layout);
+
+    if (MODEL.intro) els.main.appendChild(h('section', { class: 'panel intro', html: MODEL.intro }));
+
+    if (MODEL.annotator) els.main.appendChild(bookmarkletCard());
+
+    var filters = h('div', { class: 'filters' }, [h('span', { class: 'lbl', text: 'Show:' })]);
+    [['all', 'Everything'], ['unanswered', 'Still to do'], ['fail', 'Failures'], ['concern', 'With comments']].forEach(function (f) {
+      var b = h('button', { class: 'chip', type: 'button', text: f[1], 'aria-pressed': filter === f[0] });
+      b.addEventListener('click', function () {
+        filter = f[0];
+        filters.querySelectorAll('.chip').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
+        applyFilter();
+      });
+      filters.appendChild(b);
+    });
+    els.main.appendChild(filters);
+
+    MODEL.sections.forEach(function (s) {
+      var sec = h('section', { class: 'section', id: 'section-' + s.id }, [
+        h('h2', { text: 'Section ' + s.id + ' — ' + s.title })
+      ]);
+      s.tests.forEach(function (t) { sec.appendChild(testCard(t, s)); });
+      var holder = h('div', {});
+      sec.appendChild(holder);
+      sec.appendChild(h('div', { class: 'addfinding' }, [
+        h('button', { class: 'small', type: 'button', text: '+ Report something else you noticed in this section',
+          onclick: function () { addFinding(s.id, holder); } })
+      ]));
+      els.main.appendChild(sec);
+    });
+
+    if (MODEL.outro) els.main.appendChild(h('section', { class: 'panel intro', html: MODEL.outro }));
+
+    els.findings = h('div', {});
+    els.main.appendChild(h('section', { class: 'panel', id: 'findings' }, [
+      h('h2', { text: 'Anything else you noticed' }),
+      h('p', { class: 'intro', text: 'Problems that no test above asked about. Add as many as you like — each one is written into the report with its pictures.' }),
+      els.findings,
+      h('div', { class: 'addfinding' }, [
+        h('button', { type: 'button', text: '+ Report something else', onclick: function () { addFinding('', els.findings); } })
+      ])
+    ]));
+
+    var testerInput = h('input', { type: 'text', placeholder: 'Your name', id: 'tester' });
+    testerInput.value = state.tester;
+    testerInput.addEventListener('input', function () { state.tester = testerInput.value; markDirty(); });
+    els.main.appendChild(h('div', { class: 'footerbar' }, [
+      h('span', { class: 'tester' }, [h('label', { for: 'tester', style: 'font-weight:700;font-size:13px;color:var(--ink-3)', text: 'TESTER' }), testerInput]),
+      h('div', { class: 'spacer' }),
+      h('button', { type: 'button', text: 'Save my work', onclick: function () { save(false); } }),
+      els.partial = h('button', { type: 'button', text: 'Submit what I have so far', onclick: function () { submit(true); } }),
+      h('button', { class: 'primary', type: 'button', text: 'Submit', onclick: function () { submit(false); } })
+    ]));
+  }
+
+  function bookmarkletCard() {
+    var link = h('a', { class: 'bmlet', text: '✎ Annotate this page' });
+    link.href = bookmarkletHref();
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      alert('Do not click this button here — drag it up to your bookmarks bar instead.\n\n'
+        + 'Then, when you are looking at the app, click it there to leave notes on the page.');
+    });
+    var box = h('details', { class: 'panel setup' }, [
+      h('summary', { text: 'One-time setup: the “Annotate this page” button' }),
+      h('p', { text: 'Some tests below have an "Open this screen and annotate it" button. To leave '
+        + 'notes directly on the app, you need this button on your bookmarks bar first. You only '
+        + 'ever do this once.' }),
+      h('ol', {}, [
+        h('li', { html: 'Show your bookmarks bar if it is hidden: press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> '
+          + '(<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> on a Mac). A thin strip of links appears under the address bar.' }),
+        h('li', {}, [document.createTextNode('Drag this button up onto that strip: '), link]),
+        h('li', { text: 'That is it. When you are on the app and want to leave a note, click the '
+          + 'button on your bookmarks bar and pins appear.' })
+      ]),
+      h('p', { class: 'hint', text: 'It only ever talks to this checklist on your own computer, '
+        + 'and it disappears from the app page as soon as you close it.' })
+    ]);
+    box.open = true;
+    return box;
+  }
+
+  /* ------------------------------------------------------------------ submit */
+
+  function modal(kids) {
+    var ov = h('div', { class: 'overlay', onclick: function (e) { if (e.target === ov) ov.remove(); } },
+      [h('div', { class: 'modal' }, kids)]);
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function jumpTo(id) {
+    var el = document.getElementById('test-' + id);
+    if (!el) return;
+    filter = 'all';
+    document.querySelectorAll('.chip').forEach(function (x, i) { x.setAttribute('aria-pressed', i === 0); });
+    applyFilter();
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+
+  function submit(partial) {
+    if (!online) {
+      modal([h('h2', { text: 'The helper program is not running' }),
+        h('p', { text: 'Submitting writes your answers into the checklist file on your computer, and only the helper program can do that.' }),
+        h('p', { text: 'Start it in a terminal, reload this page, then press Submit again. Your answers are safe in this browser in the meantime.' }),
+        h('div', { class: 'actions' }, [h('button', { class: 'primary', type: 'button', text: 'OK', onclick: function () { $('.overlay').remove(); } })])]);
+      return;
+    }
+    var problems = validate(partial);
+    if (problems.length) {
+      var list = h('ul', {});
+      problems.slice(0, 40).forEach(function (p) {
+        list.appendChild(h('li', {}, [
+          document.createTextNode(p.msg + ' '),
+          p.id ? h('button', { class: 'jump', type: 'button', text: 'take me there',
+            onclick: function () { $('.overlay').remove(); jumpTo(p.id); } }) : null
+        ]));
+      });
+      var ov = modal([
+        h('h2', { text: partial ? 'Fix these before submitting' : 'Not finished yet' }),
+        h('p', { text: problems.length + ' thing' + (problems.length === 1 ? '' : 's') + ' need' + (problems.length === 1 ? 's' : '') + ' your attention:' }),
+        list,
+        problems.length > 40 ? h('p', { text: '...and ' + (problems.length - 40) + ' more.' }) : null,
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'button', text: 'Back to the checklist', onclick: function () { ov.remove(); } }),
+          partial ? null : h('button', { type: 'button', text: 'Submit what I have so far',
+            onclick: function () { ov.remove(); submit(true); } })
+        ])
+      ]);
+      return;
+    }
+    var c = counts();
+    if (partial && c.unanswered > 0 &&
+        !confirm(c.unanswered + ' test(s) have no answer. The report will be clearly marked as an unfinished run. Carry on?')) return;
+
+    post('api/submit', { state: state, partial: partial }).then(function (r) {
+      if (!r.ok || !r.data.ok) {
+        modal([h('h2', { text: 'Could not submit' }),
+          h('p', { text: r.data.error || 'Unknown error.' }),
+          (r.data.problems || []).length ? h('ul', {}, r.data.problems.map(function (p) { return h('li', { text: p.msg || p }); })) : null,
+          h('div', { class: 'actions' }, [h('button', { class: 'primary', type: 'button', text: 'OK', onclick: function () { $('.overlay').remove(); } })])]);
+        return;
+      }
+      markSaved('submitted');
+      var d = r.data;
+      modal([
+        h('h2', { text: d.partial ? 'Partial results saved' : 'Thank you — your results are saved' }),
+        h('p', { text: d.summary }),
+        h('p', { text: 'Written to:' }),
+        h('code', { class: 'cmd', text: d.mdPath }),
+        h('p', { text: 'Tell whoever is fixing the app that you are done. In the project folder they can run:' }),
+        h('code', { class: 'cmd', text: 'process the completed UAT at ' + d.mdRel }),
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'button', text: 'Keep editing', onclick: function () { $('.overlay').remove(); } }),
+          h('button', { class: 'primary', type: 'button', text: 'Done', onclick: function () { $('.overlay').remove(); } })
+        ])
+      ]);
+    }).catch(function () {
+      online = false; offlineBanner();
+      alert('Lost contact with the helper program. Your answers are safe in this browser — restart it and try again.');
+    });
+  }
+
+  /* -------------------------------------------------------------------- init */
+
+  function mergeState(loaded) {
+    if (!loaded || typeof loaded !== 'object') return;
+    state.tester = loaded.tester || '';
+    state.answers = loaded.answers || {};
+    state.findings = (loaded.findings || []).map(function (f) {
+      f.screenshots = f.screenshots || []; return f;
+    });
+    var max = 0;
+    state.findings.forEach(function (f) { var n = parseInt(String(f.id).replace(/\D/g, ''), 10); if (n > max) max = n; });
+    state.nextFinding = Math.max(loaded.nextFinding || 1, max + 1);
+  }
+
+  function boot(loaded) {
+    mergeState(loaded);
+    build();
+    state.findings.forEach(function (f) { els.findings.appendChild(findingCard(f)); });
+    refresh();
+    if (!online) offlineBanner();
+    else markSaved('loaded');
+
+    document.addEventListener('focusin', function (e) {
+      var card = e.target.closest ? e.target.closest('.test, .finding') : null;
+      if (card) lastOwner = card;
+    });
+    document.addEventListener('click', function (e) {
+      var card = e.target.closest ? e.target.closest('.test, .finding') : null;
+      if (card) lastOwner = card;
+    });
+    document.addEventListener('paste', function (e) {
+      if (!e.clipboardData || !e.clipboardData.files || !e.clipboardData.files.length) return;
+      var card = (document.activeElement && document.activeElement.closest) ? document.activeElement.closest('.test, .finding') : null;
+      card = card || lastOwner;
+      if (!card) { alert('Click inside the test you want the picture to belong to first, then paste again.'); return; }
+      e.preventDefault();
+      var widget = card.querySelector('.shots');
+      addShots(card.id.replace(/^test-/, ''), e.clipboardData.files, widget._render);
+    });
+    window.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(false); }
+    });
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+    setInterval(function () { if (dirty) save(true); }, 60000);
+
+    if (MODEL.annotator) {
+      window.addEventListener('focus', function () { collectAnnotations(); });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) collectAnnotations();
+      });
+      setInterval(function () { if (!document.hidden) collectAnnotations(); }, 10000);
+      collectAnnotations(false);
+    }
+  }
+
+  var local = null;
+  try { local = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+
+  fetch('api/state', { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (j) {
+      online = true;
+      var server = j && j.state ? j.state : null;
+      var pick = server;
+      if (local && server && (local.updatedAt || 0) > (server.updatedAt || 0)) pick = local;
+      boot(pick || local);
+    })
+    .catch(function () { online = false; boot(local); });
+})();
+
+</script>
+</body>
+</html>

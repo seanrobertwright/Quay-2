@@ -9,6 +9,8 @@ export default withMermaid(
     base: "/Quay-2/",
     cleanUrls: true,
     lastUpdated: true,
+    // UAT checklists and their helper tools are working files, not site pages
+    srcExclude: ['uat/**'],
     mermaid: {
       theme: 'dark',
     },

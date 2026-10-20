@@ -30,3 +30,6 @@ docs/.vitepress/cache
 .omo/
 src-tauri/.omo/
 .claude/
+
+# UAT in-progress answers (written by docs/uat/tools/uat_server.py)
+docs/uat/.uat-progress-*.json
