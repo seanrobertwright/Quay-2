@@ -37,6 +37,29 @@ impl RunKind {
         )
     }
 
+    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
+    /// The spawn and the team briefing both read this, so they cannot disagree.
+    pub fn gets_quay_mcp(&self) -> bool {
+        matches!(self, RunKind::Claude)
+    }
+
+    /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
+    pub fn launch_prompt_form(&self) -> Option<LaunchPromptForm> {
+        match self {
+            RunKind::Claude | RunKind::Codex | RunKind::Pi | RunKind::Kiro => {
+                Some(LaunchPromptForm::Positional)
+            }
+            RunKind::OpenCode => Some(LaunchPromptForm::Flag("--prompt")),
+            RunKind::Gemini | RunKind::Copilot => Some(LaunchPromptForm::Flag("-i")),
+            RunKind::Antigravity
+            | RunKind::Grok
+            | RunKind::Aider
+            | RunKind::PowerShell
+            | RunKind::Command
+            | RunKind::Archon => None,
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             RunKind::Claude => "claude",
@@ -54,6 +77,15 @@ impl RunKind {
             RunKind::Archon => "archon",
         }
     }
+}
+
+/// Where a CLI's launch prompt goes on its command line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchPromptForm {
+    /// The prompt is a bare positional argument.
+    Positional,
+    /// The prompt follows this flag.
+    Flag(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +147,10 @@ pub struct SpawnTerminalRequest {
     pub env_vars: Option<std::collections::HashMap<String, String>>,
     #[serde(default)]
     pub custom_flags: Option<String>,
+    /// The launch prompt, passed to the CLI as one argument and never stored, so a
+    /// relaunch does not resend it.
+    #[serde(default)]
+    pub initial_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
