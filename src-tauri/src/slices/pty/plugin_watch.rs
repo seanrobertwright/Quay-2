@@ -1,6 +1,7 @@
 //! What Quay knows, in one launch of a terminal, about whether Claude Code's
 //! event-bridge plugin is loaded, and the status rules that follow from it.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -11,6 +12,26 @@ use super::models::{ClaudeStatus, RunKind};
 pub const PLUGIN_SILENCE: Duration = Duration::from_secs(30);
 
 static NEXT_LAUNCH: AtomicU64 = AtomicU64::new(1);
+
+/// One launch of one terminal, as its first-output hook and silence clock hold it.
+/// A relaunch replaces the terminal's watch, so a stale launch finds nothing to change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchRef {
+    pub terminal_id: String,
+    pub launch: u64,
+}
+
+impl LaunchRef {
+    /// This launch's watch in `watches`, while it is still the terminal's current launch.
+    pub fn current_in<'a>(
+        &self,
+        watches: &'a mut HashMap<String, PluginWatch>,
+    ) -> Option<&'a mut PluginWatch> {
+        watches
+            .get_mut(&self.terminal_id)
+            .filter(|watch| watch.launch == self.launch)
+    }
+}
 
 /// One launch of a terminal. Relaunch keeps the terminal id and starts a new watch,
 /// so the "heard from the plugin" mark and the clock never carry over.

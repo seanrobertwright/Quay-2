@@ -10,7 +10,7 @@ use super::models::{
     ClaudeStatus, PermissionMode, PersistedTerminalSession, RunKind, SpawnTerminalRequest,
     TerminalInfo, TerminalOutputPayload, TerminalStatusPayload,
 };
-use super::plugin_watch::{PluginWatch, PLUGIN_SILENCE};
+use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
 use super::session::PtySession;
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
@@ -218,7 +218,7 @@ impl PtyManager {
 
         let start_seq = self.last_seq(&terminal_id);
         let launch = self.begin_launch(&terminal_id, request.run_kind);
-        let on_first_output = self.first_output_hook(&terminal_id, launch, app_handle.clone());
+        let on_first_output = self.first_output_hook(launch, app_handle.clone());
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
@@ -291,7 +291,7 @@ impl PtyManager {
         let request = relaunch_request(&info, rows, cols, env_vars);
 
         let launch = self.begin_launch(terminal_id, info.run_kind);
-        let on_first_output = self.first_output_hook(terminal_id, launch, app_handle.clone());
+        let on_first_output = self.first_output_hook(launch, app_handle.clone());
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
@@ -453,10 +453,12 @@ impl PtyManager {
     }
 
     /// Starts a new launch of `terminal_id`: no plugin heard and no clock running.
-    /// Returns the launch's number.
-    pub fn begin_launch(&self, terminal_id: &str, run_kind: RunKind) -> u64 {
+    pub fn begin_launch(&self, terminal_id: &str, run_kind: RunKind) -> LaunchRef {
         let watch = PluginWatch::new(run_kind);
-        let launch = watch.launch();
+        let launch = LaunchRef {
+            terminal_id: terminal_id.to_string(),
+            launch: watch.launch(),
+        };
         self.plugin_watches.lock().insert(terminal_id.to_string(), watch);
         launch
     }
@@ -465,51 +467,46 @@ impl PtyManager {
     /// clock and, once that has run, sends `terminal-status` if the terminal went Unknown.
     fn first_output_hook(
         &self,
-        terminal_id: &str,
-        launch: u64,
+        launch: LaunchRef,
         app_handle: AppHandle,
     ) -> Box<dyn FnOnce() + Send> {
         let manager = self.clone();
-        let terminal_id = terminal_id.to_string();
         Box::new(move || {
-            if !manager.note_first_output(&terminal_id, launch, Instant::now()) {
+            if !manager.note_first_output(&launch, Instant::now()) {
                 return;
             }
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(PLUGIN_SILENCE).await;
-                if let Some(status) = manager.check_plugin_silence(&terminal_id, launch, Instant::now()) {
+                if let Some(status) = manager.check_plugin_silence(&launch, Instant::now()) {
                     let _ = app_handle.emit("terminal-status", status);
                 }
             });
         })
     }
 
-    /// Records the first output of launch `launch` at `now`. Returns true when that starts
-    /// the plugin silence clock; the caller then calls `check_plugin_silence` once it has run.
-    pub fn note_first_output(&self, terminal_id: &str, launch: u64, now: Instant) -> bool {
-        self.plugin_watches
-            .lock()
-            .get_mut(terminal_id)
-            .filter(|watch| watch.launch() == launch)
+    /// Records the first output of `launch` at `now`. Returns true when that starts the
+    /// plugin silence clock; the caller then calls `check_plugin_silence` once it has run.
+    pub fn note_first_output(&self, launch: &LaunchRef, now: Instant) -> bool {
+        launch
+            .current_in(&mut self.plugin_watches.lock())
             .is_some_and(|watch| watch.first_output(now))
     }
 
-    /// Shows the terminal as Unknown, with the plugin hint, when launch `launch` is still
-    /// current and its silence clock has run out at `now` with nothing heard. Returns the
-    /// new status when it moved.
+    /// Shows the terminal as Unknown, with the plugin hint, when `launch` is still current
+    /// and its silence clock has run out at `now` with nothing heard. Returns the new
+    /// status when it moved.
     pub fn check_plugin_silence(
         &self,
-        terminal_id: &str,
-        launch: u64,
+        launch: &LaunchRef,
         now: Instant,
     ) -> Option<TerminalStatusPayload> {
-        let watches = self.plugin_watches.lock();
-        let watch = watches.get(terminal_id).filter(|watch| watch.launch() == launch)?;
+        let mut watches = self.plugin_watches.lock();
+        let watch = launch.current_in(&mut watches)?;
         if !watch.silence_due(now) {
             return None;
         }
         let mut info_map = self.terminals_info.lock();
-        let info = info_map.get_mut(terminal_id)?;
+        let info = info_map.get_mut(&launch.terminal_id)?;
         if info.claude_status == ClaudeStatus::Exited {
             return None;
         }
@@ -732,7 +729,7 @@ mod tests {
 
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
     /// as `spawn` does, without opening a PTY.
-    fn launched(manager: &PtyManager, id: &str, run_kind: RunKind) -> u64 {
+    fn launched(manager: &PtyManager, id: &str, run_kind: RunKind) -> LaunchRef {
         let info = TerminalInfo {
             id: id.to_string(),
             name: id.to_string(),
@@ -785,38 +782,30 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-silent", RunKind::Claude);
         let first_output = Instant::now();
-        manager.note_first_output("term-plugin-silent", launch, first_output);
+        manager.note_first_output(&launch, first_output);
 
-        manager.check_plugin_silence(
-            "term-plugin-silent",
-            launch,
-            first_output + Duration::from_secs(29),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(29));
         let before = manager.get_info("term-plugin-silent").unwrap();
         assert_eq!(before.claude_status, ClaudeStatus::Starting);
         assert!(!before.plugin_hint);
 
-        manager.check_plugin_silence(
-            "term-plugin-silent",
-            launch,
-            first_output + Duration::from_secs(30),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
         let after = manager.get_info("term-plugin-silent").unwrap();
         assert_eq!(after.claude_status, ClaudeStatus::Unknown);
         assert!(after.plugin_hint);
     }
 
     /// Starts the launch's clock at `first_output` and checks it once 30 seconds have passed.
-    fn silent_for_thirty_seconds(manager: &PtyManager, id: &str, launch: u64, first_output: Instant) {
-        manager.note_first_output(id, launch, first_output);
-        manager.check_plugin_silence(id, launch, first_output + Duration::from_secs(30));
+    fn silent_for_thirty_seconds(manager: &PtyManager, launch: &LaunchRef, first_output: Instant) {
+        manager.note_first_output(launch, first_output);
+        manager.check_plugin_silence(launch, first_output + Duration::from_secs(30));
     }
 
     #[test]
     fn any_plugin_event_clears_the_hint_and_moves_unknown_to_idle() {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-reloaded", RunKind::Claude);
-        silent_for_thirty_seconds(&manager, "term-plugin-reloaded", launch, Instant::now());
+        silent_for_thirty_seconds(&manager, &launch, Instant::now());
 
         manager.apply_plugin_event("term-plugin-reloaded", "boot.started");
 
@@ -830,14 +819,10 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-heard", RunKind::Claude);
         let first_output = Instant::now();
-        manager.note_first_output("term-plugin-heard", launch, first_output);
+        manager.note_first_output(&launch, first_output);
         manager.apply_plugin_event("term-plugin-heard", "session.started");
 
-        manager.check_plugin_silence(
-            "term-plugin-heard",
-            launch,
-            first_output + Duration::from_secs(300),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(300));
 
         let info = manager.get_info("term-plugin-heard").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Idle);
@@ -849,11 +834,7 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-quiet", RunKind::Claude);
 
-        manager.check_plugin_silence(
-            "term-plugin-quiet",
-            launch,
-            Instant::now() + Duration::from_secs(300),
-        );
+        manager.check_plugin_silence(&launch, Instant::now() + Duration::from_secs(300));
 
         assert_eq!(status_of(&manager, "term-plugin-quiet"), ClaudeStatus::Starting);
     }
@@ -864,17 +845,12 @@ mod tests {
         let launch = launched(&manager, "term-plugin-chatty", RunKind::Claude);
         let first_output = Instant::now();
 
-        assert!(manager.note_first_output("term-plugin-chatty", launch, first_output));
+        assert!(manager.note_first_output(&launch, first_output));
         assert!(!manager.note_first_output(
-            "term-plugin-chatty",
-            launch,
+            &launch,
             first_output + Duration::from_secs(20),
         ));
-        manager.check_plugin_silence(
-            "term-plugin-chatty",
-            launch,
-            first_output + Duration::from_secs(30),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
 
         assert_eq!(status_of(&manager, "term-plugin-chatty"), ClaudeStatus::Unknown);
     }
@@ -884,23 +860,19 @@ mod tests {
         let manager = PtyManager::new();
         let first = launched(&manager, "term-plugin-relaunch", RunKind::Claude);
         let first_output = Instant::now();
-        manager.note_first_output("term-plugin-relaunch", first, first_output);
+        manager.note_first_output(&first, first_output);
         manager.apply_plugin_event("term-plugin-relaunch", "boot.started");
 
         manager.update_status("term-plugin-relaunch", ClaudeStatus::Starting);
         let second = manager.begin_launch("term-plugin-relaunch", RunKind::Claude);
 
         // The first launch's clock no longer counts
-        manager.check_plugin_silence(
-            "term-plugin-relaunch",
-            first,
-            first_output + Duration::from_secs(30),
-        );
+        manager.check_plugin_silence(&first, first_output + Duration::from_secs(30));
         assert_eq!(status_of(&manager, "term-plugin-relaunch"), ClaudeStatus::Starting);
 
         // The second launch has not heard the plugin, so its own silence counts
         let second_output = first_output + Duration::from_secs(40);
-        silent_for_thirty_seconds(&manager, "term-plugin-relaunch", second, second_output);
+        silent_for_thirty_seconds(&manager, &second, second_output);
         let info = manager.get_info("term-plugin-relaunch").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Unknown);
         assert!(info.plugin_hint);
@@ -911,14 +883,10 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-exited", RunKind::Claude);
         let first_output = Instant::now();
-        manager.note_first_output("term-plugin-exited", launch, first_output);
+        manager.note_first_output(&launch, first_output);
         manager.update_status("term-plugin-exited", ClaudeStatus::Exited);
 
-        manager.check_plugin_silence(
-            "term-plugin-exited",
-            launch,
-            first_output + Duration::from_secs(30),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
 
         let info = manager.get_info("term-plugin-exited").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Exited);
@@ -931,12 +899,8 @@ mod tests {
         let launch = launched(&manager, "term-plugin-codex", RunKind::Codex);
         let first_output = Instant::now();
 
-        assert!(!manager.note_first_output("term-plugin-codex", launch, first_output));
-        manager.check_plugin_silence(
-            "term-plugin-codex",
-            launch,
-            first_output + Duration::from_secs(30),
-        );
+        assert!(!manager.note_first_output(&launch, first_output));
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
 
         let info = manager.get_info("term-plugin-codex").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Starting);
@@ -949,7 +913,7 @@ mod tests {
         launched(&manager, "term-a2a-heard", RunKind::Claude);
         manager.apply_plugin_event("term-a2a-heard", "boot.started");
         let launch = launched(&manager, "term-a2a-unknown", RunKind::Claude);
-        silent_for_thirty_seconds(&manager, "term-a2a-unknown", launch, Instant::now());
+        silent_for_thirty_seconds(&manager, &launch, Instant::now());
 
         manager.mark_a2a_delivered("term-a2a-heard");
         manager.mark_a2a_delivered("term-a2a-unknown");
@@ -963,14 +927,10 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-plugin-dismissed", RunKind::Claude);
         let first_output = Instant::now();
-        silent_for_thirty_seconds(&manager, "term-plugin-dismissed", launch, first_output);
+        silent_for_thirty_seconds(&manager, &launch, first_output);
 
         manager.dismiss_plugin_hint("term-plugin-dismissed");
-        manager.check_plugin_silence(
-            "term-plugin-dismissed",
-            launch,
-            first_output + Duration::from_secs(300),
-        );
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(300));
 
         let info = manager.get_info("term-plugin-dismissed").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Unknown);
