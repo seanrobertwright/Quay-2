@@ -555,7 +555,7 @@ export function useWorkspace() {
                 console.error(e);
               }
             }
-            setTerminals((prev) => prev.filter((t) => t.project_path !== worktreePath));
+            setTerminals((prev) => prev.filter((t) => !isSamePath(t.project_path, worktreePath)));
           },
           remove: (forceRemove) =>
             invoke<void>("remove_git_worktree", {

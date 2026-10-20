@@ -48,7 +48,7 @@ export const RemoveWorktreeDialog: React.FC<RemoveWorktreeDialogProps> = ({
     setError(null);
     try {
       await onRemoveAnyway(prompt);
-    } catch (err: any) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsRemoving(false);
