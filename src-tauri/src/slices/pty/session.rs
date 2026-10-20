@@ -34,6 +34,24 @@ pub struct PtySession {
     is_alive: Arc<AtomicBool>,
 }
 
+/// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
+/// of JSON. It is passed inline rather than as a file path so the terminal's bearer
+/// token never touches disk.
+pub fn mcp_config_arg(bridge_port: u16, bridge_token: &str) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            "quay": {
+                "type": "http",
+                "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+                "headers": {
+                    "Authorization": format!("Bearer {}", bridge_token)
+                }
+            }
+        }
+    })
+    .to_string()
+}
+
 /// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
 /// (1..3 trailing bytes) across `read()` calls so split box-drawing or emoji characters
 /// are never corrupted into U+FFFD replacement characters.
@@ -210,26 +228,8 @@ impl PtySession {
                 }
 
                 // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration
-                let mcp_config = serde_json::json!({
-                    "mcpServers": {
-                        "quay": {
-                            "type": "http",
-                            "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
-                            "headers": {
-                                "Authorization": format!("Bearer {}", bridge_token)
-                            }
-                        }
-                    }
-                });
-
-                let temp_dir = std::env::temp_dir();
-                let mcp_path = temp_dir.join(format!("quay-mcp-{}.json", terminal_id));
-                if let Ok(content) = serde_json::to_string_pretty(&mcp_config) {
-                    if std::fs::write(&mcp_path, content).is_ok() {
-                        c.arg("--mcp-config");
-                        c.arg(mcp_path.to_string_lossy().to_string());
-                    }
-                }
+                c.arg("--mcp-config");
+                c.arg(mcp_config_arg(bridge_port, &bridge_token));
 
                 c
             }
@@ -508,10 +508,6 @@ impl PtySession {
                 let exit_status = child.wait();
                 is_alive.store(false, Ordering::SeqCst);
 
-                // Clean up temporary MCP config file if exists
-                let temp_mcp = std::env::temp_dir().join(format!("quay-mcp-{}.json", terminal_id));
-                let _ = std::fs::remove_file(temp_mcp);
-
                 // Compact log file if it exceeds 2MB to keep disk space bounded
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
                     if metadata.len() > 2 * 1024 * 1024 {
@@ -732,6 +728,26 @@ mod tests {
             buf.starts_with("\x1b[32mHello World"),
             "Expected buffer to advance to next ESC, got: {:?}",
             buf
+        );
+    }
+
+    #[test]
+    fn mcp_config_arg_is_inline_json_carrying_the_terminal_token() {
+        let arg = mcp_config_arg(4123, "tok-abc");
+
+        assert!(!arg.contains('\n'), "inline config must be one line: {:?}", arg);
+        let parsed: serde_json::Value = serde_json::from_str(&arg).expect("inline config is JSON");
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "mcpServers": {
+                    "quay": {
+                        "type": "http",
+                        "url": "http://127.0.0.1:4123/mcp",
+                        "headers": { "Authorization": "Bearer tok-abc" }
+                    }
+                }
+            })
         );
     }
 }

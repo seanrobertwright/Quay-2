@@ -37,18 +37,19 @@ When opening a Claude Code terminal, you can choose directly from:
 - `claude-sonnet-4-6` (Legacy stability)
 
 ### Automatic MCP Configuration Injection
-When spawning Claude Code, Quay 2 generates a dynamic MCP configuration file pointing to its embedded loopback server:
+When spawning Claude Code, Quay 2 generates an MCP configuration pointing to its embedded loopback server, carrying that terminal's bearer token:
 ```json
 {
   "mcpServers": {
-    "quay-orchestrator": {
+    "quay": {
+      "type": "http",
       "url": "http://127.0.0.1:<bridge_port>/mcp",
-      "transport": "sse"
+      "headers": { "Authorization": "Bearer <terminal_token>" }
     }
   }
 }
 ```
-This is injected into Claude Code via `--mcp-config <path>`, guaranteeing that every agent can immediately invoke `quay_list_agents` and `quay_send_message` without manual setup.
+This is passed to Claude Code inline as JSON via `--mcp-config <json>`, never written to a file, guaranteeing that every agent can immediately invoke `quay_list_agents` and `quay_send_message` without manual setup. The `/mcp` endpoint rejects calls that don't carry a live terminal's token.
 
 ### Status Indicator Strip
 In the navigation rail and terminal status strip, Quay 2 displays live agent status:
