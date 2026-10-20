@@ -9,6 +9,9 @@ use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
 
+/// The sender recorded for a message dispatched as the user, whatever From Agent held.
+const USER_SENDER: &str = "user";
+
 fn resolve_terminal_id(identifier: &str, pty_manager: &PtyManager) -> String {
     let trimmed = identifier.trim();
     if trimmed.is_empty() {
@@ -65,7 +68,7 @@ fn refuse_dispatch_to_self(
     request: &A2ADispatchRequest,
     pty_manager: Option<&PtyManager>,
 ) -> Result<(), String> {
-    if request.as_user.unwrap_or(false) {
+    if request.is_user_dispatch() {
         return Ok(());
     }
     let (from_id, to_id) = match pty_manager {
@@ -122,18 +125,20 @@ impl A2ARouter {
             request.to_terminal.clone()
         };
 
-        // A message dispatched as the user comes from the operator, not a peer, so the trail
-        // credits "You" whatever From Agent held.
-        let from_name = if request.as_user.unwrap_or(false) {
-            "You".to_string()
+        // A message dispatched as the user comes from the operator, not a peer, so it is
+        // recorded from the user and the trail credits "You" whatever From Agent held.
+        let as_user = request.is_user_dispatch();
+        let (from_terminal, from_name) = if as_user {
+            (USER_SENDER.to_string(), "You".to_string())
         } else {
-            resolve_terminal_name(&request.from_terminal, pty_manager)
+            let name = resolve_terminal_name(&request.from_terminal, pty_manager);
+            (request.from_terminal, name)
         };
         let to_name = resolve_terminal_name(&target_terminal_id, pty_manager);
 
         // Inject directly into target terminal's ConPTY stdin so the agent executes immediately!
         if let Some(pty) = pty_manager {
-            let pty_prompt = if request.as_user.unwrap_or(false) {
+            let pty_prompt = if as_user {
                 request.prompt.trim().replace("\r\n", " ").replace('\n', " ")
             } else {
                 let clean_content = request.prompt.trim().replace("\r\n", " ").replace('\n', " ");
@@ -151,12 +156,12 @@ impl A2ARouter {
 
         let message = A2AMessage {
             id: msg_id,
-            from_terminal: request.from_terminal,
+            from_terminal,
             to_terminal: target_terminal_id,
             from_name: Some(from_name),
             to_name: Some(to_name),
             content: request.prompt,
-            as_user: request.as_user.unwrap_or(false),
+            as_user,
             timestamp: now,
             status: A2AMessageStatus::Dispatched,
             response: None,
@@ -193,17 +198,14 @@ impl A2ARouter {
         }
 
         // Dispatch prompt to target agent
-        let _ = self.dispatch(request.clone(), pty_manager)?;
+        let sent = self.dispatch(request, pty_manager)?;
 
         // Await target agent's turn completion with timeout
         match tokio::time::timeout(Duration::from_secs(timeout_secs), rx).await {
             Ok(Ok(response)) => {
                 // Update message in history with the response
                 let mut history = self.messages.lock();
-                if let Some(msg) = history.iter_mut().rev().find(|m| {
-                    m.from_terminal == request.from_terminal
-                        && (m.to_terminal == request.to_terminal || m.to_terminal == resolved_target)
-                }) {
+                if let Some(msg) = history.iter_mut().rev().find(|m| m.id == sent.id) {
                     msg.status = A2AMessageStatus::Completed;
                     msg.response = Some(response.clone());
                 }
@@ -213,10 +215,7 @@ impl A2ARouter {
             Err(_) => {
                 // Timeout
                 let mut history = self.messages.lock();
-                if let Some(msg) = history.iter_mut().rev().find(|m| {
-                    m.from_terminal == request.from_terminal
-                        && (m.to_terminal == request.to_terminal || m.to_terminal == resolved_target)
-                }) {
+                if let Some(msg) = history.iter_mut().rev().find(|m| m.id == sent.id) {
                     msg.status = A2AMessageStatus::Failed;
                     msg.response = Some("Timed out waiting for reply".to_string());
                 }
@@ -371,6 +370,22 @@ mod tests {
     }
 
     #[test]
+    fn test_a2a_dispatch_as_user_is_recorded_from_the_user_whatever_from_agent_held() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-answerer".to_string(),
+            prompt: "Say hello".to_string(),
+            as_user: Some(true),
+        };
+
+        let msg = router.dispatch(request, None).unwrap();
+        assert_eq!(msg.from_terminal, "user");
+        assert_eq!(msg.from_name.as_deref(), Some("You"));
+    }
+
+    #[test]
     fn test_a2a_dispatch_as_user_is_never_refused_as_self() {
         let router = A2ARouter::new();
 
@@ -398,6 +413,23 @@ mod tests {
         let err = router.dispatch_and_wait(request, None, 1).await.unwrap_err();
         assert!(err.contains("itself"), "unexpected refusal message: {err}");
         assert!(router.get_messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a2a_dispatch_and_wait_as_user_marks_its_message_when_it_times_out() {
+        let router = A2ARouter::new();
+
+        let request = A2ADispatchRequest {
+            from_terminal: "term-agent-1".to_string(),
+            to_terminal: "term-answerer".to_string(),
+            prompt: "Say hello".to_string(),
+            as_user: Some(true),
+        };
+
+        router.dispatch_and_wait(request, None, 0).await.unwrap();
+        let messages = router.get_messages();
+        assert_eq!(messages[0].status, A2AMessageStatus::Failed);
+        assert_eq!(messages[0].response.as_deref(), Some("Timed out waiting for reply"));
     }
 
     #[test]

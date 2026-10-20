@@ -32,3 +32,10 @@ pub struct A2ADispatchRequest {
     pub prompt: String,
     pub as_user: Option<bool>,
 }
+
+impl A2ADispatchRequest {
+    /// Whether the message comes from the operator rather than a sending peer.
+    pub fn is_user_dispatch(&self) -> bool {
+        self.as_user.unwrap_or(false)
+    }
+}
