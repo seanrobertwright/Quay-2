@@ -1049,7 +1049,7 @@ export function useWorkspace() {
   };
 
 
-  // Keyboard shortcut listener (^b n, ^b %, ^b ", ^b o, ^b z, ^b x, ^b g, ^b s, ^b d, Ctrl+K, and ^b 1..9)
+  // Keyboard shortcut listener (Ctrl+K, and ^b followed by n % " ' g s d w i a h t $ r f u o z x 1..9)
   useEffect(() => {
     let ctrlBActive = false;
     let ctrlBTimer: any = null;
@@ -1063,8 +1063,12 @@ export function useWorkspace() {
         return;
       }
 
-      // Check for Ctrl+B prefix sequence (tmux/psmux style)
+      // Check for Ctrl+B prefix sequence (tmux/psmux style). The prefix is
+      // swallowed so xterm never forwards it to the focused pane, where
+      // Claude Code would read Ctrl+B as "background the running task".
       if (e.ctrlKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        e.stopPropagation();
         ctrlBActive = true;
         clearTimeout(ctrlBTimer);
         ctrlBTimer = setTimeout(() => {
