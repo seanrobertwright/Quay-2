@@ -21,7 +21,7 @@ Developers traditionally rely on tools like `tmux`, `screen`, `psmux`, or multip
 | **Workspace & Branch Isolation** | Risky concurrent file edits on the same branch | Integrated 1-click Git Worktrees with collapsible rail hierarchy |
 | **Issue Dependency Resolution** | Manual review on GitHub website | Native GraphQL dependency parser displaying red `BLOCKED` issue tags |
 | **Token & Spend Metering** | Opaque until end-of-month billing statement | Real-time deduplicated JSONL scanner for Opus 5.5, Sonnet 5.5 & Haiku |
-| **Safety & Leak Prevention** | Unchecked destructive commands run unnoticed | Pre-PR Audit Gate scanning secrets, tokens, and `rm -rf` / `push --force` |
+| **Safety & Leak Prevention** | Secrets and personal paths slip into commits unnoticed | Pre-PR Audit Gate scanning the diff for tokens, private keys, key files and personal paths |
 
 ---
 

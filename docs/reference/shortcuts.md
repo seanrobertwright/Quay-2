@@ -45,7 +45,7 @@ Quay 2 swallows the `Ctrl+B` prefix, as tmux does, so the focused terminal pane 
 | `Ctrl+B W` | **Create Worktree** | Opens Git Worktree branch creation dialog |
 | `Ctrl+B D` | **Git Diff** | Opens visual git diff and file change viewer |
 | `Ctrl+B I` | **GitHub Companion** | Toggles GitHub Issues & PR triage drawer |
-| `Ctrl+B A` | **Pre-PR Audit** | Runs secret scanner and destructive command audit gate |
+| `Ctrl+B A` | **Pre-PR Audit** | Runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
 | `Ctrl+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
 | `Ctrl+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
