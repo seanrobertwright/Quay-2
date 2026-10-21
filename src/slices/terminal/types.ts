@@ -31,6 +31,37 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   );
 }
 /**
+ * Each CLI's level on the A2A bus. Mirrors `RunKind::bus_level` in the backend, which
+ * decides how Quay treats a message; a run kind in none of these lists is not a peer.
+ * Each list stays on one line: the backend's `bus_levels_match_the_frontend` test reads it.
+ */
+export const FULL_PEER_RUN_KINDS = ["claude", "codex", "opencode"] as const satisfies readonly RunKind[];
+export const RESPONDER_RUN_KINDS = ["antigravity"] as const satisfies readonly RunKind[];
+export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "copilot"] as const satisfies readonly RunKind[];
+export type BusLevel = "full peer" | "responder" | "listener";
+
+/**
+ * Whether the terminal is a Claude terminal that counts as a listener only because Quay
+ * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
+ */
+export function isPluginSilent(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
+  return t.run_kind === "claude" && t.claude_status === "unknown";
+}
+
+/**
+ * The terminal's level on the A2A bus now, or null when it is not a peer. Mirrors
+ * `TerminalInfo::bus_level`: an Unknown Claude terminal is a listener.
+ */
+export function busLevel(t: Pick<TerminalInfo, "run_kind" | "claude_status">): BusLevel | null {
+  if (isPluginSilent(t)) return "listener";
+  const has = (kinds: readonly RunKind[]) => kinds.includes(t.run_kind);
+  if (has(FULL_PEER_RUN_KINDS)) return "full peer";
+  if (has(RESPONDER_RUN_KINDS)) return "responder";
+  if (has(LISTENER_RUN_KINDS)) return "listener";
+  return null;
+}
+
+/**
  * The run kinds whose CLI takes a launch prompt on its command line. Mirrors
  * `RunKind::launch_prompt_form` in the backend, which decides what is actually sent.
  */

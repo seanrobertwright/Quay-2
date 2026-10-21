@@ -11,6 +11,11 @@ use super::models::{ClaudeStatus, RunKind};
 /// shows it as Unknown, with the plugin hint.
 pub const PLUGIN_SILENCE: Duration = Duration::from_secs(30);
 
+/// The command that installs the event-bridge plugin. The plugin hint in
+/// `src/slices/terminal/PluginHint.tsx` shows the same line.
+pub const EVENT_BRIDGE_INSTALL_LINE: &str =
+    "claude plugin install event-bridge --marketplace seanrobertwright/claude-mod-events";
+
 static NEXT_LAUNCH: AtomicU64 = AtomicU64::new(1);
 
 /// One launch of one terminal, as its first-output hook and silence clock hold it.
@@ -95,5 +100,21 @@ impl PluginWatch {
             ClaudeStatus::Starting | ClaudeStatus::Unknown => ClaudeStatus::Idle,
             other => other.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_install_line_matches_the_plugin_hint() {
+        let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/slices/terminal/PluginHint.tsx");
+        let source = std::fs::read_to_string(&source_path).unwrap();
+        assert!(
+            source.contains(&format!("\"{}\"", EVENT_BRIDGE_INSTALL_LINE)),
+            "PluginHint.tsx shows a different install line"
+        );
     }
 }
