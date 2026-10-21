@@ -59,15 +59,9 @@ struct Inner {
 
 impl Recorder {
     /// Starts the next recording for `cli` in `dir`. `secret` (the terminal's bearer token) is
-    /// blanked out of everything recorded, and `tag` (the terminal's id) out of the HTTP log.
-    pub fn create(
-        dir: &Path,
-        cli: &str,
-        cols: u16,
-        rows: u16,
-        secret: Option<String>,
-        tag: Option<String>,
-    ) -> Result<Recorder, String> {
+    /// blanked out of everything recorded, and `tag` (the terminal's id) out of the HTTP log;
+    /// either may be empty.
+    pub fn create(dir: &Path, cli: &str, cols: u16, rows: u16, secret: &str, tag: &str) -> Result<Recorder, String> {
         check_recordings_dir(dir)?;
         std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         let (cast_path, cast) = claim(dir, cli)?;
@@ -80,8 +74,8 @@ impl Recorder {
             start: Instant::now(),
             cast_path,
             http_path,
-            secret: secret.filter(|s| !s.is_empty()),
-            tag: tag.filter(|s| !s.is_empty()),
+            secret: Some(secret.to_string()).filter(|s| !s.is_empty()),
+            tag: Some(tag.to_string()).filter(|s| !s.is_empty()),
             inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), held_output: String::new(), keys: Keys::default() }),
         })
     }
@@ -523,7 +517,7 @@ mod tests {
     fn a_token_split_across_reads_of_the_terminal_is_not_recorded() {
         let dir = std::env::temp_dir().join(format!("quay-record-replay-split-token-{}", std::process::id()));
         let token = "tok-0123456789abcdef";
-        let recorder = Recorder::create(&dir, "claude", 80, 24, Some(token.into()), None).unwrap();
+        let recorder = Recorder::create(&dir, "claude", 80, 24, token, "").unwrap();
         recorder.output(b"token: tok-0123");
         recorder.output(b"456789abcdef and tok-");
         recorder.output(b"012 is not it");

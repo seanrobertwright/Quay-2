@@ -17,11 +17,9 @@ use crate::recording::{self, Recorder};
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
     let (cols, rows) = console::size();
-    let bridge = std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| http::bridge_host(&u)).transpose()?;
-    let token = std::env::var("CLAUDE_EVENTS_TOKEN").ok();
-    let tag = std::env::var("CLAUDE_EVENTS_TAG").ok();
-    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token, tag)?);
-    let proxy = bridge.as_ref().map(|host| start_proxy(host, recorder.clone())).transpose()?;
+    let live = http::Live::from_env()?;
+    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, &live.token, &live.tag)?);
+    let proxy = live.bridge.as_ref().map(|host| start_proxy(host, recorder.clone())).transpose()?;
     watch_markers(record_dir.join(recording::MARKERS), recorder.clone());
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
@@ -35,7 +33,7 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Res
     for (k, v) in std::env::vars_os() {
         cmd.env(k, v);
     }
-    match (&bridge, &proxy) {
+    match (&live.bridge, &proxy) {
         (Some(bridge), Some(proxy)) => {
             let (from, to) = (format!("http://{bridge}"), format!("http://{proxy}"));
             cmd.env("CLAUDE_EVENTS_URL", &to);

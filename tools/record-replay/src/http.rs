@@ -167,3 +167,25 @@ pub fn bridge_host(url: &str) -> Result<String, String> {
     }
     Ok(rest.to_string())
 }
+
+/// The terminal's place on the bridge, as Quay hands it to the CLI in its environment.
+pub struct Live {
+    /// The bridge's `host:port`, or None for a terminal Quay gives no bridge.
+    pub bridge: Option<String>,
+    /// The terminal's bearer token, empty when it has none.
+    pub token: String,
+    /// The terminal's id, empty when it has none.
+    pub tag: String,
+}
+
+impl Live {
+    /// Reads `CLAUDE_EVENTS_URL`, `CLAUDE_EVENTS_TOKEN` and `CLAUDE_EVENTS_TAG`, rejecting a
+    /// URL that is set but is not the bridge's.
+    pub fn from_env() -> Result<Live, String> {
+        Ok(Live {
+            bridge: std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| bridge_host(&u)).transpose()?,
+            token: std::env::var("CLAUDE_EVENTS_TOKEN").unwrap_or_default(),
+            tag: std::env::var("CLAUDE_EVENTS_TAG").unwrap_or_default(),
+        })
+    }
+}

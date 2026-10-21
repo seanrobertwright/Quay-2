@@ -12,16 +12,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::console;
-use crate::http::{self, Request};
+use crate::http::{self, Live, Request};
 use crate::recording::{self, Call, CastEvent, Keys, TAG_PLACEHOLDER};
-
-/// The live terminal the replay stands in for, as Quay handed it to the CLI.
-struct Live {
-    /// The bridge's `host:port`, or None for a terminal Quay gives no bridge.
-    bridge: Option<String>,
-    token: String,
-    tag: String,
-}
 
 enum Item<'a> {
     Cast(&'a CastEvent),
@@ -45,12 +37,7 @@ struct Outstanding {
 
 pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String> {
     let recording = recording::claim_for_replay(replay_dir, state_dir, cli)?;
-    let live = Live {
-        bridge: std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| http::bridge_host(&u)).transpose()?,
-        token: std::env::var("CLAUDE_EVENTS_TOKEN").unwrap_or_default(),
-        tag: std::env::var("CLAUDE_EVENTS_TAG").unwrap_or_default(),
-    };
-    let live = Arc::new(live);
+    let live = Arc::new(Live::from_env()?);
     // The terminal is the replay's screen, so a call the bridge refuses is reported here.
     let errors = Arc::new(state_dir.join(format!("{}.errors", recording.name)));
 
