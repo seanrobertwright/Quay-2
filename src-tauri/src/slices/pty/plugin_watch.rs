@@ -74,6 +74,11 @@ impl PluginWatch {
         self.run_kind == RunKind::Claude
     }
 
+    /// Whether this launch has printed anything yet.
+    pub fn has_output(&self) -> bool {
+        self.first_output_at.is_some()
+    }
+
     /// Whether, at `now`, the silence clock has run out with nothing heard and the
     /// hint not dismissed.
     pub fn silence_due(&self, now: Instant) -> bool {

@@ -41,11 +41,25 @@ export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "cop
 export type BusLevel = "full peer" | "responder" | "listener";
 
 /**
+ * The run kinds whose turn end Quay sees. Mirrors `RunKind::reports_turn_end` in the backend.
+ * Kept on one line: the backend's `turn_end_run_kinds_match_the_frontend` test reads it.
+ */
+export const TURN_END_RUN_KINDS = ["claude"] as const satisfies readonly RunKind[];
+
+/**
  * Whether the terminal is a Claude terminal that counts as a listener only because Quay
  * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
  */
 export function isPluginSilent(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
   return t.run_kind === "claude" && t.claude_status === "unknown";
+}
+
+/**
+ * Whether a message reaching the terminal shows it Working: only when Quay will also see that
+ * turn end. Mirrors `TerminalInfo::shows_working_on_delivery`.
+ */
+export function showsWorkingOnDelivery(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
+  return (TURN_END_RUN_KINDS as readonly RunKind[]).includes(t.run_kind) && t.claude_status !== "unknown";
 }
 
 /**

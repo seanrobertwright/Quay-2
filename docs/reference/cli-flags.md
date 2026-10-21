@@ -59,6 +59,17 @@ CLAUDE_EVENTS_PERMISSIONS="host"
 - `CLAUDE_EVENTS_TAG`: The terminal id, so events reach the right terminal.
 - `CLAUDE_EVENTS_PERMISSIONS`: `host` routes tool approvals to Quay; `off` when "Skip Permissions" is enabled.
 
+### Every A2A Peer
+
+Every agent terminal on the A2A bus (full peer, responder or listener) gets these four, set after the workspace's own variables so none of those can replace them. Shell and Archon terminals get none:
+
+```powershell
+QUAY_TERMINAL_ID="term-a1b2c3d4"
+QUAY_A2A_TOKEN="<per_terminal_token>"
+QUAY_MCP_URL="http://127.0.0.1:50362/mcp"
+QUAY_EVENTS_URL="http://127.0.0.1:50362/v1/events"
+```
+
 ---
 
 ## PowerShell Process Arguments

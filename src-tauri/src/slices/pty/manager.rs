@@ -92,6 +92,18 @@ fn relaunch_request(
     }
 }
 
+/// Moves a Starting terminal that has printed to its CLI's status after first output
+/// (see `RunKind::status_after_first_output`). Returns whether the status moved.
+fn settle_after_first_output(info: &mut TerminalInfo) -> bool {
+    match info.run_kind.status_after_first_output() {
+        Some(status) if info.claude_status == ClaudeStatus::Starting => {
+            info.claude_status = status;
+            true
+        }
+        _ => false,
+    }
+}
+
 fn status_payload(info: &TerminalInfo) -> TerminalStatusPayload {
     TerminalStatusPayload {
         terminal_id: info.id.clone(),
@@ -217,8 +229,8 @@ impl PtyManager {
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
         let start_seq = self.last_seq(&terminal_id);
-        let launch = self.begin_launch(&terminal_id, request.run_kind);
-        let on_first_output = self.first_output_hook(launch, app_handle.clone());
+        let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
+        let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
@@ -255,8 +267,8 @@ impl PtyManager {
         };
 
         self.dormant_buffers.lock().remove(&terminal_id);
-        self.sessions.lock().insert(terminal_id.clone(), session);
-        self.terminals_info.lock().insert(terminal_id, info.clone());
+        self.sessions.lock().insert(terminal_id, session);
+        let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
 
         Ok(info)
@@ -290,8 +302,8 @@ impl PtyManager {
 
         let request = relaunch_request(&info, rows, cols, env_vars);
 
-        let launch = self.begin_launch(terminal_id, info.run_kind);
-        let on_first_output = self.first_output_hook(launch, app_handle.clone());
+        let launch_ref = self.begin_launch(terminal_id, info.run_kind);
+        let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
@@ -313,7 +325,7 @@ impl PtyManager {
 
         self.dormant_buffers.lock().remove(terminal_id);
         self.sessions.lock().insert(terminal_id.to_string(), session);
-        self.terminals_info.lock().insert(terminal_id.to_string(), updated_info.clone());
+        let updated_info = self.insert_launched(&launch_ref, updated_info);
         self.save_sessions_to_disk();
 
         Ok(updated_info)
@@ -469,8 +481,9 @@ impl PtyManager {
         launch
     }
 
-    /// What a launch's PTY reader runs on its first output: it starts the plugin silence
-    /// clock and, once that has run, sends `terminal-status` if the terminal went Unknown.
+    /// What a launch's PTY reader runs on its first output: it moves a terminal that has no
+    /// plugin out of Starting, and for a Claude terminal starts the plugin silence clock and,
+    /// once that has run, sends `terminal-status` if the terminal went Unknown.
     fn first_output_hook(
         &self,
         launch: LaunchRef,
@@ -478,7 +491,11 @@ impl PtyManager {
     ) -> Box<dyn FnOnce() + Send> {
         let manager = self.clone();
         Box::new(move || {
-            if !manager.note_first_output(&launch, Instant::now()) {
+            let starts_clock = manager.note_first_output(&launch, Instant::now());
+            if let Some(status) = manager.apply_first_output_status(&launch) {
+                let _ = app_handle.emit("terminal-status", status);
+            }
+            if !starts_clock {
                 return;
             }
             tauri::async_runtime::spawn(async move {
@@ -496,6 +513,32 @@ impl PtyManager {
         launch
             .current_in(&mut self.plugin_watches.lock())
             .is_some_and(|watch| watch.first_output(now))
+    }
+
+    /// Moves the terminal out of Starting once `launch`, still current, has printed (see
+    /// `RunKind::status_after_first_output`). Returns the new status when it moved. Nothing
+    /// moves when the terminal isn't listed yet; `insert_launched` applies the rule then.
+    pub fn apply_first_output_status(&self, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
+        let mut watches = self.plugin_watches.lock();
+        launch.current_in(&mut watches)?;
+        let mut info_map = self.terminals_info.lock();
+        let info = info_map.get_mut(&launch.terminal_id)?;
+        settle_after_first_output(info).then(|| status_payload(info))
+    }
+
+    /// Lists `info` as the terminal `launch` started, and returns it as listed. The PTY reader
+    /// can print before the terminal is listed, so a launch that already has output is moved
+    /// out of Starting here.
+    pub fn insert_launched(&self, launch: &LaunchRef, mut info: TerminalInfo) -> TerminalInfo {
+        let mut watches = self.plugin_watches.lock();
+        if launch
+            .current_in(&mut watches)
+            .is_some_and(|watch| watch.has_output())
+        {
+            settle_after_first_output(&mut info);
+        }
+        self.terminals_info.lock().insert(info.id.clone(), info.clone());
+        info
     }
 
     /// Shows the terminal as Unknown, with the plugin hint, when `launch` is still current
@@ -558,13 +601,14 @@ impl PtyManager {
         Some(status_payload(info))
     }
 
-    /// Shows the terminal Working after an A2A message reached it. A terminal shown as
-    /// Unknown stays Unknown: without the plugin Quay cannot see the turn end.
+    /// Shows the terminal Working after an A2A message reached it, when Quay will also see
+    /// that turn end (see `TerminalInfo::shows_working_on_delivery`). Any other terminal
+    /// keeps its status, so it is never left Working with nothing to show it Idle again.
     pub fn mark_a2a_delivered(&self, terminal_id: &str) {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map
             .get_mut(terminal_id)
-            .filter(|info| info.claude_status != ClaudeStatus::Unknown)
+            .filter(|info| info.shows_working_on_delivery())
         {
             info.claude_status = ClaudeStatus::Working;
         }
@@ -633,7 +677,7 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::pty::models::{PermissionMode, RunKind};
+    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind};
 
     #[test]
     fn test_last_seq_reads_dormant_buffer_then_defaults_to_zero() {
@@ -927,6 +971,100 @@ mod tests {
 
         assert_eq!(status_of(&manager, "term-a2a-heard"), ClaudeStatus::Working);
         assert_eq!(status_of(&manager, "term-a2a-unknown"), ClaudeStatus::Unknown);
+    }
+
+    #[test]
+    fn a2a_delivery_leaves_a_terminal_whose_turn_end_quay_cannot_see_as_it_was() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-a2a-codex", RunKind::Codex);
+        manager.update_status("term-a2a-codex", ClaudeStatus::Idle);
+        launched(&manager, "term-a2a-gemini", RunKind::Gemini);
+        manager.update_status("term-a2a-gemini", ClaudeStatus::Unknown);
+
+        manager.mark_a2a_delivered("term-a2a-codex");
+        manager.mark_a2a_delivered("term-a2a-gemini");
+
+        assert_eq!(status_of(&manager, "term-a2a-codex"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-a2a-gemini"), ClaudeStatus::Unknown);
+    }
+
+    /// Runs what a launch's PTY reader does on its first output, at `now`.
+    fn first_output(manager: &PtyManager, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
+        manager.note_first_output(launch, Instant::now());
+        manager.apply_first_output_status(launch)
+    }
+
+    #[test]
+    fn a_full_peer_or_responder_without_a_plugin_goes_idle_when_its_pane_first_prints() {
+        let manager = PtyManager::new();
+        for (id, run_kind) in [
+            ("term-first-codex", RunKind::Codex),
+            ("term-first-opencode", RunKind::OpenCode),
+            ("term-first-agy", RunKind::Antigravity),
+        ] {
+            let launch = launched(&manager, id, run_kind);
+
+            let sent = first_output(&manager, &launch).expect("status moved");
+
+            assert_eq!(sent.claude_status, ClaudeStatus::Idle, "{:?}", run_kind);
+            assert_eq!(status_of(&manager, id), ClaudeStatus::Idle, "{:?}", run_kind);
+        }
+    }
+
+    #[test]
+    fn a_listener_shows_unknown_once_its_pane_first_prints() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-first-gemini", RunKind::Gemini);
+
+        first_output(&manager, &launch);
+
+        let info = manager.get_info("term-first-gemini").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Unknown);
+        assert!(!info.plugin_hint);
+    }
+
+    #[test]
+    fn a_claude_terminal_stays_starting_on_first_output() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-first-claude", RunKind::Claude);
+
+        assert!(first_output(&manager, &launch).is_none());
+
+        assert_eq!(status_of(&manager, "term-first-claude"), ClaudeStatus::Starting);
+    }
+
+    #[test]
+    fn first_output_moves_only_a_starting_terminal() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-first-exited", RunKind::Codex);
+        manager.update_status("term-first-exited", ClaudeStatus::Exited);
+
+        assert!(first_output(&manager, &launch).is_none());
+
+        assert_eq!(status_of(&manager, "term-first-exited"), ClaudeStatus::Exited);
+    }
+
+    #[test]
+    fn output_that_comes_before_the_terminal_is_listed_still_moves_it_out_of_starting() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-first-early", RunKind::Codex);
+        // The reader thread can print before spawn has listed the terminal
+        assert!(first_output(&manager, &launch).is_none());
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-first-early", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!(listed.claude_status, ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-first-early"), ClaudeStatus::Idle);
+    }
+
+    #[test]
+    fn a_terminal_listed_before_any_output_stays_starting() {
+        let manager = PtyManager::new();
+        let launch = manager.begin_launch("term-first-late", RunKind::Codex);
+
+        let listed = manager.insert_launched(&launch, test_terminal("term-first-late", RunKind::Codex, ClaudeStatus::Starting));
+
+        assert_eq!(listed.claude_status, ClaudeStatus::Starting);
     }
 
     #[test]
