@@ -342,3 +342,104 @@ fn keystrokes(input: &str) -> (String, String) {
     typed.push_str(rest);
     (typed, String::new())
 }
+
+/// One event of a recorded asciicast.
+#[derive(Debug, Clone)]
+pub struct CastEvent {
+    pub t: f64,
+    pub code: String,
+    pub data: String,
+}
+
+/// One logged bridge call.
+#[derive(Debug, Clone)]
+pub struct Call {
+    pub t: f64,
+    pub d: f64,
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<(String, String)>,
+    pub body: serde_json::Value,
+}
+
+/// A recording read back for replay.
+#[derive(Debug)]
+pub struct Recording {
+    pub name: String,
+    pub events: Vec<CastEvent>,
+    pub calls: Vec<Call>,
+}
+
+/// Takes the next recording of `cli` in `dir` that no replay has taken yet, so the terminals a
+/// tutorial opens with the same CLI get its recordings in the order they were recorded. Each
+/// take is a `<cli>-<n>.claim` file in `state`, which a capture starts empty.
+pub fn claim_for_replay(dir: &Path, state: &Path, cli: &str) -> Result<Recording, String> {
+    std::fs::create_dir_all(state).map_err(|e| format!("cannot create {}: {e}", state.display()))?;
+    for n in 1.. {
+        let name = format!("{cli}-{n}");
+        if !gz_path(&dir.join(format!("{name}.{CAST}"))).exists() {
+            return Err(format!("no recording of {cli} left to replay in {} (replayed {})", dir.display(), n - 1));
+        }
+        match OpenOptions::new().write(true).create_new(true).open(state.join(format!("{name}.claim"))) {
+            Ok(_) => return load(dir, &name),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("cannot claim {name} in {}: {e}", state.display())),
+        }
+    }
+    unreachable!()
+}
+
+/// Reads recording `name` from `dir`, rejecting anything that is not in the recording format.
+pub fn load(dir: &Path, name: &str) -> Result<Recording, String> {
+    let cast_path = gz_path(&dir.join(format!("{name}.{CAST}")));
+    let cast = gunzip(&cast_path)?;
+    let at = |line: usize| format!("{}:{}", cast_path.display(), line + 1);
+    let mut lines = cast.lines().enumerate();
+    let (_, header) = lines.next().ok_or_else(|| format!("{} is empty", cast_path.display()))?;
+    let header: serde_json::Value = serde_json::from_str(header).map_err(|e| format!("{}: {e}", at(0)))?;
+    if header["version"] != 2 || !header["width"].is_u64() || !header["height"].is_u64() {
+        return Err(format!("{}: not an asciicast v2 header with width and height", at(0)));
+    }
+    let mut events = Vec::new();
+    for (i, line) in lines.filter(|(_, l)| !l.trim().is_empty()) {
+        let value: serde_json::Value = serde_json::from_str(line).map_err(|e| format!("{}: {e}", at(i)))?;
+        match (value[0].as_f64(), value[1].as_str(), value[2].as_str()) {
+            (Some(t), Some(code), Some(data)) if t.is_finite() && t >= 0.0 => {
+                events.push(CastEvent { t, code: code.to_string(), data: data.to_string() })
+            }
+            _ => return Err(format!("{}: not an event [seconds, code, data]", at(i))),
+        }
+    }
+
+    let http_path = gz_path(&dir.join(format!("{name}.{HTTP_LOG}")));
+    let log = gunzip(&http_path)?;
+    let mut calls = Vec::new();
+    for (i, line) in log.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
+        let bad = |what: &str| format!("{}:{}: {what}", http_path.display(), i + 1);
+        let entry: serde_json::Value = serde_json::from_str(line).map_err(|e| bad(&e.to_string()))?;
+        let seconds = |key: &str| entry[key].as_f64().filter(|s| s.is_finite() && *s >= 0.0);
+        let (Some(t), Some(d), Some(method), Some(path)) =
+            (seconds("t"), seconds("d"), entry["method"].as_str(), entry["path"].as_str())
+        else {
+            return Err(bad("a call needs t, d, method and path"));
+        };
+        if !path.starts_with('/') || method.is_empty() {
+            return Err(bad("a call's path starts with / and it has a method"));
+        }
+        let mut headers = Vec::new();
+        for (k, v) in entry["headers"].as_object().into_iter().flatten() {
+            let v = v.as_str().ok_or_else(|| bad("header values are strings"))?;
+            headers.push((k.clone(), v.to_string()));
+        }
+        calls.push(Call { t, d, method: method.into(), path: path.into(), headers, body: entry["body"].clone() });
+    }
+    Ok(Recording { name: name.to_string(), events, calls })
+}
+
+fn gunzip(path: &Path) -> Result<String, String> {
+    let file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(file), &mut text)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    Ok(text)
+}

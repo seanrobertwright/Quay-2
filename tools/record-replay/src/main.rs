@@ -15,6 +15,7 @@ mod console;
 mod http;
 mod record;
 mod recording;
+mod replay;
 
 use std::path::PathBuf;
 
@@ -43,10 +44,17 @@ fn run() -> Result<i32, String> {
         return command(&args);
     }
 
-    let record_dir = non_empty_env("QUAY_RECORD_DIR");
-    match record_dir {
-        Some(dir) => record::run(&name, &exe, &args, &PathBuf::from(dir)),
-        None => Err(format!("{name}: set QUAY_RECORD_DIR to record")),
+    match (non_empty_env("QUAY_RECORD_DIR"), non_empty_env("QUAY_REPLAY_DIR")) {
+        (Some(dir), None) => record::run(&name, &exe, &args, &PathBuf::from(dir)),
+        (None, Some(dir)) => {
+            let state = non_empty_env("QUAY_REPLAY_STATE")
+                .ok_or("QUAY_REPLAY_STATE must name a folder, empty at the start of a capture, where replays claim their recordings")?;
+            replay::run(&name, &PathBuf::from(dir), &PathBuf::from(state))
+        }
+        (Some(_), Some(_)) => Err("set QUAY_RECORD_DIR or QUAY_REPLAY_DIR, not both".into()),
+        (None, None) => Err(format!(
+            "this is the record and replay tool standing in for {name}; set QUAY_RECORD_DIR to record or QUAY_REPLAY_DIR to replay"
+        )),
     }
 }
 
