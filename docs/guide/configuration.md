@@ -11,6 +11,7 @@ All machine-local state and caches are stored in standard Windows AppData locati
 | Path | Purpose |
 | :--- | :--- |
 | `%LOCALAPPDATA%\Quay2\workspaces.json` | Registered project folders, terminal history, and custom layout states |
+| `%LOCALAPPDATA%\Quay2\swarms.json` | Your saved swarms from the Swarm Launcher |
 | `%LOCALAPPDATA%\Quay2\token_stats_cache.json` | Deduplicated token accounting cache for sub-2ms spend calculation |
 | `%LOCALAPPDATA%\Quay2\praxis\praxis.db` | SQLite database for the Machina Praxis AI Software Factory |
 | `~/.claude/projects/` | Upstream Claude Code session transcripts scanned for token spend analytics |

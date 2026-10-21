@@ -17,8 +17,9 @@ import {
   Check,
   Trash2,
   Sparkles,
+  Users,
 } from "lucide-react";
-import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { TerminalInfo, busLevel, isPluginSilent } from "../terminal/types";
 import { isSamePath } from "../../utils/paths";
 
 interface A2AMessage {
@@ -44,15 +45,43 @@ interface A2APanelProps {
 const agentOptionLabel = (t: TerminalInfo) =>
   `${t.name} (${t.run_kind}) • [${t.claude_status.toUpperCase()}] ${t.task_title ? `("${t.task_title}")` : ""}`;
 
+/**
+ * The agent list's tag for a peer below full peer, with the tooltip that explains it,
+ * or null for a full peer, which gets no tag.
+ */
+function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
+  if (isPluginSilent(t)) {
+    return {
+      label: "Listener",
+      tooltip:
+        "Quay isn't hearing from this terminal's event-bridge plugin, so it can't reply. Once the plugin reports, it is a full peer again.",
+    };
+  }
+  switch (busLevel(t)) {
+    case "listener":
+      return { label: "Listener", tooltip: "Gets messages but can't reply." };
+    case "responder":
+      return {
+        label: "Responder",
+        tooltip: "Replies to a sender who waits, but can't send messages, so it never starts a conversation.",
+      };
+    default:
+      return null;
+  }
+}
+
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
   activeProject,
   onClose,
 }) => {
-  const agentTerminals = terminals.filter((t) => isAgentRunKind(t.run_kind));
-  // From Agent and To Agent offer only the active project's agents, scoped the way the
-  // stage scopes its terminals: a worktree counts as its own project.
+  // Peers only: shell and Archon terminals are not on the bus.
+  const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
+  // A broadcast reaches every peer that is still running.
+  const broadcastTargets = agentTerminals.filter((t) => t.claude_status !== "exited");
+  // The agent list, From Agent and To Agent show only the active project's peers, scoped
+  // the way the stage scopes its terminals: a worktree counts as its own project.
   const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
   const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
   const [toTerminal, setToTerminal] = useState(projectAgents[1]?.id || "");
@@ -177,7 +206,7 @@ export const A2APanel: FC<A2APanelProps> = ({
     setIsBroadcasting(true);
     try {
       const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", { text: broadcastText });
-      const count = dispatched?.length || agentTerminals.length;
+      const count = dispatched?.length || broadcastTargets.length;
       setBroadcastText("");
       setBroadcastSuccess(`Broadcast sent to ${count} agent${count === 1 ? "" : "s"}!`);
       setTimeout(() => setBroadcastSuccess(null), 3500);
@@ -267,7 +296,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_list_agents</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">List Quay's terminals with their run kind and status</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">List the peers with their run kind, level and status</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_send_message</span>
@@ -275,13 +304,48 @@ export const A2APanel: FC<A2APanelProps> = ({
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running agent terminal</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running peer</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
                 <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Check one peer's status and auto-approved action count</p>
               </div>
             </div>
+          </div>
+
+          {/* Agent list: the active project's peers, tagged below full peer */}
+          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-[#58a6ff]" />
+              <span>Agents</span>
+            </h3>
+            {projectAgents.length === 0 ? (
+              <p className="text-xs text-[#8b949e]">No peers in the active project.</p>
+            ) : (
+              <ul aria-label="Peers in the active project" className="space-y-1">
+                {projectAgents.map((t) => {
+                  const tag = levelTag(t);
+                  return (
+                    <li key={t.id} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-white truncate">{t.name}</span>
+                      <span className="font-mono text-[#8b949e]">({t.run_kind})</span>
+                      {tag && (
+                        <span
+                          title={tag.tooltip}
+                          className="px-1.5 py-px rounded border border-[#d29922]/50 bg-[#d29922]/10 text-[10px] font-semibold text-[#d29922]"
+                        >
+                          {tag.label}
+                          <span className="sr-only">: {tag.tooltip}</span>
+                        </span>
+                      )}
+                      <span className="ml-auto font-mono text-[10px] uppercase text-[#8b949e]">
+                        {t.claude_status}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           {/* Interactive Agent-to-Agent Dispatch */}
@@ -447,12 +511,12 @@ export const A2APanel: FC<A2APanelProps> = ({
                 <span>Broadcast Notice to All AI Agent Sessions</span>
               </h3>
               <span className="text-[11px]">
-                {agentTerminals.length > 0 ? (
+                {broadcastTargets.length > 0 ? (
                   <span className="text-[#3fb950] font-mono">
-                    {agentTerminals.length} target{agentTerminals.length === 1 ? "" : "s"} active
+                    {broadcastTargets.length} target{broadcastTargets.length === 1 ? "" : "s"} active
                   </span>
                 ) : (
-                  <span className="text-[#d29922]">No agent terminals active</span>
+                  <span className="text-[#d29922]">No peers running</span>
                 )}
               </span>
             </div>

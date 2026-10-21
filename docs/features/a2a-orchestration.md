@@ -33,7 +33,7 @@ sequenceDiagram
 Every session spawned in Quay 2 has these 4 tools injected into its Model Context Protocol namespace:
 
 ### 1. `quay_list_agents`
-Returns a list of all active agent sessions in Quay 2.
+Returns the peers on the A2A bus, each with its bus level: `full peer` (sends messages and replies), `responder` (replies to a sender who waits, but can't send) or `listener` (gets messages but can't reply). Shell and Archon terminals are not peers and are not listed. A Claude Code terminal is a listener while Quay hasn't heard from its event-bridge plugin.
 - **Parameters**: None.
 - **Response**:
   ```json
@@ -41,6 +41,8 @@ Returns a list of all active agent sessions in Quay 2.
     {
       "terminal_id": "term-a1b2c3",
       "name": "backend-dev",
+      "run_kind": "claude",
+      "level": "full peer",
       "status": "idle",
       "project_path": "E:\\Projects\\Quay2",
       "current_tool": null
@@ -48,6 +50,8 @@ Returns a list of all active agent sessions in Quay 2.
     {
       "terminal_id": "term-x9y8z7",
       "name": "code-reviewer",
+      "run_kind": "codex",
+      "level": "full peer",
       "status": "working",
       "project_path": "E:\\Projects\\Quay2",
       "current_tool": "cargo test"
@@ -60,7 +64,7 @@ Sends a task prompt or delegation message to another running agent.
 - **Parameters**:
   - `target_terminal_id` (string, required): The target terminal ID (obtained from `quay_list_agents`).
   - `message` (string, required): The task description, instruction, or query.
-  - `wait_for_reply` (boolean, optional, default: `true`): If `true`, the caller suspends execution for up to 60 seconds while the recipient processes the message, returning the recipient's output directly into the caller's context. If `false`, dispatches asynchronously and returns immediately.
+  - `wait_for_reply` (boolean, optional, default: `true`): If `true`, the caller suspends execution for up to 60 seconds while the recipient processes the message, returning the recipient's output directly into the caller's context. If `false`, dispatches asynchronously and returns immediately. A wait on a listener returns at once: the message is delivered, and the answer says the peer can't reply and suggests a file mailbox. A wait on a Claude Code terminal whose event-bridge plugin isn't reporting returns at once with the plugin's install line, and so does a wait already running when that terminal turns Unknown. A message to an Archon terminal is refused.
 - **Response**:
   ```json
   {
@@ -70,7 +74,7 @@ Sends a task prompt or delegation message to another running agent.
   ```
 
 ### 3. `quay_broadcast`
-Dispatches a system alert banner and toast notification across all active agent terminals simultaneously.
+Dispatches a system alert banner and toast notification across every running peer simultaneously. Shell and Archon terminals are skipped.
 - **Parameters**:
   - `text` (string, required): Notice text to display.
   - `level` (string, optional: `"info"` | `"warning"` | `"critical"`): Severity level.

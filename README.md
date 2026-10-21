@@ -65,9 +65,9 @@ flowchart LR
 ### 🔄 Autonomous Agent-to-Agent (A2A) MCP Bus
 - Embedded loopback Model Context Protocol (MCP) server (`http://127.0.0.1:<port>/mcp`).
 - Spawns Claude Code sessions with automatic MCP tool binding:
-  - `quay_list_agents`: Discover all active agents across projects, inspect their busy/waiting status and active tasks.
+  - `quay_list_agents`: Discover the peers on the bus across projects, with their bus level (full peer, responder or listener), busy/waiting status and active tasks.
   - `quay_send_message`: Delegate subtasks or hand off diffs to peer agents with optional synchronous response blocking (up to 60s).
-  - `quay_broadcast`: Send non-intrusive alert toasts across every running agent session.
+  - `quay_broadcast`: Send non-intrusive alert toasts across every running peer. Shell and Archon terminals are skipped.
   - `quay_get_agent_status`: Inspect health, auto-approved tool count, and active command state.
 - **Operator Mission Control**: Dispatch tasks manually as the human supervisor or monitor autonomous conversations in real time.
 
@@ -89,13 +89,15 @@ flowchart LR
   - 2x2 Quad Grid Layout (`Ctrl+B G`)
   - Zoom Active Pane (`Ctrl+B Z`)
 - **1-Click Multi-Agent Swarms** (`Ctrl+B S`):
-  - *Dev & Watcher*: One Claude Code developer beside a shell running the build or tests.
-  - *TDD Swarm*: Test architect, feature implementer and reviewer, with a shell for the tests.
-  - *Full-Stack Pair*: A backend agent that owns the API contract beside a frontend agent that builds against it.
-  - *Bug Hunter*: Four agents that reproduce, trace, patch and verify a bug in turns.
-  - *Red/Blue Team*: A red team pinning each hole with a failing test beside a blue team fixing the server.
-  - *Tri-Agent Council*: Planner, builder and verifier, with a workspace shell.
-  - *Polyglot Agent Trio*: Claude implements, Antigravity plans and Codex reviews, with a shell for tests.
+  <!-- BEGIN GENERATED: builtin-swarm-presets. `pnpm docs:presets` writes this list from BUILTIN_SWARM_PRESETS in src/slices/orchestrator/swarmTypes.ts, and `pnpm docs:build` runs it first. Edit the presets there, not this list. -->
+  - *Dev & Watcher* (`lead-dev`, `build-watcher`): Claude Code paired with an active PowerShell terminal running build watchers or tests.
+  - *TDD Swarm* (`test-architect`, `feature-impl`, `test-runner`, `reviewer`): 4-way 2x2 grid pairing Test Architect, Implementer, Test Runner, and Code Reviewer.
+  - *Full-Stack Pair* (`backend-agent`, `frontend-agent`): Dual Claude Code agents in side-by-side split dedicated to Backend and Frontend tasks.
+  - *Bug Hunter* (`reproducer`, `tracer`, `patcher`, `verifier`): Four Claude agents in a 2x2 grid take a bug in turns: one reproduces it as a failing test, one traces the cause, one patches it and one verifies the fix.
+  - *Red/Blue Team* (`red-team`, `blue-team`): Two Claude agents side by side: the red team pins each hole with a failing test, and the blue team fixes the server until every test passes.
+  - *Tri-Agent Council* (`planner-agent`, `builder-agent`, `verifier-agent`, `terminal-shell`): Three collaborative Claude agents (Planner, Builder, Verifier) sharing the orchestration bus.
+  - *Polyglot Agent Trio* (`claude-dev`, `agy-planner`, `codex-reviewer`, `test-runner`): Claude implements, Antigravity plans and Codex reviews, with a shell for tests. Claude and Codex talk over A2A. Antigravity answers when asked but can't start a conversation, and hands its plan back as a file.
+  <!-- END GENERATED: builtin-swarm-presets -->
 
 ### 🌿 Git Worktrees Integration
 - Create and manage isolated Git worktree branches without leaving Quay (`Ctrl+B W`).

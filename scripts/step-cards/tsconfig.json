@@ -19,5 +19,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["*.ts", "../../docs/.vitepress/step-cards.ts"]
+  "include": ["*.ts", "../../docs/.vitepress/step-cards.ts", "../../docs/.vitepress/theme/step-card-clip.ts"]
 }

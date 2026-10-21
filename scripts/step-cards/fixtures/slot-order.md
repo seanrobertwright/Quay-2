@@ -19,7 +19,7 @@
 ## 1. Get the starter project
 
 ::: see
-The project in the rail, shown before the Do that gets it there.
+![The project in the rail, shown before the Do that gets it there.](./01-shot.webp)
 :::
 
 ::: do
@@ -37,11 +37,11 @@ The project in the rail, shown before the Do that gets it there.
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./02-shot.webp)
 :::
 
 ::: see
-A second You should see on the same step.
+![A second You should see on the same step.](./02-shot.webp)
 :::
 
 :::
@@ -55,7 +55,7 @@ A second You should see on the same step.
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./03-shot.webp)
 :::
 
 ::: ifnot a test fails

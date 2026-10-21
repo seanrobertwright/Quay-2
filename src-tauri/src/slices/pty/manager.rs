@@ -445,6 +445,12 @@ impl PtyManager {
         self.terminals_info.lock().get(terminal_id).cloned()
     }
 
+    /// Puts `info` in the terminal list without opening a PTY.
+    #[cfg(test)]
+    pub fn insert_test_terminal(&self, info: TerminalInfo) {
+        self.terminals_info.lock().insert(info.id.clone(), info);
+    }
+
     pub fn update_status(&self, terminal_id: &str, status: ClaudeStatus) {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {

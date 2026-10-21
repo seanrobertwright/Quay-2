@@ -46,15 +46,8 @@ All workspace management in Quay 2 is driven by the `Ctrl+B` prefix key chord:
 Instead of configuring multiple splits manually, Quay 2 provides **Swarm Presets**:
 
 1. Press `Ctrl+B S` to open the Swarm Launcher.
-2. Select a preset:
-   - **Dev & Watcher** (selected when the launcher opens): `lead-dev` beside a `build-watcher` shell.
-   - **TDD Swarm**: a 2x2 grid of `test-architect` (writes tests), `feature-impl` (writes the code), a `test-runner` shell and `reviewer`.
-   - **Full-Stack Pair**: splits your stage between `backend-agent` and `frontend-agent`.
-   - **Bug Hunter**: a 2x2 grid of `reproducer`, `tracer`, `patcher` and `verifier`.
-   - **Red/Blue Team**: `red-team` writing failing exploit tests beside `blue-team` fixing them.
-   - **Tri-Agent Council**: `planner-agent`, `builder-agent` and `verifier-agent`, with a `terminal-shell`.
-   - **Polyglot Agent Trio**: `claude-dev`, `agy-planner` (Antigravity) and `codex-reviewer` (Codex), with a `test-runner` shell.
-3. Click **Deploy Swarm**. Quay automatically splits the stage and launches the coordinated processes.
+2. Select a preset. The launcher selects the first built-in preset when it opens. [Swarm Presets & Splits](/features/swarm-presets) lists every built-in preset with its agents, and shows how to save your own swarms.
+3. Click **Launch Swarm Now**. Quay automatically splits the stage and launches the coordinated processes.
 
 ---
 
