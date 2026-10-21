@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::console;
 use crate::http::{self, Live, Request};
-use crate::recording::{self, Call, CastEvent, Keys, TAG_PLACEHOLDER};
+use crate::recording::{self, Call, CastCode, CastEvent, Keys, TAG_PLACEHOLDER};
 
 enum Item<'a> {
     Cast(&'a CastEvent),
@@ -73,21 +73,21 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
         sleep_until(start + Duration::from_secs_f64(t + behind));
 
         match item {
-            Item::Cast(event) => match event.code.as_str() {
-                "o" => {
+            Item::Cast(event) => match event.code {
+                CastCode::Output => {
                     let _ = out.write_all(event.data.as_bytes());
                     let _ = out.flush();
                 }
                 // A prompt submitted in the recording: wait for one to be submitted here, so
                 // the turn it started begins after it arrives, however late that is.
-                "i" if recording::enters(&event.data) > 0 => {
+                CastCode::Input if recording::enters(&event.data) > 0 => {
                     used_enters += recording::enters(&event.data);
                     while entered.load(Ordering::SeqCst) < used_enters {
                         std::thread::sleep(Duration::from_millis(5));
                     }
                     behind = f64::max(behind, start.elapsed().as_secs_f64() - t);
                 }
-                "x" => exit_code = event.data.trim().parse().ok(),
+                CastCode::Exit => exit_code = event.data.trim().parse().ok(),
                 _ => {}
             },
             Item::Call(call) => {

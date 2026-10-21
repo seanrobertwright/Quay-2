@@ -37,6 +37,40 @@ pub const MARKERS: &str = ".step-markers";
 /// What a recording has in place of the recorded terminal's id.
 pub const TAG_PLACEHOLDER: &str = "{{tag}}";
 
+/// What an event in a recording's asciicast is, and the code the file gives it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastCode {
+    /// Output the CLI wrote to the terminal (`o`).
+    Output,
+    /// Text typed into the terminal (`i`).
+    Input,
+    /// The terminal resized, as `<cols>x<rows>` (`r`).
+    Resize,
+    /// A step marker's name (`m`).
+    Marker,
+    /// The CLI's exit code (`x`).
+    Exit,
+}
+
+impl CastCode {
+    const ALL: [CastCode; 5] = [CastCode::Output, CastCode::Input, CastCode::Resize, CastCode::Marker, CastCode::Exit];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CastCode::Output => "o",
+            CastCode::Input => "i",
+            CastCode::Resize => "r",
+            CastCode::Marker => "m",
+            CastCode::Exit => "x",
+        }
+    }
+
+    /// The event a code in the file names, or None for a code recordings don't use.
+    pub fn parse(code: &str) -> Option<CastCode> {
+        CastCode::ALL.into_iter().find(|c| c.as_str() == code)
+    }
+}
+
 pub struct Recorder {
     start: Instant,
     cast_path: PathBuf,
@@ -92,12 +126,12 @@ impl Recorder {
                 .unwrap_or(0);
             inner.held_output = text.split_off(text.len() - held);
         }
-        self.event(&mut inner, "o", &text);
+        self.event(&mut inner, CastCode::Output, &text);
     }
 
     fn release_held_output(&self, inner: &mut Inner) {
         let held = std::mem::take(&mut inner.held_output);
-        self.event(inner, "o", &held);
+        self.event(inner, CastCode::Output, &held);
     }
 
     /// Records keystrokes as the text they type (see `Keys`), while the CLI itself gets the
@@ -105,23 +139,23 @@ impl Recorder {
     pub fn input(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock().unwrap();
         let typed = inner.keys.feed(bytes);
-        self.event(&mut inner, "i", &typed);
+        self.event(&mut inner, CastCode::Input, &typed);
     }
 
     pub fn resize(&self, cols: u16, rows: u16) {
         let mut inner = self.inner.lock().unwrap();
-        self.event(&mut inner, "r", &format!("{cols}x{rows}"));
+        self.event(&mut inner, CastCode::Resize, &format!("{cols}x{rows}"));
     }
 
     pub fn marker(&self, name: &str) {
         let mut inner = self.inner.lock().unwrap();
-        self.event(&mut inner, "m", name);
+        self.event(&mut inner, CastCode::Marker, name);
     }
 
     pub fn exit(&self, code: i32) {
         let mut inner = self.inner.lock().unwrap();
         self.release_held_output(&mut inner);
-        self.event(&mut inner, "x", &code.to_string());
+        self.event(&mut inner, CastCode::Exit, &code.to_string());
     }
 
     /// Logs one bridge call that arrived `t` seconds into the run and took `d` seconds.
@@ -160,12 +194,12 @@ impl Recorder {
         }
     }
 
-    fn event(&self, inner: &mut Inner, code: &str, data: &str) {
+    fn event(&self, inner: &mut Inner, code: CastCode, data: &str) {
         if data.is_empty() {
             return;
         }
         let Some(cast) = inner.cast.as_mut() else { return };
-        let line = serde_json::json!([round(self.now()), code, self.scrub(data)]);
+        let line = serde_json::json!([round(self.now()), code.as_str(), self.scrub(data)]);
         let _ = writeln!(cast, "{line}").and_then(|_| cast.flush());
     }
 
@@ -408,7 +442,7 @@ fn keystrokes(input: &str) -> (String, String) {
 #[derive(Debug, Clone)]
 pub struct CastEvent {
     pub t: f64,
-    pub code: String,
+    pub code: CastCode,
     pub data: String,
 }
 
@@ -451,6 +485,7 @@ pub fn claim_for_replay(dir: &Path, state: &Path, cli: &str) -> Result<Recording
 }
 
 /// Reads recording `name` from `dir`, rejecting anything that is not in the recording format.
+/// Events with a code recordings don't use are skipped, as asciicast players skip them.
 pub fn load(dir: &Path, name: &str) -> Result<Recording, String> {
     let cast_path = gz_path(&dir.join(format!("{name}.{CAST}")));
     let cast = gunzip(&cast_path)?;
@@ -466,7 +501,9 @@ pub fn load(dir: &Path, name: &str) -> Result<Recording, String> {
         let value: serde_json::Value = serde_json::from_str(line).map_err(|e| format!("{}: {e}", at(i)))?;
         match (value[0].as_f64(), value[1].as_str(), value[2].as_str()) {
             (Some(t), Some(code), Some(data)) if t.is_finite() && t >= 0.0 => {
-                events.push(CastEvent { t, code: code.to_string(), data: data.to_string() })
+                if let Some(code) = CastCode::parse(code) {
+                    events.push(CastEvent { t, code, data: data.to_string() })
+                }
             }
             _ => return Err(format!("{}: not an event [seconds, code, data]", at(i))),
         }
