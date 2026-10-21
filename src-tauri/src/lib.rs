@@ -36,7 +36,7 @@ use slices::orchestrator::{
     SwarmStore,
 };
 use slices::pty::{
-    dismiss_plugin_hint, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
+    dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
@@ -143,6 +143,7 @@ pub fn run() {
             rename_terminal,
             relaunch_terminal,
             dismiss_plugin_hint,
+            get_pig_tested_version,
             list_projects,
             add_project,
             remove_project,

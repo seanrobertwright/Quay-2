@@ -785,8 +785,8 @@ impl PtyManager {
         Ok(info)
     }
 
-    /// Shows the terminal as Unknown, with the plugin hint, when `launch` is still current
-    /// and its silence clock has run out at `now` with nothing heard. Returns the new
+    /// Shows the terminal as Unknown, a Claude terminal with the plugin hint, when `launch`
+    /// is still current and its silence clock has run out at `now` with nothing heard. Returns the new
     /// status when it moved.
     pub fn check_plugin_silence(
         &self,
@@ -804,7 +804,8 @@ impl PtyManager {
             return None;
         }
         info.claude_status = ClaudeStatus::Unknown;
-        info.plugin_hint = true;
+        // The hint tells how to install Claude Code's plugin; PiG's extension ships with Quay
+        info.plugin_hint = info.run_kind == RunKind::Claude;
         Some(status_payload(info))
     }
 
@@ -1314,6 +1315,42 @@ mod tests {
         let after = manager.get_info("term-plugin-silent").unwrap();
         assert_eq!(after.claude_status, ClaudeStatus::Unknown);
         assert!(after.plugin_hint);
+    }
+
+    #[test]
+    fn a_pig_terminal_waits_for_its_extension_then_turns_unknown_without_the_hint() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-pig-silent", RunKind::Pig);
+        let first_output = Instant::now();
+        manager.note_first_output(&launch, first_output);
+        // Its first output leaves it Starting, holding its messages, until the extension reports
+        assert!(manager.apply_first_output_status(&launch).is_none());
+        assert_eq!(status_of(&manager, "term-pig-silent"), ClaudeStatus::Starting);
+
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(29));
+        assert_eq!(status_of(&manager, "term-pig-silent"), ClaudeStatus::Starting);
+
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
+        let silent = manager.get_info("term-pig-silent").unwrap();
+        assert_eq!(silent.claude_status, ClaudeStatus::Unknown);
+        assert!(silent.plugin_silent());
+        // The pane's hint installs Claude Code's plugin, which a PiG terminal doesn't use
+        assert!(!silent.plugin_hint);
+    }
+
+    #[test]
+    fn a_late_session_started_brings_a_silent_pig_terminal_back_to_full_peer() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-pig-late", RunKind::Pig);
+        silent_for_thirty_seconds(&manager, &launch, Instant::now());
+        assert!(manager.get_info("term-pig-late").unwrap().plugin_silent());
+
+        manager.apply_plugin_event("term-pig-late", "session.started");
+
+        let info = manager.get_info("term-pig-late").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Idle);
+        assert!(!info.plugin_silent());
+        assert_eq!(info.bus_level(), Some(crate::slices::pty::models::BusLevel::FullPeer));
     }
 
     /// Starts the launch's clock at `first_output` and checks it once 30 seconds have passed.
