@@ -42,6 +42,8 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 `--dangerously-bypass-approvals-and-sandbox` is set when "Skip Permissions" is enabled. The overrides are passed in both permission modes. They come after the custom flags, so a custom `-c` with the same key doesn't replace them, and the `notify` override replaces any `notify` in your own `~/.codex/config.toml` for that terminal.
 
+---
+
 ## OpenCode CLI Arguments
 
 When spawning OpenCode terminals, Quay 2 runs:
