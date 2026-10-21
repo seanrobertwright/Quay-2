@@ -171,6 +171,39 @@ into either.
   these in drafts and in `docs:dev` too. `pnpm docs:test-run` reads the record the same way, so
   it refuses to add a run until these are fixed.
 
+## The quarterly sweep
+
+A published tutorial whose latest passing run is more than 90 days old is re-run on the latest
+agent CLIs. The Tutorial Sweep workflow (`.github/workflows/tutorial-sweep.yml`) works out which
+on the first day of each quarter, and on demand from the Actions tab. It reads each published
+tutorial's record and its sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, and opens
+an issue labelled `tutorial-sweep` listing every tutorial due, with the date of its latest
+passing run and the Quay and CLI versions its screenshots and recordings were made with. A
+published tutorial whose record has no passing run is listed too. When no tutorial is due, it
+opens nothing. While a sweep issue is open, a later sweep rewrites that issue's list instead of
+opening another.
+
+The workflow stops, and opens nothing, when a record breaks a rule the build checks or a sidecar
+manifest can't be read; its log names each one. To see the list without the workflow:
+
+```powershell
+pnpm docs:sweep --out sweep.md [--today YYYY-MM-DD]
+```
+
+It writes the issue body to `sweep.md` when a tutorial is due, and deletes any `sweep.md` left
+from before when none is.
+
+For each tutorial on the list:
+
+1. **Bump the starter's dependencies, or decide to leave them.** A sweep is the only time a
+   starter's pinned dependencies move. A bump changes the run fingerprint, so that tutorial needs
+   two passing runs; one whose starter is unchanged needs one.
+2. **Do the runs,** as above. Each run re-makes the tutorial's recordings.
+3. **Recapture the screenshots** from the new recordings with `pnpm docs:capture`
+   (`scripts/capture/README.md`), which rewrites the sidecar manifest.
+
+A CLI update on its own triggers no re-run.
+
 ## The run fingerprint
 
 The section's fingerprint is 16 hex digits of a SHA-256 over:
@@ -186,5 +219,5 @@ call for new runs.
 
 ```powershell
 pnpm docs:test        # includes this folder's tests, scripts/test-runs/*.test.ts
-pnpm docs:typecheck   # includes type-checking this script
+pnpm docs:typecheck   # includes type-checking these scripts
 ```

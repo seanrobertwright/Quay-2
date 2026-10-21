@@ -23,9 +23,10 @@ pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--p
 - `--by-hand` is the fallback described [below](#fallbacks).
 
 It writes each still as `NN-<what>.webp` beside the tutorial's page, the clip as `NN-<what>.mp4`
-beside its still, then the sidecar manifest. It exits 0 when all of them are written, 1 when the
-capture fails, and 2 on a bad argument. A failed capture keeps its fixture folder and prints
-where it is.
+beside its still, then its section of the release's
+[changed-shot report](#the-changed-shot-report), then the sidecar manifest. It exits 0 when all
+of them are written, whether or not any shot changed, 1 when the capture fails, and 2 on a bad
+argument. A failed capture keeps its fixture folder and prints where it is.
 
 ## The capture machine
 
@@ -78,6 +79,7 @@ running from the fixture folder, then removes the fixture.
 | Stills | `docs/tutorials/<series>/<slug>/NN-<what>.webp`, beside the page |
 | Clip | `docs/tutorials/<series>/<slug>/NN-<what>.mp4`, beside its still |
 | Sidecar manifest | `examples/tutorials/<slug>/sidecar.json` |
+| Changed-shot report | `capture-reports/<version>/`, which git ignores |
 
 ## The capture manifest
 
@@ -156,6 +158,9 @@ the markers each has reached. For each step, the script:
    hidden, the port badge and `mask` selectors masked, and pins and annotations drawn as
    overlays, which are removed after the shot, whether it succeeded or not.
 
+After the last step, each shot is compared with the committed one for the
+[changed-shot report](#the-changed-shot-report).
+
 When a replay doesn't reach the marker in time, the error names it and says whether no terminal
 has played it yet (the step's actions didn't open it) or it is waiting (often for an Enter the
 actions should press), with anything the replays reported, such as bridge calls the live bridge
@@ -186,6 +191,39 @@ whenever its still is.
   an `.mp4` that is not the manifest's clip, since it would be left beside a still it no longer
   matches.
 
+## The changed-shot report
+
+At a release the maintainer recaptures every tutorial against the draft release's Quay, and the
+report says which shots changed. Each new still is compared with the one committed under its
+name by a pixel diff, never byte for byte: repeated captures of one screen differ by a
+luminance step of 1 in 255 on a few pixels. A pixel counts as changed when its colour moves past
+`threshold: 0.2`, the default of Playwright's `toHaveScreenshot` and the tolerance the screenshot
+research named, with pixelmatch's anti-aliasing check, as Playwright runs it. A shot is changed
+when any pixel is, or when its size changed. One with nothing committed under its name is new.
+
+The committed shots are those at HEAD until a capture for this release is committed. After
+that, HEAD holds the release's new shots, so a recapture compares with the commit before the
+tutorial's sidecar manifest first named this release. A recapture after a fix to the draft
+still reports every shot that changed since the last release.
+
+The report for a release is `capture-reports/<version>/`, named after the Quay version captured.
+Each capture writes its tutorial's section there, so capturing every tutorial for a release
+builds one report:
+
+- `index.html` lists the tutorials with changed or new shots, which go to the release re-run.
+  Then, per tutorial, each changed shot's committed image beside its new one and an image of its
+  changes, each new shot, and the names of the shots that didn't change. The changes image marks
+  changed pixels in red over a faded committed shot; yellow marks anti-aliasing that pixelmatch
+  saw and did not count.
+- `<slug>.json` is the tutorial's section; `<slug>/` holds its images. A recapture of a tutorial
+  replaces its section, once every shot has been compared.
+
+Captures running at once take turns writing the folder, holding a `.lock` folder inside it. The
+maintainer reviews the report, commits the new shots and sends the listed tutorials to the
+release re-run. A shot that changed for no reason the release explains is a regression to chase
+before publishing. A still renamed or dropped from the capture manifest is not in the report;
+the docs build's orphan-image check catches the file left behind.
+
 ## The sidecar manifest
 
 `examples/tutorials/<slug>/sidecar.json`, written after the last shot:
@@ -207,18 +245,23 @@ whenever its still is.
 - `cliVersions` is each CLI's `--version` from the recorded run, from the headers'
   `cli_version`. Recordings of one CLI made with two versions are an error.
 
-The quarterly sweep (#104), not built yet, is to read it too. The failed-run notice on a
-tutorial's page takes its CLI versions from the test-run record, not from here.
+The quarterly sweep reads all of it and lists it beside each tutorial it finds due
+(`scripts/test-runs/README.md`). The failed-run notice on a tutorial's page takes its CLI
+versions from the test-run record, not from here.
 
 ## Fallbacks
 
 - **By hand.** `--by-hand` builds the same fixture and launches Quay without a debugging port.
   For each step it holds the replays at the marker as usual, prints the actions to do and the
   shots to take, and waits for Enter. Take each shot of Quay's client area only, with ShareX or
-  Snipping Tool, on the pinned capture machine, and blur the port badge and any masks. For the
+  Snipping Tool, on the pinned capture machine, blur the port badge and any masks, and save it
+  under its name as PNG or WebP in the empty folder the script prints, not over the committed
+  stills. A PNG, which is what Snipping Tool saves, is converted to WebP at quality 90. For the
   clip's step it first waits for you to start ShareX's screen recorder, as an H.264 MP4 with no
   audio, since the replays play once released. Trim the clip to the motion, ten seconds or less,
-  never sped up. It writes the sidecar like a scripted capture.
+  never sped up, and save it as `<name>.mp4` in the same folder. The script asks again for any
+  shot or clip it doesn't find, and `q` stops the capture. It copies each step's shots and clip
+  beside the page and writes the changed-shot report and the sidecar like a scripted capture.
 - **`tauri-driver`.** If CDP attach breaks, `tauri-driver` with a `msedgedriver` that matches
   the WebView2 runtime drives a built Quay over WebDriver (`cargo install tauri-driver
   --locked`). WebDriver has no masks, animation freeze or caret hiding, so those would be
@@ -248,7 +291,8 @@ Also seen: the debugging port listens on `127.0.0.1` only.
 
 - Quay's own views of the project folder, such as diffs and git state, show the starter as it
   was copied, not the files the recorded agents wrote; replays don't touch the disk.
-- The changed-shot report (#102) builds on this script and is not in it yet.
+- The changed-shot report covers stills only. A clip is re-recorded whenever its still is, and
+  its still is in the report.
 
 ## Tests
 
@@ -259,6 +303,7 @@ pnpm docs:typecheck
 
 `capture.test.ts` covers the parts that need no Quay: the arguments, the manifest, reading the
 recordings, which replays each step waits for, the fixture workspace, the machine check, a
-clip's frames and stale clips, and the sidecar. The parts that drive Quay need a built Quay on
-a pinned machine and are checked by running a capture. `clip.ts`, which records and encodes the
-clip, needs a browser page but not Quay.
+clip's frames and stale clips, and the sidecar. `shot-report.test.ts` covers the pixel diff and
+the changed-shot report. The parts that drive Quay need a built Quay on a pinned machine and are
+checked by running a capture. `clip.ts`, which records and encodes the clip, needs a browser page
+but not Quay.

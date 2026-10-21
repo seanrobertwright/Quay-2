@@ -24,9 +24,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "quay-bridge-post"
+version = "0.2.0"
+
+[[package]]
 name = "quay-codex-notify"
 version = "0.2.0"
 dependencies = [
+ "quay-bridge-post",
  "serde_json",
 ]
 

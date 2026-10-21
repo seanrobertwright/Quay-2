@@ -12,7 +12,8 @@ type CoreRule = Parameters<MarkdownRenderer['core']['ruler']['push']>[1];
 
 /** How many passing runs a run fingerprint needs before its tutorial is published. */
 const RUNS_TO_PUBLISH = 2;
-const REPO = 'https://github.com/seanrobertwright/Quay-2';
+/** The repository the tutorials live in, for links to its issues and files. */
+export const REPO = 'https://github.com/seanrobertwright/Quay-2';
 const NOT_MEASURED = 'not measured yet';
 
 /** One finished test run, as the build reads it from a tutorial's `test-runs.md`. */

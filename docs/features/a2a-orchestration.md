@@ -10,9 +10,9 @@ A **peer** is an agent terminal on the bus. Every peer can be sent a message. Wh
 
 | Level | Sends messages (`quay_*` tools) | Answers a sender who waits | Shows Working and Idle | CLIs |
 | :--- | :--- | :--- | :--- | :--- |
-| **full peer** | Yes | Yes | Yes | Claude Code, Codex, OpenCode |
+| **full peer** | Yes | Yes | Yes | Claude Code, Codex, OpenCode, PiG |
 | **responder** | No | Yes | Yes | Antigravity |
-| **listener** | No | No | No, its status stays **Unknown** | Copilot, Kiro, Gemini, Grok, Pi, PiG, Aider |
+| **listener** | No | No | No, its status stays **Unknown** | Copilot, Kiro, Gemini, Grok, Pi, Aider |
 
 PowerShell, Custom Command and Archon terminals are not peers. `quay_list_agents` doesn't list them, a broadcast skips them, and a message to an Archon terminal is refused.
 
@@ -21,6 +21,7 @@ How each full peer gets the tools:
 - **Claude Code** gets Quay's MCP server inline through `--mcp-config`. It answers through the [event-bridge plugin](../guide/installation.md#event-bridge-plugin). A Claude Code terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from that plugin. Once the plugin is heard, it is a full peer again.
 - **Codex** gets the server through `-c` overrides and reports each turn end through Quay's turn-end helper. See [Codex on the A2A bus](./agent-support.md#codex-on-the-a2a-bus).
 - **OpenCode** gets the server through `OPENCODE_CONFIG_CONTENT`, and Quay reads its turns from the server its TUI runs.
+- **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer.
 
 Antigravity, the responder, has no `quay_*` tools, so it never starts a conversation. Quay reads its status and its answers from the OSC 7501 sequences it prints. See [Antigravity on the A2A bus](./agent-support.md#antigravity-on-the-a2a-bus). The [CLI flags reference](../reference/cli-flags.md) lists each CLI's launch wiring.
 

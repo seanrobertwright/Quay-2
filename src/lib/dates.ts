@@ -70,3 +70,16 @@ export function isDateStamp(text: string): boolean {
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
+
+/**
+ * Whole calendar days from one "YYYY-MM-DD" date to another, negative when `to` comes first. The
+ * digits are read as they are, with no time zone. Throws when either is not such a date.
+ */
+export function daysBetweenDateStamps(from: string, to: string): number {
+  const dayNumber = (text: string) => {
+    if (!isDateStamp(text)) throw new Error(`${JSON.stringify(text)} is not a date written YYYY-MM-DD`);
+    const [year, month, day] = text.split("-").map(Number);
+    return Date.UTC(year, month - 1, day) / 86_400_000;
+  };
+  return dayNumber(to) - dayNumber(from);
+}

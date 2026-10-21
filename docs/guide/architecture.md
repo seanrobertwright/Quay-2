@@ -69,7 +69,7 @@ graph TB
 
 ### 3. `orchestrator` — Agent-to-Agent (A2A) MCP Bus
 - Implements an embedded Model Context Protocol (MCP) server over HTTP and SSE.
-- Exposes tools to full peers (Claude Code, Codex and OpenCode): `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status`, and the three `machina_*` work-order tools. See [The MCP tools](../features/a2a-orchestration.md#the-mcp-tools).
+- Exposes tools to full peers (Claude Code, Codex, OpenCode and PiG): `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status`, and the three `machina_*` work-order tools. See [The MCP tools](../features/a2a-orchestration.md#the-mcp-tools).
 - Manages routing tables, message queues, and synchronous reply wait-loops (with 60-second timeouts).
 
 ### 4. `archon` — SDD Workflow Bridge

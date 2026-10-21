@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 import { SHOT_NAME, VERSION } from '../../docs/.vitepress/step-cards.ts';
 import { TUTORIALS, tutorialPage, type Tutorial } from '../../docs/.vitepress/tutorials.ts';
-import { formatUtcDateStamp } from '../../src/lib/dates.ts';
+import { formatUtcDateStamp, isDateStamp } from '../../src/lib/dates.ts';
 /** A recording's file name: the CLI it stood in for, and that CLI's terminals counted from 1. */
 const RECORDING = /^([a-z0-9][a-z0-9_.]*(?:-[a-z0-9_.]+)*?)-(\d+)\.cast\.gz$/;
 
@@ -439,7 +439,7 @@ export interface Sidecar {
 /**
  * The sidecar manifest beside a tutorial's starter: the Quay version captured, the UTC date the
  * recordings were made and each CLI's version from that run. The docs build's release check
- * reads `quayVersion`; the quarterly sweep, not built yet, is to read the rest.
+ * reads `quayVersion`; the quarterly sweep reads it all with `parseSidecar`.
  */
 export function buildSidecar(input: { tutorial: string; quayVersion: string; capturedOn: string; recordings: RecordingInfo[] }): Sidecar {
   const quayVersion = VERSION.exec(input.quayVersion)?.[1];
@@ -457,6 +457,43 @@ export function buildSidecar(input: { tutorial: string; quayVersion: string; cap
     started = Math.min(started, recording.startedAt);
   }
   return { tutorial: input.tutorial, quayVersion, capturedOn: input.capturedOn, recordedOn: formatUtcDateStamp(started), cliVersions };
+}
+
+/**
+ * Reads the sidecar manifest of the tutorial `slug`, as `buildSidecar` writes it. Throws, naming
+ * the field, when the text is not JSON or a field is missing or malformed.
+ */
+export function parseSidecar(json: string, slug: string): Sidecar {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch (error) {
+    throw new Error(`not valid JSON: ${(error as Error).message}`);
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('not a JSON object');
+  const fields = value as Record<string, unknown>;
+  const text = (name: string): string => {
+    const field = Object.hasOwn(fields, name) ? fields[name] : undefined;
+    if (typeof field !== 'string' || field === '') throw new Error(`${name} is missing or not a string`);
+    return field;
+  };
+  const tutorial = text('tutorial');
+  if (tutorial !== slug) throw new Error(`tutorial is ${JSON.stringify(tutorial)}; the manifest beside ${slug}'s starter names ${slug}`);
+  const quayVersion = text('quayVersion');
+  if (VERSION.exec(quayVersion)?.[1] !== quayVersion) throw new Error(`quayVersion ${JSON.stringify(quayVersion)} is not a Quay version such as 0.3.0`);
+  const dates = ['capturedOn', 'recordedOn'].map((name) => {
+    const date = text(name);
+    if (!isDateStamp(date)) throw new Error(`${name} ${JSON.stringify(date)} is not a date written YYYY-MM-DD`);
+    return date;
+  });
+  const versions = Object.hasOwn(fields, 'cliVersions') ? fields.cliVersions : undefined;
+  if (typeof versions !== 'object' || versions === null || Array.isArray(versions)) throw new Error('cliVersions is missing or not an object');
+  const cliVersions: Record<string, string> = {};
+  for (const [cli, version] of Object.entries(versions)) {
+    if (typeof version !== 'string' || version === '') throw new Error(`cliVersions.${cli} is not a version string`);
+    cliVersions[cli] = version;
+  }
+  return { tutorial, quayVersion, capturedOn: dates[0], recordedOn: dates[1], cliVersions };
 }
 
 /**
