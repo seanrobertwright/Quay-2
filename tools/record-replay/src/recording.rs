@@ -160,21 +160,17 @@ impl Recorder {
         }
     }
 
-    /// Seconds since the recording started.
-    pub fn now(&self) -> f64 {
-        self.seconds()
-    }
-
     fn event(&self, inner: &mut Inner, code: &str, data: &str) {
         if data.is_empty() {
             return;
         }
         let Some(cast) = inner.cast.as_mut() else { return };
-        let line = serde_json::json!([round(self.seconds()), code, self.scrub(data)]);
+        let line = serde_json::json!([round(self.now()), code, self.scrub(data)]);
         let _ = writeln!(cast, "{line}").and_then(|_| cast.flush());
     }
 
-    fn seconds(&self) -> f64 {
+    /// Seconds since the recording started.
+    pub fn now(&self) -> f64 {
         (self.start.elapsed().as_micros() as f64) / 1_000_000.0
     }
 
