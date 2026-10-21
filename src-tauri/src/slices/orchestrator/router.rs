@@ -6,6 +6,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
+use super::target::resolve_target;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::EVENT_BRIDGE_INSTALL_LINE;
@@ -25,83 +26,64 @@ pub enum WaitOutcome {
     NoReply(String),
 }
 
-fn resolve_terminal_id(identifier: &str, pty_manager: &PtyManager) -> String {
-    let trimmed = identifier.trim();
-    if trimmed.is_empty() {
-        return identifier.to_string();
-    }
-
-    // 1. Direct match on terminal id
-    if pty_manager.get_info(trimmed).is_some() {
-        return trimmed.to_string();
-    }
-
-    let terminals = pty_manager.list();
-
-    // 2. Exact match on terminal name (case-insensitive)
-    let lower = trimmed.to_lowercase();
-    if let Some(t) = terminals.iter().find(|t| t.name.to_lowercase() == lower) {
-        return t.id.clone();
-    }
-
-    // 3. Match on run_kind (case-insensitive)
-    if let Some(t) = terminals.iter().find(|t| t.run_kind.as_str().to_lowercase() == lower) {
-        return t.id.clone();
-    }
-
-    // 4. Substring match on terminal name or prefix of id
-    if let Some(t) = terminals.iter().find(|t| {
-        t.name.to_lowercase().contains(&lower)
-            || t.id.to_lowercase().starts_with(&lower)
-    }) {
-        return t.id.clone();
-    }
-
-    trimmed.to_string()
+/// What Quay types before a message one peer sends another.
+fn peer_prefix(from_name: &str) -> String {
+    format!("[Peer agent ({})]: ", from_name)
 }
 
-fn resolve_terminal_name(identifier: &str, pty_manager: Option<&PtyManager>) -> String {
-    let trimmed = identifier.trim();
-    if let Some(pty) = pty_manager {
-        if let Some(info) = pty.get_info(trimmed) {
-            return info.name;
-        }
-        let list = pty.list();
-        if let Some(t) = list.iter().find(|t| t.id == trimmed || t.name.eq_ignore_ascii_case(trimmed)) {
-            return t.name.clone();
-        }
-    }
-    trimmed.to_string()
+/// `prompt` without the `[Peer agent (<name>)]: ` prefix Quay types before a peer's
+/// message, so a task title shows the message itself.
+pub fn strip_peer_prefix(prompt: &str) -> &str {
+    prompt
+        .strip_prefix("[Peer agent (")
+        .and_then(|rest| rest.split_once(")]: "))
+        .map_or(prompt, |(_, message)| message)
 }
 
-/// Refuses a peer message whose sender and receiver resolve to the same terminal: it would
-/// type the sender's own message back into its prompt, and a sender waiting on itself never
-/// gets a reply. A message dispatched as the user has no sending peer, so it is never refused.
-fn refuse_dispatch_to_self(
+/// The sender's session name, or what the request gave when no terminal has that id.
+fn sender_name(from_terminal: &str, pty_manager: Option<&PtyManager>) -> String {
+    let trimmed = from_terminal.trim();
+    pty_manager
+        .and_then(|pty| pty.get_info(trimmed))
+        .map_or_else(|| trimmed.to_string(), |info| info.name)
+}
+
+/// Where `request` goes: its id, and its terminal when there is a PTY manager to resolve
+/// it with `resolve_target`, a name matching in the sender's project first. Without one
+/// (in tests) the target is taken as given. Refuses a target that is the sender itself,
+/// or an Archon terminal.
+fn checked_target(
     request: &A2ADispatchRequest,
     pty_manager: Option<&PtyManager>,
+) -> Result<(String, Option<TerminalInfo>), String> {
+    let (target_id, target) = match pty_manager {
+        Some(pty) => {
+            let sender = (!request.is_user_dispatch()).then_some(request.from_terminal.as_str());
+            let info = resolve_target(&request.to_terminal, sender, pty)?;
+            (info.id.clone(), Some(info))
+        }
+        None => (request.to_terminal.trim().to_string(), None),
+    };
+    refuse_dispatch_to_self(request, &target_id, pty_manager)?;
+    refuse_dispatch_to_archon(target.as_ref())?;
+    Ok((target_id, target))
+}
+
+/// Refuses a peer message whose sender is its own target: it would type the sender's own
+/// message back into its prompt, and a sender waiting on itself never gets a reply. A
+/// message dispatched as the user has no sending peer, so it is never refused.
+fn refuse_dispatch_to_self(
+    request: &A2ADispatchRequest,
+    target_id: &str,
+    pty_manager: Option<&PtyManager>,
 ) -> Result<(), String> {
-    if request.is_user_dispatch() {
+    if request.is_user_dispatch() || request.from_terminal.trim() != target_id {
         return Ok(());
     }
-    let (from_id, to_id) = match pty_manager {
-        Some(pty) => (
-            resolve_terminal_id(&request.from_terminal, pty),
-            resolve_terminal_id(&request.to_terminal, pty),
-        ),
-        None => (
-            request.from_terminal.trim().to_string(),
-            request.to_terminal.trim().to_string(),
-        ),
-    };
-    if from_id == to_id {
-        let name = resolve_terminal_name(&from_id, pty_manager);
-        return Err(format!(
-            "Refused: {} can't send a message to itself. Pick a different To Agent.",
-            name
-        ));
-    }
-    Ok(())
+    Err(format!(
+        "Refused: {} can't send a message to itself. Pick a different To Agent.",
+        sender_name(&request.from_terminal, pty_manager)
+    ))
 }
 
 /// Refuses a message to an Archon terminal: it runs a workflow and has no prompt for a
@@ -158,8 +140,18 @@ impl A2ARouter {
         request: A2ADispatchRequest,
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
-        refuse_dispatch_to_self(&request, pty_manager)?;
+        let (target_id, target) = checked_target(&request, pty_manager)?;
+        Ok(self.deliver(request, target_id, target, pty_manager))
+    }
 
+    /// Types `request` into its already checked target and records it.
+    fn deliver(
+        &self,
+        request: A2ADispatchRequest,
+        target_terminal_id: String,
+        target: Option<TerminalInfo>,
+        pty_manager: Option<&PtyManager>,
+    ) -> A2AMessage {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -167,25 +159,16 @@ impl A2ARouter {
 
         let msg_id = format!("a2a-{}", Uuid::new_v4().simple());
 
-        let target_terminal_id = if let Some(pty) = pty_manager {
-            resolve_terminal_id(&request.to_terminal, pty)
-        } else {
-            request.to_terminal.clone()
-        };
-        refuse_dispatch_to_archon(
-            pty_manager.and_then(|pty| pty.get_info(&target_terminal_id)).as_ref(),
-        )?;
-
         // A message dispatched as the user comes from the operator, not a peer, so it is
         // recorded from the user and the trail credits "You" whatever From Agent held.
         let as_user = request.is_user_dispatch();
         let (from_terminal, from_name) = if as_user {
             (USER_SENDER.to_string(), "You".to_string())
         } else {
-            let name = resolve_terminal_name(&request.from_terminal, pty_manager);
+            let name = sender_name(&request.from_terminal, pty_manager);
             (request.from_terminal, name)
         };
-        let to_name = resolve_terminal_name(&target_terminal_id, pty_manager);
+        let to_name = target.map_or_else(|| target_terminal_id.clone(), |t| t.name);
 
         // Inject directly into target terminal's ConPTY stdin so the agent executes immediately!
         if let Some(pty) = pty_manager {
@@ -193,7 +176,7 @@ impl A2ARouter {
                 request.prompt.trim().replace("\r\n", " ").replace('\n', " ")
             } else {
                 let clean_content = request.prompt.trim().replace("\r\n", " ").replace('\n', " ");
-                format!("[Peer agent ({})]: {}", from_name, clean_content)
+                format!("{}{}", peer_prefix(&from_name), clean_content)
             };
 
             if let Err(e) = pty.submit_prompt(&target_terminal_id, &pty_prompt) {
@@ -219,7 +202,7 @@ impl A2ARouter {
         };
 
         self.messages.lock().push(message.clone());
-        Ok(message)
+        message
     }
 
     /// Sends `request` and waits up to `timeout_secs` for the target's reply. A target
@@ -232,19 +215,15 @@ impl A2ARouter {
         timeout_secs: u64,
     ) -> Result<WaitOutcome, String> {
         // Refuse before registering a reply listener, so a refused send leaves none behind.
-        refuse_dispatch_to_self(&request, pty_manager)?;
-
-        let resolved_target = if let Some(pty) = pty_manager {
-            resolve_terminal_id(&request.to_terminal, pty)
-        } else {
-            request.to_terminal.clone()
-        };
+        let (resolved_target, target) = checked_target(&request, pty_manager)?;
+        let target_name = target
+            .as_ref()
+            .map_or_else(|| resolved_target.clone(), |t| t.name.clone());
         let target_now = || pty_manager.and_then(|pty| pty.get_info(&resolved_target));
-        refuse_dispatch_to_archon(target_now().as_ref())?;
 
         // Quay never waits on a peer that can't reply.
-        if let Some(answer) = target_now().as_ref().and_then(no_reply_answer) {
-            self.dispatch(request, pty_manager)?;
+        if let Some(answer) = target.as_ref().and_then(no_reply_answer) {
+            self.deliver(request, resolved_target.clone(), target, pty_manager);
             return Ok(WaitOutcome::NoReply(answer));
         }
 
@@ -260,7 +239,7 @@ impl A2ARouter {
         }
 
         // Dispatch prompt to target agent
-        let sent = self.dispatch(request, pty_manager)?;
+        let sent = self.deliver(request, resolved_target.clone(), target, pty_manager);
 
         // Await the target's turn end, unless it stops being able to reply first
         let wait = async {
@@ -297,7 +276,7 @@ impl A2ARouter {
                 }
                 Ok(WaitOutcome::NoReply(format!(
                     "Peer agent ({}) received the task but is still working. You can check their status later using quay_get_agent_status.",
-                    resolved_target
+                    target_name
                 )))
             }
         }
@@ -740,6 +719,70 @@ mod tests {
 
         assert!(router.get_messages().is_empty());
         assert!(router.pending_replies.lock().get("term-lvl-archon").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_message_to_an_unknown_target_is_refused_at_once_and_nothing_is_sent() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-tm-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tm-answerer", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+
+        let err = at_once(router.dispatch_and_wait(
+            peer_message("term-tm-asker", "claude"),
+            Some(&pty),
+            60,
+        ))
+        .await
+        .unwrap_err();
+        assert!(err.contains("No terminal has the ID or session name 'claude'"), "{err}");
+        assert!(err.contains("term-tm-answerer"), "the error lists the peers: {err}");
+        let err = router
+            .dispatch(peer_message("term-tm-asker", "term-tm-answ"), Some(&pty))
+            .unwrap_err();
+        assert!(err.contains("No terminal has the ID or session name"), "{err}");
+
+        assert!(router.get_messages().is_empty());
+        assert!(router.pending_replies.lock().is_empty());
+    }
+
+    #[test]
+    fn a_message_to_a_session_name_goes_to_that_terminal() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[("term-tm-sender", RunKind::Claude, ClaudeStatus::Idle)]);
+        let mut named = test_terminal("term-tm-named", RunKind::Claude, ClaudeStatus::Idle);
+        named.name = "tm-answerer".to_string();
+        pty.insert_test_terminal(named);
+
+        let msg = router
+            .dispatch(peer_message("term-tm-sender", "tm-answerer"), Some(&pty))
+            .unwrap();
+        assert_eq!(msg.to_terminal, "term-tm-named");
+        assert_eq!(msg.to_name.as_deref(), Some("tm-answerer"));
+    }
+
+    #[test]
+    fn a_message_to_your_own_session_name_is_refused() {
+        let router = A2ARouter::new();
+        let pty = PtyManager::new();
+        let mut me = test_terminal("term-tm-me", RunKind::Claude, ClaudeStatus::Idle);
+        me.name = "tm-me".to_string();
+        pty.insert_test_terminal(me);
+
+        let err = router
+            .dispatch(peer_message("term-tm-me", "tm-me"), Some(&pty))
+            .unwrap_err();
+        assert!(err.contains("tm-me can't send a message to itself"), "{err}");
+    }
+
+    #[test]
+    fn the_peer_prefix_is_stripped_from_a_task_title() {
+        assert_eq!(strip_peer_prefix(&format!("{}Read package.json", peer_prefix("asker"))), "Read package.json");
+        assert_eq!(strip_peer_prefix("[Peer agent (a (b))]: hi"), "hi");
+        assert_eq!(strip_peer_prefix("Read package.json"), "Read package.json");
+        assert_eq!(strip_peer_prefix("[Peer agent (cut off"), "[Peer agent (cut off");
+        assert_eq!(strip_peer_prefix("[Broadcast Notice]: hi"), "[Broadcast Notice]: hi");
     }
 
     #[test]

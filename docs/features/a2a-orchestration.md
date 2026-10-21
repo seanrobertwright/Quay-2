@@ -59,19 +59,21 @@ Returns the peers on the A2A bus, each with its bus level: `full peer` (sends me
   ]
   ```
 
+### How a target is matched
+`quay_send_message` and `quay_get_agent_status` take a target the same way: an exact terminal ID or an exact session name, as `quay_list_agents` lists them. Nothing else matches: no run kind, partial name, partial ID or different letter case.
+
+- A terminal ID reaches any terminal, in any project, even one that has exited.
+- A session name matches live terminals only. Quay restores saved terminals as exited under their old names at startup, so a name whose only match has exited is refused, and the error says so.
+- A session name matches in the caller's project first, so the same name in two projects is not ambiguous for a caller in one of them. Only when the caller's project has no live match does it match in other projects. Two live matches in the same search are refused as ambiguous, listing them; pass the terminal ID instead.
+- Anything else is refused at once with the list of live peers. Nothing is sent and nothing is waited on.
+
 ### 2. `quay_send_message`
 Sends a task prompt or delegation message to another running agent.
 - **Parameters**:
-  - `target_terminal_id` (string, required): The target terminal ID (obtained from `quay_list_agents`).
+  - `target_terminal_id` (string, required): The target's terminal ID or session name (see [How a target is matched](#how-a-target-is-matched)).
   - `message` (string, required): The task description, instruction, or query.
   - `wait_for_reply` (boolean, optional, default: `true`): If `true`, the caller suspends execution for up to 60 seconds while the recipient processes the message, returning the recipient's output directly into the caller's context. If `false`, dispatches asynchronously and returns immediately. A wait on a listener returns at once: the message is delivered, and the answer says the peer can't reply and suggests a file mailbox. A wait on a Claude Code terminal whose event-bridge plugin isn't reporting returns at once with the plugin's install line, and so does a wait already running when that terminal turns Unknown. A message to an Archon terminal is refused.
-- **Response**:
-  ```json
-  {
-    "status": "completed",
-    "reply": "Here is the UserProfile TypeScript definition: export interface UserProfile { id: string; email: string; }"
-  }
-  ```
+- **Response**: text. A reply reads `Reply from <name>:` followed by the peer's answer. A wait that runs past 60 seconds returns `Peer agent (<name>) received the task but is still working.` Without a wait the answer is `Successfully dispatched task to <name>.`
 
 ### 3. `quay_broadcast`
 Dispatches a system alert banner and toast notification across every running peer simultaneously. Shell and Archon terminals are skipped.
@@ -82,7 +84,8 @@ Dispatches a system alert banner and toast notification across every running pee
 ### 4. `quay_get_agent_status`
 Inspects health, auto-approved tool count, and active execution status of a specific peer agent.
 - **Parameters**:
-  - `target_terminal_id` (string, required).
+  - `terminal_id` (string, required): The target's terminal ID or session name (see [How a target is matched](#how-a-target-is-matched)).
+- **Response**: one line of text, for example `Agent term-2: name='backend-dev', level=full peer, status=idle, task='Write the UserProfile type', tool='none', auto_approved=3, project='E:\Projects\Quay2'`. The status is in the lowercase form `quay_list_agents` uses. The task is the first line of the prompt that started the agent's latest turn, cut to 32 characters, without the `[Peer agent (<name>)]:` prefix a peer's message arrives with.
 
 ---
 
