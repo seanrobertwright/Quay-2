@@ -44,3 +44,23 @@ export function formatRelative(ms: number, now: number = Date.now()): string {
   if (hours < 48) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** A local calendar date, e.g. "2026-10-21". */
+export function formatDateStamp(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/**
+ * Whether text is a calendar date written "YYYY-MM-DD", such as "2026-10-21". The digits are read
+ * as they are, with no time zone; "2026-02-30" is not a date.
+ */
+export function isDateStamp(text: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}

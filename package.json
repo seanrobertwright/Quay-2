@@ -15,8 +15,9 @@
     "docs:presets": "node scripts/swarm-presets/sync.ts",
     "docs:preview": "vitepress preview docs",
     "docs:tutorials": "node scripts/tutorials/sync-tables.ts",
-    "docs:test": "node --test scripts/pack-starters.test.mjs \"scripts/step-cards/*.test.ts\" \"scripts/swarm-presets/*.test.ts\" \"scripts/tutorials/*.test.ts\"",
-    "docs:typecheck": "tsc -p scripts/step-cards && tsc -p scripts/swarm-presets && tsc -p scripts/tutorials",
+    "docs:test": "node --test scripts/pack-starters.test.mjs \"scripts/step-cards/*.test.ts\" \"scripts/swarm-presets/*.test.ts\" \"scripts/tutorials/*.test.ts\" \"scripts/test-runs/*.test.ts\"",
+    "docs:test-run": "node scripts/test-runs/new-run.ts",
+    "docs:typecheck": "tsc -p scripts/step-cards && tsc -p scripts/swarm-presets && tsc -p scripts/tutorials && tsc -p scripts/test-runs",
     "starters:check": "node scripts/starters-ci/check-starters.ts",
     "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
     "starters:typecheck": "tsc -p scripts/starters-ci"
