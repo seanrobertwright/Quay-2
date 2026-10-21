@@ -1,4 +1,5 @@
-import { StageLayout, RunKind, LaunchPromptRunKind } from "../terminal/types";
+// Type-only, so Node can load this file as it is: `pnpm docs:presets` generates the docs' preset lists from it.
+import type { StageLayout, RunKind, LaunchPromptRunKind } from "../terminal/types";
 
 export interface SwarmAgentConfig {
   role: string;
