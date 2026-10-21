@@ -29,6 +29,10 @@ _Avoid_: Starter, sample data, mock, replay data
 The named point in a fixture's recording where one step of the tutorial shows what its You should see slot describes. Its name is the name of that step's screenshot, which the capture script takes when the replays reach the marker and the step card's You should see slot shows.
 _Avoid_: Timestamp, checkpoint, bookmark
 
+**Changed-shot report**:
+What the capture script writes at a release: per tutorial, which screenshots differ from the committed ones by a pixel diff past the tolerance, old beside new. The tutorials it lists go to the release re-run.
+_Avoid_: Visual diff, screenshot test, snapshot report
+
 **Step card**:
 One numbered step of a tutorial as it appears on the page: a card whose content sits in named slots, always in the same order. Every step is a step card, including the check-it-worked step.
 _Avoid_: Step block, step box, section

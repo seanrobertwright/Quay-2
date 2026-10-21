@@ -16,6 +16,7 @@ src-tauri/target/
 docs/.vitepress/dist
 docs/.vitepress/cache
 docs/public/starters/
+/capture-reports/
 /.vitepress/
 
 # Editor directories and files
