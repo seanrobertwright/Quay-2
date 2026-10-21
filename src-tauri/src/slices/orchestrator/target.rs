@@ -87,7 +87,9 @@ fn describe(t: &TerminalInfo) -> String {
     format!("{} (id {}, project {})", t.name, t.id, t.project_path)
 }
 
-fn same_project(a: &str, b: &str) -> bool {
+/// Whether two project paths name the same folder, whatever their slashes, case or
+/// trailing slash. A worktree's path names its own folder, so it is its own project.
+pub fn same_project(a: &str, b: &str) -> bool {
     fn normalize(p: &str) -> String {
         p.replace('\\', "/").trim_end_matches('/').to_lowercase()
     }

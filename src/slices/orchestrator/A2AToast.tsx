@@ -19,9 +19,16 @@ export interface A2ADispatchPayload {
   to_name?: string | null;
   content: string;
   as_user?: boolean;
+  broadcast?: boolean;
   timestamp: number;
   status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
+}
+
+/** The `a2a-toast` payload: a broadcast's notice and who sent it ("You" from Mission Control). */
+export interface BroadcastToastPayload {
+  text: string;
+  from_name: string;
 }
 
 interface ToastItem {
@@ -62,7 +69,7 @@ export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => 
       (event) => {
         const payload = event.payload;
         // Broadcasts are handled by the dedicated "a2a-toast" listener below
-        if (payload.from_terminal === "broadcast") return;
+        if (payload.broadcast) return;
 
         const fromInfo = resolveTerminalInfo(payload.from_name || payload.from_terminal);
         const toInfo = resolveTerminalInfo(payload.to_name || payload.to_terminal);
@@ -113,11 +120,12 @@ export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => 
     );
 
     // 3. Listen for Swarm Broadcast Toast
-    const unlistenBroadcastPromise = listen<string>("a2a-toast", (event) => {
-      const text = event.payload;
+    const unlistenBroadcastPromise = listen<BroadcastToastPayload>("a2a-toast", (event) => {
+      const { text, from_name } = event.payload;
       const bToast: ToastItem = {
         id: `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         kind: "broadcast",
+        fromName: from_name,
         content: text,
         timestamp: Date.now(),
       };
@@ -153,7 +161,7 @@ export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => 
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-[#3fb950]">
                   <Megaphone className="w-3.5 h-3.5 text-[#3fb950] shrink-0" />
-                  <span>Swarm Broadcast</span>
+                  <span>Swarm Broadcast from {toast.fromName}</span>
                 </div>
                 <button
                   type="button"

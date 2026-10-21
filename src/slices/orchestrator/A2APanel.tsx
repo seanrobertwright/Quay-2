@@ -31,6 +31,7 @@ interface A2AMessage {
   to_name?: string | null;
   content: string;
   as_user: boolean;
+  broadcast?: boolean;
   timestamp: number;
   status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
@@ -80,11 +81,12 @@ export const A2APanel: FC<A2APanelProps> = ({
 }) => {
   // Peers only: shell and Archon terminals are not on the bus.
   const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
-  // A broadcast reaches every peer that is still running.
-  const broadcastTargets = agentTerminals.filter((t) => t.claude_status !== "exited");
-  // The agent list, From Agent and To Agent show only the active project's peers, scoped
-  // the way the stage scopes its terminals: a worktree counts as its own project.
+  // The agent list, From Agent, To Agent and the Broadcast box take only the active
+  // project's peers, scoped the way the stage scopes its terminals: a worktree counts as
+  // its own project.
   const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
+  // A broadcast reaches the active project's peers that are still running.
+  const broadcastTargets = projectAgents.filter((t) => t.claude_status !== "exited");
   const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
   const [toTerminal, setToTerminal] = useState(() => keepSendChoices(projectAgents, "", "", false).to);
   const [prompt, setPrompt] = useState("");
@@ -97,6 +99,7 @@ export const A2APanel: FC<A2APanelProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const getTerminalLabel = (idOrName: string, nameFallback?: string | null) => {
@@ -201,15 +204,20 @@ export const A2APanel: FC<A2APanelProps> = ({
     if (!broadcastText.trim() || isBroadcasting) return;
 
     setIsBroadcasting(true);
+    setBroadcastError(null);
     try {
-      const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", { text: broadcastText });
-      const count = dispatched?.length || broadcastTargets.length;
+      const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", {
+        text: broadcastText,
+        project: activeProject,
+      });
+      const count = dispatched.length;
       setBroadcastText("");
       setBroadcastSuccess(`Broadcast sent to ${count} agent${count === 1 ? "" : "s"}!`);
       setTimeout(() => setBroadcastSuccess(null), 3500);
       await loadMessages();
     } catch (err) {
       console.error("Broadcast toast error:", err);
+      setBroadcastError(String(err));
     } finally {
       setIsBroadcasting(false);
     }
@@ -301,7 +309,7 @@ export const A2APanel: FC<A2APanelProps> = ({
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running peer</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every other running peer in the caller's project</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
@@ -504,7 +512,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
                 <Radio className="w-3.5 h-3.5 text-[#3fb950]" />
-                <span>Broadcast Notice to All AI Agent Sessions</span>
+                <span>Broadcast Notice to the Active Project's Peers</span>
               </h3>
               <span className="text-[11px]">
                 {broadcastTargets.length > 0 ? (
@@ -512,7 +520,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                     {broadcastTargets.length} target{broadcastTargets.length === 1 ? "" : "s"} active
                   </span>
                 ) : (
-                  <span className="text-[#d29922]">No peers running</span>
+                  <span className="text-[#d29922]">No peers running in the active project</span>
                 )}
               </span>
             </div>
@@ -521,7 +529,11 @@ export const A2APanel: FC<A2APanelProps> = ({
               <input
                 type="text"
                 value={broadcastText}
-                onChange={(e) => setBroadcastText(e.target.value)}
+                onChange={(e) => {
+                  setBroadcastText(e.target.value);
+                  setBroadcastError(null);
+                }}
+                aria-label="Notice to broadcast"
                 placeholder="Notice / Toast text (e.g. 'DB migration finished, pulling updates...')"
                 className="flex-1 px-3 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
               />
@@ -548,6 +560,15 @@ export const A2APanel: FC<A2APanelProps> = ({
               <div className="flex items-center gap-1.5 text-xs text-[#3fb950] bg-[#238636]/15 border border-[#238636]/40 rounded px-2.5 py-1 animate-in fade-in">
                 <Check className="w-3.5 h-3.5" />
                 <span>{broadcastSuccess}</span>
+              </div>
+            )}
+
+            {broadcastError && (
+              <div
+                role="alert"
+                className="text-xs text-[#ff7b72] bg-[#da3633]/15 border border-[#da3633]/40 rounded px-2.5 py-1"
+              >
+                {broadcastError}
               </div>
             )}
           </div>
@@ -596,6 +617,11 @@ export const A2APanel: FC<A2APanelProps> = ({
                         {m.as_user && (
                           <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-[#30363d] text-[#c9d1d9] font-normal">
                             as user
+                          </span>
+                        )}
+                        {m.broadcast && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-[#238636]/25 text-[#3fb950] font-normal">
+                            Broadcast
                           </span>
                         )}
                       </span>

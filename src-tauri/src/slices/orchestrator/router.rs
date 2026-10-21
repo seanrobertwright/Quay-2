@@ -5,14 +5,17 @@ use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
-use super::target::resolve_target;
+use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
+use super::target::{resolve_target, same_project};
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::EVENT_BRIDGE_INSTALL_LINE;
 
 /// The sender recorded for a message dispatched as the user, whatever From Agent held.
 const USER_SENDER: &str = "user";
+
+/// The name the trail and toasts credit for the operator's messages and broadcasts.
+const USER_NAME: &str = "You";
 
 /// How often a running wait checks whether its peer can still reply.
 const LEVEL_CHECK: Duration = Duration::from_millis(250);
@@ -414,16 +417,19 @@ impl A2ARouter {
 
     /// `broadcast_toast`, with the typing on a blocking thread so the caller's async worker
     /// stays free.
-    pub async fn broadcast_toast_async(&self, text: &str, pty_manager: &PtyManager) -> Vec<A2AMessage> {
+    pub async fn broadcast_toast_async(
+        &self,
+        text: &str,
+        sender: &BroadcastSender,
+        pty_manager: &PtyManager,
+    ) -> Result<Broadcast, String> {
         let router = self.clone();
         let pty_manager = pty_manager.clone();
         let text = text.to_string();
-        tokio::task::spawn_blocking(move || router.broadcast_toast(&text, &pty_manager))
+        let sender = sender.clone();
+        tokio::task::spawn_blocking(move || router.broadcast_toast(&text, &sender, &pty_manager))
             .await
-            .unwrap_or_else(|e| {
-                tracing::warn!("Broadcast stopped: {}", e);
-                Vec::new()
-            })
+            .map_err(|e| format!("Broadcast stopped: {}", e))?
     }
 
     /// Builds the trail entry for `request` to its already checked target, and the text
@@ -446,7 +452,7 @@ impl A2ARouter {
         // recorded from the user and the trail credits "You" whatever From Agent held.
         let as_user = request.is_user_dispatch();
         let (from_terminal, from_name) = if as_user {
-            (USER_SENDER.to_string(), "You".to_string())
+            (USER_SENDER.to_string(), USER_NAME.to_string())
         } else {
             let name = sender_name(&request.from_terminal, pty_manager);
             (request.from_terminal, name)
@@ -468,6 +474,7 @@ impl A2ARouter {
             to_name: Some(to_name),
             content: request.prompt,
             as_user,
+            broadcast: false,
             timestamp: now,
             status: A2AMessageStatus::Queued,
             response: None,
@@ -642,30 +649,60 @@ impl A2ARouter {
         updated_msg
     }
 
+    /// Types `text` as a notice into every running peer in the sender's project, never the
+    /// sender itself: the caller's project for a peer, the active project for Mission
+    /// Control. A worktree is its own project. Each notice is credited to the sender
+    /// (**You** from Mission Control) and goes through its target's queue. Refuses empty
+    /// text, a Mission Control broadcast with no project, and a sender Quay doesn't know.
+    /// Blocks while it types; async callers use `broadcast_toast_async`.
     pub fn broadcast_toast(
         &self,
         text: &str,
+        sender: &BroadcastSender,
         pty_manager: &PtyManager,
-    ) -> Vec<A2AMessage> {
+    ) -> Result<Broadcast, String> {
+        let clean_text = text.trim().replace("\r\n", " ").replace('\n', " ");
+        if clean_text.is_empty() {
+            return Err("No broadcast text given. Pass the notice to send.".to_string());
+        }
+        let (from_terminal, from_name, project) = match sender {
+            BroadcastSender::Peer(id) => {
+                let info = pty_manager.get_info(id.trim()).ok_or_else(|| {
+                    format!("Refused: no terminal has the ID '{}', so Quay can't tell whose project to broadcast to.", id)
+                })?;
+                (info.id, info.name, info.project_path)
+            }
+            BroadcastSender::User { project } => {
+                if project.trim().is_empty() {
+                    return Err("No active project to broadcast to. Open a project first.".to_string());
+                }
+                (USER_SENDER.to_string(), USER_NAME.to_string(), project.clone())
+            }
+        };
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-
-        let clean_text = text.trim().replace("\r\n", " ").replace('\n', " ");
         let pty_prompt = format!("[Broadcast Notice]: {}", clean_text);
         let notices: Vec<A2AMessage> = pty_manager
             .list()
             .into_iter()
-            .filter(|t| t.run_kind.is_peer() && t.claude_status != ClaudeStatus::Exited)
+            .filter(|t| {
+                t.bus_level().is_some()
+                    && t.claude_status != ClaudeStatus::Exited
+                    && t.id != from_terminal
+                    && same_project(&t.project_path, &project)
+            })
             .map(|t| A2AMessage {
                 id: format!("broadcast-{}", Uuid::new_v4().simple()),
-                from_terminal: "broadcast".to_string(),
+                from_terminal: from_terminal.clone(),
                 to_terminal: t.id,
-                from_name: Some("Broadcast".to_string()),
+                from_name: Some(from_name.clone()),
                 to_name: Some(t.name),
                 content: text.to_string(),
                 as_user: false,
+                broadcast: true,
                 timestamp: now,
                 status: A2AMessageStatus::Queued,
                 response: None,
@@ -675,7 +712,7 @@ impl A2ARouter {
 
         // Each notice goes through its target's queue, so a busy peer gets it after its turn.
         // Notices typed now are typed side by side, since each takes the submit delay.
-        std::thread::scope(|scope| {
+        let notices = std::thread::scope(|scope| {
             let sends: Vec<_> = notices
                 .into_iter()
                 .map(|notice| {
@@ -697,7 +734,8 @@ impl A2ARouter {
                 .into_iter()
                 .map(|send| send.join().expect("a broadcast delivery thread panicked"))
                 .collect()
-        })
+        });
+        Ok(Broadcast { from_name, notices })
     }
 
     pub fn get_messages(&self) -> Vec<A2AMessage> {
@@ -926,15 +964,164 @@ mod tests {
         assert_eq!(router.get_messages().len(), 0);
     }
 
+    /// The project `test_terminal` puts a terminal in.
+    const TEST_PROJECT: &str = "E:\\Projects\\Test";
+
+    /// A broadcast from Mission Control to the project `test_terminal` uses.
+    fn from_mission_control() -> BroadcastSender {
+        BroadcastSender::User { project: TEST_PROJECT.to_string() }
+    }
+
     #[test]
     fn test_a2a_broadcast_toast() {
         let router = A2ARouter::new();
         let pty_manager = PtyManager::new();
 
-        let msgs = router.broadcast_toast("Database migration complete", &pty_manager);
+        let sent = router
+            .broadcast_toast("Database migration complete", &from_mission_control(), &pty_manager)
+            .unwrap();
         // PtyManager has 0 sessions initially
-        assert_eq!(msgs.len(), 0);
+        assert_eq!(sent.notices.len(), 0);
+        assert_eq!(sent.from_name, "You");
         assert_eq!(router.get_messages().len(), 0);
+    }
+
+    fn peer_in(id: &str, name: &str, project: &str, status: ClaudeStatus) -> TerminalInfo {
+        let mut t = test_terminal(id, RunKind::Claude, status);
+        t.name = name.to_string();
+        t.project_path = project.to_string();
+        t
+    }
+
+    fn manager_of(terminals: Vec<TerminalInfo>) -> PtyManager {
+        let manager = PtyManager::new();
+        for t in terminals {
+            manager.insert_test_terminal(t);
+        }
+        manager
+    }
+
+    fn reached(sent: &Broadcast) -> Vec<String> {
+        let mut ids: Vec<String> = sent.notices.iter().map(|m| m.to_terminal.clone()).collect();
+        ids.sort();
+        ids
+    }
+
+    const BC_APP: &str = "E:\\Projects\\BcApp";
+
+    #[test]
+    fn a_peers_broadcast_reaches_the_other_peers_in_its_project_only() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![
+            peer_in("term-bc-captain", "release-captain", BC_APP, ClaudeStatus::Idle),
+            peer_in("term-bc-dev", "feature-dev", BC_APP, ClaudeStatus::Idle),
+            // The same project, spelled the way another path source spells it
+            peer_in("term-bc-docs", "docs-writer", "e:/projects/bcapp/", ClaudeStatus::Idle),
+            peer_in("term-bc-elsewhere", "feature-dev", "E:\\Projects\\BcOther", ClaudeStatus::Idle),
+            // A worktree counts as its own project, even one inside the repo folder
+            peer_in("term-bc-worktree", "spike", "E:\\Projects\\BcApp\\.worktrees\\spike", ClaudeStatus::Idle),
+            peer_in("term-bc-gone", "old-dev", BC_APP, ClaudeStatus::Exited),
+        ]);
+
+        let sent = router
+            .broadcast_toast("FREEZE", &BroadcastSender::Peer("term-bc-captain".to_string()), &pty)
+            .unwrap();
+
+        assert_eq!(reached(&sent), ["term-bc-dev", "term-bc-docs"]);
+        assert!(pty.test_input("term-bc-captain").is_empty(), "the caller never gets its own notice");
+        assert!(pty.test_input("term-bc-elsewhere").is_empty());
+        assert!(pty.test_input("term-bc-worktree").is_empty());
+        assert_eq!(pty.test_input("term-bc-dev"), ["[Broadcast Notice]: FREEZE", "\r"]);
+    }
+
+    #[test]
+    fn a_peers_broadcast_credits_the_sender_and_is_tagged_broadcast() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![
+            peer_in("term-bc-cap2", "release-captain", BC_APP, ClaudeStatus::Idle),
+            peer_in("term-bc-dev2", "feature-dev", BC_APP, ClaudeStatus::Idle),
+        ]);
+
+        let sent = router
+            .broadcast_toast("FREEZE", &BroadcastSender::Peer("term-bc-cap2".to_string()), &pty)
+            .unwrap();
+
+        assert_eq!(sent.from_name, "release-captain");
+        let notice = &sent.notices[0];
+        assert_eq!(notice.from_terminal, "term-bc-cap2");
+        assert_eq!(notice.from_name.as_deref(), Some("release-captain"));
+        assert_eq!(notice.to_name.as_deref(), Some("feature-dev"));
+        assert!(notice.broadcast);
+        assert!(!notice.as_user);
+        let recorded = &router.get_messages()[0];
+        assert_eq!(recorded.from_name.as_deref(), Some("release-captain"));
+        assert!(recorded.broadcast);
+    }
+
+    #[test]
+    fn a_broadcast_from_mission_control_reaches_the_active_projects_peers_and_credits_you() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![
+            peer_in("term-bc-mc-a", "planner-agent", BC_APP, ClaudeStatus::Idle),
+            peer_in("term-bc-mc-b", "builder-agent", BC_APP, ClaudeStatus::Working),
+            peer_in("term-bc-mc-other", "planner-agent", "E:\\Projects\\BcOther", ClaudeStatus::Idle),
+        ]);
+
+        let sent = router
+            .broadcast_toast("Roll call", &BroadcastSender::User { project: BC_APP.to_string() }, &pty)
+            .unwrap();
+
+        assert_eq!(reached(&sent), ["term-bc-mc-a", "term-bc-mc-b"]);
+        assert_eq!(sent.from_name, "You");
+        assert!(sent.notices.iter().all(|m| m.from_terminal == "user"
+            && m.from_name.as_deref() == Some("You")
+            && m.broadcast));
+        assert!(pty.test_input("term-bc-mc-other").is_empty());
+    }
+
+    #[test]
+    fn a_message_sent_to_one_peer_is_not_tagged_broadcast() {
+        let router = A2ARouter::new();
+        let msg = router.dispatch(peer_message("term-bc-one", "term-bc-two"), None).unwrap();
+        assert!(!msg.broadcast);
+    }
+
+    #[test]
+    fn a_broadcast_from_a_terminal_quay_doesnt_know_is_refused() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![peer_in("term-bc-known", "feature-dev", BC_APP, ClaudeStatus::Idle)]);
+
+        let err = router
+            .broadcast_toast("FREEZE", &BroadcastSender::Peer("term-bc-closed".to_string()), &pty)
+            .unwrap_err();
+
+        assert!(err.contains("term-bc-closed"), "{err}");
+        assert!(pty.test_input("term-bc-known").is_empty());
+        assert!(router.get_messages().is_empty());
+    }
+
+    #[test]
+    fn a_broadcast_with_no_text_is_refused() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![peer_in("term-bc-blank", "feature-dev", TEST_PROJECT, ClaudeStatus::Idle)]);
+
+        let err = router.broadcast_toast(" \r\n ", &from_mission_control(), &pty).unwrap_err();
+
+        assert!(err.contains("No broadcast text"), "{err}");
+        assert!(pty.test_input("term-bc-blank").is_empty());
+    }
+
+    #[test]
+    fn a_broadcast_from_mission_control_with_no_project_is_refused() {
+        let router = A2ARouter::new();
+        let pty = manager_of(vec![peer_in("term-bc-noproj", "feature-dev", TEST_PROJECT, ClaudeStatus::Idle)]);
+
+        let err = router
+            .broadcast_toast("Roll call", &BroadcastSender::User { project: "  ".to_string() }, &pty)
+            .unwrap_err();
+
+        assert!(err.contains("No active project"), "{err}");
+        assert!(pty.test_input("term-bc-noproj").is_empty());
     }
 
     fn manager_with(terminals: &[(&str, RunKind, ClaudeStatus)]) -> PtyManager {
@@ -1563,7 +1750,9 @@ mod tests {
         ]);
 
         let notices: HashMap<String, A2AMessage> = router
-            .broadcast_toast("Release is frozen", &pty)
+            .broadcast_toast("Release is frozen", &from_mission_control(), &pty)
+            .unwrap()
+            .notices
             .into_iter()
             .map(|m| (m.to_terminal.clone(), m))
             .collect();
@@ -1596,7 +1785,9 @@ mod tests {
         ]);
 
         let mut reached: Vec<String> = router
-            .broadcast_toast("Release is frozen", &pty)
+            .broadcast_toast("Release is frozen", &from_mission_control(), &pty)
+            .unwrap()
+            .notices
             .into_iter()
             .map(|m| m.to_terminal)
             .filter(|id| id.starts_with("term-lvl-bc-"))
@@ -1690,7 +1881,11 @@ mod tests {
     fn a_broadcast_notice_is_completed_by_the_turn_it_starts() {
         let router = A2ARouter::new();
         let pty = manager_with(&[("term-tp-bc", RunKind::Claude, ClaudeStatus::Idle)]);
-        let notice = router.broadcast_toast("Release is frozen", &pty).remove(0);
+        let notice = router
+            .broadcast_toast("Release is frozen", &from_mission_control(), &pty)
+            .unwrap()
+            .notices
+            .remove(0);
 
         assert!(router.resolve_pending_reply("term-tp-bc", "an older answer".to_string()).is_none());
         assert_eq!(answer_turn(&router, "term-tp-bc", "noted").unwrap().id, notice.id);

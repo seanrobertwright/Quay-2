@@ -50,6 +50,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
   const [a2aNotification, setA2aNotification] = useState<{
     fromName: string;
     content: string;
+    broadcast: boolean;
   } | null>(null);
 
   const isAgent = isAgentRunKind(terminal?.run_kind);
@@ -63,24 +64,14 @@ export const TerminalView: FC<TerminalViewProps> = ({
       from_name?: string | null;
       to_name?: string | null;
       content: string;
+      broadcast?: boolean;
     }>("a2a-message-dispatched", (event) => {
+      // A broadcast notice is dispatched to each peer it reaches, so only those show it.
       if (event.payload.to_terminal === terminalId) {
         setA2aNotification({
           fromName: event.payload.from_name || event.payload.from_terminal,
           content: event.payload.content,
-        });
-        if (timeout) clearTimeout(timeout);
-        timeout = setTimeout(() => {
-          setA2aNotification(null);
-        }, 10000);
-      }
-    });
-
-    const unlistenToastPromise = listen<string>("a2a-toast", (event) => {
-      if (isAgent) {
-        setA2aNotification({
-          fromName: "Swarm Broadcast",
-          content: event.payload,
+          broadcast: event.payload.broadcast ?? false,
         });
         if (timeout) clearTimeout(timeout);
         timeout = setTimeout(() => {
@@ -91,10 +82,9 @@ export const TerminalView: FC<TerminalViewProps> = ({
 
     return () => {
       unlistenDispatchedPromise.then((unlisten) => unlisten());
-      unlistenToastPromise.then((unlisten) => unlisten());
       if (timeout) clearTimeout(timeout);
     };
-  }, [terminalId, isAgent]);
+  }, [terminalId]);
 
   const handleToggleSearch = useCallback(() => {
     setIsSearchOpen((prev) => !prev);
@@ -351,7 +341,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
               </span>
               <span className="font-semibold text-[#58a6ff] shrink-0">
-                Incoming A2A Task from {a2aNotification.fromName}:
+                {a2aNotification.broadcast ? "Swarm Broadcast" : "Incoming A2A Task"} from {a2aNotification.fromName}:
               </span>
               <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
                 {a2aNotification.content}

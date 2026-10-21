@@ -51,21 +51,14 @@ export const TerminalRow = ({
       from_terminal: string;
       to_terminal: string;
       content: string;
+      broadcast?: boolean;
     }>("a2a-message-dispatched", (event) => {
+      // A broadcast notice is dispatched to each peer it reaches, so only those show it.
       if (event.payload.to_terminal === terminal.id) {
         setHasRecentA2A(true);
-        setRecentA2APrompt(event.payload.content);
-        if (timeout) clearTimeout(timeout);
-        timeout = setTimeout(() => {
-          setHasRecentA2A(false);
-        }, 9000);
-      }
-    });
-
-    const unlistenToastPromise = listen<string>("a2a-toast", (event) => {
-      if (isAgent) {
-        setHasRecentA2A(true);
-        setRecentA2APrompt(`Broadcast: ${event.payload}`);
+        setRecentA2APrompt(
+          event.payload.broadcast ? `Broadcast: ${event.payload.content}` : event.payload.content,
+        );
         if (timeout) clearTimeout(timeout);
         timeout = setTimeout(() => {
           setHasRecentA2A(false);
@@ -75,10 +68,9 @@ export const TerminalRow = ({
 
     return () => {
       unlistenDispatchedPromise.then((unlisten) => unlisten());
-      unlistenToastPromise.then((unlisten) => unlisten());
       if (timeout) clearTimeout(timeout);
     };
-  }, [terminal.id, isAgent]);
+  }, [terminal.id]);
 
   useEffect(() => {
     setEditValue(terminal.name);
