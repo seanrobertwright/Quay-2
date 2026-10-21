@@ -2,7 +2,9 @@
 //! tutorial's recordings folder.
 //!
 //! - `<cli>-<n>.cast.gz`: the terminal stream as an asciicast v2 file. Its header carries the
-//!   terminal's `width` and `height`; its events are output (`o`), keystrokes (`i`), resizes
+//!   terminal's `width` and `height`, when the run started as `timestamp` (Unix seconds) and,
+//!   when the real CLI answered `--version`, the first line of its answer as `cli_version`; its
+//!   events are output (`o`), keystrokes (`i`), resizes
 //!   (`r`), step markers (`m`) and, when the CLI exited by itself, its exit code (`x`, as
 //!   asciicast v3 names it).
 //!
@@ -36,6 +38,17 @@ pub const HTTP_LOG: &str = "http.jsonl";
 pub const MARKERS: &str = ".step-markers";
 /// What a recording has in place of the recorded terminal's id.
 pub const TAG_PLACEHOLDER: &str = "{{tag}}";
+
+/// In `QUAY_REPLAY_STATE`, the file a capture script writes the replay speed to, as a number:
+/// `1` plays in real time, `10` ten times as fast. Every replay in the capture reads it.
+pub const SPEED: &str = "speed";
+/// In `QUAY_REPLAY_STATE`, the file a capture script writes a step marker's name to. A replay
+/// that reaches that marker, or a later one, holds there until the file names a later step or
+/// is removed. With no file, nothing holds.
+pub const RUN_TO: &str = "run-to";
+/// The extension of the file in `QUAY_REPLAY_STATE` where a replay lists, one a line, each step
+/// marker it has reached: `<recording>.markers`.
+pub const REACHED: &str = "markers";
 
 /// What an event in a recording's asciicast is, and the code the file gives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +84,16 @@ impl CastCode {
     }
 }
 
+/// What a recording's asciicast header says about its run.
+pub struct Header {
+    pub cols: u16,
+    pub rows: u16,
+    /// When the run started, in Unix seconds.
+    pub timestamp: Option<u64>,
+    /// The first line of the real CLI's answer to `--version`.
+    pub cli_version: Option<String>,
+}
+
 pub struct Recorder {
     start: Instant,
     cast_path: PathBuf,
@@ -95,12 +118,19 @@ impl Recorder {
     /// Starts the next recording for `cli` in `dir`. `secret` (the terminal's bearer token) is
     /// blanked out of everything recorded, and `tag` (the terminal's id) out of the HTTP log;
     /// either may be empty.
-    pub fn create(dir: &Path, cli: &str, cols: u16, rows: u16, secret: &str, tag: &str) -> Result<Recorder, String> {
+    pub fn create(dir: &Path, cli: &str, header: Header, secret: &str, tag: &str) -> Result<Recorder, String> {
         check_recordings_dir(dir)?;
         std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         let (cast_path, cast) = claim(dir, cli)?;
         let mut cast = BufWriter::new(cast);
-        let header = serde_json::json!({ "version": 2, "width": cols, "height": rows });
+        let mut header_json = serde_json::json!({ "version": 2, "width": header.cols, "height": header.rows });
+        if let Some(timestamp) = header.timestamp {
+            header_json["timestamp"] = timestamp.into();
+        }
+        if let Some(version) = header.cli_version {
+            header_json["cli_version"] = version.into();
+        }
+        let header = header_json;
         writeln!(cast, "{header}").and_then(|_| cast.flush()).map_err(|e| e.to_string())?;
         let http_path = cast_path.with_extension(HTTP_LOG);
         let http = File::create(&http_path).map_err(|e| format!("cannot create {}: {e}", http_path.display()))?;
@@ -236,6 +266,11 @@ pub fn is_marker_name(name: &str) -> bool {
         && b[1].is_ascii_digit()
         && b[2] == b'-'
         && name[3..].split('-').all(|w| !w.is_empty() && w.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+}
+
+/// A step marker's step number, the `NN` its name starts with.
+pub fn marker_step(name: &str) -> Option<u32> {
+    is_marker_name(name).then(|| name[..2].parse().ok()).flatten()
 }
 
 /// Appends a step marker to the recordings folder `dir`, for the recordings in progress there.
@@ -550,7 +585,8 @@ mod tests {
     fn a_token_split_across_reads_of_the_terminal_is_not_recorded() {
         let dir = std::env::temp_dir().join(format!("quay-record-replay-split-token-{}", std::process::id()));
         let token = "tok-0123456789abcdef";
-        let recorder = Recorder::create(&dir, "claude", 80, 24, token, "").unwrap();
+        let header = Header { cols: 80, rows: 24, timestamp: None, cli_version: None };
+        let recorder = Recorder::create(&dir, "claude", header, token, "").unwrap();
         recorder.output(b"token: tok-0123");
         recorder.output(b"456789abcdef and tok-");
         recorder.output(b"012 is not it");

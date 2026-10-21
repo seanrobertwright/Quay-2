@@ -5,20 +5,29 @@
 use std::io::{BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::console;
 use crate::http;
-use crate::recording::{self, Recorder};
+use crate::recording::{self, Header, Recorder};
 
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
     let (cols, rows) = console::size();
     let live = http::Live::from_env()?;
-    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, &live.token, &live.tag)?);
+    // Asked before the clock starts, so the run starts when the recording does.
+    let cli_version = cli_version(&real);
+    let header = Header {
+        cols,
+        rows,
+        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()),
+        cli_version,
+    };
+    let recorder = Arc::new(Recorder::create(record_dir, cli, header, &live.token, &live.tag)?);
     let proxy = live.bridge.as_ref().map(|host| start_proxy(host, recorder.clone())).transpose()?;
     watch_markers(record_dir.join(recording::MARKERS), recorder.clone());
     let pair = native_pty_system()
@@ -105,6 +114,39 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Res
     recorder.exit(code);
     recorder.finish()?;
     Ok(code)
+}
+
+/// The first line the real CLI prints for `--version`, so a capture can say which version made
+/// the recording. None when it fails, prints nothing, or takes longer than ten seconds in all;
+/// a process the CLI left holding its output is not waited for.
+fn cli_version(real: &Path) -> Option<String> {
+    let mut child = Command::new(real)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (sent, output) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.read_to_string(&mut text);
+        let _ = sent.send(text);
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                return None;
+            }
+        }
+    }
+    let text = output.recv_timeout(deadline.saturating_duration_since(Instant::now())).ok()?;
+    text.lines().map(str::trim).find(|line| !line.is_empty()).map(str::to_string)
 }
 
 /// The real CLI `name` resolves to on PATH, skipping this tool wherever it appears.

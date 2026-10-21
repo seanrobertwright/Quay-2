@@ -53,6 +53,12 @@ export function formatDateStamp(ms: number): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
+/** A UTC calendar date, e.g. "2026-10-21", the same on every machine. */
+export function formatUtcDateStamp(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
 /**
  * Whether text is a calendar date written "YYYY-MM-DD", such as "2026-10-21". The digits are read
  * as they are, with no time zone; "2026-02-30" is not a date.
