@@ -30,4 +30,5 @@ docs/public/starters/
 *.sw?
 .omo/
 src-tauri/.omo/
-.claude/
+.claude/*
+!.claude/skills/

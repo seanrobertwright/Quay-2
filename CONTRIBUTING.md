@@ -121,6 +121,16 @@ pnpm docs:build
 
 Before a tutorial is published, it passes test runs: the maintainer follows its page by hand in a dedicated Windows account. `pnpm docs:test-run <slug>` adds each run's section to the tutorial's record, `examples/tutorials/<slug>/test-runs.md`. Setting up the account and doing a run are covered in `scripts/test-runs/README.md`.
 
+### 5. Fresh-eyes read of a tutorial page
+
+Before the first test run of a tutorial's new run fingerprint, and on any pull request that changes a tutorial page's wording, run a fresh-eyes read of the page:
+
+```powershell
+pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
+```
+
+It builds the site and hands only the built page's text, screenshots and alt text to a new `claude -p` reader. The reader's system prompt is the fixed brief in `scripts/fresh-eyes/brief.md`. It has no tools, no settings, no MCP servers and no `CLAUDE.md`, and it runs in a new folder outside the repo that holds only what it is given. It prints findings tied to a step and a quoted line, ready for the run's section of the tutorial's `test-runs.md`, where each one is marked fixed or dismissed with a reason. The `fresh-eyes-read` project skill in `.claude/skills/` runs it the same way. It needs Claude Code signed in, so it runs locally and never in CI.
+
 ---
 
 ## Contribution Workflow

@@ -31,4 +31,8 @@ pnpm docs:tutorials
 pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
+
+# 6. Before a tutorial's first test run, or when a pull request changes its wording:
+#    a fresh-eyes read of the built page by a new agent that sees only the page
+pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
 ```
