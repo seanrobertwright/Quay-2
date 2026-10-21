@@ -1,7 +1,7 @@
 # Swarm 1: Glance fixture
 
 ::: glance
-- **Time** ~5 min
+- **Time**
 - **Agents** 1 × Claude
 - **Level** Starter
 :::

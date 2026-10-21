@@ -127,6 +127,12 @@ test('an at-a-glance strip without Time, Tokens, Agents and Level tiles, in that
   assert.deepEqual(checkStepCards(await parse('fixtures/glance.md')), [{ rule: 'glance', step: null, title: null }]);
 });
 
+test('a Time or Tokens tile with a value typed in breaks glance-generated', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/glance-generated.md')), [
+    { rule: 'glance-generated', step: null, title: null },
+  ]);
+});
+
 test('a Level other than Starter, Intermediate or Advanced breaks glance-level', async () => {
   assert.deepEqual(checkStepCards(await parse('fixtures/glance-level.md')), [
     { rule: 'glance-level', step: null, title: null },
@@ -167,8 +173,8 @@ test('page parts out of place break their own rule', () => {
       ':::',
       "**You'll learn:** too late.",
       '::: glance',
-      '- **Time** ~5 min',
-      '- **Tokens** ~5k',
+      '- **Time**',
+      '- **Tokens**',
       '- **Agents** 1 × Claude',
       '- **Level** Starter',
       ':::',
@@ -189,7 +195,7 @@ test('the page parts render as the glance strip, the Before you start checklist 
   const html = md.render(
     [
       '::: glance',
-      '- **Time** ~5 min',
+      '- **Agents** 1 × Claude',
       '- **Level** Starter',
       ':::',
       '::: before',
@@ -203,7 +209,7 @@ test('the page parts render as the glance strip, the Before you start checklist 
     ].join('\n'),
     {},
   );
-  assert.match(html, /^<div class="tutorial-glance">\n<ul>\n<li><strong>Time<\/strong> ~5 min<\/li>/);
+  assert.match(html, /^<div class="tutorial-glance">\n<ul>\n<li><strong>Agents<\/strong> 1 × Claude<\/li>/);
   assert.match(
     html,
     /<div class="tutorial-checklist">\n<h2 id="before-you-start" tabindex="-1">Before you start .*?<\/h2>\n<ul>\n<li><label><input type="checkbox"> <span><strong>Quay 2<\/strong> is installed.<\/span><\/label><\/li>\n<li><label><input type="checkbox"> <span>Claude Code is signed in.<\/span><\/label><\/li>\n<\/ul>\n<\/div>/,

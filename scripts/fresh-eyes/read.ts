@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import siteConfig from '../../docs/.vitepress/config.mts';
+import { tutorialSlugOf } from '../../docs/.vitepress/tutorials.ts';
 import type { ShownImage } from './fresh-eyes.ts';
 import { checkFindings, extractPage, formatFindings, imageSource, parseReaderOutput, readerArgs, readerEnv, readerMessage } from './fresh-eyes.ts';
 
@@ -64,10 +65,17 @@ function git(args: string[]): string {
   return run.stdout.trim();
 }
 
-function build(): void {
+function build(pages: string[]): void {
   console.error('fresh-eyes: building the docs site with pnpm docs:build');
+  // The read comes before a page's test runs, so its tutorials build as drafts, past the test-run gate.
+  const drafts = [process.env.QUAY_TUTORIAL_DRAFT ?? '', ...pages.map(tutorialSlugOf)].filter(Boolean).join(',');
   // One command string, since pnpm is a .cmd shim on Windows and only a shell can run it.
-  const run = spawnSync('pnpm run docs:build', { cwd: root, shell: true, stdio: ['ignore', process.stderr, process.stderr] });
+  const run = spawnSync('pnpm run docs:build', {
+    cwd: root,
+    shell: true,
+    env: { ...process.env, QUAY_TUTORIAL_DRAFT: drafts },
+    stdio: ['ignore', process.stderr, process.stderr],
+  });
   if (run.status !== 0) fail('pnpm docs:build failed, so there is no built page to read.');
 }
 
@@ -137,7 +145,7 @@ function readPage(page: string, base: string, model: string | null): boolean {
 const options = parseArgs(process.argv.slice(2));
 const config = await siteConfig({ command: 'build', mode: 'production' });
 const base = config.base ?? '/';
-build();
+build(options.pages);
 for (const page of options.pages) {
   if (!existsSync(builtPage(page))) fail(`docs/${page} is not in the built site. Pages under docs/_examples/ are left out of docs:build.`);
 }

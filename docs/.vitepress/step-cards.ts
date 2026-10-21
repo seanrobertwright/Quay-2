@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
+import { tutorialSlugOf } from './tutorials.ts';
 
 type Token = ReturnType<MarkdownRenderer['parse']>[number];
 type BlockRule = Parameters<MarkdownRenderer['block']['ruler']['before']>[2];
@@ -25,7 +26,10 @@ const LABELS: Record<SlotName, string> = {
   done: 'You’re done when',
 };
 
-const GLANCE_TILES = ['Time', 'Tokens', 'Agents', 'Level'];
+const GLANCE_TILES = ['Time', 'Tokens', 'Agents', 'Level'] as const;
+export type GlanceTile = (typeof GLANCE_TILES)[number];
+/** The tiles the page leaves empty, for the build to write from the tutorial's test runs. */
+const GENERATED_TILES: readonly GlanceTile[] = ['Time', 'Tokens'];
 const LEVELS = ['Starter', 'Intermediate', 'Advanced'];
 const BEFORE_YOU_START = 'Before you start';
 const NEXT_UP = 'Next up';
@@ -61,7 +65,8 @@ export const STEP_CARD_RULES = {
   'page-title': 'the title reads <Series> <n>: <Title>, for example "A2A 1: Hello, A2A"',
   'first-step': 'step 1 is "Get the starter project"',
   'no-troubleshooting': `there is no troubleshooting section; each fix is an ${LABELS.ifnot} in the step it belongs to`,
-  glance: `an at-a-glance strip comes before step 1: "::: glance" holding one list of the tiles ${GLANCE_TILES.map((tile) => `**${tile}**`).join(', ')}, in that order, each followed by its value`,
+  glance: `an at-a-glance strip comes before step 1: "::: glance" holding one list of the tiles ${GLANCE_TILES.map((tile) => `**${tile}**`).join(', ')}, in that order`,
+  'glance-generated': `the ${GENERATED_TILES.map((tile) => `**${tile}**`).join(' and ')} tiles are left empty, since the build writes them from the tutorial's test runs, and every other tile is followed by its value`,
   'glance-level': `the Level tile is ${LEVELS.slice(0, -1).join(', ')} or ${LEVELS.at(-1)}`,
   'you-will-learn': `a "**You'll learn:** ..." line comes before step 1`,
   'before-you-start': `a ${BEFORE_YOU_START} checklist comes before step 1: "::: before" holding "## ${BEFORE_YOU_START}" and one list`,
@@ -184,7 +189,7 @@ export function registerStepCardContainers(md: MarkdownRenderer): void {
   // clip instead, with the still as its poster and the caption as its text alternative; the theme's
   // `v-step-card-clip` directive starts it unless the reader asks for reduced motion.
   md.core.ruler.push('step_card_shots', (state) => {
-    if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
+    if (!usesStepCards(state.tokens)) return;
     const { path } = state.env as PageEnv;
     let files: Set<string> | null = null;
     for (const step of readPage(state.tokens).steps) {
@@ -433,6 +438,23 @@ export function readStepCardRecord(tokens: Token[], src: string): StepCardRecord
   };
 }
 
+/** A glance tile's bold label and the value after it, or null for an item that isn't a tile. */
+function readTile(inline: Token): { name: string; value: string | null } | null {
+  const tile = /^\*\*([^*]+)\*\*(?:\s+(\S[\s\S]*))?$/.exec(inline.content);
+  return tile && { name: tile[1], value: tile[2] ?? null };
+}
+
+/** Whether a page uses the step-card containers, which makes it a tutorial page. */
+export function usesStepCards(tokens: Token[]): boolean {
+  return tokens.some((token) => CONTAINER_TOKENS.has(token.type));
+}
+
+/** The inline token holding a tile of the page's glance strip, or null when the strip has no such tile. */
+export function glanceTile(tokens: Token[], name: GlanceTile): Token | null {
+  const glance = readPage(tokens).parts.find((part) => part.name === 'glance');
+  return glance?.tokens.find((token) => token.type === 'inline' && readTile(token)?.name === name) ?? null;
+}
+
 /** Checks the page parts around the steps: the glance strip, You'll learn, Before you start and Next up. */
 function checkPageParts({ steps, parts, learnLines }: Page): StepCardRule[] {
   const broken: StepCardRule[] = [];
@@ -444,13 +466,14 @@ function checkPageParts({ steps, parts, learnLines }: Page): StepCardRule[] {
   const isList = (children: Token[]) => children.length === 1 && children[0].type === 'bullet_list_open';
 
   const glance = only('glance', beforeSteps);
-  const tiles = (glance?.tokens ?? [])
-    .filter((token) => token.type === 'inline')
-    .map((token) => /^\*\*([^*]+)\*\*\s+(\S.*)$/.exec(token.content));
-  if (!glance || !isList(glance.children) || tiles.map((tile) => tile?.[1]).join() !== GLANCE_TILES.join()) {
+  const tiles = (glance?.tokens ?? []).filter((token) => token.type === 'inline').map(readTile);
+  if (!glance || !isList(glance.children) || tiles.map((tile) => tile?.name).join() !== GLANCE_TILES.join()) {
     broken.push('glance');
-  } else if (!LEVELS.includes(tiles[GLANCE_TILES.indexOf('Level')]?.[2] ?? '')) {
-    broken.push('glance-level');
+  } else {
+    const generated = (name: string) => (GENERATED_TILES as readonly string[]).includes(name);
+    if (tiles.some((tile) => tile !== null && generated(tile.name) !== (tile.value === null))) broken.push('glance-generated');
+    const level = tiles[GLANCE_TILES.indexOf('Level')]?.value ?? null;
+    if (level !== null && !LEVELS.includes(level)) broken.push('glance-level');
   }
 
   if (!learnLines.some(beforeSteps)) broken.push('you-will-learn');
@@ -582,8 +605,8 @@ function sidecarQuayVersion(json: string): string | null {
 /** Checks that the tutorial at `relativePath` has a sidecar manifest recording `release` as its captured Quay version. */
 function checkReleaseSidecar(relativePath: string, sidecars: string, release: string): StepCardViolation[] {
   const broken = { rule: 'release-sidecar', step: null, title: null } as const;
-  const slug = /^tutorials\/[^/]+\/([^/]+)\/index\.md$/.exec(relativePath.replaceAll('\\', '/'))?.[1];
-  if (slug === undefined) return [broken];
+  const slug = tutorialSlugOf(relativePath);
+  if (slug === null) return [broken];
   let sidecar: string | null;
   try {
     sidecar = readFileSync(join(sidecars, slug, 'sidecar.json'), 'utf8');
@@ -624,7 +647,7 @@ export function stepCardsPlugin({ release, sidecars }: StepCardOptions): (md: Ma
   return (md) => {
     registerStepCardContainers(md);
     md.core.ruler.push('step_card_check', (state) => {
-      if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
+      if (!usesStepCards(state.tokens)) return;
       const env = state.env as PageEnv;
       const violations = checkStepCards(state.tokens);
       if (env.path) violations.push(...checkTutorialFolder(state.tokens, readdirSync(dirname(env.path))));
