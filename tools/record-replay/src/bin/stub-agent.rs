@@ -8,6 +8,11 @@ use std::io::{BufRead, Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+// The tool's own console module: the stub reads its terminal's size the way the tool does.
+#[allow(dead_code)]
+#[path = "../console.rs"]
+mod console;
+
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
@@ -59,29 +64,9 @@ fn mcp_server(args: &[String], token: &str) -> Option<(String, String, String)> 
     Some((host.to_string(), format!("/{path}"), auth))
 }
 
-#[cfg(windows)]
-fn console_size() -> (i16, i16) {
-    use windows_sys::Win32::System::Console::{
-        CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo, GetStdHandle, STD_OUTPUT_HANDLE,
-    };
-    unsafe {
-        let mut info: CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
-        if GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &mut info) == 0 {
-            return (0, 0);
-        }
-        let w = info.srWindow;
-        (w.Right - w.Left + 1, w.Bottom - w.Top + 1)
-    }
-}
-
-#[cfg(not(windows))]
-fn console_size() -> (i16, i16) {
-    (0, 0)
-}
-
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (cols, rows) = console_size();
+    let (cols, rows) = console::size();
     let name = std::env::current_exe().ok().and_then(|p| Some(p.file_stem()?.to_string_lossy().to_string()));
     println!("\x1b[32mstub-agent: hello from the real CLI ({})\x1b[0m", name.unwrap_or_default());
     println!("stub-agent: size {cols}x{rows}");
