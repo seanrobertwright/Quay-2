@@ -600,6 +600,7 @@ export function App() {
       <A2APanel
         isOpen={isA2AOpen}
         terminals={terminals}
+        activeProject={activeProject}
         onClose={() => setIsA2AOpen(false)}
       />
 

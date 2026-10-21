@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, FC } from "react";
+import { useState, useEffect, useId, FormEvent, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { isSamePath } from "../../utils/paths";
 
 interface A2AMessage {
   id: string;
@@ -36,19 +37,30 @@ interface A2AMessage {
 interface A2APanelProps {
   isOpen: boolean;
   terminals: TerminalInfo[];
+  activeProject: string;
   onClose: () => void;
 }
+
+const agentOptionLabel = (t: TerminalInfo) =>
+  `${t.name} (${t.run_kind}) • [${t.claude_status.toUpperCase()}] ${t.task_title ? `("${t.task_title}")` : ""}`;
 
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
+  activeProject,
   onClose,
 }) => {
   const agentTerminals = terminals.filter((t) => isAgentRunKind(t.run_kind));
-  const [fromTerminal, setFromTerminal] = useState(agentTerminals[0]?.id || "");
-  const [toTerminal, setToTerminal] = useState(agentTerminals[1]?.id || "");
+  // From Agent and To Agent offer only the active project's agents, scoped the way the
+  // stage scopes its terminals: a worktree counts as its own project.
+  const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
+  const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
+  const [toTerminal, setToTerminal] = useState(projectAgents[1]?.id || "");
   const [prompt, setPrompt] = useState("");
   const [asUser, setAsUser] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const fromSelectId = useId();
+  const toSelectId = useId();
   const [broadcastText, setBroadcastText] = useState("");
   const [messages, setMessages] = useState<A2AMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -62,14 +74,19 @@ export const A2APanel: FC<A2APanelProps> = ({
     return term ? term.name : idOrName;
   };
 
+  // Keep From Agent and To Agent on agents of the active project. Unless the message is
+  // dispatched as the user, To Agent never holds the agent From Agent holds: changing From
+  // Agent to the agent To Agent holds moves To Agent to another peer.
   useEffect(() => {
-    if (agentTerminals.length > 0 && !fromTerminal) {
-      setFromTerminal(agentTerminals[0].id);
-    }
-    if (agentTerminals.length > 1 && !toTerminal) {
-      setToTerminal(agentTerminals[1].id);
-    }
-  }, [agentTerminals, fromTerminal, toTerminal]);
+    const inProject = (id: string) => projectAgents.some((t) => t.id === id);
+    const from = inProject(fromTerminal) ? fromTerminal : projectAgents[0]?.id || "";
+    const to =
+      inProject(toTerminal) && (asUser || toTerminal !== from)
+        ? toTerminal
+        : projectAgents.find((t) => t.id !== from)?.id || "";
+    if (from !== fromTerminal) setFromTerminal(from);
+    if (to !== toTerminal) setToTerminal(to);
+  }, [terminals, activeProject, asUser, fromTerminal, toTerminal]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -133,6 +150,7 @@ export const A2APanel: FC<A2APanelProps> = ({
     if (!fromTerminal || !toTerminal || !prompt.trim()) return;
 
     setIsSending(true);
+    setSendError(null);
     try {
       await invoke("a2a_send_prompt", {
         request: {
@@ -146,6 +164,7 @@ export const A2APanel: FC<A2APanelProps> = ({
       await loadMessages();
     } catch (err) {
       console.error("A2A dispatch error:", err);
+      setSendError(String(err));
     } finally {
       setIsSending(false);
     }
@@ -272,45 +291,58 @@ export const A2APanel: FC<A2APanelProps> = ({
               <span>Dispatch Prompt / Handoff Task</span>
             </h3>
 
-            {agentTerminals.length < 2 ? (
+            {projectAgents.length < 2 ? (
               <div className="p-3 bg-[#161b22] border border-[#30363d] rounded text-xs text-[#8b949e] flex items-center gap-2">
                 <Clock className="w-4 h-4 text-[#d29922] shrink-0" />
                 <span>
-                  Spawn at least <strong>two AI agent terminals (Claude, Antigravity, or Codex)</strong> to test autonomous agent-to-agent messaging and task handoffs.
+                  Spawn at least <strong>two AI agent terminals (Claude, Antigravity, or Codex)</strong> in the active project to test autonomous agent-to-agent messaging and task handoffs.
                 </span>
               </div>
             ) : (
               <form onSubmit={handleSendPrompt} className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
+                    <label htmlFor={fromSelectId} className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
                     <select
-                      value={fromTerminal}
-                      onChange={(e) => setFromTerminal(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
+                      id={fromSelectId}
+                      value={asUser ? "" : fromTerminal}
+                      disabled={asUser}
+                      onChange={(e) => {
+                        setFromTerminal(e.target.value);
+                        setSendError(null);
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {agentTerminals.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
-                        </option>
-                      ))}
+                      {asUser ? (
+                        <option value="">You</option>
+                      ) : (
+                        projectAgents.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {agentOptionLabel(t)}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
                   <ArrowRight className="w-4 h-4 text-[#8b949e] mt-5 shrink-0" />
 
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">To Agent</label>
+                    <label htmlFor={toSelectId} className="block text-[11px] text-[#8b949e] mb-1 font-medium">To Agent</label>
                     <select
+                      id={toSelectId}
                       value={toTerminal}
-                      onChange={(e) => setToTerminal(e.target.value)}
+                      onChange={(e) => {
+                        setToTerminal(e.target.value);
+                        setSendError(null);
+                      }}
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
-                      {agentTerminals
-                        .filter((t) => t.id !== fromTerminal)
+                      {projectAgents
+                        .filter((t) => asUser || t.id !== fromTerminal)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                            {agentOptionLabel(t)}
                           </option>
                         ))}
                     </select>
@@ -363,6 +395,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                         handleSendPrompt();
                       }
                     }}
+                    aria-label="Message to dispatch"
                     placeholder="Task instruction or prompt to dispatch to peer agent... (Ctrl+Enter to send)"
                     rows={2}
                     className="w-full p-2.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
@@ -374,11 +407,14 @@ export const A2APanel: FC<A2APanelProps> = ({
                     <input
                       type="checkbox"
                       checked={asUser}
-                      onChange={(e) => setAsUser(e.target.checked)}
+                      onChange={(e) => {
+                        setAsUser(e.target.checked);
+                        setSendError(null);
+                      }}
                       className="rounded bg-[#161b22] border-[#30363d]"
                     />
                     <UserCheck className="w-3.5 h-3.5" />
-                    <span>Send directly without peer attribution (as user prompt)</span>
+                    <span>Dispatch as User</span>
                   </label>
 
                   <button
@@ -390,6 +426,15 @@ export const A2APanel: FC<A2APanelProps> = ({
                     <span>{isSending ? "Dispatching..." : "Dispatch Task"}</span>
                   </button>
                 </div>
+
+                {sendError && (
+                  <div
+                    role="alert"
+                    className="text-xs text-[#ff7b72] bg-[#da3633]/15 border border-[#da3633]/40 rounded px-2.5 py-1"
+                  >
+                    {sendError}
+                  </div>
+                )}
               </form>
             )}
           </div>
@@ -521,8 +566,9 @@ export const A2APanel: FC<A2APanelProps> = ({
                       <button
                         type="button"
                         onClick={() => handleCopy(`content-${m.id}`, m.content)}
-                        className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 p-1 text-[#8b949e] hover:text-white rounded bg-[#21262d] transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[#58a6ff] absolute top-2 right-2 p-1 text-[#8b949e] hover:text-white rounded bg-[#21262d] transition-opacity"
                         title="Copy message"
+                        aria-label="Copy message"
                       >
                         {copiedKey === `content-${m.id}` ? (
                           <Check className="w-3 h-3 text-[#3fb950]" />
@@ -539,7 +585,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                           <button
                             type="button"
                             onClick={() => handleCopy(`resp-${m.id}`, m.response!)}
-                            className="opacity-0 group-hover:opacity-100 text-[#58a6ff] hover:underline flex items-center gap-0.5"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[#58a6ff] rounded text-[#58a6ff] hover:underline flex items-center gap-0.5"
                           >
                             {copiedKey === `resp-${m.id}` ? (
                               <span className="text-[#3fb950]">Copied!</span>
