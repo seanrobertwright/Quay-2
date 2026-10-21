@@ -160,14 +160,58 @@ struct HeldDelivery {
     text: String,
 }
 
-/// Each terminal's delivery queue, and the terminals Quay is typing a message into now.
+/// Which of a terminal's messages its turns answer.
+#[derive(Default)]
+struct TurnPairing {
+    /// Messages typed in whose turn hasn't started yet, oldest first.
+    awaiting_turn: VecDeque<String>,
+    /// The message the running turn answers, when a delivered message started it.
+    answering: Option<String>,
+}
+
+/// Each terminal's delivery queue, the terminals Quay is typing a message into now, and
+/// which message each terminal's turns answer.
 #[derive(Default)]
 struct DeliveryQueues {
     waiting: HashMap<String, VecDeque<HeldDelivery>>,
     typing: HashSet<String>,
+    turns: HashMap<String, TurnPairing>,
 }
 
 impl DeliveryQueues {
+    /// Marks `terminal_id` as being typed into with `message_id`, which the next turn that
+    /// starts there answers. Recorded before the Enter goes in, so that turn's start can't
+    /// arrive first.
+    fn start_typing(&mut self, terminal_id: &str, message_id: &str) {
+        self.typing.insert(terminal_id.to_string());
+        self.turns
+            .entry(terminal_id.to_string())
+            .or_default()
+            .awaiting_turn
+            .push_back(message_id.to_string());
+    }
+
+    /// Ends the typing `start_typing` began. A message that couldn't be typed awaits no turn.
+    fn finish_typing(&mut self, terminal_id: &str, message_id: &str, typed: bool) {
+        self.typing.remove(terminal_id);
+        if !typed {
+            if let Some(pairing) = self.turns.get_mut(terminal_id) {
+                pairing.awaiting_turn.retain(|id| id != message_id);
+            }
+        }
+    }
+
+    /// Pairs the turn starting on `terminal_id` with the oldest message awaiting one.
+    fn start_turn(&mut self, terminal_id: &str) {
+        let pairing = self.turns.entry(terminal_id.to_string()).or_default();
+        pairing.answering = pairing.awaiting_turn.pop_front();
+    }
+
+    /// The message the turn ending on `terminal_id` answers, if a delivered message started it.
+    fn end_turn(&mut self, terminal_id: &str) -> Option<String> {
+        self.turns.get_mut(terminal_id)?.answering.take()
+    }
+
     /// Whether a new message to `terminal_id` must queue behind one already in hand.
     fn occupied(&self, terminal_id: &str) -> bool {
         self.typing.contains(terminal_id)
@@ -239,6 +283,10 @@ impl A2ARouter {
     ) -> Result<A2AMessage, String> {
         let Some(pty) = pty_manager else {
             message.status = A2AMessageStatus::Dispatched;
+            let mut queues = self.deliveries.lock();
+            queues.start_typing(&message.to_terminal, &message.id);
+            queues.finish_typing(&message.to_terminal, &message.id, true);
+            drop(queues);
             self.messages.lock().push(message.clone());
             return Ok(message);
         };
@@ -263,7 +311,7 @@ impl A2ARouter {
                 }
                 return Ok(self.message(&message.id).unwrap_or(message));
             }
-            queues.typing.insert(target.clone());
+            queues.start_typing(&target, &message.id);
         }
 
         let typed = type_in(pty, &target, &text);
@@ -271,7 +319,7 @@ impl A2ARouter {
             message.status = A2AMessageStatus::Dispatched;
             self.messages.lock().push(message.clone());
         }
-        self.deliveries.lock().typing.remove(&target);
+        self.deliveries.lock().finish_typing(&target, &message.id, typed.is_ok());
         // Messages that queued behind this one go now, or at the turn end it starts.
         self.deliver_held(&target, pty);
         typed.map(|()| message)
@@ -295,7 +343,7 @@ impl A2ARouter {
                 let Some(next) = queues.pop_next(terminal_id) else {
                     return;
                 };
-                queues.typing.insert(terminal_id.to_string());
+                queues.start_typing(terminal_id, &next.message_id);
                 let exited = info.is_some_and(|t| t.claude_status == ClaudeStatus::Exited);
                 (next, exited)
             };
@@ -318,7 +366,7 @@ impl A2ARouter {
                     msg.clone()
                 })
             };
-            self.deliveries.lock().typing.remove(terminal_id);
+            self.deliveries.lock().finish_typing(terminal_id, &next.message_id, typed.is_ok());
             if let Err(e) = &typed {
                 tracing::warn!("Failed typing a held A2A message into PTY {}: {}", terminal_id, e);
             }
@@ -537,39 +585,45 @@ impl A2ARouter {
         }
     }
 
-    /// Completes the newest Dispatched entry to `terminal_id` with `answer`, and hands
-    /// `answer` to the senders waiting on it. A sender whose message is still Queued keeps
-    /// waiting: the turn that ended started before its message was typed in.
+    /// Pairs the turn starting on `terminal_id` with the oldest message typed in there
+    /// that no turn has taken yet. A turn that starts with none (the user typed its
+    /// prompt) answers no message.
+    pub fn turn_started(&self, terminal_id: &str) {
+        self.deliveries.lock().start_turn(terminal_id);
+    }
+
+    /// Forgets which messages `terminal_id`'s turns answer, when its session ends: no turn
+    /// of a later session answers a message typed into this one.
+    pub fn forget_turns(&self, terminal_id: &str) {
+        self.deliveries.lock().turns.remove(terminal_id);
+    }
+
+    /// Ends the turn running on `terminal_id` with `answer`: completes the message that
+    /// turn started (see `turn_started`) and hands `answer` to the senders waiting on it.
+    /// A turn that no delivered message started completes nothing, so an answer always
+    /// comes from the turn that followed its message.
     pub fn resolve_pending_reply(&self, terminal_id: &str, answer: String) -> Option<A2AMessage> {
+        let message_id = self.deliveries.lock().end_turn(terminal_id)?;
+
         let updated_msg = {
             let mut history = self.messages.lock();
-            if let Some(msg) = history
+            history
                 .iter_mut()
-                .rev()
-                .find(|m| m.to_terminal == terminal_id && m.status == A2AMessageStatus::Dispatched)
-            {
-                msg.status = A2AMessageStatus::Completed;
-                msg.response = Some(answer.clone());
-                Some(msg.clone())
-            } else {
-                None
-            }
+                .find(|m| m.id == message_id && m.status == A2AMessageStatus::Dispatched)
+                .map(|msg| {
+                    msg.status = A2AMessageStatus::Completed;
+                    msg.response = Some(answer.clone());
+                    msg.clone()
+                })
         };
 
-        let queued: HashSet<String> = self
-            .messages
-            .lock()
-            .iter()
-            .filter(|m| m.to_terminal == terminal_id && m.status == A2AMessageStatus::Queued)
-            .map(|m| m.id.clone())
-            .collect();
         let senders = {
             let mut pending = self.pending_replies.lock();
             let waiters = pending.remove(terminal_id).unwrap_or_default();
-            let (still_queued, ready): (Vec<_>, Vec<_>) =
-                waiters.into_iter().partition(|(id, _)| queued.contains(id));
-            if !still_queued.is_empty() {
-                pending.insert(terminal_id.to_string(), still_queued);
+            let (ready, others): (Vec<_>, Vec<_>) =
+                waiters.into_iter().partition(|(id, _)| *id == message_id);
+            if !others.is_empty() {
+                pending.insert(terminal_id.to_string(), others);
             }
             ready
         };
@@ -795,7 +849,7 @@ mod tests {
 
         let _ = router.dispatch(request, None).unwrap();
 
-        let updated = router.resolve_pending_reply("term-b", "Result is 4".to_string());
+        let updated = answer_turn(&router, "term-b", "Result is 4");
         assert!(updated.is_some());
         let updated_msg = updated.unwrap();
         assert_eq!(updated_msg.status, A2AMessageStatus::Completed);
@@ -972,7 +1026,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         // The message waits out the start-up, then its own turn answers it
         end_turn(&router, &pty, "term-lvl-starting");
-        router.resolve_pending_reply("term-lvl-starting", "4".to_string());
+        answer_turn(&router, "term-lvl-starting", "4");
 
         let outcome = at_once(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
@@ -1003,7 +1057,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!waiting.is_finished(), "the running turn's answer isn't the reply");
 
-        router.resolve_pending_reply("term-q-midturn", "4".to_string());
+        answer_turn(&router, "term-q-midturn", "4");
 
         let outcome = at_once(waiting).await.unwrap().unwrap();
         assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
@@ -1200,6 +1254,13 @@ mod tests {
 
     fn status_of(router: &A2ARouter, id: &str) -> A2AMessageStatus {
         router.get_messages().iter().find(|m| m.id == id).unwrap().status
+    }
+
+    /// Runs one whole turn on `id`, as the bridge does on its `turn.started` and
+    /// `turn.completed`, with `answer` as what it ends with.
+    fn answer_turn(router: &A2ARouter, id: &str, answer: &str) -> Option<A2AMessage> {
+        router.turn_started(id);
+        router.resolve_pending_reply(id, answer.to_string())
     }
 
     /// Ends the terminal's turn as the bridge does on `turn.completed`.
@@ -1431,7 +1492,7 @@ mod tests {
         let queued = router.dispatch(peer_message("term-q-sender9", "term-q-answerer"), Some(&pty)).unwrap();
         assert_eq!(queued.status, A2AMessageStatus::Queued);
 
-        let completed = router.resolve_pending_reply("term-q-answerer", "4".to_string()).unwrap();
+        let completed = answer_turn(&router, "term-q-answerer", "4").unwrap();
 
         assert_eq!(completed.id, delivered.id);
         assert_eq!(status_of(&router, &delivered.id), A2AMessageStatus::Completed);
@@ -1488,5 +1549,108 @@ mod tests {
         reached.sort();
 
         assert_eq!(reached, ["term-lvl-bc-claude", "term-lvl-bc-gemini"]);
+    }
+
+    #[tokio::test]
+    async fn a_wait_is_not_answered_by_a_turn_running_when_its_message_arrived() {
+        let router = A2ARouter::new();
+        // Idle to Quay, so the message is typed at once, but a turn is already running
+        let pty = manager_with(&[
+            ("term-tp-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tp-running", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-tp-asker", "term-tp-running"), Some(&pty), 60)
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // The running turn ends with no turn start after the message
+        assert!(router.resolve_pending_reply("term-tp-running", "an older answer".to_string()).is_none());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!waiting.is_finished(), "the running turn's answer isn't the reply");
+
+        answer_turn(&router, "term-tp-running", "4");
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
+    }
+
+    #[test]
+    fn a_message_nobody_waits_on_is_completed_only_by_the_turn_it_starts() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-tp-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tp-target", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        let msg = router.dispatch(peer_message("term-tp-sender", "term-tp-target"), Some(&pty)).unwrap();
+
+        assert!(router.resolve_pending_reply("term-tp-target", "an older answer".to_string()).is_none());
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+
+        let completed = answer_turn(&router, "term-tp-target", "4").unwrap();
+        assert_eq!(completed.id, msg.id);
+        assert_eq!(completed.response.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn a_turn_the_user_started_completes_no_message() {
+        let router = A2ARouter::new();
+        // Unknown, so a message is typed in even mid-turn
+        let pty = manager_with(&[
+            ("term-tp-sender2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tp-user", RunKind::Claude, ClaudeStatus::Unknown),
+        ]);
+
+        router.turn_started("term-tp-user");
+        let msg = router.dispatch(peer_message("term-tp-sender2", "term-tp-user"), Some(&pty)).unwrap();
+        assert!(router.resolve_pending_reply("term-tp-user", "the user's answer".to_string()).is_none());
+
+        assert_eq!(answer_turn(&router, "term-tp-user", "4").unwrap().id, msg.id);
+    }
+
+    #[test]
+    fn each_turn_completes_the_message_delivered_for_it_oldest_first() {
+        let router = A2ARouter::new();
+        // Unknown, so both messages are typed in at once
+        let pty = manager_with(&[
+            ("term-tp-sender3", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tp-two", RunKind::Claude, ClaudeStatus::Unknown),
+        ]);
+        let first = router.dispatch(peer_message("term-tp-sender3", "term-tp-two"), Some(&pty)).unwrap();
+        let second = router.dispatch(peer_message("term-tp-sender3", "term-tp-two"), Some(&pty)).unwrap();
+
+        assert_eq!(answer_turn(&router, "term-tp-two", "first").unwrap().id, first.id);
+        assert_eq!(status_of(&router, &second.id), A2AMessageStatus::Dispatched);
+        assert_eq!(answer_turn(&router, "term-tp-two", "second").unwrap().id, second.id);
+    }
+
+    #[test]
+    fn a_broadcast_notice_is_completed_by_the_turn_it_starts() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[("term-tp-bc", RunKind::Claude, ClaudeStatus::Idle)]);
+        let notice = router.broadcast_toast("Release is frozen", &pty).remove(0);
+
+        assert!(router.resolve_pending_reply("term-tp-bc", "an older answer".to_string()).is_none());
+        assert_eq!(answer_turn(&router, "term-tp-bc", "noted").unwrap().id, notice.id);
+    }
+
+    #[test]
+    fn a_message_that_cant_be_typed_is_never_paired_with_a_turn() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-tp-sender4", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-tp-closed", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        pty.close_test_input("term-tp-closed");
+        assert!(router.dispatch(peer_message("term-tp-sender4", "term-tp-closed"), Some(&pty)).is_err());
+
+        assert!(answer_turn(&router, "term-tp-closed", "4").is_none());
     }
 }

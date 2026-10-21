@@ -118,6 +118,12 @@ fn task_title(prompt: &str) -> Option<String> {
     (!clean.is_empty()).then(|| clean.chars().take(32).collect())
 }
 
+/// Whether `envelope` is a subagent's turn event. The plugin reports a subagent's turns
+/// with an `agentId`; they say nothing about the terminal's own turn, so Quay ignores them.
+fn is_subagent_turn(envelope: &Envelope) -> bool {
+    envelope.event_type.starts_with("turn.") && envelope.data.get("agentId").is_some()
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -130,12 +136,14 @@ pub async fn handle_events(
         ctx.bridge_state.record_envelope(envelope.clone());
 
         let mut status = None;
-        if let Some(ref terminal_id) = tag {
+        let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
+        if let Some(terminal_id) = own_terminal {
             status = ctx
                 .pty_manager
                 .apply_plugin_event(terminal_id, &envelope.event_type);
             match envelope.event_type.as_str() {
                 "turn.started" => {
+                    ctx.a2a_router.turn_started(terminal_id);
                     if let Some(title) = envelope
                         .data
                         .get("prompt")
@@ -174,6 +182,7 @@ pub async fn handle_events(
                 }
                 "session.ended" => {
                     ctx.pty_manager.update_current_tool(terminal_id, None);
+                    ctx.a2a_router.forget_turns(terminal_id);
                 }
                 _ => {}
             }
@@ -403,6 +412,21 @@ mod tests {
             headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
         }
         headers
+    }
+
+    #[test]
+    fn a_turn_event_with_an_agent_id_is_a_subagents_turn() {
+        let mut event = event_for("term-a");
+        assert!(!is_subagent_turn(&event));
+
+        event.data = serde_json::json!({ "answer": "subagent report", "agentId": "agent-1" });
+        assert!(is_subagent_turn(&event));
+
+        event.event_type = "turn.started".to_string();
+        assert!(is_subagent_turn(&event));
+
+        event.event_type = "tool.started".to_string();
+        assert!(!is_subagent_turn(&event));
     }
 
     #[test]

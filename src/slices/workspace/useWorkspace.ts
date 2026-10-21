@@ -9,7 +9,7 @@ import {
   PermissionMode,
   showsWorkingOnDelivery,
 } from "../terminal/types";
-import { Envelope } from "../bridge/useBridgeEvents";
+import { Envelope, isSubagentTurn } from "../bridge/useBridgeEvents";
 import { Project } from "./types";
 import { SwarmPreset } from "../orchestrator/swarmTypes";
 import { GitWorktree } from "../git/types";
@@ -153,6 +153,7 @@ export function useWorkspace() {
       const envelope = event.payload;
       const tag = envelope.tag;
       if (!tag) return;
+      if (isSubagentTurn(envelope)) return;
 
       setTerminals((prev) =>
         prev.map((t) => {
