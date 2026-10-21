@@ -3,15 +3,19 @@
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::console;
+use crate::recording::Recorder;
 
-pub fn run(cli: &str, own_exe: &Path, args: &[String], _record_dir: &Path) -> Result<i32, String> {
+pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
     let (cols, rows) = console::size();
+    let token = std::env::var("CLAUDE_EVENTS_TOKEN").ok();
+    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token)?);
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| format!("cannot open a PTY: {e}"))?;
@@ -34,6 +38,7 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], _record_dir: &Path) -> Re
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let mut writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    let rec = recorder.clone();
     let output = std::thread::spawn(move || {
         let mut out = std::io::stdout();
         let mut buf = [0u8; 8192];
@@ -41,21 +46,28 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], _record_dir: &Path) -> Re
             if n == 0 {
                 break;
             }
+            rec.output(&buf[..n]);
             let _ = out.write_all(&buf[..n]);
             let _ = out.flush();
         }
     });
+    let rec = recorder.clone();
     std::thread::spawn(move || {
         let mut input = std::io::stdin();
         let mut buf = [0u8; 4096];
         while let Ok(n) = input.read(&mut buf) {
-            if n == 0 || writer.write_all(&buf[..n]).is_err() {
+            if n == 0 {
+                break;
+            }
+            rec.input(&buf[..n]);
+            if writer.write_all(&buf[..n]).is_err() {
                 break;
             }
             let _ = writer.flush();
         }
     });
     let master = pair.master;
+    let rec = recorder.clone();
     std::thread::spawn(move || {
         let mut last = (cols, rows);
         loop {
@@ -63,6 +75,7 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], _record_dir: &Path) -> Re
             let now = console::size();
             if now != last {
                 last = now;
+                rec.resize(now.0, now.1);
                 let _ = master.resize(PtySize { rows: now.1, cols: now.0, pixel_width: 0, pixel_height: 0 });
             }
         }
@@ -75,7 +88,10 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], _record_dir: &Path) -> Re
         std::thread::sleep(Duration::from_millis(20));
     }
     drop(raw);
-    Ok(status.exit_code() as i32)
+    let code = status.exit_code() as i32;
+    recorder.exit(code);
+    recorder.finish()?;
+    Ok(code)
 }
 
 /// The real CLI `name` resolves to on PATH, skipping this tool wherever it appears.

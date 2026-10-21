@@ -13,6 +13,7 @@
 
 mod console;
 mod record;
+mod recording;
 
 use std::path::PathBuf;
 
