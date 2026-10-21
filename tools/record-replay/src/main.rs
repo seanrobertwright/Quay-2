@@ -58,12 +58,19 @@ fn run() -> Result<i32, String> {
     }
 }
 
-const USAGE: &str = "usage:\n  quay-record-replay mark <recordings folder> <NN-what>   mark a step in the recordings in progress";
+const USAGE: &str = "usage:
+  quay-record-replay mark <recordings folder> <NN-what>   mark a step in the recordings in progress
+  quay-record-replay finish <recordings folder>          gzip runs Quay closed before their CLI exited";
 
 /// The tool's own subcommands, for a capture script.
 fn command(args: &[String]) -> Result<i32, String> {
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["mark", dir, name] => recording::mark(&PathBuf::from(dir), name).map(|_| 0),
+        ["finish", dir] => {
+            let finished = recording::finish(&PathBuf::from(dir))?;
+            println!("finished {finished} file(s) in {dir}");
+            Ok(0)
+        }
         ["help"] | ["--help"] | [] => {
             println!("{USAGE}");
             Ok(0)

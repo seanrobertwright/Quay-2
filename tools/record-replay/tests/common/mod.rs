@@ -286,6 +286,7 @@ impl Terminal {
         let deadline = Instant::now() + timeout;
         loop {
             if let Some(status) = self.child.try_wait().unwrap() {
+                self.settle();
                 return status.exit_code();
             }
             assert!(Instant::now() < deadline, "the terminal's program never exited; it showed:\n{}", self.text());
@@ -346,4 +347,28 @@ pub fn file_names(dir: &Path) -> Vec<String> {
         std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
     names.sort();
     names
+}
+
+impl Terminal {
+    /// The program's exit code if it has exited.
+    pub fn exited(&mut self) -> Option<u32> {
+        self.child.try_wait().unwrap().map(|status| status.exit_code())
+    }
+}
+
+impl Terminal {
+    /// Waits until the terminal's output has stopped changing, so what a program wrote just
+    /// before it exited has been read.
+    fn settle(&self) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut last = self.output.lock().unwrap().len();
+        while Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(250));
+            let now = self.output.lock().unwrap().len();
+            if now == last {
+                return;
+            }
+            last = now;
+        }
+    }
 }

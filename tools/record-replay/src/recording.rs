@@ -211,6 +211,31 @@ pub fn mark(dir: &Path, name: &str) -> Result<(), String> {
     writeln!(file, "{name}").map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+/// Ends a capture in the recordings folder `dir`: gzips the files of every run Quay closed
+/// before its CLI exited, and removes the step markers file. Run it once every terminal is
+/// closed.
+pub fn finish(dir: &Path) -> Result<usize, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
+    let mut finished = 0;
+    for entry in entries {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if !(name.ends_with(&format!(".{CAST}")) || name.ends_with(&format!(".{HTTP_LOG}"))) {
+            continue;
+        }
+        if gz_path(&path).exists() {
+            return Err(format!("both {name} and {name}.gz exist; remove the one that is not wanted"));
+        }
+        gzip_in_place(&path).map_err(|e| format!("{e} (is a terminal still recording?)"))?;
+        finished += 1;
+    }
+    let markers = dir.join(MARKERS);
+    if markers.exists() {
+        std::fs::remove_file(&markers).map_err(|e| format!("cannot remove {}: {e}", markers.display()))?;
+    }
+    Ok(finished)
+}
+
 /// Seconds to the microsecond, so a recording doesn't carry float noise.
 fn round(seconds: f64) -> f64 {
     (seconds * 1_000_000.0).round() / 1_000_000.0

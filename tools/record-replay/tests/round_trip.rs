@@ -255,3 +255,43 @@ fn a_replay_stands_in_for_the_cli_it_is_named_after_in_recorded_order() {
     assert_eq!(terminal.wait_exit(WAIT), 2);
     assert!(terminal.text().contains("no recording of claude left to replay"), "{}", terminal.text());
 }
+
+#[test]
+fn a_run_cut_short_is_finished_into_a_recording_that_ends_on_its_last_screen() {
+    let scratch = Scratch::new("round-trip-cut");
+    let (recordings, state) = recordings_dir(&scratch);
+    let tool = scratch.install(TOOL, "record/tool", "claude");
+    let real = scratch.install(STUB, "record/real-cli", "claude");
+    let bridge = FakeBridge::start();
+    let mut env = vec![
+        ("PATH", fixture_path(&[&tool, &real])),
+        ("QUAY_RECORD_DIR", recordings.display().to_string()),
+    ];
+    env.extend(bridge_env(&bridge, &RECORDED));
+    let mark = |name: &str| std::process::Command::new(TOOL).arg("mark").arg(&recordings).arg(name).status().unwrap();
+    assert!(mark("01-agent-ready").success());
+    let terminal = Terminal::open("claude.exe", &claude_args(&bridge), &env, &scratch.dir("project"), 100, 30);
+    terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
+    bridge.wait_for(3, WAIT);
+    // Quay closes the terminal while the CLI is still running.
+    drop(terminal);
+    std::thread::sleep(Duration::from_millis(500));
+
+    let finish = std::process::Command::new(TOOL).arg("finish").arg(&recordings).output().unwrap();
+    assert!(finish.status.success(), "{finish:?}");
+    assert_eq!(file_names(&recordings), ["claude-1.cast.gz", "claude-1.http.jsonl.gz"]);
+
+    let tool = scratch.install(TOOL, "replay", "claude");
+    let mut env = vec![
+        ("PATH", fixture_path(&[&tool])),
+        ("QUAY_REPLAY_DIR", recordings.display().to_string()),
+        ("QUAY_REPLAY_STATE", state.display().to_string()),
+    ];
+    let live = FakeBridge::start();
+    env.extend(bridge_env(&live, &LIVE));
+    let mut terminal = Terminal::open("claude.exe", &claude_args(&live), &env, &scratch.dir("project"), 100, 30);
+    terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
+    assert_eq!(whats(&live.wait_for(3, WAIT)), STUB_CALLS[..3]);
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(terminal.exited(), None, "the replay stays on the last screen until Quay closes it");
+}
