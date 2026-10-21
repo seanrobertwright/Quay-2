@@ -51,6 +51,9 @@ struct Inner {
     cast: Option<BufWriter<File>>,
     http: Option<BufWriter<File>>,
     pending_output: Vec<u8>,
+    /// The end of the output so far when it could be the start of the token, kept back until
+    /// the next output shows whether it is.
+    held_output: String,
     keys: Keys,
 }
 
@@ -79,14 +82,28 @@ impl Recorder {
             http_path,
             secret: secret.filter(|s| !s.is_empty()),
             tag: tag.filter(|s| !s.is_empty()),
-            inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), keys: Keys::default() }),
+            inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), held_output: String::new(), keys: Keys::default() }),
         })
     }
 
     pub fn output(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock().unwrap();
-        let text = take_utf8(&mut inner.pending_output, bytes);
+        let mut text = std::mem::take(&mut inner.held_output);
+        text.push_str(&take_utf8(&mut inner.pending_output, bytes));
+        if let Some(secret) = &self.secret {
+            text = text.replace(secret.as_str(), "<token>");
+            let held = (1..secret.len().min(text.len() + 1))
+                .rev()
+                .find(|&k| secret.is_char_boundary(k) && text.ends_with(&secret[..k]))
+                .unwrap_or(0);
+            inner.held_output = text.split_off(text.len() - held);
+        }
         self.event(&mut inner, "o", &text);
+    }
+
+    fn release_held_output(&self, inner: &mut Inner) {
+        let held = std::mem::take(&mut inner.held_output);
+        self.event(inner, "o", &held);
     }
 
     /// Records keystrokes as the text they type (see `Keys`), while the CLI itself gets the
@@ -109,6 +126,7 @@ impl Recorder {
 
     pub fn exit(&self, code: i32) {
         let mut inner = self.inner.lock().unwrap();
+        self.release_held_output(&mut inner);
         self.event(&mut inner, "x", &code.to_string());
     }
 
@@ -176,6 +194,7 @@ impl Recorder {
     /// Gzips the recording's files and removes the uncompressed ones.
     pub fn finish(&self) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap();
+        self.release_held_output(&mut inner);
         let (Some(cast), Some(http)) = (inner.cast.take(), inner.http.take()) else { return Ok(()) };
         cast.into_inner().map_err(|e| e.to_string())?;
         http.into_inner().map_err(|e| e.to_string())?;
@@ -494,4 +513,31 @@ fn gunzip(path: &Path) -> Result<String, String> {
     std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(file), &mut text)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     Ok(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_token_split_across_reads_of_the_terminal_is_not_recorded() {
+        let dir = std::env::temp_dir().join(format!("quay-record-replay-split-token-{}", std::process::id()));
+        let token = "tok-0123456789abcdef";
+        let recorder = Recorder::create(&dir, "claude", 80, 24, Some(token.into()), None).unwrap();
+        recorder.output(b"token: tok-0123");
+        recorder.output(b"456789abcdef and tok-");
+        recorder.output(b"012 is not it");
+        recorder.finish().unwrap();
+
+        let cast = gunzip(&dir.join("claude-1.cast.gz")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let output: String = cast
+            .lines()
+            .skip(1)
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .filter(|e| e[1] == "o")
+            .map(|e| e[2].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(output, "token: <token> and tok-012 is not it");
+    }
 }

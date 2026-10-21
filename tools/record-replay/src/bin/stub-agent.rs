@@ -97,6 +97,15 @@ fn main() {
         seq: 0,
     });
 
+    if !token.is_empty() {
+        // A CLI that shows its token, in two writes, which a recording must still not keep.
+        let (head, tail) = token.split_at(token.len() / 2);
+        print!("stub-agent: token {head}");
+        let _ = std::io::stdout().flush();
+        std::thread::sleep(Duration::from_millis(100));
+        println!("{tail}");
+    }
+
     if let Some(bridge) = bridge.as_mut() {
         bridge.event("session.started", serde_json::json!({}));
         if let Some((host, path, auth)) = mcp_server(&args, &token) {
