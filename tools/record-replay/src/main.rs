@@ -12,6 +12,7 @@
 //! Under its own name it takes subcommands; `quay-record-replay help` lists them.
 
 mod console;
+mod http;
 mod record;
 mod recording;
 

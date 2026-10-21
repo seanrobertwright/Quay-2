@@ -6,6 +6,12 @@
 //!   (`r`), step markers (`m`) and, when the CLI exited by itself, its exit code (`x`, as
 //!   asciicast v3 names it).
 //!
+//! - `<cli>-<n>.http.jsonl.gz`: the terminal's calls to the bridge, one JSON object a line in
+//!   the order they arrived: `t` (seconds into the run) and `d` (seconds until the bridge
+//!   answered), `method`, `path`, `headers`, `body`, and the bridge's `status` and `response`.
+//!   Bodies that are JSON are kept as JSON. No authentication header is kept, the bearer token
+//!   is blanked wherever it appears, and the terminal's id is written as `{{tag}}`.
+//!
 //! `<cli>` is the CLI the tool impersonated and `<n>` counts that CLI's terminals in the order
 //! they started, from 1.
 //!
@@ -18,18 +24,26 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use crate::http::{Request, Response, is_hop_header};
+
 pub const CAST: &str = "cast";
+pub const HTTP_LOG: &str = "http.jsonl";
+/// What a recording has in place of the recorded terminal's id.
+pub const TAG_PLACEHOLDER: &str = "{{tag}}";
 
 pub struct Recorder {
     start: Instant,
     cast_path: PathBuf,
+    http_path: PathBuf,
     secret: Option<String>,
+    tag: Option<String>,
     inner: Mutex<Inner>,
 }
 
 struct Inner {
     /// None once the recording is finished; later events are dropped.
     cast: Option<BufWriter<File>>,
+    http: Option<BufWriter<File>>,
     pending_output: Vec<u8>,
     pending_input: Vec<u8>,
     /// An escape sequence split across reads, kept until the rest arrives.
@@ -38,19 +52,30 @@ struct Inner {
 
 impl Recorder {
     /// Starts the next recording for `cli` in `dir`. `secret` (the terminal's bearer token) is
-    /// blanked out of everything recorded.
-    pub fn create(dir: &Path, cli: &str, cols: u16, rows: u16, secret: Option<String>) -> Result<Recorder, String> {
+    /// blanked out of everything recorded, and `tag` (the terminal's id) out of the HTTP log.
+    pub fn create(
+        dir: &Path,
+        cli: &str,
+        cols: u16,
+        rows: u16,
+        secret: Option<String>,
+        tag: Option<String>,
+    ) -> Result<Recorder, String> {
         check_recordings_dir(dir)?;
         std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         let (cast_path, cast) = claim(dir, cli)?;
         let mut cast = BufWriter::new(cast);
         let header = serde_json::json!({ "version": 2, "width": cols, "height": rows });
         writeln!(cast, "{header}").and_then(|_| cast.flush()).map_err(|e| e.to_string())?;
+        let http_path = cast_path.with_extension(HTTP_LOG);
+        let http = File::create(&http_path).map_err(|e| format!("cannot create {}: {e}", http_path.display()))?;
         Ok(Recorder {
             start: Instant::now(),
             cast_path,
+            http_path,
             secret: secret.filter(|s| !s.is_empty()),
-            inner: Mutex::new(Inner { cast: Some(cast), pending_output: Vec::new(), pending_input: Vec::new(), pending_keys: String::new() }),
+            tag: tag.filter(|s| !s.is_empty()),
+            inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), pending_input: Vec::new(), pending_keys: String::new() }),
         })
     }
 
@@ -82,12 +107,53 @@ impl Recorder {
         self.event(&mut inner, "x", &code.to_string());
     }
 
+    /// Logs one bridge call that arrived `t` seconds into the run and took `d` seconds.
+    pub fn http(&self, t: f64, d: f64, request: &Request, answer: &Result<Response, String>) {
+        let headers: serde_json::Map<String, serde_json::Value> = request
+            .headers
+            .iter()
+            .filter(|(k, _)| !is_hop_header(k) && !k.contains("authorization"))
+            .map(|(k, v)| (k.clone(), v.clone().into()))
+            .collect();
+        let mut entry = serde_json::json!({
+            "t": round(t),
+            "d": round(d),
+            "method": request.method,
+            "path": request.target,
+            "headers": headers,
+            "body": body_value(&request.body),
+        });
+        match answer {
+            Ok(response) => {
+                entry["status"] = response.status.into();
+                entry["response"] = body_value(&response.body);
+            }
+            Err(error) => {
+                entry["status"] = 502.into();
+                entry["error"] = error.clone().into();
+            }
+        }
+        let mut line = self.scrub(&entry.to_string());
+        if let Some(tag) = &self.tag {
+            line = line.replace(tag.as_str(), TAG_PLACEHOLDER);
+        }
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(http) = inner.http.as_mut() {
+            let _ = writeln!(http, "{line}").and_then(|_| http.flush());
+        }
+    }
+
+    /// Seconds since the recording started.
+    pub fn now(&self) -> f64 {
+        self.seconds()
+    }
+
     fn event(&self, inner: &mut Inner, code: &str, data: &str) {
         if data.is_empty() {
             return;
         }
         let Some(cast) = inner.cast.as_mut() else { return };
-        let line = serde_json::json!([self.seconds(), code, self.scrub(data)]);
+        let line = serde_json::json!([round(self.seconds()), code, self.scrub(data)]);
         let _ = writeln!(cast, "{line}").and_then(|_| cast.flush());
     }
 
@@ -105,10 +171,26 @@ impl Recorder {
     /// Gzips the recording's files and removes the uncompressed ones.
     pub fn finish(&self) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap();
-        let Some(cast) = inner.cast.take() else { return Ok(()) };
+        let (Some(cast), Some(http)) = (inner.cast.take(), inner.http.take()) else { return Ok(()) };
         cast.into_inner().map_err(|e| e.to_string())?;
-        gzip_in_place(&self.cast_path)
+        http.into_inner().map_err(|e| e.to_string())?;
+        gzip_in_place(&self.cast_path)?;
+        gzip_in_place(&self.http_path)
     }
+}
+
+/// Seconds to the microsecond, so a recording doesn't carry float noise.
+fn round(seconds: f64) -> f64 {
+    (seconds * 1_000_000.0).round() / 1_000_000.0
+}
+
+/// A body as JSON when it is JSON, else as text.
+fn body_value(body: &[u8]) -> serde_json::Value {
+    let text = String::from_utf8_lossy(body);
+    if text.trim().is_empty() {
+        return serde_json::Value::Null;
+    }
+    serde_json::from_str(&text).unwrap_or_else(|_| text.into_owned().into())
 }
 
 /// Recordings live beside the tool, one folder per tutorial, never under `docs/`.

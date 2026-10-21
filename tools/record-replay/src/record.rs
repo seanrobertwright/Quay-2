@@ -1,7 +1,9 @@
 //! Record mode: runs the real agent CLI in a PTY of its own inside Quay's terminal, passes
-//! everything through both ways, and records what passes.
+//! everything through both ways, and records what passes. The CLI's events URL and MCP config
+//! point at a proxy on loopback that forwards every request to the live bridge unchanged.
 
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,24 +11,36 @@ use std::time::Duration;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::console;
+use crate::http;
 use crate::recording::Recorder;
 
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
     let (cols, rows) = console::size();
+    let bridge = std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| bridge_host(&u)).transpose()?;
     let token = std::env::var("CLAUDE_EVENTS_TOKEN").ok();
-    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token)?);
+    let tag = std::env::var("CLAUDE_EVENTS_TAG").ok();
+    let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token, tag)?);
+    let proxy = bridge.as_ref().map(|host| start_proxy(host, recorder.clone())).transpose()?;
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| format!("cannot open a PTY: {e}"))?;
 
     let mut cmd = CommandBuilder::new(&real);
-    cmd.args(args);
     // portable-pty seeds a command's environment from the registry on Windows; the CLI gets
-    // exactly the environment Quay gave this process instead.
+    // exactly the environment Quay gave this process instead, with the bridge swapped for
+    // the proxy.
     cmd.env_clear();
     for (k, v) in std::env::vars_os() {
         cmd.env(k, v);
+    }
+    match (&bridge, &proxy) {
+        (Some(bridge), Some(proxy)) => {
+            let (from, to) = (format!("http://{bridge}"), format!("http://{proxy}"));
+            cmd.env("CLAUDE_EVENTS_URL", &to);
+            cmd.args(args.iter().map(|a| a.replace(&from, &to)));
+        }
+        _ => cmd.args(args),
     }
     if let Ok(cwd) = std::env::current_dir() {
         cmd.cwd(cwd);
@@ -122,4 +136,50 @@ fn find_real_cli(name: &str, own_exe: &Path) -> Result<PathBuf, String> {
         }
     }
     Err(format!("no real {name} on PATH after the recorder; put its folder after the recorder's in the fixture's PATH"))
+}
+
+/// The `host:port` of the bridge `CLAUDE_EVENTS_URL` names, which Quay always gives as
+/// `http://127.0.0.1:<port>`.
+fn bridge_host(url: &str) -> Result<String, String> {
+    let bad = || format!("CLAUDE_EVENTS_URL {url:?} is not http://<host>:<port>");
+    let rest = url.strip_prefix("http://").ok_or_else(bad)?.trim_end_matches('/');
+    let (host, port) = rest.rsplit_once(':').ok_or_else(bad)?;
+    let port: u16 = port.parse().map_err(|_| bad())?;
+    if host.is_empty() || host.contains('/') || port == 0 {
+        return Err(bad());
+    }
+    Ok(rest.to_string())
+}
+
+/// Listens on a loopback port of its own and forwards every request to `bridge`, logging each
+/// one. Returns the proxy's `host:port`.
+fn start_proxy(bridge: &str, recorder: Arc<Recorder>) -> Result<String, String> {
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| format!("cannot open the recording proxy: {e}"))?;
+    let addr = listener.local_addr().map_err(|e| e.to_string())?.to_string();
+    let bridge = bridge.to_string();
+    std::thread::spawn(move || {
+        for client in listener.incoming().flatten() {
+            let (bridge, recorder) = (bridge.clone(), recorder.clone());
+            std::thread::spawn(move || {
+                let Ok(mut out) = client.try_clone() else { return };
+                let mut reader = BufReader::new(client);
+                while let Ok(Some(request)) = http::read_request(&mut reader) {
+                    let t = recorder.now();
+                    let answer = http::send(&bridge, &request);
+                    recorder.http(t, recorder.now() - t, &request, &answer);
+                    let close = request.header("connection").is_some_and(|c| c.eq_ignore_ascii_case("close"));
+                    let response = answer.unwrap_or_else(|error| http::Response {
+                        status: 502,
+                        reason: "Bad Gateway".into(),
+                        headers: vec![("content-type".into(), "text/plain".into())],
+                        body: error.into_bytes(),
+                    });
+                    if http::write_response(&mut out, &response, close).is_err() || close {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    Ok(addr)
 }

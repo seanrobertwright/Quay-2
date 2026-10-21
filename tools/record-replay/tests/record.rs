@@ -83,3 +83,80 @@ fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size() {
     assert!(output.contains("stub-agent: answered add a health route"), "{output}");
     assert!(stream("i").contains("add a health route\r"), "keystrokes are recorded as input: {:?}", stream("i"));
 }
+
+const TOKEN: &str = "live-token-0123456789abcdef0123456789abcdef0123456789abcdef01234";
+const TAG: &str = "term-0123456789abcdef0123456789abcdef";
+
+/// The stub's bridge calls, in order, as `Received::what` names them.
+const STUB_CALLS: [&str; 7] = [
+    "session.started",
+    "initialize",
+    "tools/call quay_list_agents",
+    "turn.started",
+    "tool.started",
+    "tool.finished",
+    "turn.completed",
+];
+
+#[test]
+fn bridge_calls_pass_through_and_are_logged_without_the_token() {
+    let scratch = Scratch::new("bridge");
+    let tool = scratch.install(TOOL, "tool", "claude");
+    let real = scratch.install(STUB, "real-cli", "claude");
+    let recordings = scratch.dir("recordings/demo");
+    let project = scratch.dir("project");
+    let bridge = FakeBridge::start();
+
+    let mut terminal = Terminal::open(
+        "claude.exe",
+        &["--dangerously-skip-permissions".into(), "--mcp-config".into(), bridge.mcp_config()],
+        &[
+            ("PATH", fixture_path(&[&tool, &real])),
+            ("QUAY_RECORD_DIR", recordings.display().to_string()),
+            ("CLAUDE_EVENTS_URL", bridge.url()),
+            ("CLAUDE_EVENTS_TOKEN", TOKEN.into()),
+            ("CLAUDE_EVENTS_TAG", TAG.into()),
+        ],
+        &project,
+        100,
+        30,
+    );
+    terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
+    terminal.type_text("add a health route\r");
+    terminal.wait_exit(WAIT);
+
+    // The live bridge saw the CLI's calls as the CLI made them.
+    let received = bridge.received();
+    assert_eq!(received.iter().map(Received::what).collect::<Vec<_>>(), STUB_CALLS);
+    for call in &received {
+        assert_eq!(call.header("authorization"), Some(format!("Bearer {TOKEN}").as_str()), "{call:?}");
+    }
+    for event in received.iter().filter(|r| r.path == "/v1/events") {
+        assert_eq!(event.json()["events"][0]["tag"], TAG);
+    }
+    // ...and the CLI saw the bridge's answers.
+    let unwrapped = terminal.text().replace(['\r', '\n'], "");
+    let answer = format!("quay_list_agents -> 200 {{\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{{\"caller\":\"Bearer {TOKEN}\"}}}}");
+    assert!(unwrapped.contains(&answer), "{unwrapped}");
+
+    assert_eq!(file_names(&recordings), ["claude-1.cast.gz", "claude-1.http.jsonl.gz"]);
+    let log = gunzip(&recordings.join("claude-1.http.jsonl.gz"));
+    let entries: Vec<serde_json::Value> = log.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(entries.len(), STUB_CALLS.len());
+    let mut last = 0.0;
+    for (entry, call) in entries.iter().zip(&received) {
+        assert_eq!(entry["method"], "POST");
+        assert_eq!(entry["path"], call.path);
+        assert_eq!(entry["status"], 200);
+        let t = entry["t"].as_f64().unwrap();
+        assert!(t >= last && t < 20.0, "offsets are seconds into the run, in order: {entry}");
+        last = t;
+    }
+    assert_eq!(entries[0]["body"]["events"][0]["type"], "session.started");
+    for file in ["claude-1.cast.gz", "claude-1.http.jsonl.gz"] {
+        let text = gunzip(&recordings.join(file));
+        assert!(!text.contains(TOKEN), "{file} holds the token");
+        assert!(!text.to_ascii_lowercase().contains("authorization"), "{file} holds an auth header");
+        assert!(!text.contains(TAG), "{file} holds the recorded terminal's id");
+    }
+}
