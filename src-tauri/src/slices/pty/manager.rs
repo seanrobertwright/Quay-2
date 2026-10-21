@@ -20,6 +20,22 @@ const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// What the server watcher runs, with a launch whose CLI serves its own events and the
+/// loopback port it serves them on.
+type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
+
+/// A free loopback port for a launch's CLI to serve its events on, for a CLI that serves
+/// them (OpenCode), or `None`.
+fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
+    if run_kind != RunKind::OpenCode {
+        return Ok(None);
+    }
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| Some(addr.port()))
+        .map_err(|e| format!("Failed to find a free port for OpenCode's server: {}", e))
+}
+
 /// What a terminal's own output says about its turn, as the turn watcher hears it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnEvent {
@@ -138,6 +154,7 @@ pub struct PtyManager {
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
+    server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
     turn_watcher: Arc<Mutex<Option<TurnWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
     #[cfg(test)]
@@ -153,6 +170,7 @@ impl PtyManager {
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
+            server_watcher: Arc::new(Mutex::new(None)),
             turn_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             test_input: Arc::new(Mutex::new(HashMap::new())),
@@ -259,6 +277,7 @@ impl PtyManager {
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
         let start_seq = self.last_seq(&terminal_id);
+        let server_port = server_port_for(request.run_kind)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, &app_handle);
@@ -268,6 +287,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
+            server_port,
             app_handle,
             on_first_output,
             on_osc7501,
@@ -302,6 +322,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id, session);
         let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
+        self.notify_server_watcher(launch_ref, server_port);
 
         Ok(info)
     }
@@ -334,6 +355,7 @@ impl PtyManager {
 
         let request = relaunch_request(&info, rows, cols, env_vars);
 
+        let server_port = server_port_for(info.run_kind)?;
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, &app_handle);
@@ -343,6 +365,7 @@ impl PtyManager {
             start_seq,
             bridge_port,
             bridge_token,
+            server_port,
             app_handle,
             on_first_output,
             on_osc7501,
@@ -361,6 +384,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id.to_string(), session);
         let updated_info = self.insert_launched(&launch_ref, updated_info);
         self.save_sessions_to_disk();
+        self.notify_server_watcher(launch_ref, server_port);
 
         Ok(updated_info)
     }
@@ -498,6 +522,56 @@ impl PtyManager {
         if let Some(watcher) = watcher {
             watcher(terminal_id);
         }
+    }
+
+    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and the
+    /// loopback port it serves them on, once the launch's terminal is listed. It runs on the
+    /// thread that spawned the terminal, with no lock of this manager held.
+    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, u16) + Send + Sync + 'static) {
+        *self.server_watcher.lock() = Some(Arc::new(watcher));
+    }
+
+    fn notify_server_watcher(&self, launch: LaunchRef, server_port: Option<u16>) {
+        let watcher = self.server_watcher.lock().clone();
+        if let (Some(watcher), Some(port)) = (watcher, server_port) {
+            watcher(launch, port);
+        }
+    }
+
+    /// Whether `launch` is its terminal's current launch: the terminal is open and hasn't
+    /// been relaunched since.
+    pub fn launch_current(&self, launch: &LaunchRef) -> bool {
+        launch.current_in(&mut self.plugin_watches.lock()).is_some()
+    }
+
+    /// Whether `launch` is its terminal's current launch and the terminal hasn't exited.
+    pub fn launch_running(&self, launch: &LaunchRef) -> bool {
+        let mut watches = self.plugin_watches.lock();
+        if launch.current_in(&mut watches).is_none() {
+            return false;
+        }
+        self.terminals_info
+            .lock()
+            .get(&launch.terminal_id)
+            .is_some_and(|info| info.claude_status != ClaudeStatus::Exited)
+    }
+
+    /// Shows the terminal Unknown when `launch` is still running and Quay can no longer see
+    /// its turns, and tells the status watcher. Returns the new status when it moved.
+    pub fn lose_turn_sight(&self, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
+        let payload = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            if matches!(info.claude_status, ClaudeStatus::Exited | ClaudeStatus::Unknown) {
+                return None;
+            }
+            info.claude_status = ClaudeStatus::Unknown;
+            status_payload(info)
+        };
+        self.notify_status_watcher(&launch.terminal_id);
+        Some(payload)
     }
 
     /// Runs `watcher` with a terminal's id and what its own output says about its turn, from
@@ -935,7 +1009,7 @@ mod tests {
 
         assert_eq!(request.initial_prompt, None);
         assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
-        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok");
+        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(
             args[..4],
@@ -972,6 +1046,66 @@ mod tests {
 
     fn status_of(manager: &PtyManager, id: &str) -> ClaudeStatus {
         manager.get_info(id).unwrap().claude_status
+    }
+
+    #[test]
+    fn a_launch_runs_until_its_terminal_exits_is_relaunched_or_closes() {
+        let manager = PtyManager::new();
+        let first = launched(&manager, "term-oc-run", RunKind::OpenCode);
+        assert!(manager.launch_running(&first));
+
+        manager.update_status("term-oc-run", ClaudeStatus::Exited);
+        assert!(!manager.launch_running(&first));
+        assert!(manager.launch_current(&first));
+
+        let second = manager.begin_launch("term-oc-run", RunKind::OpenCode);
+        manager.update_status("term-oc-run", ClaudeStatus::Starting);
+        assert!(!manager.launch_current(&first));
+        assert!(!manager.launch_running(&first));
+        assert!(manager.launch_running(&second));
+
+        let _ = manager.kill("term-oc-run");
+        assert!(!manager.launch_current(&second));
+    }
+
+    #[test]
+    fn losing_sight_of_a_launchs_turns_shows_its_terminal_unknown_once() {
+        let manager = PtyManager::new();
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let seen = told.clone();
+        manager.set_status_watcher(move |id| seen.lock().push(id.to_string()));
+        let launch = launched(&manager, "term-oc-lost", RunKind::OpenCode);
+        manager.update_status("term-oc-lost", ClaudeStatus::Working);
+
+        let status = manager.lose_turn_sight(&launch).expect("the status moves");
+        assert_eq!(status.claude_status, ClaudeStatus::Unknown);
+        assert_eq!(status_of(&manager, "term-oc-lost"), ClaudeStatus::Unknown);
+        assert!(manager.lose_turn_sight(&launch).is_none());
+        assert_eq!(*told.lock(), ["term-oc-lost"]);
+    }
+
+    #[test]
+    fn losing_sight_of_an_old_launch_or_an_exited_one_changes_nothing() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-oc-old", RunKind::OpenCode);
+        manager.begin_launch("term-oc-old", RunKind::OpenCode);
+        manager.update_status("term-oc-old", ClaudeStatus::Idle);
+        assert!(manager.lose_turn_sight(&old).is_none());
+        assert_eq!(status_of(&manager, "term-oc-old"), ClaudeStatus::Idle);
+
+        let exited = launched(&manager, "term-oc-exited", RunKind::OpenCode);
+        manager.update_status("term-oc-exited", ClaudeStatus::Exited);
+        assert!(manager.lose_turn_sight(&exited).is_none());
+        assert_eq!(status_of(&manager, "term-oc-exited"), ClaudeStatus::Exited);
+    }
+
+    #[test]
+    fn only_an_opencode_launch_gets_a_server_port() {
+        let port = server_port_for(RunKind::OpenCode).unwrap().expect("OpenCode gets a port");
+        assert_ne!(port, 0);
+        for kind in [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::PowerShell] {
+            assert_eq!(server_port_for(kind).unwrap(), None, "{:?}", kind);
+        }
     }
 
     #[test]
@@ -1169,14 +1303,14 @@ mod tests {
     fn a2a_delivery_leaves_a_terminal_whose_turn_end_quay_cannot_see_as_it_was() {
         let manager = PtyManager::new();
         launched(&manager, "term-a2a-opencode", RunKind::OpenCode);
-        manager.update_status("term-a2a-opencode", ClaudeStatus::Idle);
+        manager.update_status("term-a2a-opencode", ClaudeStatus::Unknown);
         launched(&manager, "term-a2a-gemini", RunKind::Gemini);
         manager.update_status("term-a2a-gemini", ClaudeStatus::Unknown);
 
         manager.mark_a2a_delivered("term-a2a-opencode");
         manager.mark_a2a_delivered("term-a2a-gemini");
 
-        assert_eq!(status_of(&manager, "term-a2a-opencode"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-a2a-opencode"), ClaudeStatus::Unknown);
         assert_eq!(status_of(&manager, "term-a2a-gemini"), ClaudeStatus::Unknown);
     }
 

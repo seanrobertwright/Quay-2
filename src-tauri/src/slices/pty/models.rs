@@ -63,17 +63,22 @@ impl RunKind {
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
     /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
-    /// and so does Antigravity's OSC 7501 `done` (`prints_osc7501`). The frontend's
+    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), and Quay reads OpenCode's
+    /// from the server its TUI runs (see `opencode_watch`). The frontend's
     /// `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::Antigravity)
+        matches!(
+            self,
+            RunKind::Claude | RunKind::Codex | RunKind::Antigravity | RunKind::OpenCode
+        )
     }
 
-    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, and
-    /// from Antigravity's OSC 7501 `working`. Codex's turn-end helper runs only once a turn
-    /// has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
+    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, from
+    /// Antigravity's OSC 7501 `working`, and from OpenCode's watcher seeing its main session
+    /// go busy. Codex's turn-end helper runs only once a turn has ended, so
+    /// `A2ARouter::turn_completed` pairs a Codex turn with its message then.
     pub fn reports_turn_start(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Antigravity)
+        matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode)
     }
 
     /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
@@ -112,10 +117,11 @@ impl RunKind {
         }
     }
 
-    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
-    /// The spawn and the team briefing both read this, so they cannot disagree.
+    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI. The
+    /// team briefing reads this. `build_command` wires each such CLI its own way, and its
+    /// tests check the two agree.
     pub fn gets_quay_mcp(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Codex)
+        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode)
     }
 
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
@@ -510,21 +516,24 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_codex_and_antigravity_report_a_turn_end() {
+    fn only_claude_codex_antigravity_and_opencode_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::Codex]);
+        assert_eq!(
+            kinds,
+            [RunKind::Claude, RunKind::Antigravity, RunKind::Codex, RunKind::OpenCode]
+        );
     }
 
     #[test]
-    fn only_claude_and_antigravity_report_a_turn_start() {
+    fn only_claude_antigravity_and_opencode_report_a_turn_start() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_start())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode]);
     }
 
     #[test]
@@ -537,12 +546,12 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_and_codex_get_the_quay_mcp_server() {
+    fn only_claude_codex_and_opencode_get_the_quay_mcp_server() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.gets_quay_mcp())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode]);
     }
 
     #[test]
@@ -551,7 +560,8 @@ mod tests {
         assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
         assert!(terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(terminal(RunKind::Antigravity, ClaudeStatus::Idle).shows_working_on_delivery());
-        assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Unknown).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
     }
 
@@ -600,8 +610,8 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_codex_or_antigravity_terminal_mid_turn_holds_deliveries() {
-        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity];
+    fn only_a_reporting_claude_codex_antigravity_or_opencode_terminal_mid_turn_holds_deliveries() {
+        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::OpenCode];
         for kind in holders {
             for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
                 assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);

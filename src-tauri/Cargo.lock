@@ -3967,6 +3967,9 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "parking_lot",
  "portable-pty",
  "serde",

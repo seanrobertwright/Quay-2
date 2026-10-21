@@ -44,7 +44,7 @@ export type BusLevel = "full peer" | "responder" | "listener";
  * The run kinds whose turn end Quay sees. Mirrors `RunKind::reports_turn_end` in the backend.
  * Kept on one line: the backend's `turn_end_run_kinds_match_the_frontend` test reads it.
  */
-export const TURN_END_RUN_KINDS = ["claude", "antigravity", "codex"] as const satisfies readonly RunKind[];
+export const TURN_END_RUN_KINDS = ["claude", "antigravity", "codex", "opencode"] as const satisfies readonly RunKind[];
 
 /**
  * The run kinds whose CLI never asks before a tool call, so they get no Skip and Ask toggle

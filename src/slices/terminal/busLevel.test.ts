@@ -27,6 +27,7 @@ test("a delivery shows a terminal Working only when Quay will see its turn end",
   assert.ok(!showsWorkingOnDelivery({ run_kind: "claude", claude_status: "unknown" }));
   assert.ok(showsWorkingOnDelivery({ run_kind: "codex", claude_status: "idle" }));
   assert.ok(showsWorkingOnDelivery({ run_kind: "antigravity", claude_status: "idle" }));
-  assert.ok(!showsWorkingOnDelivery({ run_kind: "opencode", claude_status: "idle" }));
+  assert.ok(showsWorkingOnDelivery({ run_kind: "opencode", claude_status: "idle" }));
+  assert.ok(!showsWorkingOnDelivery({ run_kind: "opencode", claude_status: "unknown" }));
   assert.ok(!showsWorkingOnDelivery({ run_kind: "gemini", claude_status: "unknown" }));
 });

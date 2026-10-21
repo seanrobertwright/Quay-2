@@ -44,6 +44,40 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 ---
 
+## OpenCode CLI Arguments
+
+When spawning OpenCode terminals, Quay 2 runs:
+
+```powershell
+opencode.exe --port <free_port> [--auto] [CUSTOM_FLAGS] [--prompt <launch_prompt>]
+```
+
+Quay starts `opencode.exe` by name, so the terminal's `PATH` finds it, and a workspace's own `PATH` variable can point it at another copy. Only when no folder on that `PATH` holds one does Quay fall back to bun's install, `%USERPROFILE%\.bun\bin\opencode.exe`.
+
+| Flag | Purpose | Condition |
+| :--- | :--- | :--- |
+| `--port <free_port>` | The OpenCode TUI serves its HTTP server on this loopback port. Quay subscribes to its `GET /event` stream: the main session going busy shows the terminal Working, and its first idle after that ends the turn, whose reply Quay reads from `GET /session/:id/message`. Sessions with a `parentID` (subagents) are ignored. Quay only reads from this server; messages are still typed into the terminal. | Every OpenCode terminal; a free port is picked at each launch |
+| `--auto` | Auto-approves tool permissions | Set when "Skip Permissions" is enabled |
+
+Quay's MCP server reaches OpenCode through `OPENCODE_CONFIG_CONTENT` instead of a flag:
+
+```json
+{
+  "mcp": {
+    "quay": {
+      "type": "remote",
+      "url": "http://127.0.0.1:<bridge_port>/mcp",
+      "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
+      "oauth": false
+    }
+  }
+}
+```
+
+OpenCode fills the header from the terminal's `QUAY_A2A_TOKEN`, so the token stays out of the config. If the workspace sets its own `OPENCODE_CONFIG_CONTENT` to a JSON object, Quay keeps it and adds `mcp.quay` to it.
+
+---
+
 ## Antigravity Environment
 
 Quay 2 starts Antigravity as `agy.exe`, with `--dangerously-skip-permissions` when "Skip Permissions" is enabled, then custom flags. Besides the [variables every A2A peer gets](#every-a2a-peer), its environment carries:

@@ -143,84 +143,93 @@ pub async fn handle_events(
     authorize_events(&ctx.bridge_state, &headers, &payload.events)?;
 
     for envelope in payload.events {
-        let tag = envelope.tag.clone();
-        ctx.bridge_state.record_envelope(envelope.clone());
-
-        let mut status = None;
-        let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
-        if let Some(terminal_id) = own_terminal {
-            status = ctx
-                .pty_manager
-                .apply_plugin_event(terminal_id, &envelope.event_type);
-            match envelope.event_type.as_str() {
-                "turn.started" => {
-                    ctx.a2a_router.turn_started(terminal_id);
-                    if let Some(title) = envelope
-                        .data
-                        .get("prompt")
-                        .or_else(|| envelope.data.get("text"))
-                        .or_else(|| envelope.data.get("query"))
-                        .or_else(|| envelope.data.get("user_input"))
-                        .and_then(|v| v.as_str())
-                        .and_then(task_title)
-                    {
-                        ctx.pty_manager.update_task_title(terminal_id, &title);
-                    }
-                }
-                "turn.completed" => {
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                    let answer = envelope
-                        .data
-                        .get("answer")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Turn completed")
-                        .to_string();
-                    // The router tells the trail listener about the entry it completes
-                    let inputs = turn_inputs(&envelope);
-                    ctx.a2a_router.turn_completed(
-                        terminal_id,
-                        answer,
-                        inputs.as_deref(),
-                        &ctx.pty_manager,
-                    );
-                }
-                "tool.started" => {
-                    let tool = envelope
-                        .data
-                        .get("tool")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Tool");
-                    ctx.pty_manager.update_current_tool(terminal_id, Some(tool.to_string()));
-                }
-                "tool.finished" => {
-                    ctx.pty_manager.increment_auto_approved(terminal_id);
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                }
-                "session.ended" => {
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                    ctx.a2a_router.forget_turns(terminal_id);
-                }
-                _ => {}
-            }
-        }
-
-        // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
-        let _ = ctx.app_handle.emit("bridge-event", envelope);
-        if let Some(status) = status {
-            // A turn that ended lets the terminal's next held message in, and a session that
-            // ended fails the rest. Typing blocks for the submit delay, so it runs off the
-            // event route.
-            if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
-                let router = ctx.a2a_router.clone();
-                let pty_manager = ctx.pty_manager.clone();
-                let terminal_id = status.terminal_id.clone();
-                tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
-            }
-            let _ = ctx.app_handle.emit("terminal-status", status);
-        }
+        apply_event(&ctx, envelope);
     }
 
     Ok(StatusCode::OK.into_response())
+}
+
+/// Applies one authenticated agent event: records it, moves its terminal's status and
+/// A2A state, and sends it and the status to the frontend. The event-bridge plugin's
+/// events come through `handle_events`; Quay makes the ones for an OpenCode terminal
+/// itself (see `opencode`). Typing a held message runs on a blocking thread, so this
+/// never blocks.
+pub fn apply_event(ctx: &AppContext, envelope: Envelope) {
+    let tag = envelope.tag.clone();
+    ctx.bridge_state.record_envelope(envelope.clone());
+
+    let mut status = None;
+    let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
+    if let Some(terminal_id) = own_terminal {
+        status = ctx
+            .pty_manager
+            .apply_plugin_event(terminal_id, &envelope.event_type);
+        match envelope.event_type.as_str() {
+            "turn.started" => {
+                ctx.a2a_router.turn_started(terminal_id);
+                if let Some(title) = envelope
+                    .data
+                    .get("prompt")
+                    .or_else(|| envelope.data.get("text"))
+                    .or_else(|| envelope.data.get("query"))
+                    .or_else(|| envelope.data.get("user_input"))
+                    .and_then(|v| v.as_str())
+                    .and_then(task_title)
+                {
+                    ctx.pty_manager.update_task_title(terminal_id, &title);
+                }
+            }
+            "turn.completed" => {
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+                let answer = envelope
+                    .data
+                    .get("answer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Turn completed")
+                    .to_string();
+                // The router tells the trail listener about the entry it completes
+                let inputs = turn_inputs(&envelope);
+                ctx.a2a_router.turn_completed(
+                    terminal_id,
+                    answer,
+                    inputs.as_deref(),
+                    &ctx.pty_manager,
+                );
+            }
+            "tool.started" => {
+                let tool = envelope
+                    .data
+                    .get("tool")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Tool");
+                ctx.pty_manager.update_current_tool(terminal_id, Some(tool.to_string()));
+            }
+            "tool.finished" => {
+                ctx.pty_manager.increment_auto_approved(terminal_id);
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+            }
+            "session.ended" => {
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+                ctx.a2a_router.forget_turns(terminal_id);
+            }
+            _ => {}
+        }
+    }
+
+    // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
+    let _ = ctx.app_handle.emit("bridge-event", envelope);
+    if let Some(status) = status {
+        // A turn that ended lets the terminal's next held message in, and a session that
+        // ended fails the rest. Typing blocks for the submit delay, so it runs off the
+        // event route.
+        if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
+            let router = ctx.a2a_router.clone();
+            let pty_manager = ctx.pty_manager.clone();
+            let terminal_id = status.terminal_id.clone();
+            tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
+        }
+        let _ = ctx.app_handle.emit("terminal-status", status);
+    }
 }
 
 pub async fn handle_commands(
