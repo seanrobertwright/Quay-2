@@ -311,7 +311,7 @@ pub fn strip_ansi(s: &str) -> String {
         }
         match chars.next() {
             Some('[') => {
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if ('@'..='~').contains(&c) {
                         break;
                     }
