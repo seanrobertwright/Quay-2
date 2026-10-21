@@ -166,6 +166,24 @@ mod tests {
     }
 
     #[test]
+    fn a_blank_role_prompt_box_gives_only_the_you_are_line() {
+        let mut writer = member("writer", "Technical Writer", RunKind::Claude);
+        writer.role_prompt = Some("\n   \n".to_string());
+        let swarm = [writer, member("editor", "Editor", RunKind::Claude)];
+
+        let prompts = compose_launch_prompts(&swarm);
+
+        assert!(
+            prompts[0]
+                .as_deref()
+                .unwrap()
+                .starts_with("Role: Technical Writer\n\nYou are the Technical Writer.\n\nYour teammates"),
+            "{:?}",
+            prompts[0]
+        );
+    }
+
+    #[test]
     fn clis_without_launch_prompt_support_get_none_but_stay_in_the_briefing() {
         let swarm = [
             member("claude-dev", "Primary Implementer", RunKind::Claude),

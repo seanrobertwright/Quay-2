@@ -63,6 +63,14 @@ const nextAgentNumber = (agents: SwarmAgentConfig[]) => {
   return n;
 };
 
+/** The four parts of a role prompt, in the order a role prompt follows them. */
+const ROLE_PROMPT_PLACEHOLDER = [
+  "Who you are: …",
+  "What you own: …",
+  "What you leave to teammates: …",
+  "How you work: …",
+].join("\n");
+
 /** How long an armed Remove? stays armed before it reverts to Remove. */
 const REMOVE_CONFIRM_MS = 3000;
 
@@ -84,6 +92,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
   const removeTimer = useRef<number | null>(null);
   const nameInputId = useId();
   const nameErrorId = useId();
+  const rolePromptIdBase = useId();
 
   // Custom preset form state
   const [customTitle, setCustomTitle] = useState(DEFAULT_TITLE);
@@ -472,71 +481,100 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                   {customAgents.map((ag, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 bg-[#0d1117] border border-[#30363d] rounded-md flex items-center gap-2 text-xs"
+                      className="p-2.5 bg-[#0d1117] border border-[#30363d] rounded-md space-y-2 text-xs"
                     >
-                      <AgentIcon kind={ag.run_kind} className="w-3.5 h-3.5 shrink-0" />
-                      <select
-                        value={ag.run_kind}
-                        onChange={(e) =>
-                          setCustomAgents((prev) =>
-                            prev.map((a, i) =>
-                              i === idx ? { ...a, run_kind: e.target.value as any } : a
+                      <div className="flex items-center gap-2">
+                        <AgentIcon kind={ag.run_kind} className="w-3.5 h-3.5 shrink-0" />
+                        <select
+                          aria-label={`CLI for agent ${idx + 1}`}
+                          value={ag.run_kind}
+                          onChange={(e) =>
+                            setCustomAgents((prev) =>
+                              prev.map((a, i) =>
+                                i === idx ? { ...a, run_kind: e.target.value as any } : a
+                              )
                             )
-                          )
-                        }
-                        className="px-2 py-1 bg-[#161b22] border border-[#30363d] rounded text-white font-mono text-[11px]"
-                      >
-                        <option value="claude">Claude Code</option>
-                        <option value="antigravity">Antigravity CLI</option>
-                        <option value="codex">Codex CLI</option>
-                        <option value="pi">Pi Coding Agent</option>
-                        <option value="gemini">Gemini CLI</option>
-                        <option value="grok">Grok CLI</option>
-                        <option value="aider">Aider CLI</option>
-                        <option value="kiro">Kiro CLI</option>
-                        <option value="copilot">GitHub Copilot</option>
-                        <option value="opencode">OpenCode CLI</option>
-                        <option value="powershell">PowerShell</option>
-                        <option value="command">Custom Command</option>
-                      </select>
-
-                      <input
-                        type="text"
-                        value={ag.role}
-                        onChange={(e) =>
-                          setCustomAgents((prev) =>
-                            prev.map((a, i) => (i === idx ? { ...a, role: e.target.value } : a))
-                          )
-                        }
-                        placeholder="Role / Title"
-                        className="flex-1 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-white"
-                      />
-
-                      <input
-                        type="text"
-                        value={ag.name}
-                        onChange={(e) =>
-                          setCustomAgents((prev) =>
-                            prev.map((a, i) => (i === idx ? { ...a, name: e.target.value } : a))
-                          )
-                        }
-                        placeholder="session-name"
-                        className="w-28 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-[#58a6ff] font-mono text-[11px]"
-                      />
-
-                      {!takesLaunchPrompt(ag.run_kind) && <NoLaunchPromptNote />}
-
-                      {customAgents.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCustomAgents((prev) => prev.filter((_, i) => i !== idx))
                           }
-                          className="p-1 text-[#8b949e] hover:text-[#f85149]"
+                          className="px-2 py-1 bg-[#161b22] border border-[#30363d] rounded text-white font-mono text-[11px]"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                          <option value="claude">Claude Code</option>
+                          <option value="antigravity">Antigravity CLI</option>
+                          <option value="codex">Codex CLI</option>
+                          <option value="pi">Pi Coding Agent</option>
+                          <option value="gemini">Gemini CLI</option>
+                          <option value="grok">Grok CLI</option>
+                          <option value="aider">Aider CLI</option>
+                          <option value="kiro">Kiro CLI</option>
+                          <option value="copilot">GitHub Copilot</option>
+                          <option value="opencode">OpenCode CLI</option>
+                          <option value="powershell">PowerShell</option>
+                          <option value="command">Custom Command</option>
+                        </select>
+
+                        <input
+                          type="text"
+                          aria-label={`Role for agent ${idx + 1}`}
+                          value={ag.role}
+                          onChange={(e) =>
+                            setCustomAgents((prev) =>
+                              prev.map((a, i) => (i === idx ? { ...a, role: e.target.value } : a))
+                            )
+                          }
+                          placeholder="Role / Title"
+                          className="flex-1 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-white"
+                        />
+
+                        <input
+                          type="text"
+                          aria-label={`Session name for agent ${idx + 1}`}
+                          value={ag.name}
+                          onChange={(e) =>
+                            setCustomAgents((prev) =>
+                              prev.map((a, i) => (i === idx ? { ...a, name: e.target.value } : a))
+                            )
+                          }
+                          placeholder="session-name"
+                          className="w-28 px-2.5 py-1 bg-[#161b22] border border-[#30363d] rounded text-[#58a6ff] font-mono text-[11px]"
+                        />
+
+                        {!takesLaunchPrompt(ag.run_kind) && <NoLaunchPromptNote />}
+
+                        {customAgents.length > 2 && (
+                          <button
+                            type="button"
+                            aria-label={`Remove agent ${idx + 1}`}
+                            onClick={() =>
+                              setCustomAgents((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            className="p-1 text-[#8b949e] hover:text-[#f85149]"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label
+                          htmlFor={`${rolePromptIdBase}-${idx}`}
+                          className="block text-[11px] font-semibold text-[#8b949e]"
+                        >
+                          Role prompt <span className="font-normal">(optional)</span>
+                        </label>
+                        <textarea
+                          id={`${rolePromptIdBase}-${idx}`}
+                          value={ag.role_prompt ?? ""}
+                          onChange={(e) =>
+                            setCustomAgents((prev) =>
+                              prev.map((a, i) =>
+                                i === idx ? { ...a, role_prompt: e.target.value } : a
+                              )
+                            )
+                          }
+                          placeholder={ROLE_PROMPT_PLACEHOLDER}
+                          rows={4}
+                          className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-white leading-relaxed resize-y placeholder:text-[#6e7681]"
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
