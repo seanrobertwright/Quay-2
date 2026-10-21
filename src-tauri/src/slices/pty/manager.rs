@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::Mutex;
@@ -63,6 +63,46 @@ fn get_sessions_dir() -> PathBuf {
         let _ = std::fs::create_dir_all(&base_dir);
         base_dir
     }
+}
+
+/// The session list saved at `path`. A missing file means none. A file that can't be
+/// parsed is logged and renamed to `sessions.json.corrupt-<ms>`, so the next save
+/// can't overwrite what's left of it.
+fn read_session_list(path: &Path) -> Vec<PersistedTerminalSession> {
+    // Read as bytes so that invalid UTF-8 counts as unparseable, not unreadable
+    let content = match std::fs::read(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            tracing::error!("Could not read saved terminals from {}: {}", path.display(), e);
+            return Vec::new();
+        }
+    };
+    match serde_json::from_slice::<Vec<PersistedTerminalSession>>(&content) {
+        Ok(list) => list,
+        Err(e) => {
+            let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+            let aside = path.with_file_name(format!("{}.corrupt-{}", name, crate::dates::now_ms()));
+            tracing::error!(
+                "Saved terminals in {} are unreadable ({}); moving the file to {}",
+                path.display(),
+                e,
+                aside.display()
+            );
+            if let Err(e) = std::fs::rename(path, &aside) {
+                tracing::error!("Could not move {} aside: {}", path.display(), e);
+            }
+            Vec::new()
+        }
+    }
+}
+
+/// Saves the session list to `path` through a temp file and rename, so a crash
+/// mid-save leaves the previous list in place.
+fn write_session_list(path: &Path, list: &[PersistedTerminalSession]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(list).map_err(|e| e.to_string())?;
+    crate::atomic_file::write_atomic(path, json.as_bytes())
+        .map_err(|e| format!("cannot write {}: {}", path.display(), e))
 }
 
 fn read_saved_scrollback(terminal_id: &str) -> (String, u64) {
@@ -162,54 +202,50 @@ impl PtyManager {
     }
 
     pub fn load_persisted_sessions(&self) {
-        let meta_path = get_sessions_dir().join("sessions.json");
-        if let Ok(content) = std::fs::read_to_string(&meta_path) {
-            if let Ok(list) = serde_json::from_str::<Vec<PersistedTerminalSession>>(&content) {
-                let mut info_map = self.terminals_info.lock();
-                let mut dormant_map = self.dormant_buffers.lock();
+        let list = read_session_list(&get_sessions_dir().join("sessions.json"));
+        let mut info_map = self.terminals_info.lock();
+        let mut dormant_map = self.dormant_buffers.lock();
 
-                for (idx, item) in list.into_iter().enumerate() {
-                    let (scrollback, seq) = read_saved_scrollback(&item.id);
-                    dormant_map.insert(item.id.clone(), (scrollback, seq));
+        for (idx, item) in list.into_iter().enumerate() {
+            let (scrollback, seq) = read_saved_scrollback(&item.id);
+            dormant_map.insert(item.id.clone(), (scrollback, seq));
 
-                    let created_at = if item.created_at > 0 {
-                        item.created_at
-                    } else if item.last_updated > 0 {
-                        item.last_updated + idx as u64
-                    } else {
-                        next_created_at()
-                    };
+            let created_at = if item.created_at > 0 {
+                item.created_at
+            } else if item.last_updated > 0 {
+                item.last_updated + idx as u64
+            } else {
+                next_created_at()
+            };
 
-                    {
-                        let mut last = LAST_CREATED_AT.lock();
-                        if created_at > *last {
-                            *last = created_at;
-                        }
-                    }
-
-                    // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
-                    let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
-                    let info = TerminalInfo {
-                        id: item.id.clone(),
-                        name: item.name,
-                        project_path: item.project_path,
-                        run_kind: item.run_kind,
-                        permission_mode,
-                        live_mode: permission_mode,
-                        claude_status: ClaudeStatus::Exited,
-                        auto_approved_count: item.auto_approved_count,
-                        exit_code: Some(0),
-                        task_title: item.task_title,
-                        current_tool: None,
-                        custom_name: item.custom_name,
-                        custom_flags: item.custom_flags,
-                        command_text: item.command_text,
-                        created_at,
-                        plugin_hint: false,
-                    };
-                    info_map.insert(item.id, info);
+            {
+                let mut last = LAST_CREATED_AT.lock();
+                if created_at > *last {
+                    *last = created_at;
                 }
             }
+
+            // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
+            let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
+            let info = TerminalInfo {
+                id: item.id.clone(),
+                name: item.name,
+                project_path: item.project_path,
+                run_kind: item.run_kind,
+                permission_mode,
+                live_mode: permission_mode,
+                claude_status: ClaudeStatus::Exited,
+                auto_approved_count: item.auto_approved_count,
+                exit_code: Some(0),
+                task_title: item.task_title,
+                current_tool: None,
+                custom_name: item.custom_name,
+                custom_flags: item.custom_flags,
+                command_text: item.command_text,
+                created_at,
+                plugin_hint: false,
+            };
+            info_map.insert(item.id, info);
         }
     }
 
@@ -240,9 +276,9 @@ impl PtyManager {
 
         list.sort_by_key(|s| s.created_at);
 
-        let meta_path = get_sessions_dir().join("sessions.json");
-        if let Ok(json) = serde_json::to_string_pretty(&list) {
-            let _ = std::fs::write(meta_path, json);
+        // Still under the terminals lock, so saves can't overtake each other
+        if let Err(e) = write_session_list(&get_sessions_dir().join("sessions.json"), &list) {
+            tracing::error!("Could not save terminals: {}", e);
         }
     }
 
@@ -829,6 +865,87 @@ impl PtyManager {
 mod tests {
     use super::*;
     use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind};
+
+    fn temp_sessions_file() -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("quay2-sessions-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sessions.json");
+        (dir, path)
+    }
+
+    fn dir_entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn persisted(id: &str) -> PersistedTerminalSession {
+        PersistedTerminalSession {
+            id: id.to_string(),
+            name: id.to_string(),
+            project_path: "E:\\Projects\\Test".to_string(),
+            run_kind: RunKind::Claude,
+            permission_mode: PermissionMode::Normal,
+            task_title: None,
+            custom_name: false,
+            auto_approved_count: 0,
+            command_text: None,
+            custom_flags: None,
+            last_updated: 1,
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn a_missing_session_list_reads_as_none_and_creates_nothing() {
+        let (dir, path) = temp_sessions_file();
+        assert!(read_session_list(&path).is_empty());
+        assert!(dir_entries(&dir).is_empty());
+    }
+
+    #[test]
+    fn a_saved_session_list_reads_back() {
+        let (dir, path) = temp_sessions_file();
+        write_session_list(&path, &[persisted("term-a"), persisted("term-b")]).unwrap();
+        let ids: Vec<String> = read_session_list(&path).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec!["term-a", "term-b"]);
+        assert_eq!(dir_entries(&dir), vec!["sessions.json"]);
+    }
+
+    #[test]
+    fn an_unparseable_session_list_is_moved_aside_and_survives_the_next_save() {
+        let (dir, path) = temp_sessions_file();
+        let truncated = "[\n  {\n    \"id\": \"term-a\",\n    \"na";
+        std::fs::write(&path, truncated).unwrap();
+
+        assert!(read_session_list(&path).is_empty());
+        let entries = dir_entries(&dir);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].starts_with("sessions.json.corrupt-"), "{:?}", entries);
+        let aside = dir.join(&entries[0]);
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), truncated);
+
+        write_session_list(&path, &[persisted("term-b")]).unwrap();
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), truncated);
+        assert_eq!(read_session_list(&path).len(), 1);
+    }
+
+    #[test]
+    fn a_session_list_cut_inside_a_character_is_moved_aside() {
+        let (dir, path) = temp_sessions_file();
+        // "é" is 0xC3 0xA9; a write cut after its first byte leaves invalid UTF-8
+        let cut = b"[{\"id\": \"term-a\", \"name\": \"caf\xC3".to_vec();
+        std::fs::write(&path, &cut).unwrap();
+
+        assert!(read_session_list(&path).is_empty());
+        let entries = dir_entries(&dir);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].starts_with("sessions.json.corrupt-"), "{:?}", entries);
+        assert_eq!(std::fs::read(dir.join(&entries[0])).unwrap(), cut);
+    }
 
     #[test]
     fn test_last_seq_reads_dormant_buffer_then_defaults_to_zero() {
