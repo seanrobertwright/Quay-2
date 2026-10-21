@@ -51,7 +51,7 @@ fn sender_name(from_terminal: &str, pty_manager: Option<&PtyManager>) -> String 
 /// Where `request` goes: its id, and its terminal when there is a PTY manager to resolve
 /// it with `resolve_target`, a name matching in the sender's project first. Without one
 /// (in tests) the target is taken as given. Refuses a target that is the sender itself,
-/// or an Archon terminal.
+/// an Archon terminal, or a terminal that has exited.
 fn checked_target(
     request: &A2ADispatchRequest,
     pty_manager: Option<&PtyManager>,
@@ -66,6 +66,7 @@ fn checked_target(
     };
     refuse_dispatch_to_self(request, &target_id, pty_manager)?;
     refuse_dispatch_to_archon(target.as_ref())?;
+    refuse_dispatch_to_exited(target.as_ref())?;
     Ok((target_id, target))
 }
 
@@ -98,10 +99,29 @@ fn refuse_dispatch_to_archon(target: Option<&TerminalInfo>) -> Result<(), String
     }
 }
 
+/// Refuses a message to a terminal that has exited: no agent is running to read it, so it
+/// would never be typed in or answered. Its terminal id still reaches it for
+/// `quay_get_agent_status`.
+fn refuse_dispatch_to_exited(target: Option<&TerminalInfo>) -> Result<(), String> {
+    match target {
+        Some(t) if t.claude_status == ClaudeStatus::Exited => Err(format!(
+            "Refused: {} has exited, so it can't take a message. Ask the user to relaunch it.",
+            t.name
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// What a sender waiting on `target` is told at once, because Quay can't return a reply
-/// from it: it is a listener, or a Claude terminal whose event-bridge plugin isn't
-/// reporting. `None` when the wait can run.
+/// from it: it has exited, it is a listener, or it is a Claude terminal whose
+/// event-bridge plugin isn't reporting. `None` when the wait can run.
 fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
+    if target.claude_status == ClaudeStatus::Exited {
+        return Some(format!(
+            "{name} exited before it replied. Ask the user to relaunch it.",
+            name = target.name,
+        ));
+    }
     if target.plugin_silent() {
         return Some(format!(
             "{name} got your message, but {name}'s event-bridge plugin isn't reporting, so Quay can't return its reply. \
@@ -783,6 +803,68 @@ mod tests {
         assert_eq!(strip_peer_prefix("Read package.json"), "Read package.json");
         assert_eq!(strip_peer_prefix("[Peer agent (cut off"), "[Peer agent (cut off");
         assert_eq!(strip_peer_prefix("[Broadcast Notice]: hi"), "[Broadcast Notice]: hi");
+    }
+
+    #[tokio::test]
+    async fn a_message_to_an_exited_terminal_is_refused_at_once_and_nothing_is_sent() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ex-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ex-gone", RunKind::Claude, ClaudeStatus::Exited),
+        ]);
+
+        let err = at_once(router.dispatch_and_wait(
+            peer_message("term-ex-asker", "term-ex-gone"),
+            Some(&pty),
+            60,
+        ))
+        .await
+        .unwrap_err();
+        assert!(err.contains("term-ex-gone has exited"), "{err}");
+        assert!(err.contains("relaunch"), "{err}");
+        let err = router
+            .dispatch(peer_message("term-ex-asker", "term-ex-gone"), Some(&pty))
+            .unwrap_err();
+        assert!(err.contains("has exited"), "{err}");
+        let mut as_user = peer_message("term-ex-asker", "term-ex-gone");
+        as_user.as_user = Some(true);
+        assert!(router.dispatch(as_user, Some(&pty)).is_err());
+
+        assert!(router.get_messages().is_empty());
+        assert!(router.pending_replies.lock().get("term-ex-gone").is_none());
+        assert_eq!(pty.get_info("term-ex-gone").unwrap().claude_status, ClaudeStatus::Exited);
+    }
+
+    #[tokio::test]
+    async fn a_wait_already_running_when_its_terminal_exits_ends_then() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ex-asker2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ex-exits", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(
+                        peer_message("term-ex-asker2", "term-ex-exits"),
+                        Some(&pty),
+                        60,
+                    )
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!waiting.is_finished(), "a live Claude terminal is waited on");
+        pty.update_status("term-ex-exits", ClaudeStatus::Exited);
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        let WaitOutcome::NoReply(answer) = outcome else {
+            panic!("the wait ends once the terminal exits: {outcome:?}");
+        };
+        assert!(answer.contains("term-ex-exits exited before it replied"), "{answer}");
     }
 
     #[test]

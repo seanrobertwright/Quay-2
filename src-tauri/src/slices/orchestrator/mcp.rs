@@ -505,7 +505,7 @@ pub async fn handle_mcp_request(
 const TARGET_DESCRIPTION: &str = "The peer's exact terminal ID or exact session name, e.g. from quay_list_agents. \
     Nothing else matches: no run kind, partial name or partial ID. A session name matches live terminals only, \
     those in your project first, and one that two of them share is refused as ambiguous; pass the ID then. \
-    An exited terminal is reached by its ID only.";
+    An exited terminal is reached by its ID only, and a message to it is refused.";
 
 /// The line `quay_get_agent_status` answers with, its status in the lowercase form
 /// `quay_list_agents` uses.

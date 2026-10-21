@@ -62,7 +62,7 @@ Returns the peers on the A2A bus, each with its bus level: `full peer` (sends me
 ### How a target is matched
 `quay_send_message` and `quay_get_agent_status` take a target the same way: an exact terminal ID or an exact session name, as `quay_list_agents` lists them. Nothing else matches: no run kind, partial name, partial ID or different letter case.
 
-- A terminal ID reaches any terminal, in any project, even one that has exited.
+- A terminal ID reaches any terminal, in any project, even one that has exited. `quay_get_agent_status` reports an exited terminal as `exited`; a message to one is refused at once, since no agent is running to read it.
 - A session name matches live terminals only. Quay restores saved terminals as exited under their old names at startup, so a name whose only match has exited is refused, and the error says so.
 - A session name matches in the caller's project first, so the same name in two projects is not ambiguous for a caller in one of them. Only when the caller's project has no live match does it match in other projects. Two live matches in the same search are refused as ambiguous, listing them; pass the terminal ID instead.
 - Anything else is refused at once with the list of live peers. Nothing is sent and nothing is waited on.
@@ -72,7 +72,7 @@ Sends a task prompt or delegation message to another running agent.
 - **Parameters**:
   - `target_terminal_id` (string, required): The target's terminal ID or session name (see [How a target is matched](#how-a-target-is-matched)).
   - `message` (string, required): The task description, instruction, or query.
-  - `wait_for_reply` (boolean, optional, default: `true`): If `true`, the caller suspends execution for up to 60 seconds while the recipient processes the message, returning the recipient's output directly into the caller's context. If `false`, dispatches asynchronously and returns immediately. A wait on a listener returns at once: the message is delivered, and the answer says the peer can't reply and suggests a file mailbox. A wait on a Claude Code terminal whose event-bridge plugin isn't reporting returns at once with the plugin's install line, and so does a wait already running when that terminal turns Unknown. A message to an Archon terminal is refused.
+  - `wait_for_reply` (boolean, optional, default: `true`): If `true`, the caller suspends execution for up to 60 seconds while the recipient processes the message, returning the recipient's output directly into the caller's context. If `false`, dispatches asynchronously and returns immediately. A wait on a listener returns at once: the message is delivered, and the answer says the peer can't reply and suggests a file mailbox. A wait on a Claude Code terminal whose event-bridge plugin isn't reporting returns at once with the plugin's install line, and so does a wait already running when that terminal turns Unknown. A wait already running when its target exits returns then, saying so. A message to an Archon terminal, or to a terminal that has exited, is refused.
 - **Response**: text. A reply reads `Reply from <name>:` followed by the peer's answer. A wait that runs past 60 seconds returns `Peer agent (<name>) received the task but is still working.` Without a wait the answer is `Successfully dispatched task to <name>.`
 
 ### 3. `quay_broadcast`

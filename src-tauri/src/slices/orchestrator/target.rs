@@ -51,7 +51,7 @@ pub fn match_target<'a>(
         [only] => Ok(only),
         [] if !named.is_empty() => Err(format!(
             "'{}' has exited; no live terminal has that session name. Exited: {}. \
-             Ask the user to relaunch it, or pass its terminal ID to reach the exited terminal.",
+             Ask the user to relaunch it. Its terminal ID still works with quay_get_agent_status.",
             target,
             named.iter().map(|t| describe(t)).collect::<Vec<_>>().join(", ")
         )),
