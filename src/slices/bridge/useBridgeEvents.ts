@@ -15,6 +15,12 @@ export interface Envelope {
   data: any;
 }
 
+/** Whether `envelope` is a subagent's turn event. The plugin reports a subagent's turns
+ * with an `agentId`; they say nothing about the terminal's own turn. */
+export function isSubagentTurn(envelope: Envelope): boolean {
+  return envelope.type.startsWith("turn.") && Boolean(envelope.data?.agentId);
+}
+
 export interface PermissionResolvedPayload {
   requestId: string;
   decision: string;
@@ -49,7 +55,10 @@ export function useBridgeEvents() {
         if (envelope.type === "tool.started") {
           const tool = envelope.data?.tool || "Tool";
           setActiveTools((prev) => ({ ...prev, [tag]: tool }));
-        } else if (envelope.type === "tool.finished" || envelope.type === "turn.completed") {
+        } else if (
+          envelope.type === "tool.finished" ||
+          (envelope.type === "turn.completed" && !isSubagentTurn(envelope))
+        ) {
           setActiveTools((prev) => ({ ...prev, [tag]: null }));
         }
       }
