@@ -134,7 +134,7 @@ fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
         return Some(format!(
             "{name} got your message, but it is a listener and can't reply. If you need its answer, \
              use a file mailbox: ask {name} to write the answer to a file and end it with a last line you agree on, \
-             then read the file once {name} is Idle and that line is there.",
+             then read the file once that line is there. Quay can't see when a listener finishes, so its status stays Unknown.",
             name = target.name,
         ));
     }
@@ -625,6 +625,8 @@ mod tests {
         assert!(answer.contains("term-lvl-gemini"), "{answer}");
         assert!(answer.contains("listener"), "{answer}");
         assert!(answer.contains("file mailbox"), "{answer}");
+        // A listener shows Unknown, never Idle, so the done rule can't wait for Idle
+        assert!(!answer.contains("Idle"), "{answer}");
         assert!(!answer.contains("Turn completed"), "{answer}");
         let messages = router.get_messages();
         assert_eq!(messages.len(), 1);

@@ -53,12 +53,12 @@ This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the t
 
 ### Status Indicator Strip
 In the navigation rail and terminal status strip, Quay 2 displays live agent status:
-- **`Starting`**: The terminal is launching. Other agent CLIs leave it on their first output; a Claude Code terminal stays here until Quay hears from its [event-bridge plugin](../guide/installation.md#event-bridge-plugin).
-- **`Working`** (Amber / Spinner): Agent is executing tools, thinking, or streaming tokens.
+- **`Starting`**: The terminal is launching. Other agent CLIs leave it on their first output: a listener (Copilot, Kiro, Gemini, Grok, Pi, Aider) goes to `Unknown`, and any other agent to `Idle`. A Claude Code terminal stays here until Quay hears from its [event-bridge plugin](../guide/installation.md#event-bridge-plugin).
+- **`Working`** (Amber / Spinner): Agent is executing tools, thinking, or streaming tokens. An A2A message shows its receiver Working only when Quay will also see that turn end, which today means a Claude Code terminal not shown as `Unknown`. Any other receiver keeps its status.
 - **`Waiting ◆`** (Purple): Agent has paused awaiting operator approval or input.
 - **`Idle`** (Green): Agent turn completed and awaiting new task prompt.
 - **`Exited`** (Gray): Process terminated.
-- **`Unknown`**: A Claude Code terminal sent no plugin event for 30 seconds after its first output. Its pane shows the plugin hint, and A2A messages leave its status alone.
+- **`Unknown`**: Quay can't read whether the agent is working. A listener shows this from its first output. A Claude Code terminal shows it after sending no plugin event for 30 seconds after its first output, and its pane shows the plugin hint.
 
 ---
 

@@ -60,6 +60,26 @@ impl RunKind {
         self.bus_level().is_some()
     }
 
+    /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
+    /// message reaches it and Idle again after. Only Claude's event-bridge plugin reports a
+    /// turn end today. The frontend's `TURN_END_RUN_KINDS` mirrors this.
+    pub fn reports_turn_end(&self) -> bool {
+        matches!(self, RunKind::Claude)
+    }
+
+    /// The status a Starting terminal of this CLI moves to when its pane first prints, or
+    /// `None` when its first output leaves the status alone. A Claude terminal waits for its
+    /// event-bridge plugin instead; see `PluginWatch`. A listener shows Unknown, because Quay
+    /// can't read whether it is working. Any other agent shows Idle.
+    pub fn status_after_first_output(&self) -> Option<ClaudeStatus> {
+        match self {
+            RunKind::Claude => None,
+            _ if self.bus_level() == Some(BusLevel::Listener) => Some(ClaudeStatus::Unknown),
+            _ if self.is_agent() => Some(ClaudeStatus::Idle),
+            _ => None,
+        }
+    }
+
     /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
     /// The spawn and the team briefing both read this, so they cannot disagree.
     pub fn gets_quay_mcp(&self) -> bool {
@@ -231,6 +251,13 @@ impl TerminalInfo {
     /// hasn't heard from its event-bridge plugin.
     pub fn plugin_silent(&self) -> bool {
         self.run_kind == RunKind::Claude && self.claude_status == ClaudeStatus::Unknown
+    }
+
+    /// Whether a message reaching this terminal shows it Working: only when Quay will also
+    /// see that turn end and show it Idle again. A Claude terminal shown as Unknown doesn't,
+    /// because Quay hasn't heard from its event-bridge plugin.
+    pub fn shows_working_on_delivery(&self) -> bool {
+        self.run_kind.reports_turn_end() && self.claude_status != ClaudeStatus::Unknown
     }
 }
 
@@ -435,6 +462,47 @@ mod tests {
         );
         assert_eq!(terminal(RunKind::PowerShell, ClaudeStatus::Unknown).bus_level(), None);
         assert!(!terminal(RunKind::Codex, ClaudeStatus::Unknown).plugin_silent());
+    }
+
+    #[test]
+    fn only_claude_reports_a_turn_end() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.reports_turn_end())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude]);
+    }
+
+    #[test]
+    fn a_terminal_shows_working_on_delivery_only_when_quay_will_see_the_turn_end() {
+        assert!(terminal(RunKind::Claude, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
+        assert!(!terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
+    }
+
+    #[test]
+    fn first_output_leaves_claude_to_its_plugin_and_shows_listeners_unknown() {
+        assert_eq!(RunKind::Claude.status_after_first_output(), None);
+        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Antigravity, RunKind::Archon] {
+            assert_eq!(kind.status_after_first_output(), Some(ClaudeStatus::Idle), "{:?}", kind);
+        }
+        for kind in kinds_at(Some(BusLevel::Listener)) {
+            assert_eq!(kind.status_after_first_output(), Some(ClaudeStatus::Unknown), "{:?}", kind);
+        }
+        for kind in [RunKind::PowerShell, RunKind::Command] {
+            assert_eq!(kind.status_after_first_output(), None, "{:?}", kind);
+        }
+    }
+
+    #[test]
+    fn turn_end_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.reports_turn_end())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(frontend_run_kinds("TURN_END_RUN_KINDS"), backend);
     }
 
     /// The run kinds the frontend's `const_name` list holds, read from `types.ts`.

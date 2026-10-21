@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -7,6 +7,7 @@ import {
   SpawnTerminalRequest,
   StageLayout,
   PermissionMode,
+  showsWorkingOnDelivery,
 } from "../terminal/types";
 import { Envelope } from "../bridge/useBridgeEvents";
 import { Project } from "./types";
@@ -25,13 +26,6 @@ interface PtyExitPayload {
   exit_code?: number | null;
 }
 
-/**
- * Whether the terminal is Starting and goes Idle on its own output. Other agent kinds do;
- * a Claude terminal waits for the event-bridge plugin instead.
- */
-function leavesStartingOnOutput(t: TerminalInfo): boolean {
-  return t.run_kind !== "claude" && t.claude_status === "starting";
-}
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -276,29 +270,35 @@ export function useWorkspace() {
     };
   }, []);
 
-  // Other agent kinds go from 'starting' to 'idle' on their first output. A Claude
-  // terminal waits for the event-bridge plugin instead.
-  useEffect(() => {
-    const unlistenPromise = listen<{ terminal_id: string }>("pty-output", (event) => {
-      const { terminal_id } = event.payload;
-      setTerminals((prev) => {
-        const target = prev.find((t) => t.id === terminal_id);
-        if (target && leavesStartingOnOutput(target)) {
-          return prev.map((t) =>
-            t.id === terminal_id ? { ...t, claude_status: "idle" } : t
-          );
-        }
-        return prev;
-      });
-    });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
+  // A `terminal-status` the backend sent before a new or relaunched terminal reached this
+  // list is lost, so a terminal still Starting here takes the backend's status once listed.
+  // Only a terminal's latest sync applies, so a slow answer can't overwrite a newer launch.
+  const statusSyncSeq = useRef(0);
+  const latestStatusSync = useRef(new Map<string, number>());
+  const syncStartingStatus = useCallback(async (terminalIds: string[]) => {
+    const seq = ++statusSyncSeq.current;
+    terminalIds.forEach((id) => latestStatusSync.current.set(id, seq));
+    try {
+      const terms = await invoke<TerminalInfo[]>("list_terminals");
+      const owned = new Set(terminalIds.filter((id) => latestStatusSync.current.get(id) === seq));
+      owned.forEach((id) => latestStatusSync.current.delete(id));
+      const listed = new Map(terms.filter((t) => owned.has(t.id)).map((t) => [t.id, t]));
+      if (listed.size === 0) return;
+      setTerminals((prev) =>
+        prev.map((t) => {
+          const backend = listed.get(t.id);
+          return backend && t.claude_status === "starting"
+            ? { ...t, claude_status: backend.claude_status, plugin_hint: backend.plugin_hint }
+            : t;
+        })
+      );
+    } catch (err) {
+      console.error("Failed to sync terminal status:", err);
+    }
   }, []);
 
   // Listen for A2A message dispatches to immediately update receiver's status and task title.
-  // An Unknown terminal keeps its status: without the plugin Quay can't see the turn end.
+  // The receiver shows Working only when Quay will also see that turn end.
   useEffect(() => {
     const unlistenPromise = listen<{
       id: string;
@@ -314,7 +314,7 @@ export function useWorkspace() {
           if (t.id === to_terminal) {
             return {
               ...t,
-              claude_status: t.claude_status === "unknown" ? t.claude_status : "working",
+              claude_status: showsWorkingOnDelivery(t) ? "working" : t.claude_status,
               task_title: cleanTitle || t.task_title,
             };
           }
@@ -439,6 +439,7 @@ export function useWorkspace() {
       }
 
       setTerminals((prev) => [...prev, ...spawnedTerms]);
+      void syncStartingStatus(spawnedTerms.map((t) => t.id));
 
       if (preset.layout === "single") {
         setLayout("single");
@@ -549,6 +550,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, term!]);
+        void syncStartingStatus([term!.id]);
         setActiveProject(created.path);
         setPrimaryTerminalId(term.id);
         setActiveTerminalId(term.id);
@@ -623,6 +625,7 @@ export function useWorkspace() {
         },
       });
       setTerminals((prev) => [...prev, term]);
+      void syncStartingStatus([term.id]);
       setActiveProject(targetPath);
       setPrimaryTerminalId(term.id);
       setActiveTerminalId(term.id);
@@ -892,6 +895,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
+        void syncStartingStatus([newTerm.id]);
         setSecondaryTerminalId(newTerm.id);
         setLayout("split-horizontal");
         setZoomedFromLayout(null);
@@ -930,6 +934,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
+        void syncStartingStatus([newTerm.id]);
         setSecondaryTerminalId(newTerm.id);
         setLayout("split-vertical");
         setZoomedFromLayout(null);
@@ -965,6 +970,7 @@ export function useWorkspace() {
       };
       const newTerm = await invoke<TerminalInfo>("spawn_terminal", { request: enrichedRequest });
       setTerminals((prev) => [...prev, newTerm]);
+      void syncStartingStatus([newTerm.id]);
       if (layout === "single") {
         setPrimaryTerminalId(newTerm.id);
         setActiveTerminalId(newTerm.id);
@@ -1014,18 +1020,6 @@ export function useWorkspace() {
           new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
         );
       }, 250);
-
-      // Fallback timer: if a non-Claude terminal is still in "starting" after 3s, mark it
-      // "idle". A Claude terminal stays Starting until the event-bridge plugin speaks.
-      setTimeout(() => {
-        setTerminals((prev) =>
-          prev.map((t) =>
-            t.id === newTerm.id && leavesStartingOnOutput(t)
-              ? { ...t, claude_status: "idle" }
-              : t
-          )
-        );
-      }, 3000);
     } catch (err) {
       console.error("Failed to spawn terminal:", err);
     }
@@ -1084,6 +1078,7 @@ export function useWorkspace() {
         cols: dims.cols,
       });
       setTerminals((prev) => prev.map((t) => (t.id === terminalId ? updated : t)));
+      void syncStartingStatus([terminalId]);
       setActiveTerminalId(terminalId);
 
       // Lock focus on the relaunched terminal
