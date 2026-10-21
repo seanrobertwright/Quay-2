@@ -18,6 +18,7 @@ import {
   KiroIcon,
   CopilotIcon,
   OpenCodeIcon,
+  PigIcon,
   PowerShellIcon,
   CommandIcon,
 } from "./AgentIcons";
@@ -128,6 +129,13 @@ const AGENT_MODELS: Record<string, ModelOption[]> = {
     { label: "Google Gemini 2.0 Flash", value: "-m google/gemini-2.0-flash" },
     { label: "DeepSeek Chat (DeepSeek)", value: "-m deepseek/deepseek-chat" },
     { label: "Continue Previous Session", value: "--continue" },
+  ],
+  pig: [
+    { label: "Default (PiG's configured model)", value: "" },
+    { label: "Claude Sonnet, latest (Thinking High)", value: "--model sonnet:high" },
+    { label: "Claude Opus, latest", value: "--model opus" },
+    { label: "High Thinking Mode", value: "--thinking high" },
+    { label: "Max Thinking Mode", value: "--thinking max" },
   ],
 };
 
@@ -241,6 +249,8 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
         return "GitHub Copilot CLI (GitHub & Microsoft)";
       case "opencode":
         return "OpenCode CLI (Multi-Provider Terminal Agent)";
+      case "pig":
+        return "PiG (Pi in Go)";
       default:
         return "Agent";
     }
@@ -437,6 +447,23 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                 </div>
                 <span className="font-semibold text-center leading-tight">OpenCode</span>
                 <span className="text-[10px] text-[#8b949e] scale-90">SST</span>
+              </button>
+
+              {/* PiG (Pi in Go) */}
+              <button
+                type="button"
+                onClick={() => setRunKind("pig")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "pig"
+                    ? "bg-[#00ADD8]/15 border-[#00ADD8] text-white shadow-sm ring-1 ring-[#00ADD8]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <PigIcon className={`w-5 h-5 ${runKind === "pig" ? "text-[#00ADD8]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">PiG</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">Pi in Go</span>
               </button>
             </div>
 

@@ -27,6 +27,7 @@ export const AGENT_OPTIONS: RunKind[] = [
   "kiro",
   "antigravity",
   "pi",
+  "pig",
   "grok",
   "aider",
 ];
@@ -47,6 +48,8 @@ export function agentName(kind: RunKind | string): string {
       return "OpenCode";
     case "pi":
       return "Pi Agent";
+    case "pig":
+      return "PiG";
     case "gemini":
       return "Gemini CLI";
     case "grok":
