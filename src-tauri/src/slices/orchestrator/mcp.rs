@@ -7,9 +7,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::Emitter;
 
-use super::commands::{emit_broadcast, emit_message};
+use super::commands::emit_broadcast;
 use super::models::{A2ADispatchRequest, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
@@ -309,16 +308,6 @@ pub async fn handle_mcp_request(
                                         .await
                                     {
                                         Ok(outcome) => {
-                                            if let Some(msg) = a2a_router
-                                                .get_messages()
-                                                .into_iter()
-                                                .rev()
-                                                // The caller's broadcast notice to the target also matches, so it is skipped
-                                                .find(|m| !m.broadcast && m.to_terminal == target.id && m.from_terminal == caller_id)
-                                            {
-                                                let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                                                let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
-                                            }
                                             let text = match outcome {
                                                 WaitOutcome::Reply(reply) => {
                                                     format!("Reply from {}:\n{}", target.name, reply)
@@ -338,8 +327,7 @@ pub async fn handle_mcp_request(
                                     }
                                 } else {
                                     match a2a_router.dispatch_async(request, Some(&ctx.pty_manager)).await {
-                                        Ok(msg) => {
-                                            emit_message(&ctx.app_handle, &msg);
+                                        Ok(_) => {
                                             Ok(json!({
                                                 "content": [
                                                     {

@@ -164,9 +164,8 @@ pub async fn handle_events(
                         .and_then(|v| v.as_str())
                         .unwrap_or("Turn completed")
                         .to_string();
-                    if let Some(msg) = ctx.a2a_router.resolve_pending_reply(terminal_id, answer) {
-                        let _ = ctx.app_handle.emit("a2a-message-updated", msg);
-                    }
+                    // The router tells the trail listener about the entry it completes
+                    ctx.a2a_router.resolve_pending_reply(terminal_id, answer);
                 }
                 "tool.started" => {
                     let tool = envelope
