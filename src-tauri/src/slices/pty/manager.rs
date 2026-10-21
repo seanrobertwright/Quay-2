@@ -416,9 +416,28 @@ impl PtyManager {
         updated_info.exit_code = None;
         updated_info.plugin_hint = false;
 
+        let sessions = self.sessions.clone();
+        let id = terminal_id.to_string();
+        let attach = move || {
+            sessions.lock().insert(id, session);
+        };
+        let updated_info = match self.relist_launched(&launch_ref, updated_info, attach) {
+            Ok(info) => info,
+            Err(unattached) => {
+                // Dropping the session ends its process. Its reader may have written a
+                // new log after the close deleted the old one.
+                drop(unattached);
+                if self.get_info(terminal_id).is_none() {
+                    let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
+                    let _ = std::fs::remove_file(log_path);
+                }
+                return Err(format!(
+                    "Terminal {} was closed or relaunched again while it relaunched",
+                    terminal_id
+                ));
+            }
+        };
         self.dormant_buffers.lock().remove(terminal_id);
-        self.sessions.lock().insert(terminal_id.to_string(), session);
-        let updated_info = self.insert_launched(&launch_ref, updated_info);
         self.save_sessions_to_disk();
         self.notify_server_watcher(launch_ref, server_port);
 
@@ -516,23 +535,25 @@ impl PtyManager {
     }
 
     pub fn kill(&self, terminal_id: &str) -> Result<(), String> {
-        // 1. Terminate running session process if active
+        // 1. End the current launch first, so a relaunch still starting sees the terminal
+        //    closed and never lists it or its session again (see `relist_launched`)
+        self.plugin_watches.lock().remove(terminal_id);
+        self.submit_locks.lock().remove(terminal_id);
+
+        // 2. Terminate running session process if active
         {
             let mut sessions = self.sessions.lock();
             sessions.remove(terminal_id);
         }
 
-        self.plugin_watches.lock().remove(terminal_id);
-        self.submit_locks.lock().remove(terminal_id);
-
-        // 2. Remove from terminals_info and dormant_buffers
+        // 3. Remove from terminals_info and dormant_buffers
         let removed = {
             let mut info_map = self.terminals_info.lock();
             info_map.remove(terminal_id).is_some()
         };
         self.dormant_buffers.lock().remove(terminal_id);
 
-        // 3. Clean up disk files
+        // 4. Clean up disk files
         let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
         let _ = std::fs::remove_file(log_path);
         self.save_sessions_to_disk();
@@ -731,6 +752,37 @@ impl PtyManager {
         }
         self.terminals_info.lock().insert(info.id.clone(), info.clone());
         info
+    }
+
+    /// Lists `info` again as the terminal `launch` restarted, running `attach` in the same step
+    /// to put the new session in place, and returns it as listed. A terminal closed while it
+    /// relaunched stays closed: when it is no longer listed, or `launch` is no longer its
+    /// current launch, nothing is listed and `attach` comes back unrun, for the caller to drop
+    /// outside this manager's locks. `kill` ends the launch before it removes the session and
+    /// the listing, so a close either comes after this step and removes what it put in place,
+    /// or comes before it and is seen here.
+    pub fn relist_launched<F: FnOnce()>(
+        &self,
+        launch: &LaunchRef,
+        mut info: TerminalInfo,
+        attach: F,
+    ) -> Result<TerminalInfo, F> {
+        let mut watches = self.plugin_watches.lock();
+        let Some(watch) = launch.current_in(&mut watches) else {
+            return Err(attach);
+        };
+        let has_output = watch.has_output();
+        if !self.terminals_info.lock().contains_key(&launch.terminal_id) {
+            // Closed before this launch began, so the launch is the closed terminal's last trace
+            watches.remove(&launch.terminal_id);
+            return Err(attach);
+        }
+        if has_output {
+            settle_after_first_output(&mut info);
+        }
+        attach();
+        self.terminals_info.lock().insert(info.id.clone(), info.clone());
+        Ok(info)
     }
 
     /// Shows the terminal as Unknown, with the plugin hint, when `launch` is still current
@@ -1676,6 +1728,73 @@ mod tests {
         manager.kill("term-watched-close").unwrap();
 
         assert_eq!(*seen.lock(), ["term-watched-close"]);
+    }
+
+    #[test]
+    fn a_relaunch_that_finishes_lists_the_terminal_again_with_its_new_session() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-done", RunKind::Codex);
+        let info = manager.get_info("term-relist-done").unwrap();
+        let relaunch = manager.begin_launch("term-relist-done", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_ok());
+        assert!(attached);
+        assert!(manager.get_info("term-relist-done").is_some());
+    }
+
+    #[test]
+    fn a_terminal_closed_while_it_relaunches_stays_closed() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-closed", RunKind::Codex);
+        let info = manager.get_info("term-relist-closed").unwrap();
+        let relaunch = manager.begin_launch("term-relist-closed", RunKind::Codex);
+        manager.kill("term-relist-closed").unwrap();
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-closed").is_none());
+        assert!(!manager.plugin_watches.lock().contains_key("term-relist-closed"));
+    }
+
+    #[test]
+    fn a_terminal_closed_before_its_relaunch_begins_its_launch_stays_closed() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-early", RunKind::Codex);
+        let info = manager.get_info("term-relist-early").unwrap();
+        manager.kill("term-relist-early").unwrap();
+        let relaunch = manager.begin_launch("term-relist-early", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-early").is_none());
+        // The launch it began for the closed terminal is gone too
+        assert!(!manager.plugin_watches.lock().contains_key("term-relist-early"));
+    }
+
+    #[test]
+    fn a_relaunch_overtaken_by_a_later_one_leaves_the_later_one_in_place() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-twice", RunKind::Codex);
+        let info = manager.get_info("term-relist-twice").unwrap();
+        let earlier = manager.begin_launch("term-relist-twice", RunKind::Codex);
+        let later = manager.begin_launch("term-relist-twice", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&earlier, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-twice").is_some());
+        assert!(later.current_in(&mut manager.plugin_watches.lock()).is_some());
     }
 
     #[test]
