@@ -62,16 +62,24 @@ impl RunKind {
 
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
-    /// end, and so does Codex's turn-end helper, which Codex runs through its `notify`
-    /// setting. The frontend's `TURN_END_RUN_KINDS` mirrors this.
+    /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
+    /// and so does Antigravity's OSC 7501 `done` (`prints_osc7501`). The frontend's
+    /// `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Codex)
+        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::Antigravity)
     }
 
-    /// Whether Quay hears a turn of this CLI start. Codex's turn-end helper runs only once a
-    /// turn has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
+    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, and
+    /// from Antigravity's OSC 7501 `working`. Codex's turn-end helper runs only once a turn
+    /// has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
     pub fn reports_turn_start(&self) -> bool {
-        matches!(self, RunKind::Claude)
+        matches!(self, RunKind::Claude | RunKind::Antigravity)
+    }
+
+    /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
+    /// output (see `osc7501`). The spawn and the PTY reader both read this.
+    pub fn prints_osc7501(&self) -> bool {
+        matches!(self, RunKind::Antigravity)
     }
 
     /// The status a Starting terminal of this CLI moves to when its pane first prints, or
@@ -502,21 +510,30 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_and_codex_report_a_turn_end() {
+    fn only_claude_codex_and_antigravity_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::Codex]);
     }
 
     #[test]
-    fn only_claude_reports_a_turn_start() {
+    fn only_claude_and_antigravity_report_a_turn_start() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_start())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity]);
+    }
+
+    #[test]
+    fn only_antigravity_prints_osc7501() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.prints_osc7501())
+            .collect();
+        assert_eq!(kinds, [RunKind::Antigravity]);
     }
 
     #[test]
@@ -533,6 +550,7 @@ mod tests {
         assert!(terminal(RunKind::Claude, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
         assert!(terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::Antigravity, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
     }
@@ -582,8 +600,9 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_or_a_codex_terminal_mid_turn_holds_deliveries() {
-        for kind in [RunKind::Claude, RunKind::Codex] {
+    fn only_a_reporting_claude_codex_or_antigravity_terminal_mid_turn_holds_deliveries() {
+        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity];
+        for kind in holders {
             for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
                 assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
             }
@@ -591,10 +610,7 @@ mod tests {
                 assert!(!terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
             }
         }
-        for kind in ALL_RUN_KINDS
-            .into_iter()
-            .filter(|kind| !matches!(kind, RunKind::Claude | RunKind::Codex))
-        {
+        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| !holders.contains(kind)) {
             assert!(!terminal(kind, ClaudeStatus::Working).holds_deliveries(), "{:?}", kind);
         }
     }

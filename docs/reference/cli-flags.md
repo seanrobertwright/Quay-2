@@ -44,6 +44,19 @@ codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <overri
 
 ---
 
+## Antigravity Environment
+
+Quay 2 starts Antigravity as `agy.exe`, with `--dangerously-skip-permissions` when "Skip Permissions" is enabled, then custom flags. Besides the [variables every A2A peer gets](#every-a2a-peer), its environment carries:
+
+| Variable | Value | Purpose |
+| :--- | :--- | :--- |
+| `AGY_CLI_OSC7501` | `on` | Makes `agy` print an OSC 7501 sequence each time its turn moves, which Quay reads for the terminal's status and for the answer to a sender who waits (see [Antigravity on the A2A bus](../features/agent-support.md#antigravity-on-the-a2a-bus)) |
+| `AGY_CLI_OSC7501_MESSAGES` | unset | Its `brief` setting drops the text from each sequence, so Quay removes it even when the workspace or Quay's own environment sets it |
+
+Both are applied after the workspace's own variables, so none of those can replace them.
+
+---
+
 ## Quay Startup Environment Variables
 
 Quay 2 reads these from its own environment when it starts:

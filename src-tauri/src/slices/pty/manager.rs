@@ -10,14 +10,27 @@ use super::models::{
     ClaudeStatus, PermissionMode, PersistedTerminalSession, RunKind, SpawnTerminalRequest,
     TerminalInfo, TerminalOutputPayload, TerminalStatusPayload,
 };
+use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::session::PtySession;
+use super::session::{Osc7501Hook, PtySession};
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// What a terminal's own output says about its turn, as the turn watcher hears it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnEvent {
+    /// A turn started.
+    Started,
+    /// What a sender waiting on the running turn is told.
+    Answered(String),
+}
+
+/// What the turn watcher runs, with the id of the terminal whose output reported the turn.
+type TurnWatcher = Arc<dyn Fn(&str, TurnEvent) + Send + Sync>;
 
 static LAST_CREATED_AT: Mutex<u64> = Mutex::new(0);
 
@@ -125,6 +138,7 @@ pub struct PtyManager {
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
+    turn_watcher: Arc<Mutex<Option<TurnWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
     #[cfg(test)]
     test_input: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -139,6 +153,7 @@ impl PtyManager {
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
+            turn_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             test_input: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -246,6 +261,7 @@ impl PtyManager {
         let start_seq = self.last_seq(&terminal_id);
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
+        let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, &app_handle);
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
@@ -254,6 +270,7 @@ impl PtyManager {
             bridge_token,
             app_handle,
             on_first_output,
+            on_osc7501,
         )?;
 
         let created_at = next_created_at();
@@ -319,6 +336,7 @@ impl PtyManager {
 
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
+        let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, &app_handle);
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
@@ -327,6 +345,7 @@ impl PtyManager {
             bridge_token,
             app_handle,
             on_first_output,
+            on_osc7501,
         )?;
 
         let mut updated_info = info;
@@ -468,8 +487,8 @@ impl PtyManager {
 
     /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
     /// route: its first output moves it out of Starting, the plugin silence clock makes it
-    /// Unknown, or the terminal closes. It runs on the thread that moved the status, with no
-    /// lock of this manager held.
+    /// Unknown, an OSC 7501 sequence moves it (`apply_turn_report`), or the terminal closes.
+    /// It runs on the thread that moved the status, with no lock of this manager held.
     pub fn set_status_watcher(&self, watcher: impl Fn(&str) + Send + Sync + 'static) {
         *self.status_watcher.lock() = Some(Arc::new(watcher));
     }
@@ -479,6 +498,13 @@ impl PtyManager {
         if let Some(watcher) = watcher {
             watcher(terminal_id);
         }
+    }
+
+    /// Runs `watcher` with a terminal's id and what its own output says about its turn, from
+    /// Antigravity's OSC 7501 sequences (see `apply_turn_report`). It runs on the PTY reader
+    /// thread, with no lock of this manager held.
+    pub fn set_turn_watcher(&self, watcher: impl Fn(&str, TurnEvent) + Send + Sync + 'static) {
+        *self.turn_watcher.lock() = Some(Arc::new(watcher));
     }
 
     pub fn list(&self) -> Vec<TerminalInfo> {
@@ -647,6 +673,68 @@ impl PtyManager {
             _ => heard,
         };
         Some(status_payload(info))
+    }
+
+    /// What a launch's PTY reader runs with each OSC 7501 sequence, for a CLI that prints
+    /// them (`RunKind::prints_osc7501`): it follows the launch's turns and applies each
+    /// report, sending `terminal-status` when the status moved. `None` for any other CLI.
+    fn osc7501_hook(
+        &self,
+        run_kind: RunKind,
+        launch: &LaunchRef,
+        app_handle: &AppHandle,
+    ) -> Option<Osc7501Hook> {
+        if !run_kind.prints_osc7501() {
+            return None;
+        }
+        let manager = self.clone();
+        let launch = launch.clone();
+        let app_handle = app_handle.clone();
+        let mut turn = AntigravityTurn::default();
+        Some(Box::new(move |seq| {
+            let report = turn.read(&seq);
+            if let Some(status) = manager.apply_turn_report(&launch, &report) {
+                let _ = app_handle.emit("terminal-status", status);
+            }
+        }))
+    }
+
+    /// Applies what one of `launch`'s OSC 7501 sequences said (see `AntigravityTurn::read`),
+    /// while `launch` is still current. It sets the terminal's status, unless its process has
+    /// exited, then tells the turn watcher of a turn start and of an answer, and last the
+    /// status watcher, when the status moved: a terminal that went Idle lets its next held
+    /// message in. Returns the new status when it moved.
+    pub fn apply_turn_report(
+        &self,
+        launch: &LaunchRef,
+        report: &TurnReport,
+    ) -> Option<TerminalStatusPayload> {
+        let moved = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            match &report.status {
+                Some(status) if *status != info.claude_status && info.exit_code.is_none() => {
+                    info.claude_status = status.clone();
+                    Some(status_payload(info))
+                }
+                _ => None,
+            }
+        };
+        let watcher = self.turn_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            if report.starts_turn {
+                watcher(&launch.terminal_id, TurnEvent::Started);
+            }
+            if let Some(answer) = &report.answer {
+                watcher(&launch.terminal_id, TurnEvent::Answered(answer.clone()));
+            }
+        }
+        if moved.is_some() {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
+        moved
     }
 
     /// Hides the plugin hint for the rest of the terminal's current launch, and returns
@@ -1238,6 +1326,92 @@ mod tests {
 
         // The Claude terminal stayed Starting, so only the Codex one is reported
         assert_eq!(*seen.lock(), ["term-watched-codex"]);
+    }
+
+    /// Applies the OSC 7501 sequence with body `body` as `launch`'s PTY reader does.
+    fn agy_says(
+        manager: &PtyManager,
+        launch: &LaunchRef,
+        turn: &mut AntigravityTurn,
+        body: &str,
+    ) -> Option<TerminalStatusPayload> {
+        let seq = crate::slices::pty::osc7501::Osc7501::parse(body).unwrap();
+        manager.apply_turn_report(launch, &turn.read(&seq))
+    }
+
+    /// Logs what the turn watcher hears.
+    fn turn_log(manager: &PtyManager) -> Arc<Mutex<Vec<TurnEvent>>> {
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let log = heard.clone();
+        manager.set_turn_watcher(move |_, event| log.lock().push(event));
+        heard
+    }
+
+    #[test]
+    fn an_antigravity_terminals_osc7501_states_set_its_status_and_report_its_turn() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-agy-turn", RunKind::Antigravity);
+        first_output(&manager, &launch);
+        let heard = turn_log(&manager);
+        let moved = Arc::new(Mutex::new(Vec::new()));
+        let log = moved.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+        let mut turn = AntigravityTurn::default();
+
+        agy_says(&manager, &launch, &mut turn, "state=working:app=antigravity");
+        assert_eq!(status_of(&manager, "term-agy-turn"), ClaudeStatus::Working);
+        agy_says(
+            &manager,
+            &launch,
+            &mut turn,
+            "state=blocked:kind=permission:app=antigravity:msg=VHJ1c3QgdGhpcyBmb2xkZXI/",
+        );
+        assert_eq!(status_of(&manager, "term-agy-turn"), ClaudeStatus::Waiting);
+        agy_says(&manager, &launch, &mut turn, "state=working:app=antigravity");
+        let sent = agy_says(&manager, &launch, &mut turn, "state=done:app=antigravity:msg=cG9uZw==");
+
+        assert_eq!(sent.unwrap().claude_status, ClaudeStatus::Idle);
+        assert_eq!(
+            *heard.lock(),
+            [
+                TurnEvent::Started,
+                TurnEvent::Answered("blocked (permission): Trust this folder?".to_string()),
+                TurnEvent::Answered("pong".to_string()),
+            ]
+        );
+        // Each move is reported, so the Idle at the end lets a held message in
+        assert_eq!(moved.lock().len(), 4);
+    }
+
+    #[test]
+    fn a_relaunched_antigravity_terminal_ignores_the_old_launchs_sequences() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-agy-old", RunKind::Antigravity);
+        first_output(&manager, &old);
+        manager.begin_launch("term-agy-old", RunKind::Antigravity);
+        let heard = turn_log(&manager);
+
+        let mut turn = AntigravityTurn::default();
+        assert!(agy_says(&manager, &old, &mut turn, "state=working").is_none());
+        assert!(agy_says(&manager, &old, &mut turn, "state=done:msg=cG9uZw==").is_none());
+
+        assert_eq!(status_of(&manager, "term-agy-old"), ClaudeStatus::Idle);
+        assert!(heard.lock().is_empty());
+    }
+
+    #[test]
+    fn an_antigravity_terminal_that_exited_stays_exited_but_its_last_answer_still_counts() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-agy-exit", RunKind::Antigravity);
+        first_output(&manager, &launch);
+        manager.set_exit_code("term-agy-exit", Some(0));
+        let heard = turn_log(&manager);
+
+        let mut turn = AntigravityTurn::default();
+        assert!(agy_says(&manager, &launch, &mut turn, "state=done:msg=cG9uZw==").is_none());
+
+        assert_eq!(status_of(&manager, "term-agy-exit"), ClaudeStatus::Exited);
+        assert_eq!(*heard.lock(), [TurnEvent::Started, TurnEvent::Answered("pong".to_string())]);
     }
 
     #[test]

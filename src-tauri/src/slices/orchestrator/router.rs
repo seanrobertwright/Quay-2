@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::target::{resolve_target, same_project};
-use crate::slices::pty::manager::PtyManager;
+use crate::slices::pty::manager::{PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::EVENT_BRIDGE_INSTALL_LINE;
 
@@ -697,6 +697,20 @@ impl A2ARouter {
     /// prompt) answers no message.
     pub fn turn_started(&self, terminal_id: &str) {
         self.deliveries.lock().start_turn(terminal_id);
+    }
+
+    /// Takes the turns a terminal's own output reports, Antigravity's OSC 7501 sequences
+    /// (see `PtyManager::apply_turn_report`), as the bridge takes a plugin's turn events:
+    /// a turn start pairs the turn with its message, and an answer ends it for the senders
+    /// waiting on it.
+    pub fn follow_turns(&self, pty_manager: &PtyManager) {
+        let router = self.clone();
+        pty_manager.set_turn_watcher(move |terminal_id, event| match event {
+            TurnEvent::Started => router.turn_started(terminal_id),
+            TurnEvent::Answered(answer) => {
+                router.resolve_pending_reply(terminal_id, answer);
+            }
+        });
     }
 
     /// Forgets which messages `terminal_id`'s turns answer, when its session ends: no turn
@@ -2153,6 +2167,148 @@ Confirm your role in one line, then wait.";
         // A Claude turn that ends with no turn start after the message started before it
         assert!(router.turn_completed("term-cx-claude", "older".to_string(), None, &pty).is_none());
         assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+    }
+
+    /// An Antigravity terminal's PTY reader, which plays OSC 7501 sequences into `pty`.
+    struct Agy {
+        launch: crate::slices::pty::plugin_watch::LaunchRef,
+        turn: crate::slices::pty::osc7501::AntigravityTurn,
+    }
+
+    impl Agy {
+        fn launch(pty: &PtyManager, id: &str) -> Self {
+            Self { launch: pty.begin_launch(id, RunKind::Antigravity), turn: Default::default() }
+        }
+
+        /// Applies the sequence with body `body`, as the reader does when Antigravity prints it.
+        fn says(&mut self, pty: &PtyManager, body: &str) {
+            let seq = crate::slices::pty::osc7501::Osc7501::parse(body).unwrap();
+            pty.apply_turn_report(&self.launch, &self.turn.read(&seq));
+        }
+    }
+
+    fn base64(text: &str) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(text)
+    }
+
+    /// Asks `to` "What is 2+2?" from `from` and waits up to 60 seconds, as
+    /// `quay_send_message` with `wait_for_reply: true` does, once the message is typed in.
+    async fn ask_and_type(
+        router: &A2ARouter,
+        pty: &PtyManager,
+        from: &str,
+        to: &str,
+    ) -> tokio::task::JoinHandle<Result<WaitOutcome, String>> {
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            let request = peer_message(from, to);
+            tokio::spawn(async move { router.dispatch_and_wait(request, Some(&pty), 60).await })
+        };
+        // Past the submit delay, so the message and its Enter are both typed in
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(pty.test_input(to).len(), 2);
+        waiting
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_antigravity_returns_its_done_msg() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker", "term-agy").await;
+        assert_eq!(pty.get_info("term-agy").unwrap().claude_status, ClaudeStatus::Working);
+
+        agy.says(&pty, "state=working:app=antigravity");
+        agy.says(&pty, &format!("state=done:app=antigravity:msg={}", base64("4")));
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
+        assert_eq!(pty.get_info("term-agy").unwrap().claude_status, ClaudeStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_antigravity_whose_turn_blocks_returns_what_it_waits_on() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-blocked", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy-blocked");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker2", "term-agy-blocked").await;
+        agy.says(&pty, "state=working:app=antigravity");
+        let approve = base64("Approve RunCommand: python -c \"print(2+2)\"");
+        agy.says(&pty, &format!("state=blocked:kind=permission:app=antigravity:msg={}", approve));
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(
+            outcome,
+            WaitOutcome::Reply("blocked (permission): Approve RunCommand: python -c \"print(2+2)\"".to_string())
+        );
+        assert_eq!(pty.get_info("term-agy-blocked").unwrap().claude_status, ClaudeStatus::Waiting);
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_antigravity_reply_reaches_the_sender_marked() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker3", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-long", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy-long");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker3", "term-agy-long").await;
+        let cut = format!("{}…", "4".repeat(199));
+        agy.says(&pty, "state=working");
+        agy.says(&pty, &format!("state=done:msg={}", base64(&cut)));
+
+        let WaitOutcome::Reply(reply) = at_once(waiting).await.unwrap().unwrap() else {
+            panic!("no reply");
+        };
+        assert!(reply.starts_with(&cut), "{}", reply);
+        assert!(reply.contains("cut this reply off"), "{}", reply);
+    }
+
+    #[test]
+    fn a_message_to_antigravity_mid_turn_waits_for_its_done() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-busy", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        {
+            let router = router.clone();
+            let terminals = pty.clone();
+            pty.set_status_watcher(move |id| router.deliver_held(id, &terminals));
+        }
+        let mut agy = Agy::launch(&pty, "term-agy-busy");
+
+        // The user started a turn, so the message waits behind it
+        agy.says(&pty, "state=working");
+        let msg = router.dispatch(peer_message("term-agy-sender", "term-agy-busy"), Some(&pty)).unwrap();
+        assert_eq!(msg.status, A2AMessageStatus::Queued);
+        assert!(pty.test_input("term-agy-busy").is_empty());
+
+        // That turn's end answers nothing and lets the message in; the next turn answers it
+        agy.says(&pty, &format!("state=done:msg={}", base64("the user's answer")));
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+        assert_eq!(pty.test_input("term-agy-busy").len(), 2);
+
+        agy.says(&pty, "state=working");
+        agy.says(&pty, &format!("state=done:msg={}", base64("4")));
+        let done = router.message(&msg.id).unwrap();
+        assert_eq!(done.status, A2AMessageStatus::Completed);
+        assert_eq!(done.response.as_deref(), Some("4"));
     }
 
     #[test]
