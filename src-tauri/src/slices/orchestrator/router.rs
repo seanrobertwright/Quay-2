@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
+use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::target::{resolve_target, same_project};
-use crate::slices::pty::manager::PtyManager;
+use crate::slices::pty::manager::{PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
 use crate::slices::pty::plugin_watch::EVENT_BRIDGE_INSTALL_LINE;
 
@@ -337,7 +337,7 @@ impl A2ARouter {
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
         let Some(pty) = pty_manager else {
-            message.status = A2AMessageStatus::Dispatched;
+            message.mark_dispatched();
             let mut queues = self.deliveries.lock();
             queues.start_typing(&message.to_terminal, &message.id, &text);
             queues.finish_typing(&message.to_terminal, &message.id, true);
@@ -372,7 +372,7 @@ impl A2ARouter {
 
         let typed = type_in(pty, &target, &text);
         if typed.is_ok() {
-            message.status = A2AMessageStatus::Dispatched;
+            message.mark_dispatched();
             self.record(&message);
         }
         self.deliveries.lock().finish_typing(&target, &message.id, typed.is_ok());
@@ -409,13 +409,24 @@ impl A2ARouter {
             } else {
                 type_in(pty_manager, terminal_id, &next.text)
             };
-            // Only a Queued entry moves: a waiter whose reply came first may have completed it.
+            let typed_at = trail_now();
+            // Only a Queued entry moves. A waiter whose reply came first may have completed
+            // it; then it only gains its delivery time.
             self.update(&next.message_id, |msg| {
                 if msg.status != A2AMessageStatus::Queued {
-                    return false;
+                    let completed_untimed = typed.is_ok()
+                        && msg.status == A2AMessageStatus::Completed
+                        && msg.delivered_at.is_none();
+                    if completed_untimed {
+                        msg.delivered_at = Some(typed_at);
+                    }
+                    return completed_untimed;
                 }
                 match &typed {
-                    Ok(()) => msg.status = A2AMessageStatus::Dispatched,
+                    Ok(()) => {
+                        msg.status = A2AMessageStatus::Dispatched;
+                        msg.delivered_at = Some(typed_at);
+                    }
                     Err(e) => {
                         msg.status = A2AMessageStatus::Failed;
                         msg.response = Some(format!("Not delivered: {}", e));
@@ -448,8 +459,28 @@ impl A2ARouter {
         request: A2ADispatchRequest,
         pty_manager: Option<&PtyManager>,
     ) -> Result<A2AMessage, String> {
+        self.send_async(request, pty_manager, false).await
+    }
+
+    /// Mission Control's dispatch: `dispatch_async`, with the entry marked waited, since
+    /// the operator waits on the trail for the peer's response.
+    pub async fn operator_dispatch_async(
+        &self,
+        request: A2ADispatchRequest,
+        pty_manager: Option<&PtyManager>,
+    ) -> Result<A2AMessage, String> {
+        self.send_async(request, pty_manager, true).await
+    }
+
+    async fn send_async(
+        &self,
+        request: A2ADispatchRequest,
+        pty_manager: Option<&PtyManager>,
+        waited: bool,
+    ) -> Result<A2AMessage, String> {
         let (target_id, target) = checked_target(&request, pty_manager)?;
-        let (message, text) = self.prepare(request, target_id, target, pty_manager);
+        let (mut message, text) = self.prepare(request, target_id, target, pty_manager);
+        message.waited = waited;
         self.deliver_async(message, text, pty_manager).await
     }
 
@@ -492,10 +523,7 @@ impl A2ARouter {
         target: Option<TerminalInfo>,
         pty_manager: Option<&PtyManager>,
     ) -> (A2AMessage, String) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        let now = trail_now();
 
         let msg_id = format!("a2a-{}", Uuid::new_v4().simple());
 
@@ -526,7 +554,10 @@ impl A2ARouter {
             content: request.prompt,
             as_user,
             broadcast: false,
+            waited: false,
             timestamp: now,
+            delivered_at: None,
+            completed_at: None,
             status: A2AMessageStatus::Queued,
             response: None,
             note: None,
@@ -562,7 +593,8 @@ impl A2ARouter {
             return Ok(WaitOutcome::NoReply(answer));
         }
 
-        let (message, text) = self.prepare(request, resolved_target.clone(), target, pty_manager);
+        let (mut message, text) = self.prepare(request, resolved_target.clone(), target, pty_manager);
+        message.waited = true;
         let message_id = message.id.clone();
         let (tx, mut rx) = oneshot::channel();
 
@@ -601,15 +633,18 @@ impl A2ARouter {
                 // Quay recorded the message as typed in.
                 self.update(&sent.id, |msg| match msg.status {
                     A2AMessageStatus::Queued | A2AMessageStatus::Dispatched => {
-                        msg.status = A2AMessageStatus::Completed;
-                        msg.response = Some(response.clone());
+                        msg.mark_completed(response.clone());
                         true
                     }
                     _ => false,
                 });
                 Ok(WaitOutcome::Reply(response))
             }
-            Ok(Ok(no_reply)) => Ok(no_reply),
+            Ok(Ok(no_reply)) => {
+                // The peer stopped being able to reply: nobody gets its answer now.
+                self.update(&sent.id, |msg| std::mem::replace(&mut msg.waited, false));
+                Ok(no_reply)
+            }
             Ok(Err(_)) => Err("Peer agent channel closed before replying".to_string()),
             Err(_) => {
                 self.forget_waiter(&resolved_target, &sent.id);
@@ -623,6 +658,8 @@ impl A2ARouter {
                         return false;
                     }
                     still_queued = msg.status == A2AMessageStatus::Queued;
+                    // The sender stopped waiting, so nobody gets the late answer.
+                    msg.waited = false;
                     msg.note = Some(format!("No reply within {}s", timeout_secs));
                     true
                 });
@@ -660,6 +697,20 @@ impl A2ARouter {
     /// prompt) answers no message.
     pub fn turn_started(&self, terminal_id: &str) {
         self.deliveries.lock().start_turn(terminal_id);
+    }
+
+    /// Takes the turns a terminal's own output reports, Antigravity's OSC 7501 sequences
+    /// (see `PtyManager::apply_turn_report`), as the bridge takes a plugin's turn events:
+    /// a turn start pairs the turn with its message, and an answer ends it for the senders
+    /// waiting on it.
+    pub fn follow_turns(&self, pty_manager: &PtyManager) {
+        let router = self.clone();
+        pty_manager.set_turn_watcher(move |terminal_id, event| match event {
+            TurnEvent::Started => router.turn_started(terminal_id),
+            TurnEvent::Answered(answer) => {
+                router.resolve_pending_reply(terminal_id, answer);
+            }
+        });
     }
 
     /// Forgets which messages `terminal_id`'s turns answer, when its session ends: no turn
@@ -705,8 +756,7 @@ impl A2ARouter {
             if msg.status != A2AMessageStatus::Dispatched {
                 return false;
             }
-            msg.status = A2AMessageStatus::Completed;
-            msg.response = Some(answer.clone());
+            msg.mark_completed(answer.clone());
             true
         });
 
@@ -759,10 +809,7 @@ impl A2ARouter {
             }
         };
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        let now = trail_now();
         let pty_prompt = format!("[Broadcast Notice]: {}", clean_text);
         let notices: Vec<A2AMessage> = pty_manager
             .list()
@@ -782,7 +829,10 @@ impl A2ARouter {
                 content: text.to_string(),
                 as_user: false,
                 broadcast: true,
+                waited: false,
                 timestamp: now,
+                delivered_at: None,
+                completed_at: None,
                 status: A2AMessageStatus::Queued,
                 response: None,
                 note: None,
@@ -1737,12 +1787,11 @@ mod tests {
         let pty = manager_with(&[
             ("term-q-sender5", RunKind::Claude, ClaudeStatus::Idle),
             ("term-q-gemini", RunKind::Gemini, ClaudeStatus::Working),
-            ("term-q-agy", RunKind::Antigravity, ClaudeStatus::Working),
             ("term-q-unknown", RunKind::Claude, ClaudeStatus::Unknown),
             ("term-q-oc-unknown", RunKind::OpenCode, ClaudeStatus::Unknown),
         ]);
 
-        for target in ["term-q-gemini", "term-q-agy", "term-q-unknown", "term-q-oc-unknown"] {
+        for target in ["term-q-gemini", "term-q-unknown", "term-q-oc-unknown"] {
             let msg = router.dispatch(peer_message("term-q-sender5", target), Some(&pty)).unwrap();
             assert_eq!(msg.status, A2AMessageStatus::Dispatched, "{target}");
             assert_eq!(pty.test_input(target).len(), 2, "{target}");
@@ -2149,6 +2198,148 @@ Confirm your role in one line, then wait.";
         assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
     }
 
+    /// An Antigravity terminal's PTY reader, which plays OSC 7501 sequences into `pty`.
+    struct Agy {
+        launch: crate::slices::pty::plugin_watch::LaunchRef,
+        turn: crate::slices::pty::osc7501::AntigravityTurn,
+    }
+
+    impl Agy {
+        fn launch(pty: &PtyManager, id: &str) -> Self {
+            Self { launch: pty.begin_launch(id, RunKind::Antigravity), turn: Default::default() }
+        }
+
+        /// Applies the sequence with body `body`, as the reader does when Antigravity prints it.
+        fn says(&mut self, pty: &PtyManager, body: &str) {
+            let seq = crate::slices::pty::osc7501::Osc7501::parse(body).unwrap();
+            pty.apply_turn_report(&self.launch, &self.turn.read(&seq));
+        }
+    }
+
+    fn base64(text: &str) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(text)
+    }
+
+    /// Asks `to` "What is 2+2?" from `from` and waits up to 60 seconds, as
+    /// `quay_send_message` with `wait_for_reply: true` does, once the message is typed in.
+    async fn ask_and_type(
+        router: &A2ARouter,
+        pty: &PtyManager,
+        from: &str,
+        to: &str,
+    ) -> tokio::task::JoinHandle<Result<WaitOutcome, String>> {
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            let request = peer_message(from, to);
+            tokio::spawn(async move { router.dispatch_and_wait(request, Some(&pty), 60).await })
+        };
+        // Past the submit delay, so the message and its Enter are both typed in
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(pty.test_input(to).len(), 2);
+        waiting
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_antigravity_returns_its_done_msg() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker", "term-agy").await;
+        assert_eq!(pty.get_info("term-agy").unwrap().claude_status, ClaudeStatus::Working);
+
+        agy.says(&pty, "state=working:app=antigravity");
+        agy.says(&pty, &format!("state=done:app=antigravity:msg={}", base64("4")));
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
+        assert_eq!(pty.get_info("term-agy").unwrap().claude_status, ClaudeStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_antigravity_whose_turn_blocks_returns_what_it_waits_on() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-blocked", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy-blocked");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker2", "term-agy-blocked").await;
+        agy.says(&pty, "state=working:app=antigravity");
+        let approve = base64("Approve RunCommand: python -c \"print(2+2)\"");
+        agy.says(&pty, &format!("state=blocked:kind=permission:app=antigravity:msg={}", approve));
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(
+            outcome,
+            WaitOutcome::Reply("blocked (permission): Approve RunCommand: python -c \"print(2+2)\"".to_string())
+        );
+        assert_eq!(pty.get_info("term-agy-blocked").unwrap().claude_status, ClaudeStatus::Waiting);
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_antigravity_reply_reaches_the_sender_marked() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-asker3", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-long", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        let mut agy = Agy::launch(&pty, "term-agy-long");
+
+        let waiting = ask_and_type(&router, &pty, "term-agy-asker3", "term-agy-long").await;
+        let cut = format!("{}…", "4".repeat(199));
+        agy.says(&pty, "state=working");
+        agy.says(&pty, &format!("state=done:msg={}", base64(&cut)));
+
+        let WaitOutcome::Reply(reply) = at_once(waiting).await.unwrap().unwrap() else {
+            panic!("no reply");
+        };
+        assert!(reply.starts_with(&cut), "{}", reply);
+        assert!(reply.contains("cut this reply off"), "{}", reply);
+    }
+
+    #[test]
+    fn a_message_to_antigravity_mid_turn_waits_for_its_done() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-agy-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-agy-busy", RunKind::Antigravity, ClaudeStatus::Idle),
+        ]);
+        router.follow_turns(&pty);
+        {
+            let router = router.clone();
+            let terminals = pty.clone();
+            pty.set_status_watcher(move |id| router.deliver_held(id, &terminals));
+        }
+        let mut agy = Agy::launch(&pty, "term-agy-busy");
+
+        // The user started a turn, so the message waits behind it
+        agy.says(&pty, "state=working");
+        let msg = router.dispatch(peer_message("term-agy-sender", "term-agy-busy"), Some(&pty)).unwrap();
+        assert_eq!(msg.status, A2AMessageStatus::Queued);
+        assert!(pty.test_input("term-agy-busy").is_empty());
+
+        // That turn's end answers nothing and lets the message in; the next turn answers it
+        agy.says(&pty, &format!("state=done:msg={}", base64("the user's answer")));
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+        assert_eq!(pty.test_input("term-agy-busy").len(), 2);
+
+        agy.says(&pty, "state=working");
+        agy.says(&pty, &format!("state=done:msg={}", base64("4")));
+        let done = router.message(&msg.id).unwrap();
+        assert_eq!(done.status, A2AMessageStatus::Completed);
+        assert_eq!(done.response.as_deref(), Some("4"));
+    }
+
     #[test]
     fn a_message_that_cant_be_typed_is_never_paired_with_a_turn() {
         let router = A2ARouter::new();
@@ -2317,5 +2508,130 @@ Confirm your role in one line, then wait.";
         let listed: Vec<String> = router.get_messages().into_iter().map(|m| m.id).collect();
 
         assert_eq!(listed, [sent[2].clone(), sent[1].clone(), sent[0].clone()]);
+    }
+
+    #[test]
+    fn an_entry_records_when_it_was_typed_in_and_when_its_turn_ended() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-time-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-time-busy", RunKind::Claude, ClaudeStatus::Working),
+        ]);
+
+        let msg = router.dispatch(peer_message("term-time-sender", "term-time-busy"), Some(&pty)).unwrap();
+        assert_eq!((msg.delivered_at, msg.completed_at), (None, None), "a queued entry has no times");
+
+        end_turn(&router, &pty, "term-time-busy");
+        let delivered = router.message(&msg.id).unwrap();
+        let delivered_at = delivered.delivered_at.expect("typing it in records the delivery");
+        assert!(delivered_at >= msg.timestamp);
+        assert_eq!(delivered.completed_at, None);
+
+        let completed = answer_turn(&router, "term-time-busy", "4").unwrap();
+        assert_eq!(completed.delivered_at, Some(delivered_at));
+        assert!(completed.completed_at.expect("the turn end records completion") >= delivered_at);
+    }
+
+    #[test]
+    fn a_message_typed_at_once_records_its_delivery() {
+        let router = A2ARouter::new();
+
+        let msg = router.dispatch(peer_message("term-time-a", "term-time-b"), None).unwrap();
+
+        assert!(msg.delivered_at.is_some_and(|at| at >= msg.timestamp));
+        assert_eq!(msg.completed_at, None);
+    }
+
+    #[tokio::test]
+    async fn only_a_message_someone_waits_on_is_marked_waited() {
+        let router = A2ARouter::new();
+
+        let sent = router.dispatch(peer_message("term-wt-a", "term-wt-b"), None).unwrap();
+        let waiting = {
+            let router = router.clone();
+            tokio::spawn(async move {
+                router.dispatch_and_wait(peer_message("term-wt-a", "term-wt-c"), None, 60).await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        answer_turn(&router, "term-wt-c", "4");
+        at_once(waiting).await.unwrap().unwrap();
+
+        assert!(!sent.waited, "a no-wait send");
+        let waited = router.get_messages().into_iter().find(|m| m.to_terminal == "term-wt-c").unwrap();
+        assert!(waited.waited, "a wait_for_reply send");
+    }
+
+    #[tokio::test]
+    async fn a_wait_that_runs_out_is_no_longer_marked_waited() {
+        let router = A2ARouter::new();
+
+        router.dispatch_and_wait(peer_message("term-wt-late-a", "term-wt-late-b"), None, 0).await.unwrap();
+        let late = answer_turn(&router, "term-wt-late-b", "4").unwrap();
+
+        assert!(!late.waited, "the sender never got this answer");
+    }
+
+    #[tokio::test]
+    async fn a_wait_whose_peer_exits_is_no_longer_marked_waited() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-wt-ex-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-wt-ex-exits", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-wt-ex-asker", "term-wt-ex-exits"), Some(&pty), 60)
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        pty.update_status("term-wt-ex-exits", ClaudeStatus::Exited);
+        at_once(waiting).await.unwrap().unwrap();
+
+        assert!(!router.get_messages()[0].waited);
+    }
+
+    #[tokio::test]
+    async fn a_mission_control_dispatch_is_marked_waited() {
+        let router = A2ARouter::new();
+
+        let sent = router.operator_dispatch_async(peer_message("term-wt-op", "term-wt-peer"), None).await.unwrap();
+
+        assert!(sent.waited, "the operator waits on the trail");
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_a_peer_that_cannot_reply_is_not_marked_waited() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-wt-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-wt-gemini", RunKind::Gemini, ClaudeStatus::Idle),
+        ]);
+
+        let outcome = at_once(router.dispatch_and_wait(
+            peer_message("term-wt-asker", "term-wt-gemini"),
+            Some(&pty),
+            60,
+        ))
+        .await
+        .unwrap();
+
+        assert!(matches!(outcome, WaitOutcome::NoReply(_)), "{outcome:?}");
+        assert!(!router.get_messages()[0].waited, "Quay never waited on it");
+    }
+
+    #[test]
+    fn a_broadcast_notice_is_not_marked_waited() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[("term-wt-bc", RunKind::Claude, ClaudeStatus::Idle)]);
+
+        let sent = router.broadcast_toast("Roll call", &from_mission_control(), &pty).unwrap();
+
+        assert!(!sent.notices.is_empty());
+        assert!(sent.notices.iter().all(|n| !n.waited && n.delivered_at.is_some()));
     }
 }

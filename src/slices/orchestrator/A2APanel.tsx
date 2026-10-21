@@ -19,9 +19,11 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { TerminalInfo, busLevel, isPluginSilent } from "../terminal/types";
+import { TerminalInfo, busLevel, isPluginSilent, showsWorkingOnDelivery } from "../terminal/types";
 import { isSamePath } from "../../utils/paths";
 import { keepSendChoices, toAgentChoices } from "./sendChoices";
+import { entryTimer, responseLabel, TrailStatus } from "./trailEntry";
+import { formatClock, formatDuration } from "../../lib/dates";
 
 interface A2AMessage {
   id: string;
@@ -32,8 +34,11 @@ interface A2AMessage {
   content: string;
   as_user: boolean;
   broadcast?: boolean;
+  waited?: boolean;
   timestamp: number;
-  status: "queued" | "dispatched" | "completed" | "failed";
+  delivered_at?: number | null;
+  completed_at?: number | null;
+  status: TrailStatus;
   response?: string | null;
   note?: string | null;
 }
@@ -73,6 +78,33 @@ function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
   }
 }
 
+/** An entry's timer (see `entryTimer`). A running one ticks each second by itself, so only
+ *  the timer re-renders, not the whole trail. */
+const TrailTimer: FC<{ entry: A2AMessage; seesTurnEnd: boolean }> = ({ entry, seesTurnEnd }) => {
+  const [now, setNow] = useState(() => Date.now());
+  const running = entry.status === "dispatched" && seesTurnEnd;
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [running]);
+
+  const timer = entryTimer(entry, now, seesTurnEnd);
+  if (!timer) return null;
+  return (
+    <span
+      className="font-mono tabular-nums"
+      title={timer.running ? "Time since delivery" : "How long the turn took"}
+    >
+      {timer.running
+        ? // A running timer counts whole seconds, so its first second reads 0s, not milliseconds.
+          timer.ms < 1000 ? "0s" : formatDuration(timer.ms)
+        : `took ${formatDuration(timer.ms)}`}
+    </span>
+  );
+};
+
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
@@ -101,6 +133,13 @@ export const A2APanel: FC<A2APanelProps> = ({
   const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // A Dispatched entry counts up only while Quay can see its target's turn end; an entry to
+  // a listener, or to a terminal that exited or closed, would count forever.
+  const seesTurnEnd = (terminalId: string) => {
+    const term = terminals.find((t) => t.id === terminalId);
+    return !!term && term.claude_status !== "exited" && showsWorkingOnDelivery(term);
+  };
 
   const getTerminalLabel = (idOrName: string, nameFallback?: string | null) => {
     if (nameFallback) return nameFallback;
@@ -644,7 +683,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                         {m.status === "dispatched" && (
                           <span className="flex items-center gap-1 text-[#58a6ff]">
                             <Clock className="w-3 h-3 animate-spin" />
-                            <span>Working</span>
+                            <span>Dispatched</span>
                           </span>
                         )}
                         {m.status === "failed" && (
@@ -652,8 +691,9 @@ export const A2APanel: FC<A2APanelProps> = ({
                             <span>Failed</span>
                           </span>
                         )}
+                        <TrailTimer entry={m} seesTurnEnd={seesTurnEnd(m.to_terminal)} />
                         {m.note && <span className="italic">{m.note}</span>}
-                        <span>{new Date(m.timestamp).toLocaleTimeString()}</span>
+                        <span>{formatClock(m.timestamp)}</span>
                       </div>
                     </div>
 
@@ -677,7 +717,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                     {m.response && (
                       <div className="mt-1 pl-2.5 border-l-2 border-[#3fb950] text-[#7ee787] text-[11px] font-mono relative group">
                         <div className="flex items-center justify-between text-[10px] text-[#8b949e] font-sans mb-0.5">
-                          <span>Reply:</span>
+                          <span>{responseLabel(m)}:</span>
                           <button
                             type="button"
                             onClick={() => handleCopy(`resp-${m.id}`, m.response!)}
@@ -686,7 +726,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                             {copiedKey === `resp-${m.id}` ? (
                               <span className="text-[#3fb950]">Copied!</span>
                             ) : (
-                              <span>Copy Reply</span>
+                              <span>Copy {responseLabel(m)}</span>
                             )}
                           </button>
                         </div>

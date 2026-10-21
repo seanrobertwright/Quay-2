@@ -10,6 +10,10 @@ use tauri::{AppHandle, Emitter};
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
+use super::osc7501::{self, Osc7501, Osc7501Scanner};
+
+/// What a PTY reader runs with each OSC 7501 sequence the process prints, in order.
+pub type Osc7501Hook = Box<dyn FnMut(Osc7501) + Send>;
 
 #[derive(Clone, Serialize)]
 pub struct PtyOutputPayload {
@@ -365,7 +369,7 @@ pub(crate) fn build_command(
     bridge_token: &str,
     server_port: Option<u16>,
 ) -> CommandBuilder {
-    let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
+    let perm = request.run_kind.permission_mode(request.permission_mode);
 
     let mut cmd = match request.run_kind {
         // On Unix a PowerShell terminal opens a bare shell and ignores its command text
@@ -398,9 +402,6 @@ pub(crate) fn build_command(
             let mut c = CommandBuilder::new("cmd.exe");
             c.arg("/c");
             c.arg("pi");
-            if perm == PermissionMode::Skip {
-                c.arg("--approve");
-            }
             c
         }
         RunKind::Gemini => {
@@ -501,6 +502,12 @@ pub(crate) fn build_command(
         let workspace = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
         cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(bridge_port, workspace.as_deref()));
     }
+    // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
+    // answer, is unset whether the workspace or Quay's own environment set it
+    if request.run_kind.prints_osc7501() {
+        cmd.env(osc7501::ENABLE_VAR, "on");
+        cmd.env_remove(osc7501::MESSAGES_VAR);
+    }
 
     // Inject custom CLI launch flags (for any supported agent)
     if request.run_kind.is_agent() {
@@ -556,7 +563,8 @@ impl PtySession {
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
     /// `server_port` is the port an OpenCode terminal serves its events on (see
     /// `build_command`). `on_first_output` runs once, on the reader thread, when the process
-    /// first writes output.
+    /// first writes output. `on_osc7501`, when given, runs there with each OSC 7501 sequence
+    /// the output carries, after `on_first_output`.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
@@ -567,6 +575,7 @@ impl PtySession {
         server_port: Option<u16>,
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
+        on_osc7501: Option<Osc7501Hook>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
@@ -581,7 +590,7 @@ impl PtySession {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
+        let perm = request.run_kind.permission_mode(request.permission_mode);
 
         let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token, server_port);
 
@@ -659,6 +668,7 @@ impl PtySession {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
+                let mut osc7501 = on_osc7501.map(|hook| (Osc7501Scanner::default(), hook));
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -681,6 +691,12 @@ impl PtySession {
 
                             if let Some(hook) = on_first_output.take() {
                                 hook();
+                            }
+
+                            if let Some((scanner, hook)) = osc7501.as_mut() {
+                                for seq in scanner.feed(&text) {
+                                    hook(seq);
+                                }
                             }
 
                             // Buffer recent output for newly-mounting xterm instances,
@@ -1013,7 +1029,7 @@ mod tests {
         // Expected values are the arguments each CLI was started with before launch prompts,
         // with Codex's bus overrides after its permission flag
         assert_eq!(args_with_prompt(RunKind::Codex, None), codex_args(&bus_args()));
-        assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi", "--approve"]);
+        assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi"]);
         assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
         assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--port", "4567", "--auto"]);
         assert_eq!(args_with_prompt(RunKind::Kiro, None), ["chat", "--trust-all-tools"]);
@@ -1122,6 +1138,15 @@ mod tests {
     }
 
     #[test]
+    fn pi_never_gets_approve_which_only_trusts_project_files() {
+        for mode in [PermissionMode::Skip, PermissionMode::Normal] {
+            let mut request = spawn_request(RunKind::Pi);
+            request.permission_mode = Some(mode);
+            assert_eq!(argv(&build_command(&request, "term-pi", 1234, "tok", Some(4567)))[1..], ["/c", "pi"], "{:?}", mode);
+        }
+    }
+
+    #[test]
     fn shell_terminals_get_todays_arguments() {
         let shell_args = |run_kind: RunKind, text: Option<&str>| {
             let mut request = spawn_request(run_kind);
@@ -1213,6 +1238,22 @@ mod tests {
 
         assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-wins"));
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn antigravity_reports_its_turns_with_their_messages_whatever_the_workspace_sets() {
+        let mut request = spawn_request(RunKind::Antigravity);
+        request.env_vars = Some(
+            [("AGY_CLI_OSC7501", "off"), ("AGY_CLI_OSC7501_MESSAGES", "brief")]
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+        );
+
+        let cmd = build_command(&request, "term-agy-osc", 4321, "tok-1", Some(4567));
+
+        assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501").as_deref(), Some("on"));
+        assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501_MESSAGES"), None);
     }
 
     #[test]
@@ -1361,7 +1402,7 @@ mod tests {
                 "-NoProfile",
                 "-NoLogo",
                 "-Command",
-                "& 'pi' '--approve' '--model' 'it''s' $env:QUAY_LAUNCH_PROMPT",
+                "& 'pi' '--model' 'it''s' $env:QUAY_LAUNCH_PROMPT",
             ]
         );
         assert_eq!(
@@ -1439,7 +1480,7 @@ mod tests {
         let _ = child.kill();
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert_eq!(recorded, ["--approve", MULTI_LINE_PROMPT]);
+        assert_eq!(recorded, [MULTI_LINE_PROMPT]);
     }
 
     #[test]

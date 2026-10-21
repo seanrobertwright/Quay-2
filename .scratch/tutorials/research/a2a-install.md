@@ -235,7 +235,7 @@ From `PtySession::spawn`, `handle_permission`
 | Claude Code flag | `--dangerously-skip-permissions` | none; Claude Code picks its own starting mode |
 | `CLAUDE_EVENTS_PERMISSIONS` | `off` | `host` |
 | Who answers a would-be prompt | Nobody; Claude Code doesn't prompt | The plugin asks Quay. Quay shows its approval modal, unless the terminal's live mode is Skip or the tool was allowed "for session" |
-| Default for | New Terminal modal (`NewTerminalModal`, "Skip Permissions (Default)"), and the backend when no mode is sent (`request.permission_mode.unwrap_or(PermissionMode::Skip)`) | Only when picked in the New Terminal modal |
+| Default for | New Terminal modal (`NewTerminalModal`, "Skip Permissions (Default)"), and the backend when no mode is sent (`RunKind::permission_mode`, which also keeps Pi at Skip) | Only when picked in the New Terminal modal |
 | Swarm launcher | Always: `launchSwarm` in `src/slices/workspace/useWorkspace.ts` sends no `permission_mode`, and `SwarmModal` offers no choice | Not available |
 
 ### What Claude Code does in each

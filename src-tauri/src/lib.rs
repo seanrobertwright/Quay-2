@@ -61,8 +61,10 @@ pub fn run() {
     let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
 
-    // A terminal that went Unknown or closed no longer holds its messages: type them in,
-    // or mark them Failed, on a thread of their own since each write waits for the submit delay.
+    // A terminal whose status moved off the bridge's event route (it left Starting, went
+    // Unknown, its OSC 7501 output moved it, or it closed) may stop holding its messages: type
+    // them in, or mark them Failed, on a thread of their own since each write waits for the
+    // submit delay.
     {
         let router = a2a_router.clone();
         let terminals = pty_manager.clone();
@@ -73,6 +75,8 @@ pub fn run() {
             std::thread::spawn(move || router.deliver_held(&terminal_id, &terminals));
         });
     }
+    // Antigravity reports its turns in its own output, which the PTY reader hands on
+    a2a_router.follow_turns(&pty_manager);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

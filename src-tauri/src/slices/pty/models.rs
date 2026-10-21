@@ -63,17 +63,28 @@ impl RunKind {
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
     /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
-    /// and Quay reads OpenCode's from the server its TUI runs (see `opencode_watch`). The
-    /// frontend's `TURN_END_RUN_KINDS` mirrors this.
+    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), and Quay reads OpenCode's
+    /// from the server its TUI runs (see `opencode_watch`). The frontend's
+    /// `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode)
+        matches!(
+            self,
+            RunKind::Claude | RunKind::Codex | RunKind::Antigravity | RunKind::OpenCode
+        )
     }
 
-    /// Whether Quay hears a turn of this CLI start. OpenCode's watcher sees its main session
+    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, from
+    /// Antigravity's OSC 7501 `working`, and from OpenCode's watcher seeing its main session
     /// go busy. Codex's turn-end helper runs only once a turn has ended, so
     /// `A2ARouter::turn_completed` pairs a Codex turn with its message then.
     pub fn reports_turn_start(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::OpenCode)
+        matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode)
+    }
+
+    /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
+    /// output (see `osc7501`). The spawn and the PTY reader both read this.
+    pub fn prints_osc7501(&self) -> bool {
+        matches!(self, RunKind::Antigravity)
     }
 
     /// The status a Starting terminal of this CLI moves to when its pane first prints, or
@@ -86,6 +97,23 @@ impl RunKind {
             _ if self.bus_level() == Some(BusLevel::Listener) => Some(ClaudeStatus::Unknown),
             _ if self.is_agent() => Some(ClaudeStatus::Idle),
             _ => None,
+        }
+    }
+
+    /// Whether this CLI never asks before a tool call, so Quay's Skip and Ask choice means
+    /// nothing for it. Pi is one: its `--approve` trusts project-local files rather than
+    /// skipping approvals, so Quay never passes it. The frontend's `NEVER_ASKS_RUN_KINDS`
+    /// mirrors this.
+    pub fn never_asks_before_tools(&self) -> bool {
+        matches!(self, RunKind::Pi)
+    }
+
+    /// The permission mode a terminal of this CLI runs in: the one asked for, or Skip when
+    /// none was asked for or the CLI never asks before a tool call.
+    pub fn permission_mode(&self, requested: Option<PermissionMode>) -> PermissionMode {
+        match requested {
+            Some(mode) if !self.never_asks_before_tools() => mode,
+            _ => PermissionMode::Skip,
         }
     }
 
@@ -488,21 +516,33 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_codex_and_opencode_report_a_turn_end() {
+    fn only_claude_codex_antigravity_and_opencode_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode]);
+        assert_eq!(
+            kinds,
+            [RunKind::Claude, RunKind::Antigravity, RunKind::Codex, RunKind::OpenCode]
+        );
     }
 
     #[test]
-    fn only_claude_and_opencode_report_a_turn_start() {
+    fn only_claude_antigravity_and_opencode_report_a_turn_start() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_start())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::OpenCode]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode]);
+    }
+
+    #[test]
+    fn only_antigravity_prints_osc7501() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.prints_osc7501())
+            .collect();
+        assert_eq!(kinds, [RunKind::Antigravity]);
     }
 
     #[test]
@@ -519,6 +559,7 @@ mod tests {
         assert!(terminal(RunKind::Claude, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
         assert!(terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::Antigravity, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Unknown).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
@@ -549,8 +590,29 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_codex_or_opencode_terminal_mid_turn_holds_deliveries() {
-        for kind in [RunKind::Claude, RunKind::Codex, RunKind::OpenCode] {
+    fn a_cli_that_never_asks_runs_as_skip_whatever_was_asked() {
+        for requested in [None, Some(PermissionMode::Skip), Some(PermissionMode::Normal)] {
+            assert_eq!(RunKind::Pi.permission_mode(requested), PermissionMode::Skip, "{:?}", requested);
+        }
+        assert_eq!(RunKind::Claude.permission_mode(Some(PermissionMode::Normal)), PermissionMode::Normal);
+        assert_eq!(RunKind::Claude.permission_mode(None), PermissionMode::Skip);
+    }
+
+    #[test]
+    fn never_asks_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.never_asks_before_tools())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(backend, ["pi"]);
+        assert_eq!(frontend_run_kinds("NEVER_ASKS_RUN_KINDS"), backend);
+    }
+
+    #[test]
+    fn only_a_reporting_claude_codex_antigravity_or_opencode_terminal_mid_turn_holds_deliveries() {
+        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::OpenCode];
+        for kind in holders {
             for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
                 assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
             }
@@ -558,10 +620,7 @@ mod tests {
                 assert!(!terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
             }
         }
-        for kind in ALL_RUN_KINDS
-            .into_iter()
-            .filter(|kind| !matches!(kind, RunKind::Claude | RunKind::Codex | RunKind::OpenCode))
-        {
+        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| !holders.contains(kind)) {
             assert!(!terminal(kind, ClaudeStatus::Working).holds_deliveries(), "{:?}", kind);
         }
     }
