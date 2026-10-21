@@ -76,5 +76,5 @@ jobs:
             - **Linux**: `.AppImage` & `.deb`
             
             Explore full documentation at https://seanrobertwright.github.io/Quay-2/
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
