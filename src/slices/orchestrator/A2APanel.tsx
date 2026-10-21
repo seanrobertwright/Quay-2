@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { TerminalInfo, busLevel, isPluginSilent } from "../terminal/types";
 import { isSamePath } from "../../utils/paths";
+import { keepSendChoices, toAgentChoices } from "./sendChoices";
 
 interface A2AMessage {
   id: string;
@@ -84,7 +85,7 @@ export const A2APanel: FC<A2APanelProps> = ({
   // the way the stage scopes its terminals: a worktree counts as its own project.
   const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
   const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
-  const [toTerminal, setToTerminal] = useState(projectAgents[1]?.id || "");
+  const [toTerminal, setToTerminal] = useState(() => keepSendChoices(projectAgents, "", "", false).to);
   const [prompt, setPrompt] = useState("");
   const [asUser, setAsUser] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -103,16 +104,11 @@ export const A2APanel: FC<A2APanelProps> = ({
     return term ? term.name : idOrName;
   };
 
-  // Keep From Agent and To Agent on agents of the active project. Unless the message is
-  // dispatched as the user, To Agent never holds the agent From Agent holds: changing From
-  // Agent to the agent To Agent holds moves To Agent to another peer.
+  // Keep From Agent and To Agent on agents of the active project. To Agent holds only a
+  // live peer, and unless the message is dispatched as the user, never the agent From
+  // Agent holds: changing From Agent to the agent To Agent holds moves To Agent to another peer.
   useEffect(() => {
-    const inProject = (id: string) => projectAgents.some((t) => t.id === id);
-    const from = inProject(fromTerminal) ? fromTerminal : projectAgents[0]?.id || "";
-    const to =
-      inProject(toTerminal) && (asUser || toTerminal !== from)
-        ? toTerminal
-        : projectAgents.find((t) => t.id !== from)?.id || "";
+    const { from, to } = keepSendChoices(projectAgents, fromTerminal, toTerminal, asUser);
     if (from !== fromTerminal) setFromTerminal(from);
     if (to !== toTerminal) setToTerminal(to);
   }, [terminals, activeProject, asUser, fromTerminal, toTerminal]);
@@ -402,8 +398,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                       }}
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
-                      {projectAgents
-                        .filter((t) => asUser || t.id !== fromTerminal)
+                      {toAgentChoices(projectAgents, fromTerminal, asUser)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
                             {agentOptionLabel(t)}
@@ -483,7 +478,7 @@ export const A2APanel: FC<A2APanelProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isSending || !prompt.trim()}
+                    disabled={isSending || !prompt.trim() || !toTerminal}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />
