@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { compareShot, renderShotReport, reportShots, shotReportDir, type TutorialShots } from './shot-report.ts';
+import { compareShot, parseCatFileBatch, readSavedShot, releaseBase, renderShotReport, reportShots, shotReportDir, type TutorialShots } from './shot-report.ts';
 
 const WIDTH = 64;
 const HEIGHT = 40;
@@ -90,6 +90,7 @@ test("the report for a release gathers every tutorial captured for it, and a rec
     tutorial: 'hello-a2a',
     quayVersion: '0.3.0',
     capturedOn: '2026-10-21',
+    base: 'HEAD',
     shots: [
       { name: '01-get-the-starter', committed: old, captured: old },
       { name: '02-two-agents', committed: old, captured: moved },
@@ -103,42 +104,66 @@ test("the report for a release gathers every tutorial captured for it, and a rec
   assert.ok(!existsSync(join(dir, 'hello-a2a', '01-get-the-starter.new.webp')), 'an unchanged shot keeps no copy');
   assert.deepEqual(readFileSync(join(dir, 'hello-a2a', '02-two-agents.old.webp')), old);
 
-  await reportShots({ dir, tutorial: 'first-swarm', quayVersion: '0.3.0', capturedOn: '2026-10-21', shots: [{ name: '01-get-the-starter', committed: old, captured: old }] });
+  await reportShots({ dir, tutorial: 'first-swarm', quayVersion: '0.3.0', capturedOn: '2026-10-21', base: 'HEAD', shots: [{ name: '01-get-the-starter', committed: old, captured: old }] });
   let html = readFileSync(join(dir, 'index.html'), 'utf8');
   assert.match(html, /hello-a2a/);
   assert.match(html, /first-swarm/);
 
-  await reportShots({ dir, tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-22', shots: [{ name: '02-two-agents', committed: old, captured: old }] });
+  await reportShots({ dir, tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-22', base: 'HEAD', shots: [{ name: '02-two-agents', committed: old, captured: old }] });
   assert.ok(!existsSync(join(dir, 'hello-a2a', '02-two-agents.new.webp')), "the recapture's section replaces the last one's images");
   html = readFileSync(join(dir, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /03-reply/);
   assert.match(html, /first-swarm/);
 });
 
-test('a tutorial from another release is refused, so one report covers one release', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'shot-report-'));
-  await reportShots({ dir, tutorial: 'first-swarm', quayVersion: '0.3.0', capturedOn: '2026-10-21', shots: [] });
-  await assert.rejects(reportShots({ dir, tutorial: 'hello-a2a', quayVersion: '0.3.1', capturedOn: '2026-10-21', shots: [] }), /0\.3\.0[\s\S]*0\.3\.1/);
-  assert.ok(!existsSync(join(dir, 'hello-a2a.json')), 'nothing is written for the refused capture');
-});
-
 test('a report file that is not one this script wrote is an error, not skipped', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'shot-report-'));
+  const report = (tutorial: string) => reportShots({ dir, tutorial, quayVersion: '0.3.0', capturedOn: '2026-10-21', base: 'HEAD', shots: [] });
   writeFileSync(join(dir, 'first-swarm.json'), '{"tutorial": 3}');
-  await assert.rejects(reportShots({ dir, tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-21', shots: [] }), /first-swarm\.json/);
+  await assert.rejects(report('hello-a2a'), /first-swarm\.json/);
+  const section = { tutorial: 'first-swarm', quayVersion: '0.3.0', capturedOn: '2026-10-21', base: 'HEAD' };
+  writeFileSync(join(dir, 'first-swarm.json'), JSON.stringify({ ...section, shots: [{}] }));
+  await assert.rejects(report('hello-a2a'), /first-swarm\.json/, 'a shot entry is checked too');
+  assert.ok(!existsSync(join(dir, 'hello-a2a.json')), 'nothing is written beside a bad section');
+});
+
+test("a shot that can't be read leaves the tutorial's last section and its images as they were", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'shot-report-'));
+  const old = await webp();
+  const moved = await webp((rgba) => rgba.set([240, 136, 62, 255], pixel(1, 1)));
+  const input = { dir, tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-21', base: 'HEAD' };
+  await reportShots({ ...input, shots: [{ name: '02-two-agents', committed: old, captured: moved }] });
+  const before = readFileSync(join(dir, 'hello-a2a.json'), 'utf8');
+  await assert.rejects(reportShots({ ...input, shots: [{ name: '02-two-agents', committed: old, captured: Buffer.from('half written') }] }), /02-two-agents/);
+  assert.equal(readFileSync(join(dir, 'hello-a2a.json'), 'utf8'), before);
+  assert.ok(existsSync(join(dir, 'hello-a2a', '02-two-agents.new.webp')));
+});
+
+test('a capture waits for another one writing the same report, so neither loses its section', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'shot-report-'));
+  mkdirSync(join(dir, '.lock'));
+  let done = false;
+  const writing = reportShots({ dir, tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-21', base: 'HEAD', shots: [] }).then(() => (done = true));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(done, false, 'it waits while the folder is locked');
+  assert.ok(!existsSync(join(dir, 'hello-a2a.json')));
+  rmSync(join(dir, '.lock'), { recursive: true });
+  await writing;
+  assert.ok(existsSync(join(dir, 'hello-a2a.json')));
+  assert.ok(!existsSync(join(dir, '.lock')), 'it lets go of the lock');
 });
 
 const tutorial = (slug: string, statuses: TutorialShots['shots'][number]['status'][]): TutorialShots => ({
   tutorial: slug,
   quayVersion: '0.3.0',
   capturedOn: '2026-10-21',
+  base: 'HEAD',
   shots: statuses.map((status, i) => ({
     name: `0${i + 1}-shot`,
     status,
     changedPixels: status === 'changed' ? 1200 : 0,
     oldSize: status === 'new' ? null : { width: 2560, height: 1600 },
     newSize: { width: 2560, height: 1600 },
-    diffImage: status === 'changed',
   })),
 });
 
@@ -166,4 +191,43 @@ test('a release with nothing changed says so, and the report escapes what it sho
   assert.match(html, /No tutorial needs a release re-run/);
   assert.doesNotMatch(html, /<b>2026/);
   assert.match(html, /&lt;b&gt;2026/);
+});
+
+test('the baseline is HEAD until the capture for this release is committed', () => {
+  assert.equal(releaseBase([], '0.3.0'), 'HEAD');
+  assert.equal(releaseBase([{ commit: 'c2', parent: 'c1', quayVersion: '0.2.0' }], '0.3.0'), 'HEAD');
+});
+
+test("once the release's capture is committed, the baseline is the commit before its sidecar first named the release", () => {
+  const history = [
+    { commit: 'c4', parent: 'c3', quayVersion: '0.3.0' },
+    { commit: 'c3', parent: 'c2', quayVersion: '0.3.0' },
+    { commit: 'c2', parent: 'c1', quayVersion: '0.2.0' },
+  ];
+  assert.equal(releaseBase(history, '0.3.0'), 'c2');
+  assert.equal(releaseBase([{ commit: 'c1', parent: null, quayVersion: '0.3.0' }], '0.3.0'), null, 'a first capture has nothing before it');
+});
+
+test("git cat-file --batch output is split into each file's bytes, or null for one that is missing", () => {
+  const out = Buffer.concat([
+    Buffer.from('1f2e blob 3\n'),
+    Buffer.from([0x0a, 0x00, 0xff]),
+    Buffer.from('\nHEAD:docs/02.webp missing\n'),
+    Buffer.from('3c4d blob 0\n\n'),
+  ]);
+  assert.deepEqual(parseCatFileBatch(out, 3), [Buffer.from([0x0a, 0x00, 0xff]), null, Buffer.alloc(0)]);
+  assert.throws(() => parseCatFileBatch(Buffer.from('HEAD:x ambiguous\n'), 1), /ambiguous/);
+  assert.throws(() => parseCatFileBatch(Buffer.from('1f2e blob 3\nab'), 1), /git cat-file/);
+});
+
+test('a shot saved by hand is read as WebP, or converted from PNG, which Snipping Tool saves', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'by-hand-'));
+  assert.equal(await readSavedShot(dir, '02-two-agents', 90), null);
+  const shot = await webp();
+  writeFileSync(join(dir, '02-two-agents.webp'), shot);
+  assert.deepEqual(await readSavedShot(dir, '02-two-agents', 90), shot);
+  writeFileSync(join(dir, '03-reply.png'), await sharp(shot).png().toBuffer());
+  const converted = await readSavedShot(dir, '03-reply', 90);
+  assert.ok(converted !== null);
+  assert.deepEqual([(await sharp(converted).metadata()).format, (await sharp(converted).metadata()).width], ['webp', WIDTH]);
 });

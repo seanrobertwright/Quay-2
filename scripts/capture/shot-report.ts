@@ -2,7 +2,7 @@
 // the screenshot research's tolerance, and one report per release that shows, per tutorial,
 // which shots changed, old beside new. README.md beside this file says how it is used.
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pixelmatch from 'pixelmatch';
 import sharp from 'sharp';
@@ -16,12 +16,19 @@ import { TUTORIALS } from '../../docs/.vitepress/tutorials.ts';
  */
 export const DIFF_THRESHOLD = 0.2;
 
+/** How long a capture waits for another one to finish writing the same report. */
+const LOCK_WAIT_MS = 60_000;
+
 export type ShotStatus = 'changed' | 'new' | 'unchanged';
+
+const STATUSES: readonly string[] = ['changed', 'new', 'unchanged'] satisfies ShotStatus[];
 
 export interface Size {
   width: number;
   height: number;
 }
+
+const sameSize = (a: Size, b: Size) => a.width === b.width && a.height === b.height;
 
 export interface ShotComparison {
   name: string;
@@ -32,7 +39,10 @@ export interface ShotComparison {
   /** The committed shot's size, or null when new. */
   oldSize: Size | null;
   newSize: Size;
-  /** A PNG of the changed pixels in red over a faded committed shot, when it changed at the same size. */
+  /**
+   * A PNG of the shot's changes over a faded committed shot, when it changed at the same size:
+   * changed pixels in red, and in yellow the anti-aliasing pixelmatch saw and did not count.
+   */
   diff: Buffer | null;
 }
 
@@ -52,7 +62,7 @@ export async function compareShot(name: string, committed: Buffer | null, captur
   if (committed === null) return { name, status: 'new', changedPixels: 0, oldSize: null, newSize, diff: null };
   const old = await decode(name, 'committed', committed);
   const oldSize = { width: old.width, height: old.height };
-  if (old.width !== next.width || old.height !== next.height) {
+  if (!sameSize(oldSize, newSize)) {
     return { name, status: 'changed', changedPixels: next.width * next.height, oldSize, newSize, diff: null };
   }
   const output = new Uint8Array(old.data.length);
@@ -62,23 +72,105 @@ export async function compareShot(name: string, committed: Buffer | null, captur
   return { name, status: 'changed', changedPixels, oldSize, newSize, diff };
 }
 
-/** One shot as the report keeps it. */
-export interface ReportedShot extends Omit<ShotComparison, 'diff'> {
-  /** Whether the report holds a diff image for it. */
-  diffImage: boolean;
+/** One commit that changed a tutorial's sidecar manifest, and the Quay version the sidecar named after it. */
+export interface SidecarCommit {
+  commit: string;
+  /** Its first parent, or null for a root commit. */
+  parent: string | null;
+  /** Null when the sidecar was removed or unreadable at that commit. */
+  quayVersion: string | null;
 }
+
+/**
+ * The commit whose stills a release's capture is compared with, from the commits that changed
+ * the tutorial's sidecar, newest first. Until a capture for this release is committed it is
+ * HEAD. Once one is, the new stills are at HEAD, so it is the commit before the sidecar first
+ * named this release: a recapture still reports what changed since the last release. Null when
+ * that commit has no parent, so nothing was committed before.
+ */
+export function releaseBase(history: SidecarCommit[], quayVersion: string): string | null {
+  if (history[0]?.quayVersion !== quayVersion) return 'HEAD';
+  let first = history[0];
+  for (const entry of history) {
+    if (entry.quayVersion !== quayVersion) break;
+    first = entry;
+  }
+  return first.parent;
+}
+
+/**
+ * Splits the output of `git cat-file --batch` for `count` objects into each one's bytes, or
+ * null for one git reports missing.
+ */
+export function parseCatFileBatch(out: Buffer, count: number): (Buffer | null)[] {
+  const files: (Buffer | null)[] = [];
+  let at = 0;
+  for (let i = 0; i < count; i++) {
+    const end = out.indexOf(0x0a, at);
+    if (end === -1) throw new Error(`git cat-file --batch ended after ${i} of ${count} objects`);
+    const header = out.subarray(at, end).toString('utf8');
+    at = end + 1;
+    if (header.endsWith(' missing')) {
+      files.push(null);
+      continue;
+    }
+    const match = /^[0-9a-f]+ blob (\d+)$/.exec(header);
+    if (match === null) throw new Error(`git cat-file --batch answered ${JSON.stringify(header)}, not a file`);
+    const size = Number.parseInt(match[1], 10);
+    if (at + size > out.length) throw new Error(`git cat-file --batch ended inside a ${size}-byte file`);
+    files.push(out.subarray(at, at + size));
+    at += size + 1;
+  }
+  return files;
+}
+
+/**
+ * A shot saved by hand in `dir`: `<name>.webp` as it is, or `<name>.png`, which Snipping Tool
+ * saves, converted to WebP at `quality`. Null when neither is there.
+ */
+export async function readSavedShot(dir: string, name: string, quality: number): Promise<Buffer | null> {
+  const webp = join(dir, `${name}.webp`);
+  if (existsSync(webp)) return readFileSync(webp);
+  const png = join(dir, `${name}.png`);
+  if (existsSync(png)) return sharp(readFileSync(png)).webp({ quality }).toBuffer();
+  return null;
+}
+
+/** One shot as the report keeps it. */
+export type ReportedShot = Omit<ShotComparison, 'diff'>;
 
 /** One tutorial's section of a release's report, kept as `<slug>.json` in the report folder. */
 export interface TutorialShots {
   tutorial: string;
   quayVersion: string;
   capturedOn: string;
+  /** The commit the shots were compared with, or null when nothing was committed before. */
+  base: string | null;
   shots: ReportedShot[];
 }
 
 /** A release's report folder, `capture-reports/<version>/`, which git ignores. */
 export function shotReportDir(root: string, quayVersion: string): string {
   return join(root, 'capture-reports', quayVersion);
+}
+
+function isSize(value: unknown): value is Size {
+  const size = value as Partial<Size> | null;
+  return typeof size === 'object' && size !== null && Number.isInteger(size.width) && Number.isInteger(size.height);
+}
+
+function isShot(value: unknown): value is ReportedShot {
+  const shot = value as Partial<ReportedShot> | null;
+  return (
+    typeof shot === 'object' &&
+    shot !== null &&
+    typeof shot.name === 'string' &&
+    typeof shot.status === 'string' &&
+    STATUSES.includes(shot.status) &&
+    Number.isInteger(shot.changedPixels) &&
+    (shot.oldSize === null || isSize(shot.oldSize)) &&
+    isSize(shot.newSize)
+  );
 }
 
 function readSection(dir: string, file: string): TutorialShots {
@@ -96,16 +188,44 @@ function readSection(dir: string, file: string): TutorialShots {
     `${section.tutorial}.json` !== file ||
     typeof section.quayVersion !== 'string' ||
     typeof section.capturedOn !== 'string' ||
-    !Array.isArray(section.shots)
+    (section.base !== null && typeof section.base !== 'string') ||
+    !Array.isArray(section.shots) ||
+    !section.shots.every(isShot)
   ) {
     throw new Error(`${join(dir, file)} is not a tutorial's section of a changed-shot report; remove it or the folder`);
   }
   return section as TutorialShots;
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs `write` holding the report folder's lock, a `.lock` folder made only if it isn't there,
+ * so two captures for one release never write over each other's sections or page.
+ */
+async function withLock<T>(dir: string, write: () => T): Promise<T> {
+  const lock = join(dir, '.lock');
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if (Date.now() > deadline) throw new Error(`${lock} has been held for over ${LOCK_WAIT_MS / 1000} s; if no other capture is running, remove it`);
+      await sleep(100);
+    }
+  }
+  try {
+    return write();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
 export interface CapturedShot {
   name: string;
-  /** The shot committed under its name at HEAD, or null when there is none. */
+  /** The shot committed under its name at the base commit, or null when there is none. */
   committed: Buffer | null;
   captured: Buffer;
 }
@@ -114,36 +234,35 @@ export interface CapturedShot {
  * Compares a tutorial's new shots with its committed ones and writes its section of the
  * release's report: `<slug>.json`, and under `<slug>/` the old, new and diff images of each
  * shot that changed and the new image of each new shot. A recapture of the tutorial replaces
- * its section. Then it writes the report's `index.html` from every section in the folder, which
- * must all be from the same release.
+ * its section. Then it writes the report's `index.html` from every section in the folder.
+ * Every shot is compared, and every other section read, before any file is written or removed.
  */
-export async function reportShots(input: { dir: string; tutorial: string; quayVersion: string; capturedOn: string; shots: CapturedShot[] }): Promise<TutorialShots> {
+export async function reportShots(input: { dir: string; tutorial: string; quayVersion: string; capturedOn: string; base: string | null; shots: CapturedShot[] }): Promise<TutorialShots> {
+  const compared: { shot: CapturedShot; result: ShotComparison }[] = [];
+  for (const shot of input.shots) compared.push({ shot, result: await compareShot(shot.name, shot.committed, shot.captured) });
   mkdirSync(input.dir, { recursive: true });
-  const sections = readdirSync(input.dir)
-    .filter((file) => file.endsWith('.json') && file !== `${input.tutorial}.json`)
-    .map((file) => readSection(input.dir, file));
-  for (const other of sections) {
-    if (other.quayVersion !== input.quayVersion) {
-      throw new Error(`${input.dir} is the report for Quay ${other.quayVersion} (${other.tutorial}); a capture of Quay ${input.quayVersion} goes in its own report`);
+  return withLock(input.dir, () => {
+    const sections = readdirSync(input.dir)
+      .filter((file) => file.endsWith('.json') && file !== `${input.tutorial}.json`)
+      .map((file) => readSection(input.dir, file));
+    const images = join(input.dir, input.tutorial);
+    rmSync(images, { recursive: true, force: true });
+    const shots: ReportedShot[] = [];
+    for (const { shot, result } of compared) {
+      const { diff, ...kept } = result;
+      if (kept.status !== 'unchanged') {
+        mkdirSync(images, { recursive: true });
+        writeFileSync(join(images, `${shot.name}.new.webp`), shot.captured);
+        if (shot.committed !== null) writeFileSync(join(images, `${shot.name}.old.webp`), shot.committed);
+        if (diff !== null) writeFileSync(join(images, `${shot.name}.diff.png`), diff);
+      }
+      shots.push(kept);
     }
-  }
-  const images = join(input.dir, input.tutorial);
-  rmSync(images, { recursive: true, force: true });
-  const shots: ReportedShot[] = [];
-  for (const shot of input.shots) {
-    const { diff, ...result } = await compareShot(shot.name, shot.committed, shot.captured);
-    if (result.status !== 'unchanged') {
-      mkdirSync(images, { recursive: true });
-      writeFileSync(join(images, `${shot.name}.new.webp`), shot.captured);
-      if (shot.committed !== null) writeFileSync(join(images, `${shot.name}.old.webp`), shot.committed);
-      if (diff !== null) writeFileSync(join(images, `${shot.name}.diff.png`), diff);
-    }
-    shots.push({ ...result, diffImage: diff !== null });
-  }
-  const section: TutorialShots = { tutorial: input.tutorial, quayVersion: input.quayVersion, capturedOn: input.capturedOn, shots };
-  writeFileSync(join(input.dir, `${input.tutorial}.json`), `${JSON.stringify(section, null, 2)}\n`);
-  writeFileSync(join(input.dir, 'index.html'), renderShotReport(input.quayVersion, [...sections, section]));
-  return section;
+    const section: TutorialShots = { tutorial: input.tutorial, quayVersion: input.quayVersion, capturedOn: input.capturedOn, base: input.base, shots };
+    writeFileSync(join(input.dir, `${input.tutorial}.json`), `${JSON.stringify(section, null, 2)}\n`);
+    writeFileSync(join(input.dir, 'index.html'), renderShotReport(input.quayVersion, [...sections, section]));
+    return section;
+  });
 }
 
 const escape = (value: string) =>
@@ -159,13 +278,18 @@ function shotFigure(tutorial: string, shot: ReportedShot): string {
     const src = imagePath(tutorial, `${shot.name}${file}`);
     return `<figure><a href="${src}"><img src="${src}" alt="${escape(`${shot.name}, ${caption}`)}" loading="lazy"></a><figcaption>${escape(caption)}</figcaption></figure>`;
   };
+  const resized = shot.oldSize !== null && !sameSize(shot.oldSize, shot.newSize);
   const what =
-    shot.status === 'new'
+    shot.oldSize === null
       ? 'new: nothing is committed under this name'
-      : shot.oldSize !== null && sizeText(shot.oldSize) !== sizeText(shot.newSize)
+      : resized
         ? `changed size, from ${sizeText(shot.oldSize)} to ${sizeText(shot.newSize)}`
         : `${shot.changedPixels.toLocaleString('en-US')} pixels changed`;
-  const images = [shot.status === 'changed' ? image('.old.webp', 'committed') : '', image('.new.webp', 'new'), shot.diffImage ? image('.diff.png', 'changed pixels') : ''];
+  const images = [
+    shot.status === 'changed' ? image('.old.webp', 'committed') : '',
+    image('.new.webp', 'new'),
+    shot.status === 'changed' && !resized ? image('.diff.png', 'changed pixels in red; yellow is anti-aliasing, not counted') : '',
+  ];
   return `<article class="shot"><h3>${escape(shot.name)}.webp <span>${escape(what)}</span></h3><div class="images">${images.join('')}</div></article>`;
 }
 
@@ -196,10 +320,11 @@ export function renderShotReport(quayVersion: string, sections: TutorialShots[])
   const body = ordered.map((section) => {
     const changed = section.shots.filter((shot) => shot.status !== 'unchanged');
     const same = section.shots.filter((shot) => shot.status === 'unchanged').map((shot) => escape(shot.name));
+    const base = section.base === null ? 'nothing committed before' : `the shots committed at ${section.base}`;
     return [
       `<section id="${escape(section.tutorial)}">`,
       `<h2>${escape(section.tutorial)}</h2>`,
-      `<p class="meta">Captured ${escape(section.capturedOn)}. ${changed.length} of ${section.shots.length} shots changed or new.</p>`,
+      `<p class="meta">Captured ${escape(section.capturedOn)}, compared with ${escape(base)}. ${changed.length} of ${section.shots.length} shots changed or new.</p>`,
       ...changed.map((shot) => shotFigure(section.tutorial, shot)),
       same.length > 0 ? `<p class="same">Unchanged: ${same.join(', ')}</p>` : '',
       '</section>',
@@ -228,7 +353,7 @@ export function renderShotReport(quayVersion: string, sections: TutorialShots[])
 <body>
 <main>
 <h1>Changed shots, Quay ${escape(quayVersion)}</h1>
-<p>Each new shot is compared with the one committed at HEAD by a pixel diff at threshold ${DIFF_THRESHOLD}. Review every change below. Commit the new shots, and send the listed tutorials to the release re-run. A shot that changed for no reason this release explains is a regression to chase before publishing.</p>
+<p>Each new shot is compared with the one committed before this release's capture by a pixel diff at threshold ${DIFF_THRESHOLD}. Review every change below. Commit the new shots, and send the listed tutorials to the release re-run. A shot that changed for no reason this release explains is a regression to chase before publishing.</p>
 ${summary}
 ${body.join('\n')}
 </main>

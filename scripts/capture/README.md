@@ -143,7 +143,7 @@ the markers each has reached. For each step, the script:
    hidden, the port badge and `mask` selectors masked, and pins and annotations drawn as
    overlays, which are removed after the shot, whether it succeeded or not.
 
-After the last step, each shot is compared with the one committed at HEAD for the
+After the last step, each shot is compared with the committed one for the
 [changed-shot report](#the-changed-shot-report).
 
 When a replay doesn't reach the marker in time, the error names it and says whether no terminal
@@ -154,28 +154,35 @@ refused.
 ## The changed-shot report
 
 At a release the maintainer recaptures every tutorial against the draft release's Quay, and the
-report says which shots changed. Each new still is compared with the one committed at HEAD under
-its name by a pixel diff, never byte for byte: repeated captures of one screen differ by a
+report says which shots changed. Each new still is compared with the one committed under its
+name by a pixel diff, never byte for byte: repeated captures of one screen differ by a
 luminance step of 1 in 255 on a few pixels. A pixel counts as changed when its colour moves past
 `threshold: 0.2`, the default of Playwright's `toHaveScreenshot` and the tolerance the screenshot
 research named, with pixelmatch's anti-aliasing check, as Playwright runs it. A shot is changed
 when any pixel is, or when its size changed. One with nothing committed under its name is new.
+
+The committed shots are those at HEAD until a capture for this release is committed. After
+that, HEAD holds the release's new shots, so a recapture compares with the commit before the
+tutorial's sidecar manifest first named this release. A recapture after a fix to the draft
+still reports every shot that changed since the last release.
 
 The report for a release is `capture-reports/<version>/`, named after the Quay version captured.
 Each capture writes its tutorial's section there, so capturing every tutorial for a release
 builds one report:
 
 - `index.html` lists the tutorials with changed or new shots, which go to the release re-run.
-  Then, per tutorial, each changed shot's committed image beside its new one and an image of the
-  pixels that changed, each new shot, and the names of the shots that didn't change.
+  Then, per tutorial, each changed shot's committed image beside its new one and an image of its
+  changes, each new shot, and the names of the shots that didn't change. The changes image marks
+  changed pixels in red over a faded committed shot; yellow marks anti-aliasing that pixelmatch
+  saw and did not count.
 - `<slug>.json` is the tutorial's section; `<slug>/` holds its images. A recapture of a tutorial
-  replaces its section.
+  replaces its section, once every shot has been compared.
 
-A capture refuses to add to a folder that holds another release's sections. The maintainer
-reviews the report, commits the new shots and sends the listed tutorials to the release re-run.
-A shot that changed for no reason the release explains is a regression to chase before
-publishing. In a capture by hand, each shot has to be saved during the capture: the committed
-stills sit where new ones are saved, so the script asks again for any it doesn't find.
+Captures running at once take turns writing the folder, holding a `.lock` folder inside it. The
+maintainer reviews the report, commits the new shots and sends the listed tutorials to the
+release re-run. A shot that changed for no reason the release explains is a regression to chase
+before publishing. A still renamed or dropped from the capture manifest is not in the report;
+the docs build's orphan-image check catches the file left behind.
 
 ## The sidecar manifest
 
@@ -207,8 +214,11 @@ tutorial's page takes its CLI versions from the test-run record, not from here.
   For each step it holds the replays at the marker as usual, prints the actions to do and the
   shots to take, and waits for Enter. Take each shot of Quay's client area only, with ShareX or
   Snipping Tool, on the pinned capture machine, blur the port badge and any masks, and save it
-  as WebP under its name in the folder the script prints. It writes the changed-shot report and
-  the sidecar like a scripted capture.
+  under its name as PNG or WebP in the empty folder the script prints, not over the committed
+  stills. A PNG, which is what Snipping Tool saves, is converted to WebP at quality 90. The
+  script asks again for any shot it doesn't find, and `q` stops the capture. It copies each
+  step's shots beside the page and writes the changed-shot report and the sidecar like a
+  scripted capture.
 - **`tauri-driver`.** If CDP attach breaks, `tauri-driver` with a `msedgedriver` that matches
   the WebView2 runtime drives a built Quay over WebDriver (`cargo install tauri-driver
   --locked`). WebDriver has no masks, animation freeze or caret hiding, so those would be
