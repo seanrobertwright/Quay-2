@@ -233,6 +233,7 @@ mod tests {
         let swarm = [
             member("lead", "Lead", RunKind::Claude),
             member("codex-reviewer", "Reviewer", RunKind::Codex),
+            member("pig-tester", "Tester", RunKind::Pig),
             member("gemini-docs", "Docs", RunKind::Gemini),
             member("workflow", "Workflow", RunKind::Archon),
         ];
@@ -240,6 +241,7 @@ mod tests {
         let lead = compose_launch_prompts(&swarm)[0].clone().unwrap();
 
         assert!(lead.contains("- codex-reviewer (Codex, Reviewer): a full peer.\n"), "{lead}");
+        assert!(lead.contains("- pig-tester (PiG, Tester): a full peer.\n"), "{lead}");
         assert!(
             lead.contains("- gemini-docs (Gemini, Docs): a listener: it gets messages but can't answer.\n"),
             "{lead}"

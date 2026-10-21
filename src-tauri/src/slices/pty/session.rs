@@ -64,14 +64,28 @@ pub fn mcp_config_arg(bridge_port: u16) -> String {
 /// `tauri.conf.json` names it.
 const CODEX_NOTIFY_NAME: &str = "quay-codex-notify";
 
-/// Quay's Codex turn-end helper. Tauri puts a sidecar beside the app's own executable, in the
-/// build folder and in an install alike.
-fn codex_notify_program() -> PathBuf {
-    let file = format!("{}{}", CODEX_NOTIFY_NAME, std::env::consts::EXE_SUFFIX);
+/// The program name of Quay's PiG extension, as `bundle.externalBin` in `tauri.conf.json`
+/// names it. PiG loads an extension only under the name it registers, which is this one.
+const PIG_BRIDGE_NAME: &str = "quay-pig-bridge";
+
+/// The sidecar `name`. Tauri puts a sidecar beside the app's own executable, in the build
+/// folder and in an install alike.
+fn sidecar_program(name: &str) -> PathBuf {
+    let file = format!("{}{}", name, std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(&file)))
         .unwrap_or_else(|| PathBuf::from(file))
+}
+
+/// Quay's Codex turn-end helper.
+fn codex_notify_program() -> PathBuf {
+    sidecar_program(CODEX_NOTIFY_NAME)
+}
+
+/// Quay's PiG extension, which puts a PiG terminal on the bus as a full peer.
+fn pig_bridge_program() -> PathBuf {
+    sidecar_program(PIG_BRIDGE_NAME)
 }
 
 /// `text` as a TOML basic string, the form Codex reads a `-c` value in. A JSON string is
@@ -566,7 +580,15 @@ pub(crate) fn build_command(
         // files, so Quay passes no permission flag
         RunKind::Pig => {
             match pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref()) {
-                Some(program) => CommandBuilder::new(program),
+                // Quay's extension registers Quay's MCP server and reports PiG's turns, from
+                // the terminal's `QUAY_*` variables. Explicit `-e` paths load even with
+                // `--no-extensions` in the custom flags.
+                Some(program) => {
+                    let mut c = CommandBuilder::new(program);
+                    c.arg("-e");
+                    c.arg(pig_bridge_program());
+                    c
+                }
                 // Nothing else joins the line: the custom flags and the launch prompt would
                 // reach the shell that prints the message
                 None => {
@@ -1203,23 +1225,40 @@ mod tests {
 
     #[test]
     fn every_cli_that_gets_the_quay_mcp_server_is_wired_to_it_its_own_way() {
+        // PiG's line holds its extension only when PiG is installed
+        let installs = PigInstalls::new("wired");
+        installs.on_path_pig();
+        let bridge = pig_bridge_program().to_string_lossy().to_string();
         for run_kind in crate::slices::pty::models::ALL_RUN_KINDS {
-            let cmd = build_command(&spawn_request(run_kind), "term-wired", 1234, "tok", Some(4567));
+            let request = if run_kind == RunKind::Pig { installs.request() } else { spawn_request(run_kind) };
+            let cmd = build_command(&request, "term-wired", 1234, "tok", Some(4567));
             let args = argv(&cmd);
             let mcp_config = args.iter().any(|arg| arg == "--mcp-config");
             let codex_override = args.iter().any(|arg| arg.starts_with("mcp_servers.quay.url="));
             let opencode_config = env_of(&cmd, "OPENCODE_CONFIG_CONTENT").is_some();
+            let pig_extension = args.windows(2).any(|pair| pair[0] == "-e" && pair[1] == bridge);
             assert_eq!(mcp_config, run_kind == RunKind::Claude, "{:?}: {:?}", run_kind, args);
             assert_eq!(codex_override, run_kind == RunKind::Codex, "{:?}: {:?}", run_kind, args);
             assert_eq!(opencode_config, run_kind == RunKind::OpenCode, "{:?}", run_kind);
+            assert_eq!(pig_extension, run_kind == RunKind::Pig, "{:?}: {:?}", run_kind, args);
             assert_eq!(
-                mcp_config || codex_override || opencode_config,
+                mcp_config || codex_override || opencode_config || pig_extension,
                 run_kind.gets_quay_mcp(),
                 "{:?}: {:?}",
                 run_kind,
                 args
             );
         }
+    }
+
+    #[test]
+    fn the_pig_extension_sits_beside_quay_under_the_name_it_registers() {
+        let program = pig_bridge_program();
+        assert_eq!(program.parent(), std::env::current_exe().unwrap().parent());
+        assert_eq!(
+            program.file_name().unwrap().to_string_lossy(),
+            format!("quay-pig-bridge{}", std::env::consts::EXE_SUFFIX)
+        );
     }
 
     #[test]
@@ -1619,7 +1658,7 @@ mod tests {
     }
 
     #[test]
-    fn pig_starts_directly_with_its_custom_flags_then_the_positional_launch_prompt() {
+    fn pig_starts_directly_with_its_extension_then_its_custom_flags_then_the_positional_launch_prompt() {
         let installs = PigInstalls::new("launch");
         let pig = installs.on_path_pig();
         for mode in [PermissionMode::Skip, PermissionMode::Normal] {
@@ -1628,9 +1667,18 @@ mod tests {
             request.custom_flags = Some("--model sonnet:high -c".to_string());
             request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
             let cmd = build_command(&request, "term-pig", 4321, "tok-1", Some(4567));
+            let bridge = pig_bridge_program();
             assert_eq!(
                 argv(&cmd),
-                [pig.to_string_lossy().as_ref(), "--model", "sonnet:high", "-c", MULTI_LINE_PROMPT],
+                [
+                    pig.to_string_lossy().as_ref(),
+                    "-e",
+                    bridge.to_string_lossy().as_ref(),
+                    "--model",
+                    "sonnet:high",
+                    "-c",
+                    MULTI_LINE_PROMPT
+                ],
                 "{:?}",
                 mode
             );
@@ -1674,21 +1722,137 @@ mod tests {
         );
     }
 
-    /// Launches the real PiG TUI the way Quay does, with a launch prompt, and waits for its
-    /// answer on screen. Needs PiG installed and signed in with `pig login`. Run with
-    /// `cargo test live_pig_answers_its_launch_prompt -- --ignored --nocapture`.
+    /// The text the stand-in bridge's `quay_ping` tool returns.
+    const PING_REPLY: &str = "PONG-7731";
+
+    /// What the stand-in bridge answers an `/mcp` request with, as Quay's MCP server does:
+    /// `GET` with Quay's status document, and a JSON-RPC `POST` with one tool, `quay_ping`.
+    fn stand_in_mcp(method: &str, body: &str) -> String {
+        if method == "GET" {
+            return r#"{"name":"quay-a2a","status":"ready"}"#.to_string();
+        }
+        let request: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+        let result = match request["method"].as_str().unwrap_or_default() {
+            "initialize" => serde_json::json!({
+                "protocolVersion": request["params"]["protocolVersion"].as_str().unwrap_or("2024-11-05"),
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "quay-a2a", "version": "1.0.0" }
+            }),
+            "notifications/initialized" => return "{}".to_string(),
+            "tools/list" => serde_json::json!({ "tools": [{
+                "name": "quay_ping",
+                "description": "Answers with a fixed word.",
+                "inputSchema": { "type": "object", "properties": {} }
+            }] }),
+            "tools/call" => serde_json::json!({ "content": [{ "type": "text", "text": PING_REPLY }] }),
+            _ => serde_json::json!({}),
+        };
+        serde_json::json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }).to_string()
+    }
+
+    /// A stand-in for Quay's bridge on a free loopback port. It keeps each `POST /v1/events`
+    /// body and each request's method, path and `Authorization` header, in order, and
+    /// answers `/mcp` as `stand_in_mcp` does and anything else `200` with no body.
+    #[allow(clippy::type_complexity)]
+    fn recording_bridge() -> (
+        u16,
+        Arc<parking_lot::Mutex<Vec<(String, serde_json::Value)>>>,
+        Arc<parking_lot::Mutex<Vec<String>>>,
+    ) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let posts = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let requests = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let seen = posts.clone();
+        let heard = requests.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let seen = seen.clone();
+                let heard = heard.clone();
+                std::thread::spawn(move || {
+                    let mut stream = stream;
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 8192];
+                    while let Ok(n) = stream.read(&mut buf) {
+                        if n == 0 {
+                            break;
+                        }
+                        request.extend_from_slice(&buf[..n]);
+                        let text = String::from_utf8_lossy(&request).to_string();
+                        if let Some(end) = text.find("\r\n\r\n") {
+                            let length = text[..end]
+                                .lines()
+                                .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length: ").map(str::to_string))
+                                .and_then(|l| l.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            if request.len() >= end + 4 + length {
+                                break;
+                            }
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&request).to_string();
+                    let (head, body) = text.split_once("\r\n\r\n").unwrap_or((&text, ""));
+                    let mut start = head.lines().next().unwrap_or_default().split_whitespace();
+                    let (method, path) = (start.next().unwrap_or_default(), start.next().unwrap_or_default());
+                    let auth = head
+                        .lines()
+                        .find_map(|l| {
+                            let (name, value) = l.split_once(':')?;
+                            name.eq_ignore_ascii_case("authorization").then(|| value.trim().to_string())
+                        })
+                        .unwrap_or_default();
+                    heard.lock().push(format!("{} {} {}", method, path, auth));
+                    if method == "POST" && path == "/v1/events" {
+                        if let Ok(body) = serde_json::from_str(body) {
+                            seen.lock().push((auth, body));
+                        }
+                    }
+                    let reply = if path == "/mcp" { stand_in_mcp(method, body) } else { String::new() };
+                    let _ = stream.write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            reply.len(),
+                            reply
+                        )
+                        .as_bytes(),
+                    );
+                });
+            }
+        });
+        (port, posts, requests)
+    }
+
+    /// Launches the real PiG TUI the way Quay does, with Quay's PiG extension and a launch
+    /// prompt, against a stand-in bridge, and checks the extension's two jobs: PiG calls the
+    /// bridge's MCP tool with the terminal's token, and the extension reports the session
+    /// start, then the turn's start and its end with PiG's answer, each tagged with the
+    /// terminal and sent with its token. Needs PiG installed and signed in with `pig login`,
+    /// and the extension built, which any build of the app does. Run with
+    /// `cargo test live_pig_reports_its_turn_to_the_bridge -- --ignored --nocapture`.
     #[test]
     #[ignore]
-    fn live_pig_answers_its_launch_prompt() {
+    fn live_pig_reports_its_turn_to_the_bridge() {
+        // Put the built extension where Quay looks for it, beside this test binary
+        let built = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries").join(format!(
+            "{}-{}{}",
+            PIG_BRIDGE_NAME,
+            env!("QUAY_SIDECAR_TARGET"),
+            std::env::consts::EXE_SUFFIX
+        ));
+        std::fs::copy(&built, pig_bridge_program()).expect("the app's build builds quay-pig-bridge");
+
+        let (port, posts, requests) = recording_bridge();
         let project = std::env::temp_dir().join(format!("quay-live-pig-{}", std::process::id()));
         std::fs::create_dir_all(&project).unwrap();
         let mut request = spawn_request(RunKind::Pig);
         request.project_path = project.to_string_lossy().to_string();
         // So the check leaves no session behind in PiG's own folder
         request.custom_flags = Some("--no-session".to_string());
-        request.initial_prompt =
-            Some("What is six times seven? Reply with only the digits, then the letters ZQ.".to_string());
-        let cmd = build_command(&request, "term-live-pig", 47999, "tok-live", None);
+        request.initial_prompt = Some(
+            "Call the quay_ping tool, then reply with only the exact text it returned.".to_string(),
+        );
+        let cmd = build_command(&request, "term-live-pig", port, "tok-live", None);
         println!("argv: {:?}", cmd.get_argv());
         assert!(!starts_through_cmd(&cmd), "PiG must start directly");
 
@@ -1698,43 +1862,63 @@ mod tests {
         let mut child = pair.slave.spawn_command(cmd).expect("spawn pig");
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
-        let mut writer = pair.master.take_writer().unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
+        let writer = Arc::new(parking_lot::Mutex::new(pair.master.take_writer().unwrap()));
+        let answers = writer.clone();
+        let screen = Arc::new(parking_lot::Mutex::new(String::new()));
+        let shown = screen.clone();
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
             while let Ok(n) = reader.read(&mut buf) {
-                if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                if n == 0 {
                     break;
                 }
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                // Answer ConPTY's cursor-position query so the TUI starts
+                if text.contains("\x1b[6n") {
+                    let _ = answers.lock().write_all(b"\x1b[1;1R");
+                }
+                shown.lock().push_str(&text);
             }
         });
 
+        let events = || -> Vec<(String, serde_json::Value)> {
+            posts
+                .lock()
+                .iter()
+                .flat_map(|(auth, body)| {
+                    body["events"].as_array().cloned().unwrap_or_default().into_iter().map(|e| (auth.clone(), e))
+                })
+                .collect()
+        };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
-        let mut screen = String::new();
-        let mut answered = false;
-        while std::time::Instant::now() < deadline {
-            let chunk = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                Ok(chunk) => chunk,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                // PiG exited
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-            };
-            let text = String::from_utf8_lossy(&chunk).to_string();
-            // Answer ConPTY's cursor-position query so the TUI starts
-            if text.contains("\x1b[6n") {
-                let _ = writer.write_all(b"\x1b[1;1R");
-            }
-            screen.push_str(&text);
-            // The prompt holds neither the digits nor the letters, so this is the answer
-            if screen.contains("42ZQ") {
-                answered = true;
-                break;
-            }
+        while std::time::Instant::now() < deadline
+            && !events().iter().any(|(_, e)| e["type"] == "turn.completed")
+        {
+            std::thread::sleep(std::time::Duration::from_millis(250));
         }
         let _ = child.kill();
         let _ = std::fs::remove_dir_all(&project);
-        let tail: String = screen.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect();
-        assert!(answered, "PiG didn't answer within 180s; its screen ended:\n{}", tail);
+
+        let events = events();
+        for (_, event) in &events {
+            println!("{} {}", event["type"], event["data"]);
+        }
+        let requests = requests.lock().clone();
+        println!("requests: {:?}", requests);
+        let tail: String = screen.lock().chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect();
+        let types: Vec<&str> = events.iter().map(|(_, e)| e["type"].as_str().unwrap_or_default()).collect();
+        assert_eq!(types, ["session.started", "turn.started", "turn.completed"], "screen:\n{}", tail);
+        for (auth, event) in &events {
+            assert_eq!(auth, "Bearer tok-live");
+            assert_eq!(event["tag"], "term-live-pig");
+        }
+        // The text came from the tool, so PiG reached it through Quay's MCP server
+        assert!(events[2].1["data"]["answer"].as_str().unwrap().contains(PING_REPLY), "{}", events[2].1);
+        let mcp: Vec<&String> = requests.iter().filter(|r| r.contains(" /mcp ")).collect();
+        assert!(!mcp.is_empty());
+        for request in mcp {
+            assert!(request.ends_with(" Bearer tok-live"), "{}", request);
+        }
     }
 
     #[test]

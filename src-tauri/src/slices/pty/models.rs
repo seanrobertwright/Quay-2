@@ -45,15 +45,16 @@ impl RunKind {
     /// status. A terminal's level can drop below its CLI's; see `TerminalInfo::bus_level`.
     pub fn bus_level(&self) -> Option<BusLevel> {
         match self {
-            RunKind::Claude | RunKind::Codex | RunKind::OpenCode => Some(BusLevel::FullPeer),
+            RunKind::Claude | RunKind::Codex | RunKind::OpenCode | RunKind::Pig => {
+                Some(BusLevel::FullPeer)
+            }
             RunKind::Antigravity => Some(BusLevel::Responder),
             RunKind::Copilot
             | RunKind::Kiro
             | RunKind::Gemini
             | RunKind::Grok
             | RunKind::Pi
-            | RunKind::Aider
-            | RunKind::Pig => Some(BusLevel::Listener),
+            | RunKind::Aider => Some(BusLevel::Listener),
             RunKind::PowerShell | RunKind::Command | RunKind::Archon => None,
         }
     }
@@ -66,22 +67,22 @@ impl RunKind {
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
     /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
     /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
-    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), and Quay reads OpenCode's
-    /// from the server its TUI runs (see `opencode_watch`). The frontend's
-    /// `TURN_END_RUN_KINDS` mirrors this.
+    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), Quay reads OpenCode's
+    /// from the server its TUI runs (see `opencode_watch`), and Quay's PiG extension reports
+    /// PiG's. The frontend's `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
         matches!(
             self,
-            RunKind::Claude | RunKind::Codex | RunKind::Antigravity | RunKind::OpenCode
+            RunKind::Claude | RunKind::Codex | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig
         )
     }
 
     /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, from
-    /// Antigravity's OSC 7501 `working`, and from OpenCode's watcher seeing its main session
-    /// go busy. Codex's turn-end helper runs only once a turn has ended, so
-    /// `A2ARouter::turn_completed` pairs a Codex turn with its message then.
+    /// Antigravity's OSC 7501 `working`, from OpenCode's watcher seeing its main session
+    /// go busy, and from Quay's PiG extension. Codex's turn-end helper runs only once a turn
+    /// has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
     pub fn reports_turn_start(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode)
+        matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig)
     }
 
     /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
@@ -124,7 +125,7 @@ impl RunKind {
     /// team briefing reads this. `build_command` wires each such CLI its own way, and its
     /// tests check the two agree.
     pub fn gets_quay_mcp(&self) -> bool {
-        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode)
+        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode | RunKind::Pig)
     }
 
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
@@ -445,10 +446,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_codex_and_opencode_are_full_peers() {
+    fn claude_codex_opencode_and_pig_are_full_peers() {
         assert_eq!(
             kinds_at(Some(BusLevel::FullPeer)),
-            [RunKind::Claude, RunKind::Codex, RunKind::OpenCode]
+            [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]
         );
     }
 
@@ -458,7 +459,7 @@ mod tests {
     }
 
     #[test]
-    fn copilot_kiro_gemini_grok_pi_aider_and_pig_are_listeners() {
+    fn copilot_kiro_gemini_grok_pi_and_aider_are_listeners() {
         assert_eq!(
             kinds_at(Some(BusLevel::Listener)),
             [
@@ -468,7 +469,6 @@ mod tests {
                 RunKind::Aider,
                 RunKind::Kiro,
                 RunKind::Copilot,
-                RunKind::Pig,
             ]
         );
     }
@@ -532,24 +532,24 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_codex_antigravity_and_opencode_report_a_turn_end() {
+    fn only_claude_codex_antigravity_opencode_and_pig_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
         assert_eq!(
             kinds,
-            [RunKind::Claude, RunKind::Antigravity, RunKind::Codex, RunKind::OpenCode]
+            [RunKind::Claude, RunKind::Antigravity, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]
         );
     }
 
     #[test]
-    fn only_claude_antigravity_and_opencode_report_a_turn_start() {
+    fn only_claude_antigravity_opencode_and_pig_report_a_turn_start() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_start())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode, RunKind::Pig]);
     }
 
     #[test]
@@ -562,12 +562,12 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_codex_and_opencode_get_the_quay_mcp_server() {
+    fn only_claude_codex_opencode_and_pig_get_the_quay_mcp_server() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.gets_quay_mcp())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode]);
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]);
     }
 
     #[test]
@@ -578,13 +578,14 @@ mod tests {
         assert!(terminal(RunKind::Antigravity, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Unknown).shows_working_on_delivery());
+        assert!(terminal(RunKind::Pig, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
     }
 
     #[test]
     fn first_output_leaves_claude_to_its_plugin_and_shows_listeners_unknown() {
         assert_eq!(RunKind::Claude.status_after_first_output(), None);
-        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Antigravity, RunKind::Archon] {
+        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Pig, RunKind::Antigravity, RunKind::Archon] {
             assert_eq!(kind.status_after_first_output(), Some(ClaudeStatus::Idle), "{:?}", kind);
         }
         for kind in kinds_at(Some(BusLevel::Listener)) {
@@ -628,8 +629,8 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_codex_antigravity_or_opencode_terminal_mid_turn_holds_deliveries() {
-        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::OpenCode];
+    fn only_a_reporting_claude_codex_antigravity_opencode_or_pig_terminal_mid_turn_holds_deliveries() {
+        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::OpenCode, RunKind::Pig];
         for kind in holders {
             for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
                 assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
