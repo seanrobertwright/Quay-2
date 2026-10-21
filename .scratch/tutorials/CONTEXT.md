@@ -134,7 +134,7 @@ What a peer said in its first turn after a message nobody waited on, a message s
 _Avoid_: Reply (when nobody waited), reaction, response
 
 **File mailbox**:
-A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply.
+A file one peer writes for another to read, used when a reply can't carry the answer: the peer is a listener, or the work outlasts the wait for a reply. The sender names the file and its last line when it sends the job. The job is done when the peer is Idle and the agreed last line is in the file; Idle alone only says a turn ended. A listener stays Unknown, so for a listener the last line alone says the job is done.
 _Avoid_: Handoff file, drop file, shared file
 
 **Relay**:

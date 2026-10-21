@@ -1606,6 +1606,8 @@ mod tests {
     fn parses_agents() {
         assert_eq!(parse_agent("Claude").unwrap(), "claude");
         assert_eq!(parse_agent("opencode").unwrap(), "opencode");
+        assert_eq!(parse_agent("pig").unwrap(), "pig");
+        assert_eq!(parse_agent("PiG").unwrap(), "pig");
         assert!(parse_agent("powershell").is_err());
         assert!(parse_agent("vim").is_err());
     }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use axum::{
     extract::State,
     http::StatusCode,
@@ -117,123 +117,13 @@ pub async fn handle_mcp_request(
             Json(res).into_response()
         }
 
-        "tools/list" => {
-            let tools = json!({
-                "tools": [
-                    {
-                        "name": "quay_list_agents",
-                        "description": "List the peers on Quay's A2A bus: their terminal IDs, names, run kind, bus level and live status (Working, Idle, Waiting, etc.). A full peer sends messages and replies; a responder replies but can't send; a listener gets messages but can't reply. Shell and Archon terminals are not peers and are not listed.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "quay_send_message",
-                        "description": "Send a prompt or task delegation to another peer in Quay. Can optionally wait for the peer to finish its turn and return its reply directly to you. A listener can't reply, so a wait on one returns at once and says why.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "target_terminal_id": {
-                                    "type": "string",
-                                    "description": TARGET_DESCRIPTION
-                                },
-                                "message": {
-                                    "type": "string",
-                                    "description": "The prompt or task instruction to dispatch to the peer agent."
-                                },
-                                "wait_for_reply": {
-                                    "type": "boolean",
-                                    "description": "If true (default), waits up to 60s from this call for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
-                                }
-                            },
-                            "required": ["target_terminal_id", "message"]
-                        }
-                    },
-                    {
-                        "name": "quay_broadcast",
-                        "description": "Broadcast a notification or status update to every other running peer in your project. A worktree counts as its own project. You never get your own notice, and shell and Archon terminals are skipped. A peer in a turn gets it when that turn ends.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "text": {
-                                    "type": "string",
-                                    "description": "The notice text to broadcast."
-                                }
-                            },
-                            "required": ["text"]
-                        }
-                    },
-                    {
-                        "name": "quay_get_agent_status",
-                        "description": "Check the live status (starting, working, waiting, idle, exited or unknown), current task and auto-approved action count of a specific peer agent in Quay.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "terminal_id": {
-                                    "type": "string",
-                                    "description": TARGET_DESCRIPTION
-                                }
-                            },
-                            "required": ["terminal_id"]
-                        }
-                    },
-                    {
-                        "name": "machina_submit_work_order",
-                        "description": "Submit a work order to Machina, Quay's software factory. Machina creates a git worktree and branch for it under .machina/worktrees/ and vaults .machina/holdbacks/. A human launches the author agent and merges the result.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "project_path": { "type": "string", "description": "Any path inside the git repository." },
-                                "title": { "type": "string" },
-                                "objective": { "type": "string", "description": "What the author agent must do." },
-                                "allowed_output_paths": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "Repo-relative globs the author may change, e.g. src/slices/auth/**."
-                                },
-                                "base_branch": { "type": "string", "description": "Defaults to the main checkout's current branch." },
-                                "author_agent": { "type": "string", "description": "Agent CLI that will do the work, e.g. claude. Defaults to claude." },
-                                "max_corrections": { "type": "integer", "minimum": 0, "maximum": 10 },
-                                "budget_usd": { "type": "number", "exclusiveMinimum": 0 },
-                                "depends_on": { "type": "array", "items": { "type": "string" } }
-                            },
-                            "required": ["project_path", "title", "objective", "allowed_output_paths", "budget_usd"]
-                        }
-                    },
-                    {
-                        "name": "machina_get_work_order",
-                        "description": "Read a Machina work order: objective, allowed and protected paths, attempts, and the latest gate findings. Holdback (Tier 2) details are withheld.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "work_order_id": { "type": "string", "description": "e.g. WO-3" }
-                            },
-                            "required": ["work_order_id"]
-                        }
-                    },
-                    {
-                        "name": "machina_submit_deliverable",
-                        "description": "Submit your work on a Machina work order to the gate. The gate commits the worktree, checks changed paths, runs the pre-PR audit and the project's configured build, test and holdback commands. It runs in the background; when you are the work order's author terminal, the verdict is typed into your terminal when it finishes.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "work_order_id": { "type": "string", "description": "e.g. WO-3" }
-                            },
-                            "required": ["work_order_id"]
-                        }
-                    }
-                ]
-            });
-
-            Json(JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                id,
-                result: Some(tools),
-                error: None,
-            })
-            .into_response()
-        }
+        "tools/list" => Json(JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: Some(json!({ "tools": tool_list() })),
+            error: None,
+        })
+        .into_response(),
 
         "tools/call" => {
             let params = req.params.unwrap_or(Value::Null);
@@ -491,11 +381,15 @@ pub async fn handle_mcp_request(
     }
 }
 
-/// How a `quay_*` tool's target parameter describes the target it takes.
-const TARGET_DESCRIPTION: &str = "The peer's exact terminal ID or exact session name, e.g. from quay_list_agents. \
-    Nothing else matches: no run kind, partial name or partial ID. A session name matches live terminals only, \
-    those in your project first, and one that two of them share is refused as ambiguous; pass the ID then. \
-    An exited terminal is reached by its ID only, and a message to it is refused.";
+/// The tools `tools/list` answers with. `pnpm docs:build` checks the A2A page's tool
+/// reference against this file (see `scripts/mcp-tools`), so the two can't drift apart.
+const TOOL_LIST: &str = include_str!("mcp_tools.json");
+
+/// `TOOL_LIST`, parsed once.
+fn tool_list() -> &'static Value {
+    static TOOLS: OnceLock<Value> = OnceLock::new();
+    TOOLS.get_or_init(|| serde_json::from_str(TOOL_LIST).expect("mcp_tools.json is valid JSON"))
+}
 
 /// What `quay_broadcast` answers with: the peers its notice reached, those holding it until
 /// their turn ends, and those Quay couldn't type it into.
@@ -606,6 +500,46 @@ fn machina_submit_request(
 mod tests {
     use super::*;
     use crate::slices::orchestrator::models::A2AMessage;
+
+    #[test]
+    fn the_tool_list_names_each_tool_once_with_an_object_schema() {
+        let tools = tool_list().as_array().expect("mcp_tools.json is an array");
+        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().expect("a tool name")).collect();
+        assert_eq!(
+            names,
+            [
+                "quay_list_agents",
+                "quay_send_message",
+                "quay_broadcast",
+                "quay_get_agent_status",
+                "machina_submit_work_order",
+                "machina_get_work_order",
+                "machina_submit_deliverable",
+            ]
+        );
+        for tool in tools {
+            assert_eq!(tool["inputSchema"]["type"], "object", "{}", tool["name"]);
+            assert!(tool["inputSchema"]["properties"].is_object(), "{}", tool["name"]);
+            assert!(tool["description"].is_string(), "{}", tool["name"]);
+        }
+    }
+
+    #[test]
+    fn both_target_parameters_describe_one_matching_rule() {
+        let schema = |name: &str| {
+            tool_list()
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["name"] == name)
+                .map(|t| t["inputSchema"]["properties"].clone())
+                .unwrap()
+        };
+        let send = &schema("quay_send_message")["target_terminal_id"]["description"];
+        let status = &schema("quay_get_agent_status")["terminal_id"]["description"];
+        assert!(send.as_str().is_some_and(|d| d.contains("exact terminal ID")), "{send}");
+        assert_eq!(send, status);
+    }
 
     #[test]
     fn test_jsonrpc_request_deserialize() {

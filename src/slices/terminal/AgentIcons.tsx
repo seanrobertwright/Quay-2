@@ -69,6 +69,10 @@ export const CommandIcon: React.FC<{ className?: string }> = ({ className = "w-4
   </svg>
 );
 
+/** The Greek letter Pi, which Pi and PiG share. */
+const PI_GLYPH =
+  "M4 5h16c.6 0 1 .4 1 1s-.4 1-1 1h-3v11c0 1.1-.9 2-2 2s-2-.9-2-2V7h-4v8c0 1.7-1.3 3-3 3s-3-1.3-3-3V7H4c-.6 0-1-.4-1-1s.4-1 1-1z";
+
 /** Official Greek letter Pi mark for Pi Coding Agent */
 export const PiIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
   <svg
@@ -77,7 +81,19 @@ export const PiIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4"
     className={className}
     aria-label="Pi Coding Agent"
   >
-    <path d="M4 5h16c.6 0 1 .4 1 1s-.4 1-1 1h-3v11c0 1.1-.9 2-2 2s-2-.9-2-2V7h-4v8c0 1.7-1.3 3-3 3s-3-1.3-3-3V7H4c-.6 0-1-.4-1-1s.4-1 1-1z" />
+    <path d={PI_GLYPH} />
+  </svg>
+);
+
+/** PiG (Pi in Go): Pi's glyph, shown in Go cyan */
+export const PigIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="PiG (Pi in Go)"
+  >
+    <path d={PI_GLYPH} />
   </svg>
 );
 
@@ -195,6 +211,8 @@ export const AgentIcon: React.FC<{ kind?: RunKind; className?: string }> = ({
       return <CopilotIcon className={`${className} text-[#38bdf8]`} />;
     case "opencode":
       return <OpenCodeIcon className={`${className} text-[#f97316]`} />;
+    case "pig":
+      return <PigIcon className={`${className} text-[#00ADD8]`} />;
     case "archon":
       return <ArchonIcon className={`${className} text-[#a371f7]`} />;
     case "powershell":
