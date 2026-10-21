@@ -112,11 +112,24 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ### 4. Documentation Build Test
 ```powershell
+pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
 ```
 
-`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. `docs:test` runs the packing script's tests.
+`docs:build` first rewrites the built-in preset lists in `README.md` and `docs/features/swarm-presets.md` from `BUILTIN_SWARM_PRESETS`, then packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. It fails on a tutorial page that breaks the step-card rules; on a tutorial folder whose images and clips don't match its step cards: a missing screenshot, an image no step card names, a clip with no still of the same name, or more than one clip; and when the tutorial tables in `docs/tutorials/index.md` and `README.md` don't list exactly the tutorials whose pages exist. After adding a tutorial page, run `pnpm docs:tutorials` to rewrite both tables; the tutorial's title and one-line summary come from the list in `docs/.vitepress/tutorials.ts`, and the page's title must match it. `docs:test` runs the packing script's tests, the step-card tests in `scripts/step-cards/`, the preset-list tests in `scripts/swarm-presets/`, the tutorial-table tests in `scripts/tutorials/` and the test-run record tests in `scripts/test-runs/`, and `docs:typecheck` type-checks the step-card plugin, the preset-list script, the tutorials list, the test-run record script and their tests.
+
+Before a tutorial is published, it passes test runs: the maintainer follows its page by hand in a dedicated Windows account. `pnpm docs:test-run <slug>` adds each run's section to the tutorial's record, `examples/tutorials/<slug>/test-runs.md`. Setting up the account and doing a run are covered in `scripts/test-runs/README.md`.
+
+### 5. Fresh-eyes read of a tutorial page
+
+Before the first test run of a tutorial's new run fingerprint, and on any pull request that changes a tutorial page's wording, run a fresh-eyes read of the page:
+
+```powershell
+pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
+```
+
+It builds the site and hands only the built page's text, screenshots and alt text to a new `claude -p` reader. The reader's system prompt is the fixed brief in `scripts/fresh-eyes/brief.md`. It has no tools, no settings, no MCP servers and no `CLAUDE.md`, and it runs in a new folder outside the repo that holds only what it is given. It prints findings tied to a step and a quoted line, ready for the run's section of the tutorial's `test-runs.md`, where each one is marked fixed or dismissed with a reason. The `fresh-eyes-read` project skill in `.claude/skills/` runs it the same way. It needs Claude Code signed in, so it runs locally and never in CI.
 
 ---
 

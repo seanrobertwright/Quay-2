@@ -13,7 +13,10 @@ use slices::bridge::{
     get_bridge_port, get_pending_permissions, resolve_permission, set_terminal_live_mode,
     BridgeServer, BridgeState,
 };
-use slices::git::{create_git_worktree, is_git_repo, list_git_worktrees, remove_git_worktree};
+use slices::git::{
+    check_git_worktree_clean, create_git_worktree, is_git_repo, list_git_worktrees,
+    remove_git_worktree,
+};
 use slices::github::{
     check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
     list_github_prs,
@@ -32,8 +35,8 @@ use slices::orchestrator::{
     SwarmStore,
 };
 use slices::pty::{
-    get_terminal_output, kill_terminal, list_terminals, relaunch_terminal, rename_terminal,
-    resize_pty, spawn_terminal, write_pty, PtyManager,
+    dismiss_plugin_hint, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
+    rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
@@ -55,7 +58,21 @@ pub fn run() {
     let machina_pty = pty_manager.clone();
     let bridge_state_clone = bridge_state.clone();
     let a2a_router_clone = a2a_router.clone();
+    let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
+
+    // A terminal that went Unknown or closed no longer holds its messages: type them in,
+    // or mark them Failed, on a thread of their own since each write waits for the submit delay.
+    {
+        let router = a2a_router.clone();
+        let terminals = pty_manager.clone();
+        pty_manager.set_status_watcher(move |terminal_id| {
+            let router = router.clone();
+            let terminals = terminals.clone();
+            let terminal_id = terminal_id.to_string();
+            std::thread::spawn(move || router.deliver_held(&terminal_id, &terminals));
+        });
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -69,6 +86,12 @@ pub fn run() {
         .manage(machina_manager)
         .setup(move |app| {
             let app_handle = app.handle().clone();
+
+            // A held message that reaches its terminal, or fails to, updates the trail and,
+            // once typed in, raises the toast as a message sent at once does.
+            let a2a_events = app_handle.clone();
+            a2a_router_updates
+                .set_update_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.
@@ -114,6 +137,7 @@ pub fn run() {
             list_terminals,
             rename_terminal,
             relaunch_terminal,
+            dismiss_plugin_hint,
             list_projects,
             add_project,
             remove_project,
@@ -136,6 +160,7 @@ pub fn run() {
             is_git_repo,
             list_git_worktrees,
             create_git_worktree,
+            check_git_worktree_clean,
             remove_git_worktree,
             check_gh_cli_installed,
             get_github_repo_info,

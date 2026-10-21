@@ -9,10 +9,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::Emitter;
 
+use super::commands::emit_message;
 use super::models::A2ADispatchRequest;
-use super::router::A2ARouter;
+use super::router::{A2ARouter, WaitOutcome};
+use super::target::resolve_target;
 use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
-use crate::slices::pty::models::ClaudeStatus;
+use crate::slices::pty::models::TerminalInfo;
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
@@ -52,24 +54,6 @@ pub async fn handle_mcp_request(
 
     match req.method.as_str() {
         "initialize" => {
-            ctx.pty_manager.update_status(caller_id, ClaudeStatus::Idle);
-            let _ = ctx.app_handle.emit(
-                "bridge-event",
-                crate::slices::bridge::Envelope {
-                    v: 1,
-                    boot: "".to_string(),
-                    seq: 0,
-                    ts: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64,
-                    session_id: caller_id.to_string(),
-                    tag: Some(caller_id.to_string()),
-                    event_type: "session.started".to_string(),
-                    data: serde_json::Value::Null,
-                },
-            );
-
             let requested_version = req
                 .params
                 .as_ref()
@@ -139,7 +123,7 @@ pub async fn handle_mcp_request(
                 "tools": [
                     {
                         "name": "quay_list_agents",
-                        "description": "List all active agents and terminals hosted in Quay, including their IDs, labels, run kind, and live status (Working, Idle, Waiting, etc.).",
+                        "description": "List the peers on Quay's A2A bus: their terminal IDs, names, run kind, bus level and live status (Working, Idle, Waiting, etc.). A full peer sends messages and replies; a responder replies but can't send; a listener gets messages but can't reply. Shell and Archon terminals are not peers and are not listed.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {}
@@ -147,13 +131,13 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_send_message",
-                        "description": "Send a prompt or task delegation to another agent in Quay. Can optionally wait for the agent to finish their turn and return their reply directly to you.",
+                        "description": "Send a prompt or task delegation to another peer in Quay. Can optionally wait for the peer to finish its turn and return its reply directly to you. A listener can't reply, so a wait on one returns at once and says why.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "target_terminal_id": {
                                     "type": "string",
-                                    "description": "The terminal ID of the peer agent to message (e.g. from quay_list_agents)."
+                                    "description": TARGET_DESCRIPTION
                                 },
                                 "message": {
                                     "type": "string",
@@ -161,7 +145,7 @@ pub async fn handle_mcp_request(
                                 },
                                 "wait_for_reply": {
                                     "type": "boolean",
-                                    "description": "If true (default), waits up to 60s for the peer agent to complete their turn and returns their answer."
+                                    "description": "If true (default), waits up to 60s for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
                                 }
                             },
                             "required": ["target_terminal_id", "message"]
@@ -169,7 +153,7 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_broadcast",
-                        "description": "Broadcast a notification or status update to all active Claude Code agents running in Quay.",
+                        "description": "Broadcast a notification or status update to every running peer in Quay. Shell and Archon terminals are skipped.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -183,13 +167,13 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_get_agent_status",
-                        "description": "Check the live status and auto-approved action count of a specific peer agent in Quay.",
+                        "description": "Check the live status (starting, working, waiting, idle, exited or unknown), current task and auto-approved action count of a specific peer agent in Quay.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "terminal_id": {
                                     "type": "string",
-                                    "description": "The terminal ID of the agent."
+                                    "description": TARGET_DESCRIPTION
                                 }
                             },
                             "required": ["terminal_id"]
@@ -265,12 +249,14 @@ pub async fn handle_mcp_request(
                     let terminals = ctx.pty_manager.list();
                     let agents_list: Vec<Value> = terminals
                         .into_iter()
-                        .map(|t| {
+                        .filter_map(|t| t.bus_level().map(|level| (t, level)))
+                        .map(|(t, level)| {
                             json!({
                                 "terminal_id": t.id,
                                 "name": t.name,
                                 "task_title": t.task_title,
                                 "run_kind": t.run_kind,
+                                "level": level.as_str(),
                                 "status": t.claude_status,
                                 "current_tool": t.current_tool,
                                 "auto_approved_count": t.auto_approved_count,
@@ -291,7 +277,7 @@ pub async fn handle_mcp_request(
                 }
 
                 "quay_send_message" => {
-                    let target_id = arguments
+                    let target_arg = arguments
                         .get("target_terminal_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
@@ -304,57 +290,67 @@ pub async fn handle_mcp_request(
                         .and_then(|v| v.as_bool())
                         .unwrap_or(true);
 
-                    if target_id.is_empty() || message.is_empty() {
+                    if target_arg.trim().is_empty() || message.is_empty() {
                         Err("Missing target_terminal_id or message argument".to_string())
                     } else {
-                        let request = A2ADispatchRequest {
-                            from_terminal: caller_id.to_string(),
-                            to_terminal: target_id.to_string(),
-                            prompt: message.to_string(),
-                            as_user: Some(false),
-                        };
+                        match resolve_target(target_arg, Some(caller_id), &ctx.pty_manager) {
+                            Err(e) => Err(e),
+                            Ok(target) => {
+                                let request = A2ADispatchRequest {
+                                    from_terminal: caller_id.to_string(),
+                                    to_terminal: target.id.clone(),
+                                    prompt: message.to_string(),
+                                    as_user: Some(false),
+                                };
 
-                        if wait {
-                            match a2a_router
-                                .dispatch_and_wait(request, Some(&ctx.pty_manager), 60)
-                                .await
-                            {
-                                Ok(reply) => {
-                                    if let Some(msg) = a2a_router
-                                        .get_messages()
-                                        .into_iter()
-                                        .rev()
-                                        .find(|m| m.to_terminal == target_id || m.from_terminal == caller_id)
+                                if wait {
+                                    match a2a_router
+                                        .dispatch_and_wait(request, Some(&ctx.pty_manager), 60)
+                                        .await
                                     {
-                                        let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                                        let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
+                                        Ok(outcome) => {
+                                            if let Some(msg) = a2a_router
+                                                .get_messages()
+                                                .into_iter()
+                                                .rev()
+                                                .find(|m| m.to_terminal == target.id || m.from_terminal == caller_id)
+                                            {
+                                                let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
+                                                let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
+                                            }
+                                            let text = match outcome {
+                                                WaitOutcome::Reply(reply) => {
+                                                    format!("Reply from {}:\n{}", target.name, reply)
+                                                }
+                                                WaitOutcome::NoReply(why) => why,
+                                            };
+                                            Ok(json!({
+                                                "content": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": text
+                                                    }
+                                                ]
+                                            }))
+                                        }
+                                        Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
                                     }
-                                    Ok(json!({
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": format!("Reply from {}:\n{}", target_id, reply)
-                                            }
-                                        ]
-                                    }))
+                                } else {
+                                    match a2a_router.dispatch_async(request, Some(&ctx.pty_manager)).await {
+                                        Ok(msg) => {
+                                            emit_message(&ctx.app_handle, &msg);
+                                            Ok(json!({
+                                                "content": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": format!("Successfully dispatched task to {}.", target.name)
+                                                    }
+                                                ]
+                                            }))
+                                        }
+                                        Err(e) => Err("Failed to dispatch task: ".to_string() + &e),
+                                    }
                                 }
-                                Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
-                            }
-                        } else {
-                            match a2a_router.dispatch(request, Some(&ctx.pty_manager)) {
-                                Ok(msg) => {
-                                    let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                                    let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
-                                    Ok(json!({
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": format!("Successfully dispatched task to {}.", target_id)
-                                            }
-                                        ]
-                                    }))
-                                }
-                                Err(e) => Err("Failed to dispatch task: ".to_string() + &e),
                             }
                         }
                     }
@@ -365,10 +361,9 @@ pub async fn handle_mcp_request(
                     if text.is_empty() {
                         Err("Missing text argument".to_string())
                     } else {
-                        let msgs = a2a_router.broadcast_toast(text, &ctx.pty_manager);
+                        let msgs = a2a_router.broadcast_toast_async(text, &ctx.pty_manager).await;
                         for msg in &msgs {
-                            let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                            let _ = ctx.app_handle.emit("a2a-message-dispatched", msg.clone());
+                            emit_message(&ctx.app_handle, msg);
                         }
                         let _ = ctx.app_handle.emit("a2a-toast", text.to_string());
                         Ok(json!({
@@ -383,32 +378,21 @@ pub async fn handle_mcp_request(
                 }
 
                 "quay_get_agent_status" => {
-                    let target_id = arguments
+                    let target_arg = arguments
                         .get("terminal_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
 
-                    if let Some(info) = ctx.pty_manager.get_info(target_id) {
-                        Ok(json!({
+                    resolve_target(target_arg, Some(caller_id), &ctx.pty_manager).map(|info| {
+                        json!({
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": format!(
-                                        "Agent {}: name='{}', status={:?}, task='{}', tool='{}', auto_approved={}, project='{}'",
-                                        info.id,
-                                        info.name,
-                                        info.claude_status,
-                                        info.task_title.as_deref().unwrap_or("none"),
-                                        info.current_tool.as_deref().unwrap_or("none"),
-                                        info.auto_approved_count,
-                                        info.project_path
-                                    )
+                                    "text": agent_status_text(&info)
                                 }
                             ]
-                        }))
-                    } else {
-                        Err(format!("Agent '{}' not found", target_id))
-                    }
+                        })
+                    })
                 }
 
                 "machina_submit_work_order" => {
@@ -516,6 +500,28 @@ pub async fn handle_mcp_request(
     }
 }
 
+/// How a `quay_*` tool's target parameter describes the target it takes.
+const TARGET_DESCRIPTION: &str = "The peer's exact terminal ID or exact session name, e.g. from quay_list_agents. \
+    Nothing else matches: no run kind, partial name or partial ID. A session name matches live terminals only, \
+    those in your project first, and one that two of them share is refused as ambiguous; pass the ID then. \
+    An exited terminal is reached by its ID only, and a message to it is refused.";
+
+/// The line `quay_get_agent_status` answers with, its status in the lowercase form
+/// `quay_list_agents` uses.
+fn agent_status_text(info: &TerminalInfo) -> String {
+    format!(
+        "Agent {}: name='{}', level={}, status={}, task='{}', tool='{}', auto_approved={}, project='{}'",
+        info.id,
+        info.name,
+        info.bus_level().map_or("not a peer", |level| level.as_str()),
+        info.claude_status.as_str(),
+        info.task_title.as_deref().unwrap_or("none"),
+        info.current_tool.as_deref().unwrap_or("none"),
+        info.auto_approved_count,
+        info.project_path
+    )
+}
+
 /// Parses `machina_submit_work_order` arguments, rejecting wrong types instead of
 /// silently substituting defaults.
 fn machina_submit_request(
@@ -592,6 +598,22 @@ mod tests {
         let params = req.params.unwrap();
         assert_eq!(params["name"], "quay_broadcast");
         assert_eq!(params["arguments"]["text"], "hello agents");
+    }
+
+    #[test]
+    fn agent_status_prints_the_status_as_quay_list_agents_does() {
+        use crate::slices::pty::models::{test_terminal, ClaudeStatus, RunKind};
+
+        let mut info = test_terminal("term-status", RunKind::Claude, ClaudeStatus::Working);
+        info.name = "answerer".to_string();
+        info.task_title = Some("Read package.json".to_string());
+        let text = agent_status_text(&info);
+
+        let listed = serde_json::to_value(&info.claude_status).unwrap();
+        assert_eq!(listed, json!("working"));
+        assert!(text.contains("status=working,"), "{text}");
+        assert!(text.contains("name='answerer'"), "{text}");
+        assert!(text.contains("task='Read package.json'"), "{text}");
     }
 
     #[test]

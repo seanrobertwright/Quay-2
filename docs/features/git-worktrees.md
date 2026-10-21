@@ -37,6 +37,8 @@ Pressing `Ctrl+B W` opens the **New Git Worktree** dialog for the active project
 3. **Launch Claude Code terminal immediately**: Checked by default. Quay opens a Claude Code terminal inside the new worktree as soon as it is created.
 4. Click **Create Worktree**.
 
+Quay always creates the worktree from the project's root repository. Pressing `Ctrl+B W` while a worktree is selected adds another worktree of the project, never one nested inside the selected worktree.
+
 ---
 
 ## Collapsible Navigation Rail Hierarchy
@@ -47,3 +49,4 @@ To preserve vertical real estate in your sidebar when managing repositories with
 - Click the chevron next to **`Worktrees (N)`** to expand or collapse the worktree list.
 - **Smart Focus Dot**: If your active terminal belongs to a worktree that is currently collapsed, Quay 2 displays a distinct blue dot on the worktree header, alerting you that the active session lives inside.
 - 1-click **New Terminal in Worktree (`+`)** and **Remove Worktree (trash icon)** buttons appear when hovering over any worktree row.
+- **Safe removal**: before closing any terminal, Quay checks the worktree for modified or untracked files. If it finds any, Quay shows the refusal `git worktree remove` would give, with the changed files, and leaves the worktree and its terminals untouched. If removal fails for another reason, Quay shows git's error in the same dialog. **Remove anyway** closes the worktree's terminals and runs `git worktree remove --force`, which discards those changes.

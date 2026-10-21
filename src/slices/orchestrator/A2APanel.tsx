@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, FC } from "react";
+import { useState, useEffect, useId, FormEvent, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -17,8 +17,11 @@ import {
   Check,
   Trash2,
   Sparkles,
+  Users,
 } from "lucide-react";
-import { TerminalInfo, isAgentRunKind } from "../terminal/types";
+import { TerminalInfo, busLevel, isPluginSilent } from "../terminal/types";
+import { isSamePath } from "../../utils/paths";
+import { keepSendChoices, toAgentChoices } from "./sendChoices";
 
 interface A2AMessage {
   id: string;
@@ -29,26 +32,65 @@ interface A2AMessage {
   content: string;
   as_user: boolean;
   timestamp: number;
-  status: "pending" | "dispatched" | "completed" | "failed";
+  status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
 }
 
 interface A2APanelProps {
   isOpen: boolean;
   terminals: TerminalInfo[];
+  activeProject: string;
   onClose: () => void;
+}
+
+const agentOptionLabel = (t: TerminalInfo) =>
+  `${t.name} (${t.run_kind}) • [${t.claude_status.toUpperCase()}] ${t.task_title ? `("${t.task_title}")` : ""}`;
+
+/**
+ * The agent list's tag for a peer below full peer, with the tooltip that explains it,
+ * or null for a full peer, which gets no tag.
+ */
+function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
+  if (isPluginSilent(t)) {
+    return {
+      label: "Listener",
+      tooltip:
+        "Quay isn't hearing from this terminal's event-bridge plugin, so it can't reply. Once the plugin reports, it is a full peer again.",
+    };
+  }
+  switch (busLevel(t)) {
+    case "listener":
+      return { label: "Listener", tooltip: "Gets messages but can't reply." };
+    case "responder":
+      return {
+        label: "Responder",
+        tooltip: "Replies to a sender who waits, but can't send messages, so it never starts a conversation.",
+      };
+    default:
+      return null;
+  }
 }
 
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
+  activeProject,
   onClose,
 }) => {
-  const agentTerminals = terminals.filter((t) => isAgentRunKind(t.run_kind));
-  const [fromTerminal, setFromTerminal] = useState(agentTerminals[0]?.id || "");
-  const [toTerminal, setToTerminal] = useState(agentTerminals[1]?.id || "");
+  // Peers only: shell and Archon terminals are not on the bus.
+  const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
+  // A broadcast reaches every peer that is still running.
+  const broadcastTargets = agentTerminals.filter((t) => t.claude_status !== "exited");
+  // The agent list, From Agent and To Agent show only the active project's peers, scoped
+  // the way the stage scopes its terminals: a worktree counts as its own project.
+  const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
+  const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
+  const [toTerminal, setToTerminal] = useState(() => keepSendChoices(projectAgents, "", "", false).to);
   const [prompt, setPrompt] = useState("");
   const [asUser, setAsUser] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const fromSelectId = useId();
+  const toSelectId = useId();
   const [broadcastText, setBroadcastText] = useState("");
   const [messages, setMessages] = useState<A2AMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -62,14 +104,14 @@ export const A2APanel: FC<A2APanelProps> = ({
     return term ? term.name : idOrName;
   };
 
+  // Keep From Agent and To Agent on agents of the active project. To Agent holds only a
+  // live peer, and unless the message is dispatched as the user, never the agent From
+  // Agent holds: changing From Agent to the agent To Agent holds moves To Agent to another peer.
   useEffect(() => {
-    if (agentTerminals.length > 0 && !fromTerminal) {
-      setFromTerminal(agentTerminals[0].id);
-    }
-    if (agentTerminals.length > 1 && !toTerminal) {
-      setToTerminal(agentTerminals[1].id);
-    }
-  }, [agentTerminals, fromTerminal, toTerminal]);
+    const { from, to } = keepSendChoices(projectAgents, fromTerminal, toTerminal, asUser);
+    if (from !== fromTerminal) setFromTerminal(from);
+    if (to !== toTerminal) setToTerminal(to);
+  }, [terminals, activeProject, asUser, fromTerminal, toTerminal]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -133,6 +175,7 @@ export const A2APanel: FC<A2APanelProps> = ({
     if (!fromTerminal || !toTerminal || !prompt.trim()) return;
 
     setIsSending(true);
+    setSendError(null);
     try {
       await invoke("a2a_send_prompt", {
         request: {
@@ -146,6 +189,7 @@ export const A2APanel: FC<A2APanelProps> = ({
       await loadMessages();
     } catch (err) {
       console.error("A2A dispatch error:", err);
+      setSendError(String(err));
     } finally {
       setIsSending(false);
     }
@@ -158,7 +202,7 @@ export const A2APanel: FC<A2APanelProps> = ({
     setIsBroadcasting(true);
     try {
       const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", { text: broadcastText });
-      const count = dispatched?.length || agentTerminals.length;
+      const count = dispatched?.length || broadcastTargets.length;
       setBroadcastText("");
       setBroadcastSuccess(`Broadcast sent to ${count} agent${count === 1 ? "" : "s"}!`);
       setTimeout(() => setBroadcastSuccess(null), 3500);
@@ -248,7 +292,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_list_agents</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">List Quay's terminals with their run kind and status</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">List the peers with their run kind, level and status</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_send_message</span>
@@ -256,13 +300,48 @@ export const A2APanel: FC<A2APanelProps> = ({
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running agent terminal</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running peer</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
                 <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Check one peer's status and auto-approved action count</p>
               </div>
             </div>
+          </div>
+
+          {/* Agent list: the active project's peers, tagged below full peer */}
+          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-[#58a6ff]" />
+              <span>Agents</span>
+            </h3>
+            {projectAgents.length === 0 ? (
+              <p className="text-xs text-[#8b949e]">No peers in the active project.</p>
+            ) : (
+              <ul aria-label="Peers in the active project" className="space-y-1">
+                {projectAgents.map((t) => {
+                  const tag = levelTag(t);
+                  return (
+                    <li key={t.id} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-white truncate">{t.name}</span>
+                      <span className="font-mono text-[#8b949e]">({t.run_kind})</span>
+                      {tag && (
+                        <span
+                          title={tag.tooltip}
+                          className="px-1.5 py-px rounded border border-[#d29922]/50 bg-[#d29922]/10 text-[10px] font-semibold text-[#d29922]"
+                        >
+                          {tag.label}
+                          <span className="sr-only">: {tag.tooltip}</span>
+                        </span>
+                      )}
+                      <span className="ml-auto font-mono text-[10px] uppercase text-[#8b949e]">
+                        {t.claude_status}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           {/* Interactive Agent-to-Agent Dispatch */}
@@ -272,45 +351,57 @@ export const A2APanel: FC<A2APanelProps> = ({
               <span>Dispatch Prompt / Handoff Task</span>
             </h3>
 
-            {agentTerminals.length < 2 ? (
+            {projectAgents.length < 2 ? (
               <div className="p-3 bg-[#161b22] border border-[#30363d] rounded text-xs text-[#8b949e] flex items-center gap-2">
                 <Clock className="w-4 h-4 text-[#d29922] shrink-0" />
                 <span>
-                  Spawn at least <strong>two AI agent terminals (Claude, Antigravity, or Codex)</strong> to test autonomous agent-to-agent messaging and task handoffs.
+                  Spawn at least <strong>two AI agent terminals (Claude, Antigravity, or Codex)</strong> in the active project to test autonomous agent-to-agent messaging and task handoffs.
                 </span>
               </div>
             ) : (
               <form onSubmit={handleSendPrompt} className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
+                    <label htmlFor={fromSelectId} className="block text-[11px] text-[#8b949e] mb-1 font-medium">From Agent</label>
                     <select
-                      value={fromTerminal}
-                      onChange={(e) => setFromTerminal(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
+                      id={fromSelectId}
+                      value={asUser ? "" : fromTerminal}
+                      disabled={asUser}
+                      onChange={(e) => {
+                        setFromTerminal(e.target.value);
+                        setSendError(null);
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {agentTerminals.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
-                        </option>
-                      ))}
+                      {asUser ? (
+                        <option value="">You</option>
+                      ) : (
+                        projectAgents.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {agentOptionLabel(t)}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
                   <ArrowRight className="w-4 h-4 text-[#8b949e] mt-5 shrink-0" />
 
                   <div className="flex-1">
-                    <label className="block text-[11px] text-[#8b949e] mb-1 font-medium">To Agent</label>
+                    <label htmlFor={toSelectId} className="block text-[11px] text-[#8b949e] mb-1 font-medium">To Agent</label>
                     <select
+                      id={toSelectId}
                       value={toTerminal}
-                      onChange={(e) => setToTerminal(e.target.value)}
+                      onChange={(e) => {
+                        setToTerminal(e.target.value);
+                        setSendError(null);
+                      }}
                       className="w-full px-2.5 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
                     >
-                      {agentTerminals
-                        .filter((t) => t.id !== fromTerminal)
+                      {toAgentChoices(projectAgents, fromTerminal, asUser)
                         .map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name} ({t.run_kind}) • [{t.claude_status.toUpperCase()}] {t.task_title ? `("${t.task_title}")` : ""}
+                            {agentOptionLabel(t)}
                           </option>
                         ))}
                     </select>
@@ -363,6 +454,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                         handleSendPrompt();
                       }
                     }}
+                    aria-label="Message to dispatch"
                     placeholder="Task instruction or prompt to dispatch to peer agent... (Ctrl+Enter to send)"
                     rows={2}
                     className="w-full p-2.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
@@ -374,22 +466,34 @@ export const A2APanel: FC<A2APanelProps> = ({
                     <input
                       type="checkbox"
                       checked={asUser}
-                      onChange={(e) => setAsUser(e.target.checked)}
+                      onChange={(e) => {
+                        setAsUser(e.target.checked);
+                        setSendError(null);
+                      }}
                       className="rounded bg-[#161b22] border-[#30363d]"
                     />
                     <UserCheck className="w-3.5 h-3.5" />
-                    <span>Send directly without peer attribution (as user prompt)</span>
+                    <span>Dispatch as User</span>
                   </label>
 
                   <button
                     type="submit"
-                    disabled={isSending || !prompt.trim()}
+                    disabled={isSending || !prompt.trim() || !toTerminal}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>{isSending ? "Dispatching..." : "Dispatch Task"}</span>
                   </button>
                 </div>
+
+                {sendError && (
+                  <div
+                    role="alert"
+                    className="text-xs text-[#ff7b72] bg-[#da3633]/15 border border-[#da3633]/40 rounded px-2.5 py-1"
+                  >
+                    {sendError}
+                  </div>
+                )}
               </form>
             )}
           </div>
@@ -402,12 +506,12 @@ export const A2APanel: FC<A2APanelProps> = ({
                 <span>Broadcast Notice to All AI Agent Sessions</span>
               </h3>
               <span className="text-[11px]">
-                {agentTerminals.length > 0 ? (
+                {broadcastTargets.length > 0 ? (
                   <span className="text-[#3fb950] font-mono">
-                    {agentTerminals.length} target{agentTerminals.length === 1 ? "" : "s"} active
+                    {broadcastTargets.length} target{broadcastTargets.length === 1 ? "" : "s"} active
                   </span>
                 ) : (
-                  <span className="text-[#d29922]">No agent terminals active</span>
+                  <span className="text-[#d29922]">No peers running</span>
                 )}
               </span>
             </div>
@@ -501,6 +605,15 @@ export const A2APanel: FC<A2APanelProps> = ({
                             <span>Completed</span>
                           </span>
                         )}
+                        {m.status === "queued" && (
+                          <span
+                            className="flex items-center gap-1 text-[#d29922]"
+                            title="Delivered when the agent's current turn ends"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>Queued</span>
+                          </span>
+                        )}
                         {m.status === "dispatched" && (
                           <span className="flex items-center gap-1 text-[#58a6ff]">
                             <Clock className="w-3 h-3 animate-spin" />
@@ -521,8 +634,9 @@ export const A2APanel: FC<A2APanelProps> = ({
                       <button
                         type="button"
                         onClick={() => handleCopy(`content-${m.id}`, m.content)}
-                        className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 p-1 text-[#8b949e] hover:text-white rounded bg-[#21262d] transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[#58a6ff] absolute top-2 right-2 p-1 text-[#8b949e] hover:text-white rounded bg-[#21262d] transition-opacity"
                         title="Copy message"
+                        aria-label="Copy message"
                       >
                         {copiedKey === `content-${m.id}` ? (
                           <Check className="w-3 h-3 text-[#3fb950]" />
@@ -539,7 +653,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                           <button
                             type="button"
                             onClick={() => handleCopy(`resp-${m.id}`, m.response!)}
-                            className="opacity-0 group-hover:opacity-100 text-[#58a6ff] hover:underline flex items-center gap-0.5"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-[#58a6ff] rounded text-[#58a6ff] hover:underline flex items-center gap-0.5"
                           >
                             {copiedKey === `resp-${m.id}` ? (
                               <span className="text-[#3fb950]">Copied!</span>

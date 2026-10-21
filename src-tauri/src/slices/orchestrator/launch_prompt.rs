@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::slices::pty::models::RunKind;
+use crate::slices::pty::models::{BusLevel, RunKind};
 
 /// One agent row of a swarm, as the launcher sends it.
 #[derive(Debug, Clone, Deserialize)]
@@ -80,15 +80,32 @@ fn team_briefing(members: &[SwarmMember], index: usize) -> String {
     )
 }
 
-/// One teammate's line in the team briefing: session name, CLI and role. The teammate's
-/// bus level joins this line once Quay has a level test shared with `quay_list_agents`.
+/// One teammate's line in the team briefing: session name, CLI and role, then its bus
+/// level from `RunKind::bus_level`, the test `quay_list_agents` uses. A teammate that is
+/// not a peer gets no level.
 fn teammate_line(teammate: &SwarmMember) -> String {
-    format!(
+    let line = format!(
         "{} ({}, {})",
         teammate.name.trim(),
         teammate.run_kind.display_name(),
         role_of(teammate)
-    )
+    );
+    match teammate.run_kind.bus_level() {
+        Some(level) => format!("{}: {}", line, level_sentence(level)),
+        None => line,
+    }
+}
+
+/// What the team briefing says a teammate at `level` can do.
+fn level_sentence(level: BusLevel) -> &'static str {
+    match level {
+        BusLevel::FullPeer => "a full peer.",
+        BusLevel::Responder => {
+            "a responder. Ask it a short question with wait_for_reply set to true; \
+             it can't message you first."
+        }
+        BusLevel::Listener => "a listener: it gets messages but can't answer.",
+    }
 }
 
 #[cfg(test)]
@@ -154,8 +171,9 @@ mod tests {
                  You own review.md.\n\
                  \n\
                  Your teammates in this swarm, by session name:\n\
-                 - claude-dev (Claude, Primary Implementer)\n\
-                 - agy-planner (Antigravity, Architecture & Planner)\n\
+                 - claude-dev (Claude, Primary Implementer): a full peer.\n\
+                 - agy-planner (Antigravity, Architecture & Planner): a responder. Ask it a short \
+                 question with wait_for_reply set to true; it can't message you first.\n\
                  - test-runner (PowerShell, Test & CI Shell)\n\
                  \n\
                  Confirm your role in one line, then wait for the user's task. \
@@ -163,6 +181,24 @@ mod tests {
             )
         );
         assert!(prompts[0].as_deref().unwrap().contains("quay_list_agents"));
+    }
+
+    #[test]
+    fn a_blank_role_prompt_box_gives_only_the_you_are_line() {
+        let mut writer = member("writer", "Technical Writer", RunKind::Claude);
+        writer.role_prompt = Some("\n   \n".to_string());
+        let swarm = [writer, member("editor", "Editor", RunKind::Claude)];
+
+        let prompts = compose_launch_prompts(&swarm);
+
+        assert!(
+            prompts[0]
+                .as_deref()
+                .unwrap()
+                .starts_with("Role: Technical Writer\n\nYou are the Technical Writer.\n\nYour teammates"),
+            "{:?}",
+            prompts[0]
+        );
     }
 
     #[test]
@@ -183,6 +219,25 @@ mod tests {
         assert!(prompts[0]
             .as_deref()
             .unwrap()
-            .contains("- agy-planner (Antigravity, Planner)\n"));
+            .contains("- agy-planner (Antigravity, Planner): a responder."));
+    }
+
+    #[test]
+    fn the_briefing_names_each_teammate_level_from_the_level_test() {
+        let swarm = [
+            member("lead", "Lead", RunKind::Claude),
+            member("codex-reviewer", "Reviewer", RunKind::Codex),
+            member("gemini-docs", "Docs", RunKind::Gemini),
+            member("workflow", "Workflow", RunKind::Archon),
+        ];
+
+        let lead = compose_launch_prompts(&swarm)[0].clone().unwrap();
+
+        assert!(lead.contains("- codex-reviewer (Codex, Reviewer): a full peer.\n"), "{lead}");
+        assert!(
+            lead.contains("- gemini-docs (Gemini, Docs): a listener: it gets messages but can't answer.\n"),
+            "{lead}"
+        );
+        assert!(lead.contains("- workflow (Archon, Workflow)\n"), "{lead}");
     }
 }

@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   TerminalInfo,
+  TerminalStatusPayload,
   SpawnTerminalRequest,
   StageLayout,
   PermissionMode,
+  showsWorkingOnDelivery,
 } from "../terminal/types";
 import { Envelope } from "../bridge/useBridgeEvents";
 import { Project } from "./types";
@@ -13,8 +15,9 @@ import { SwarmPreset } from "../orchestrator/swarmTypes";
 import { GitWorktree } from "../git/types";
 import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChime";
 import { ClaudeTokenStats } from "../sessions/types";
-import { isSamePath, isSubpathOf } from "../../utils/paths";
+import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
+import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 
 export type { Project };
 
@@ -22,6 +25,7 @@ interface PtyExitPayload {
   terminal_id: string;
   exit_code?: number | null;
 }
+
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -251,19 +255,14 @@ export function useWorkspace() {
     };
   }, []);
 
-  // Listen for terminal output to transition 'starting' status to 'idle'
+  // The backend's plugin rules: a Claude terminal leaves Starting on its first plugin event,
+  // goes Unknown with the plugin hint after 30 silent seconds, and drops the hint when dismissed
   useEffect(() => {
-    const unlistenPromise = listen<{ terminal_id: string }>("pty-output", (event) => {
-      const { terminal_id } = event.payload;
-      setTerminals((prev) => {
-        const target = prev.find((t) => t.id === terminal_id);
-        if (target && target.claude_status === "starting") {
-          return prev.map((t) =>
-            t.id === terminal_id ? { ...t, claude_status: "idle" } : t
-          );
-        }
-        return prev;
-      });
+    const unlistenPromise = listen<TerminalStatusPayload>("terminal-status", (event) => {
+      const { terminal_id, claude_status, plugin_hint } = event.payload;
+      setTerminals((prev) =>
+        prev.map((t) => (t.id === terminal_id ? { ...t, claude_status, plugin_hint } : t))
+      );
     });
 
     return () => {
@@ -271,7 +270,35 @@ export function useWorkspace() {
     };
   }, []);
 
-  // Listen for A2A message dispatches to immediately update receiver's status and task title
+  // A `terminal-status` the backend sent before a new or relaunched terminal reached this
+  // list is lost, so a terminal still Starting here takes the backend's status once listed.
+  // Only a terminal's latest sync applies, so a slow answer can't overwrite a newer launch.
+  const statusSyncSeq = useRef(0);
+  const latestStatusSync = useRef(new Map<string, number>());
+  const syncStartingStatus = useCallback(async (terminalIds: string[]) => {
+    const seq = ++statusSyncSeq.current;
+    terminalIds.forEach((id) => latestStatusSync.current.set(id, seq));
+    try {
+      const terms = await invoke<TerminalInfo[]>("list_terminals");
+      const owned = new Set(terminalIds.filter((id) => latestStatusSync.current.get(id) === seq));
+      owned.forEach((id) => latestStatusSync.current.delete(id));
+      const listed = new Map(terms.filter((t) => owned.has(t.id)).map((t) => [t.id, t]));
+      if (listed.size === 0) return;
+      setTerminals((prev) =>
+        prev.map((t) => {
+          const backend = listed.get(t.id);
+          return backend && t.claude_status === "starting"
+            ? { ...t, claude_status: backend.claude_status, plugin_hint: backend.plugin_hint }
+            : t;
+        })
+      );
+    } catch (err) {
+      console.error("Failed to sync terminal status:", err);
+    }
+  }, []);
+
+  // Listen for A2A message dispatches to immediately update receiver's status and task title.
+  // The receiver shows Working only when Quay will also see that turn end.
   useEffect(() => {
     const unlistenPromise = listen<{
       id: string;
@@ -287,7 +314,7 @@ export function useWorkspace() {
           if (t.id === to_terminal) {
             return {
               ...t,
-              claude_status: "working",
+              claude_status: showsWorkingOnDelivery(t) ? "working" : t.claude_status,
               task_title: cleanTitle || t.task_title,
             };
           }
@@ -412,6 +439,7 @@ export function useWorkspace() {
       }
 
       setTerminals((prev) => [...prev, ...spawnedTerms]);
+      void syncStartingStatus(spawnedTerms.map((t) => t.id));
 
       if (preset.layout === "single") {
         setLayout("single");
@@ -472,9 +500,10 @@ export function useWorkspace() {
     });
   }, [projects, terminals, projectWorktrees, refreshWorktrees]);
 
-  // Open New Worktree modal
+  // Open New Worktree modal. Without a repoPath it targets the active project's root,
+  // so a worktree is never nested inside the selected worktree.
   const openNewWorktreeModal = (repoPath?: string, suggestedIssueNumber?: number) => {
-    const targetPath = repoPath || activeProject;
+    const targetPath = repoPath || resolveRootRepo(activeProject, projects, projectWorktrees);
     const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
       name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
     };
@@ -521,6 +550,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, term!]);
+        void syncStartingStatus([term!.id]);
         setActiveProject(created.path);
         setPrimaryTerminalId(term.id);
         setActiveTerminalId(term.id);
@@ -533,30 +563,45 @@ export function useWorkspace() {
     }
   };
 
-  // Remove a worktree
-  const removeWorktree = async (repoPath: string, worktreePath: string, force: boolean = false) => {
+  // Remove a worktree. Unless forced, a worktree with uncommitted changes comes back
+  // "blocked" with git's refusal, and none of its terminals are closed.
+  const removeWorktree = async (
+    repoPath: string,
+    worktreePath: string,
+    force: boolean = false
+  ): Promise<WorktreeRemovalResult> => {
     try {
-      const matchingTerms = terminals.filter((t) => isSamePath(t.project_path, worktreePath));
-      for (const term of matchingTerms) {
-        try {
-          await invoke("kill_terminal", { terminalId: term.id });
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setTerminals((prev) => prev.filter((t) => t.project_path !== worktreePath));
-
-      await invoke("remove_git_worktree", {
-        repoPath,
-        worktreePath,
-        force,
-      });
+      const result = await removeWorktreeSafely(
+        {
+          checkClean: () => invoke<string | null>("check_git_worktree_clean", { worktreePath }),
+          closeTerminals: async () => {
+            const matchingTerms = terminals.filter((t) => isSamePath(t.project_path, worktreePath));
+            for (const term of matchingTerms) {
+              try {
+                await invoke("kill_terminal", { terminalId: term.id });
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            setTerminals((prev) => prev.filter((t) => !isSamePath(t.project_path, worktreePath)));
+          },
+          remove: (forceRemove) =>
+            invoke<void>("remove_git_worktree", {
+              repoPath,
+              worktreePath,
+              force: forceRemove,
+            }),
+        },
+        force
+      );
+      if (result.status === "blocked") return result;
 
       await refreshWorktrees(repoPath);
 
-      if (activeProject === worktreePath) {
+      if (isSamePath(activeProject, worktreePath)) {
         setActiveProject(repoPath);
       }
+      return result;
     } catch (err) {
       console.error("Failed to remove worktree:", err);
       throw err;
@@ -580,6 +625,7 @@ export function useWorkspace() {
         },
       });
       setTerminals((prev) => [...prev, term]);
+      void syncStartingStatus([term.id]);
       setActiveProject(targetPath);
       setPrimaryTerminalId(term.id);
       setActiveTerminalId(term.id);
@@ -849,6 +895,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
+        void syncStartingStatus([newTerm.id]);
         setSecondaryTerminalId(newTerm.id);
         setLayout("split-horizontal");
         setZoomedFromLayout(null);
@@ -887,6 +934,7 @@ export function useWorkspace() {
           },
         });
         setTerminals((prev) => [...prev, newTerm]);
+        void syncStartingStatus([newTerm.id]);
         setSecondaryTerminalId(newTerm.id);
         setLayout("split-vertical");
         setZoomedFromLayout(null);
@@ -922,6 +970,7 @@ export function useWorkspace() {
       };
       const newTerm = await invoke<TerminalInfo>("spawn_terminal", { request: enrichedRequest });
       setTerminals((prev) => [...prev, newTerm]);
+      void syncStartingStatus([newTerm.id]);
       if (layout === "single") {
         setPrimaryTerminalId(newTerm.id);
         setActiveTerminalId(newTerm.id);
@@ -971,17 +1020,6 @@ export function useWorkspace() {
           new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
         );
       }, 250);
-
-      // Fallback timer: if terminal is still in "starting" after 3s, mark it "idle"
-      setTimeout(() => {
-        setTerminals((prev) =>
-          prev.map((t) =>
-            t.id === newTerm.id && t.claude_status === "starting"
-              ? { ...t, claude_status: "idle" }
-              : t
-          )
-        );
-      }, 3000);
     } catch (err) {
       console.error("Failed to spawn terminal:", err);
     }
@@ -1040,6 +1078,7 @@ export function useWorkspace() {
         cols: dims.cols,
       });
       setTerminals((prev) => prev.map((t) => (t.id === terminalId ? updated : t)));
+      void syncStartingStatus([terminalId]);
       setActiveTerminalId(terminalId);
 
       // Lock focus on the relaunched terminal

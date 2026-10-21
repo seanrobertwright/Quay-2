@@ -1,0 +1,3 @@
+recordings/*/.step-markers
+recordings/*/*.cast
+recordings/*/*.http.jsonl

@@ -1,0 +1,144 @@
+/* Tutorial pages: the step-card containers registered in step-cards.ts, and the page parts around
+   them. Every selector is scoped to these classes, so other pages look as they did. */
+
+/* At-a-glance strip: one list of Time, Tokens, Agents and Level tiles, each a bold label then its value */
+.vp-doc .tutorial-glance ul {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-doc .tutorial-glance li {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  font-size: 18px;
+  font-weight: 700;
+}
+.vp-doc .tutorial-glance li strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+@media (max-width: 640px) {
+  .vp-doc .tutorial-glance ul { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Before you start checklist: each list item is a checkbox */
+.vp-doc .tutorial-checklist ul {
+  padding: 16px 20px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  list-style: none;
+}
+.vp-doc .tutorial-checklist li { margin: 0; }
+.vp-doc .tutorial-checklist label {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+}
+.vp-doc .tutorial-checklist input { flex: none; }
+
+/* Step card. Must match and May differ share a row; everything else spans the card. */
+.vp-doc .step-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 10px;
+  margin: 28px 0;
+  padding: 4px 20px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-left: 4px solid var(--vp-c-brand-1);
+  border-radius: 10px;
+}
+.vp-doc .step-card > * { grid-column: 1 / -1; min-width: 0; }
+.vp-doc .step-card > .step-card__slot--must,
+.vp-doc .step-card > .step-card__slot--may { grid-column: auto; }
+.vp-doc .step-card--last { border-left-color: var(--vp-c-green-1); }
+.vp-doc .step-card h2 {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+@media (max-width: 640px) {
+  .vp-doc .step-card > .step-card__slot--must,
+  .vp-doc .step-card > .step-card__slot--may { grid-column: 1 / -1; }
+}
+
+.vp-doc .step-card__slot { margin-top: 14px; }
+.vp-doc .step-card__label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.vp-doc .step-card__slot--must,
+.vp-doc .step-card__slot--may {
+  padding: 2px 14px;
+  border-radius: 6px;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .step-card__slot--must .step-card__label { color: var(--vp-c-green-1); }
+.vp-doc .step-card__slot--done {
+  padding: 2px 14px;
+  border: 1px solid var(--vp-c-green-1);
+  border-radius: 6px;
+}
+.vp-doc .step-card__slot--done .step-card__label { color: var(--vp-c-green-1); }
+
+/* A Paste prompt is one line, since Quay flattens newlines, so it wraps instead of scrolling. */
+.vp-doc .step-card__slot--paste div[class*='language-'] pre,
+.vp-doc .step-card__slot--paste div[class*='language-'] code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* You should see: the screenshot or its clip, full width, with its caption under it */
+.vp-doc .step-card__shot { margin: 0; }
+.vp-doc .step-card__shot img,
+.vp-doc .step-card__shot video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+}
+.vp-doc .step-card__shot figcaption {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .step-card__ifnot { margin: 14px 0 0; }
+
+/* Next up card: its first link is stretched over the whole card */
+.vp-doc .tutorial-next {
+  position: relative;
+  margin: 32px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--vp-c-brand-1);
+  border-radius: 10px;
+}
+.vp-doc .tutorial-next:hover { background: var(--vp-c-bg-soft); }
+.vp-doc .tutorial-next > p { margin: 0; }
+.vp-doc .tutorial-next__label { font-size: 14px; color: var(--vp-c-text-2); }
+.vp-doc .tutorial-next > p:nth-child(2) a {
+  font-size: 18px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.vp-doc .tutorial-next > p:nth-child(2) a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}

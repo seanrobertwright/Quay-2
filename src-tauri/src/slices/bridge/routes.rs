@@ -16,6 +16,7 @@ use super::models::{
 };
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
+use crate::slices::orchestrator::router::strip_peer_prefix;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
@@ -108,6 +109,15 @@ pub fn authenticate_mcp_caller(
         .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
 }
 
+/// The task title a turn's prompt gives its terminal: the first line, without the
+/// `[Peer agent (<name>)]: ` prefix a peer's message arrives with, cut to 32 characters.
+/// `None` when that leaves nothing.
+fn task_title(prompt: &str) -> Option<String> {
+    let first_line = prompt.lines().next().unwrap_or("").trim_start();
+    let clean = strip_peer_prefix(first_line).trim();
+    (!clean.is_empty()).then(|| clean.chars().take(32).collect())
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -119,34 +129,26 @@ pub async fn handle_events(
         let tag = envelope.tag.clone();
         ctx.bridge_state.record_envelope(envelope.clone());
 
-        // Update Claude Status based on event type
+        let mut status = None;
         if let Some(ref terminal_id) = tag {
+            status = ctx
+                .pty_manager
+                .apply_plugin_event(terminal_id, &envelope.event_type);
             match envelope.event_type.as_str() {
                 "turn.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Working);
-                    if let Some(prompt) = envelope
+                    if let Some(title) = envelope
                         .data
                         .get("prompt")
                         .or_else(|| envelope.data.get("text"))
                         .or_else(|| envelope.data.get("query"))
                         .or_else(|| envelope.data.get("user_input"))
                         .and_then(|v| v.as_str())
+                        .and_then(task_title)
                     {
-                        let clean = prompt
-                            .lines()
-                            .next()
-                            .unwrap_or("")
-                            .trim();
-                        if !clean.is_empty() {
-                            let shortened: String = clean.chars().take(32).collect();
-                            ctx.pty_manager.update_task_title(terminal_id, &shortened);
-                        }
+                        ctx.pty_manager.update_task_title(terminal_id, &title);
                     }
                 }
                 "turn.completed" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Idle);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                     let answer = envelope
                         .data
@@ -159,8 +161,6 @@ pub async fn handle_events(
                     }
                 }
                 "tool.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Working);
                     let tool = envelope
                         .data
                         .get("tool")
@@ -172,25 +172,27 @@ pub async fn handle_events(
                     ctx.pty_manager.increment_auto_approved(terminal_id);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
-                "attention.notification" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Waiting);
-                }
-                "session.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Idle);
-                }
                 "session.ended" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Exited);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
                 _ => {}
             }
         }
 
-        // Broadcast to Tauri frontend
+        // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
         let _ = ctx.app_handle.emit("bridge-event", envelope);
+        if let Some(status) = status {
+            // A turn that ended lets the terminal's next held message in, and a session that
+            // ended fails the rest. Typing blocks for the submit delay, so it runs off the
+            // event route.
+            if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
+                let router = ctx.a2a_router.clone();
+                let pty_manager = ctx.pty_manager.clone();
+                let terminal_id = status.terminal_id.clone();
+                tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
+            }
+            let _ = ctx.app_handle.emit("terminal-status", status);
+        }
     }
 
     Ok(StatusCode::OK.into_response())
@@ -401,6 +403,17 @@ mod tests {
             headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
         }
         headers
+    }
+
+    #[test]
+    fn a_task_title_drops_the_peer_prefix() {
+        assert_eq!(
+            task_title("[Peer agent (asker)]: Read package.json and reply in one line").as_deref(),
+            Some("Read package.json and reply in o")
+        );
+        assert_eq!(task_title("Fix the login bug\nmore detail").as_deref(), Some("Fix the login bug"));
+        assert_eq!(task_title("[Peer agent (asker)]:   "), None);
+        assert_eq!(task_title(""), None);
     }
 
     #[test]

@@ -24,7 +24,15 @@ pnpm tauri dev
 # 3. Run documentation locally
 pnpm docs:dev
 
-# 4. Test the starter packing script, then build the documentation site
+# 4. After adding a tutorial page, list it in the Tutorials tables of the docs and the README
+pnpm docs:tutorials
+
+# 5. Check the docs scripts and the step-card plugin, then build the documentation site
+pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
+
+# 6. Before a tutorial's first test run, or when a pull request changes its wording:
+#    a fresh-eyes read of the built page by a new agent that sees only the page
+pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
 ```

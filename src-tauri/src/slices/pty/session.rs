@@ -55,6 +55,32 @@ pub fn mcp_config_arg(bridge_port: u16) -> String {
     .to_string()
 }
 
+/// Sets the `CLAUDE_EVENTS_*` variables Claude Code's event-bridge plugin reads.
+fn set_event_bridge_env(
+    cmd: &mut CommandBuilder,
+    terminal_id: &str,
+    bridge_port: u16,
+    bridge_token: &str,
+    perm: PermissionMode,
+) {
+    cmd.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
+    cmd.env("CLAUDE_EVENTS_TOKEN", bridge_token);
+    cmd.env("CLAUDE_EVENTS_TAG", terminal_id);
+    cmd.env("CLAUDE_EVENTS_TOOLS", "full");
+    // Skip mode turns host permission checks off too, so Claude doesn't block waiting on them
+    let permissions = if perm == PermissionMode::Skip { "off" } else { "host" };
+    cmd.env("CLAUDE_EVENTS_PERMISSIONS", permissions);
+}
+
+/// Sets the variables every peer terminal gets, whatever its level, so a CLI's own wiring
+/// onto the bus can read the terminal's id, token and bridge URLs from its environment.
+fn set_quay_env(cmd: &mut CommandBuilder, terminal_id: &str, bridge_port: u16, bridge_token: &str) {
+    cmd.env("QUAY_TERMINAL_ID", terminal_id);
+    cmd.env("QUAY_A2A_TOKEN", bridge_token);
+    cmd.env("QUAY_MCP_URL", format!("http://127.0.0.1:{}/mcp", bridge_port));
+    cmd.env("QUAY_EVENTS_URL", format!("http://127.0.0.1:{}/v1/events", bridge_port));
+}
+
 /// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
 /// (1..3 trailing bytes) across `read()` calls so split box-drawing or emoji characters
 /// are never corrupted into U+FFFD replacement characters.
@@ -246,20 +272,9 @@ pub(crate) fn build_command(
         RunKind::Command | RunKind::Archon => shell_command(request.command_text.as_deref()),
         RunKind::Claude => {
             let mut c = CommandBuilder::new(claude_program());
-            // Inject event-bridge environment variables
-            c.env("CLAUDE_EVENTS_URL", format!("http://127.0.0.1:{}", bridge_port));
-            c.env("CLAUDE_EVENTS_TOKEN", &bridge_token);
-            c.env("CLAUDE_EVENTS_TAG", &terminal_id);
-            c.env("CLAUDE_EVENTS_TOOLS", "full");
-
             if perm == PermissionMode::Skip {
                 c.arg("--dangerously-skip-permissions");
-                // Skip mode turns host permission checks off too, so Claude doesn't block waiting on them
-                c.env("CLAUDE_EVENTS_PERMISSIONS", "off");
-            } else {
-                c.env("CLAUDE_EVENTS_PERMISSIONS", "host");
             }
-
             c
         }
         RunKind::Antigravity => {
@@ -368,6 +383,14 @@ pub(crate) fn build_command(
         }
     }
 
+    // After the workspace's variables, so none of them can stand in for the terminal's own
+    if request.run_kind == RunKind::Claude {
+        set_event_bridge_env(&mut cmd, terminal_id, bridge_port, bridge_token, perm);
+    }
+    if request.run_kind.is_peer() {
+        set_quay_env(&mut cmd, terminal_id, bridge_port, bridge_token);
+    }
+
     // Inject custom CLI launch flags (for any supported agent)
     if request.run_kind.is_agent() {
         if let Some(ref flags) = request.custom_flags {
@@ -411,6 +434,7 @@ impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
+    /// `on_first_output` runs once, on the reader thread, when the process first writes output.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
@@ -418,6 +442,7 @@ impl PtySession {
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
+        on_first_output: Box<dyn FnOnce() + Send>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
@@ -509,7 +534,7 @@ impl PtySession {
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
-                let mut session_started_emitted = false;
+                let mut on_first_output = Some(on_first_output);
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -530,25 +555,8 @@ impl PtySession {
                                 let _ = file.write_all(text.as_bytes());
                             }
 
-                            // Transition session to active/idle state on first output from child process
-                            if !session_started_emitted {
-                                session_started_emitted = true;
-                                let _ = app_handle.emit(
-                                    "bridge-event",
-                                    crate::slices::bridge::Envelope {
-                                        v: 1,
-                                        boot: "".to_string(),
-                                        seq: 0,
-                                        ts: std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_millis() as u64,
-                                        session_id: terminal_id.clone(),
-                                        tag: Some(terminal_id.clone()),
-                                        event_type: "session.started".to_string(),
-                                        data: serde_json::Value::Null,
-                                    },
-                                );
+                            if let Some(hook) = on_first_output.take() {
+                                hook();
                             }
 
                             // Buffer recent output for newly-mounting xterm instances,
@@ -915,6 +923,102 @@ mod tests {
                 assert_eq!(shell_args(run_kind, Some("pnpm dev")), expected);
             }
         }
+    }
+
+    const QUAY_ENV_KEYS: [&str; 4] =
+        ["QUAY_TERMINAL_ID", "QUAY_A2A_TOKEN", "QUAY_MCP_URL", "QUAY_EVENTS_URL"];
+
+    fn env_of(cmd: &CommandBuilder, key: &str) -> Option<String> {
+        cmd.get_env(key).map(|v| v.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn every_peer_terminal_gets_the_four_quay_variables() {
+        for run_kind in [
+            RunKind::Claude,
+            RunKind::Codex,
+            RunKind::OpenCode,
+            RunKind::Antigravity,
+            RunKind::Copilot,
+            RunKind::Kiro,
+            RunKind::Gemini,
+            RunKind::Grok,
+            RunKind::Pi,
+            RunKind::Aider,
+        ] {
+            let cmd = build_command(&spawn_request(run_kind), "term-quay-env", 4321, "tok-1");
+            assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-env"), "{:?}", run_kind);
+            assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"), "{:?}", run_kind);
+            assert_eq!(
+                env_of(&cmd, "QUAY_MCP_URL").as_deref(),
+                Some("http://127.0.0.1:4321/mcp"),
+                "{:?}",
+                run_kind
+            );
+            assert_eq!(
+                env_of(&cmd, "QUAY_EVENTS_URL").as_deref(),
+                Some("http://127.0.0.1:4321/v1/events"),
+                "{:?}",
+                run_kind
+            );
+        }
+    }
+
+    #[test]
+    fn shell_and_archon_terminals_get_no_quay_variables() {
+        for run_kind in [RunKind::PowerShell, RunKind::Command, RunKind::Archon] {
+            let cmd = build_command(&spawn_request(run_kind), "term-no-env", 4321, "tok-1");
+            for key in QUAY_ENV_KEYS {
+                assert_eq!(env_of(&cmd, key), None, "{:?} got {}", run_kind, key);
+            }
+        }
+    }
+
+    #[test]
+    fn workspace_env_vars_never_replace_the_quay_variables() {
+        let mut request = spawn_request(RunKind::Codex);
+        request.env_vars = Some(
+            QUAY_ENV_KEYS
+                .iter()
+                .map(|key| (key.to_string(), "from-workspace".to_string()))
+                .collect(),
+        );
+
+        let cmd = build_command(&request, "term-quay-wins", 4321, "tok-1");
+
+        assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-wins"));
+        assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn workspace_env_vars_never_replace_the_event_bridge_variables() {
+        let mut request = spawn_request(RunKind::Claude);
+        request.env_vars = Some(
+            ["CLAUDE_EVENTS_URL", "CLAUDE_EVENTS_TOKEN", "CLAUDE_EVENTS_TAG"]
+                .iter()
+                .map(|key| (key.to_string(), "from-workspace".to_string()))
+                .collect(),
+        );
+
+        let cmd = build_command(&request, "term-bridge-wins", 4321, "tok-1");
+
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_URL").as_deref(), Some("http://127.0.0.1:4321"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOKEN").as_deref(), Some("tok-1"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TAG").as_deref(), Some("term-bridge-wins"));
+    }
+
+    #[test]
+    fn claude_keeps_the_event_bridge_variables_beside_the_quay_ones() {
+        let cmd = build_command(&spawn_request(RunKind::Claude), "term-claude-env", 4321, "tok-1");
+
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_URL").as_deref(), Some("http://127.0.0.1:4321"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOKEN").as_deref(), Some("tok-1"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TAG").as_deref(), Some("term-claude-env"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOOLS").as_deref(), Some("full"));
+        assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_PERMISSIONS").as_deref(), Some("off"));
+        // The event-bridge plugin reads only Claude's variables
+        let codex = build_command(&spawn_request(RunKind::Codex), "term-codex-env", 4321, "tok-1");
+        assert_eq!(env_of(&codex, "CLAUDE_EVENTS_TOKEN"), None);
     }
 
     #[test]

@@ -1,14 +1,23 @@
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
+import type { ConfigEnv } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { stepCards } from './step-cards.ts';
+import { LANDING_LINK, publishedTutorials, tutorialsSidebar } from './tutorials.ts';
 
 // https://vitepress.dev/reference/site-config
-export default withMermaid(
+export default ({ command }: ConfigEnv) => withMermaid(
   defineConfig({
     title: "Quay 2",
     description: "Native Windows Autonomous Multi-Agent Workspace & Orchestrator",
     base: "/Quay-2/",
     cleanUrls: true,
     lastUpdated: true,
+    // The step-card example page renders under `docs:dev` only, never in the published site.
+    srcExclude: command === 'build' ? ['_examples/**'] : [],
+    markdown: {
+      config: stepCards,
+    },
     mermaid: {
       theme: 'dark',
     },
@@ -41,6 +50,7 @@ export default withMermaid(
 
     nav: [
       { text: 'Guide', link: '/guide/what-is-quay' },
+      { text: 'Tutorials', link: LANDING_LINK },
       { text: 'Features', link: '/features/agent-support' },
       { text: 'A2A Bus', link: '/features/a2a-orchestration' },
       { text: 'Archon & SDD', link: '/features/archon-sdd' },
@@ -74,6 +84,8 @@ export default withMermaid(
           ],
         },
       ],
+      // Only tutorials whose pages exist, so the sidebar never links to an unwritten one.
+      '/tutorials/': tutorialsSidebar(publishedTutorials(fileURLToPath(new URL('..', import.meta.url)))),
       '/features/': [
         {
           text: 'Agent Fleet & Orchestration',

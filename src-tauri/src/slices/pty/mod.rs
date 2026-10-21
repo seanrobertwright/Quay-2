@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod manager;
 pub mod models;
+pub mod plugin_watch;
 pub mod session;
 
 pub use commands::*;

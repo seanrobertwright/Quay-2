@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Emitter, State};
 
-use super::models::{A2ADispatchRequest, A2AMessage};
+use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
 use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
@@ -12,10 +12,18 @@ pub async fn a2a_send_prompt(
     pty_manager: State<'_, PtyManager>,
     app_handle: AppHandle,
 ) -> Result<A2AMessage, String> {
-    let msg = router.dispatch(request, Some(&pty_manager))?;
-    let _ = app_handle.emit("a2a-message-updated", msg.clone());
-    let _ = app_handle.emit("a2a-message-dispatched", msg.clone());
+    let msg = router.dispatch_async(request, Some(&pty_manager)).await?;
+    emit_message(&app_handle, &msg);
     Ok(msg)
+}
+
+/// Shows `msg` in the trail and, when it has just been typed into its target, raises its
+/// toast. A queued message raises its toast later, when it is typed in.
+pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
+    let _ = app_handle.emit("a2a-message-updated", msg.clone());
+    if msg.status == A2AMessageStatus::Dispatched {
+        let _ = app_handle.emit("a2a-message-dispatched", msg.clone());
+    }
 }
 
 #[tauri::command]
@@ -25,10 +33,9 @@ pub async fn a2a_broadcast_toast(
     pty_manager: State<'_, PtyManager>,
     app_handle: AppHandle,
 ) -> Result<Vec<A2AMessage>, String> {
-    let msgs = router.broadcast_toast(&text, &pty_manager);
+    let msgs = router.broadcast_toast_async(&text, &pty_manager).await;
     for msg in &msgs {
-        let _ = app_handle.emit("a2a-message-updated", msg.clone());
-        let _ = app_handle.emit("a2a-message-dispatched", msg.clone());
+        emit_message(&app_handle, msg);
     }
     let _ = app_handle.emit("a2a-toast", text);
     Ok(msgs)

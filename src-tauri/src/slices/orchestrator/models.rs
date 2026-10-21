@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum A2AMessageStatus {
-    Pending,
+    /// Waiting in its target's delivery queue for the target's turn to end.
+    Queued,
+    /// Typed into its target.
     Dispatched,
     Completed,
     Failed,
@@ -31,4 +33,11 @@ pub struct A2ADispatchRequest {
     pub to_terminal: String,
     pub prompt: String,
     pub as_user: Option<bool>,
+}
+
+impl A2ADispatchRequest {
+    /// Whether the message comes from the operator rather than a sending peer.
+    pub fn is_user_dispatch(&self) -> bool {
+        self.as_user.unwrap_or(false)
+    }
 }

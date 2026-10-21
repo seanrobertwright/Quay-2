@@ -11,6 +11,7 @@ All machine-local state and caches are stored in standard Windows AppData locati
 | Path | Purpose |
 | :--- | :--- |
 | `%LOCALAPPDATA%\Quay2\workspaces.json` | Registered project folders, terminal history, and custom layout states |
+| `%LOCALAPPDATA%\Quay2\swarms.json` | Your saved swarms from the Swarm Launcher |
 | `%LOCALAPPDATA%\Quay2\token_stats_cache.json` | Deduplicated token accounting cache for sub-2ms spend calculation |
 | `%LOCALAPPDATA%\Quay2\praxis\praxis.db` | SQLite database for the Machina Praxis AI Software Factory |
 | `~/.claude/projects/` | Upstream Claude Code session transcripts scanned for token spend analytics |
@@ -28,6 +29,17 @@ Quay 2 injects these environment variables into Claude Code terminals to enable 
 | `CLAUDE_EVENTS_TAG` | The terminal id, so events reach the right terminal |
 | `CLAUDE_EVENTS_TOOLS` | `full` |
 | `CLAUDE_EVENTS_PERMISSIONS` | `host` routes tool approvals to Quay; `off` when "Skip Permissions" is enabled |
+
+Every agent terminal on the A2A bus, whatever its CLI, also gets these. Shell and Archon terminals don't:
+
+| Variable | Description |
+| :--- | :--- |
+| `QUAY_TERMINAL_ID` | The terminal id |
+| `QUAY_A2A_TOKEN` | The terminal's bearer token for the bridge |
+| `QUAY_MCP_URL` | Quay's MCP server (`http://127.0.0.1:<port>/mcp`) |
+| `QUAY_EVENTS_URL` | The bridge's event endpoint (`http://127.0.0.1:<port>/v1/events`) |
+
+A workspace environment variable with one of these names doesn't replace it.
 
 Quay 2 also reads `QUAY_BRIDGE_PORT` from its own environment at startup to pin the bridge port. See [Quay Startup Environment Variables](../reference/cli-flags.md#quay-startup-environment-variables).
 

@@ -31,19 +31,68 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   );
 }
 /**
- * Whether the CLI takes a launch prompt on its command line. Mirrors
+ * Each CLI's level on the A2A bus. Mirrors `RunKind::bus_level` in the backend, which
+ * decides how Quay treats a message; a run kind in none of these lists is not a peer.
+ * Each list stays on one line: the backend's `bus_levels_match_the_frontend` test reads it.
+ */
+export const FULL_PEER_RUN_KINDS = ["claude", "codex", "opencode"] as const satisfies readonly RunKind[];
+export const RESPONDER_RUN_KINDS = ["antigravity"] as const satisfies readonly RunKind[];
+export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "copilot"] as const satisfies readonly RunKind[];
+export type BusLevel = "full peer" | "responder" | "listener";
+
+/**
+ * The run kinds whose turn end Quay sees. Mirrors `RunKind::reports_turn_end` in the backend.
+ * Kept on one line: the backend's `turn_end_run_kinds_match_the_frontend` test reads it.
+ */
+export const TURN_END_RUN_KINDS = ["claude"] as const satisfies readonly RunKind[];
+
+/**
+ * Whether the terminal is a Claude terminal that counts as a listener only because Quay
+ * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
+ */
+export function isPluginSilent(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
+  return t.run_kind === "claude" && t.claude_status === "unknown";
+}
+
+/**
+ * Whether a message reaching the terminal shows it Working: only when Quay will also see that
+ * turn end. Mirrors `TerminalInfo::shows_working_on_delivery`.
+ */
+export function showsWorkingOnDelivery(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
+  return (TURN_END_RUN_KINDS as readonly RunKind[]).includes(t.run_kind) && t.claude_status !== "unknown";
+}
+
+/**
+ * The terminal's level on the A2A bus now, or null when it is not a peer. Mirrors
+ * `TerminalInfo::bus_level`: an Unknown Claude terminal is a listener.
+ */
+export function busLevel(t: Pick<TerminalInfo, "run_kind" | "claude_status">): BusLevel | null {
+  if (isPluginSilent(t)) return "listener";
+  const has = (kinds: readonly RunKind[]) => kinds.includes(t.run_kind);
+  if (has(FULL_PEER_RUN_KINDS)) return "full peer";
+  if (has(RESPONDER_RUN_KINDS)) return "responder";
+  if (has(LISTENER_RUN_KINDS)) return "listener";
+  return null;
+}
+
+/**
+ * The run kinds whose CLI takes a launch prompt on its command line. Mirrors
  * `RunKind::launch_prompt_form` in the backend, which decides what is actually sent.
  */
+export const LAUNCH_PROMPT_RUN_KINDS = [
+  "claude",
+  "codex",
+  "pi",
+  "gemini",
+  "kiro",
+  "copilot",
+  "opencode",
+] as const satisfies readonly RunKind[];
+export type LaunchPromptRunKind = (typeof LAUNCH_PROMPT_RUN_KINDS)[number];
+
+/** Whether the CLI takes a launch prompt on its command line. */
 export function takesLaunchPrompt(kind?: RunKind | string | null): boolean {
-  return (
-    kind === "claude" ||
-    kind === "codex" ||
-    kind === "pi" ||
-    kind === "gemini" ||
-    kind === "kiro" ||
-    kind === "copilot" ||
-    kind === "opencode"
-  );
+  return (LAUNCH_PROMPT_RUN_KINDS as readonly unknown[]).includes(kind);
 }
 export type PermissionMode = "skip" | "normal";
 export type ClaudeStatus =
@@ -75,6 +124,15 @@ export interface TerminalInfo {
   custom_flags?: string | null;
   command_text?: string | null;
   created_at?: number;
+  /** Whether the pane shows the plugin hint: this launch went 30 seconds without a plugin event. */
+  plugin_hint?: boolean;
+}
+
+/** A terminal's status after the backend's plugin rules moved it, sent as `terminal-status`. */
+export interface TerminalStatusPayload {
+  terminal_id: string;
+  claude_status: ClaudeStatus;
+  plugin_hint: boolean;
 }
 
 /**
