@@ -12,7 +12,7 @@ A **peer** is an agent terminal on the bus. Every peer can be sent a message. Wh
 | :--- | :--- | :--- | :--- | :--- |
 | **full peer** | Yes | Yes | Yes | Claude Code, Codex, OpenCode |
 | **responder** | No | Yes | Yes | Antigravity |
-| **listener** | No | No | No, its status stays **Unknown** | Copilot, Kiro, Gemini, Grok, Pi, Aider |
+| **listener** | No | No | No, its status stays **Unknown** | Copilot, Kiro, Gemini, Grok, Pi, PiG, Aider |
 
 PowerShell, Custom Command and Archon terminals are not peers. `quay_list_agents` doesn't list them, a broadcast skips them, and a message to an Archon terminal is refused.
 

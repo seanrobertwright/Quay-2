@@ -60,7 +60,7 @@ flowchart LR
   - **Kiro CLI**
   - **GitHub Copilot CLI**
   - **OpenCode CLI**
-  - **PowerShell (pwsh)**, **Command Prompt (cmd)**, and **WSL**.
+  - **PowerShell (pwsh)**, plus any command line, such as `cmd.exe` or `wsl.exe`, as a **Custom Command**.
 
 ### 🔄 Autonomous Agent-to-Agent (A2A) MCP Bus
 - Embedded loopback Model Context Protocol (MCP) server (`http://127.0.0.1:<port>/mcp`).
