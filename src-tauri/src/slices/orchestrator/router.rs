@@ -231,17 +231,19 @@ impl DeliveryQueues {
     }
 }
 
-/// What the update listener runs with a message whose status moved after its call returned.
-type UpdateListener = Arc<dyn Fn(&A2AMessage) + Send + Sync>;
+/// What the trail listener runs with each trail entry as it is added or changed.
+type TrailListener = Arc<dyn Fn(&A2AMessage) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct A2ARouter {
+    /// The trail, in the order entries joined it. Entries are added and changed only
+    /// through `record` and `update`; `clear_messages` empties it.
     messages: Arc<Mutex<Vec<A2AMessage>>>,
     /// Each terminal's reply waiters, with the id of the message each one waits on.
     pending_replies: Arc<Mutex<HashMap<String, Vec<(String, oneshot::Sender<String>)>>>>,
     /// Lock before any `PtyManager` lock when taking both.
     deliveries: Arc<Mutex<DeliveryQueues>>,
-    update_listener: Arc<Mutex<Option<UpdateListener>>>,
+    trail_listener: Arc<Mutex<Option<TrailListener>>>,
 }
 
 impl A2ARouter {
@@ -250,15 +252,16 @@ impl A2ARouter {
             messages: Arc::new(Mutex::new(Vec::new())),
             pending_replies: Arc::new(Mutex::new(HashMap::new())),
             deliveries: Arc::new(Mutex::new(DeliveryQueues::default())),
-            update_listener: Arc::new(Mutex::new(None)),
+            trail_listener: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Runs `listener` with each message whose status moves after the call that sent it
-    /// returned: a held message typed in once its target's turn ended, or one that
-    /// couldn't be typed.
-    pub fn set_update_listener(&self, listener: impl Fn(&A2AMessage) + Send + Sync + 'static) {
-        *self.update_listener.lock() = Some(Arc::new(listener));
+    /// Runs `listener` with each trail entry when it is added and each time it changes: a
+    /// message as it is typed in or queued, a held message as it is typed in or fails, and
+    /// an entry as its turn's answer completes it. It runs while the trail is locked, so
+    /// it hears changes in the order they happen and must not call back into the router.
+    pub fn set_trail_listener(&self, listener: impl Fn(&A2AMessage) + Send + Sync + 'static) {
+        *self.trail_listener.lock() = Some(Arc::new(listener));
     }
 
     /// The message `id` as the trail holds it now.
@@ -266,18 +269,40 @@ impl A2ARouter {
         self.messages.lock().iter().find(|m| m.id == id).cloned()
     }
 
-    fn notify_update(&self, message: &A2AMessage) {
-        let listener = self.update_listener.lock().clone();
+    fn notify(&self, message: &A2AMessage) {
+        let listener = self.trail_listener.lock().clone();
         if let Some(listener) = listener {
             listener(message);
         }
+    }
+
+    /// Adds `message` to the trail and tells the trail listener.
+    fn record(&self, message: &A2AMessage) {
+        let mut history = self.messages.lock();
+        history.push(message.clone());
+        self.notify(message);
+    }
+
+    /// Runs `change` on the trail entry for message `id`. When it reports a change, tells
+    /// the trail listener and returns the changed entry; otherwise, or when the trail no
+    /// longer holds the message, returns `None`.
+    fn update(&self, id: &str, change: impl FnOnce(&mut A2AMessage) -> bool) -> Option<A2AMessage> {
+        let mut history = self.messages.lock();
+        let msg = history.iter_mut().find(|m| m.id == id)?;
+        if !change(msg) {
+            return None;
+        }
+        let msg = msg.clone();
+        self.notify(&msg);
+        Some(msg)
     }
 
     /// Hands `message` to its target, with `text` as what Quay types. A message to a
     /// terminal that holds deliveries, or that already has messages queued or being typed,
     /// joins the back of that terminal's queue and is recorded Queued; `deliver_held` types
     /// it when its turn comes. Any other message is typed now and recorded Dispatched, and
-    /// a failed write fails the call and records nothing. Blocks while it types.
+    /// a failed write fails the call and records nothing. Either way the entry is recorded
+    /// as soon as it is queued or typed in, before the call returns. Blocks while it types.
     fn deliver(
         &self,
         mut message: A2AMessage,
@@ -290,7 +315,7 @@ impl A2ARouter {
             queues.start_typing(&message.to_terminal, &message.id);
             queues.finish_typing(&message.to_terminal, &message.id, true);
             drop(queues);
-            self.messages.lock().push(message.clone());
+            self.record(&message);
             return Ok(message);
         };
         let target = message.to_terminal.clone();
@@ -301,7 +326,8 @@ impl A2ARouter {
             let held = pty.get_info(&target).is_some_and(|t| t.holds_deliveries());
             if held || queues.occupied(&target) {
                 message.status = A2AMessageStatus::Queued;
-                self.messages.lock().push(message.clone());
+                // Recorded under the queue lock, so no `deliver_held` can type it first.
+                self.record(&message);
                 queues
                     .waiting
                     .entry(target.clone())
@@ -320,7 +346,7 @@ impl A2ARouter {
         let typed = type_in(pty, &target, &text);
         if typed.is_ok() {
             message.status = A2AMessageStatus::Dispatched;
-            self.messages.lock().push(message.clone());
+            self.record(&message);
         }
         self.deliveries.lock().finish_typing(&target, &message.id, typed.is_ok());
         // Messages that queued behind this one go now, or at the turn end it starts.
@@ -331,7 +357,7 @@ impl A2ARouter {
     /// Types the messages held for `terminal_id` while it doesn't hold deliveries: the next
     /// one after each turn end while Quay sees its turn end, and all of them once Quay
     /// doesn't (it went Unknown, or closed). Each goes Dispatched, or Failed when typing it
-    /// fails or the terminal has exited, and is passed to the update listener. Blocks while
+    /// fails or the terminal has exited, and is passed to the trail listener. Blocks while
     /// it types.
     pub fn deliver_held(&self, terminal_id: &str, pty_manager: &PtyManager) {
         loop {
@@ -356,25 +382,23 @@ impl A2ARouter {
             } else {
                 type_in(pty_manager, terminal_id, &next.text)
             };
-            let updated = {
-                let mut history = self.messages.lock();
-                history.iter_mut().find(|m| m.id == next.message_id).map(|msg| {
-                    match &typed {
-                        Ok(()) => msg.status = A2AMessageStatus::Dispatched,
-                        Err(e) => {
-                            msg.status = A2AMessageStatus::Failed;
-                            msg.response = Some(format!("Not delivered: {}", e));
-                        }
+            // Only a Queued entry moves: a waiter whose reply came first may have completed it.
+            self.update(&next.message_id, |msg| {
+                if msg.status != A2AMessageStatus::Queued {
+                    return false;
+                }
+                match &typed {
+                    Ok(()) => msg.status = A2AMessageStatus::Dispatched,
+                    Err(e) => {
+                        msg.status = A2AMessageStatus::Failed;
+                        msg.response = Some(format!("Not delivered: {}", e));
                     }
-                    msg.clone()
-                })
-            };
+                }
+                true
+            });
             self.deliveries.lock().finish_typing(terminal_id, &next.message_id, typed.is_ok());
             if let Err(e) = &typed {
                 tracing::warn!("Failed typing a held A2A message into PTY {}: {}", terminal_id, e);
-            }
-            if let Some(msg) = updated {
-                self.notify_update(&msg);
             }
         }
     }
@@ -546,12 +570,16 @@ impl A2ARouter {
 
         match tokio::time::timeout_at(deadline, wait).await {
             Ok(Ok(WaitOutcome::Reply(response))) => {
-                // Update message in history with the response
-                let mut history = self.messages.lock();
-                if let Some(msg) = history.iter_mut().rev().find(|m| m.id == sent.id) {
-                    msg.status = A2AMessageStatus::Completed;
-                    msg.response = Some(response.clone());
-                }
+                // `resolve_pending_reply` completes the entry, unless the turn ended before
+                // Quay recorded the message as typed in.
+                self.update(&sent.id, |msg| match msg.status {
+                    A2AMessageStatus::Queued | A2AMessageStatus::Dispatched => {
+                        msg.status = A2AMessageStatus::Completed;
+                        msg.response = Some(response.clone());
+                        true
+                    }
+                    _ => false,
+                });
                 Ok(WaitOutcome::Reply(response))
             }
             Ok(Ok(no_reply)) => Ok(no_reply),
@@ -560,19 +588,20 @@ impl A2ARouter {
                 self.forget_waiter(&resolved_target, &sent.id);
                 // The entry keeps its status and gains a note: the turn the message starts
                 // still fills it in. A turn that ended as the clock ran out already has.
-                let still_queued = {
-                    let mut history = self.messages.lock();
-                    match history.iter_mut().find(|m| m.id == sent.id) {
-                        Some(msg) if msg.status == A2AMessageStatus::Completed => {
-                            return Ok(WaitOutcome::Reply(msg.response.clone().unwrap_or_default()));
-                        }
-                        Some(msg) => {
-                            msg.note = Some(format!("No reply within {}s", timeout_secs));
-                            msg.status == A2AMessageStatus::Queued
-                        }
-                        None => false,
+                let mut answered = None;
+                let mut still_queued = false;
+                self.update(&sent.id, |msg| {
+                    if msg.status == A2AMessageStatus::Completed {
+                        answered = Some(msg.response.clone().unwrap_or_default());
+                        return false;
                     }
-                };
+                    still_queued = msg.status == A2AMessageStatus::Queued;
+                    msg.note = Some(format!("No reply within {}s", timeout_secs));
+                    true
+                });
+                if let Some(answer) = answered {
+                    return Ok(WaitOutcome::Reply(answer));
+                }
                 Ok(WaitOutcome::NoReply(if still_queued {
                     format!(
                         "Your message to peer agent ({}) is queued behind its current turn and will be delivered when that turn ends. You can check their status later using quay_get_agent_status.",
@@ -613,23 +642,20 @@ impl A2ARouter {
     }
 
     /// Ends the turn running on `terminal_id` with `answer`: completes the message that
-    /// turn started (see `turn_started`) and hands `answer` to the senders waiting on it.
-    /// A turn that no delivered message started completes nothing, so an answer always
-    /// comes from the turn that followed its message.
+    /// turn started (see `turn_started`), tells the trail listener, and hands `answer` to
+    /// the senders waiting on it. A turn that no delivered message started completes
+    /// nothing, so an answer always comes from the turn that followed its message.
     pub fn resolve_pending_reply(&self, terminal_id: &str, answer: String) -> Option<A2AMessage> {
         let message_id = self.deliveries.lock().end_turn(terminal_id)?;
 
-        let updated_msg = {
-            let mut history = self.messages.lock();
-            history
-                .iter_mut()
-                .find(|m| m.id == message_id && m.status == A2AMessageStatus::Dispatched)
-                .map(|msg| {
-                    msg.status = A2AMessageStatus::Completed;
-                    msg.response = Some(answer.clone());
-                    msg.clone()
-                })
-        };
+        let updated_msg = self.update(&message_id, |msg| {
+            if msg.status != A2AMessageStatus::Dispatched {
+                return false;
+            }
+            msg.status = A2AMessageStatus::Completed;
+            msg.response = Some(answer.clone());
+            true
+        });
 
         let senders = {
             let mut pending = self.pending_replies.lock();
@@ -724,7 +750,7 @@ impl A2ARouter {
                                 tracing::warn!("Failed writing broadcast to PTY {}: {}", failed.to_terminal, e);
                                 failed.status = A2AMessageStatus::Failed;
                                 failed.response = Some(format!("Not delivered: {}", e));
-                                self.messages.lock().push(failed.clone());
+                                self.record(&failed);
                                 failed
                             })
                     })
@@ -738,8 +764,10 @@ impl A2ARouter {
         Ok(Broadcast { from_name, notices })
     }
 
+    /// The trail with the entry that joined it last first, the order Mission Control shows
+    /// it in and adds live entries in.
     pub fn get_messages(&self) -> Vec<A2AMessage> {
-        self.messages.lock().clone()
+        self.messages.lock().iter().rev().cloned().collect()
     }
 
     pub fn clear_messages(&self) {
@@ -1536,9 +1564,7 @@ mod tests {
             ("term-q-sender2", RunKind::Claude, ClaudeStatus::Idle),
             ("term-q-busy", RunKind::Claude, ClaudeStatus::Working),
         ]);
-        let updates = Arc::new(Mutex::new(Vec::new()));
-        let seen = updates.clone();
-        router.set_update_listener(move |m| seen.lock().push((m.id.clone(), m.status)));
+        let updates = trail_events(&router);
 
         let msg = router.dispatch(peer_message("term-q-sender2", "term-q-busy"), Some(&pty)).unwrap();
 
@@ -1553,7 +1579,13 @@ mod tests {
             ["[Peer agent (term-q-sender2)]: What is 2+2?", "\r"]
         );
         assert_eq!(pty.get_info("term-q-busy").unwrap().claude_status, ClaudeStatus::Working);
-        assert_eq!(*updates.lock(), [(msg.id.clone(), A2AMessageStatus::Dispatched)]);
+        assert_eq!(
+            *updates.lock(),
+            [
+                (msg.id.clone(), A2AMessageStatus::Queued),
+                (msg.id.clone(), A2AMessageStatus::Dispatched),
+            ]
+        );
     }
 
     #[test]
@@ -1902,5 +1934,162 @@ mod tests {
         assert!(router.dispatch(peer_message("term-tp-sender4", "term-tp-closed"), Some(&pty)).is_err());
 
         assert!(answer_turn(&router, "term-tp-closed", "4").is_none());
+    }
+
+    /// Records every trail change the router reports, as (id, status).
+    fn trail_events(router: &A2ARouter) -> Arc<Mutex<Vec<(String, A2AMessageStatus)>>> {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let seen = events.clone();
+        router.set_trail_listener(move |m| seen.lock().push((m.id.clone(), m.status)));
+        events
+    }
+
+    /// Waits up to a second for the trail listener to have heard `count` changes.
+    async fn heard(events: &Mutex<Vec<(String, A2AMessageStatus)>>, count: usize) -> Vec<(String, A2AMessageStatus)> {
+        at_once(async {
+            loop {
+                if events.lock().len() >= count {
+                    return events.lock().clone();
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+    }
+
+    #[test]
+    fn a_message_typed_at_once_reaches_the_trail_listener_as_dispatched() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ev-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ev-idle", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        let events = trail_events(&router);
+
+        let msg = router.dispatch(peer_message("term-ev-sender", "term-ev-idle"), Some(&pty)).unwrap();
+
+        assert_eq!(*events.lock(), [(msg.id, A2AMessageStatus::Dispatched)]);
+    }
+
+    #[tokio::test]
+    async fn a_waited_message_reaches_the_trail_listener_when_typed_in_not_when_answered() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ev-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ev-answerer", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        let events = trail_events(&router);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-ev-asker", "term-ev-answerer"), Some(&pty), 60)
+                    .await
+            })
+        };
+
+        let delivered = heard(&events, 1).await;
+        assert_eq!(delivered[0].1, A2AMessageStatus::Dispatched);
+        assert!(!waiting.is_finished(), "the entry shows before the reply lands");
+
+        answer_turn(&router, "term-ev-answerer", "4");
+        assert_eq!(at_once(waiting).await.unwrap().unwrap(), WaitOutcome::Reply("4".to_string()));
+        assert_eq!(
+            *events.lock(),
+            [
+                (delivered[0].0.clone(), A2AMessageStatus::Dispatched),
+                (delivered[0].0.clone(), A2AMessageStatus::Completed),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_waited_message_held_behind_a_turn_reaches_the_trail_listener_as_queued_at_once() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ev-asker2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ev-busy", RunKind::Claude, ClaudeStatus::Working),
+        ]);
+        let events = trail_events(&router);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-ev-asker2", "term-ev-busy"), Some(&pty), 60)
+                    .await
+            })
+        };
+
+        let queued = heard(&events, 1).await;
+        assert_eq!(queued[0].1, A2AMessageStatus::Queued);
+
+        // The turn ends and the message is typed in: that is when its toast goes up
+        end_turn(&router, &pty, "term-ev-busy");
+        assert_eq!(heard(&events, 2).await[1], (queued[0].0.clone(), A2AMessageStatus::Dispatched));
+        assert!(!waiting.is_finished(), "still waiting on the turn the message starts");
+        waiting.abort();
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_a_listener_reaches_the_trail_listener_once() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-ev-asker3", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-ev-gemini", RunKind::Gemini, ClaudeStatus::Starting),
+        ]);
+        let events = trail_events(&router);
+
+        at_once(router.dispatch_and_wait(peer_message("term-ev-asker3", "term-ev-gemini"), Some(&pty), 60))
+            .await
+            .unwrap();
+
+        let events = events.lock();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].1, A2AMessageStatus::Dispatched);
+    }
+
+    #[tokio::test]
+    async fn a_wait_that_runs_out_reaches_the_trail_listener_with_its_note() {
+        let router = A2ARouter::new();
+        let notes = Arc::new(Mutex::new(Vec::new()));
+        let seen = notes.clone();
+        router.set_trail_listener(move |m| seen.lock().push(m.note.clone()));
+
+        router.dispatch_and_wait(peer_message("term-ev-a", "term-ev-b"), None, 0).await.unwrap();
+
+        assert_eq!(*notes.lock(), [None, Some("No reply within 0s".to_string())]);
+    }
+
+    #[test]
+    fn a_broadcast_notice_that_cant_be_typed_reaches_the_trail_listener_as_failed() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[("term-ev-bc-shut", RunKind::Claude, ClaudeStatus::Idle)]);
+        pty.close_test_input("term-ev-bc-shut");
+        let events = trail_events(&router);
+
+        let notice = router
+            .broadcast_toast("Release is frozen", &from_mission_control(), &pty)
+            .unwrap()
+            .notices
+            .remove(0);
+
+        assert_eq!(notice.status, A2AMessageStatus::Failed);
+        assert_eq!(*events.lock(), [(notice.id, A2AMessageStatus::Failed)]);
+    }
+
+    #[test]
+    fn the_trail_lists_the_newest_message_first() {
+        let router = A2ARouter::new();
+        let sent: Vec<String> = (0..3)
+            .map(|_| router.dispatch(peer_message("term-ord-a", "term-ord-b"), None).unwrap().id)
+            .collect();
+
+        let listed: Vec<String> = router.get_messages().into_iter().map(|m| m.id).collect();
+
+        assert_eq!(listed, [sent[2].clone(), sent[1].clone(), sent[0].clone()]);
     }
 }

@@ -87,11 +87,11 @@ pub fn run() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
-            // A held message that reaches its terminal, or fails to, updates the trail and,
-            // once typed in, raises the toast as a message sent at once does.
+            // Every trail entry the router adds or changes updates Mission Control's trail,
+            // and a message raises its toast when it is typed in, waited on or not.
             let a2a_events = app_handle.clone();
             a2a_router_updates
-                .set_update_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
+                .set_trail_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.

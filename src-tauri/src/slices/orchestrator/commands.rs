@@ -11,15 +11,13 @@ pub async fn a2a_send_prompt(
     request: A2ADispatchRequest,
     router: State<'_, A2ARouter>,
     pty_manager: State<'_, PtyManager>,
-    app_handle: AppHandle,
 ) -> Result<A2AMessage, String> {
-    let msg = router.dispatch_async(request, Some(&pty_manager)).await?;
-    emit_message(&app_handle, &msg);
-    Ok(msg)
+    router.dispatch_async(request, Some(&pty_manager)).await
 }
 
 /// Shows `msg` in the trail and, when it has just been typed into its target, raises its
-/// toast. A queued message raises its toast later, when it is typed in.
+/// toast. A queued message raises its toast later, when it is typed in. The router runs
+/// it for every trail change (see `A2ARouter::set_trail_listener`).
 pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
     let _ = app_handle.emit("a2a-message-updated", msg.clone());
     if msg.status == A2AMessageStatus::Dispatched {
@@ -34,11 +32,9 @@ struct BroadcastToast<'a> {
     from_name: &'a str,
 }
 
-/// Shows each notice of `sent` in the trail, and raises the broadcast toast naming its sender.
+/// Raises the broadcast toast for `sent`, naming its sender. The router already put each
+/// notice in the trail (see `A2ARouter::set_trail_listener`).
 pub fn emit_broadcast(app_handle: &AppHandle, text: &str, sent: &Broadcast) {
-    for msg in &sent.notices {
-        emit_message(app_handle, msg);
-    }
     let _ = app_handle.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
 }
 
