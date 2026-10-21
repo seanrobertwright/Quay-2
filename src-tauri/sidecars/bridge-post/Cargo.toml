@@ -1,0 +1,17 @@
+[package]
+name = "quay-bridge-post"
+version = "0.2.0"
+description = "Posts agent events to Quay's bridge from the sidecars Quay points a CLI at."
+authors = ["Sean Robert Wright"]
+edition = "2024"
+license = "AGPL-3.0"
+publish = false
+
+# A package of its own, as each sidecar is: the sidecars depend on it by path.
+[workspace]
+
+[features]
+# The stand-in environment and bridge for the sidecars' tests
+testing = []
+
+[dependencies]

@@ -28,7 +28,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/quay-codex-notify"],
+    "externalBin": ["binaries/quay-codex-notify", "binaries/quay-pig-bridge"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

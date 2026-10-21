@@ -1,34 +1,49 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The Codex turn-end helper's package, and the name `bundle.externalBin` in
-/// `tauri.conf.json` gives it.
-const SIDECAR_PACKAGE: &str = "sidecars/codex-notify";
-const SIDECAR_NAME: &str = "quay-codex-notify";
+/// Each sidecar's package, and the name `bundle.externalBin` in `tauri.conf.json` gives it:
+/// the Codex turn-end helper and Quay's PiG extension.
+const SIDECARS: [(&str, &str); 2] = [
+    ("sidecars/codex-notify", "quay-codex-notify"),
+    ("sidecars/pig-bridge", "quay-pig-bridge"),
+];
+
+/// The package both sidecars post their events with.
+const SHARED_PACKAGE: &str = "sidecars/bridge-post";
 
 fn main() {
-    build_codex_notify();
+    let manifest_dir = PathBuf::from(env("CARGO_MANIFEST_DIR"));
+    let shared = manifest_dir.join(SHARED_PACKAGE);
+    for watched in [shared.join("src"), shared.join("Cargo.toml")] {
+        println!("cargo:rerun-if-changed={}", watched.display());
+    }
+    for (package, name) in SIDECARS {
+        build_sidecar(package, name);
+    }
+    // So a test can find a sidecar built for this target in `binaries/`
+    println!("cargo:rustc-env=QUAY_SIDECAR_TARGET={}", env("TARGET"));
     tauri_build::build()
 }
 
-/// Builds the Codex turn-end helper for this build's target and profile, and puts it where
+/// Builds the sidecar `package` for this build's target and profile, and puts it where
 /// Tauri looks for a sidecar: `binaries/<name>-<target triple>[.exe]`. Tauri then copies it
-/// beside the app, in the build folder and in the installer.
-fn build_codex_notify() {
+/// beside the app, as `<name>[.exe]`, in the build folder and in the installer.
+fn build_sidecar(package: &str, name: &str) {
     let manifest_dir = PathBuf::from(env("CARGO_MANIFEST_DIR"));
-    let package = manifest_dir.join(SIDECAR_PACKAGE);
+    let package = manifest_dir.join(package);
     let target = env("TARGET");
     let exe_suffix = if target.contains("windows") { ".exe" } else { "" };
     let dest = manifest_dir
         .join("binaries")
-        .join(format!("{}-{}{}", SIDECAR_NAME, target, exe_suffix));
+        .join(format!("{}-{}{}", name, target, exe_suffix));
 
     for watched in [package.join("src"), package.join("Cargo.toml"), package.join("Cargo.lock"), dest.clone()] {
         println!("cargo:rerun-if-changed={}", watched.display());
     }
 
-    // A target folder of its own: the app's build holds the lock on the app's
-    let target_dir = PathBuf::from(env("OUT_DIR")).join("codex-notify-target");
+    // A target folder of the sidecars' own, since the app's build holds the lock on the
+    // app's. They build one after the other, so they share it and the crates they share.
+    let target_dir = PathBuf::from(env("OUT_DIR")).join("sidecars-target");
     let release = env("PROFILE") == "release";
     let mut cargo = Command::new(env("CARGO"));
     cargo
@@ -46,18 +61,18 @@ fn build_codex_notify() {
     }
     let status = cargo
         .status()
-        .unwrap_or_else(|e| panic!("can't run cargo to build {}: {}", SIDECAR_NAME, e));
-    assert!(status.success(), "building {} failed", SIDECAR_NAME);
+        .unwrap_or_else(|e| panic!("can't run cargo to build {}: {}", name, e));
+    assert!(status.success(), "building {} failed", name);
 
     let built = target_dir
         .join(&target)
         .join(if release { "release" } else { "debug" })
-        .join(format!("{}{}", SIDECAR_NAME, exe_suffix));
+        .join(format!("{}{}", name, exe_suffix));
     copy_if_changed(&built, &dest);
 }
 
 /// Copies `from` to `to`, keeping its permissions, unless `to` already holds the same bytes,
-/// so an unchanged helper doesn't touch the file the next build watches.
+/// so an unchanged sidecar doesn't touch the file the next build watches.
 fn copy_if_changed(from: &Path, to: &Path) {
     let built = std::fs::read(from).unwrap_or_else(|e| panic!("can't read {}: {}", from.display(), e));
     if std::fs::read(to).is_ok_and(|current| current == built) {
