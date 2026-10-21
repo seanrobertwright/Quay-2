@@ -100,9 +100,9 @@ impl SwarmStore {
     }
 
     /// Saves the draft under its name. A swarm with the same name is replaced and
-    /// keeps its id; otherwise the draft is added with a new id. Returns every
-    /// saved swarm.
-    pub fn save(&self, draft: SwarmDraft) -> Result<Vec<SavedSwarm>, String> {
+    /// keeps its id; otherwise the draft is added with a new id. A blank role prompt
+    /// is saved as none. Returns every saved swarm.
+    pub fn save(&self, mut draft: SwarmDraft) -> Result<Vec<SavedSwarm>, String> {
         let title = draft.title.trim().to_string();
         if title.is_empty() {
             return Err("Give the swarm a name.".to_string());
@@ -112,6 +112,9 @@ impl SwarmStore {
         }
         if draft.agents.is_empty() {
             return Err("A swarm needs at least one agent.".to_string());
+        }
+        for agent in &mut draft.agents {
+            agent.role_prompt = agent.role_prompt.take().filter(|p| !p.trim().is_empty());
         }
         let _guard = self.write_lock.lock();
         let mut swarms = self.list()?;
@@ -208,6 +211,26 @@ mod tests {
         assert_eq!(saved[0].layout, StageLayout::SplitHorizontal);
         assert_eq!(saved[0].agents, vec![agent("Builder", "builder", RunKind::Claude), reviewer]);
         assert_eq!(store.list().unwrap(), saved);
+    }
+
+    #[test]
+    fn a_role_prompt_is_saved_as_typed_and_a_blank_one_as_none() {
+        let (store, path) = temp_store();
+        let mut writer = agent("Technical Writer", "writer", RunKind::Claude);
+        writer.role_prompt = Some("You are the writer.\n\nYou own docs/.\n".to_string());
+        let mut editor = agent("Editor", "editor", RunKind::Claude);
+        editor.role_prompt = Some(" \n\t".to_string());
+
+        let saved = store.save(draft("Docs Squad", vec![writer, editor])).unwrap();
+
+        assert_eq!(
+            saved[0].agents[0].role_prompt.as_deref(),
+            Some("You are the writer.\n\nYou own docs/.\n")
+        );
+        assert_eq!(saved[0].agents[1].role_prompt, None);
+        assert_eq!(store.list().unwrap(), saved);
+        let file = std::fs::read_to_string(path).unwrap();
+        assert_eq!(file.matches("\"role_prompt\"").count(), 1, "{}", file);
     }
 
     #[test]
