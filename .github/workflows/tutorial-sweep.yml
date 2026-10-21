@@ -1,0 +1,61 @@
+name: Tutorial Sweep
+
+# Each quarter, lists every published tutorial whose latest passing test run is more than 90 days
+# old in an issue labelled tutorial-sweep. While one such issue is open, a later sweep rewrites its
+# body instead of opening another. scripts/test-runs/README.md says what a sweep re-run involves.
+
+on:
+  schedule:
+    # 06:00 UTC on the first day of each quarter.
+    - cron: '0 6 1 1,4,7,10 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One sweep at a time, so two runs never both find no open issue and both open one.
+concurrency:
+  group: tutorial-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Tutorials due a re-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Runs the sweep's TypeScript as it is; it imports nothing outside Node.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: List the tutorials due
+        run: node scripts/test-runs/sweep-issue.ts --out "$RUNNER_TEMP/sweep.md"
+
+      - name: Open or update the sweep issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          body="$RUNNER_TEMP/sweep.md"
+          if [ ! -s "$body" ]; then
+            echo "No tutorial is due, so no issue."
+            exit 0
+          fi
+          gh label create tutorial-sweep --color 0E8A16 --description "A quarterly sweep's tutorial re-runs" --force
+          open=$(gh issue list --label tutorial-sweep --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --body-file "$body"
+            echo "Updated #$open."
+          else
+            gh issue create --title "Quarterly tutorial sweep" --label tutorial-sweep --body-file "$body"
+          fi

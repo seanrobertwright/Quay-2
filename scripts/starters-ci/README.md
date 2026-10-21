@@ -30,6 +30,9 @@ Before running anything, it reads every tutorial folder and fails the run if any
 - a `check/` folder with no `checkSuite`, or a `checkSuite` with no `check/` folder;
 - a `patch.file` missing from the starter, or a named script missing from its `package.json`.
 
+A starter's pinned versions move only at a quarterly sweep, which `scripts/test-runs/README.md`
+describes.
+
 Then, for each starter, in a throwaway copy of `starter/` (without `node_modules`):
 
 1. checks `files`, as the learner receives them;

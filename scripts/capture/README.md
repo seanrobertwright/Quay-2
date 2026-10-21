@@ -167,8 +167,9 @@ refused.
 - `cliVersions` is each CLI's `--version` from the recorded run, from the headers'
   `cli_version`. Recordings of one CLI made with two versions are an error.
 
-The quarterly sweep (#104), not built yet, is to read it too. The failed-run notice on a
-tutorial's page takes its CLI versions from the test-run record, not from here.
+The quarterly sweep reads all of it and lists it beside each tutorial it finds due
+(`scripts/test-runs/README.md`). The failed-run notice on a tutorial's page takes its CLI
+versions from the test-run record, not from here.
 
 ## Fallbacks
 

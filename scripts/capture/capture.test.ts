@@ -12,6 +12,7 @@ import {
   fixtureWorkspaces,
   parseCaptureArgs,
   parseCaptureManifest,
+  parseSidecar,
   planCapture,
   readRecordings,
   type RecordingInfo,
@@ -236,6 +237,22 @@ test('the sidecar records the Quay version captured, the recording date and each
     recordedOn: '2026-10-19',
     cliVersions: { claude: '2.1.0 (Claude Code)', codex: 'codex-cli 0.50.0' },
   });
+  assert.deepEqual(parseSidecar(`${JSON.stringify(sidecar, null, 2)}\n`, 'hello-a2a'), sidecar);
+});
+
+test('a sidecar is read back only when every field is as buildSidecar writes it', () => {
+  const good = { tutorial: 'hello-a2a', quayVersion: '0.3.0', capturedOn: '2026-10-21', recordedOn: '2026-10-19', cliVersions: { claude: '2.1.0' } };
+  const bad: [unknown, RegExp][] = [
+    [{ ...good, tutorial: 'first-swarm' }, /tutorial.*hello-a2a/],
+    [{ ...good, quayVersion: 'v0.3.0' }, /quayVersion/],
+    [{ ...good, capturedOn: '10/21/2026' }, /capturedOn/],
+    [{ ...good, recordedOn: undefined }, /recordedOn/],
+    [{ ...good, cliVersions: ['2.1.0'] }, /cliVersions/],
+    [{ ...good, cliVersions: { claude: 2 } }, /cliVersions\.claude/],
+    [[good], /object/],
+  ];
+  for (const [value, message] of bad) assert.throws(() => parseSidecar(JSON.stringify(value), 'hello-a2a'), message);
+  assert.throws(() => parseSidecar('{ "tutorial": ', 'hello-a2a'), /JSON/);
 });
 
 test('a sidecar is not written from recordings that do not say when or with which CLI version they were made', () => {
