@@ -1,9 +1,11 @@
 import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
 import { TerminalInfo, isAgentRunKind } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
+import { PluginHint } from "./PluginHint";
 import {
   Maximize2,
   X,
@@ -156,6 +158,22 @@ export const TerminalView: FC<TerminalViewProps> = ({
         </span>
       );
     }
+    if (terminal.claude_status === "starting") {
+      return (
+        <span className="flex items-center gap-1 text-[10px] text-[#8b949e]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#d29922] animate-pulse" />
+          <span>Starting</span>
+        </span>
+      );
+    }
+    if (terminal.claude_status === "unknown") {
+      return (
+        <span className="flex items-center gap-1 text-[10px] text-[#8b949e]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#8b949e]" />
+          <span>Unknown</span>
+        </span>
+      );
+    }
     if (terminal.claude_status === "exited") {
       return (
         <span className="text-[10px] text-[#ff7b72] font-mono">
@@ -165,6 +183,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
     }
     return null;
   };
+
+  const showPluginHint = !!terminal?.plugin_hint && terminal.claude_status !== "exited";
 
   return (
     <div
@@ -295,6 +315,17 @@ export const TerminalView: FC<TerminalViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {showPluginHint && (
+        <PluginHint
+          flags={terminal?.custom_flags}
+          onDismiss={() => {
+            invoke("dismiss_plugin_hint", { terminalId }).catch((err) =>
+              console.error("Failed to dismiss the plugin hint:", err)
+            );
+          }}
+        />
       )}
 
       {/* Terminal Viewport */}

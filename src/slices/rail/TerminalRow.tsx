@@ -238,6 +238,12 @@ export const TerminalRow = ({
           </span>
         );
       case "unknown":
+        return (
+          <span className="flex items-center gap-1 text-[10px] text-[#8b949e]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8b949e]" />
+            <span>Unknown</span>
+          </span>
+        );
       default:
         return null;
     }

@@ -53,11 +53,12 @@ This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the t
 
 ### Status Indicator Strip
 In the navigation rail and terminal status strip, Quay 2 displays live agent status:
-- **`Starting`** (Blue): Process initialization and environment setup.
+- **`Starting`**: The terminal is launching. Other agent CLIs leave it on their first output; a Claude Code terminal stays here until Quay hears from its [event-bridge plugin](../guide/installation.md#event-bridge-plugin).
 - **`Working`** (Amber / Spinner): Agent is executing tools, thinking, or streaming tokens.
 - **`Waiting ◆`** (Purple): Agent has paused awaiting operator approval or input.
 - **`Idle`** (Green): Agent turn completed and awaiting new task prompt.
 - **`Exited`** (Gray): Process terminated.
+- **`Unknown`**: A Claude Code terminal sent no plugin event for 30 seconds after its first output. Its pane shows the plugin hint, and A2A messages leave its status alone.
 
 ---
 

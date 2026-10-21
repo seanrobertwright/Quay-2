@@ -119,12 +119,13 @@ pub async fn handle_events(
         let tag = envelope.tag.clone();
         ctx.bridge_state.record_envelope(envelope.clone());
 
-        // Update Claude Status based on event type
+        let mut status = None;
         if let Some(ref terminal_id) = tag {
+            status = ctx
+                .pty_manager
+                .apply_plugin_event(terminal_id, &envelope.event_type);
             match envelope.event_type.as_str() {
                 "turn.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Working);
                     if let Some(prompt) = envelope
                         .data
                         .get("prompt")
@@ -145,8 +146,6 @@ pub async fn handle_events(
                     }
                 }
                 "turn.completed" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Idle);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                     let answer = envelope
                         .data
@@ -159,8 +158,6 @@ pub async fn handle_events(
                     }
                 }
                 "tool.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Working);
                     let tool = envelope
                         .data
                         .get("tool")
@@ -172,25 +169,18 @@ pub async fn handle_events(
                     ctx.pty_manager.increment_auto_approved(terminal_id);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
-                "attention.notification" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Waiting);
-                }
-                "session.started" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Idle);
-                }
                 "session.ended" => {
-                    ctx.pty_manager
-                        .update_status(terminal_id, ClaudeStatus::Exited);
                     ctx.pty_manager.update_current_tool(terminal_id, None);
                 }
                 _ => {}
             }
         }
 
-        // Broadcast to Tauri frontend
+        // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
         let _ = ctx.app_handle.emit("bridge-event", envelope);
+        if let Some(status) = status {
+            let _ = ctx.app_handle.emit("terminal-status", status);
+        }
     }
 
     Ok(StatusCode::OK.into_response())

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   TerminalInfo,
+  TerminalStatusPayload,
   SpawnTerminalRequest,
   StageLayout,
   PermissionMode,
@@ -21,6 +22,14 @@ export type { Project };
 interface PtyExitPayload {
   terminal_id: string;
   exit_code?: number | null;
+}
+
+/**
+ * Whether the terminal is Starting and goes Idle on its own output. Other agent kinds do;
+ * a Claude terminal waits for the event-bridge plugin instead.
+ */
+function leavesStartingOnOutput(t: TerminalInfo): boolean {
+  return t.run_kind !== "claude" && t.claude_status === "starting";
 }
 
 export function useWorkspace() {
@@ -251,13 +260,29 @@ export function useWorkspace() {
     };
   }, []);
 
-  // Listen for terminal output to transition 'starting' status to 'idle'
+  // The backend's plugin rules: a Claude terminal leaves Starting on its first plugin event,
+  // goes Unknown with the plugin hint after 30 silent seconds, and drops the hint when dismissed
+  useEffect(() => {
+    const unlistenPromise = listen<TerminalStatusPayload>("terminal-status", (event) => {
+      const { terminal_id, claude_status, plugin_hint } = event.payload;
+      setTerminals((prev) =>
+        prev.map((t) => (t.id === terminal_id ? { ...t, claude_status, plugin_hint } : t))
+      );
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  // Other agent kinds go from 'starting' to 'idle' on their first output. A Claude
+  // terminal waits for the event-bridge plugin instead.
   useEffect(() => {
     const unlistenPromise = listen<{ terminal_id: string }>("pty-output", (event) => {
       const { terminal_id } = event.payload;
       setTerminals((prev) => {
         const target = prev.find((t) => t.id === terminal_id);
-        if (target && target.claude_status === "starting") {
+        if (target && leavesStartingOnOutput(target)) {
           return prev.map((t) =>
             t.id === terminal_id ? { ...t, claude_status: "idle" } : t
           );
@@ -271,7 +296,8 @@ export function useWorkspace() {
     };
   }, []);
 
-  // Listen for A2A message dispatches to immediately update receiver's status and task title
+  // Listen for A2A message dispatches to immediately update receiver's status and task title.
+  // An Unknown terminal keeps its status: without the plugin Quay can't see the turn end.
   useEffect(() => {
     const unlistenPromise = listen<{
       id: string;
@@ -287,7 +313,7 @@ export function useWorkspace() {
           if (t.id === to_terminal) {
             return {
               ...t,
-              claude_status: "working",
+              claude_status: t.claude_status === "unknown" ? t.claude_status : "working",
               task_title: cleanTitle || t.task_title,
             };
           }
@@ -972,11 +998,12 @@ export function useWorkspace() {
         );
       }, 250);
 
-      // Fallback timer: if terminal is still in "starting" after 3s, mark it "idle"
+      // Fallback timer: if a non-Claude terminal is still in "starting" after 3s, mark it
+      // "idle". A Claude terminal stays Starting until the event-bridge plugin speaks.
       setTimeout(() => {
         setTerminals((prev) =>
           prev.map((t) =>
-            t.id === newTerm.id && t.claude_status === "starting"
+            t.id === newTerm.id && leavesStartingOnOutput(t)
               ? { ...t, claude_status: "idle" }
               : t
           )

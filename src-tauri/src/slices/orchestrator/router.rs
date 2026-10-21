@@ -149,7 +149,7 @@ impl A2ARouter {
                 tracing::warn!("Failed writing A2A prompt to PTY {}: {}", target_terminal_id, e);
             } else {
                 // Update receiver agent status to Working
-                pty.update_status(&target_terminal_id, ClaudeStatus::Working);
+                pty.mark_a2a_delivered(&target_terminal_id);
                 tracing::info!("A2A prompt injected into PTY {} from {}", target_terminal_id, from_name);
             }
         }
@@ -276,7 +276,7 @@ impl A2ARouter {
                 if let Err(e) = pty_manager.submit_prompt(&t.id, &pty_prompt) {
                     tracing::warn!("Failed writing broadcast to PTY {}: {}", t.id, e);
                 } else {
-                    pty_manager.update_status(&t.id, ClaudeStatus::Working);
+                    pty_manager.mark_a2a_delivered(&t.id);
                     tracing::info!("Broadcast notice injected into PTY {}", t.id);
                 }
 

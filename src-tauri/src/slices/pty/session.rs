@@ -411,6 +411,7 @@ impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
+    /// `on_first_output` runs once, on the reader thread, when the process first writes output.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
@@ -418,6 +419,7 @@ impl PtySession {
         bridge_port: u16,
         bridge_token: String,
         app_handle: AppHandle,
+        on_first_output: Box<dyn FnOnce() + Send>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
@@ -509,7 +511,7 @@ impl PtySession {
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
-                let mut session_started_emitted = false;
+                let mut on_first_output = Some(on_first_output);
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -530,25 +532,8 @@ impl PtySession {
                                 let _ = file.write_all(text.as_bytes());
                             }
 
-                            // Transition session to active/idle state on first output from child process
-                            if !session_started_emitted {
-                                session_started_emitted = true;
-                                let _ = app_handle.emit(
-                                    "bridge-event",
-                                    crate::slices::bridge::Envelope {
-                                        v: 1,
-                                        boot: "".to_string(),
-                                        seq: 0,
-                                        ts: std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_millis() as u64,
-                                        session_id: terminal_id.clone(),
-                                        tag: Some(terminal_id.clone()),
-                                        event_type: "session.started".to_string(),
-                                        data: serde_json::Value::Null,
-                                    },
-                                );
+                            if let Some(hook) = on_first_output.take() {
+                                hook();
                             }
 
                             // Buffer recent output for newly-mounting xterm instances,
