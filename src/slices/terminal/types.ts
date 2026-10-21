@@ -44,7 +44,7 @@ export type BusLevel = "full peer" | "responder" | "listener";
  * The run kinds whose turn end Quay sees. Mirrors `RunKind::reports_turn_end` in the backend.
  * Kept on one line: the backend's `turn_end_run_kinds_match_the_frontend` test reads it.
  */
-export const TURN_END_RUN_KINDS = ["claude"] as const satisfies readonly RunKind[];
+export const TURN_END_RUN_KINDS = ["claude", "codex"] as const satisfies readonly RunKind[];
 
 /**
  * Whether the terminal is a Claude terminal that counts as a listener only because Quay

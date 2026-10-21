@@ -158,6 +158,7 @@ mod tests {
             member("agy-planner", "Architecture & Planner", RunKind::Antigravity),
             reviewer,
             member("test-runner", "Test & CI Shell", RunKind::PowerShell),
+            member("gemini-docs", "Docs", RunKind::Gemini),
         ];
 
         let prompts = compose_launch_prompts(&swarm);
@@ -175,12 +176,17 @@ mod tests {
                  - agy-planner (Antigravity, Architecture & Planner): a responder. Ask it a short \
                  question with wait_for_reply set to true; it can't message you first.\n\
                  - test-runner (PowerShell, Test & CI Shell)\n\
+                 - gemini-docs (Gemini, Docs): a listener: it gets messages but can't answer.\n\
+                 \n\
+                 Reach your teammates with the quay_* tools: quay_list_agents, \
+                 quay_send_message, quay_broadcast and quay_get_agent_status.\n\
                  \n\
                  Confirm your role in one line, then wait for the user's task. \
                  Do not read or change the repository until the user tells you to."
             )
         );
         assert!(prompts[0].as_deref().unwrap().contains("quay_list_agents"));
+        assert!(!prompts[4].as_deref().unwrap().contains("quay_list_agents"));
     }
 
     #[test]

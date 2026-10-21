@@ -25,6 +25,25 @@ claude.cmd [OPTIONS] [CUSTOM_FLAGS]
 
 ---
 
+## Codex CLI Arguments
+
+Quay 2 starts Codex with its permission flag, then custom flags, then the `-c` overrides that put it on the A2A bus, then a swarm agent's launch prompt:
+
+```powershell
+codex.exe [--dangerously-bypass-approvals-and-sandbox] [CUSTOM_FLAGS] -c <override> ... [LAUNCH_PROMPT]
+```
+
+| Override | Purpose |
+| :--- | :--- |
+| `-c mcp_servers.quay.url="http://127.0.0.1:<port>/mcp"` | Adds Quay's MCP server for this run only |
+| `-c mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN"` | Codex reads the bearer token from the terminal's environment, so the token is neither written to a file nor visible on the command line |
+| `-c mcp_servers.quay.default_tools_approval_mode="approve"` | Approves every tool on Quay's server without a prompt: `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status` and the `machina_*` work-order tools. Without it, Codex refuses the call when its approval policy is `never`, which `--dangerously-bypass-approvals-and-sandbox` sets |
+| `-c notify=["<Quay's folder>\quay-codex-notify.exe"]` | Runs Quay's turn-end helper after each Codex turn (see [Codex on the A2A bus](../features/agent-support.md#codex-on-the-a2a-bus)) |
+
+`--dangerously-bypass-approvals-and-sandbox` is set when "Skip Permissions" is enabled. The overrides are passed in both permission modes. They come after the custom flags, so a custom `-c` with the same key doesn't replace them, and the `notify` override replaces any `notify` in your own `~/.codex/config.toml` for that terminal.
+
+---
+
 ## Quay Startup Environment Variables
 
 Quay 2 reads these from its own environment when it starts:

@@ -465,8 +465,9 @@ impl PtyManager {
     }
 
     /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
-    /// route: the plugin silence clock makes it Unknown, or the terminal closes. It runs on
-    /// the thread that moved the status, with no lock of this manager held.
+    /// route: its first output moves it out of Starting, the plugin silence clock makes it
+    /// Unknown, or the terminal closes. It runs on the thread that moved the status, with no
+    /// lock of this manager held.
     pub fn set_status_watcher(&self, watcher: impl Fn(&str) + Send + Sync + 'static) {
         *self.status_watcher.lock() = Some(Arc::new(watcher));
     }
@@ -562,14 +563,21 @@ impl PtyManager {
     }
 
     /// Moves the terminal out of Starting once `launch`, still current, has printed (see
-    /// `RunKind::status_after_first_output`). Returns the new status when it moved. Nothing
-    /// moves when the terminal isn't listed yet; `insert_launched` applies the rule then.
+    /// `RunKind::status_after_first_output`), and tells the status watcher, since a terminal
+    /// that left Starting may stop holding its messages. Returns the new status when it moved.
+    /// Nothing moves when the terminal isn't listed yet; `insert_launched` applies the rule then.
     pub fn apply_first_output_status(&self, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
-        let mut watches = self.plugin_watches.lock();
-        launch.current_in(&mut watches)?;
-        let mut info_map = self.terminals_info.lock();
-        let info = info_map.get_mut(&launch.terminal_id)?;
-        settle_after_first_output(info).then(|| status_payload(info))
+        let moved = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            settle_after_first_output(info).then(|| status_payload(info))
+        };
+        if moved.is_some() {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
+        moved
     }
 
     /// Lists `info` as the terminal `launch` started, and returns it as listed. The PTY reader
@@ -623,6 +631,11 @@ impl PtyManager {
         let watch = watches.get_mut(terminal_id)?;
         let info = info_map.get_mut(terminal_id)?;
         info.plugin_hint = false;
+        // A terminal whose process has exited stays Exited: Codex's turn-end helper runs on its
+        // own and can report a turn after Codex quit
+        if info.claude_status == ClaudeStatus::Exited && info.exit_code.is_some() {
+            return Some(status_payload(info));
+        }
         let heard = watch.hear(&info.claude_status);
         info.claude_status = match event_type {
             "turn.started" | "tool.started" => ClaudeStatus::Working,
@@ -819,9 +832,11 @@ mod tests {
         let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok");
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(
-            args,
+            args[..4],
             ["codex.exe", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5"]
         );
+        // Then Codex's bus overrides, ending with `notify`, and no prompt after them
+        assert!(args.last().unwrap().starts_with("notify=["), "{:?}", args);
     }
 
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
@@ -1020,17 +1035,42 @@ mod tests {
     }
 
     #[test]
+    fn a_codex_terminal_works_from_a_delivery_until_its_helper_reports_the_turn_end() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-a2a-codex", RunKind::Codex);
+        first_output(&manager, &launch);
+
+        manager.mark_a2a_delivered("term-a2a-codex");
+        assert_eq!(status_of(&manager, "term-a2a-codex"), ClaudeStatus::Working);
+
+        let sent = manager.apply_plugin_event("term-a2a-codex", "turn.completed").unwrap();
+        assert_eq!(sent.claude_status, ClaudeStatus::Idle);
+    }
+
+    #[test]
+    fn a_turn_end_reported_after_the_process_exited_leaves_it_exited() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-late-codex", RunKind::Codex);
+        first_output(&manager, &launch);
+        manager.set_exit_code("term-late-codex", Some(0));
+
+        let sent = manager.apply_plugin_event("term-late-codex", "turn.completed").unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Exited);
+    }
+
+    #[test]
     fn a2a_delivery_leaves_a_terminal_whose_turn_end_quay_cannot_see_as_it_was() {
         let manager = PtyManager::new();
-        launched(&manager, "term-a2a-codex", RunKind::Codex);
-        manager.update_status("term-a2a-codex", ClaudeStatus::Idle);
+        launched(&manager, "term-a2a-opencode", RunKind::OpenCode);
+        manager.update_status("term-a2a-opencode", ClaudeStatus::Idle);
         launched(&manager, "term-a2a-gemini", RunKind::Gemini);
         manager.update_status("term-a2a-gemini", ClaudeStatus::Unknown);
 
-        manager.mark_a2a_delivered("term-a2a-codex");
+        manager.mark_a2a_delivered("term-a2a-opencode");
         manager.mark_a2a_delivered("term-a2a-gemini");
 
-        assert_eq!(status_of(&manager, "term-a2a-codex"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-a2a-opencode"), ClaudeStatus::Idle);
         assert_eq!(status_of(&manager, "term-a2a-gemini"), ClaudeStatus::Unknown);
     }
 
@@ -1164,6 +1204,22 @@ mod tests {
         manager.close_test_input("term-submit-closed");
 
         assert!(manager.submit_prompt("term-submit-closed", "hello").is_err());
+    }
+
+    #[test]
+    fn leaving_starting_on_first_output_tells_the_status_watcher() {
+        let manager = PtyManager::new();
+        let codex = launched(&manager, "term-watched-codex", RunKind::Codex);
+        let claude = launched(&manager, "term-watched-claude", RunKind::Claude);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+
+        first_output(&manager, &codex);
+        first_output(&manager, &claude);
+
+        // The Claude terminal stayed Starting, so only the Codex one is reported
+        assert_eq!(*seen.lock(), ["term-watched-codex"]);
     }
 
     #[test]
