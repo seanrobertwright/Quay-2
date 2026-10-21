@@ -12,6 +12,10 @@
 //!   Bodies that are JSON are kept as JSON. No authentication header is kept, the bearer token
 //!   is blanked wherever it appears, and the terminal's id is written as `{{tag}}`.
 //!
+//! Step markers are made with `quay-record-replay mark <folder> <NN-what>`, which appends the
+//! name to the folder's `.step-markers` file; every recording in progress in the folder marks
+//! it at that moment, and a terminal that starts later marks the latest one at its start.
+//!
 //! `<cli>` is the CLI the tool impersonated and `<n>` counts that CLI's terminals in the order
 //! they started, from 1.
 //!
@@ -28,6 +32,8 @@ use crate::http::{Request, Response, is_hop_header};
 
 pub const CAST: &str = "cast";
 pub const HTTP_LOG: &str = "http.jsonl";
+/// The file `mark` appends step markers to, one name a line, while a run is recorded.
+pub const MARKERS: &str = ".step-markers";
 /// What a recording has in place of the recorded terminal's id.
 pub const TAG_PLACEHOLDER: &str = "{{tag}}";
 
@@ -100,6 +106,11 @@ impl Recorder {
     pub fn resize(&self, cols: u16, rows: u16) {
         let mut inner = self.inner.lock().unwrap();
         self.event(&mut inner, "r", &format!("{cols}x{rows}"));
+    }
+
+    pub fn marker(&self, name: &str) {
+        let mut inner = self.inner.lock().unwrap();
+        self.event(&mut inner, "m", name);
     }
 
     pub fn exit(&self, code: i32) {
@@ -177,6 +188,33 @@ impl Recorder {
         gzip_in_place(&self.cast_path)?;
         gzip_in_place(&self.http_path)
     }
+}
+
+/// Whether `name` is a step marker's name: two digits, a hyphen, then lower-case words joined
+/// by hyphens, like `06-reply-quoted`. It is the name of the step's screenshot.
+pub fn is_marker_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() > 3
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[2] == b'-'
+        && name[3..].split('-').all(|w| !w.is_empty() && w.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+}
+
+/// Appends a step marker to the recordings folder `dir`, for the recordings in progress there.
+pub fn mark(dir: &Path, name: &str) -> Result<(), String> {
+    if !is_marker_name(name) {
+        return Err(format!("{name:?} is not a step marker; name it NN-<what>, like 06-reply-quoted"));
+    }
+    check_recordings_dir(dir)?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let path = dir.join(MARKERS);
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    writeln!(file, "{name}").map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
 /// Seconds to the microsecond, so a recording doesn't carry float noise.

@@ -40,13 +40,27 @@ fn run() -> Result<i32, String> {
         .to_ascii_lowercase();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if name == OWN_NAME {
-        return Err(format!("unknown command {:?}", args.first().map(String::as_str).unwrap_or("")));
+        return command(&args);
     }
 
     let record_dir = non_empty_env("QUAY_RECORD_DIR");
     match record_dir {
         Some(dir) => record::run(&name, &exe, &args, &PathBuf::from(dir)),
         None => Err(format!("{name}: set QUAY_RECORD_DIR to record")),
+    }
+}
+
+const USAGE: &str = "usage:\n  quay-record-replay mark <recordings folder> <NN-what>   mark a step in the recordings in progress";
+
+/// The tool's own subcommands, for a capture script.
+fn command(args: &[String]) -> Result<i32, String> {
+    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["mark", dir, name] => recording::mark(&PathBuf::from(dir), name).map(|_| 0),
+        ["help"] | ["--help"] | [] => {
+            println!("{USAGE}");
+            Ok(0)
+        }
+        _ => Err(format!("unknown command {:?}\n{USAGE}", args.join(" "))),
     }
 }
 

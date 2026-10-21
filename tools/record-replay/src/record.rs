@@ -12,7 +12,7 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::console;
 use crate::http;
-use crate::recording::Recorder;
+use crate::recording::{self, Recorder};
 
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
@@ -22,6 +22,7 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Res
     let tag = std::env::var("CLAUDE_EVENTS_TAG").ok();
     let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token, tag)?);
     let proxy = bridge.as_ref().map(|host| start_proxy(host, recorder.clone())).transpose()?;
+    watch_markers(record_dir.join(recording::MARKERS), recorder.clone());
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| format!("cannot open a PTY: {e}"))?;
@@ -182,4 +183,27 @@ fn start_proxy(bridge: &str, recorder: Arc<Recorder>) -> Result<String, String> 
         }
     });
     Ok(addr)
+}
+
+/// Marks the latest step marker already made, then each new one as `mark` appends it.
+fn watch_markers(path: PathBuf, recorder: Arc<Recorder>) {
+    let read = |path: &Path| std::fs::read_to_string(path).unwrap_or_default();
+    let existing = read(&path);
+    if let Some(latest) = existing.lines().rev().map(str::trim).find(|l| recording::is_marker_name(l)) {
+        recorder.marker(latest);
+    }
+    let mut seen = existing.rfind('\n').map_or(0, |at| at + 1);
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_millis(50));
+            let text = read(&path);
+            let Some(end) = text.rfind('\n').map(|at| at + 1).filter(|&end| end > seen) else { continue };
+            for line in text.get(seen..end).unwrap_or("").lines().map(str::trim) {
+                if recording::is_marker_name(line) {
+                    recorder.marker(line);
+                }
+            }
+            seen = end;
+        }
+    });
 }

@@ -160,3 +160,57 @@ fn bridge_calls_pass_through_and_are_logged_without_the_token() {
         assert!(!text.contains(TAG), "{file} holds the recorded terminal's id");
     }
 }
+
+fn mark(recordings: &std::path::Path, name: &str) -> std::process::Output {
+    std::process::Command::new(TOOL).arg("mark").arg(recordings).arg(name).output().unwrap()
+}
+
+#[test]
+fn step_markers_land_in_every_recording_at_the_moment_they_are_made() {
+    let scratch = Scratch::new("markers");
+    let tool = scratch.install(TOOL, "tool", "claude");
+    let real = scratch.install(STUB, "real-cli", "claude");
+    let recordings = scratch.dir("recordings/demo");
+    let project = scratch.dir("project");
+
+    // A marker made before the terminal starts is the step the terminal starts in.
+    assert!(mark(&recordings, "01-open-project").status.success());
+    let mut terminal = Terminal::open(
+        "claude.exe",
+        &[],
+        &[
+            ("PATH", fixture_path(&[&tool, &real])),
+            ("QUAY_RECORD_DIR", recordings.display().to_string()),
+        ],
+        &project,
+        100,
+        30,
+    );
+    terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(mark(&recordings, "02-send-prompt").status.success());
+    std::thread::sleep(Duration::from_millis(500));
+    terminal.type_text("add a health route\r");
+    terminal.wait_exit(WAIT);
+
+    let cast = gunzip(&recordings.join("claude-1.cast.gz"));
+    let events: Vec<serde_json::Value> = cast.lines().skip(1).map(|l| serde_json::from_str(l).unwrap()).collect();
+    let markers: Vec<(f64, &str)> =
+        events.iter().filter(|e| e[1] == "m").map(|e| (e[0].as_f64().unwrap(), e[2].as_str().unwrap())).collect();
+    assert_eq!(markers.iter().map(|m| m.1).collect::<Vec<_>>(), ["01-open-project", "02-send-prompt"]);
+    assert!(markers[0].0 < 0.5, "the step the terminal started in is marked at its start: {markers:?}");
+    let typed = events.iter().find(|e| e[1] == "i" && e[2].as_str().unwrap().contains("add")).unwrap();
+    assert!(markers[1].0 > 0.3 && markers[1].0 < typed[0].as_f64().unwrap(), "{markers:?} then {typed}");
+}
+
+#[test]
+fn a_step_marker_must_be_named_nn_what() {
+    let scratch = Scratch::new("bad-marker");
+    let recordings = scratch.dir("recordings/demo");
+    for bad in ["2-send", "02_send", "02-Send", "02-", "send"] {
+        let out = mark(&recordings, bad);
+        assert_eq!(out.status.code(), Some(2), "{bad} was accepted");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("NN-<what>"), "{bad}: {out:?}");
+    }
+    assert!(mark(&recordings, "10-reply-quoted").status.success());
+}
