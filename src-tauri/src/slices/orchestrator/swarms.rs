@@ -362,6 +362,7 @@ mod tests {
         };
 
         assert!(parse("split-vertical", "opencode").is_ok());
+        assert!(parse("split-vertical", "pig").is_ok());
         assert!(parse("triple", "claude").is_err());
         assert!(parse("grid", "notepad").is_err());
     }

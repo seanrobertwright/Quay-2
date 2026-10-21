@@ -26,7 +26,7 @@ Common questions, troubleshooting steps, and operational guidance for **Quay 2**
 **Solution**:
 - Claude Code must be launched through Quay 2 so that `--mcp-config` can be injected automatically.
 - Verify your local firewall is not blocking loopback traffic to `127.0.0.1`.
-- In Claude Code, enter `/mcp` to list active servers; verify `quay-orchestrator` is connected.
+- In Claude Code, enter `/mcp` to list active servers; verify `quay` is connected.
 
 ---
 

@@ -18,7 +18,7 @@ When Quay 2 launches, you are greeted by the **Navigation Rail** on the left sid
 
 1. Press `Ctrl+B N` (or click **"New Terminal"** in the navigation rail).
 2. The **New Terminal** dialog appears with options:
-   - **Command Type**: Choose an agent (Claude Code, Antigravity, Codex, Pi, Gemini, Grok, Aider, Kiro, Copilot or OpenCode), a PowerShell Console, or a Custom Command, which runs any command line, such as `cmd.exe` or `wsl.exe`.
+   - **Command Type**: Choose an agent (Claude Code, Antigravity, Codex, Pi, PiG, Gemini, Grok, Aider, Kiro, Copilot or OpenCode), a PowerShell Console, or a Custom Command, which runs any command line, such as `cmd.exe` or `wsl.exe`.
    - **Model**: For an agent, pick one of its presets (for Claude Code, e.g. **Claude Opus 5.5** or **Claude Sonnet 5.5**), or leave it on **Default**, the agent's own setting. See the [Agent Compatibility Matrix](../features/agent-support.md#agent-compatibility-matrix).
    - **Permission Mode**: **Skip Permissions (Default)** starts the agent with its own flag for running tools without asking, where Quay passes one (for Claude Code, `--dangerously-skip-permissions`). **Interactive Approvals** leaves it off, so the agent asks before its tools. Pi never asks, so it has no choice here.
    - **Terminal Label (Optional)**: Give your session a descriptive name (e.g. `feature-auth`).

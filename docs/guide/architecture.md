@@ -56,7 +56,7 @@ graph TB
 
 ### 1. `pty` — ConPTY Process Lifecycle
 - Uses `portable-pty` to create Windows Pseudo-Console handles (`CreatePseudoConsole`).
-- Spawns command binaries (`claude.exe`, `agy.exe`, `pwsh.exe`, and `cmd.exe` for the npm-shim CLIs) in dedicated background threads.
+- Spawns command binaries (`claude.exe`, `codex.exe`, `agy.exe`, `pwsh.exe`, and `cmd.exe` for the npm-shim CLIs) in dedicated background threads.
 - Reads ConPTY output buffers and emits asynchronous `pty-output` events to the Tauri webview.
 - Handles dynamic resizing (`pty-resize`) synchronized to xterm.js dimensions.
 - Monitors child exit status and notifies the frontend via `terminal-exited`.
@@ -65,11 +65,11 @@ graph TB
 - Runs a lightweight, non-blocking `axum` HTTP listener bound strictly to `127.0.0.1:<bridge_port>`.
 - Ingests structured telemetry events from agent mod hooks via `POST /v1/events` (`turn.started`, `turn.completed`, `tool.started`, `tool.finished`).
 - Provides long-poll command retrieval via `GET /v1/commands` for human-in-the-loop overrides.
-- Verifies Bearer authentication tokens using constant-time comparisons (`subtle::ConstantTimeEq`) to prevent side-channel timing attacks.
+- Verifies Bearer authentication tokens with a constant-time byte comparison to prevent side-channel timing attacks.
 
 ### 3. `orchestrator` — Agent-to-Agent (A2A) MCP Bus
 - Implements an embedded Model Context Protocol (MCP) server over HTTP and SSE.
-- Exposes tools to running agents: `quay_list_agents`, `quay_send_message`, `quay_broadcast`, and `quay_get_agent_status`.
+- Exposes tools to full peers (Claude Code, Codex and OpenCode): `quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status`, and the three `machina_*` work-order tools. See [The MCP tools](../features/a2a-orchestration.md#the-mcp-tools).
 - Manages routing tables, message queues, and synchronous reply wait-loops (with 60-second timeouts).
 
 ### 4. `archon` — SDD Workflow Bridge

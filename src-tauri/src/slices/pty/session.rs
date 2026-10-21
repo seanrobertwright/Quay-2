@@ -251,15 +251,98 @@ fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Pat
         .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
 }
 
-/// The `PATH` a terminal's process gets: the workspace's own when it sets one (Windows
-/// spells it `Path`, and the name is matched in any case), otherwise Quay's.
-fn terminal_path(request: &SpawnTerminalRequest) -> Option<std::ffi::OsString> {
+/// The PiG executable's file name for this platform.
+fn pig_file_name() -> &'static str {
+    #[cfg(windows)]
+    let name = "pig.exe";
+    #[cfg(not(windows))]
+    let name = "pig";
+    name
+}
+
+/// The shim `npm i -g @pi-in-go/pig` puts on a Windows `PATH`, which starts PiG through
+/// Node. Elsewhere npm links `pig` itself onto `PATH`.
+const PIG_NPM_SHIM: &str = "pig.cmd";
+
+/// The npm package that holds PiG's Windows binary for this machine's architecture.
+#[cfg(target_arch = "aarch64")]
+const PIG_NPM_PLATFORM: &str = "pig-win32-arm64";
+#[cfg(not(target_arch = "aarch64"))]
+const PIG_NPM_PLATFORM: &str = "pig-win32-x64";
+
+/// The folder of PiG's npm package that holds the real binary, from the folder holding npm's
+/// shim.
+const PIG_NPM_BINARY_DIR: [&str; 6] =
+    ["node_modules", "@pi-in-go", "pig", "node_modules", "@pi-in-go", PIG_NPM_PLATFORM];
+
+/// What a PiG terminal's pane prints when Quay can't find PiG. Quay never installs it.
+const PIG_NOT_INSTALLED: &str = "PiG isn't installed. Install it with `npm i -g @pi-in-go/pig` \
+    (or `irm https://pi-in-go.dev/install.ps1 | iex` and add its folder to PATH), then run \
+    `pig login` once. PiG doesn't use Pi's sign-in.";
+
+/// The real PiG executable a PiG terminal starts, or `None` when PiG isn't installed. In
+/// order: PiG in a folder on `path`, the terminal's `PATH`; npm's real binary, behind npm's
+/// Windows shim on `path`; then `go install`'s, under `home`. Folders that aren't absolute,
+/// such as an empty `PATH` entry, are skipped. On Windows Quay starts PiG directly, never
+/// through npm's shim or `cmd.exe`, which can swallow Ctrl+C and misreads `& | > ^` in
+/// arguments.
+fn pig_program(path: Option<&std::ffi::OsStr>, home: Option<&Path>) -> Option<PathBuf> {
+    let name = pig_file_name();
+    let dirs: Vec<PathBuf> = path
+        .map(|path| std::env::split_paths(path).filter(|dir| dir.is_absolute()).collect())
+        .unwrap_or_default();
+    let on_path = dirs.iter().map(|dir| dir.join(name));
+    let behind_npm_shim = dirs
+        .iter()
+        .filter(|dir| dir.join(PIG_NPM_SHIM).is_file())
+        .map(|dir| PIG_NPM_BINARY_DIR.iter().fold(dir.clone(), |dir, part| dir.join(part)).join(name));
+    let from_go = home
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join("go").join("bin").join(name));
+    on_path.chain(behind_npm_shim).chain(from_go).find(|program| program.is_file())
+}
+
+/// A command that prints `message` and exits as a failure, for a terminal whose CLI isn't
+/// installed.
+fn message_command(message: &str) -> CommandBuilder {
+    #[cfg(windows)]
+    {
+        let mut c = CommandBuilder::new("pwsh.exe");
+        c.args(["-NoProfile", "-NoLogo", "-Command"]);
+        c.arg(format!("Write-Output {}; exit 1", pwsh_literal(message)));
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        let mut c = CommandBuilder::new("sh");
+        c.args(["-c", "printf '%s\\n' \"$1\"; exit 1", "sh", message]);
+        c
+    }
+}
+
+/// The home folder a terminal's process gets: its `USERPROFILE`, or failing that its `HOME`.
+fn terminal_home(request: &SpawnTerminalRequest) -> Option<PathBuf> {
+    terminal_var(request, "USERPROFILE")
+        .or_else(|| terminal_var(request, "HOME"))
+        .map(PathBuf::from)
+}
+
+/// The value of the environment variable `name` a terminal's process gets: the workspace's
+/// own when it sets one (Windows spells `PATH` as `Path`, so the name is matched in any
+/// case), otherwise Quay's.
+fn terminal_var(request: &SpawnTerminalRequest, name: &str) -> Option<std::ffi::OsString> {
     request
         .env_vars
         .as_ref()
-        .and_then(|envs| envs.iter().find(|(key, _)| key.eq_ignore_ascii_case("PATH")))
+        .and_then(|envs| envs.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)))
         .map(|(_, value)| value.into())
-        .or_else(|| std::env::var_os("PATH"))
+        .or_else(|| std::env::var_os(name))
+}
+
+/// The `PATH` a terminal's process gets: the workspace's own when it sets one, otherwise
+/// Quay's.
+fn terminal_path(request: &SpawnTerminalRequest) -> Option<std::ffi::OsString> {
+    terminal_var(request, "PATH")
 }
 
 /// Appends a decoded chunk to the replay buffer and returns the chunk's seq, one above the
@@ -466,11 +549,8 @@ pub(crate) fn build_command(
             }
         }
         RunKind::OpenCode => {
-            let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-            let program = opencode_program(
-                terminal_path(request).as_deref(),
-                home.as_deref().map(std::path::Path::new),
-            );
+            let program =
+                opencode_program(terminal_path(request).as_deref(), terminal_home(request).as_deref());
             let mut c = CommandBuilder::new(program);
             // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
             if let Some(port) = server_port {
@@ -481,6 +561,20 @@ pub(crate) fn build_command(
                 c.arg("--auto");
             }
             c
+        }
+        // PiG never asks before a tool call, and its `--approve` only trusts project-local
+        // files, so Quay passes no permission flag
+        RunKind::Pig => {
+            match pig_program(terminal_path(request).as_deref(), terminal_home(request).as_deref()) {
+                Some(program) => CommandBuilder::new(program),
+                // Nothing else joins the line: the custom flags and the launch prompt would
+                // reach the shell that prints the message
+                None => {
+                    let mut c = message_command(PIG_NOT_INSTALLED);
+                    c.cwd(&request.project_path);
+                    return c;
+                }
+            }
         }
     };
 
@@ -783,6 +877,7 @@ impl PtySession {
             RunKind::Kiro => "kiro".to_string(),
             RunKind::Copilot => "copilot".to_string(),
             RunKind::OpenCode => "opencode".to_string(),
+            RunKind::Pig => "pig".to_string(),
             RunKind::PowerShell => "pwsh".to_string(),
             RunKind::Command => request
                 .command_text
@@ -1386,6 +1481,260 @@ mod tests {
         assert_eq!(terminal_path(&request), Some(std::ffi::OsString::from(r"C:\stub-bin")));
         request.env_vars = None;
         assert_eq!(terminal_path(&request), std::env::var_os("PATH"));
+    }
+
+    /// Folders PiG can be installed in, under a fresh temp folder named for `tag`: one on the
+    /// `PATH`, npm's prefix and a home folder. Each starts empty.
+    struct PigInstalls {
+        root: PathBuf,
+        on_path: PathBuf,
+        npm: PathBuf,
+        home: PathBuf,
+    }
+
+    impl PigInstalls {
+        fn new(tag: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("quay-pig-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let installs = Self {
+                on_path: root.join("bin"),
+                npm: root.join("npm"),
+                home: root.join("home"),
+                root,
+            };
+            for dir in [&installs.on_path, &installs.npm, &installs.home] {
+                std::fs::create_dir_all(dir).unwrap();
+            }
+            installs
+        }
+
+        /// A `PATH` holding an empty folder, npm's prefix and `on_path`, in that order.
+        fn path(&self) -> std::ffi::OsString {
+            std::env::join_paths([self.root.join("empty"), self.npm.clone(), self.on_path.clone()]).unwrap()
+        }
+
+        /// Puts an empty `file` at `dir`, making the folders it needs, and returns its path.
+        fn put(&self, dir: PathBuf, file: &str) -> PathBuf {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(file), b"").unwrap();
+            dir.join(file)
+        }
+
+        fn on_path_pig(&self) -> PathBuf {
+            self.put(self.on_path.clone(), pig_file_name())
+        }
+
+        fn npm_shim(&self) -> PathBuf {
+            self.put(self.npm.clone(), PIG_NPM_SHIM)
+        }
+
+        fn npm_pig(&self) -> PathBuf {
+            let dir = PIG_NPM_BINARY_DIR.iter().fold(self.npm.clone(), |dir, part| dir.join(part));
+            self.put(dir, pig_file_name())
+        }
+
+        fn go_pig(&self) -> PathBuf {
+            self.put(self.home.join("go").join("bin"), pig_file_name())
+        }
+
+        fn found(&self) -> Option<PathBuf> {
+            pig_program(Some(&self.path()), Some(&self.home))
+        }
+
+        /// A PiG spawn request whose `PATH` and home folder are these folders.
+        fn request(&self) -> SpawnTerminalRequest {
+            let mut request = spawn_request(RunKind::Pig);
+            request.env_vars = Some(
+                [
+                    ("Path".to_string(), self.path().to_string_lossy().to_string()),
+                    ("USERPROFILE".to_string(), self.home.to_string_lossy().to_string()),
+                    ("HOME".to_string(), self.home.to_string_lossy().to_string()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            request
+        }
+    }
+
+    impl Drop for PigInstalls {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn pig_on_the_path_is_found_first() {
+        let installs = PigInstalls::new("on-path");
+        let on_path = installs.on_path_pig();
+        installs.npm_shim();
+        installs.npm_pig();
+        installs.go_pig();
+        assert_eq!(installs.found(), Some(on_path));
+    }
+
+    #[test]
+    fn with_only_npms_shim_on_the_path_pig_is_npms_real_binary() {
+        let installs = PigInstalls::new("npm");
+        installs.npm_shim();
+        let npm = installs.npm_pig();
+        installs.go_pig();
+        assert_eq!(installs.found(), Some(npm));
+    }
+
+    #[test]
+    fn npms_binary_is_looked_for_only_behind_its_shim() {
+        let installs = PigInstalls::new("npm-no-shim");
+        installs.npm_pig();
+        assert_eq!(installs.found(), None);
+        let go = installs.go_pig();
+        assert_eq!(installs.found(), Some(go));
+    }
+
+    #[test]
+    fn relative_path_entries_and_a_relative_home_are_skipped() {
+        // Quay's working directory would otherwise stand in for each of them
+        let path = std::env::join_paths([PathBuf::from(""), PathBuf::from(".")]).unwrap();
+        let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert!(dirs.iter().all(|dir| !dir.is_absolute()), "{:?}", dirs);
+        assert_eq!(pig_program(Some(&path), Some(Path::new(""))), None);
+        assert_eq!(pig_program(Some(&path), Some(Path::new("home"))), None);
+    }
+
+    #[test]
+    fn pig_from_go_install_is_found_last() {
+        let installs = PigInstalls::new("go");
+        let go = installs.go_pig();
+        assert_eq!(installs.found(), Some(go));
+        assert_eq!(pig_program(None, Some(&installs.home)), Some(installs.go_pig()));
+    }
+
+    #[test]
+    fn without_pig_anywhere_it_is_not_installed() {
+        let installs = PigInstalls::new("none");
+        // npm's shim alone, with its package's binary missing
+        installs.npm_shim();
+        assert_eq!(installs.found(), None);
+        assert_eq!(pig_program(None, None), None);
+    }
+
+    #[test]
+    fn pig_starts_directly_with_its_custom_flags_then_the_positional_launch_prompt() {
+        let installs = PigInstalls::new("launch");
+        let pig = installs.on_path_pig();
+        for mode in [PermissionMode::Skip, PermissionMode::Normal] {
+            let mut request = installs.request();
+            request.permission_mode = Some(mode);
+            request.custom_flags = Some("--model sonnet:high -c".to_string());
+            request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+            let cmd = build_command(&request, "term-pig", 4321, "tok-1", Some(4567));
+            assert_eq!(
+                argv(&cmd),
+                [pig.to_string_lossy().as_ref(), "--model", "sonnet:high", "-c", MULTI_LINE_PROMPT],
+                "{:?}",
+                mode
+            );
+            for key in QUAY_ENV_KEYS {
+                assert!(env_of(&cmd, key).is_some(), "{}", key);
+            }
+        }
+    }
+
+    #[test]
+    fn a_pig_terminal_without_pig_prints_how_to_install_it_and_nothing_else() {
+        let installs = PigInstalls::new("missing");
+        let mut request = installs.request();
+        request.custom_flags = Some("--model opus".to_string());
+        request.initial_prompt = Some("Get-ChildItem; exit".to_string());
+        let args = argv(&build_command(&request, "term-pig-missing", 4321, "tok-1", Some(4567)));
+        assert!(args.iter().all(|arg| !arg.contains("opus") && !arg.contains("Get-ChildItem")), "{:?}", args);
+
+        #[cfg(windows)]
+        {
+            assert_eq!(args[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
+            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), PIG_NOT_INSTALLED);
+            assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
+        }
+        #[cfg(not(windows))]
+        {
+            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", PIG_NOT_INSTALLED));
+            assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
+        }
+    }
+
+    #[test]
+    fn the_not_installed_message_is_the_one_decided() {
+        assert_eq!(
+            PIG_NOT_INSTALLED,
+            "PiG isn't installed. Install it with `npm i -g @pi-in-go/pig` (or `irm \
+             https://pi-in-go.dev/install.ps1 | iex` and add its folder to PATH), then run `pig \
+             login` once. PiG doesn't use Pi's sign-in."
+        );
+    }
+
+    /// Launches the real PiG TUI the way Quay does, with a launch prompt, and waits for its
+    /// answer on screen. Needs PiG installed and signed in with `pig login`. Run with
+    /// `cargo test live_pig_answers_its_launch_prompt -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn live_pig_answers_its_launch_prompt() {
+        let project = std::env::temp_dir().join(format!("quay-live-pig-{}", std::process::id()));
+        std::fs::create_dir_all(&project).unwrap();
+        let mut request = spawn_request(RunKind::Pig);
+        request.project_path = project.to_string_lossy().to_string();
+        // So the check leaves no session behind in PiG's own folder
+        request.custom_flags = Some("--no-session".to_string());
+        request.initial_prompt =
+            Some("What is six times seven? Reply with only the digits, then the letters ZQ.".to_string());
+        let cmd = build_command(&request, "term-live-pig", 47999, "tok-live", None);
+        println!("argv: {:?}", cmd.get_argv());
+        assert!(!starts_through_cmd(&cmd), "PiG must start directly");
+
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 40, cols: 140, pixel_width: 0, pixel_height: 0 })
+            .unwrap();
+        let mut child = pair.slave.spawn_command(cmd).expect("spawn pig");
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+        let mut screen = String::new();
+        let mut answered = false;
+        while std::time::Instant::now() < deadline {
+            let chunk = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                Ok(chunk) => chunk,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                // PiG exited
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            };
+            let text = String::from_utf8_lossy(&chunk).to_string();
+            // Answer ConPTY's cursor-position query so the TUI starts
+            if text.contains("\x1b[6n") {
+                let _ = writer.write_all(b"\x1b[1;1R");
+            }
+            screen.push_str(&text);
+            // The prompt holds neither the digits nor the letters, so this is the answer
+            if screen.contains("42ZQ") {
+                answered = true;
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&project);
+        let tail: String = screen.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect();
+        assert!(answered, "PiG didn't answer within 180s; its screen ended:\n{}", tail);
     }
 
     #[test]

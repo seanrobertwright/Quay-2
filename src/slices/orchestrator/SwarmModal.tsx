@@ -507,6 +507,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
                           <option value="kiro">Kiro CLI</option>
                           <option value="copilot">GitHub Copilot</option>
                           <option value="opencode">OpenCode CLI</option>
+                          <option value="pig">PiG (Pi in Go)</option>
                           <option value="powershell">PowerShell</option>
                           <option value="command">Custom Command</option>
                         </select>

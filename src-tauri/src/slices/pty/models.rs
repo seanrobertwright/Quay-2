@@ -14,6 +14,7 @@ pub enum RunKind {
     Copilot,
     #[serde(rename = "opencode")]
     OpenCode,
+    Pig,
     PowerShell,
     Command,
     Archon,
@@ -33,6 +34,7 @@ impl RunKind {
                 | RunKind::Kiro
                 | RunKind::Copilot
                 | RunKind::OpenCode
+                | RunKind::Pig
                 | RunKind::Archon
         )
     }
@@ -50,7 +52,8 @@ impl RunKind {
             | RunKind::Gemini
             | RunKind::Grok
             | RunKind::Pi
-            | RunKind::Aider => Some(BusLevel::Listener),
+            | RunKind::Aider
+            | RunKind::Pig => Some(BusLevel::Listener),
             RunKind::PowerShell | RunKind::Command | RunKind::Archon => None,
         }
     }
@@ -101,11 +104,11 @@ impl RunKind {
     }
 
     /// Whether this CLI never asks before a tool call, so Quay's Skip and Ask choice means
-    /// nothing for it. Pi is one: its `--approve` trusts project-local files rather than
-    /// skipping approvals, so Quay never passes it. The frontend's `NEVER_ASKS_RUN_KINDS`
-    /// mirrors this.
+    /// nothing for it. Pi and PiG are such CLIs: their `--approve` trusts project-local files
+    /// rather than skipping approvals, so Quay never passes it. The frontend's
+    /// `NEVER_ASKS_RUN_KINDS` mirrors this.
     pub fn never_asks_before_tools(&self) -> bool {
-        matches!(self, RunKind::Pi)
+        matches!(self, RunKind::Pi | RunKind::Pig)
     }
 
     /// The permission mode a terminal of this CLI runs in: the one asked for, or Skip when
@@ -127,7 +130,7 @@ impl RunKind {
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
     pub fn launch_prompt_form(&self) -> Option<LaunchPromptForm> {
         match self {
-            RunKind::Claude | RunKind::Codex | RunKind::Pi | RunKind::Kiro => {
+            RunKind::Claude | RunKind::Codex | RunKind::Pi | RunKind::Kiro | RunKind::Pig => {
                 Some(LaunchPromptForm::Positional)
             }
             RunKind::OpenCode => Some(LaunchPromptForm::Flag("--prompt")),
@@ -153,6 +156,7 @@ impl RunKind {
             RunKind::Kiro => "kiro",
             RunKind::Copilot => "copilot",
             RunKind::OpenCode => "opencode",
+            RunKind::Pig => "pig",
             RunKind::PowerShell => "powershell",
             RunKind::Command => "command",
             RunKind::Archon => "archon",
@@ -172,6 +176,7 @@ impl RunKind {
             RunKind::Kiro => "Kiro",
             RunKind::Copilot => "Copilot",
             RunKind::OpenCode => "OpenCode",
+            RunKind::Pig => "PiG",
             RunKind::PowerShell => "PowerShell",
             RunKind::Command => "Command",
             RunKind::Archon => "Archon",
@@ -393,7 +398,7 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
 
 /// Every run kind, for tests that check a rule across all of them.
 #[cfg(test)]
-pub const ALL_RUN_KINDS: [RunKind; 13] = [
+pub const ALL_RUN_KINDS: [RunKind; 14] = [
     RunKind::Claude,
     RunKind::Antigravity,
     RunKind::Codex,
@@ -404,6 +409,7 @@ pub const ALL_RUN_KINDS: [RunKind; 13] = [
     RunKind::Kiro,
     RunKind::Copilot,
     RunKind::OpenCode,
+    RunKind::Pig,
     RunKind::PowerShell,
     RunKind::Command,
     RunKind::Archon,
@@ -452,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn copilot_kiro_gemini_grok_pi_and_aider_are_listeners() {
+    fn copilot_kiro_gemini_grok_pi_aider_and_pig_are_listeners() {
         assert_eq!(
             kinds_at(Some(BusLevel::Listener)),
             [
@@ -462,8 +468,18 @@ mod tests {
                 RunKind::Aider,
                 RunKind::Kiro,
                 RunKind::Copilot,
+                RunKind::Pig,
             ]
         );
+    }
+
+    #[test]
+    fn pig_is_an_agent_named_pig_that_takes_a_positional_launch_prompt() {
+        assert!(RunKind::Pig.is_agent());
+        assert_eq!(RunKind::Pig.as_str(), "pig");
+        assert_eq!(RunKind::Pig.display_name(), "PiG");
+        assert_eq!(serde_json::to_value(RunKind::Pig).unwrap(), "pig");
+        assert_eq!(RunKind::Pig.launch_prompt_form(), Some(LaunchPromptForm::Positional));
     }
 
     #[test]
@@ -591,8 +607,10 @@ mod tests {
 
     #[test]
     fn a_cli_that_never_asks_runs_as_skip_whatever_was_asked() {
-        for requested in [None, Some(PermissionMode::Skip), Some(PermissionMode::Normal)] {
-            assert_eq!(RunKind::Pi.permission_mode(requested), PermissionMode::Skip, "{:?}", requested);
+        for kind in [RunKind::Pi, RunKind::Pig] {
+            for requested in [None, Some(PermissionMode::Skip), Some(PermissionMode::Normal)] {
+                assert_eq!(kind.permission_mode(requested), PermissionMode::Skip, "{:?} {:?}", kind, requested);
+            }
         }
         assert_eq!(RunKind::Claude.permission_mode(Some(PermissionMode::Normal)), PermissionMode::Normal);
         assert_eq!(RunKind::Claude.permission_mode(None), PermissionMode::Skip);
@@ -605,7 +623,7 @@ mod tests {
             .filter(|kind| kind.never_asks_before_tools())
             .map(|kind| kind.as_str().to_string())
             .collect();
-        assert_eq!(backend, ["pi"]);
+        assert_eq!(backend, ["pi", "pig"]);
         assert_eq!(frontend_run_kinds("NEVER_ASKS_RUN_KINDS"), backend);
     }
 
