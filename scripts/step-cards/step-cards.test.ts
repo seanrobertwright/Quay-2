@@ -27,6 +27,18 @@ test('a step with no You should see breaks see-required', async () => {
   ]);
 });
 
+test('a You should see that does not hold one captioned ./NN-<what>.webp, NN its step, breaks see-image', async () => {
+  assert.deepEqual(checkStepCards(await parse('fixtures/see-image.md')), [
+    { rule: 'see-image', step: 2, title: 'Describe the screen in words' },
+    { rule: 'see-image', step: 3, title: "Name another step's screenshot" },
+    { rule: 'see-image', step: 4, title: 'Show a PNG' },
+    { rule: 'see-image', step: 5, title: 'Leave out the caption' },
+    { rule: 'see-image', step: 6, title: 'Show two screenshots' },
+    { rule: 'see-image', step: 7, title: 'Add words under the screenshot' },
+    { rule: 'see-image', step: 8, title: 'Keep the screenshot in a subfolder' },
+  ]);
+});
+
 test("a last step with no You're done when breaks done-required", async () => {
   assert.deepEqual(checkStepCards(await parse('fixtures/done-required.md')), [
     { rule: 'done-required', step: 2, title: 'Check it worked' },
@@ -147,7 +159,7 @@ test('page parts out of place break their own rule', () => {
       'Unzip it.',
       ':::',
       '::: see',
-      'The rail.',
+      '![The rail.](./01-rail.webp)',
       ':::',
       '::: done',
       'It worked.',
@@ -258,4 +270,18 @@ test('each container renders as its labelled part of a step card', () => {
     ['step-card', 'step-card step-card--last'],
   );
   assert.match(html, /<div class="step-card__slot step-card__slot--paste"><p class="step-card__label">Paste into Mission Control<\/p>\n<div class="language-text/);
+});
+
+test("You should see renders its screenshot as a figure, the caption both the image's alt text and shown under it", () => {
+  const html = md.render(['::: step', '## 1. Get the starter project', '::: see', '![The project in the "rail" & pane.](./01-rail.webp)', ':::', ':::'].join('\n'), {});
+  assert.match(
+    html,
+    /<div class="step-card__slot step-card__slot--see"><p class="step-card__label">You should see<\/p>\n<figure class="step-card__shot"><img src="\.\/01-rail\.webp" alt="The project in the &quot;rail&quot; &amp; pane\."><figcaption aria-hidden="true">The project in the &quot;rail&quot; &amp; pane\.<\/figcaption><\/figure>\n<\/div>/,
+  );
+});
+
+test('an image anywhere but alone in You should see renders as markdown always has', () => {
+  const html = md.render(['::: step', '## 1. Get the starter project', '::: do', '![The rail.](./01-rail.webp)', ':::', ':::'].join('\n'), {});
+  assert.match(html, /<p><img src="\.\/01-rail\.webp" alt="The rail\."><\/p>/);
+  assert.doesNotMatch(html, /<figure/);
 });

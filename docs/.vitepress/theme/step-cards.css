@@ -103,6 +103,22 @@
   overflow-wrap: anywhere;
 }
 
+/* You should see: the screenshot or its clip, full width, with its caption under it */
+.vp-doc .step-card__shot { margin: 0; }
+.vp-doc .step-card__shot img,
+.vp-doc .step-card__shot video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+}
+.vp-doc .step-card__shot figcaption {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
 .vp-doc .step-card__ifnot { margin: 14px 0 0; }
 
 /* Next up card: its first link is stretched over the whole card */

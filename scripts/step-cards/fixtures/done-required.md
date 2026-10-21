@@ -23,7 +23,7 @@
 :::
 
 ::: see
-The project in the rail.
+![The project in the rail.](./01-shot.webp)
 :::
 
 :::
@@ -37,7 +37,7 @@ The project in the rail.
 :::
 
 ::: see
-Every test passes, but this last step has no You're done when.
+![Every test passes, but this last step has no You're done when.](./02-shot.webp)
 :::
 
 :::
