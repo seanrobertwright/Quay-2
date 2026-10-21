@@ -302,7 +302,7 @@ pub(crate) fn build_command(
     bridge_port: u16,
     bridge_token: &str,
 ) -> CommandBuilder {
-    let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
+    let perm = request.run_kind.permission_mode(request.permission_mode);
 
     let mut cmd = match request.run_kind {
         // On Unix a PowerShell terminal opens a bare shell and ignores its command text
@@ -335,9 +335,6 @@ pub(crate) fn build_command(
             let mut c = CommandBuilder::new("cmd.exe");
             c.arg("/c");
             c.arg("pi");
-            if perm == PermissionMode::Skip {
-                c.arg("--approve");
-            }
             c
         }
         RunKind::Gemini => {
@@ -505,7 +502,7 @@ impl PtySession {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
+        let perm = request.run_kind.permission_mode(request.permission_mode);
 
         let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token);
 
@@ -934,7 +931,7 @@ mod tests {
         // Expected values are the arguments each CLI was started with before launch prompts,
         // with Codex's bus overrides after its permission flag
         assert_eq!(args_with_prompt(RunKind::Codex, None), codex_args(&bus_args()));
-        assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi", "--approve"]);
+        assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi"]);
         assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
         assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--auto"]);
         assert_eq!(args_with_prompt(RunKind::Kiro, None), ["chat", "--trust-all-tools"]);
@@ -1030,6 +1027,15 @@ mod tests {
             program.file_name().unwrap().to_string_lossy(),
             format!("quay-codex-notify{}", std::env::consts::EXE_SUFFIX)
         );
+    }
+
+    #[test]
+    fn pi_never_gets_approve_which_only_trusts_project_files() {
+        for mode in [PermissionMode::Skip, PermissionMode::Normal] {
+            let mut request = spawn_request(RunKind::Pi);
+            request.permission_mode = Some(mode);
+            assert_eq!(argv(&build_command(&request, "term-pi", 1234, "tok"))[1..], ["/c", "pi"], "{:?}", mode);
+        }
     }
 
     #[test]
@@ -1171,7 +1177,7 @@ mod tests {
                 "-NoProfile",
                 "-NoLogo",
                 "-Command",
-                "& 'pi' '--approve' '--model' 'it''s' $env:QUAY_LAUNCH_PROMPT",
+                "& 'pi' '--model' 'it''s' $env:QUAY_LAUNCH_PROMPT",
             ]
         );
         assert_eq!(
@@ -1249,7 +1255,7 @@ mod tests {
         let _ = child.kill();
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert_eq!(recorded, ["--approve", MULTI_LINE_PROMPT]);
+        assert_eq!(recorded, [MULTI_LINE_PROMPT]);
     }
 
     #[test]
