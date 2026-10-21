@@ -56,6 +56,14 @@ export function tutorialPage(tutorial: Tutorial): string {
   return `tutorials/${tutorial.series}/${tutorial.slug}/index.md`;
 }
 
+/**
+ * The slug of the tutorial page at `relativePath`, relative to the docs folder, as
+ * `tutorials/<series>/<slug>/index.md`; null for any other page.
+ */
+export function tutorialSlugOf(relativePath: string): string | null {
+  return /^tutorials\/[^/]+\/([^/]+)\/index\.md$/.exec(relativePath.replaceAll('\\', '/'))?.[1] ?? null;
+}
+
 /** The tutorial's page title, "<Series> <n>: <Title>". */
 export function tutorialTitle(tutorial: Tutorial): string {
   return `${SERIES[tutorial.series]} ${tutorial.number}: ${tutorial.title}`;

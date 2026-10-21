@@ -23,7 +23,8 @@ try {
 }
 
 try {
-  const config = await siteConfig({ command: 'build', mode: 'production' });
+  // Read the page as docs:dev does: the build's test-run gate would refuse the page whose runs this records.
+  const config = await siteConfig({ command: 'serve', mode: 'production' });
   const md = await createMarkdownRenderer(join(root, 'docs'), config.markdown);
   const { file } = newTestRun({ root, ...args, md });
   console.log(`Added a ${args.date} run to ${relative(root, file).replaceAll('\\', '/')}. Fill in each value in italics.`);
