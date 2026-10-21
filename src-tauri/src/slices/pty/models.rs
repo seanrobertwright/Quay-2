@@ -259,6 +259,17 @@ impl TerminalInfo {
     pub fn shows_working_on_delivery(&self) -> bool {
         self.run_kind.reports_turn_end() && self.claude_status != ClaudeStatus::Unknown
     }
+
+    /// Whether a message to this terminal waits in its queue: Quay will see its turn end
+    /// (`shows_working_on_delivery`), and it is starting up, in a turn, or waiting on a
+    /// permission prompt.
+    pub fn holds_deliveries(&self) -> bool {
+        self.shows_working_on_delivery()
+            && matches!(
+                self.claude_status,
+                ClaudeStatus::Starting | ClaudeStatus::Working | ClaudeStatus::Waiting
+            )
+    }
 }
 
 /// A terminal's status after Quay's plugin rules moved it, sent as `terminal-status`.
@@ -503,6 +514,19 @@ mod tests {
             .map(|kind| kind.as_str().to_string())
             .collect();
         assert_eq!(frontend_run_kinds("TURN_END_RUN_KINDS"), backend);
+    }
+
+    #[test]
+    fn only_a_reporting_claude_terminal_mid_turn_holds_deliveries() {
+        for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
+            assert!(terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
+        }
+        for status in [ClaudeStatus::Idle, ClaudeStatus::Exited, ClaudeStatus::Unknown] {
+            assert!(!terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
+        }
+        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Claude) {
+            assert!(!terminal(kind, ClaudeStatus::Working).holds_deliveries(), "{:?}", kind);
+        }
     }
 
     /// The run kinds the frontend's `const_name` list holds, read from `types.ts`.

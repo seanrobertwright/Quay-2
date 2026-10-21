@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum A2AMessageStatus {
-    Pending,
+    /// Waiting in its target's delivery queue for the target's turn to end.
+    Queued,
+    /// Typed into its target.
     Dispatched,
     Completed,
     Failed,

@@ -58,7 +58,21 @@ pub fn run() {
     let machina_pty = pty_manager.clone();
     let bridge_state_clone = bridge_state.clone();
     let a2a_router_clone = a2a_router.clone();
+    let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
+
+    // A terminal that went Unknown or closed no longer holds its messages: type them in,
+    // or mark them Failed, on a thread of their own since each write waits for the submit delay.
+    {
+        let router = a2a_router.clone();
+        let terminals = pty_manager.clone();
+        pty_manager.set_status_watcher(move |terminal_id| {
+            let router = router.clone();
+            let terminals = terminals.clone();
+            let terminal_id = terminal_id.to_string();
+            std::thread::spawn(move || router.deliver_held(&terminal_id, &terminals));
+        });
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -72,6 +86,12 @@ pub fn run() {
         .manage(machina_manager)
         .setup(move |app| {
             let app_handle = app.handle().clone();
+
+            // A held message that reaches its terminal, or fails to, updates the trail and,
+            // once typed in, raises the toast as a message sent at once does.
+            let a2a_events = app_handle.clone();
+            a2a_router_updates
+                .set_update_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.

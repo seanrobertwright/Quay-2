@@ -32,7 +32,7 @@ interface A2AMessage {
   content: string;
   as_user: boolean;
   timestamp: number;
-  status: "pending" | "dispatched" | "completed" | "failed";
+  status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
 }
 
@@ -603,6 +603,15 @@ export const A2APanel: FC<A2APanelProps> = ({
                           <span className="flex items-center gap-1 text-[#3fb950] font-medium">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>Completed</span>
+                          </span>
+                        )}
+                        {m.status === "queued" && (
+                          <span
+                            className="flex items-center gap-1 text-[#d29922]"
+                            title="Delivered when the agent's current turn ends"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>Queued</span>
                           </span>
                         )}
                         {m.status === "dispatched" && (

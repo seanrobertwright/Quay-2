@@ -16,6 +16,9 @@ use super::session::PtySession;
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
+/// What the status watcher runs, with the id of the terminal whose status moved.
+type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
+
 static LAST_CREATED_AT: Mutex<u64> = Mutex::new(0);
 
 pub fn next_created_at() -> u64 {
@@ -119,6 +122,12 @@ pub struct PtyManager {
     dormant_buffers: Arc<Mutex<HashMap<String, (String, u64)>>>,
     /// Each running terminal's current launch. Lock before `terminals_info` when taking both.
     plugin_watches: Arc<Mutex<HashMap<String, PluginWatch>>>,
+    /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
+    submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
+    /// What tests typed into each test terminal, which stands in for its PTY.
+    #[cfg(test)]
+    test_input: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl PtyManager {
@@ -128,6 +137,10 @@ impl PtyManager {
             terminals_info: Arc::new(Mutex::new(HashMap::new())),
             dormant_buffers: Arc::new(Mutex::new(HashMap::new())),
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
+            submit_locks: Arc::new(Mutex::new(HashMap::new())),
+            status_watcher: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            test_input: Arc::new(Mutex::new(HashMap::new())),
         };
         manager.load_persisted_sessions();
         manager
@@ -332,6 +345,11 @@ impl PtyManager {
     }
 
     pub fn write(&self, terminal_id: &str, data: &str) -> Result<(), String> {
+        #[cfg(test)]
+        if let Some(input) = self.test_input.lock().get_mut(terminal_id) {
+            input.push(data.to_string());
+            return Ok(());
+        }
         let sessions = self.sessions.lock();
         if let Some(session) = sessions.get(terminal_id) {
             session.write(data)
@@ -340,26 +358,23 @@ impl PtyManager {
         }
     }
 
-    /// Types `prompt` into an agent terminal, then presses Enter in a separate write.
-    /// Agent TUIs read text and Enter that arrive in one chunk as a paste and leave it
-    /// unsent, so Enter follows after `PROMPT_SUBMIT_DELAY` on a background thread.
+    /// Types `prompt` into an agent terminal and presses Enter, as one unit: another prompt
+    /// to the same terminal waits until this one's Enter is in. Agent TUIs read text and
+    /// Enter that arrive in one chunk as a paste and leave it unsent, so Enter is a separate
+    /// write `PROMPT_SUBMIT_DELAY` later, and the call blocks for that long. It fails when
+    /// either write fails.
     pub fn submit_prompt(&self, terminal_id: &str, prompt: &str) -> Result<(), String> {
+        let unit = self
+            .submit_locks
+            .lock()
+            .entry(terminal_id.to_string())
+            .or_default()
+            .clone();
+        let _unit = unit.lock();
         self.write(terminal_id, prompt)?;
-        let sessions = self.sessions.clone();
-        let terminal_id = terminal_id.to_string();
-        std::thread::spawn(move || {
-            std::thread::sleep(PROMPT_SUBMIT_DELAY);
-            let sessions = sessions.lock();
-            match sessions.get(&terminal_id) {
-                Some(session) => {
-                    if let Err(e) = session.write("\r") {
-                        tracing::warn!("Failed to submit prompt in PTY {}: {}", terminal_id, e);
-                    }
-                }
-                None => tracing::warn!("PTY {} closed before its prompt was submitted", terminal_id),
-            }
-        });
-        Ok(())
+        std::thread::sleep(PROMPT_SUBMIT_DELAY);
+        self.write(terminal_id, "\r")
+            .map_err(|e| format!("Typed the prompt but couldn't press Enter: {}", e))
     }
 
     pub fn resize(&self, terminal_id: &str, rows: u16, cols: u16) -> Result<(), String> {
@@ -427,6 +442,7 @@ impl PtyManager {
         }
 
         self.plugin_watches.lock().remove(terminal_id);
+        self.submit_locks.lock().remove(terminal_id);
 
         // 2. Remove from terminals_info and dormant_buffers
         let removed = {
@@ -441,9 +457,24 @@ impl PtyManager {
         self.save_sessions_to_disk();
 
         if removed {
+            self.notify_status_watcher(terminal_id);
             Ok(())
         } else {
             Err(format!("Terminal {} not found", terminal_id))
+        }
+    }
+
+    /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
+    /// route: the plugin silence clock makes it Unknown, or the terminal closes. It runs on
+    /// the thread that moved the status, with no lock of this manager held.
+    pub fn set_status_watcher(&self, watcher: impl Fn(&str) + Send + Sync + 'static) {
+        *self.status_watcher.lock() = Some(Arc::new(watcher));
+    }
+
+    fn notify_status_watcher(&self, terminal_id: &str) {
+        let watcher = self.status_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            watcher(terminal_id);
         }
     }
 
@@ -457,10 +488,24 @@ impl PtyManager {
         self.terminals_info.lock().get(terminal_id).cloned()
     }
 
-    /// Puts `info` in the terminal list without opening a PTY.
+    /// Puts `info` in the terminal list without opening a PTY. What is typed into it is kept
+    /// for `test_input` until `close_test_input`.
     #[cfg(test)]
     pub fn insert_test_terminal(&self, info: TerminalInfo) {
+        self.test_input.lock().insert(info.id.clone(), Vec::new());
         self.terminals_info.lock().insert(info.id.clone(), info);
+    }
+
+    /// Everything typed into test terminal `terminal_id`, one entry per write.
+    #[cfg(test)]
+    pub fn test_input(&self, terminal_id: &str) -> Vec<String> {
+        self.test_input.lock().get(terminal_id).cloned().unwrap_or_default()
+    }
+
+    /// Makes every later write to test terminal `terminal_id` fail, as a closed PTY does.
+    #[cfg(test)]
+    pub fn close_test_input(&self, terminal_id: &str) {
+        self.test_input.lock().remove(terminal_id);
     }
 
     pub fn update_status(&self, terminal_id: &str, status: ClaudeStatus) {
@@ -502,6 +547,7 @@ impl PtyManager {
                 tokio::time::sleep(PLUGIN_SILENCE).await;
                 if let Some(status) = manager.check_plugin_silence(&launch, Instant::now()) {
                     let _ = app_handle.emit("terminal-status", status);
+                    manager.notify_status_watcher(&launch.terminal_id);
                 }
             });
         })
@@ -1080,6 +1126,57 @@ mod tests {
         let info = manager.get_info("term-plugin-dismissed").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Unknown);
         assert!(!info.plugin_hint);
+    }
+
+    #[test]
+    fn two_prompts_to_one_terminal_each_go_in_with_their_enter() {
+        let manager = PtyManager::new();
+        manager.insert_test_terminal(crate::slices::pty::models::test_terminal(
+            "term-submit-unit",
+            RunKind::Claude,
+            ClaudeStatus::Idle,
+        ));
+
+        std::thread::scope(|scope| {
+            for prompt in ["first", "second"] {
+                let manager = &manager;
+                scope.spawn(move || manager.submit_prompt("term-submit-unit", prompt).unwrap());
+            }
+        });
+
+        let input = manager.test_input("term-submit-unit");
+        assert_eq!(input.len(), 4, "{input:?}");
+        assert_eq!(input[1], "\r", "{input:?}");
+        assert_eq!(input[3], "\r", "{input:?}");
+        let mut prompts = [input[0].as_str(), input[2].as_str()];
+        prompts.sort();
+        assert_eq!(prompts, ["first", "second"]);
+    }
+
+    #[test]
+    fn a_prompt_to_a_closed_terminal_fails() {
+        let manager = PtyManager::new();
+        manager.insert_test_terminal(crate::slices::pty::models::test_terminal(
+            "term-submit-closed",
+            RunKind::Claude,
+            ClaudeStatus::Idle,
+        ));
+        manager.close_test_input("term-submit-closed");
+
+        assert!(manager.submit_prompt("term-submit-closed", "hello").is_err());
+    }
+
+    #[test]
+    fn closing_a_terminal_tells_the_status_watcher() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-watched-close", RunKind::Claude);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+
+        manager.kill("term-watched-close").unwrap();
+
+        assert_eq!(*seen.lock(), ["term-watched-close"]);
     }
 
     #[test]

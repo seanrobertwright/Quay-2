@@ -20,7 +20,7 @@ export interface A2ADispatchPayload {
   content: string;
   as_user?: boolean;
   timestamp: number;
-  status: "pending" | "dispatched" | "completed" | "failed";
+  status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
 }
 
@@ -33,7 +33,7 @@ interface ToastItem {
   toName?: string;
   content: string;
   response?: string | null;
-  status?: "pending" | "dispatched" | "completed" | "failed";
+  status?: "queued" | "dispatched" | "completed" | "failed";
   timestamp: number;
 }
 

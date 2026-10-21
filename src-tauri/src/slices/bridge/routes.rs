@@ -182,6 +182,15 @@ pub async fn handle_events(
         // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
         let _ = ctx.app_handle.emit("bridge-event", envelope);
         if let Some(status) = status {
+            // A turn that ended lets the terminal's next held message in, and a session that
+            // ended fails the rest. Typing blocks for the submit delay, so it runs off the
+            // event route.
+            if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
+                let router = ctx.a2a_router.clone();
+                let pty_manager = ctx.pty_manager.clone();
+                let terminal_id = status.terminal_id.clone();
+                tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
+            }
             let _ = ctx.app_handle.emit("terminal-status", status);
         }
     }
