@@ -228,6 +228,55 @@ pub async fn create_git_worktree(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Runs the uncommitted-changes check `git worktree remove` makes, without `--force`,
+/// before it deletes anything: `git status --porcelain --ignore-submodules=none`.
+/// Returns the refusal `git worktree remove` would print, in git's wording, followed by up to
+/// `MAX_STATUS_LINES` status lines when there are modified or untracked files, `None` when the
+/// worktree is clean, and `Err` when git status fails.
+pub fn uncommitted_changes(worktree_path: &str) -> Result<Option<String>, String> {
+    let mut cmd = create_git_command(worktree_path);
+    cmd.args(["status", "--porcelain", "--ignore-submodules=none"]);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git status failed in '{}': {}", worktree_path, stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return Ok(None);
+    }
+
+    let mut status = lines
+        .iter()
+        .take(MAX_STATUS_LINES)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    if lines.len() > MAX_STATUS_LINES {
+        status.push_str(&format!("\n...and {} more", lines.len() - MAX_STATUS_LINES));
+    }
+
+    Ok(Some(format!(
+        "fatal: '{}' contains modified or untracked files, use --force to delete it\n\n{}",
+        worktree_path, status
+    )))
+}
+
+/// Status lines quoted in the refusal; the rest are counted, not listed.
+const MAX_STATUS_LINES: usize = 20;
+
+#[tauri::command]
+pub async fn check_git_worktree_clean(worktree_path: String) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || uncommitted_changes(&worktree_path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[tauri::command]
 pub async fn remove_git_worktree(
     repo_path: String,
@@ -265,6 +314,108 @@ pub async fn remove_git_worktree(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sh_git(dir: &Path, args: &[&str]) {
+        let output = create_git_command(&dir.to_string_lossy())
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// A throwaway repository on `main` with one commit and a linked worktree on
+    /// branch `feat` at `<root>/wt`. Returns (root, repo, worktree).
+    fn repo_with_worktree() -> (PathBuf, PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!("quay-wt-{}", uuid::Uuid::new_v4().simple()));
+        let repo = root.join("repo");
+        let worktree = root.join("wt");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh_git(&repo, &["init", "-q", "-b", "main"]);
+        for (k, v) in [
+            ("user.name", "Quay Test"),
+            ("user.email", "quay@example.invalid"),
+            ("core.hooksPath", ".git/no-hooks"),
+            ("core.autocrlf", "false"),
+        ] {
+            sh_git(&repo, &["config", k, v]);
+        }
+        std::fs::write(repo.join("README.md"), "readme\n").unwrap();
+        sh_git(&repo, &["add", "-A"]);
+        sh_git(&repo, &["commit", "-q", "-m", "init"]);
+        sh_git(&repo, &["worktree", "add", "-q", "-b", "feat", &worktree.to_string_lossy()]);
+        (root, repo, worktree)
+    }
+
+    #[test]
+    fn a_worktree_with_a_modified_file_reports_gits_refusal() {
+        let (root, _repo, worktree) = repo_with_worktree();
+        std::fs::write(worktree.join("README.md"), "changed\n").unwrap();
+
+        let refusal = uncommitted_changes(&worktree.to_string_lossy()).unwrap();
+
+        let message = refusal.expect("a dirty worktree is refused");
+        assert!(message.contains("contains modified or untracked files, use --force to delete it"), "{}", message);
+        assert!(message.contains("M README.md"), "{}", message);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_clean_worktree_has_nothing_to_report() {
+        let (root, _repo, worktree) = repo_with_worktree();
+
+        assert_eq!(uncommitted_changes(&worktree.to_string_lossy()), Ok(None));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_worktree_with_an_untracked_file_reports_gits_refusal() {
+        let (root, _repo, worktree) = repo_with_worktree();
+        std::fs::write(worktree.join("notes.txt"), "draft\n").unwrap();
+
+        let message = uncommitted_changes(&worktree.to_string_lossy())
+            .unwrap()
+            .expect("an untracked file is refused");
+        assert!(message.contains("?? notes.txt"), "{}", message);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_long_status_lists_the_first_twenty_files_and_counts_the_rest() {
+        let (root, _repo, worktree) = repo_with_worktree();
+        for i in 0..25 {
+            std::fs::write(worktree.join(format!("draft-{:02}.txt", i)), "draft\n").unwrap();
+        }
+
+        let message = uncommitted_changes(&worktree.to_string_lossy())
+            .unwrap()
+            .expect("untracked files are refused");
+        assert!(message.contains("?? draft-19.txt"), "{}", message);
+        assert!(!message.contains("draft-20.txt"), "{}", message);
+        assert!(message.ends_with("...and 5 more"), "{}", message);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn remove_refuses_a_dirty_worktree_and_the_forced_remove_deletes_it() {
+        let (root, repo, worktree) = repo_with_worktree();
+        std::fs::write(worktree.join("notes.txt"), "draft\n").unwrap();
+        let repo_path = repo.to_string_lossy().to_string();
+        let worktree_path = worktree.to_string_lossy().to_string();
+
+        let refused = remove_git_worktree(repo_path.clone(), worktree_path.clone(), false).await;
+        let error = refused.expect_err("git refuses without --force");
+        assert!(error.contains("contains modified or untracked files"), "{}", error);
+        assert!(worktree.join("notes.txt").exists());
+
+        remove_git_worktree(repo_path, worktree_path, true).await.unwrap();
+        assert!(!worktree.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn test_parse_worktree_porcelain() {

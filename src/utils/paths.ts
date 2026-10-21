@@ -31,3 +31,23 @@ export function isSubpathOf(child?: string | null, parent?: string | null): bool
   if (!normChild || !normParent) return false;
   return normChild === normParent || normChild.startsWith(normParent + "/");
 }
+
+/**
+ * Resolves the project a path belongs to: the first project the path is or sits
+ * inside, else the first project whose git worktree list (keyed by project path)
+ * contains the path. Returns the path itself when it belongs to no project.
+ */
+export function resolveRootRepo(
+  activePath: string,
+  projects: { path: string }[],
+  worktreesByProject: Record<string, { path: string }[]> = {}
+): string {
+  const worktreesOf = (projectPath: string) =>
+    Object.prototype.hasOwnProperty.call(worktreesByProject, projectPath)
+      ? worktreesByProject[projectPath]
+      : [];
+  const matched =
+    projects.find((p) => isSubpathOf(activePath, p.path)) ||
+    projects.find((p) => worktreesOf(p.path).some((wt) => isSamePath(wt.path, activePath)));
+  return matched ? matched.path : activePath;
+}

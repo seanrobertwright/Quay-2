@@ -43,6 +43,7 @@ import {
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
+import { isSamePath } from "../../utils/paths";
 
 export interface CommandItem {
   id: string;
@@ -483,7 +484,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
     // 5. Workspaces
     projects.forEach((proj) => {
-      const count = terminals.filter((t) => t.project_path === proj.path).length;
+      const count = terminals.filter((t) => isSamePath(t.project_path, proj.path)).length;
       const isCurrent = proj.path === activeProject;
       items.push({
         id: `proj-${proj.path}`,
@@ -503,7 +504,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         .filter((wt) => !wt.is_main)
         .forEach((wt) => {
           const branchName = wt.branch ? wt.branch.replace("refs/heads/", "") : wt.head.slice(0, 7);
-          const wtTerms = terminals.filter((t) => t.project_path === wt.path);
+          const wtTerms = terminals.filter((t) => isSamePath(t.project_path, wt.path));
           const isCurrent = wt.path === activeProject;
           items.push({
             id: `worktree-${wt.path}`,

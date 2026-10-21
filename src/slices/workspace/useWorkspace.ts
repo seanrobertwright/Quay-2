@@ -14,8 +14,9 @@ import { SwarmPreset } from "../orchestrator/swarmTypes";
 import { GitWorktree } from "../git/types";
 import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChime";
 import { ClaudeTokenStats } from "../sessions/types";
-import { isSamePath, isSubpathOf } from "../../utils/paths";
+import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
+import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 
 export type { Project };
 
@@ -498,9 +499,10 @@ export function useWorkspace() {
     });
   }, [projects, terminals, projectWorktrees, refreshWorktrees]);
 
-  // Open New Worktree modal
+  // Open New Worktree modal. Without a repoPath it targets the active project's root,
+  // so a worktree is never nested inside the selected worktree.
   const openNewWorktreeModal = (repoPath?: string, suggestedIssueNumber?: number) => {
-    const targetPath = repoPath || activeProject;
+    const targetPath = repoPath || resolveRootRepo(activeProject, projects, projectWorktrees);
     const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
       name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
     };
@@ -559,30 +561,45 @@ export function useWorkspace() {
     }
   };
 
-  // Remove a worktree
-  const removeWorktree = async (repoPath: string, worktreePath: string, force: boolean = false) => {
+  // Remove a worktree. Unless forced, a worktree with uncommitted changes comes back
+  // "blocked" with git's refusal, and none of its terminals are closed.
+  const removeWorktree = async (
+    repoPath: string,
+    worktreePath: string,
+    force: boolean = false
+  ): Promise<WorktreeRemovalResult> => {
     try {
-      const matchingTerms = terminals.filter((t) => isSamePath(t.project_path, worktreePath));
-      for (const term of matchingTerms) {
-        try {
-          await invoke("kill_terminal", { terminalId: term.id });
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setTerminals((prev) => prev.filter((t) => t.project_path !== worktreePath));
-
-      await invoke("remove_git_worktree", {
-        repoPath,
-        worktreePath,
-        force,
-      });
+      const result = await removeWorktreeSafely(
+        {
+          checkClean: () => invoke<string | null>("check_git_worktree_clean", { worktreePath }),
+          closeTerminals: async () => {
+            const matchingTerms = terminals.filter((t) => isSamePath(t.project_path, worktreePath));
+            for (const term of matchingTerms) {
+              try {
+                await invoke("kill_terminal", { terminalId: term.id });
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            setTerminals((prev) => prev.filter((t) => !isSamePath(t.project_path, worktreePath)));
+          },
+          remove: (forceRemove) =>
+            invoke<void>("remove_git_worktree", {
+              repoPath,
+              worktreePath,
+              force: forceRemove,
+            }),
+        },
+        force
+      );
+      if (result.status === "blocked") return result;
 
       await refreshWorktrees(repoPath);
 
-      if (activeProject === worktreePath) {
+      if (isSamePath(activeProject, worktreePath)) {
         setActiveProject(repoPath);
       }
+      return result;
     } catch (err) {
       console.error("Failed to remove worktree:", err);
       throw err;
