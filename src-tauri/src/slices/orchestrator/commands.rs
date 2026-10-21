@@ -1,6 +1,7 @@
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
+use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
@@ -26,19 +27,35 @@ pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
     }
 }
 
+/// The `a2a-toast` payload: the notice, and who sent it.
+#[derive(Debug, Clone, Serialize)]
+struct BroadcastToast<'a> {
+    text: &'a str,
+    from_name: &'a str,
+}
+
+/// Shows each notice of `sent` in the trail, and raises the broadcast toast naming its sender.
+pub fn emit_broadcast(app_handle: &AppHandle, text: &str, sent: &Broadcast) {
+    for msg in &sent.notices {
+        emit_message(app_handle, msg);
+    }
+    let _ = app_handle.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
+}
+
+/// Mission Control's Broadcast box: reaches the peers in `project`, the active project.
 #[tauri::command]
 pub async fn a2a_broadcast_toast(
     text: String,
+    project: String,
     router: State<'_, A2ARouter>,
     pty_manager: State<'_, PtyManager>,
     app_handle: AppHandle,
 ) -> Result<Vec<A2AMessage>, String> {
-    let msgs = router.broadcast_toast_async(&text, &pty_manager).await;
-    for msg in &msgs {
-        emit_message(&app_handle, msg);
-    }
-    let _ = app_handle.emit("a2a-toast", text);
-    Ok(msgs)
+    let sent = router
+        .broadcast_toast_async(&text, &BroadcastSender::User { project }, &pty_manager)
+        .await?;
+    emit_broadcast(&app_handle, &text, &sent);
+    Ok(sent.notices)
 }
 
 #[tauri::command]

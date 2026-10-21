@@ -67,7 +67,7 @@ flowchart LR
 - Spawns Claude Code sessions with automatic MCP tool binding:
   - `quay_list_agents`: Discover the peers on the bus across projects, with their bus level (full peer, responder or listener), busy/waiting status and active tasks.
   - `quay_send_message`: Delegate subtasks or hand off diffs to peer agents with optional synchronous response blocking (up to 60s).
-  - `quay_broadcast`: Send non-intrusive alert toasts across every running peer. Shell and Archon terminals are skipped.
+  - `quay_broadcast`: Send a notice to every other running peer in the caller's project, with a toast that names the sender. A worktree counts as its own project, and shell and Archon terminals are skipped.
   - `quay_get_agent_status`: Inspect health, auto-approved tool count, and active command state.
 - **Operator Mission Control**: Dispatch tasks manually as the human supervisor or monitor autonomous conversations in real time.
 

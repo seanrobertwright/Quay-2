@@ -77,10 +77,11 @@ Sends a task prompt or delegation message to another running agent.
 - **Response**: text. A reply reads `Reply from <name>:` followed by the peer's answer. A wait that runs past 60 seconds returns `Peer agent (<name>) received the task but is still working.`, or, if the message is still queued, `Your message to peer agent (<name>) is queued behind its current turn and will be delivered when that turn ends.` Without a wait the answer is `Successfully dispatched task to <name>.`
 
 ### 3. `quay_broadcast`
-Dispatches a system alert banner and toast notification across every running peer simultaneously. Shell and Archon terminals are skipped. Each peer gets the notice the way it gets a `quay_send_message`, so a Claude Code terminal in a turn gets it when that turn ends.
+Types `[Broadcast Notice]: <text>` into every other running peer in the caller's project, and raises a toast that names the sender. A worktree counts as its own project, so a broadcast from a worktree's terminal stays in that worktree. The caller never gets its own notice, and shell and Archon terminals are skipped. Each peer gets the notice the way it gets a `quay_send_message`, so a Claude Code terminal in a turn gets it when that turn ends.
 - **Parameters**:
   - `text` (string, required): Notice text to display.
-  - `level` (string, optional: `"info"` | `"warning"` | `"critical"`): Severity level.
+- **Trail**: one entry per peer reached, credited to the sender and tagged **Broadcast**, for example `release-captain → feature-dev`. The toast reads **Swarm Broadcast from release-captain**.
+- **Response**: text naming the peers the notice reached, for example `Sent your notice to 2 peers in your project: feature-dev, docs-writer.`, followed by the ones holding it until their current turn ends and any Quay couldn't type it into. With no other running peer in the project, it says nobody got the notice.
 
 ### 4. `quay_get_agent_status`
 Inspects health, auto-approved tool count, and active execution status of a specific peer agent.
@@ -123,3 +124,5 @@ In addition to autonomous agent-to-agent chatter, human operators can intervene 
 3. **To**: Select recipient agent.
 4. **Message**: Type instructions.
 5. Click **Dispatch Task**: Monitor message delivery, elapsed wait time, and view formatted responses with 1-click clipboard copy.
+
+The **Broadcast** box sends a notice to every running peer in the active project, as `quay_broadcast` does for an agent. Its trail entries and toast credit **You**.

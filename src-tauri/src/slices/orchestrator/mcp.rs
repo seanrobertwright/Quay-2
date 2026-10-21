@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::Emitter;
 
-use super::commands::emit_message;
-use super::models::A2ADispatchRequest;
+use super::commands::{emit_broadcast, emit_message};
+use super::models::{A2ADispatchRequest, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
 use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
@@ -153,7 +153,7 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_broadcast",
-                        "description": "Broadcast a notification or status update to every running peer in Quay. Shell and Archon terminals are skipped.",
+                        "description": "Broadcast a notification or status update to every other running peer in your project. A worktree counts as its own project. You never get your own notice, and shell and Archon terminals are skipped. A peer in a turn gets it when that turn ends.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -313,7 +313,8 @@ pub async fn handle_mcp_request(
                                                 .get_messages()
                                                 .into_iter()
                                                 .rev()
-                                                .find(|m| m.to_terminal == target.id && m.from_terminal == caller_id)
+                                                // The caller's broadcast notice to the target also matches, so it is skipped
+                                                .find(|m| !m.broadcast && m.to_terminal == target.id && m.from_terminal == caller_id)
                                             {
                                                 let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
                                                 let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
@@ -361,19 +362,21 @@ pub async fn handle_mcp_request(
                     if text.is_empty() {
                         Err("Missing text argument".to_string())
                     } else {
-                        let msgs = a2a_router.broadcast_toast_async(text, &ctx.pty_manager).await;
-                        for msg in &msgs {
-                            emit_message(&ctx.app_handle, msg);
-                        }
-                        let _ = ctx.app_handle.emit("a2a-toast", text.to_string());
-                        Ok(json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": format!("Broadcasted notice to all active agents: {}", text)
-                                }
-                            ]
-                        }))
+                        let sender = BroadcastSender::Peer(caller_id.to_string());
+                        a2a_router
+                            .broadcast_toast_async(text, &sender, &ctx.pty_manager)
+                            .await
+                            .map(|sent| {
+                                emit_broadcast(&ctx.app_handle, text, &sent);
+                                json!({
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": broadcast_reply(&sent)
+                                        }
+                                    ]
+                                })
+                            })
                     }
                 }
 
@@ -506,6 +509,42 @@ const TARGET_DESCRIPTION: &str = "The peer's exact terminal ID or exact session 
     those in your project first, and one that two of them share is refused as ambiguous; pass the ID then. \
     An exited terminal is reached by its ID only, and a message to it is refused.";
 
+/// What `quay_broadcast` answers with: the peers its notice reached, those holding it until
+/// their turn ends, and those Quay couldn't type it into.
+fn broadcast_reply(sent: &Broadcast) -> String {
+    if sent.notices.is_empty() {
+        return "No other running peer is in your project, so nobody got the notice.".to_string();
+    }
+    let names = |keep: &dyn Fn(A2AMessageStatus) -> bool| -> Vec<&str> {
+        sent.notices
+            .iter()
+            .filter(|m| keep(m.status))
+            .map(|m| m.to_name.as_deref().unwrap_or(&m.to_terminal))
+            .collect()
+    };
+    let reached = names(&|s| s != A2AMessageStatus::Failed);
+    let queued = names(&|s| s == A2AMessageStatus::Queued);
+    let failed = names(&|s| s == A2AMessageStatus::Failed);
+
+    let mut reply = if reached.is_empty() {
+        "Your notice reached no peer.".to_string()
+    } else {
+        format!(
+            "Sent your notice to {} peer{} in your project: {}.",
+            reached.len(),
+            if reached.len() == 1 { "" } else { "s" },
+            reached.join(", ")
+        )
+    };
+    if !queued.is_empty() {
+        reply.push_str(&format!(" Queued until their current turn ends: {}.", queued.join(", ")));
+    }
+    if !failed.is_empty() {
+        reply.push_str(&format!(" Couldn't deliver it to: {}.", failed.join(", ")));
+    }
+    reply
+}
+
 /// The line `quay_get_agent_status` answers with, its status in the lowercase form
 /// `quay_list_agents` uses.
 fn agent_status_text(info: &TerminalInfo) -> String {
@@ -578,6 +617,7 @@ fn machina_submit_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slices::orchestrator::models::A2AMessage;
 
     #[test]
     fn test_jsonrpc_request_deserialize() {
@@ -614,6 +654,60 @@ mod tests {
         assert!(text.contains("status=working,"), "{text}");
         assert!(text.contains("name='answerer'"), "{text}");
         assert!(text.contains("task='Read package.json'"), "{text}");
+    }
+
+    fn notice(to_name: &str, status: A2AMessageStatus) -> A2AMessage {
+        A2AMessage {
+            id: format!("broadcast-{to_name}"),
+            from_terminal: "term-captain".to_string(),
+            to_terminal: format!("term-{to_name}"),
+            from_name: Some("release-captain".to_string()),
+            to_name: Some(to_name.to_string()),
+            content: "FREEZE".to_string(),
+            as_user: false,
+            broadcast: true,
+            timestamp: 0,
+            status,
+            response: None,
+            note: None,
+        }
+    }
+
+    fn sent(notices: Vec<A2AMessage>) -> Broadcast {
+        Broadcast { from_name: "release-captain".to_string(), notices }
+    }
+
+    #[test]
+    fn a_broadcast_reply_names_the_peers_it_reached_and_those_queued() {
+        let text = broadcast_reply(&sent(vec![
+            notice("feature-dev", A2AMessageStatus::Dispatched),
+            notice("docs-writer", A2AMessageStatus::Queued),
+        ]));
+        assert_eq!(
+            text,
+            "Sent your notice to 2 peers in your project: feature-dev, docs-writer. \
+             Queued until their current turn ends: docs-writer."
+        );
+    }
+
+    #[test]
+    fn a_broadcast_reply_says_which_peers_it_couldnt_reach() {
+        let text = broadcast_reply(&sent(vec![
+            notice("feature-dev", A2AMessageStatus::Dispatched),
+            notice("docs-writer", A2AMessageStatus::Failed),
+        ]));
+        assert_eq!(
+            text,
+            "Sent your notice to 1 peer in your project: feature-dev. Couldn't deliver it to: docs-writer."
+        );
+    }
+
+    #[test]
+    fn a_broadcast_reply_says_when_no_peer_got_it() {
+        assert_eq!(
+            broadcast_reply(&sent(Vec::new())),
+            "No other running peer is in your project, so nobody got the notice."
+        );
     }
 
     #[test]
