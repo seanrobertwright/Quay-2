@@ -8,6 +8,8 @@ on:
       - 'docs/**'
       - 'examples/**'
       - 'scripts/pack-starters.mjs'
+      - 'scripts/swarm-presets/**'
+      - 'src/slices/orchestrator/swarmTypes.ts'
       - '.github/workflows/deploy-docs.yml'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -34,7 +36,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22.18 or later: docs:build runs scripts/swarm-presets/sync.ts by stripping its types
+          node-version: 24
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

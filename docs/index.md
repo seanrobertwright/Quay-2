@@ -41,7 +41,7 @@ features:
     icon: 🏭
     link: /features/machina-praxis
   - title: 🪟 Swarm Presets & Splits
-    details: 1-click multi-agent swarm grids (TDD, Full-Stack, Red/Blue Team, Bug Hunter) with horizontal, vertical, and quad splits.
+    details: 1-click multi-agent swarm presets and your own saved swarms, with horizontal, vertical, and quad splits.
     icon: 🪟
     link: /features/swarm-presets
   - title: 🌿 Git Worktrees
