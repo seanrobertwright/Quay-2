@@ -16,6 +16,7 @@ Quay 2 is designed as a universal desktop cockpit for all major autonomous AI co
 | **xAI Grok CLI** | `grok` | ✅ Grok Code | ✅ Custom MCP adapter | ✅ Console output streaming |
 | **Aider** | `aider` | ✅ Any LLM via LiteLLM | ✅ Via MCP server extension | ✅ Git commit tracking |
 | **Kiro CLI** | `kiro` | ✅ Multi-model | ✅ Standard stdio | ✅ Console output streaming |
+| **OpenCode** | `opencode` | ✅ Multi-provider | ✅ Automatic via `OPENCODE_CONFIG_CONTENT` | ✅ Turn start and end from its own server |
 | **GitHub Copilot CLI** | `gh copilot` | ✅ OpenAI Copilot models | N/A | ✅ Interactive terminal |
 | **PowerShell** | `pwsh.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
 | **Command Prompt** | `cmd.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
@@ -54,11 +55,11 @@ This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the t
 ### Status Indicator Strip
 In the navigation rail and terminal status strip, Quay 2 displays live agent status:
 - **`Starting`**: The terminal is launching. Other agent CLIs leave it on their first output: a listener (Copilot, Kiro, Gemini, Grok, Pi, Aider) goes to `Unknown`, and any other agent to `Idle`. A Claude Code terminal stays here until Quay hears from its [event-bridge plugin](../guide/installation.md#event-bridge-plugin).
-- **`Working`** (Amber / Spinner): Agent is executing tools, thinking, or streaming tokens. An A2A message shows its receiver Working only when Quay will also see that turn end, which today means a Codex terminal or a Claude Code terminal not shown as `Unknown`. Any other receiver keeps its status. A Codex turn you start by typing into its pane doesn't show Working, because Codex reports only the end of a turn.
+- **`Working`** (Amber / Spinner): Agent is executing tools, thinking, or streaming tokens. An A2A message shows its receiver Working only when Quay will also see that turn end, which today means a Codex terminal, or a Claude Code or OpenCode terminal not shown as `Unknown`. Any other receiver keeps its status. A Codex turn you start by typing into its pane doesn't show Working, because Codex reports only the end of a turn.
 - **`Waiting ◆`** (Purple): Agent has paused awaiting operator approval or input.
 - **`Idle`** (Green): Agent turn completed and awaiting new task prompt.
 - **`Exited`** (Gray): Process terminated.
-- **`Unknown`**: Quay can't read whether the agent is working. A listener shows this from its first output. A Claude Code terminal shows it after sending no plugin event for 30 seconds after its first output, and its pane shows the plugin hint.
+- **`Unknown`**: Quay can't read whether the agent is working. A listener shows this from its first output. A Claude Code terminal shows it after sending no plugin event for 30 seconds after its first output, and its pane shows the plugin hint. An OpenCode terminal shows it when Quay can't reach the server its TUI runs for 60 seconds.
 
 ---
 

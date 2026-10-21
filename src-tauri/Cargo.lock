@@ -3966,6 +3966,9 @@ name = "tauri-app"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "parking_lot",
  "portable-pty",
  "serde",

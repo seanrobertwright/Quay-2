@@ -95,6 +95,33 @@ fn codex_bus_args(bridge_port: u16, notify_program: &Path) -> Vec<String> {
     .collect()
 }
 
+/// The variable OpenCode reads an extra layer of config from, as JSON.
+const OPENCODE_CONFIG_VAR: &str = "OPENCODE_CONFIG_CONTENT";
+
+/// The value an OpenCode terminal's `OPENCODE_CONFIG_CONTENT` receives: the Quay MCP server
+/// as `mcp.quay`, added to `workspace`, the value the terminal would otherwise get, when that
+/// is a JSON object. The server is `remote`, and its header names `{env:QUAY_A2A_TOKEN}`,
+/// which OpenCode expands from its environment, so the token stays out of the config.
+/// `oauth: false` keeps OpenCode from trying to sign in to it.
+pub fn opencode_config_content(bridge_port: u16, workspace: Option<&str>) -> String {
+    let mut config = workspace
+        .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok())
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !config["mcp"].is_object() {
+        config["mcp"] = serde_json::json!({});
+    }
+    config["mcp"]["quay"] = serde_json::json!({
+        "type": "remote",
+        "url": format!("http://127.0.0.1:{}/mcp", bridge_port),
+        "headers": {
+            "Authorization": "Bearer {env:QUAY_A2A_TOKEN}"
+        },
+        "oauth": false
+    });
+    config.to_string()
+}
+
 /// Sets the `CLAUDE_EVENTS_*` variables Claude Code's event-bridge plugin reads.
 fn set_event_bridge_env(
     cmd: &mut CommandBuilder,
@@ -197,6 +224,40 @@ fn claude_program() -> &'static str {
     program
 }
 
+/// The OpenCode executable's file name for this platform.
+fn opencode_file_name() -> &'static str {
+    #[cfg(windows)]
+    let name = "opencode.exe";
+    #[cfg(not(windows))]
+    let name = "opencode";
+    name
+}
+
+/// The program an OpenCode terminal starts. When a folder on `path`, the terminal's `PATH`,
+/// holds OpenCode, that is the bare name, which the spawn looks up on the same `PATH`.
+/// Otherwise it is bun's install, `.bun/bin` under `home`, when that exists, and failing
+/// that the bare name again, so the spawn error names it.
+fn opencode_program(path: Option<&std::ffi::OsStr>, home: Option<&std::path::Path>) -> String {
+    let name = opencode_file_name();
+    if path.is_some_and(|path| std::env::split_paths(path).any(|dir| dir.join(name).is_file())) {
+        return name.to_string();
+    }
+    home.map(|home| home.join(".bun").join("bin").join(name))
+        .filter(|bun| bun.is_file())
+        .map_or_else(|| name.to_string(), |bun| bun.to_string_lossy().to_string())
+}
+
+/// The `PATH` a terminal's process gets: the workspace's own when it sets one (Windows
+/// spells it `Path`, and the name is matched in any case), otherwise Quay's.
+fn terminal_path(request: &SpawnTerminalRequest) -> Option<std::ffi::OsString> {
+    request
+        .env_vars
+        .as_ref()
+        .and_then(|envs| envs.iter().find(|(key, _)| key.eq_ignore_ascii_case("PATH")))
+        .map(|(_, value)| value.into())
+        .or_else(|| std::env::var_os("PATH"))
+}
+
 /// Appends a decoded chunk to the replay buffer and returns the chunk's seq, one above the
 /// buffer's last. The count carries on from whatever seq the buffer started at, so a relaunched
 /// session keeps numbering above what its still-mounted pane has already seen.
@@ -295,12 +356,14 @@ fn shell_command(command_text: Option<&str>) -> CommandBuilder {
 }
 
 /// Builds the command line for a terminal: the CLI, its permission flags, custom flags,
-/// the launch prompt and, last, Quay's MCP config.
+/// the launch prompt and, last, Quay's MCP config. `server_port` is the loopback port an
+/// OpenCode terminal serves its events on; other CLIs ignore it.
 pub(crate) fn build_command(
     request: &SpawnTerminalRequest,
     terminal_id: &str,
     bridge_port: u16,
     bridge_token: &str,
+    server_port: Option<u16>,
 ) -> CommandBuilder {
     let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
 
@@ -402,13 +465,17 @@ pub(crate) fn build_command(
             }
         }
         RunKind::OpenCode => {
-            let opencode_path = std::env::var("USERPROFILE")
-                .ok()
-                .map(|home| std::path::PathBuf::from(home).join(".bun").join("bin").join("opencode.exe"))
-                .filter(|p| p.exists())
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| "opencode.exe".to_string());
-            let mut c = CommandBuilder::new(opencode_path);
+            let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+            let program = opencode_program(
+                terminal_path(request).as_deref(),
+                home.as_deref().map(std::path::Path::new),
+            );
+            let mut c = CommandBuilder::new(program);
+            // Its TUI serves its events there, which Quay reads (see `opencode_watch`)
+            if let Some(port) = server_port {
+                c.arg("--port");
+                c.arg(port.to_string());
+            }
             if perm == PermissionMode::Skip {
                 c.arg("--auto");
             }
@@ -429,6 +496,10 @@ pub(crate) fn build_command(
     }
     if request.run_kind.is_peer() {
         set_quay_env(&mut cmd, terminal_id, bridge_port, bridge_token);
+    }
+    if request.run_kind == RunKind::OpenCode {
+        let workspace = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
+        cmd.env(OPENCODE_CONFIG_VAR, opencode_config_content(bridge_port, workspace.as_deref()));
     }
 
     // Inject custom CLI launch flags (for any supported agent)
@@ -465,8 +536,9 @@ pub(crate) fn build_command(
         }
     }
 
-    // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration.
-    // `--mcp-config` takes several values and would read a bare argument after it as
+    // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration. OpenCode
+    // gets it through `OPENCODE_CONFIG_CONTENT` and Codex through its `-c` overrides, above.
+    // Claude's `--mcp-config` takes several values and would read a bare argument after it as
     // another config file, so it goes after the custom flags and the launch prompt.
     if request.run_kind == RunKind::Claude {
         cmd.arg("--mcp-config");
@@ -482,13 +554,17 @@ impl PtySession {
     /// Starts the process for `terminal_id`. `start_seq` is the last output seq already sent
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
-    /// `on_first_output` runs once, on the reader thread, when the process first writes output.
+    /// `server_port` is the port an OpenCode terminal serves its events on (see
+    /// `build_command`). `on_first_output` runs once, on the reader thread, when the process
+    /// first writes output.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
         start_seq: u64,
         bridge_port: u16,
         bridge_token: String,
+        server_port: Option<u16>,
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
     ) -> Result<Self, String> {
@@ -507,7 +583,7 @@ impl PtySession {
 
         let perm = request.permission_mode.unwrap_or(PermissionMode::Skip);
 
-        let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token);
+        let cmd = build_command(&request, &terminal_id, bridge_port, &bridge_token, server_port);
 
         let mut child = pair
             .slave
@@ -860,7 +936,7 @@ mod tests {
         request.custom_flags = Some("--model claude-sonnet-5-5".to_string());
         request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
 
-        let args = argv(&build_command(&request, "term-claude-prompt", 1234, "tok"));
+        let args = argv(&build_command(&request, "term-claude-prompt", 1234, "tok", Some(4567)));
 
         assert_eq!(args.len(), 7, "{:?}", args);
         assert_eq!(
@@ -881,7 +957,7 @@ mod tests {
         let mut request = spawn_request(run_kind);
         request.initial_prompt = prompt.map(str::to_string);
         // The program path of some CLIs depends on what is installed, so compare from argv[1]
-        argv(&build_command(&request, "term-forms", 1234, "tok"))[1..].to_vec()
+        argv(&build_command(&request, "term-forms", 1234, "tok", Some(4567)))[1..].to_vec()
     }
 
     /// Codex's arguments in Skip mode: its permission flag, then `rest`.
@@ -902,7 +978,10 @@ mod tests {
             args_with_prompt(RunKind::Codex, Some(p)),
             codex_args(&[bus_args(), vec![p.to_string()]].concat())
         );
-        assert_eq!(args_with_prompt(RunKind::OpenCode, Some(p)), ["--auto", "--prompt", p]);
+        assert_eq!(
+            args_with_prompt(RunKind::OpenCode, Some(p)),
+            ["--port", "4567", "--auto", "--prompt", p]
+        );
         assert_eq!(
             args_with_prompt(RunKind::Kiro, Some(p)),
             ["chat", "--trust-all-tools", p]
@@ -936,7 +1015,7 @@ mod tests {
         assert_eq!(args_with_prompt(RunKind::Codex, None), codex_args(&bus_args()));
         assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi", "--approve"]);
         assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
-        assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--auto"]);
+        assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--port", "4567", "--auto"]);
         assert_eq!(args_with_prompt(RunKind::Kiro, None), ["chat", "--trust-all-tools"]);
         assert_eq!(
             args_with_prompt(RunKind::Antigravity, None),
@@ -971,7 +1050,7 @@ mod tests {
         for mode in [PermissionMode::Normal, PermissionMode::Skip] {
             let mut request = spawn_request(RunKind::Codex);
             request.permission_mode = Some(mode);
-            let args = argv(&build_command(&request, "term-codex-bus", 4321, "tok-1"));
+            let args = argv(&build_command(&request, "term-codex-bus", 4321, "tok-1", Some(4567)));
             assert!(
                 args.windows(expected.len()).any(|w| w == expected.as_slice()),
                 "{:?}: {:?}",
@@ -993,7 +1072,7 @@ mod tests {
         request.custom_flags = Some("--model gpt-5 -c notify=[]".to_string());
         request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
 
-        let args = argv(&build_command(&request, "term-codex-order", 1234, "tok-1"));
+        let args = argv(&build_command(&request, "term-codex-order", 1234, "tok-1", Some(4567)));
 
         let expected: Vec<String> = ["--model", "gpt-5", "-c", "notify=[]"]
             .iter()
@@ -1006,19 +1085,29 @@ mod tests {
 
     #[test]
     fn the_codex_token_stays_off_the_command_line() {
-        let cmd = build_command(&spawn_request(RunKind::Codex), "term-codex-tok", 1234, "tok-secret");
+        let cmd = build_command(&spawn_request(RunKind::Codex), "term-codex-tok", 1234, "tok-secret", Some(4567));
         assert!(argv(&cmd).iter().all(|arg| !arg.contains("tok-secret")), "{:?}", argv(&cmd));
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-secret"));
     }
 
     #[test]
-    fn every_cli_that_gets_the_quay_mcp_server_is_wired_to_it() {
+    fn every_cli_that_gets_the_quay_mcp_server_is_wired_to_it_its_own_way() {
         for run_kind in crate::slices::pty::models::ALL_RUN_KINDS {
-            let args = argv(&build_command(&spawn_request(run_kind), "term-wired", 1234, "tok"));
-            let wired = args
-                .iter()
-                .any(|arg| arg == "--mcp-config" || arg.starts_with("mcp_servers.quay.url="));
-            assert_eq!(wired, run_kind.gets_quay_mcp(), "{:?}: {:?}", run_kind, args);
+            let cmd = build_command(&spawn_request(run_kind), "term-wired", 1234, "tok", Some(4567));
+            let args = argv(&cmd);
+            let mcp_config = args.iter().any(|arg| arg == "--mcp-config");
+            let codex_override = args.iter().any(|arg| arg.starts_with("mcp_servers.quay.url="));
+            let opencode_config = env_of(&cmd, "OPENCODE_CONFIG_CONTENT").is_some();
+            assert_eq!(mcp_config, run_kind == RunKind::Claude, "{:?}: {:?}", run_kind, args);
+            assert_eq!(codex_override, run_kind == RunKind::Codex, "{:?}: {:?}", run_kind, args);
+            assert_eq!(opencode_config, run_kind == RunKind::OpenCode, "{:?}", run_kind);
+            assert_eq!(
+                mcp_config || codex_override || opencode_config,
+                run_kind.gets_quay_mcp(),
+                "{:?}: {:?}",
+                run_kind,
+                args
+            );
         }
     }
 
@@ -1037,7 +1126,7 @@ mod tests {
         let shell_args = |run_kind: RunKind, text: Option<&str>| {
             let mut request = spawn_request(run_kind);
             request.command_text = text.map(str::to_string);
-            argv(&build_command(&request, "term-shell", 1234, "tok"))
+            argv(&build_command(&request, "term-shell", 1234, "tok", Some(4567)))
         };
         for run_kind in [RunKind::PowerShell, RunKind::Command, RunKind::Archon] {
             #[cfg(windows)]
@@ -1082,7 +1171,7 @@ mod tests {
             RunKind::Pi,
             RunKind::Aider,
         ] {
-            let cmd = build_command(&spawn_request(run_kind), "term-quay-env", 4321, "tok-1");
+            let cmd = build_command(&spawn_request(run_kind), "term-quay-env", 4321, "tok-1", Some(4567));
             assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-env"), "{:?}", run_kind);
             assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"), "{:?}", run_kind);
             assert_eq!(
@@ -1103,7 +1192,7 @@ mod tests {
     #[test]
     fn shell_and_archon_terminals_get_no_quay_variables() {
         for run_kind in [RunKind::PowerShell, RunKind::Command, RunKind::Archon] {
-            let cmd = build_command(&spawn_request(run_kind), "term-no-env", 4321, "tok-1");
+            let cmd = build_command(&spawn_request(run_kind), "term-no-env", 4321, "tok-1", Some(4567));
             for key in QUAY_ENV_KEYS {
                 assert_eq!(env_of(&cmd, key), None, "{:?} got {}", run_kind, key);
             }
@@ -1120,7 +1209,7 @@ mod tests {
                 .collect(),
         );
 
-        let cmd = build_command(&request, "term-quay-wins", 4321, "tok-1");
+        let cmd = build_command(&request, "term-quay-wins", 4321, "tok-1", Some(4567));
 
         assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-wins"));
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
@@ -1136,7 +1225,7 @@ mod tests {
                 .collect(),
         );
 
-        let cmd = build_command(&request, "term-bridge-wins", 4321, "tok-1");
+        let cmd = build_command(&request, "term-bridge-wins", 4321, "tok-1", Some(4567));
 
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_URL").as_deref(), Some("http://127.0.0.1:4321"));
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOKEN").as_deref(), Some("tok-1"));
@@ -1145,7 +1234,7 @@ mod tests {
 
     #[test]
     fn claude_keeps_the_event_bridge_variables_beside_the_quay_ones() {
-        let cmd = build_command(&spawn_request(RunKind::Claude), "term-claude-env", 4321, "tok-1");
+        let cmd = build_command(&spawn_request(RunKind::Claude), "term-claude-env", 4321, "tok-1", Some(4567));
 
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_URL").as_deref(), Some("http://127.0.0.1:4321"));
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOKEN").as_deref(), Some("tok-1"));
@@ -1153,8 +1242,109 @@ mod tests {
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_TOOLS").as_deref(), Some("full"));
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_PERMISSIONS").as_deref(), Some("off"));
         // The event-bridge plugin reads only Claude's variables
-        let codex = build_command(&spawn_request(RunKind::Codex), "term-codex-env", 4321, "tok-1");
+        let codex = build_command(&spawn_request(RunKind::Codex), "term-codex-env", 4321, "tok-1", Some(4567));
         assert_eq!(env_of(&codex, "CLAUDE_EVENTS_TOKEN"), None);
+    }
+
+    #[test]
+    fn opencode_serves_on_its_port_and_gets_the_quay_mcp_server_from_its_config_variable() {
+        let cmd = build_command(&spawn_request(RunKind::OpenCode), "term-oc", 4321, "tok-1", Some(4567));
+
+        assert_eq!(argv(&cmd)[1..], ["--port", "4567", "--auto"]);
+        let config = env_of(&cmd, "OPENCODE_CONFIG_CONTENT").expect("OpenCode gets its config variable");
+        assert!(!config.contains("tok-1"), "the token stays out of the config: {}", config);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&config).unwrap(),
+            serde_json::json!({
+                "mcp": {
+                    "quay": {
+                        "type": "remote",
+                        "url": "http://127.0.0.1:4321/mcp",
+                        "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
+                        "oauth": false
+                    }
+                }
+            })
+        );
+        assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn opencode_without_a_server_port_gets_no_port_flag() {
+        let cmd = build_command(&spawn_request(RunKind::OpenCode), "term-oc", 4321, "tok-1", None);
+        assert_eq!(argv(&cmd)[1..], ["--auto"]);
+    }
+
+    #[test]
+    fn a_workspace_opencode_config_keeps_its_settings_and_gains_the_quay_server() {
+        let quay = serde_json::json!({
+            "type": "remote",
+            "url": "http://127.0.0.1:4321/mcp",
+            "headers": { "Authorization": "Bearer {env:QUAY_A2A_TOKEN}" },
+            "oauth": false
+        });
+        let merged = |workspace: &str| -> serde_json::Value {
+            serde_json::from_str(&opencode_config_content(4321, Some(workspace))).unwrap()
+        };
+
+        assert_eq!(
+            merged(r#"{"model":"anthropic/claude-sonnet-5-5","mcp":{"docs":{"type":"local"},"quay":{"type":"local"}}}"#),
+            serde_json::json!({
+                "model": "anthropic/claude-sonnet-5-5",
+                "mcp": { "docs": { "type": "local" }, "quay": quay }
+            })
+        );
+        assert_eq!(merged(r#"{"mcp":"nonsense"}"#), serde_json::json!({ "mcp": { "quay": quay } }));
+        assert_eq!(merged("not json"), serde_json::json!({ "mcp": { "quay": quay } }));
+        assert_eq!(merged("[1, 2]"), serde_json::json!({ "mcp": { "quay": quay } }));
+
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars = Some(
+            [("OPENCODE_CONFIG_CONTENT".to_string(), r#"{"model":"x"}"#.to_string())]
+                .into_iter()
+                .collect(),
+        );
+        let cmd = build_command(&request, "term-oc-ws", 4321, "tok-1", Some(4567));
+        let config: serde_json::Value =
+            serde_json::from_str(&env_of(&cmd, "OPENCODE_CONFIG_CONTENT").unwrap()).unwrap();
+        assert_eq!(config["model"], "x");
+        assert_eq!(config["mcp"]["quay"], quay);
+    }
+
+    #[test]
+    fn opencode_is_found_on_the_path_first_then_in_buns_folder() {
+        let root = std::env::temp_dir().join(format!("quay-opencode-path-{}", std::process::id()));
+        let on_path = root.join("bin");
+        let home = root.join("home");
+        let bun_bin = home.join(".bun").join("bin");
+        std::fs::create_dir_all(&on_path).unwrap();
+        std::fs::create_dir_all(&bun_bin).unwrap();
+        let name = opencode_file_name();
+        let bun = bun_bin.join(name);
+        std::fs::write(&bun, b"").unwrap();
+        let path = std::env::join_paths([root.join("empty"), on_path.clone()]).unwrap();
+
+        // Not on the PATH: bun's install
+        assert_eq!(opencode_program(Some(&path), Some(&home)), bun.to_string_lossy());
+        // On the PATH: the bare name, which the spawn finds there
+        std::fs::write(on_path.join(name), b"").unwrap();
+        assert_eq!(opencode_program(Some(&path), Some(&home)), name);
+        // Neither: the bare name, so the spawn error names it
+        assert_eq!(opencode_program(None, Some(&root.join("nobody"))), name);
+        assert_eq!(opencode_program(None, None), name);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn opencode_looks_on_the_workspaces_path_when_it_sets_one() {
+        let mut request = spawn_request(RunKind::OpenCode);
+        request.env_vars = Some(
+            [("Path".to_string(), r"C:\stub-bin".to_string())].into_iter().collect(),
+        );
+        assert_eq!(terminal_path(&request), Some(std::ffi::OsString::from(r"C:\stub-bin")));
+        request.env_vars = None;
+        assert_eq!(terminal_path(&request), std::env::var_os("PATH"));
     }
 
     #[test]
@@ -1164,7 +1354,7 @@ mod tests {
         let mut request = spawn_request(RunKind::Pi);
         request.custom_flags = Some("--model it's".to_string());
         request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
-        let cmd = build_command(&request, "term-pi", 1234, "tok");
+        let cmd = build_command(&request, "term-pi", 1234, "tok", Some(4567));
         assert_eq!(
             argv(&cmd)[1..],
             [
@@ -1208,7 +1398,7 @@ mod tests {
                 .collect(),
         );
         request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
-        let cmd = build_command(&request, "term-pi-e2e", 1234, "tok");
+        let cmd = build_command(&request, "term-pi-e2e", 1234, "tok", Some(4567));
 
         let pair = native_pty_system()
             .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })

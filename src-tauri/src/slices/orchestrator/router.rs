@@ -1347,6 +1347,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_wait_on_an_opencode_terminal_mid_turn_is_held_then_answered_by_its_own_turn() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-oc-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-oc-busy", RunKind::OpenCode, ClaudeStatus::Working),
+        ]);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-oc-asker", "term-oc-busy"), Some(&pty), 60)
+                    .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(pty.test_input("term-oc-busy").is_empty(), "typed into a turn already running");
+
+        end_turn(&router, &pty, "term-oc-busy");
+        assert_eq!(pty.test_input("term-oc-busy")[0], "[Peer agent (term-oc-asker)]: What is 2+2?");
+        assert_eq!(pty.get_info("term-oc-busy").unwrap().claude_status, ClaudeStatus::Working);
+        answer_turn(&router, "term-oc-busy", "4");
+
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
+    }
+
+    #[tokio::test]
     async fn a_wait_on_a_queued_message_is_not_answered_by_the_turn_already_running() {
         let router = A2ARouter::new();
         let pty = manager_with(&[
@@ -1708,11 +1737,12 @@ mod tests {
         let pty = manager_with(&[
             ("term-q-sender5", RunKind::Claude, ClaudeStatus::Idle),
             ("term-q-gemini", RunKind::Gemini, ClaudeStatus::Working),
-            ("term-q-opencode", RunKind::OpenCode, ClaudeStatus::Working),
+            ("term-q-agy", RunKind::Antigravity, ClaudeStatus::Working),
             ("term-q-unknown", RunKind::Claude, ClaudeStatus::Unknown),
+            ("term-q-oc-unknown", RunKind::OpenCode, ClaudeStatus::Unknown),
         ]);
 
-        for target in ["term-q-gemini", "term-q-opencode", "term-q-unknown"] {
+        for target in ["term-q-gemini", "term-q-agy", "term-q-unknown", "term-q-oc-unknown"] {
             let msg = router.dispatch(peer_message("term-q-sender5", target), Some(&pty)).unwrap();
             assert_eq!(msg.status, A2AMessageStatus::Dispatched, "{target}");
             assert_eq!(pty.test_input(target).len(), 2, "{target}");
