@@ -34,6 +34,7 @@ interface A2AMessage {
   timestamp: number;
   status: "queued" | "dispatched" | "completed" | "failed";
   response?: string | null;
+  note?: string | null;
 }
 
 interface A2APanelProps {
@@ -625,6 +626,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                             <span>Failed</span>
                           </span>
                         )}
+                        {m.note && <span className="italic">{m.note}</span>}
                         <span>{new Date(m.timestamp).toLocaleTimeString()}</span>
                       </div>
                     </div>

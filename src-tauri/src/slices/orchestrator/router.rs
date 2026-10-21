@@ -471,20 +471,25 @@ impl A2ARouter {
             timestamp: now,
             status: A2AMessageStatus::Queued,
             response: None,
+            note: None,
         };
 
         (message, pty_prompt)
     }
 
-    /// Sends `request` and waits up to `timeout_secs` for the target's reply. A target
-    /// that can't reply (see `no_reply_answer`) still gets the message, and the sender is
-    /// told why at once; a running wait ends the same way as soon as its target can't reply.
+    /// Sends `request` and waits for the target's reply until `timeout_secs` after the call,
+    /// typing the message included. A target that can't reply (see `no_reply_answer`)
+    /// still gets the message, and the sender is told why at once; a running wait ends the
+    /// same way as soon as its target can't reply. A wait that runs out leaves the message
+    /// Queued or Dispatched with a "No reply within" note, and the turn it starts still
+    /// fills the entry in.
     pub async fn dispatch_and_wait(
         &self,
         request: A2ADispatchRequest,
         pty_manager: Option<&PtyManager>,
         timeout_secs: u64,
     ) -> Result<WaitOutcome, String> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
         // Refuse before registering a reply listener, so a refused send leaves none behind.
         let (resolved_target, target) = checked_target(&request, pty_manager)?;
         let target_name = target
@@ -532,7 +537,7 @@ impl A2ARouter {
             }
         };
 
-        match tokio::time::timeout(Duration::from_secs(timeout_secs), wait).await {
+        match tokio::time::timeout_at(deadline, wait).await {
             Ok(Ok(WaitOutcome::Reply(response))) => {
                 // Update message in history with the response
                 let mut history = self.messages.lock();
@@ -546,15 +551,17 @@ impl A2ARouter {
             Ok(Err(_)) => Err("Peer agent channel closed before replying".to_string()),
             Err(_) => {
                 self.forget_waiter(&resolved_target, &sent.id);
-                // A message still queued stays queued: it is typed in when its turn comes.
+                // The entry keeps its status and gains a note: the turn the message starts
+                // still fills it in. A turn that ended as the clock ran out already has.
                 let still_queued = {
                     let mut history = self.messages.lock();
-                    match history.iter_mut().rev().find(|m| m.id == sent.id) {
-                        Some(msg) if msg.status == A2AMessageStatus::Queued => true,
+                    match history.iter_mut().find(|m| m.id == sent.id) {
+                        Some(msg) if msg.status == A2AMessageStatus::Completed => {
+                            return Ok(WaitOutcome::Reply(msg.response.clone().unwrap_or_default()));
+                        }
                         Some(msg) => {
-                            msg.status = A2AMessageStatus::Failed;
-                            msg.response = Some("Timed out waiting for reply".to_string());
-                            false
+                            msg.note = Some(format!("No reply within {}s", timeout_secs));
+                            msg.status == A2AMessageStatus::Queued
                         }
                         None => false,
                     }
@@ -662,6 +669,7 @@ impl A2ARouter {
                 timestamp: now,
                 status: A2AMessageStatus::Queued,
                 response: None,
+                note: None,
             })
             .collect();
 
@@ -804,7 +812,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_a2a_dispatch_and_wait_as_user_marks_its_message_when_it_times_out() {
+    async fn a_wait_that_times_out_leaves_its_message_working_with_a_note() {
         let router = A2ARouter::new();
 
         let request = A2ADispatchRequest {
@@ -814,10 +822,48 @@ mod tests {
             as_user: Some(true),
         };
 
-        router.dispatch_and_wait(request, None, 0).await.unwrap();
+        let outcome = router.dispatch_and_wait(request, None, 0).await.unwrap();
+        let WaitOutcome::NoReply(answer) = outcome else {
+            panic!("no turn ended, so no reply came: {outcome:?}");
+        };
+        assert!(answer.contains("is still working"), "{answer}");
         let messages = router.get_messages();
-        assert_eq!(messages[0].status, A2AMessageStatus::Failed);
-        assert_eq!(messages[0].response.as_deref(), Some("Timed out waiting for reply"));
+        assert_eq!(messages[0].status, A2AMessageStatus::Dispatched);
+        assert_eq!(messages[0].response, None);
+        assert_eq!(messages[0].note.as_deref(), Some("No reply within 0s"));
+        assert!(router.pending_replies.lock().get("term-answerer").is_none());
+    }
+
+    #[tokio::test]
+    async fn the_answer_to_a_timed_out_wait_fills_its_entry_in_when_the_turn_ends() {
+        let router = A2ARouter::new();
+
+        router.dispatch_and_wait(peer_message("term-late-a", "term-late-b"), None, 0).await.unwrap();
+        let updated = answer_turn(&router, "term-late-b", "4").expect("the turn answers the message");
+
+        assert_eq!(updated.status, A2AMessageStatus::Completed);
+        assert_eq!(updated.response.as_deref(), Some("4"));
+        // The note stays: the sender never saw this answer
+        assert_eq!(updated.note.as_deref(), Some("No reply within 0s"));
+    }
+
+    #[tokio::test]
+    async fn the_wait_clock_starts_at_the_call_not_after_the_message_is_typed() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-clock-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-clock-idle", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+
+        let started = std::time::Instant::now();
+        router
+            .dispatch_and_wait(peer_message("term-clock-asker", "term-clock-idle"), Some(&pty), 1)
+            .await
+            .unwrap();
+
+        // Typing takes the 250ms submit delay; a clock started after it would run to 1.25s
+        let waited = started.elapsed();
+        assert!(waited < Duration::from_millis(1150), "waited {waited:?}");
     }
 
     #[test]
@@ -1080,8 +1126,17 @@ mod tests {
             panic!("no reply can come from a queued message: {outcome:?}");
         };
         assert!(answer.contains("is queued behind its current turn"), "{answer}");
-        assert_eq!(router.get_messages()[0].status, A2AMessageStatus::Queued);
+        assert!(answer.contains("will be delivered when that turn ends"), "{answer}");
+        let messages = router.get_messages();
+        assert_eq!(messages[0].status, A2AMessageStatus::Queued);
+        assert_eq!(messages[0].note.as_deref(), Some("No reply within 0s"));
         assert!(router.pending_replies.lock().get("term-q-longturn").is_none());
+
+        // Its turn still comes, and that turn's answer fills the entry in
+        end_turn(&router, &pty, "term-q-longturn");
+        let updated = answer_turn(&router, "term-q-longturn", "4").expect("the turn answers the message");
+        assert_eq!(updated.status, A2AMessageStatus::Completed);
+        assert_eq!(updated.response.as_deref(), Some("4"));
     }
 
     #[tokio::test]
