@@ -37,6 +37,6 @@ pub async fn set_terminal_live_mode(
     terminal_id: String,
     mode: PermissionMode,
     pty_manager: State<'_, PtyManager>,
-) -> Result<(), String> {
+) -> Result<PermissionMode, String> {
     pty_manager.set_live_mode(&terminal_id, mode)
 }

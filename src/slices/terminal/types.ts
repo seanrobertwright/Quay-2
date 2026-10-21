@@ -47,6 +47,18 @@ export type BusLevel = "full peer" | "responder" | "listener";
 export const TURN_END_RUN_KINDS = ["claude"] as const satisfies readonly RunKind[];
 
 /**
+ * The run kinds whose CLI never asks before a tool call, so they get no Skip and Ask toggle
+ * and always run as Skip. Mirrors `RunKind::never_asks_before_tools` in the backend.
+ * Kept on one line: the backend's `never_asks_run_kinds_match_the_frontend` test reads it.
+ */
+export const NEVER_ASKS_RUN_KINDS = ["pi"] as const satisfies readonly RunKind[];
+
+/** Whether the CLI never asks before a tool call. */
+export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
+  return (NEVER_ASKS_RUN_KINDS as readonly unknown[]).includes(kind);
+}
+
+/**
  * Whether the terminal is a Claude terminal that counts as a listener only because Quay
  * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
  */

@@ -1331,12 +1331,13 @@ export function useWorkspace() {
   const toggleTerminalLiveMode = async (terminalId: string, currentMode: PermissionMode) => {
     const newMode: PermissionMode = currentMode === "skip" ? "normal" : "skip";
     try {
-      await invoke("set_terminal_live_mode", {
+      // The backend keeps Skip for a CLI that never asks, so take the mode it stored
+      const stored = await invoke<PermissionMode>("set_terminal_live_mode", {
         terminalId,
         mode: newMode,
       });
       setTerminals((prev) =>
-        prev.map((t) => (t.id === terminalId ? { ...t, live_mode: newMode } : t))
+        prev.map((t) => (t.id === terminalId ? { ...t, live_mode: stored } : t))
       );
     } catch (err) {
       console.error("Failed to toggle live permission mode:", err);
