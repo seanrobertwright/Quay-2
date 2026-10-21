@@ -8,29 +8,36 @@ import {
   buildSidecar,
   capturePaths,
   checkCaptureMachine,
+  clipFrames,
   darkAppTheme,
   fixtureWorkspaces,
+  MAX_CLIP_SECONDS,
   parseCaptureArgs,
   parseCaptureManifest,
   parseSidecar,
   planCapture,
   readRecordings,
+  staleClips,
   type RecordingInfo,
 } from './capture.ts';
 
 const ROOT = join('E:', 'repo');
 
-test('capture arguments name a tutorial and the Quay exe; the port, speed and tool have defaults', () => {
+test('capture arguments name a tutorial and the Quay exe; the port, speed, tool and ffmpeg have defaults', () => {
   const args = parseCaptureArgs(['hello-a2a', '--exe', 'C:\\Quay\\quay.exe'], ROOT);
   assert.equal(args.tutorial.slug, 'hello-a2a');
   assert.equal(args.exe, 'C:\\Quay\\quay.exe');
   assert.equal(args.tool, join(ROOT, 'tools', 'record-replay', 'target', 'release', 'quay-record-replay.exe'));
   assert.equal(args.port, 9333);
   assert.equal(args.fast, 10);
+  assert.equal(args.ffmpeg, 'ffmpeg');
   assert.equal(args.byHand, false);
 
-  const custom = parseCaptureArgs(['first-swarm', '--exe', 'q.exe', '--tool', 't.exe', '--port', '9444', '--fast', '2.5', '--by-hand'], ROOT);
-  assert.deepEqual([custom.tool, custom.port, custom.fast, custom.byHand], ['t.exe', 9444, 2.5, true]);
+  const custom = parseCaptureArgs(
+    ['first-swarm', '--exe', 'q.exe', '--tool', 't.exe', '--port', '9444', '--fast', '2.5', '--ffmpeg', 'C:\\ffmpeg\\bin\\ffmpeg.exe', '--by-hand'],
+    ROOT,
+  );
+  assert.deepEqual([custom.tool, custom.port, custom.fast, custom.ffmpeg, custom.byHand], ['t.exe', 9444, 2.5, 'C:\\ffmpeg\\bin\\ffmpeg.exe', true]);
 });
 
 test('capture arguments are rejected when they are missing, unknown or out of range', () => {
@@ -45,6 +52,7 @@ test('capture arguments are rejected when they are missing, unknown or out of ra
     [['hello-a2a', '--exe', 'q.exe', '--fast', 'NaN'], /--fast/],
     [['hello-a2a', '--exe', 'q.exe', '--fast', '0'], /--fast/],
     [['hello-a2a', '--exe', 'q.exe', '--fast', '1000'], /--fast/],
+    [['hello-a2a', '--exe', 'q.exe', '--ffmpeg', ' '], /--ffmpeg/],
     [['hello-a2a', '--exe', 'q.exe', '--frobnicate'], /frobnicate/],
     [['hello-a2a', 'first-swarm', '--exe', 'q.exe'], /one tutorial/],
   ];
@@ -64,7 +72,7 @@ test("a tutorial's capture files: recordings and manifest beside the tool, still
 
 const manifest = (body: object) => JSON.stringify({ tutorial: 'hello-a2a', ...body });
 
-test('a capture manifest gives each marker its shots, waits, masks, pins and annotations', () => {
+test('a capture manifest gives each marker its shots, waits, masks, pins, annotations and clip', () => {
   const parsed = parseCaptureManifest(
     manifest({
       steps: [
@@ -82,7 +90,7 @@ test('a capture manifest gives each marker its shots, waits, masks, pins and ann
               pin: [{ selector: '.trail-time', text: '4s' }],
               annotations: [{ target: '.xterm >> nth=1', label: '1  The reply' }],
             },
-            { name: '02-two-agents-rail' },
+            { name: '02-two-agents-rail', clip: true },
           ],
         },
       ],
@@ -96,7 +104,7 @@ test('a capture manifest gives each marker its shots, waits, masks, pins and ann
     waitFor: [],
     timeout: 120,
     realTime: false,
-    shots: [{ name: '01-get-the-starter', pane: null, mask: [], pins: [], annotations: [] }],
+    shots: [{ name: '01-get-the-starter', pane: null, mask: [], pins: [], annotations: [], clip: false }],
   });
   assert.deepEqual(parsed.steps[1], {
     marker: '02-two-agents',
@@ -114,8 +122,9 @@ test('a capture manifest gives each marker its shots, waits, masks, pins and ann
         mask: ['.elapsed'],
         pins: [{ selector: '.trail-time', text: '4s' }],
         annotations: [{ target: '.xterm >> nth=1', label: '1  The reply' }],
+        clip: false,
       },
-      { name: '02-two-agents-rail', pane: null, mask: [], pins: [], annotations: [] },
+      { name: '02-two-agents-rail', pane: null, mask: [], pins: [], annotations: [], clip: true },
     ],
   });
 });
@@ -143,8 +152,54 @@ test('a capture manifest that does not fit the format is rejected with where it 
     [manifest({ steps: [{ marker: '01-a' }], extra: 1 }), /extra/],
     [manifest({ project: 'C:\\Users\\someone\\demo', steps: [{ marker: '01-a' }] }), /project.*user/],
     [manifest({ project: 'demo', steps: [{ marker: '01-a' }] }), /project/],
+    [manifest({ steps: [{ marker: '01-a', realTime: true, shots: [{ clip: 'yes' }] }] }), /steps\[0\]\.shots\[0\]\.clip/],
+    [manifest({ steps: [{ marker: '01-a', shots: [{ clip: true }] }] }), /steps\[0\]\.shots\[0\]\.clip.*realTime/],
+    [manifest({ steps: [{ marker: '01-a', realTime: true, shots: [{ clip: true, pane: '.xterm' }] }] }), /steps\[0\]\.shots\[0\]\.clip.*full window/],
+    [manifest({ steps: [{ marker: '01-a', realTime: true, shots: [{ clip: true, pin: [{ selector: '.spend', text: '$1' }] }] }] }), /steps\[0\]\.shots\[0\]\.clip.*pin/],
+    [
+      manifest({ steps: [{ marker: '01-a', realTime: true, shots: [{ clip: true }] }, { marker: '02-b', realTime: true, shots: [{ clip: true }] }] }),
+      /at most one clip.*01-a.*02-b/,
+    ],
   ];
   for (const [text, message] of bad) assert.throws(() => parseCaptureManifest(text, 'hello-a2a'), message, text);
+});
+
+test("the capture manifest's clip is the only .mp4 in the stills folder; any other would go stale beside its still", () => {
+  const withClip = parseCaptureManifest(manifest({ steps: [{ marker: '01-a' }, { marker: '02-b', realTime: true, shots: [{ clip: true }] }] }), 'hello-a2a');
+  const noClip = parseCaptureManifest(manifest({ steps: [{ marker: '01-a' }] }), 'hello-a2a');
+  assert.deepEqual(staleClips(withClip, ['01-a.webp', '02-b.webp', '02-b.mp4', 'index.md']), []);
+  assert.deepEqual(staleClips(withClip, ['01-a.mp4', '02-b.mp4', '02-B.MP4']), ['01-a.mp4', '02-B.MP4']);
+  assert.deepEqual(staleClips(noClip, ['01-a.webp', '01-a.mp4']), ['01-a.mp4']);
+});
+
+test('a clip runs at real speed from the start of its step to the moment its still is ready, each frame for as long as it was on screen', () => {
+  const frames = [
+    { file: 'f00000.png', at: 900 },
+    { file: 'f00001.png', at: 1_000 },
+    { file: 'f00002.png', at: 1_250 },
+    { file: 'f00003.png', at: 1_250 },
+    { file: 'f00004.png', at: 2_000 },
+    { file: 'f00005.png', at: 3_100 },
+  ];
+  // At 10 frames a second: the frame on screen when the step started opens the clip, frames after
+  // its end are dropped, and of two frames painted at the same moment only the later shows.
+  const repeat = (file: string, times: number) => Array<string>(times).fill(file);
+  assert.deepEqual(clipFrames(frames, 950, 2_950, 10), [
+    ...repeat('f00000.png', 1),
+    ...repeat('f00001.png', 2),
+    ...repeat('f00003.png', 8),
+    ...repeat('f00004.png', 9),
+  ]);
+  // A first frame painted after the step started opens the clip itself, not earlier.
+  assert.deepEqual(clipFrames(frames.slice(1), 950, 1_500, 10), [...repeat('f00001.png', 3), ...repeat('f00003.png', 2)]);
+});
+
+test('a clip over ten seconds is refused, not sped up, and a clip needs at least one frame', () => {
+  const frames = [{ file: 'f00000.png', at: 0 }];
+  assert.equal(clipFrames(frames, 0, MAX_CLIP_SECONDS * 1000, 30).length, MAX_CLIP_SECONDS * 30);
+  assert.throws(() => clipFrames(frames, 0, MAX_CLIP_SECONDS * 1000 + 100, 30), /10\.1 s.*ten seconds/);
+  assert.throws(() => clipFrames([], 0, 1000, 30), /no frames/);
+  assert.throws(() => clipFrames([{ file: 'f00000.png', at: 2_000 }], 0, 1_000, 30), /no frames/);
 });
 
 /** Writes recording `name` into `dir`: its cast header and events, and an empty HTTP log. */

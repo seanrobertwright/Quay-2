@@ -1,11 +1,11 @@
-// Captures a tutorial's screenshots: launches a built Quay against a fixture that replays the
-// tutorial's recordings, attaches over WebView2's debugging port, and takes each step's shots
-// when every replay has reached its marker. README.md beside this file says how.
+// Captures a tutorial's screenshots and its clip: launches a built Quay against a fixture that
+// replays the tutorial's recordings, attaches over WebView2's debugging port, and takes each
+// step's shots when every replay has reached its marker. README.md beside this file says how.
 //
-//   pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--port <n>] [--fast <n>] [--by-hand]
+//   pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--port <n>] [--fast <n>] [--ffmpeg <path>] [--by-hand]
 //
-// Exits 0 when every shot, the tutorial's section of the changed-shot report and the sidecar
-// manifest are written, 1 when the capture fails, and 2 on a bad argument.
+// Exits 0 when every shot, the clip, the tutorial's section of the changed-shot report and the
+// sidecar manifest are written, 1 when the capture fails, and 2 on a bad argument.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,16 +22,19 @@ import {
   checkCaptureMachine,
   darkAppTheme,
   fixtureWorkspaces,
+  MAX_CLIP_SECONDS,
   parseCaptureArgs,
   parseCaptureManifest,
   planCapture,
   readRecordings,
+  staleClips,
   type Action,
   type CaptureArgs,
   type MachineFacts,
   type PlannedStep,
   type Shot,
 } from './capture.ts';
+import { checkFfmpeg, encodeClip, startClip } from './clip.ts';
 import { parseCatFileBatch, readSavedShot, releaseBase, reportShots, shotReportDir, type CapturedShot, type SidecarCommit } from './shot-report.ts';
 
 const root = join(import.meta.dirname, '..', '..');
@@ -44,6 +47,8 @@ const MASK_COLOR = '#21262d';
 /** How long the terminals must stay unchanged before a shot, as xterm draws a frame at a time. */
 const QUIET_MS = 500;
 const CDP_TIMEOUT_MS = 30_000;
+/** How long a clip holds on its still after the last change, so its loop doesn't jump at once. */
+const CLIP_HOLD_MS = 500;
 
 /** The files the script shares with every replay in the capture, in the replay state folder. */
 const STATE = { speed: 'speed', runTo: 'run-to' } as const;
@@ -300,8 +305,8 @@ function quayVersion(page: Page): Promise<string> {
   });
 }
 
-/** Waits until every terminal's rows have stayed the same for `QUIET_MS`. */
-async function waitForQuietTerminals(page: Page, deadline: number) {
+/** Waits until every terminal's rows have stayed the same for `QUIET_MS`, and returns when they last changed. */
+async function waitForQuietTerminals(page: Page, deadline: number): Promise<number> {
   let last = '';
   let since = Date.now();
   for (;;) {
@@ -310,7 +315,7 @@ async function waitForQuietTerminals(page: Page, deadline: number) {
       last = now;
       since = Date.now();
     } else if (Date.now() - since >= QUIET_MS) {
-      return;
+      return since;
     }
     if (Date.now() > deadline) throw new Error('the terminals kept changing; a replay is not holding at the marker');
     await sleep(100);
@@ -447,6 +452,12 @@ async function main() {
   for (const [what, file] of [['--exe', args.exe], ['--tool', args.tool]]) {
     if (!existsSync(file)) throw new Error(`${what} ${file} does not exist`);
   }
+  const stale = existsSync(paths.stills) ? staleClips(manifest, readdirSync(paths.stills)) : [];
+  if (stale.length > 0) {
+    throw new Error(`capture.json records no clip ${stale.join(' or ')}, so it would go stale beside its still in ${relative(root, paths.stills)}; delete it, or set clip on its shot`);
+  }
+  const hasClip = plan.some(({ step }) => step.shots.some((shot) => shot.clip));
+  if (hasClip && !args.byHand) checkFfmpeg(args.ffmpeg);
   if (!args.byHand) await checkPortFree(args.port);
 
   // The fixture: Quay's own state, the webview's, the replays' and the fake CLIs, all fresh.
@@ -490,7 +501,7 @@ async function main() {
     const capturedOn = formatDateStamp(Date.now());
     let version: string;
     if (args.byHand) version = await captureByHand(plan, replayState, setState, paths.stills, join(work, 'by-hand'));
-    else version = await captureOverCdp(plan, replayState, setState, paths.stills, quay);
+    else version = await captureOverCdp(plan, replayState, setState, paths.stills, join(work, 'clip'), quay);
     const sidecar = buildSidecar({ tutorial: slug, quayVersion: version, capturedOn, recordings });
     const base = releaseBase(sidecarHistory(paths.sidecar), sidecar.quayVersion);
     const reportDir = shotReportDir(root, sidecar.quayVersion);
@@ -521,7 +532,7 @@ async function main() {
 
 type SetState = (file: string, value: string | null) => void;
 
-async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: SetState, stills: string, quay: ChildProcess): Promise<string> {
+async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: SetState, stills: string, clipDir: string, quay: ChildProcess): Promise<string> {
   await waitForCdp(args.port, quay);
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${args.port}`);
   try {
@@ -535,14 +546,29 @@ async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: S
       const { step } = planned;
       const deadline = Date.now() + step.timeout * 1000;
       const timeout = step.timeout * 1000;
+      const clipShot = step.shots.find((shot) => shot.clip);
       if (step.realTime) setState(STATE.speed, '1');
-      setState(STATE.runTo, step.marker);
-      for (const action of step.actions) await perform(page, action, timeout);
-      await waitForMarker(stateDir, planned, deadline);
-      if (step.realTime) setState(STATE.speed, String(args.fast));
-      for (const selector of step.waitFor) await page.locator(selector).first().waitFor({ state: 'visible', timeout: Math.max(1, deadline - Date.now()) });
-      await page.evaluate(() => document.fonts.ready);
-      await waitForQuietTerminals(page, deadline);
+      // The clip runs from just before the replays are released and the actions start to the
+      // moment the still is ready, so it ends on what the still, its poster, shows.
+      const clipMasks = clipShot === undefined ? [] : [page.getByText(PORT_BADGE), ...clipShot.mask.map((selector) => page.locator(selector))];
+      const clip = clipShot === undefined ? null : await startClip(page, clipMasks, MASK_COLOR, clipDir);
+      try {
+        setState(STATE.runTo, step.marker);
+        for (const action of step.actions) await perform(page, action, timeout);
+        await waitForMarker(stateDir, planned, deadline);
+        if (step.realTime) setState(STATE.speed, String(args.fast));
+        for (const selector of step.waitFor) await page.locator(selector).first().waitFor({ state: 'visible', timeout: Math.max(1, deadline - Date.now()) });
+        const shown = Date.now();
+        await page.evaluate(() => document.fonts.ready);
+        const lastChange = await waitForQuietTerminals(page, deadline);
+        if (clip !== null && clipShot !== undefined) {
+          const { start, frames } = await clip.stop();
+          encodeClip(args.ffmpeg, clipDir, frames, start, Math.max(shown, lastChange) + CLIP_HOLD_MS, join(stills, `${clipShot.name}.mp4`));
+          console.log(`${clipShot.name}.mp4`);
+        }
+      } finally {
+        await clip?.stop().catch(() => {});
+      }
       for (const shot of step.shots) {
         const file = join(stills, `${shot.name}.webp`);
         await takeShot(page, shot, file, timeout);
@@ -559,8 +585,9 @@ async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: S
 
 /**
  * The fallback: the same fixture and holds, with a person taking each shot with ShareX or
- * Snipping Tool. Shots are saved in `saved`, an empty folder of the capture's own, since the
- * committed stills sit in the stills folder, and each step's are copied there once all are in.
+ * Snipping Tool and the clip with ShareX. Shots and the clip are saved in `saved`, an empty
+ * folder of the capture's own, since the committed stills sit in the stills folder, and each
+ * step's are copied there once all are in.
  */
 async function captureByHand(plan: PlannedStep[], stateDir: string, setState: SetState, stills: string, saved: string): Promise<string> {
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -571,13 +598,20 @@ async function captureByHand(plan: PlannedStep[], stateDir: string, setState: Se
     mkdirSync(stills, { recursive: true });
     for (const planned of plan) {
       const { step } = planned;
+      const clip = step.shots.find((shot) => shot.clip);
       if (step.realTime) setState(STATE.speed, '1');
-      setState(STATE.runTo, step.marker);
       console.log(`\nStep ${step.marker}:`);
+      // The replays start playing the moment they are released, so the recording starts first.
+      if (clip !== undefined) await prompt.question(`  Start recording ${clip.name}.mp4 of the client area with ShareX's screen recorder (H.264 MP4, no audio), then press Enter. `);
+      setState(STATE.runTo, step.marker);
       for (const action of step.actions) console.log(`  ${describe(action)}`);
       if (planned.waitFor.length > 0) console.log(`  then wait for ${planned.waitFor.join(', ')} to reach ${step.marker} ...`);
       await waitForMarker(stateDir, planned, Number.POSITIVE_INFINITY);
       if (step.realTime) setState(STATE.speed, String(args.fast));
+      if (clip !== undefined) {
+        const masks = ['the port badge', ...clip.mask].join(', ');
+        console.log(`  Stop recording when Quay settles. Trim ${clip.name}.mp4 to the motion, ${MAX_CLIP_SECONDS} seconds or less, never sped up, blur ${masks}, and save it in ${saved}.`);
+      }
       for (const shot of step.shots) {
         const what = shot.pane === null ? 'the full window' : `the pane ${shot.pane}`;
         console.log(`  Take ${shot.name} of ${what}, blurring the port badge${shot.mask.length > 0 ? ` and ${shot.mask.join(', ')}` : ''}.`);
@@ -588,8 +622,10 @@ async function captureByHand(plan: PlannedStep[], stateDir: string, setState: Se
         if (answer.trim().toLowerCase() === 'q') throw new Error('the capture by hand was stopped');
         const shots = await Promise.all(step.shots.map(async (shot) => ({ shot, bytes: await readSavedShot(saved, shot.name, WEBP_QUALITY) })));
         const missing = shots.filter(({ bytes }) => bytes === null).map(({ shot }) => shot.name);
+        if (clip !== undefined && !existsSync(join(saved, `${clip.name}.mp4`))) missing.push(`${clip.name}.mp4`);
         if (missing.length === 0) {
           for (const { shot, bytes } of shots) writeFileSync(join(stills, `${shot.name}.webp`), bytes as Buffer);
+          if (clip !== undefined) copyFileSync(join(saved, `${clip.name}.mp4`), join(stills, `${clip.name}.mp4`));
           break;
         }
         console.log(`  Not saved yet: ${missing.join(', ')}.`);
