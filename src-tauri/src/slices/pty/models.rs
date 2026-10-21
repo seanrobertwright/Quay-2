@@ -95,6 +95,23 @@ impl RunKind {
         }
     }
 
+    /// Whether this CLI never asks before a tool call, so Quay's Skip and Ask choice means
+    /// nothing for it. Pi is one: its `--approve` trusts project-local files rather than
+    /// skipping approvals, so Quay never passes it. The frontend's `NEVER_ASKS_RUN_KINDS`
+    /// mirrors this.
+    pub fn never_asks_before_tools(&self) -> bool {
+        matches!(self, RunKind::Pi)
+    }
+
+    /// The permission mode a terminal of this CLI runs in: the one asked for, or Skip when
+    /// none was asked for or the CLI never asks before a tool call.
+    pub fn permission_mode(&self, requested: Option<PermissionMode>) -> PermissionMode {
+        match requested {
+            Some(mode) if !self.never_asks_before_tools() => mode,
+            _ => PermissionMode::Skip,
+        }
+    }
+
     /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
     /// The spawn and the team briefing both read this, so they cannot disagree.
     pub fn gets_quay_mcp(&self) -> bool {
@@ -560,6 +577,26 @@ mod tests {
             .map(|kind| kind.as_str().to_string())
             .collect();
         assert_eq!(frontend_run_kinds("TURN_END_RUN_KINDS"), backend);
+    }
+
+    #[test]
+    fn a_cli_that_never_asks_runs_as_skip_whatever_was_asked() {
+        for requested in [None, Some(PermissionMode::Skip), Some(PermissionMode::Normal)] {
+            assert_eq!(RunKind::Pi.permission_mode(requested), PermissionMode::Skip, "{:?}", requested);
+        }
+        assert_eq!(RunKind::Claude.permission_mode(Some(PermissionMode::Normal)), PermissionMode::Normal);
+        assert_eq!(RunKind::Claude.permission_mode(None), PermissionMode::Skip);
+    }
+
+    #[test]
+    fn never_asks_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.never_asks_before_tools())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(backend, ["pi"]);
+        assert_eq!(frontend_run_kinds("NEVER_ASKS_RUN_KINDS"), backend);
     }
 
     #[test]

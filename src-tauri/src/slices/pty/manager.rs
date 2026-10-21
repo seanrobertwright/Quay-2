@@ -187,13 +187,15 @@ impl PtyManager {
                         }
                     }
 
+                    // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
+                    let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
                     let info = TerminalInfo {
                         id: item.id.clone(),
                         name: item.name,
                         project_path: item.project_path,
                         run_kind: item.run_kind,
-                        permission_mode: item.permission_mode,
-                        live_mode: item.permission_mode,
+                        permission_mode,
+                        live_mode: permission_mode,
                         claude_status: ClaudeStatus::Exited,
                         auto_approved_count: item.auto_approved_count,
                         exit_code: Some(0),
@@ -810,11 +812,13 @@ impl PtyManager {
         }
     }
 
-    pub fn set_live_mode(&self, terminal_id: &str, mode: PermissionMode) -> Result<(), String> {
+    /// Sets the terminal's live mode and returns the mode it now has, which stays Skip for a
+    /// CLI that never asks before a tool call.
+    pub fn set_live_mode(&self, terminal_id: &str, mode: PermissionMode) -> Result<PermissionMode, String> {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {
-            info.live_mode = mode;
-            Ok(())
+            info.live_mode = info.run_kind.permission_mode(Some(mode));
+            Ok(info.live_mode)
         } else {
             Err(format!("Terminal {} not found", terminal_id))
         }
@@ -836,6 +840,20 @@ mod tests {
 
         assert_eq!(manager.last_seq("term-dormant"), 7);
         assert_eq!(manager.last_seq("term-unknown"), 0);
+    }
+
+    #[test]
+    fn a_terminal_whose_cli_never_asks_keeps_a_skip_live_mode() {
+        let manager = PtyManager::new();
+        for (id, run_kind) in [("term-pi", RunKind::Pi), ("term-claude", RunKind::Claude)] {
+            manager
+                .terminals_info
+                .lock()
+                .insert(id.to_string(), test_terminal(id, run_kind, ClaudeStatus::Idle));
+            manager.set_live_mode(id, PermissionMode::Normal).unwrap();
+        }
+        assert_eq!(manager.get_info("term-pi").unwrap().live_mode, PermissionMode::Skip);
+        assert_eq!(manager.get_info("term-claude").unwrap().live_mode, PermissionMode::Normal);
     }
 
     #[test]
