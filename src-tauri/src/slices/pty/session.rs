@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -53,6 +54,45 @@ pub fn mcp_config_arg(bridge_port: u16) -> String {
         }
     })
     .to_string()
+}
+
+/// The program name of Quay's Codex turn-end helper, as `bundle.externalBin` in
+/// `tauri.conf.json` names it.
+const CODEX_NOTIFY_NAME: &str = "quay-codex-notify";
+
+/// Quay's Codex turn-end helper. Tauri puts a sidecar beside the app's own executable, in the
+/// build folder and in an install alike.
+fn codex_notify_program() -> PathBuf {
+    let file = format!("{}{}", CODEX_NOTIFY_NAME, std::env::consts::EXE_SUFFIX);
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(&file)))
+        .unwrap_or_else(|| PathBuf::from(file))
+}
+
+/// `text` as a TOML basic string, the form Codex reads a `-c` value in. A JSON string is
+/// one: the two share their quoting and escapes.
+fn toml_string(text: &str) -> String {
+    serde_json::Value::from(text).to_string()
+}
+
+/// The `-c` overrides that put a Codex terminal on the bus for this run only: Quay's MCP
+/// server, whose `Authorization` header Codex fills from `QUAY_A2A_TOKEN` so the token stays
+/// off disk and off the command line; approval for every tool on that server, without which
+/// Codex refuses the call when its approval policy is `never`; and `notify`, which runs
+/// `notify_program` at each turn end.
+fn codex_bus_args(bridge_port: u16, notify_program: &Path) -> Vec<String> {
+    let url = format!("http://127.0.0.1:{}/mcp", bridge_port);
+    let notify = toml_string(&notify_program.to_string_lossy());
+    [
+        format!("mcp_servers.quay.url={}", toml_string(&url)),
+        format!("mcp_servers.quay.bearer_token_env_var={}", toml_string("QUAY_A2A_TOKEN")),
+        format!("mcp_servers.quay.default_tools_approval_mode={}", toml_string("approve")),
+        format!("notify=[{}]", notify),
+    ]
+    .into_iter()
+    .flat_map(|value| ["-c".to_string(), value])
+    .collect()
 }
 
 /// Sets the `CLAUDE_EVENTS_*` variables Claude Code's event-bridge plugin reads.
@@ -397,6 +437,14 @@ pub(crate) fn build_command(
         }
     }
 
+    // After the custom flags, so a custom `-c` can't replace them, and before the launch
+    // prompt, Codex's positional argument
+    if request.run_kind == RunKind::Codex {
+        for arg in codex_bus_args(bridge_port, &codex_notify_program()) {
+            cmd.arg(arg);
+        }
+    }
+
     // The launch prompt is one argument, never split, so multi-line prompts survive
     if let Some(prompt) = launch_prompt(request) {
         let form = request.run_kind.launch_prompt_form();
@@ -417,7 +465,7 @@ pub(crate) fn build_command(
     // Inject Quay MCP server for autonomous Agent-to-Agent (A2A) collaboration.
     // `--mcp-config` takes several values and would read a bare argument after it as
     // another config file, so it goes after the custom flags and the launch prompt.
-    if request.run_kind.gets_quay_mcp() {
+    if request.run_kind == RunKind::Claude {
         cmd.arg("--mcp-config");
         cmd.arg(mcp_config_arg(bridge_port));
     }
@@ -833,12 +881,23 @@ mod tests {
         argv(&build_command(&request, "term-forms", 1234, "tok"))[1..].to_vec()
     }
 
+    /// Codex's arguments in Skip mode: its permission flag, then `rest`.
+    fn codex_args(rest: &[String]) -> Vec<String> {
+        let mut args = vec!["--dangerously-bypass-approvals-and-sandbox".to_string()];
+        args.extend_from_slice(rest);
+        args
+    }
+
+    fn bus_args() -> Vec<String> {
+        codex_bus_args(1234, &codex_notify_program())
+    }
+
     #[test]
     fn each_cli_takes_the_launch_prompt_in_its_own_form() {
         let p = MULTI_LINE_PROMPT;
         assert_eq!(
             args_with_prompt(RunKind::Codex, Some(p)),
-            ["--dangerously-bypass-approvals-and-sandbox", p]
+            codex_args(&[bus_args(), vec![p.to_string()]].concat())
         );
         assert_eq!(args_with_prompt(RunKind::OpenCode, Some(p)), ["--auto", "--prompt", p]);
         assert_eq!(
@@ -869,11 +928,9 @@ mod tests {
 
     #[test]
     fn a_spawn_without_a_launch_prompt_gets_todays_arguments() {
-        // Expected values are the arguments each CLI was started with before launch prompts
-        assert_eq!(
-            args_with_prompt(RunKind::Codex, None),
-            ["--dangerously-bypass-approvals-and-sandbox"]
-        );
+        // Expected values are the arguments each CLI was started with before launch prompts,
+        // with Codex's bus overrides after its permission flag
+        assert_eq!(args_with_prompt(RunKind::Codex, None), codex_args(&bus_args()));
         assert_eq!(args_with_prompt(RunKind::Pi, None), ["/c", "pi"]);
         assert_eq!(args_with_prompt(RunKind::Gemini, None), ["/c", "gemini"]);
         assert_eq!(args_with_prompt(RunKind::OpenCode, None), ["--auto"]);
@@ -887,9 +944,88 @@ mod tests {
         assert_eq!(claude[..2], ["--dangerously-skip-permissions", "--mcp-config"]);
         assert_eq!(claude.len(), 3);
         // A blank prompt counts as none
+        assert_eq!(args_with_prompt(RunKind::Codex, Some("  \n")), codex_args(&bus_args()));
+    }
+
+    #[test]
+    fn codex_joins_the_bus_through_four_overrides_in_both_permission_modes() {
+        let notify = Path::new(r"C:\Program Files\Quay\quay-codex-notify.exe");
         assert_eq!(
-            args_with_prompt(RunKind::Codex, Some("  \n")),
-            ["--dangerously-bypass-approvals-and-sandbox"]
+            codex_bus_args(4321, notify),
+            [
+                "-c",
+                r#"mcp_servers.quay.url="http://127.0.0.1:4321/mcp""#,
+                "-c",
+                r#"mcp_servers.quay.bearer_token_env_var="QUAY_A2A_TOKEN""#,
+                "-c",
+                r#"mcp_servers.quay.default_tools_approval_mode="approve""#,
+                "-c",
+                r#"notify=["C:\\Program Files\\Quay\\quay-codex-notify.exe"]"#,
+            ]
+        );
+
+        let expected = codex_bus_args(4321, &codex_notify_program());
+        for mode in [PermissionMode::Normal, PermissionMode::Skip] {
+            let mut request = spawn_request(RunKind::Codex);
+            request.permission_mode = Some(mode);
+            let args = argv(&build_command(&request, "term-codex-bus", 4321, "tok-1"));
+            assert!(
+                args.windows(expected.len()).any(|w| w == expected.as_slice()),
+                "{:?}: {:?}",
+                mode,
+                args
+            );
+        }
+    }
+
+    #[test]
+    fn a_quote_in_the_helper_path_stays_inside_the_toml_string() {
+        assert_eq!(toml_string(r#"C:\a "b"\c"#), r#""C:\\a \"b\"\\c""#);
+    }
+
+    #[test]
+    fn codex_bus_overrides_follow_the_custom_flags_and_precede_the_launch_prompt() {
+        let mut request = spawn_request(RunKind::Codex);
+        request.permission_mode = Some(PermissionMode::Normal);
+        request.custom_flags = Some("--model gpt-5 -c notify=[]".to_string());
+        request.initial_prompt = Some(MULTI_LINE_PROMPT.to_string());
+
+        let args = argv(&build_command(&request, "term-codex-order", 1234, "tok-1"));
+
+        let expected: Vec<String> = ["--model", "gpt-5", "-c", "notify=[]"]
+            .iter()
+            .map(|a| a.to_string())
+            .chain(bus_args())
+            .chain([MULTI_LINE_PROMPT.to_string()])
+            .collect();
+        assert_eq!(args[1..], expected);
+    }
+
+    #[test]
+    fn the_codex_token_stays_off_the_command_line() {
+        let cmd = build_command(&spawn_request(RunKind::Codex), "term-codex-tok", 1234, "tok-secret");
+        assert!(argv(&cmd).iter().all(|arg| !arg.contains("tok-secret")), "{:?}", argv(&cmd));
+        assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-secret"));
+    }
+
+    #[test]
+    fn every_cli_that_gets_the_quay_mcp_server_is_wired_to_it() {
+        for run_kind in crate::slices::pty::models::ALL_RUN_KINDS {
+            let args = argv(&build_command(&spawn_request(run_kind), "term-wired", 1234, "tok"));
+            let wired = args
+                .iter()
+                .any(|arg| arg == "--mcp-config" || arg.starts_with("mcp_servers.quay.url="));
+            assert_eq!(wired, run_kind.gets_quay_mcp(), "{:?}: {:?}", run_kind, args);
+        }
+    }
+
+    #[test]
+    fn the_codex_turn_end_helper_sits_beside_quay() {
+        let program = codex_notify_program();
+        assert_eq!(program.parent(), std::env::current_exe().unwrap().parent());
+        assert_eq!(
+            program.file_name().unwrap().to_string_lossy(),
+            format!("quay-codex-notify{}", std::env::consts::EXE_SUFFIX)
         );
     }
 

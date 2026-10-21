@@ -61,9 +61,16 @@ impl RunKind {
     }
 
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
-    /// message reaches it and Idle again after. Only Claude's event-bridge plugin reports a
-    /// turn end today. The frontend's `TURN_END_RUN_KINDS` mirrors this.
+    /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
+    /// end, and so does Codex's turn-end helper, which Codex runs through its `notify`
+    /// setting. The frontend's `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
+        matches!(self, RunKind::Claude | RunKind::Codex)
+    }
+
+    /// Whether Quay hears a turn of this CLI start. Codex's turn-end helper runs only once a
+    /// turn has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
+    pub fn reports_turn_start(&self) -> bool {
         matches!(self, RunKind::Claude)
     }
 
@@ -100,7 +107,7 @@ impl RunKind {
     /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
     /// The spawn and the team briefing both read this, so they cannot disagree.
     pub fn gets_quay_mcp(&self) -> bool {
-        matches!(self, RunKind::Claude)
+        matches!(self, RunKind::Claude | RunKind::Codex)
     }
 
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
@@ -370,25 +377,27 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
     }
 }
 
+/// Every run kind, for tests that check a rule across all of them.
+#[cfg(test)]
+pub const ALL_RUN_KINDS: [RunKind; 13] = [
+    RunKind::Claude,
+    RunKind::Antigravity,
+    RunKind::Codex,
+    RunKind::Pi,
+    RunKind::Gemini,
+    RunKind::Grok,
+    RunKind::Aider,
+    RunKind::Kiro,
+    RunKind::Copilot,
+    RunKind::OpenCode,
+    RunKind::PowerShell,
+    RunKind::Command,
+    RunKind::Archon,
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const ALL_RUN_KINDS: [RunKind; 13] = [
-        RunKind::Claude,
-        RunKind::Antigravity,
-        RunKind::Codex,
-        RunKind::Pi,
-        RunKind::Gemini,
-        RunKind::Grok,
-        RunKind::Aider,
-        RunKind::Kiro,
-        RunKind::Copilot,
-        RunKind::OpenCode,
-        RunKind::PowerShell,
-        RunKind::Command,
-        RunKind::Archon,
-    ];
 
     fn terminal(run_kind: RunKind, claude_status: ClaudeStatus) -> TerminalInfo {
         test_terminal("term-level", run_kind, claude_status)
@@ -493,19 +502,38 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_reports_a_turn_end() {
+    fn only_claude_and_codex_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex]);
+    }
+
+    #[test]
+    fn only_claude_reports_a_turn_start() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.reports_turn_start())
+            .collect();
         assert_eq!(kinds, [RunKind::Claude]);
+    }
+
+    #[test]
+    fn only_claude_and_codex_get_the_quay_mcp_server() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.gets_quay_mcp())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex]);
     }
 
     #[test]
     fn a_terminal_shows_working_on_delivery_only_when_quay_will_see_the_turn_end() {
         assert!(terminal(RunKind::Claude, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
-        assert!(!terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
     }
 
@@ -554,14 +582,19 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_terminal_mid_turn_holds_deliveries() {
-        for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
-            assert!(terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
+    fn only_a_reporting_claude_or_a_codex_terminal_mid_turn_holds_deliveries() {
+        for kind in [RunKind::Claude, RunKind::Codex] {
+            for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
+                assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
+            }
+            for status in [ClaudeStatus::Idle, ClaudeStatus::Exited, ClaudeStatus::Unknown] {
+                assert!(!terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
+            }
         }
-        for status in [ClaudeStatus::Idle, ClaudeStatus::Exited, ClaudeStatus::Unknown] {
-            assert!(!terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
-        }
-        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Claude) {
+        for kind in ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| !matches!(kind, RunKind::Claude | RunKind::Codex))
+        {
             assert!(!terminal(kind, ClaudeStatus::Working).holds_deliveries(), "{:?}", kind);
         }
     }
