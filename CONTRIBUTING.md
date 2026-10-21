@@ -117,7 +117,7 @@ pnpm docs:test
 pnpm docs:build
 ```
 
-`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. It also fails on a tutorial page that breaks the step-card rules. `docs:test` runs the packing script's tests and the step-card tests in `scripts/step-cards/`, and `docs:typecheck` type-checks the step-card plugin and its tests.
+`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. It also fails on a tutorial page that breaks the step-card rules, and when the tutorial tables in `docs/tutorials/index.md` and `README.md` don't list exactly the tutorials whose pages exist. After adding a tutorial page, run `pnpm docs:tutorials` to rewrite both tables; the tutorial's title and one-line summary come from the list in `docs/.vitepress/tutorials.ts`, and the page's title must match it. `docs:test` runs the packing script's tests, the step-card tests in `scripts/step-cards/` and the tutorial-table tests in `scripts/tutorials/`, and `docs:typecheck` type-checks the step-card plugin, the tutorials list and their tests.
 
 ---
 
