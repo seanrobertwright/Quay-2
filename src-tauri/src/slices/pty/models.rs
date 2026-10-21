@@ -171,6 +171,20 @@ pub enum ClaudeStatus {
     Unknown,
 }
 
+impl ClaudeStatus {
+    /// The status as serde writes it, as `quay_list_agents` and `quay_get_agent_status` print it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ClaudeStatus::Starting => "starting",
+            ClaudeStatus::Working => "working",
+            ClaudeStatus::Waiting => "waiting",
+            ClaudeStatus::Idle => "idle",
+            ClaudeStatus::Exited => "exited",
+            ClaudeStatus::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalInfo {
     pub id: String,
@@ -330,6 +344,20 @@ mod tests {
             .into_iter()
             .filter(|kind| kind.bus_level() == level)
             .collect()
+    }
+
+    #[test]
+    fn claude_status_as_str_is_its_serde_form() {
+        for status in [
+            ClaudeStatus::Starting,
+            ClaudeStatus::Working,
+            ClaudeStatus::Waiting,
+            ClaudeStatus::Idle,
+            ClaudeStatus::Exited,
+            ClaudeStatus::Unknown,
+        ] {
+            assert_eq!(serde_json::to_value(&status).unwrap(), status.as_str());
+        }
     }
 
     #[test]

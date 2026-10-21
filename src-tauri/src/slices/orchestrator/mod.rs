@@ -4,6 +4,7 @@ pub mod mcp;
 pub mod models;
 pub mod router;
 pub mod swarms;
+pub mod target;
 
 pub use commands::*;
 pub use mcp::handle_mcp_request;

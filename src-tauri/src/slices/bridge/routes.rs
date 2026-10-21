@@ -16,6 +16,7 @@ use super::models::{
 };
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
+use crate::slices::orchestrator::router::strip_peer_prefix;
 use crate::slices::orchestrator::A2ARouter;
 use crate::slices::pty::manager::PtyManager;
 use crate::slices::pty::models::ClaudeStatus;
@@ -108,6 +109,15 @@ pub fn authenticate_mcp_caller(
         .ok_or((StatusCode::UNAUTHORIZED, "Invalid Bearer token"))
 }
 
+/// The task title a turn's prompt gives its terminal: the first line, without the
+/// `[Peer agent (<name>)]: ` prefix a peer's message arrives with, cut to 32 characters.
+/// `None` when that leaves nothing.
+fn task_title(prompt: &str) -> Option<String> {
+    let first_line = prompt.lines().next().unwrap_or("").trim_start();
+    let clean = strip_peer_prefix(first_line).trim();
+    (!clean.is_empty()).then(|| clean.chars().take(32).collect())
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -126,23 +136,16 @@ pub async fn handle_events(
                 .apply_plugin_event(terminal_id, &envelope.event_type);
             match envelope.event_type.as_str() {
                 "turn.started" => {
-                    if let Some(prompt) = envelope
+                    if let Some(title) = envelope
                         .data
                         .get("prompt")
                         .or_else(|| envelope.data.get("text"))
                         .or_else(|| envelope.data.get("query"))
                         .or_else(|| envelope.data.get("user_input"))
                         .and_then(|v| v.as_str())
+                        .and_then(task_title)
                     {
-                        let clean = prompt
-                            .lines()
-                            .next()
-                            .unwrap_or("")
-                            .trim();
-                        if !clean.is_empty() {
-                            let shortened: String = clean.chars().take(32).collect();
-                            ctx.pty_manager.update_task_title(terminal_id, &shortened);
-                        }
+                        ctx.pty_manager.update_task_title(terminal_id, &title);
                     }
                 }
                 "turn.completed" => {
@@ -391,6 +394,17 @@ mod tests {
             headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
         }
         headers
+    }
+
+    #[test]
+    fn a_task_title_drops_the_peer_prefix() {
+        assert_eq!(
+            task_title("[Peer agent (asker)]: Read package.json and reply in one line").as_deref(),
+            Some("Read package.json and reply in o")
+        );
+        assert_eq!(task_title("Fix the login bug\nmore detail").as_deref(), Some("Fix the login bug"));
+        assert_eq!(task_title("[Peer agent (asker)]:   "), None);
+        assert_eq!(task_title(""), None);
     }
 
     #[test]
