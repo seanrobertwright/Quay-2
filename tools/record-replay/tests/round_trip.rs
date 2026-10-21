@@ -44,6 +44,8 @@ struct Run {
     /// When the terminal opened, and when the prompt was typed into it.
     opened: Instant,
     prompted: Instant,
+    /// What the terminal showed just before the prompt was typed, and at the end.
+    text_before_prompt: String,
     text: String,
     exit_code: u32,
 }
@@ -86,10 +88,11 @@ fn run_terminal(
     let mut terminal = Terminal::open(program, args, env, cwd, 100, 30);
     terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
     std::thread::sleep(pause);
+    let text_before_prompt = terminal.text();
     let prompted = Instant::now();
     terminal.type_text(&format!("{PROMPT}\r"));
     let exit_code = terminal.wait_exit(WAIT);
-    Run { calls: bridge.received(), opened: terminal.started, prompted, text: terminal.text(), exit_code }
+    Run { calls: bridge.received(), opened: terminal.started, prompted, text_before_prompt, text: terminal.text(), exit_code }
 }
 
 fn recordings_dir(scratch: &Scratch) -> (PathBuf, PathBuf) {
@@ -167,5 +170,33 @@ fn a_replay_reissues_the_recorded_bridge_calls_as_the_live_terminal() {
         let recorded_at = seconds_between(recorded.opened, was.at);
         let replayed_at = seconds_between(replayed.opened, now.at);
         assert!((recorded_at - replayed_at).abs() < 0.5, "{} at {recorded_at:.3}s, replayed at {replayed_at:.3}s", was.what());
+    }
+}
+
+fn find<'a>(run: &'a Run, what: &str) -> &'a Received {
+    run.calls.iter().find(|c| c.what() == what).unwrap_or_else(|| panic!("no {what} in {:?}", whats(&run.calls)))
+}
+
+#[test]
+fn a_replayed_turn_starts_only_after_its_prompt_arrives() {
+    let scratch = Scratch::new("round-trip-prompt");
+    let (recordings, state) = recordings_dir(&scratch);
+    let recorded = record(&scratch, &recordings, "claude", Duration::ZERO);
+
+    // Quay types the prompt two seconds later than it did when the run was recorded.
+    let replayed = replay(&scratch, &recordings, &state, "claude", Duration::from_secs(2));
+
+    assert!(!replayed.text_before_prompt.contains("stub-agent: answered"), "{}", replayed.text_before_prompt);
+    assert!(replayed.text.contains("stub-agent: answered add a health route"), "{}", replayed.text);
+    let started = find(&replayed, "turn.started");
+    let completed = find(&replayed, "turn.completed");
+    assert!(started.at > replayed.prompted, "turn.started went out before the prompt arrived");
+    assert!(completed.at > started.at, "turn.completed went out before turn.started");
+    // What followed the prompt keeps its recorded pace from the prompt.
+    let after_prompt = ["turn.started", "tool.started", "tool.finished", "turn.completed"];
+    for what in after_prompt {
+        let recorded_at = seconds_between(recorded.prompted, find(&recorded, what).at);
+        let replayed_at = seconds_between(replayed.prompted, find(&replayed, what).at);
+        assert!((recorded_at - replayed_at).abs() < 0.5, "{what} {recorded_at:.3}s after the prompt, replayed {replayed_at:.3}s after");
     }
 }

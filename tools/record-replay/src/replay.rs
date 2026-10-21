@@ -5,15 +5,15 @@
 //! recorded one: anything recorded after a bridge call answered waits for the replayed call to
 //! answer, and everything after that is pushed back by the wait.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::console;
 use crate::http::{self, Request};
-use crate::recording::{self, Call, CastEvent, TAG_PLACEHOLDER};
+use crate::recording::{self, Call, CastEvent, Keys, TAG_PLACEHOLDER};
 
 /// The live terminal the replay stands in for, as Quay handed it to the CLI.
 struct Live {
@@ -59,6 +59,9 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
     items.sort_by(|a, b| a.t().total_cmp(&b.t()));
 
     let _raw = console::RawMode::enter();
+    let entered = count_enters();
+    // Enters the replay has waited for so far.
+    let mut used_enters = 0;
     let start = Instant::now();
     // Seconds the replay runs behind the recording, from waits on the live bridge.
     let mut behind = 0.0;
@@ -87,6 +90,15 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
                 "o" => {
                     let _ = out.write_all(event.data.as_bytes());
                     let _ = out.flush();
+                }
+                // A prompt submitted in the recording: wait for one to be submitted here, so
+                // the turn it started begins after it arrives, however late that is.
+                "i" if recording::enters(&event.data) > 0 => {
+                    used_enters += recording::enters(&event.data);
+                    while entered.load(Ordering::SeqCst) < used_enters {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    behind = f64::max(behind, start.elapsed().as_secs_f64() - t);
                 }
                 "x" => exit_code = event.data.trim().parse().ok(),
                 _ => {}
@@ -152,6 +164,25 @@ fn request_for(call: &Call, live: &Live) -> Request {
     let mut headers: Vec<(String, String)> = call.headers.iter().map(|(k, v)| (k.clone(), fill(v))).collect();
     headers.push(("authorization".into(), format!("Bearer {}", live.token)));
     Request { method: call.method.clone(), target: fill(&call.path), headers, body: body.into_bytes() }
+}
+
+/// Counts the Enters typed into the terminal from now on. Anything else typed is dropped: the
+/// recording already shows the CLI's echo of what was typed when it was made.
+fn count_enters() -> Arc<AtomicUsize> {
+    let entered = Arc::new(AtomicUsize::new(0));
+    let counter = entered.clone();
+    std::thread::spawn(move || {
+        let mut keys = Keys::default();
+        let mut input = std::io::stdin();
+        let mut buf = [0u8; 4096];
+        while let Ok(n) = input.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            counter.fetch_add(recording::enters(&keys.feed(&buf[..n])), Ordering::SeqCst);
+        }
+    });
+    entered
 }
 
 fn report(path: &Path, line: &str) {

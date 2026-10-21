@@ -51,9 +51,7 @@ struct Inner {
     cast: Option<BufWriter<File>>,
     http: Option<BufWriter<File>>,
     pending_output: Vec<u8>,
-    pending_input: Vec<u8>,
-    /// An escape sequence split across reads, kept until the rest arrives.
-    pending_keys: String,
+    keys: Keys,
 }
 
 impl Recorder {
@@ -81,7 +79,7 @@ impl Recorder {
             http_path,
             secret: secret.filter(|s| !s.is_empty()),
             tag: tag.filter(|s| !s.is_empty()),
-            inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), pending_input: Vec::new(), pending_keys: String::new() }),
+            inner: Mutex::new(Inner { cast: Some(cast), http: Some(BufWriter::new(http)), pending_output: Vec::new(), keys: Keys::default() }),
         })
     }
 
@@ -91,15 +89,11 @@ impl Recorder {
         self.event(&mut inner, "o", &text);
     }
 
-    /// Records keystrokes as the text they type. ConPTY sends keys in win32-input-mode once the
-    /// CLI's console asks for it; those, and the console's replies to cursor queries, are
-    /// decoded or dropped here, while the CLI itself gets the bytes as they came.
+    /// Records keystrokes as the text they type (see `Keys`), while the CLI itself gets the
+    /// bytes as they came.
     pub fn input(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock().unwrap();
-        let mut held = std::mem::take(&mut inner.pending_keys);
-        held.push_str(&take_utf8(&mut inner.pending_input, bytes));
-        let (typed, rest) = keystrokes(&held);
-        inner.pending_keys = rest;
+        let typed = inner.keys.feed(bytes);
         self.event(&mut inner, "i", &typed);
     }
 
@@ -302,6 +296,39 @@ fn take_utf8(pending: &mut Vec<u8>, bytes: &[u8]) -> String {
     let keep = rest.to_vec();
     *pending = keep;
     out
+}
+
+/// Turns the bytes a console reads into the text they type. ConPTY sends keys in
+/// win32-input-mode once a CLI's console asks for it, and the console answers cursor queries
+/// on the same input; both are decoded or dropped, and a sequence split across reads waits for
+/// its rest.
+#[derive(Default)]
+pub struct Keys {
+    pending_bytes: Vec<u8>,
+    pending_sequence: String,
+}
+
+impl Keys {
+    pub fn feed(&mut self, bytes: &[u8]) -> String {
+        let mut held = std::mem::take(&mut self.pending_sequence);
+        held.push_str(&take_utf8(&mut self.pending_bytes, bytes));
+        let (typed, rest) = keystrokes(&held);
+        self.pending_sequence = rest;
+        typed
+    }
+}
+
+/// How many times `typed` presses Enter, counting `\r\n` once.
+pub fn enters(typed: &str) -> usize {
+    let mut count = 0;
+    let mut previous = '\0';
+    for c in typed.chars() {
+        if c == '\r' || (c == '\n' && previous != '\r') {
+            count += 1;
+        }
+        previous = c;
+    }
+    count
 }
 
 /// The text a run of console input types, and any trailing escape sequence still incomplete.
