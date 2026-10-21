@@ -31,19 +31,23 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   );
 }
 /**
- * Whether the CLI takes a launch prompt on its command line. Mirrors
+ * The run kinds whose CLI takes a launch prompt on its command line. Mirrors
  * `RunKind::launch_prompt_form` in the backend, which decides what is actually sent.
  */
+export const LAUNCH_PROMPT_RUN_KINDS = [
+  "claude",
+  "codex",
+  "pi",
+  "gemini",
+  "kiro",
+  "copilot",
+  "opencode",
+] as const satisfies readonly RunKind[];
+export type LaunchPromptRunKind = (typeof LAUNCH_PROMPT_RUN_KINDS)[number];
+
+/** Whether the CLI takes a launch prompt on its command line. */
 export function takesLaunchPrompt(kind?: RunKind | string | null): boolean {
-  return (
-    kind === "claude" ||
-    kind === "codex" ||
-    kind === "pi" ||
-    kind === "gemini" ||
-    kind === "kiro" ||
-    kind === "copilot" ||
-    kind === "opencode"
-  );
+  return (LAUNCH_PROMPT_RUN_KINDS as readonly unknown[]).includes(kind);
 }
 export type PermissionMode = "skip" | "normal";
 export type ClaudeStatus =
