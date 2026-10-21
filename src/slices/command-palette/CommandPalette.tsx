@@ -15,6 +15,7 @@ import {
   KiroIcon,
   CopilotIcon,
   OpenCodeIcon,
+  PigIcon,
   PowerShellIcon,
 } from "../terminal/AgentIcons";
 import {
@@ -281,6 +282,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         subtitle: "Launch OpenCode multi-provider terminal agent",
         icon: <OpenCodeIcon className="w-4 h-4 text-[#f97316]" />,
         action: () => onNewTerminal("opencode"),
+      },
+      {
+        id: "action-new-pig",
+        category: "Tools & Actions",
+        title: "New PiG (Pi in Go) Agent",
+        subtitle: "Launch a PiG (Pi in Go) coding agent session",
+        icon: <PigIcon className="w-4 h-4 text-[#00ADD8]" />,
+        action: () => onNewTerminal("pig"),
       },
       {
         id: "action-new-shell",

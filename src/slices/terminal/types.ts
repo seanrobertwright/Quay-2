@@ -9,6 +9,7 @@ export const RUN_KINDS = [
   "kiro",
   "copilot",
   "opencode",
+  "pig",
   "powershell",
   "command",
   "archon",
@@ -27,6 +28,7 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
     kind === "kiro" ||
     kind === "copilot" ||
     kind === "opencode" ||
+    kind === "pig" ||
     kind === "archon"
   );
 }
@@ -37,7 +39,7 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
  */
 export const FULL_PEER_RUN_KINDS = ["claude", "codex", "opencode"] as const satisfies readonly RunKind[];
 export const RESPONDER_RUN_KINDS = ["antigravity"] as const satisfies readonly RunKind[];
-export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "copilot"] as const satisfies readonly RunKind[];
+export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "copilot", "pig"] as const satisfies readonly RunKind[];
 export type BusLevel = "full peer" | "responder" | "listener";
 
 /**
@@ -51,7 +53,7 @@ export const TURN_END_RUN_KINDS = ["claude", "antigravity", "codex", "opencode"]
  * and always run as Skip. Mirrors `RunKind::never_asks_before_tools` in the backend.
  * Kept on one line: the backend's `never_asks_run_kinds_match_the_frontend` test reads it.
  */
-export const NEVER_ASKS_RUN_KINDS = ["pi"] as const satisfies readonly RunKind[];
+export const NEVER_ASKS_RUN_KINDS = ["pi", "pig"] as const satisfies readonly RunKind[];
 
 /** Whether the CLI never asks before a tool call. */
 export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
@@ -99,6 +101,7 @@ export const LAUNCH_PROMPT_RUN_KINDS = [
   "kiro",
   "copilot",
   "opencode",
+  "pig",
 ] as const satisfies readonly RunKind[];
 export type LaunchPromptRunKind = (typeof LAUNCH_PROMPT_RUN_KINDS)[number];
 

@@ -56,6 +56,11 @@ export const SkipBanner: React.FC<SkipBannerProps> = ({ runKind, agentName }) =>
           title: "OpenCode CLI",
           description: "OpenCode auto-approves all tool permissions without asking.",
         };
+      case "pig":
+        return {
+          title: "PiG (Pi in Go)",
+          description: "PiG never asks before a tool call, so it runs shell tools and edits on its own.",
+        };
       case "claude":
       default:
         return {

@@ -14,6 +14,7 @@ const CLI_NAMES: Record<RunKind, string> = {
   kiro: 'Kiro CLI',
   copilot: 'GitHub Copilot',
   opencode: 'OpenCode',
+  pig: 'PiG',
   powershell: 'PowerShell',
   command: 'Command',
   archon: 'Archon',
