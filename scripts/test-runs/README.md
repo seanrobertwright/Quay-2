@@ -63,9 +63,16 @@ Do this once.
    `docs:build` packs every starter and check suite into the zips the page links to, so the
    preview has exactly what the live site will have. The preview serves the site at
    `http://localhost:4173/Quay-2/`.
-6. **Do the fresh-eyes read first** when this is the first run of a new run fingerprint. It is a
-   project skill, still to be built in issue #98, that hands the built page to a new agent and
-   lists where a newcomer would get stuck. Its findings go in the run's section.
+6. **Do the fresh-eyes read first** when this is the first run of a new run fingerprint. The
+   `fresh-eyes-read` project skill runs it in your own account:
+
+   ```powershell
+   pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
+   ```
+
+   It hands the built page to a new agent that sees nothing else, and prints where a newcomer
+   would get stuck as a `### Fresh-eyes findings` section. That section replaces the one in the
+   run's section you add next.
 7. **Add the run's section** to the record, in your own account, on the tutorial's branch:
 
    ```powershell

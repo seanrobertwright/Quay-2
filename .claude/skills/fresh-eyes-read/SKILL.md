@@ -46,6 +46,6 @@ A quote the script can't find in its step is kept and marked, so check where it 
 
 ## Record the findings
 
-The script prints a `### Fresh-eyes findings` section. Put it in the section for the coming run in `examples/tutorials/<slug>/test-runs.md`, and on a pull request in its description too. Then work through it with the maintainer, and fill in each finding's Outcome: fixed, or dismissed with a reason. A fix that changes a Do or Paste slot changes the run fingerprint.
+The script prints a `### Fresh-eyes findings` section. In `examples/tutorials/<slug>/test-runs.md`, it replaces the `### Fresh-eyes findings` section of the coming run, which `pnpm docs:test-run <slug>` adds. On a pull request, put it in the description too. Then work through it with the maintainer, and fill in each finding's Outcome: fixed, or dismissed with a reason. A fix that changes a Do or Paste slot changes the run fingerprint.
 
 The script names the folder that holds what the reader was given (`page.md` and the images) and its `findings.md`. Open it when a finding seems to misread the page, to see what the reader saw.
