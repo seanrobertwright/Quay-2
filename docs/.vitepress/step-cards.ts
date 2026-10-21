@@ -34,13 +34,19 @@ const LEVELS = ['Starter', 'Intermediate', 'Advanced'];
 const BEFORE_YOU_START = 'Before you start';
 const NEXT_UP = 'Next up';
 
-/** A step's screenshot, `./NN-<what>.webp` in the tutorial's own folder, where `NN` is the step number. */
-const SHOT = /^\.\/(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/;
+/**
+ * A screenshot's name, `NN-<what>`, where `NN` is the step number. A step marker in a recording
+ * takes the same name, and the capture script writes the still under it.
+ */
+export const SHOT_NAME = /^(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** A step's screenshot, `./NN-<what>.webp` in the tutorial's own folder. */
+const SHOT = new RegExp(`^\\.\\/${SHOT_NAME.source.slice(1, -1)}\\.webp$`);
 const IMAGE_FILE = /\.(?:webp|png|jpe?g|gif|avif|svg)$/i;
 const CLIP_FILE = /\.mp4$/i;
 /** Each tutorial's sidecar manifest is `<slug>/sidecar.json` in here, for the capture script to write. */
 const SIDECARS = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
-const VERSION = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+/** A Quay version as a release names it, `0.3.0` or `v0.3.0`; the group is the version without the `v`. */
+export const VERSION = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
 // Each container's tokens are `step_card_<name>_open` and `step_card_<name>_close`, so a VitePress
 // `::: tip` inside a step is never mistaken for a slot. These two are the only places that know it.

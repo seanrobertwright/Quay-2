@@ -26,7 +26,7 @@ Scripted Quay state used only to capture screenshots and never handed to a learn
 _Avoid_: Starter, sample data, mock, replay data
 
 **Step marker**:
-The named point in a fixture's recording where one step of the tutorial begins. Its name is the name of that step's screenshot, and the step card's You should see slot shows it.
+The named point in a fixture's recording where one step of the tutorial shows what its You should see slot describes. Its name is the name of that step's screenshot, which the capture script takes when the replays reach the marker and the step card's You should see slot shows.
 _Avoid_: Timestamp, checkpoint, bookmark
 
 **Step card**:

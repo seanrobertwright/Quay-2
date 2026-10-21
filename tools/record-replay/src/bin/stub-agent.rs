@@ -2,7 +2,7 @@
 //! Quay can see: it writes to its terminal, posts status events to `CLAUDE_EVENTS_URL` with the
 //! terminal's bearer token, calls the Quay MCP server named in `--mcp-config` (expanding
 //! `${CLAUDE_EVENTS_TOKEN}` in its headers), waits for one prompt typed into its terminal,
-//! answers it with a turn, and exits with code 7.
+//! answers it with a turn, and exits with code 7. Asked for `--version`, it prints one and exits.
 
 use std::io::{BufRead, Read, Write};
 use std::net::TcpStream;
@@ -12,6 +12,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[allow(dead_code)]
 #[path = "../console.rs"]
 mod console;
+
+/// What the stub prints for `--version`, as a real CLI prints its own.
+const STUB_VERSION: &str = "1.2.3 (stub-agent)";
 
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -66,6 +69,10 @@ fn mcp_server(args: &[String], token: &str) -> Option<(String, String, String)> 
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--version"] {
+        println!("{STUB_VERSION}");
+        return;
+    }
     let (cols, rows) = console::size();
     let name = std::env::current_exe().ok().and_then(|p| Some(p.file_stem()?.to_string_lossy().to_string()));
     println!("\x1b[32mstub-agent: hello from the real CLI ({})\x1b[0m", name.unwrap_or_default());

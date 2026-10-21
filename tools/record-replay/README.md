@@ -47,7 +47,7 @@ it:
       "name": "demo-project",
       "env_vars": {
         "PATH": "C:\\tutorials\\fake-cli;C:\\Users\\tester\\.local\\bin;C:\\Windows\\system32",
-        "QUAY_RECORD_DIR": "C:\\src\\Quay-2\\tools\\record-replay\\recordings\\a2a-1-hello-a2a",
+        "QUAY_RECORD_DIR": "C:\\src\\Quay-2\\tools\\record-replay\\recordings\\hello-a2a",
         "CLAUDE_CONFIG_DIR": "C:\\tutorials\\claude-config"
       }
     }
@@ -56,7 +56,8 @@ it:
 ```
 
 A replay fixture names only the tool's folder and the system folder on `PATH`, and sets
-`QUAY_REPLAY_DIR` and `QUAY_REPLAY_STATE` in place of `QUAY_RECORD_DIR`.
+`QUAY_REPLAY_DIR` and `QUAY_REPLAY_STATE` in place of `QUAY_RECORD_DIR`. The capture script,
+`pnpm docs:capture`, writes that fixture itself; `scripts/capture/README.md` says how.
 
 ## Record
 
@@ -74,11 +75,12 @@ A capture:
 
 1. Empties the tutorial's recordings folder. Recordings are numbered per CLI in the order
    terminals start, so old ones would shift the numbering.
-2. Starts Quay on the record fixture and, at the start of each step, runs
-   `quay-record-replay mark <folder> NN-<what>`. The name is the step's screenshot name,
-   two digits, a hyphen and lower-case words joined by hyphens, such as `06-reply-quoted`.
-   Every terminal being recorded marks it at that moment; a terminal that starts later marks
-   the latest step at its start.
+2. Starts Quay on the record fixture and, once each step shows what its You should see
+   slot describes, runs `quay-record-replay mark <folder> NN-<what>`. The name is the step's
+   screenshot name, two digits, a hyphen and lower-case words joined by hyphens, such as
+   `06-reply-quoted`, and the capture script takes that screenshot when the replays reach the
+   marker. Every terminal being recorded marks it at that moment; a terminal that starts
+   later marks the latest step at its start.
 3. Closes Quay, then runs `quay-record-replay finish <folder>`. A terminal whose CLI was still
    running when Quay closed it leaves its files uncompressed; `finish` gzips them and removes
    the markers file.
@@ -109,13 +111,29 @@ When the recorded CLI exited, the replay exits with its exit code; otherwise it 
 last screen until Quay closes the terminal. A call the live bridge refuses is listed in
 `<QUAY_REPLAY_STATE>/<recording>.errors`, since the terminal is the replay's screen.
 
+### How a capture steers the replays
+
+The capture script steers every replay in a capture through files in `QUAY_REPLAY_STATE`:
+
+| File | Who writes it | What it does |
+| --- | --- | --- |
+| `speed` | the script | A positive number every replay plays at: `1` is real time, `10` ten times as fast. Read every 50 ms, so a change takes effect mid-run. With no file, replays play in real time. A value that is not a positive number is listed in `<recording>.errors`; it, or a read that fails while the file is replaced, leaves the speed as it was. |
+| `run-to` | the script | A step marker's name. A replay that reaches that marker, or a later one, holds there until the file names a later step or is removed. With no file, nothing holds; a read that fails while the file is replaced keeps the hold. After a hold, what follows keeps its recorded pace from the release. |
+| `<recording>.markers` | each replay | Every step marker the replay has reached, one a line, written as it reaches it and before it holds there. |
+
+The script replaces `speed` and `run-to` whole, by renaming a new file over the old, so a replay never reads half a value. Holds and speed are the only things the script changes. Waits for a live Enter and for the
+bridge to answer still apply at any speed.
+
 ## Recording format
 
 Two gzipped files per terminal, named after the CLI and the terminal's place in the order
 terminals of that CLI started:
 
 - `<cli>-<n>.cast.gz`, the terminal stream as an asciicast v2 file. Its header carries the
-  terminal's `width` and `height` in columns and rows. Its events are output (`o`),
+  terminal's `width` and `height` in columns and rows, when the run started as `timestamp`
+  (Unix seconds), and the first line the real CLI printed for `--version` as `cli_version`
+  (left out when it printed none within ten seconds). The capture script's sidecar manifest
+  takes the recording date and CLI versions from these. Its events are output (`o`),
   keystrokes as the text they type (`i`), resizes (`r`), step markers (`m`) and, when the CLI
   exited by itself, its exit code (`x`, as asciicast v3 names it).
 - `<cli>-<n>.http.jsonl.gz`, the terminal's calls to the bridge, one JSON object a line in the
@@ -156,4 +174,6 @@ The tests run on Windows. They open terminals through ConPTY the way Quay does, 
 command looked up on the `PATH` the test hands the terminal, and use a stub agent CLI
 (`src/bin/stub-agent.rs`) and a stand-in bridge. The round trip records the stub's run,
 replays it with no agent CLI on `PATH` against a new bridge, and compares what both bridges
-received and what both terminals showed. The `Record and replay` workflow runs them.
+received and what both terminals showed. The capture tests replay recordings written by hand
+and steer them through the state folder: the markers reached, a hold at `run-to`, and a change
+of `speed` mid-run. The `Record and replay` workflow runs them.

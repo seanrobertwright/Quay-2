@@ -93,8 +93,9 @@ and nothing else. Unzip the starter into `C:\tutorials\<slug>`, the neutral proj
 recordings are made on, since an agent's output shows whatever paths it prints. Keep the record
 open in your own account and fill it in as you go.
 
-For the recording, run `quay-record-replay mark <recordings folder> NN-<what>` at the start of each
-step, with the name of that step's screenshot, such as `03-reply`. When the run is over, close
+For the recording, run `quay-record-replay mark <recordings folder> NN-<what>` once each step shows
+what its You should see slot describes, with the name of that step's screenshot, such as `03-reply`.
+The capture script takes that screenshot when the replays reach the marker. When the run is over, close
 Quay and run `quay-record-replay finish <recordings folder>`. The recordings are committed with
 the record.
 

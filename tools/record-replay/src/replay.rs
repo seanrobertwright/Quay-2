@@ -4,9 +4,13 @@
 //! The replay keeps the recording's causality where the live run can be slower than the
 //! recorded one: anything recorded after a bridge call answered waits for the replayed call to
 //! answer, and everything after that is pushed back by the wait.
+//!
+//! A capture script steers every replay in a capture through files in the state folder: it
+//! sets the speed they all play at, names the step marker they all hold at, and reads the
+//! markers each one has reached (see `recording::SPEED`, `RUN_TO` and `REACHED`).
 
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -49,9 +53,7 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
     let entered = count_enters();
     // Enters the replay has waited for so far.
     let mut used_enters = 0;
-    let start = Instant::now();
-    // Seconds the replay runs behind the recording, from waits on the live bridge.
-    let mut behind = 0.0;
+    let mut clock = Clock::new(Speed::new(state_dir, errors.clone()));
     let mut outstanding: Vec<Outstanding> = Vec::new();
     let mut out = std::io::stdout();
     let mut exit_code = None;
@@ -68,9 +70,9 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
         });
         outstanding.retain(|o| o.answered_at > t);
         if waited {
-            behind = f64::max(behind, start.elapsed().as_secs_f64() - t);
+            clock.catch_up(t);
         }
-        sleep_until(start + Duration::from_secs_f64(t + behind));
+        clock.wait_until(t);
 
         match item {
             Item::Cast(event) => match event.code {
@@ -85,7 +87,13 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
                     while entered.load(Ordering::SeqCst) < used_enters {
                         std::thread::sleep(Duration::from_millis(5));
                     }
-                    behind = f64::max(behind, start.elapsed().as_secs_f64() - t);
+                    clock.catch_up(t);
+                }
+                CastCode::Marker => {
+                    report(&state_dir.join(format!("{}.{}", recording.name, recording::REACHED)), &event.data);
+                    if hold_at(state_dir, &event.data) {
+                        clock.catch_up(t);
+                    }
                 }
                 CastCode::Exit => exit_code = event.data.trim().parse().ok(),
                 _ => {}
@@ -179,9 +187,105 @@ fn report(path: &Path, line: &str) {
     }
 }
 
-fn sleep_until(when: Instant) {
-    let now = Instant::now();
-    if when > now {
-        std::thread::sleep(when - now);
+/// Holds while the capture's run-to marker is at or before `marker`'s step. Returns whether it
+/// held.
+fn hold_at(state_dir: &Path, marker: &str) -> bool {
+    let Some(step) = recording::marker_step(marker) else { return false };
+    let run_to = state_dir.join(recording::RUN_TO);
+    // A read that fails while the script replaces the file keeps the hold; only a missing
+    // file or a later step releases it.
+    let holds = || match std::fs::read_to_string(&run_to) {
+        Ok(name) => recording::marker_step(name.trim()).is_none_or(|to| to <= step),
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+    };
+    let mut held = false;
+    while holds() {
+        held = true;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    held
+}
+
+/// The replay speed the capture sets in the state folder, read at most every 50 ms. With no
+/// speed file the replay plays in real time; a speed that is not a positive number is reported
+/// once, and it or a failed read leaves the replay at the speed it had.
+struct Speed {
+    file: PathBuf,
+    errors: Arc<PathBuf>,
+    current: f64,
+    read_at: Option<Instant>,
+    reported: Option<String>,
+}
+
+impl Speed {
+    fn new(state_dir: &Path, errors: Arc<PathBuf>) -> Self {
+        Speed { file: state_dir.join(recording::SPEED), errors, current: 1.0, read_at: None, reported: None }
+    }
+
+    fn get(&mut self) -> f64 {
+        if self.read_at.is_some_and(|at| at.elapsed() < Duration::from_millis(50)) {
+            return self.current;
+        }
+        self.read_at = Some(Instant::now());
+        match std::fs::read_to_string(&self.file) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => self.current = 1.0,
+            // The script is replacing the file; keep the speed until it reads.
+            Err(_) => {}
+            Ok(text) => match text.trim().parse::<f64>() {
+                Ok(speed) if speed.is_finite() && speed > 0.0 => self.current = speed,
+                _ if self.reported.as_deref() == Some(text.as_str()) => {}
+                _ => {
+                    let line = format!("{}: {text:?} is not a positive number; kept speed {}", self.file.display(), self.current);
+                    report(&self.errors, &line);
+                    self.reported = Some(text);
+                }
+            },
+        }
+        self.current
+    }
+}
+
+/// Where the replay is in the recording, in recorded seconds, moving at the capture's speed.
+struct Clock {
+    speed: Speed,
+    at: f64,
+    since: Instant,
+    rate: f64,
+}
+
+impl Clock {
+    fn new(mut speed: Speed) -> Self {
+        let rate = speed.get();
+        Clock { speed, at: 0.0, since: Instant::now(), rate }
+    }
+
+    fn now(&self) -> f64 {
+        self.at + self.since.elapsed().as_secs_f64() * self.rate
+    }
+
+    /// Sets the clock back to `t` when a wait has carried it past `t`, so what follows keeps its
+    /// recorded pace from now.
+    fn catch_up(&mut self, t: f64) {
+        if self.now() > t {
+            self.at = t;
+            self.since = Instant::now();
+        }
+    }
+
+    /// Sleeps until the clock reaches `t`, following any change of speed on the way.
+    fn wait_until(&mut self, t: f64) {
+        loop {
+            let rate = self.speed.get();
+            if rate != self.rate {
+                self.at = self.now();
+                self.since = Instant::now();
+                self.rate = rate;
+            }
+            let ahead = t - self.now();
+            if ahead <= 0.0 {
+                return;
+            }
+            std::thread::sleep(Duration::from_secs_f64((ahead / self.rate).min(0.05)));
+        }
     }
 }
