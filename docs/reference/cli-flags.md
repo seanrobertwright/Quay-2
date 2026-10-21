@@ -6,10 +6,10 @@ This document lists the startup parameters, command-line arguments, and environm
 
 ## Claude Code CLI Arguments
 
-When spawning Claude Code terminals, Quay 2 executes `claude.cmd` with deterministic argument ordering:
+When spawning Claude Code terminals, Quay 2 executes `claude.exe` with deterministic argument ordering:
 
 ```powershell
-claude.cmd [OPTIONS] [CUSTOM_FLAGS]
+claude.exe [OPTIONS] [CUSTOM_FLAGS]
 ```
 
 ### Standard Flags Injected by Quay 2

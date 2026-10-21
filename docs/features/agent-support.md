@@ -6,21 +6,28 @@ Quay 2 is designed as a universal desktop cockpit for all major autonomous AI co
 
 ## Agent Compatibility Matrix
 
-| Agent / Shell | Binary Command | Model Selection Support | A2A MCP Bus Integration | Telemetry & Turn Status |
-| :--- | :--- | :---: | :---: | :---: |
-| **Claude Code** | `claude.cmd` / `claude` | ✅ Full (Opus 5.5, Sonnet 5.5, Haiku 5.5) | ✅ Automatic via `--mcp-config` | ✅ Full turn/tool lifecycle |
-| **Antigravity CLI** | `agy.cmd` / `agy` | ✅ Inherited from active tier | ✅ Supported | ✅ Tool execution tracking |
-| **OpenAI Codex CLI** | `codex.exe` | ✅ GPT-4o / o1 / o3-mini | ✅ Automatic via `-c` overrides | ✅ Turn end, through Quay's `notify` helper |
-| **Pi Coding Agent** | `pi` | ✅ Pi multi-model | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **Google Gemini CLI** | `gemini` | ✅ Gemini 2.5 / 2.0 Pro | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **xAI Grok CLI** | `grok` | ✅ Grok Code | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **Aider** | `aider` | ✅ Any LLM via LiteLLM | ✅ Via MCP server extension | ✅ Git commit tracking |
-| **Kiro CLI** | `kiro` | ✅ Multi-model | ✅ Standard stdio | ✅ Console output streaming |
-| **OpenCode** | `opencode` | ✅ Multi-provider | ✅ Automatic via `OPENCODE_CONFIG_CONTENT` | ✅ Turn start and end from its own server |
-| **GitHub Copilot CLI** | `gh copilot` | ✅ OpenAI Copilot models | N/A | ✅ Interactive terminal |
-| **PowerShell** | `pwsh.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
-| **Command Prompt** | `cmd.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
-| **WSL** | `wsl.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
+Each agent CLI sits at one of three levels on the [A2A bus](./a2a-orchestration.md), the level `quay_list_agents` reports:
+
+- **Full peer**: Quay gives it the `quay_*` tools, so it can send messages, and it answers a sender who waits.
+- **Responder**: it answers a sender who waits, but has no `quay_*` tools, so it can't start a conversation.
+- **Listener**: Quay types messages into it, but it has no `quay_*` tools and Quay can't read its answer.
+
+The model column lists the presets in the **New Terminal** dialog. Every agent can also start on its own default model, and **Custom CLI Arguments** passes any other model flag.
+
+| Agent / Shell | Program Quay starts | Model presets | A2A bus level | Turn status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Claude Code** | `claude.exe` (`claude` off Windows) | Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5, the `fable`, `opus`, `sonnet` and `haiku` aliases, and earlier generations | Full peer, with its tools through `--mcp-config`. A listener while it shows Unknown, because its event-bridge plugin sent no event in the 30 seconds after its first output | Turn start and end, and the tool in use, from its event-bridge plugin |
+| **OpenAI Codex CLI** | `codex.exe` | o3, o4-mini, GPT-4.1, GPT-4o | Full peer, with its tools through `-c` overrides | Turn end, through Quay's `notify` helper |
+| **OpenCode** | `opencode.exe` from `PATH`, else from bun's `~/.bun/bin` | Claude Sonnet 5.5 and Opus 5.5, GPT-4o, Gemini 2.0 Flash, DeepSeek Chat | Full peer, with its tools through `OPENCODE_CONFIG_CONTENT` | Turn start and end, from the server its TUI runs |
+| **Antigravity CLI** | `agy.exe` | Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 3.8 Flash | Responder, answering through its OSC 7501 turn reports | Turn start and end, and Waiting while it is blocked, from its OSC 7501 turn reports |
+| **Pi Coding Agent** | `pi`, through `cmd.exe /c`, or through `pwsh.exe` with a launch prompt | Claude Sonnet (latest), GPT-4o, DeepSeek Reasoner, and high or max thinking | Listener | None: Unknown from its first output |
+| **Google Gemini CLI** | `gemini`, through `cmd.exe /c`, or through `pwsh.exe` with a launch prompt | Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 3.8 Flash | Listener | None: Unknown from its first output |
+| **xAI Grok CLI** | `agent.exe`, from `~/.grok/bin` when it is there | Grok 2 Beta, Grok Vision | Listener | None: Unknown from its first output |
+| **Aider** | `aider.exe` | Claude Sonnet 5.5 and Opus 5.5, DeepSeek R1, GPT-4o | Listener | None: Unknown from its first output |
+| **Kiro CLI** | `kiro-cli.exe chat`, from `%LOCALAPPDATA%\Kiro-Cli` when it is there | Claude Opus and Sonnet 5.5 and 5, GPT 5.6 Sol and Terra, DeepSeek V3.2, Qwen3 Coder Next, and the V3 engine (`--v3`) | Listener | None: Unknown from its first output |
+| **GitHub Copilot CLI** | `copilot.exe` from `%LOCALAPPDATA%\GitHub CLI\copilot`, else `gh copilot`, which gets no `--allow-all-tools` under Skip Permissions and so asks before its tools | Claude Sonnet 5.5, GPT-4o, o3-mini | Listener | None: Unknown from its first output |
+| **PowerShell Console** | `pwsh.exe` | N/A | Not a peer | None |
+| **Custom Command** | Your command line, run by `pwsh.exe -NoProfile -NoLogo -NoExit -Command`, so `cmd.exe` or `wsl.exe -d Ubuntu` opens that shell. Your PowerShell profile isn't loaded | N/A | Not a peer | None |
 
 ---
 
@@ -88,6 +95,6 @@ An Antigravity terminal is a responder: it answers a sender who waits and shows 
 ## PowerShell & Shell Multiplexing
 
 In addition to AI agents, Quay 2 functions as a premier Windows terminal multiplexer:
-- Full support for `pwsh.exe` (PowerShell 7) and `powershell.exe` (Windows PowerShell 5.1).
+- A **PowerShell Console** terminal starts `pwsh.exe` (PowerShell 7).
 - Native handling of PSReadLine keybindings, autocomplete menus, and syntax colorization.
-- Support for Command Prompt (`cmd.exe`) and Windows Subsystem for Linux (`wsl.exe -d Ubuntu`).
+- A **Custom Command** terminal runs its command line in `pwsh.exe`, without your profile, and stays open, so `powershell.exe` (Windows PowerShell 5.1), `cmd.exe` or `wsl.exe -d Ubuntu` opens that shell.

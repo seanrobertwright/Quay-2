@@ -15,7 +15,7 @@ Common questions, troubleshooting steps, and operational guidance for **Quay 2**
 ### Issue: Terminal Shows Blank Screen or Hangs on Spawn
 **Solution**:
 - Verify you are running on Windows 10 (1809+) or Windows 11. ConPTY is unsupported on Windows 7 / 8.
-- Ensure the target executable (e.g. `claude.cmd`, `pwsh.exe`) is accessible on your system `PATH`.
+- Ensure the target executable (e.g. `claude.exe`, `pwsh.exe`) is accessible on your system `PATH`.
 - Check `%LOCALAPPDATA%\Quay2\logs\` for any process spawn exceptions.
 
 ---

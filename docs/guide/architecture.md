@@ -37,7 +37,7 @@ graph TB
 
     subgraph OS["Windows Operating System"]
         ConPTY["Windows ConPTY Subsystem"]
-        Processes["claude.cmd, pwsh.exe, agy.cmd"]
+        Processes["claude.exe, pwsh.exe, agy.exe"]
         FS["%LOCALAPPDATA% / ~/.claude/"]
     end
 
@@ -56,7 +56,7 @@ graph TB
 
 ### 1. `pty` — ConPTY Process Lifecycle
 - Uses `portable-pty` to create Windows Pseudo-Console handles (`CreatePseudoConsole`).
-- Spawns command binaries (`claude.cmd`, `pwsh.exe`, `cmd.exe`) in dedicated background threads.
+- Spawns command binaries (`claude.exe`, `agy.exe`, `pwsh.exe`, and `cmd.exe` for the npm-shim CLIs) in dedicated background threads.
 - Reads ConPTY output buffers and emits asynchronous `pty-output` events to the Tauri webview.
 - Handles dynamic resizing (`pty-resize`) synchronized to xterm.js dimensions.
 - Monitors child exit status and notifies the frontend via `terminal-exited`.
