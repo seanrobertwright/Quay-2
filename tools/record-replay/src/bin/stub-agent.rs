@@ -84,6 +84,10 @@ fn main() {
 
     if !token.is_empty() {
         // A CLI that shows its token, in two writes, which a recording must still not keep.
+        // This breaks CONTRIBUTING.md's Credential Protection rule (never log authorization
+        // tokens to stdout) on purpose: the printed token is what the recording tests check the
+        // recorder scrubs. The stub is a test fixture and its token a test value, so leave the
+        // print in.
         let (head, tail) = token.split_at(token.len() / 2);
         print!("stub-agent: token {head}");
         let _ = std::io::stdout().flush();
