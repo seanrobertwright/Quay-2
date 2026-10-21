@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::Emitter;
 
+use super::commands::emit_message;
 use super::models::A2ADispatchRequest;
 use super::router::{A2ARouter, WaitOutcome};
 use super::target::resolve_target;
@@ -335,10 +336,9 @@ pub async fn handle_mcp_request(
                                         Err(e) => Err("Failed waiting for agent reply: ".to_string() + &e),
                                     }
                                 } else {
-                                    match a2a_router.dispatch(request, Some(&ctx.pty_manager)) {
+                                    match a2a_router.dispatch_async(request, Some(&ctx.pty_manager)).await {
                                         Ok(msg) => {
-                                            let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                                            let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
+                                            emit_message(&ctx.app_handle, &msg);
                                             Ok(json!({
                                                 "content": [
                                                     {
@@ -361,10 +361,9 @@ pub async fn handle_mcp_request(
                     if text.is_empty() {
                         Err("Missing text argument".to_string())
                     } else {
-                        let msgs = a2a_router.broadcast_toast(text, &ctx.pty_manager);
+                        let msgs = a2a_router.broadcast_toast_async(text, &ctx.pty_manager).await;
                         for msg in &msgs {
-                            let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
-                            let _ = ctx.app_handle.emit("a2a-message-dispatched", msg.clone());
+                            emit_message(&ctx.app_handle, msg);
                         }
                         let _ = ctx.app_handle.emit("a2a-toast", text.to_string());
                         Ok(json!({
