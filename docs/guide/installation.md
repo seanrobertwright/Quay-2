@@ -196,7 +196,7 @@ Each of these keeps an installed plugin from running, with its fix:
 - **The terminal started Claude Code with `--safe-mode`.** That flag turns plugins off too. Start a new Claude terminal without it, the same way.
 - **`disableAllHooks` is set in your Claude Code settings.** It stops the plugin's hooks. Remove the setting or set it to `false`, then relaunch the terminal.
 - **Your organization sets `allowManagedModsOnly`.** Only mods your organization manages can load. Ask whoever manages Claude Code for your organization to add the event-bridge plugin.
-- **Claude Code is older than 2.1.287.** Update it by running the native installer again, and check with `claude --version`.
+- **Claude Code is older than 2.1.296.** Update it by running the native installer again, and check with `claude --version`.
 
 To check whether Claude Code can load mods at all, run:
 
