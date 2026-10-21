@@ -17,7 +17,7 @@ use crate::recording::{self, Recorder};
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
     let (cols, rows) = console::size();
-    let bridge = std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| bridge_host(&u)).transpose()?;
+    let bridge = std::env::var("CLAUDE_EVENTS_URL").ok().filter(|u| !u.is_empty()).map(|u| http::bridge_host(&u)).transpose()?;
     let token = std::env::var("CLAUDE_EVENTS_TOKEN").ok();
     let tag = std::env::var("CLAUDE_EVENTS_TAG").ok();
     let recorder = Arc::new(Recorder::create(record_dir, cli, cols, rows, token, tag)?);
@@ -137,19 +137,6 @@ fn find_real_cli(name: &str, own_exe: &Path) -> Result<PathBuf, String> {
         }
     }
     Err(format!("no real {name} on PATH after the recorder; put its folder after the recorder's in the fixture's PATH"))
-}
-
-/// The `host:port` of the bridge `CLAUDE_EVENTS_URL` names, which Quay always gives as
-/// `http://127.0.0.1:<port>`.
-fn bridge_host(url: &str) -> Result<String, String> {
-    let bad = || format!("CLAUDE_EVENTS_URL {url:?} is not http://<host>:<port>");
-    let rest = url.strip_prefix("http://").ok_or_else(bad)?.trim_end_matches('/');
-    let (host, port) = rest.rsplit_once(':').ok_or_else(bad)?;
-    let port: u16 = port.parse().map_err(|_| bad())?;
-    if host.is_empty() || host.contains('/') || port == 0 {
-        return Err(bad());
-    }
-    Ok(rest.to_string())
 }
 
 /// Listens on a loopback port of its own and forwards every request to `bridge`, logging each

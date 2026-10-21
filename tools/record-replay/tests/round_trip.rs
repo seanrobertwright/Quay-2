@@ -115,3 +115,57 @@ fn a_replay_shows_what_the_recorded_cli_showed_without_the_cli() {
         assert!(replayed.text.contains(line), "the replay shows {line:?}: {}", replayed.text);
     }
 }
+
+/// The stub's bridge calls, in order, as `Received::what` names them.
+const STUB_CALLS: [&str; 7] = [
+    "session.started",
+    "initialize",
+    "tools/call quay_list_agents",
+    "turn.started",
+    "tool.started",
+    "tool.finished",
+    "turn.completed",
+];
+
+fn whats(calls: &[Received]) -> Vec<String> {
+    calls.iter().map(Received::what).collect()
+}
+
+/// A call's body with the terminal's id and event times taken out, which a replay changes.
+fn comparable(call: &Received, tag: &str) -> serde_json::Value {
+    let mut body: serde_json::Value = serde_json::from_str(&call.body.replace(tag, "<tag>")).unwrap();
+    for event in body["events"].as_array_mut().into_iter().flatten() {
+        event.as_object_mut().unwrap().remove("ts");
+    }
+    body
+}
+
+fn seconds_between(from: Instant, to: Instant) -> f64 {
+    to.saturating_duration_since(from).as_secs_f64()
+}
+
+#[test]
+fn a_replay_reissues_the_recorded_bridge_calls_as_the_live_terminal() {
+    let scratch = Scratch::new("round-trip-bridge");
+    let (recordings, state) = recordings_dir(&scratch);
+    let recorded = record(&scratch, &recordings, "claude", Duration::ZERO);
+
+    let replayed = replay(&scratch, &recordings, &state, "claude", Duration::ZERO);
+
+    assert_eq!(whats(&recorded.calls), STUB_CALLS);
+    assert_eq!(whats(&replayed.calls), STUB_CALLS, "the same calls, in the same order");
+    for (was, now) in recorded.calls.iter().zip(&replayed.calls) {
+        assert_eq!(now.path, was.path);
+        assert_eq!(now.header("authorization"), Some(format!("Bearer {}", LIVE.token).as_str()), "the live token: {now:?}");
+        assert_eq!(comparable(now, LIVE.tag), comparable(was, RECORDED.tag), "the recorded body");
+        for event in now.json()["events"].as_array().into_iter().flatten() {
+            assert_eq!(event["tag"], LIVE.tag, "every envelope carries the live terminal's id");
+        }
+    }
+    // Each call goes out as far into the run as it was recorded.
+    for (was, now) in recorded.calls.iter().zip(&replayed.calls) {
+        let recorded_at = seconds_between(recorded.opened, was.at);
+        let replayed_at = seconds_between(replayed.opened, now.at);
+        assert!((recorded_at - replayed_at).abs() < 0.5, "{} at {recorded_at:.3}s, replayed at {replayed_at:.3}s", was.what());
+    }
+}

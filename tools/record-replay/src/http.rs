@@ -154,3 +154,16 @@ pub fn write_response(out: &mut impl Write, response: &Response, close: bool) ->
     out.write_all(&response.body)?;
     out.flush()
 }
+
+/// The `host:port` of the bridge `CLAUDE_EVENTS_URL` names, which Quay always gives as
+/// `http://127.0.0.1:<port>`.
+pub fn bridge_host(url: &str) -> Result<String, String> {
+    let bad = || format!("CLAUDE_EVENTS_URL {url:?} is not http://<host>:<port>");
+    let rest = url.strip_prefix("http://").ok_or_else(bad)?.trim_end_matches('/');
+    let (host, port) = rest.rsplit_once(':').ok_or_else(bad)?;
+    let port: u16 = port.parse().map_err(|_| bad())?;
+    if host.is_empty() || host.contains('/') || port == 0 {
+        return Err(bad());
+    }
+    Ok(rest.to_string())
+}
