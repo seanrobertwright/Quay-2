@@ -152,6 +152,7 @@ It builds the site and hands only the built page's text, screenshots and alt tex
    - Open a PR against the `master` branch.
    - Provide a clear summary of the changes, motivation, and any UI screenshots or test output.
    - Link any relevant GitHub issues (`Fixes #123`).
+   - On a UI pull request, say whether it changes what a tutorial screenshot shows. The PR template has a checklist line for it. It is a heads-up for the screenshot recapture at the next release (see `RELEASING.md`), not a gate.
 
 ---
 

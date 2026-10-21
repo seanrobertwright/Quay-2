@@ -86,7 +86,7 @@ You can also launch a release without creating a local git tag:
 
 ---
 
-### Step 3: Automated CI Build & Publishing
+### Step 3: Automated CI Build & Draft Release
 
 The workflow `.github/workflows/release.yml` will automatically:
 1. Check out code and install Node 20, pnpm, Rust stable, and platform webkit/indicator libraries.
@@ -95,17 +95,49 @@ The workflow `.github/workflows/release.yml` will automatically:
    * **macOS** (Apple silicon): `Quay_0.2.0_aarch64.dmg` and `Quay_aarch64.app.tar.gz`
    * **Linux**: `Quay_0.2.0_amd64.AppImage`, `Quay_0.2.0_amd64.deb` and `Quay-0.2.0-1.x86_64.rpm`
 3. Sign the updater bundles (a `.sig` beside each) and compile the `latest.json` updater manifest.
-4. Publish a GitHub Release under **[Releases](https://github.com/seanrobertwright/Quay-2/releases)** with all binaries attached.
+4. Create a **draft** GitHub Release under **[Releases](https://github.com/seanrobertwright/Quay-2/releases)** with all binaries attached.
 
-### Step 4: Check the Tutorial Captures Before Deploying the Docs
+A draft is not published. Only people with write access to the repository see it, and installed copies don't update to it: the updater reads `releases/latest/download/latest.json`, and GitHub's latest release is never a draft. The draft waits for the steps below.
 
-Build the docs with the version being released set in `QUAY_RELEASE_VERSION`:
+### Step 4: Recapture, Re-run, Then Publish
 
-```powershell
-$env:QUAY_RELEASE_VERSION = "0.2.0"; pnpm docs:build; Remove-Item Env:QUAY_RELEASE_VERSION
-```
+Do these in order at every draft release. The order comes from the decisions on [keeping screenshots current](https://github.com/seanrobertwright/Quay-2/issues/15) and on [tutorial test runs](https://github.com/seanrobertwright/Quay-2/issues/14).
 
-With it set, `docs:build` fails on any tutorial whose sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, does not record that version as `quayVersion`. That catches a tutorial whose screenshots were not recaptured against this release. The variable takes `0.2.0` or `v0.2.0`, and anything else fails the build. Ordinary docs builds leave it unset and skip this check.
+1. **Recapture every tutorial against the draft.** On the capture machine, install Quay from the draft's Windows installer, downloaded from the draft's page under Releases. Then run the capture script for each tutorial with a capture manifest, `tools/record-replay/recordings/<slug>/capture.json`, with `--exe` set to the Quay the installer put in place:
+
+   ```powershell
+   pnpm docs:capture <slug> --exe <installed Quay exe>
+   ```
+
+   `scripts/capture/README.md` describes the capture machine and the script. Each capture writes the tutorial's stills beside its page, its sidecar manifest, and its section of the release's changed-shot report in `capture-reports/<version>/`.
+2. **Review the changed shots.** Open `capture-reports/<version>/index.html`. It lists the tutorials with changed or new shots and shows each changed shot's committed image beside its new one. A shot that changed for no reason the release explains is a regression to chase before publishing. Commit the new stills and sidecars on a branch, not on `master`: a push to `master` that touches `docs/` or `examples/` deploys the docs, and the docs wait for the release.
+3. **Re-run the affected tutorials on the draft.** Re-run each tutorial the report lists, plus any tutorial that uses a feature the release notes name. Write the release notes in the draft first, so that list is known. Each re-run is a test run as `scripts/test-runs/README.md` describes, with Quay installed from the draft's installer.
+4. **Publish the release.** Open the draft under Releases and publish it. Installed copies now see the update.
+5. **Deploy the docs.** On the branch with the new shots, build the docs with the version being released set in `QUAY_RELEASE_VERSION`:
+
+   ```powershell
+   $env:QUAY_RELEASE_VERSION = "0.2.0"; pnpm docs:build; Remove-Item Env:QUAY_RELEASE_VERSION
+   ```
+
+   With it set, `docs:build` fails on any tutorial whose sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, does not record that version as `quayVersion`. That catches a tutorial whose screenshots were not recaptured against this release. The variable takes `0.2.0` or `v0.2.0`, and anything else fails the build. Ordinary docs builds leave it unset and skip this check.
+
+   Once it passes, merge the branch with the new shots into `master`, with any tutorial branch that holds a re-run's record or a fix. The **Deploy Documentation to GitHub Pages** workflow deploys the site from that push.
+
+#### When a re-run fails on the draft
+
+A failed re-run holds the release. The draft stays unpublished until the app or the tutorial is fixed.
+
+* **The app is at fault.** Fix it on `master`, then replace the draft. Delete the draft and its tag, tag the fixed commit, and push the tag:
+
+  ```powershell
+  gh release delete v0.2.0 --cleanup-tag --yes
+  git fetch origin
+  git tag -f v0.2.0 origin/master
+  git push origin v0.2.0
+  ```
+
+  The workflow builds a new draft. Start again from recapture, since the fix can change what a screenshot shows.
+* **The tutorial is at fault.** Fix it on the tutorial's branch. A fix that changes the tutorial's run fingerprint needs two passing runs, not one. The fix merges when the release is published.
 
 ---
 
