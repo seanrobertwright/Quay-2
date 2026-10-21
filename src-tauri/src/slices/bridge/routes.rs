@@ -124,6 +124,17 @@ fn is_subagent_turn(envelope: &Envelope) -> bool {
     envelope.event_type.starts_with("turn.") && envelope.data.get("agentId").is_some()
 }
 
+/// The prompts a turn reports it started with, in its `inputMessages`, as Codex's turn-end
+/// helper sends them. `None` when the event carries no such list.
+fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
+    envelope.data.get("inputMessages")?.as_array().map(|inputs| {
+        inputs
+            .iter()
+            .filter_map(|input| input.as_str().map(str::to_string))
+            .collect()
+    })
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -165,7 +176,13 @@ pub async fn handle_events(
                         .unwrap_or("Turn completed")
                         .to_string();
                     // The router tells the trail listener about the entry it completes
-                    ctx.a2a_router.resolve_pending_reply(terminal_id, answer);
+                    let inputs = turn_inputs(&envelope);
+                    ctx.a2a_router.turn_completed(
+                        terminal_id,
+                        answer,
+                        inputs.as_deref(),
+                        &ctx.pty_manager,
+                    );
                 }
                 "tool.started" => {
                     let tool = envelope
@@ -411,6 +428,14 @@ mod tests {
             headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
         }
         headers
+    }
+
+    #[test]
+    fn a_turn_reports_the_prompts_it_started_with_only_when_it_lists_them() {
+        let mut event = event_for("term-a");
+        assert_eq!(turn_inputs(&event), None);
+        event.data = serde_json::json!({ "answer": "4", "inputMessages": ["first", 2, "second"] });
+        assert_eq!(turn_inputs(&event), Some(vec!["first".to_string(), "second".to_string()]));
     }
 
     #[test]

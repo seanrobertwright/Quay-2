@@ -163,11 +163,23 @@ struct HeldDelivery {
     text: String,
 }
 
+/// A message typed in whose turn hasn't started yet, and the text Quay typed for it.
+struct AwaitingTurn {
+    message_id: String,
+    text: String,
+}
+
+/// Whether `input`, a prompt a CLI reports its turn started with, is `typed` as Quay typed
+/// it. Spacing is not compared, since a CLI may trim or re-space what it reads.
+fn same_prompt(input: &str, typed: &str) -> bool {
+    input.split_whitespace().eq(typed.split_whitespace())
+}
+
 /// Which of a terminal's messages its turns answer.
 #[derive(Default)]
 struct TurnPairing {
     /// Messages typed in whose turn hasn't started yet, oldest first.
-    awaiting_turn: VecDeque<String>,
+    awaiting_turn: VecDeque<AwaitingTurn>,
     /// The message the running turn answers, when a delivered message started it.
     answering: Option<String>,
 }
@@ -182,16 +194,16 @@ struct DeliveryQueues {
 }
 
 impl DeliveryQueues {
-    /// Marks `terminal_id` as being typed into with `message_id`, which the next turn that
-    /// starts there answers. Recorded before the Enter goes in, so that turn's start can't
-    /// arrive first.
-    fn start_typing(&mut self, terminal_id: &str, message_id: &str) {
+    /// Marks `terminal_id` as being typed into with `message_id`, as `text`, which the next
+    /// turn that starts there answers. Recorded before the Enter goes in, so that turn's start
+    /// can't arrive first.
+    fn start_typing(&mut self, terminal_id: &str, message_id: &str, text: &str) {
         self.typing.insert(terminal_id.to_string());
         self.turns
             .entry(terminal_id.to_string())
             .or_default()
             .awaiting_turn
-            .push_back(message_id.to_string());
+            .push_back(AwaitingTurn { message_id: message_id.to_string(), text: text.to_string() });
     }
 
     /// Ends the typing `start_typing` began. A message that couldn't be typed awaits no turn.
@@ -199,7 +211,7 @@ impl DeliveryQueues {
         self.typing.remove(terminal_id);
         if !typed {
             if let Some(pairing) = self.turns.get_mut(terminal_id) {
-                pairing.awaiting_turn.retain(|id| id != message_id);
+                pairing.awaiting_turn.retain(|awaiting| awaiting.message_id != message_id);
             }
         }
     }
@@ -207,7 +219,22 @@ impl DeliveryQueues {
     /// Pairs the turn starting on `terminal_id` with the oldest message awaiting one.
     fn start_turn(&mut self, terminal_id: &str) {
         let pairing = self.turns.entry(terminal_id.to_string()).or_default();
-        pairing.answering = pairing.awaiting_turn.pop_front();
+        pairing.answering = pairing.awaiting_turn.pop_front().map(|awaiting| awaiting.message_id);
+    }
+
+    /// Pairs the turn on `terminal_id` that started with the prompts `inputs` with the oldest
+    /// message awaiting a turn whose typed text is one of them, or with none. Messages typed
+    /// before that one stop awaiting: the CLI reads its input in order, so no later turn
+    /// answers them.
+    fn start_turn_from_inputs(&mut self, terminal_id: &str, inputs: &[String]) {
+        let pairing = self.turns.entry(terminal_id.to_string()).or_default();
+        let matched = pairing
+            .awaiting_turn
+            .iter()
+            .position(|awaiting| inputs.iter().any(|input| same_prompt(input, &awaiting.text)));
+        pairing.answering = matched
+            .and_then(|at| pairing.awaiting_turn.drain(..=at).last())
+            .map(|awaiting| awaiting.message_id);
     }
 
     /// The message the turn ending on `terminal_id` answers, if a delivered message started it.
@@ -312,7 +339,7 @@ impl A2ARouter {
         let Some(pty) = pty_manager else {
             message.status = A2AMessageStatus::Dispatched;
             let mut queues = self.deliveries.lock();
-            queues.start_typing(&message.to_terminal, &message.id);
+            queues.start_typing(&message.to_terminal, &message.id, &text);
             queues.finish_typing(&message.to_terminal, &message.id, true);
             drop(queues);
             self.record(&message);
@@ -340,7 +367,7 @@ impl A2ARouter {
                 }
                 return Ok(self.message(&message.id).unwrap_or(message));
             }
-            queues.start_typing(&target, &message.id);
+            queues.start_typing(&target, &message.id, &text);
         }
 
         let typed = type_in(pty, &target, &text);
@@ -372,7 +399,7 @@ impl A2ARouter {
                 let Some(next) = queues.pop_next(terminal_id) else {
                     return;
                 };
-                queues.start_typing(terminal_id, &next.message_id);
+                queues.start_typing(terminal_id, &next.message_id, &next.text);
                 let exited = info.is_some_and(|t| t.claude_status == ClaudeStatus::Exited);
                 (next, exited)
             };
@@ -639,6 +666,32 @@ impl A2ARouter {
     /// of a later session answers a message typed into this one.
     pub fn forget_turns(&self, terminal_id: &str) {
         self.deliveries.lock().turns.remove(terminal_id);
+    }
+
+    /// Ends the turn running on `terminal_id` with `answer`, as the bridge does on its
+    /// `turn.completed` (see `resolve_pending_reply`). Quay never hears a Codex turn start
+    /// (`RunKind::reports_turn_start`), so a Codex turn is paired with its message here, at
+    /// its end, by `inputs`, the prompts the turn reports it started with: it answers the
+    /// message whose typed text is one of them. A turn the user or the launch prompt started
+    /// answers none, even when a message was typed in while it ran. Without `inputs` it
+    /// answers the oldest message typed in that no turn has taken yet.
+    pub fn turn_completed(
+        &self,
+        terminal_id: &str,
+        answer: String,
+        inputs: Option<&[String]>,
+        pty_manager: &PtyManager,
+    ) -> Option<A2AMessage> {
+        if pty_manager
+            .get_info(terminal_id)
+            .is_some_and(|t| !t.run_kind.reports_turn_start())
+        {
+            match inputs {
+                Some(inputs) => self.deliveries.lock().start_turn_from_inputs(terminal_id, inputs),
+                None => self.turn_started(terminal_id),
+            }
+        }
+        self.resolve_pending_reply(terminal_id, answer)
     }
 
     /// Ends the turn running on `terminal_id` with `answer`: completes the message that
@@ -1533,6 +1586,19 @@ mod tests {
         router.resolve_pending_reply(id, answer.to_string())
     }
 
+    /// Ends a Codex turn as the bridge does when Codex's helper reports it, with `inputs` as
+    /// the prompts the turn started with and `answer` as what it ended with.
+    fn codex_turn(
+        router: &A2ARouter,
+        pty: &PtyManager,
+        id: &str,
+        inputs: &[&str],
+        answer: &str,
+    ) -> Option<A2AMessage> {
+        let inputs: Vec<String> = inputs.iter().map(|i| i.to_string()).collect();
+        router.turn_completed(id, answer.to_string(), Some(&inputs), pty)
+    }
+
     /// Ends the terminal's turn as the bridge does on `turn.completed`.
     fn end_turn(router: &A2ARouter, pty: &PtyManager, id: &str) {
         pty.update_status(id, ClaudeStatus::Idle);
@@ -1642,11 +1708,11 @@ mod tests {
         let pty = manager_with(&[
             ("term-q-sender5", RunKind::Claude, ClaudeStatus::Idle),
             ("term-q-gemini", RunKind::Gemini, ClaudeStatus::Working),
-            ("term-q-codex", RunKind::Codex, ClaudeStatus::Working),
+            ("term-q-opencode", RunKind::OpenCode, ClaudeStatus::Working),
             ("term-q-unknown", RunKind::Claude, ClaudeStatus::Unknown),
         ]);
 
-        for target in ["term-q-gemini", "term-q-codex", "term-q-unknown"] {
+        for target in ["term-q-gemini", "term-q-opencode", "term-q-unknown"] {
             let msg = router.dispatch(peer_message("term-q-sender5", target), Some(&pty)).unwrap();
             assert_eq!(msg.status, A2AMessageStatus::Dispatched, "{target}");
             assert_eq!(pty.test_input(target).len(), 2, "{target}");
@@ -1921,6 +1987,136 @@ mod tests {
 
         assert!(router.resolve_pending_reply("term-tp-bc", "an older answer".to_string()).is_none());
         assert_eq!(answer_turn(&router, "term-tp-bc", "noted").unwrap().id, notice.id);
+    }
+
+    #[tokio::test]
+    async fn a_codex_turn_end_answers_the_message_typed_in_before_it() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-cx-asker", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-codex", RunKind::Codex, ClaudeStatus::Idle),
+        ]);
+
+        let waiting = {
+            let router = router.clone();
+            let pty = pty.clone();
+            tokio::spawn(async move {
+                router
+                    .dispatch_and_wait(peer_message("term-cx-asker", "term-cx-codex"), Some(&pty), 60)
+                    .await
+            })
+        };
+        // Past the submit delay, so the message and its Enter are both typed in
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(pty.test_input("term-cx-codex").len(), 2);
+        assert_eq!(pty.get_info("term-cx-codex").unwrap().claude_status, ClaudeStatus::Working);
+
+        // Codex's helper reports only the turn end, with the prompt that started the turn
+        let typed = pty.test_input("term-cx-codex")[0].clone();
+        let completed = codex_turn(&router, &pty, "term-cx-codex", &[&typed], "4").unwrap();
+
+        assert_eq!(completed.status, A2AMessageStatus::Completed);
+        let outcome = at_once(waiting).await.unwrap().unwrap();
+        assert_eq!(outcome, WaitOutcome::Reply("4".to_string()));
+    }
+
+    #[test]
+    fn a_message_to_a_codex_terminal_mid_turn_waits_for_its_turn_end() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-cx-sender", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-busy", RunKind::Codex, ClaudeStatus::Working),
+        ]);
+
+        let msg = router.dispatch(peer_message("term-cx-sender", "term-cx-busy"), Some(&pty)).unwrap();
+        assert_eq!(msg.status, A2AMessageStatus::Queued);
+        assert!(pty.test_input("term-cx-busy").is_empty());
+
+        // The turn that was running answers nothing; the message goes in after it
+        assert!(codex_turn(&router, &pty, "term-cx-busy", &["an older prompt"], "older").is_none());
+        end_turn(&router, &pty, "term-cx-busy");
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+        assert_eq!(pty.test_input("term-cx-busy").len(), 2);
+
+        let typed = pty.test_input("term-cx-busy")[0].clone();
+        let completed = codex_turn(&router, &pty, "term-cx-busy", &[&typed], "4").unwrap();
+        assert_eq!(completed.id, msg.id);
+    }
+
+    #[test]
+    fn a_codex_turn_end_with_no_message_typed_in_completes_nothing() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[("term-cx-alone", RunKind::Codex, ClaudeStatus::Idle)]);
+
+        assert!(codex_turn(&router, &pty, "term-cx-alone", &["the user's prompt"], "the user's answer").is_none());
+    }
+
+    #[test]
+    fn a_codex_turn_started_before_a_message_was_typed_in_doesnt_answer_it() {
+        let router = A2ARouter::new();
+        // Idle, as a Codex terminal shows while a turn the user typed or its launch prompt runs
+        let pty = manager_with(&[
+            ("term-cx-sender4", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-user", RunKind::Codex, ClaudeStatus::Idle),
+        ]);
+        let msg = router.dispatch(peer_message("term-cx-sender4", "term-cx-user"), Some(&pty)).unwrap();
+        let typed = pty.test_input("term-cx-user")[0].clone();
+
+        let launch_turn = "Role: Reviewer
+
+Confirm your role in one line, then wait.";
+        assert!(codex_turn(&router, &pty, "term-cx-user", &[launch_turn], "I'm the reviewer.").is_none());
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+
+        // Codex may re-space what it read; the message's own turn still answers it
+        let respaced = format!("  {}  ", typed.replace(": ", ":  "));
+        let completed = codex_turn(&router, &pty, "term-cx-user", &[&respaced], "4").unwrap();
+        assert_eq!(completed.id, msg.id);
+        assert_eq!(completed.response.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn a_codex_turn_end_without_its_prompts_answers_the_oldest_message() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-cx-sender5", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-noinputs", RunKind::Codex, ClaudeStatus::Idle),
+        ]);
+        let msg = router.dispatch(peer_message("term-cx-sender5", "term-cx-noinputs"), Some(&pty)).unwrap();
+
+        let completed = router.turn_completed("term-cx-noinputs", "4".to_string(), None, &pty).unwrap();
+        assert_eq!(completed.id, msg.id);
+    }
+
+    #[test]
+    fn a_relaunched_codex_terminals_turn_answers_no_message_typed_into_the_old_launch() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-cx-sender3", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-relaunch", RunKind::Codex, ClaudeStatus::Idle),
+        ]);
+        let msg = router.dispatch(peer_message("term-cx-sender3", "term-cx-relaunch"), Some(&pty)).unwrap();
+
+        // Codex exited before that turn ended; relaunch forgets it
+        router.forget_turns("term-cx-relaunch");
+
+        let typed = pty.test_input("term-cx-relaunch")[0].clone();
+        assert!(codex_turn(&router, &pty, "term-cx-relaunch", &[&typed], "new launch").is_none());
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
+    }
+
+    #[test]
+    fn a_claude_turn_end_is_not_taken_for_its_start() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-cx-sender2", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-cx-claude", RunKind::Claude, ClaudeStatus::Idle),
+        ]);
+        let msg = router.dispatch(peer_message("term-cx-sender2", "term-cx-claude"), Some(&pty)).unwrap();
+
+        // A Claude turn that ends with no turn start after the message started before it
+        assert!(router.turn_completed("term-cx-claude", "older".to_string(), None, &pty).is_none());
+        assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
     }
 
     #[test]
