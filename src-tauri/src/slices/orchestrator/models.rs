@@ -25,6 +25,9 @@ pub struct A2AMessage {
     pub timestamp: u64,
     pub status: A2AMessageStatus,
     pub response: Option<String>,
+    /// What the trail shows beside the status, such as a wait that ended without a reply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

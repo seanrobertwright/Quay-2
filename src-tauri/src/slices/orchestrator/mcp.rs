@@ -145,7 +145,7 @@ pub async fn handle_mcp_request(
                                 },
                                 "wait_for_reply": {
                                     "type": "boolean",
-                                    "description": "If true (default), waits up to 60s for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
+                                    "description": "If true (default), waits up to 60s from this call for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
                                 }
                             },
                             "required": ["target_terminal_id", "message"]
@@ -313,7 +313,7 @@ pub async fn handle_mcp_request(
                                                 .get_messages()
                                                 .into_iter()
                                                 .rev()
-                                                .find(|m| m.to_terminal == target.id || m.from_terminal == caller_id)
+                                                .find(|m| m.to_terminal == target.id && m.from_terminal == caller_id)
                                             {
                                                 let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
                                                 let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
