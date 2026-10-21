@@ -8,17 +8,17 @@ Quay 2 is designed as a universal desktop cockpit for all major autonomous AI co
 
 | Agent / Shell | Binary Command | Model Selection Support | A2A MCP Bus Integration | Telemetry & Turn Status |
 | :--- | :--- | :---: | :---: | :---: |
-| **Claude Code** | `claude.cmd` / `claude` | ✅ Full (Opus 5.5, Sonnet 5.5, Haiku 5.5) | ✅ Automatic via `--mcp-config` | ✅ Full turn/tool lifecycle |
-| **Antigravity CLI** | `agy.cmd` / `agy` | ✅ Inherited from active tier | ✅ Supported | ✅ Tool execution tracking |
-| **OpenAI Codex CLI** | `codex.exe` | ✅ GPT-4o / o1 / o3-mini | ✅ Automatic via `-c` overrides | ✅ Turn end, through Quay's `notify` helper |
-| **Pi Coding Agent** | `pi` | ✅ Pi multi-model | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **Google Gemini CLI** | `gemini` | ✅ Gemini 2.5 / 2.0 Pro | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **xAI Grok CLI** | `grok` | ✅ Grok Code | ✅ Custom MCP adapter | ✅ Console output streaming |
-| **Aider** | `aider` | ✅ Any LLM via LiteLLM | ✅ Via MCP server extension | ✅ Git commit tracking |
-| **Kiro CLI** | `kiro` | ✅ Multi-model | ✅ Standard stdio | ✅ Console output streaming |
-| **OpenCode** | `opencode` | ✅ Multi-provider | ✅ Automatic via `OPENCODE_CONFIG_CONTENT` | ✅ Turn start and end from its own server |
-| **GitHub Copilot CLI** | `gh copilot` | ✅ OpenAI Copilot models | N/A | ✅ Interactive terminal |
-| **PowerShell** | `pwsh.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
+| **Claude Code** | `claude.exe` / `claude` | ✅ Full (Opus 5.5, Sonnet 5.5, Haiku 5.5) | ✅ Full peer, via `--mcp-config` | ✅ Full turn/tool lifecycle |
+| **Antigravity CLI** | `agy.exe` | ✅ Inherited from active tier | ✅ Responder, through OSC 7501 | ✅ Tool execution tracking |
+| **OpenAI Codex CLI** | `codex.exe` | ✅ GPT-4o / o1 / o3-mini | ✅ Full peer, via `-c` overrides | ✅ Turn end, through Quay's `notify` helper |
+| **Pi Coding Agent** | `cmd.exe /c pi` | ✅ Pi multi-model | Listener | ✅ Console output streaming |
+| **Google Gemini CLI** | `cmd.exe /c gemini` | ✅ Gemini 2.5 / 2.0 Pro | Listener | ✅ Console output streaming |
+| **xAI Grok CLI** | `agent.exe` | ✅ Grok Code | Listener | ✅ Console output streaming |
+| **Aider** | `aider.exe` | ✅ Any LLM via LiteLLM | Listener | ✅ Git commit tracking |
+| **Kiro CLI** | `kiro-cli.exe chat` | ✅ Multi-model | Listener | ✅ Console output streaming |
+| **OpenCode** | `opencode.exe` / `opencode` | ✅ Multi-provider | ✅ Full peer, via `OPENCODE_CONFIG_CONTENT` | ✅ Turn start and end from its own server |
+| **GitHub Copilot CLI** | `copilot.exe` or `gh copilot` | ✅ OpenAI Copilot models | Listener | ✅ Interactive terminal |
+| **PowerShell** | `pwsh.exe` | N/A | Not a peer | ✅ ConPTY ANSI streaming |
 | **Command Prompt** | `cmd.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
 | **WSL** | `wsl.exe` | N/A | N/A | ✅ ConPTY ANSI streaming |
 
@@ -50,7 +50,7 @@ When spawning Claude Code, Quay 2 generates an MCP configuration pointing to its
   }
 }
 ```
-This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the token is neither written to a file nor visible on the command line, guaranteeing that every agent can immediately invoke `quay_list_agents` and `quay_send_message` without manual setup. The `/mcp` endpoint rejects calls that don't carry a live terminal's token.
+This is passed to Claude Code inline as JSON via `--mcp-config <json>`, so the token is neither written to a file nor visible on the command line, so a Claude Code terminal can call `quay_list_agents`, `quay_send_message` and the other tools without manual setup. Codex and OpenCode get the same server their own way, and the other CLIs get none (see [Peers and their levels](./a2a-orchestration.md#peers-and-their-levels)). The `/mcp` endpoint rejects calls that don't carry a live terminal's token.
 
 ### Status Indicator Strip
 In the navigation rail and terminal status strip, Quay 2 displays live agent status:
@@ -88,6 +88,6 @@ An Antigravity terminal is a responder: it answers a sender who waits and shows 
 ## PowerShell & Shell Multiplexing
 
 In addition to AI agents, Quay 2 functions as a premier Windows terminal multiplexer:
-- Full support for `pwsh.exe` (PowerShell 7) and `powershell.exe` (Windows PowerShell 5.1).
+- PowerShell 7 (`pwsh.exe`) runs every shell terminal. There is no fallback to Windows PowerShell 5.1 (`powershell.exe`).
 - Native handling of PSReadLine keybindings, autocomplete menus, and syntax colorization.
 - Support for Command Prompt (`cmd.exe`) and Windows Subsystem for Linux (`wsl.exe -d Ubuntu`).
