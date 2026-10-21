@@ -112,11 +112,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ### 4. Documentation Build Test
 ```powershell
+pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
 ```
 
-`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. `docs:test` runs the packing script's tests.
+`docs:build` first packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. It also fails on a tutorial page that breaks the step-card rules. `docs:test` runs the packing script's tests and the step-card tests in `scripts/step-cards/`, and `docs:typecheck` type-checks the step-card plugin and its tests.
 
 ---
 
