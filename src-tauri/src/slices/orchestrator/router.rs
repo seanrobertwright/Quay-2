@@ -9,7 +9,7 @@ use super::models::{trail_now, A2ADispatchRequest, A2AMessage, A2AMessageStatus,
 use super::target::{resolve_target, same_project};
 use crate::slices::pty::manager::{PtyManager, TurnEvent};
 use crate::slices::pty::models::{BusLevel, ClaudeStatus, RunKind, TerminalInfo};
-use crate::slices::pty::plugin_watch::EVENT_BRIDGE_INSTALL_LINE;
+use crate::slices::pty::plugin_watch::{EVENT_BRIDGE_INSTALL_LINE, PIG_TESTED_VERSION};
 
 /// The sender recorded for a message dispatched as the user, whatever From Agent held.
 const USER_SENDER: &str = "user";
@@ -117,7 +117,8 @@ fn refuse_dispatch_to_exited(target: Option<&TerminalInfo>) -> Result<(), String
 
 /// What a sender waiting on `target` is told at once, because Quay can't return a reply
 /// from it: it has exited, it is a listener, or it is a Claude terminal whose
-/// event-bridge plugin isn't reporting. `None` when the wait can run.
+/// event-bridge plugin, or a PiG terminal whose extension, isn't reporting. `None` when the
+/// wait can run.
 fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
     if target.claude_status == ClaudeStatus::Exited {
         return Some(format!(
@@ -126,12 +127,24 @@ fn no_reply_answer(target: &TerminalInfo) -> Option<String> {
         ));
     }
     if target.plugin_silent() {
-        return Some(format!(
-            "{name} got your message, but {name}'s event-bridge plugin isn't reporting, so Quay can't return its reply. \
-             Ask the user to install it: `{install}`, then run `/reload-plugins` in {name}.",
-            name = target.name,
-            install = EVENT_BRIDGE_INSTALL_LINE,
-        ));
+        return Some(match target.run_kind {
+            RunKind::Pig => format!(
+                "{name} got your message, but Quay's PiG extension isn't reporting in {name}, so Quay can't return its reply. \
+                 Quay was tested with PiG {version}; ask the user to run `pig --version` in a shell to compare.",
+                name = target.name,
+                version = PIG_TESTED_VERSION,
+            ),
+            RunKind::Claude => format!(
+                "{name} got your message, but {name}'s event-bridge plugin isn't reporting, so Quay can't return its reply. \
+                 Ask the user to install it: `{install}`, then run `/reload-plugins` in {name}.",
+                name = target.name,
+                install = EVENT_BRIDGE_INSTALL_LINE,
+            ),
+            _ => format!(
+                "{name} got your message, but Quay isn't hearing from {name}, so it can't return its reply.",
+                name = target.name,
+            ),
+        });
     }
     if target.bus_level() == Some(BusLevel::Listener) {
         return Some(format!(
@@ -1331,6 +1344,32 @@ mod tests {
         };
         assert!(answer.contains("term-lvl-silent's event-bridge plugin isn't reporting"), "{answer}");
         assert!(answer.contains(EVENT_BRIDGE_INSTALL_LINE), "{answer}");
+        assert_eq!(router.get_messages().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_wait_on_a_silent_pig_terminal_answers_at_once_with_the_tested_version() {
+        let router = A2ARouter::new();
+        let pty = manager_with(&[
+            ("term-lvl-asker4", RunKind::Claude, ClaudeStatus::Idle),
+            ("term-lvl-pig", RunKind::Pig, ClaudeStatus::Unknown),
+        ]);
+
+        let outcome = at_once(router.dispatch_and_wait(
+            peer_message("term-lvl-asker4", "term-lvl-pig"),
+            Some(&pty),
+            60,
+        ))
+        .await
+        .unwrap();
+
+        let WaitOutcome::NoReply(answer) = outcome else {
+            panic!("a silent PiG terminal can't reply: {outcome:?}");
+        };
+        assert!(answer.contains("Quay's PiG extension isn't reporting in term-lvl-pig"), "{answer}");
+        assert!(answer.contains(&format!("tested with PiG {}", PIG_TESTED_VERSION)), "{answer}");
+        assert!(!answer.contains("event-bridge"), "{answer}");
+        // Delivered, not held
         assert_eq!(router.get_messages().len(), 1);
     }
 

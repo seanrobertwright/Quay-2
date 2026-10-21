@@ -61,11 +61,20 @@ export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
 }
 
 /**
- * Whether the terminal is a Claude terminal that counts as a listener only because Quay
- * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
+ * The run kinds that report through a plugin or extension that may stay silent: Claude
+ * Code's event-bridge plugin and Quay's PiG extension. Mirrors
+ * `RunKind::reports_through_plugin` in the backend.
+ * Kept on one line: the backend's `plugin_run_kinds_match_the_frontend` test reads it.
+ */
+export const PLUGIN_RUN_KINDS = ["claude", "pig"] as const satisfies readonly RunKind[];
+
+/**
+ * Whether the terminal is a Claude or PiG terminal that counts as a listener only because
+ * Quay hasn't heard from its event-bridge plugin or PiG extension. Mirrors
+ * `TerminalInfo::plugin_silent`.
  */
 export function isPluginSilent(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
-  return t.run_kind === "claude" && t.claude_status === "unknown";
+  return (PLUGIN_RUN_KINDS as readonly RunKind[]).includes(t.run_kind) && t.claude_status === "unknown";
 }
 
 /**

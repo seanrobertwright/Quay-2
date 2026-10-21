@@ -21,7 +21,7 @@ How each full peer gets the tools:
 - **Claude Code** gets Quay's MCP server inline through `--mcp-config`. It answers through the [event-bridge plugin](../guide/installation.md#event-bridge-plugin). A Claude Code terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from that plugin. Once the plugin is heard, it is a full peer again.
 - **Codex** gets the server through `-c` overrides and reports each turn end through Quay's turn-end helper. See [Codex on the A2A bus](./agent-support.md#codex-on-the-a2a-bus).
 - **OpenCode** gets the server through `OPENCODE_CONFIG_CONTENT`, and Quay reads its turns from the server its TUI runs.
-- **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer.
+- **PiG** loads Quay's PiG extension, `quay-pig-bridge.exe`, which ships beside Quay. The extension registers the server for that session and reports each turn's start and end, with its answer. A PiG terminal counts as a listener while it shows **Unknown** because Quay hasn't heard from the extension in the 30 seconds after its first output. Once the extension reports, it is a full peer again.
 
 Antigravity, the responder, has no `quay_*` tools, so it never starts a conversation. Quay reads its status and its answers from the OSC 7501 sequences it prints. See [Antigravity on the A2A bus](./agent-support.md#antigravity-on-the-a2a-bus). The [CLI flags reference](../reference/cli-flags.md) lists each CLI's launch wiring.
 
@@ -145,7 +145,9 @@ Sends a message to another peer and, by default, waits for its reply.
   - `wait_for_reply` (boolean, optional, default: `true`): With `true`, the call waits up to 60 seconds for the turn the message starts to end, and returns the peer's reply. The 60 seconds count from the call, so they include any time the message spends queued or being typed. With `false`, the call returns once the message is delivered or queued.
 - **Waits that end early**: A wait never runs on a peer that can't reply. The message is still delivered, and the answer comes at once:
   - on a listener, the answer says it can't reply and suggests a file mailbox;
-  - on a Claude Code terminal whose event-bridge plugin isn't reporting, the answer gives the plugin's install line. A wait already running when that terminal turns Unknown ends then, with the same answer;
+  - on a Claude Code terminal whose event-bridge plugin isn't reporting, the answer gives the plugin's install line;
+  - on a PiG terminal whose PiG extension isn't reporting, the answer names the PiG version Quay was tested with and asks for `pig --version` to compare;
+  - a wait already running when such a Claude Code or PiG terminal turns Unknown ends then, with the same answer;
   - a wait already running when its target exits ends then, saying so.
 - **Response**: text.
   - A reply reads `Reply from <name>:` followed by the peer's answer.

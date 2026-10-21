@@ -95,6 +95,13 @@ pub async fn rename_terminal(
     pty_manager.rename(&terminal_id, &name)
 }
 
+/// The PiG version Quay's PiG extension was tested with, for the tag Mission Control shows on
+/// a PiG terminal whose extension isn't reporting.
+#[tauri::command]
+pub fn get_pig_tested_version() -> &'static str {
+    super::plugin_watch::PIG_TESTED_VERSION
+}
+
 /// Hides the plugin hint in the terminal's pane until it is relaunched.
 #[tauri::command]
 pub async fn dismiss_plugin_hint(

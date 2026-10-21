@@ -55,9 +55,16 @@ const agentOptionLabel = (t: TerminalInfo) =>
 
 /**
  * The agent list's tag for a peer below full peer, with the tooltip that explains it,
- * or null for a full peer, which gets no tag.
+ * or null for a full peer, which gets no tag. `pigVersion` is the PiG version Quay's PiG
+ * extension was tested with, or null until the backend has said.
  */
-function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
+function levelTag(t: TerminalInfo, pigVersion: string | null): { label: string; tooltip: string } | null {
+  if (isPluginSilent(t) && t.run_kind === "pig") {
+    return {
+      label: "Listener",
+      tooltip: `Quay's PiG extension isn't reporting. Quay was tested with PiG ${pigVersion ?? "(version unknown)"}; run pig --version to compare.`,
+    };
+  }
   if (isPluginSilent(t)) {
     return {
       label: "Listener",
@@ -111,6 +118,21 @@ export const A2APanel: FC<A2APanelProps> = ({
   activeProject,
   onClose,
 }) => {
+  // The PiG version Quay's PiG extension was tested with, for a silent PiG terminal's tag
+  const [pigVersion, setPigVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    invoke<string>("get_pig_tested_version")
+      .then((version) => {
+        if (current) setPigVersion(version);
+      })
+      .catch((err) => console.error("Failed to read the tested PiG version:", err));
+    return () => {
+      current = false;
+    };
+  }, []);
+
   // Peers only: shell and Archon terminals are not on the bus.
   const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
   // The agent list, From Agent, To Agent and the Broadcast box take only the active
@@ -335,7 +357,7 @@ export const A2APanel: FC<A2APanelProps> = ({
               </li>
             </ul>
             <p className="text-xs text-[#8b949e] mb-2.5 leading-relaxed">
-              Quay gives Claude Code terminals the <code className="text-[#58a6ff]">quay</code> MCP server and its tools. A Claude Code peer can't answer until Quay hears from its event-bridge plugin.
+              Quay gives full peers (Claude Code, Codex, OpenCode and PiG) the <code className="text-[#58a6ff]">quay</code> MCP server and its tools. A Claude Code or PiG peer can't answer until Quay hears from its event-bridge plugin or PiG extension.
             </p>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
@@ -368,7 +390,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             ) : (
               <ul aria-label="Peers in the active project" className="space-y-1">
                 {projectAgents.map((t) => {
-                  const tag = levelTag(t);
+                  const tag = levelTag(t, pigVersion);
                   return (
                     <li key={t.id} className="flex items-center gap-2 text-xs">
                       <span className="font-mono text-white truncate">{t.name}</span>

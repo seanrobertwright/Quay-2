@@ -22,6 +22,7 @@ fn main() {
     }
     // So a test can find a sidecar built for this target in `binaries/`
     println!("cargo:rustc-env=QUAY_SIDECAR_TARGET={}", env("TARGET"));
+    println!("cargo:rustc-env=QUAY_PIG_TESTED_VERSION={}", pig_tested_version(&manifest_dir));
     tauri_build::build()
 }
 
@@ -69,6 +70,22 @@ fn build_sidecar(package: &str, name: &str) {
         .join(if release { "release" } else { "debug" })
         .join(format!("{}{}", name, exe_suffix));
     copy_if_changed(&built, &dest);
+}
+
+/// The PiG version the PiG extension is built against: the tag its `pig-sdk` dependency is
+/// pinned to, without the `v`.
+fn pig_tested_version(manifest_dir: &Path) -> String {
+    let manifest = manifest_dir.join("sidecars/pig-bridge/Cargo.toml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap_or_else(|e| panic!("can't read {}: {}", manifest.display(), e));
+    text.lines()
+        .find(|line| line.starts_with("pig-sdk "))
+        .and_then(|line| line.split("tag = \"v").nth(1))
+        .and_then(|rest| rest.split('"').next())
+        .filter(|version| !version.is_empty() && version.split('.').all(|part| part.parse::<u32>().is_ok()))
+        .unwrap_or_else(|| panic!("{} pins pig-sdk to no tag = \"v<major.minor.patch>\"", manifest.display()))
+        .to_string()
 }
 
 /// Copies `from` to `to`, keeping its permissions, unless `to` already holds the same bytes,

@@ -91,13 +91,21 @@ impl RunKind {
         matches!(self, RunKind::Antigravity)
     }
 
+    /// Whether this CLI reports through a plugin or extension that runs inside it and may
+    /// not report at all: Claude Code's event-bridge plugin, or Quay's PiG extension. Quay
+    /// gives such a terminal a silence window (see `PluginWatch`), and while it is silent the
+    /// terminal counts as a listener (`TerminalInfo::plugin_silent`).
+    pub fn reports_through_plugin(&self) -> bool {
+        matches!(self, RunKind::Claude | RunKind::Pig)
+    }
+
     /// The status a Starting terminal of this CLI moves to when its pane first prints, or
-    /// `None` when its first output leaves the status alone. A Claude terminal waits for its
-    /// event-bridge plugin instead; see `PluginWatch`. A listener shows Unknown, because Quay
-    /// can't read whether it is working. Any other agent shows Idle.
+    /// `None` when its first output leaves the status alone. A Claude or PiG terminal waits
+    /// for its plugin or extension instead; see `PluginWatch`. A listener shows Unknown,
+    /// because Quay can't read whether it is working. Any other agent shows Idle.
     pub fn status_after_first_output(&self) -> Option<ClaudeStatus> {
         match self {
-            RunKind::Claude => None,
+            _ if self.reports_through_plugin() => None,
             _ if self.bus_level() == Some(BusLevel::Listener) => Some(ClaudeStatus::Unknown),
             _ if self.is_agent() => Some(ClaudeStatus::Idle),
             _ => None,
@@ -282,8 +290,9 @@ pub struct TerminalInfo {
 
 impl TerminalInfo {
     /// The terminal's level on the A2A bus now, or `None` when it is not a peer. It is its
-    /// CLI's level, except that a Claude terminal shown as Unknown is a listener: Quay
-    /// hasn't heard from its event-bridge plugin, so it can't see the turn end.
+    /// CLI's level, except that a Claude or PiG terminal shown as Unknown is a listener: Quay
+    /// hasn't heard from its event-bridge plugin or PiG extension, so it can't see the turn
+    /// end.
     pub fn bus_level(&self) -> Option<BusLevel> {
         if self.plugin_silent() {
             return Some(BusLevel::Listener);
@@ -291,15 +300,15 @@ impl TerminalInfo {
         self.run_kind.bus_level()
     }
 
-    /// Whether this is a Claude terminal that counts as a listener only because Quay
-    /// hasn't heard from its event-bridge plugin.
+    /// Whether this is a Claude or PiG terminal that counts as a listener only because Quay
+    /// hasn't heard from its event-bridge plugin or PiG extension. The frontend's
+    /// `isPluginSilent` mirrors this.
     pub fn plugin_silent(&self) -> bool {
-        self.run_kind == RunKind::Claude && self.claude_status == ClaudeStatus::Unknown
+        self.run_kind.reports_through_plugin() && self.claude_status == ClaudeStatus::Unknown
     }
 
     /// Whether a message reaching this terminal shows it Working: only when Quay will also
-    /// see that turn end and show it Idle again. A Claude terminal shown as Unknown doesn't,
-    /// because Quay hasn't heard from its event-bridge plugin.
+    /// see that turn end and show it Idle again. A terminal that is `plugin_silent` doesn't.
     pub fn shows_working_on_delivery(&self) -> bool {
         self.run_kind.reports_turn_end() && self.claude_status != ClaudeStatus::Unknown
     }
@@ -522,13 +531,31 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_falls_to_listener_when_unknown() {
+    fn a_silent_pig_terminal_is_a_listener_and_any_other_status_a_full_peer() {
+        let silent = terminal(RunKind::Pig, ClaudeStatus::Unknown);
+        assert!(silent.plugin_silent());
+        assert_eq!(silent.bus_level(), Some(BusLevel::Listener));
+        assert!(!silent.shows_working_on_delivery());
+        assert!(!silent.holds_deliveries());
+        for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Idle] {
+            let reporting = terminal(RunKind::Pig, status.clone());
+            assert!(!reporting.plugin_silent(), "{:?}", status);
+            assert_eq!(reporting.bus_level(), Some(BusLevel::FullPeer), "{:?}", status);
+        }
+    }
+
+    #[test]
+    fn only_claude_and_pig_fall_to_listener_when_unknown() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| terminal(*kind, ClaudeStatus::Unknown).plugin_silent())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Pig]);
         assert_eq!(
             terminal(RunKind::Codex, ClaudeStatus::Unknown).bus_level(),
             Some(BusLevel::FullPeer)
         );
         assert_eq!(terminal(RunKind::PowerShell, ClaudeStatus::Unknown).bus_level(), None);
-        assert!(!terminal(RunKind::Codex, ClaudeStatus::Unknown).plugin_silent());
     }
 
     #[test]
@@ -583,9 +610,10 @@ mod tests {
     }
 
     #[test]
-    fn first_output_leaves_claude_to_its_plugin_and_shows_listeners_unknown() {
+    fn first_output_leaves_claude_and_pig_to_their_plugin_and_shows_listeners_unknown() {
         assert_eq!(RunKind::Claude.status_after_first_output(), None);
-        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Pig, RunKind::Antigravity, RunKind::Archon] {
+        assert_eq!(RunKind::Pig.status_after_first_output(), None);
+        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Antigravity, RunKind::Archon] {
             assert_eq!(kind.status_after_first_output(), Some(ClaudeStatus::Idle), "{:?}", kind);
         }
         for kind in kinds_at(Some(BusLevel::Listener)) {
@@ -661,6 +689,17 @@ mod tests {
             .map(|item| item.trim().trim_matches('"').to_string())
             .filter(|item| !item.is_empty())
             .collect()
+    }
+
+    #[test]
+    fn plugin_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.reports_through_plugin())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(backend, ["claude", "pig"]);
+        assert_eq!(frontend_run_kinds("PLUGIN_RUN_KINDS"), backend);
     }
 
     #[test]
