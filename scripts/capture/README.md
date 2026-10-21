@@ -1,12 +1,13 @@
 # Capture script
 
-Takes every screenshot of a tutorial from a built Quay that replays the tutorial's recordings.
+Takes every screenshot of a tutorial, and its clip, from a built Quay that replays the
+tutorial's recordings.
 It launches Quay against a fixture, attaches with Playwright over WebView2's debugging port, and
 takes each step's shots when every replay has reached that step's marker. Agent output in a
 shot comes from the recordings and is never edited; annotations are overlays the script draws.
 
 ```powershell
-pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--port <n>] [--fast <n>] [--by-hand]
+pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--port <n>] [--fast <n>] [--ffmpeg <path>] [--by-hand]
 ```
 
 - `--exe` is the built Quay to capture. At a release that is the draft release's installed
@@ -16,11 +17,15 @@ pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--p
 - `--port` is the loopback debugging port, 9333 unless given. The script stops if anything
   already listens on it, so it never attaches to another program.
 - `--fast` is the replay speed between shots, 10 unless given, from 1 to 100.
+- `--ffmpeg` is the `ffmpeg` that encodes the clip, `ffmpeg` on the `PATH` unless given. It
+  needs the `libx264` encoder, and is checked before Quay starts when the manifest has a clip and
+  the capture is not by hand.
 - `--by-hand` is the fallback described [below](#fallbacks).
 
-It writes each still as `NN-<what>.webp` beside the tutorial's page, then the sidecar manifest.
-It exits 0 when all of them are written, 1 when the capture fails, and 2 on a bad argument. A
-failed capture keeps its fixture folder and prints where it is.
+It writes each still as `NN-<what>.webp` beside the tutorial's page, the clip as `NN-<what>.mp4`
+beside its still, then the sidecar manifest. It exits 0 when all of them are written, 1 when the
+capture fails, and 2 on a bad argument. A failed capture keeps its fixture folder and prints
+where it is.
 
 ## The capture machine
 
@@ -71,6 +76,7 @@ running from the fixture folder, then removes the fixture.
 | Capture manifest | `tools/record-replay/recordings/<slug>/capture.json` |
 | Fixture Claude config | `tools/record-replay/recordings/<slug>/claude-config/` |
 | Stills | `docs/tutorials/<series>/<slug>/NN-<what>.webp`, beside the page |
+| Clip | `docs/tutorials/<series>/<slug>/NN-<what>.mp4`, beside its still |
 | Sidecar manifest | `examples/tutorials/<slug>/sidecar.json` |
 
 ## The capture manifest
@@ -101,6 +107,12 @@ pinned values and annotations. Selectors are Playwright selectors.
       "actions": [{ "press": "Enter", "in": ".xterm-helper-textarea >> nth=0" }],
       "realTime": true,
       "shots": [{ "mask": [".elapsed"], "pin": [{ "selector": "button[aria-label=\"Token Spend & Chimes\"] >> text=$0.00", "text": "$0.42" }] }]
+    },
+    {
+      "marker": "04-trail",
+      "actions": [{ "click": "text=A2A" }],
+      "realTime": true,
+      "shots": [{ "clip": true, "mask": [".elapsed"] }]
     }
   ]
 }
@@ -114,13 +126,14 @@ pinned values and annotations. Selectors are Playwright selectors.
 | `steps[].actions` | What the learner does in the step, in order: `{ "click": <selector> }`, `{ "press": <key>, "in": <selector> }`, `{ "fill": <selector>, "text": <text> }` or `{ "type": <text>, "in": <selector> }`. Typing in a terminal goes to its `.xterm-helper-textarea`. A replay waits for a live Enter wherever its recording has one, so a prompt the learner typed needs a `press` of `Enter`. |
 | `steps[].waitFor` | Selectors that must be visible before the shots. |
 | `steps[].timeout` | Seconds for the actions, the replays and `waitFor`. Default 120. |
-| `steps[].realTime` | Plays the replays in real time from the previous marker to this one, the window a clip needs. |
+| `steps[].realTime` | Plays the replays in real time from the previous marker to this one, the window a clip needs. A clip's step must set it. |
 | `steps[].shots` | Left out, one full-window shot named after the marker. |
 | `shots[].name` | The still's name, starting with the step's number. Default the marker. |
 | `shots[].pane` | A selector for the one pane to capture. Left out, the full window. |
 | `shots[].mask` | Selectors masked in the shot. The rail's bridge-port badge is always masked. |
 | `shots[].pin` | `{ selector, text }` values in Quay's own UI shown fixed for the shot. Each is an overlay that covers the element with the text in its own font, colour and background; Quay's DOM is never changed. A pin over a terminal is refused: agent output is never edited. |
 | `shots[].annotations` | `{ target, label }` overlays: an outline around the target and an optional label. |
+| `shots[].clip` | `true` records the step as the tutorial's clip, `NN-<what>.mp4` beside this shot's still. A tutorial has at most one. It is a full-window shot with no `pin`, since the still is the clip's poster and a pinned value would change under it in the clip. Its annotations are drawn on the still only. |
 
 ## How a capture runs
 
@@ -128,7 +141,8 @@ The replays share files in the replay state folder with the script, as
 `tools/record-replay/README.md` describes: the speed they play at, the marker they hold at, and
 the markers each has reached. For each step, the script:
 
-1. Sets the speed to real time if the step is `realTime`.
+1. Sets the speed to real time if the step is `realTime`, and starts recording if the step has
+   the clip.
 2. Names the step's marker as the one to hold at. That releases the replays from the previous
    marker.
 3. Does the step's actions.
@@ -137,7 +151,8 @@ the markers each has reached. For each step, the script:
    for at that marker; its terminal starts during the next step.
 5. Puts the speed back to `--fast`, waits for `waitFor`, the fonts, and the terminals to stop
    changing for half a second.
-6. Takes each shot: WebP at quality 90, at device scale, with animations stopped, the caret
+6. Stops recording, if the step has the clip, and encodes it as [below](#the-clip).
+7. Takes each shot: WebP at quality 90, at device scale, with animations stopped, the caret
    hidden, the port badge and `mask` selectors masked, and pins and annotations drawn as
    overlays, which are removed after the shot, whether it succeeded or not.
 
@@ -145,6 +160,31 @@ When a replay doesn't reach the marker in time, the error names it and says whet
 has played it yet (the step's actions didn't open it) or it is waiting (often for an Enter the
 actions should press), with anything the replays reported, such as bridge calls the live bridge
 refused.
+
+## The clip
+
+A tutorial has at most one clip: a short, silent H.264 MP4 of Quay in motion, which the step
+card shows with the still beside it as its poster. The script records it from the CDP
+screencast in the same run as the stills, against the same fixture, so a clip is re-recorded
+whenever its still is.
+
+- **What it covers.** Recording starts just before the step's marker releases the replays and
+  its actions run. It ends half a second after the terminals last changed, or after `waitFor`
+  showed if that was later, so it ends on what the still shows.
+- **Real speed.** The screencast sends a frame each time Quay paints; on WebView2 the screenshot
+  research found its frames at device scale. The script keeps each frame on screen until the
+  next one came and encodes the result at 30 frames a second. A clip over ten seconds fails the
+  capture; it is never sped up, so a longer motion is not a clip step.
+- **Masks.** The port badge and the shot's `mask` selectors are covered for the whole clip by
+  boxes that follow their elements as they move. Masks are matched again every 100 ms for
+  elements that appear during the clip, and the frames since the match before are left out, so
+  the frame before them stays on screen and no frame shows a masked element uncovered.
+- **Encoding.** `ffmpeg` with `libx264`, `yuv420p`, tagged BT.709 so a browser shows the
+  colours the still has, no audio, and `+faststart` so it starts playing before it has all
+  loaded.
+- **No stale clips.** The capture stops before Quay starts when the tutorial's page folder has
+  an `.mp4` that is not the manifest's clip, since it would be left beside a still it no longer
+  matches.
 
 ## The sidecar manifest
 
@@ -175,8 +215,10 @@ tutorial's page takes its CLI versions from the test-run record, not from here.
 - **By hand.** `--by-hand` builds the same fixture and launches Quay without a debugging port.
   For each step it holds the replays at the marker as usual, prints the actions to do and the
   shots to take, and waits for Enter. Take each shot of Quay's client area only, with ShareX or
-  Snipping Tool, on the pinned capture machine, and blur the port badge and any masks. It
-  writes the sidecar like a scripted capture.
+  Snipping Tool, on the pinned capture machine, and blur the port badge and any masks. For the
+  clip's step it first waits for you to start ShareX's screen recorder, as an H.264 MP4 with no
+  audio, since the replays play once released. Trim the clip to the motion, ten seconds or less,
+  never sped up. It writes the sidecar like a scripted capture.
 - **`tauri-driver`.** If CDP attach breaks, `tauri-driver` with a `msedgedriver` that matches
   the WebView2 runtime drives a built Quay over WebDriver (`cargo install tauri-driver
   --locked`). WebDriver has no masks, animation freeze or caret hiding, so those would be
@@ -206,8 +248,7 @@ Also seen: the debugging port listens on `127.0.0.1` only.
 
 - Quay's own views of the project folder, such as diffs and git state, show the starter as it
   was copied, not the files the recorded agents wrote; replays don't touch the disk.
-- Clips from the CDP screencast (#101) and the changed-shot report (#102) build on this script
-  and are not in it yet. `realTime` already plays a clip's window at real speed.
+- The changed-shot report (#102) builds on this script and is not in it yet.
 
 ## Tests
 
@@ -217,6 +258,7 @@ pnpm docs:typecheck
 ```
 
 `capture.test.ts` covers the parts that need no Quay: the arguments, the manifest, reading the
-recordings, which replays each step waits for, the fixture workspace, the machine check and
-the sidecar. The parts that drive Quay need a built Quay on a pinned machine and are checked
-by running a capture.
+recordings, which replays each step waits for, the fixture workspace, the machine check, a
+clip's frames and stale clips, and the sidecar. The parts that drive Quay need a built Quay on
+a pinned machine and are checked by running a capture. `clip.ts`, which records and encodes the
+clip, needs a browser page but not Quay.

@@ -1,7 +1,7 @@
 // The parts of the capture script that need no Quay: its arguments, a tutorial's capture
 // manifest and recordings, the plan of which replays each shot waits for, the fixture
-// workspace, the capture-machine check and the sidecar manifest. README.md beside this file
-// says how a capture runs.
+// workspace, the capture-machine check, a clip's frames and the sidecar manifest. README.md
+// beside this file says how a capture runs.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +17,8 @@ const DEFAULT_PORT = 9333;
 const DEFAULT_FAST = 10;
 const MAX_FAST = 100;
 const DEFAULT_TIMEOUT_SECONDS = 120;
+/** A clip runs at real speed for this long at most; motion that takes longer is not a clip. */
+export const MAX_CLIP_SECONDS = 10;
 
 export interface CaptureArgs {
   tutorial: Tutorial;
@@ -28,11 +30,13 @@ export interface CaptureArgs {
   port: number;
   /** The replay speed until the marker before a shot. */
   fast: number;
+  /** The `ffmpeg` that encodes a clip, `ffmpeg` on the `PATH` unless given. */
+  ffmpeg: string;
   /** Builds the fixture and launches Quay with no debugging port, for a capture by hand. */
   byHand: boolean;
 }
 
-/** Reads `<slug> --exe <path> [--tool <path>] [--port <n>] [--fast <n>] [--by-hand]`. */
+/** Reads `<slug> --exe <path> [--tool <path>] [--port <n>] [--fast <n>] [--ffmpeg <path>] [--by-hand]`. */
 export function parseCaptureArgs(argv: string[], root: string): CaptureArgs {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -43,6 +47,7 @@ export function parseCaptureArgs(argv: string[], root: string): CaptureArgs {
       tool: { type: 'string' },
       port: { type: 'string' },
       fast: { type: 'string' },
+      ffmpeg: { type: 'string' },
       'by-hand': { type: 'boolean' },
     },
   });
@@ -65,7 +70,9 @@ export function parseCaptureArgs(argv: string[], root: string): CaptureArgs {
     fast = /^\d+(?:\.\d+)?$/.test(values.fast) ? Number(values.fast) : Number.NaN;
     if (!(fast >= 1 && fast <= MAX_FAST)) throw new Error(`--fast must be a speed from 1 to ${MAX_FAST}, not ${JSON.stringify(values.fast)}`);
   }
-  return { tutorial, exe, tool, port, fast, byHand: values['by-hand'] ?? false };
+  const ffmpeg = values.ffmpeg === undefined ? 'ffmpeg' : values.ffmpeg.trim();
+  if (ffmpeg === '') throw new Error('--ffmpeg must name the ffmpeg that encodes clips');
+  return { tutorial, exe, tool, port, fast, ffmpeg, byHand: values['by-hand'] ?? false };
 }
 
 export interface CapturePaths {
@@ -128,6 +135,11 @@ export interface Shot {
   mask: string[];
   pins: Pin[];
   annotations: Annotation[];
+  /**
+   * Whether the step is also recorded as the tutorial's clip, `NN-<what>.mp4` beside this still,
+   * from the start of the step's actions until the still is ready.
+   */
+  clip: boolean;
 }
 
 export interface CaptureStep {
@@ -206,7 +218,7 @@ function action(value: Json, at: string): Action {
 const namesAgentOutput = (selector: string) => /xterm/i.test(selector);
 
 function shot(value: Json, at: string, step: string): Shot {
-  const entry = object(value, at, ['name', 'pane', 'mask', 'pin', 'annotations']);
+  const entry = object(value, at, ['name', 'pane', 'mask', 'pin', 'annotations', 'clip']);
   const name = entry.name === undefined ? step : marker(entry.name, `${at}.name`);
   if (name.slice(0, 2) !== step.slice(0, 2)) throw new Error(`${at}.name must start with its step's number, ${step.slice(0, 2)}`);
   const pins = list(entry.pin, `${at}.pin`, (pin, pinAt) => {
@@ -222,13 +234,13 @@ function shot(value: Json, at: string, step: string): Shot {
     if (fields.label !== undefined) annotation.label = text(fields.label, `${noteAt}.label`);
     return annotation;
   });
-  return {
-    name,
-    pane: entry.pane === undefined ? null : text(entry.pane, `${at}.pane`),
-    mask: list(entry.mask, `${at}.mask`, text),
-    pins,
-    annotations,
-  };
+  if (entry.clip !== undefined && typeof entry.clip !== 'boolean') throw new Error(`${at}.clip must be true or false`);
+  const pane = entry.pane === undefined ? null : text(entry.pane, `${at}.pane`);
+  const clip = entry.clip === true;
+  if (clip && pane !== null) throw new Error(`${at}.clip records the full window, as the still beside it must be; leave out pane`);
+  // A value pinned in the still would change under it in the clip, its poster.
+  if (clip && pins.length > 0) throw new Error(`${at}.clip can't have a pin, since the clip would show the value the still pins`);
+  return { name, pane, mask: list(entry.mask, `${at}.mask`, text), pins, annotations, clip };
 }
 
 /**
@@ -265,6 +277,8 @@ export function parseCaptureManifest(json: string, slug: string): CaptureManifes
     if (entry.realTime !== undefined && typeof entry.realTime !== 'boolean') throw new Error(`${at}.realTime must be true or false`);
     const shots = entry.shots === undefined ? [shot({}, `${at}.shots[0]`, name)] : list(entry.shots, `${at}.shots`, (s, shotAt) => shot(s, shotAt, name));
     if (shots.length === 0) throw new Error(`${at}.shots must list at least one shot, or be left out for one full-window shot`);
+    const clipAt = shots.findIndex((s) => s.clip);
+    if (clipAt >= 0 && entry.realTime !== true) throw new Error(`${at}.shots[${clipAt}].clip plays at real speed, never sped up, so the step needs realTime: true`);
     for (const { name: shotName } of shots) {
       if (names.has(shotName)) throw new Error(`the shot ${shotName} is taken twice; give each shot its own name`);
       names.add(shotName);
@@ -283,7 +297,52 @@ export function parseCaptureManifest(json: string, slug: string): CaptureManifes
       throw new Error(`steps[${i}].marker must come after ${steps[i - 1].marker}; list the steps in order, one per number`);
     }
   }
+  const clips = steps.flatMap((step) => step.shots).filter((s) => s.clip);
+  if (clips.length > 1) throw new Error(`a tutorial has at most one clip, and clip is set on ${clips.map((s) => s.name).join(', ')}`);
   return { tutorial: slug, project, steps };
+}
+
+/**
+ * The `.mp4` files in a tutorial's stills folder other than its manifest's clip. The capture
+ * would leave each one beside a still it no longer matches, since a clip is re-recorded only
+ * with its still.
+ */
+export function staleClips(manifest: CaptureManifest, files: string[]): string[] {
+  const clip = manifest.steps.flatMap((step) => step.shots).find((s) => s.clip);
+  return files.filter((file) => /\.mp4$/i.test(file) && file !== `${clip?.name}.mp4`);
+}
+
+/** A frame of the CDP screencast, saved as `file`, and when it arrived, in epoch milliseconds. */
+export interface ClipFrame {
+  file: string;
+  at: number;
+}
+
+/**
+ * Lays out a clip from `start` to `end`, epoch milliseconds, at real speed and `fps` frames a
+ * second: for each of its frames, the screencast frame on screen at that moment. The screencast
+ * sends a frame only when Quay paints, so a frame stays on screen until the next. The frame on
+ * screen at `start` opens the clip, or the first frame after it when none came before. A clip
+ * longer than `MAX_CLIP_SECONDS` is refused rather than sped up.
+ */
+export function clipFrames(frames: ClipFrame[], start: number, end: number, fps: number): string[] {
+  const before = frames.filter((frame) => frame.at <= start).at(-1);
+  const during = frames.filter((frame) => frame.at > start && frame.at < end);
+  const shown = before === undefined ? during : [{ ...before, at: start }, ...during];
+  if (shown.length === 0) throw new Error('the screencast sent no frames during the clip');
+  const opens = shown[0].at;
+  const seconds = (end - opens) / 1000;
+  if (seconds > MAX_CLIP_SECONDS) {
+    throw new Error(`the clip runs ${seconds.toFixed(1)} s, over ten seconds; a clip is never sped up, so give it a step with shorter motion`);
+  }
+  const files: string[] = [];
+  let i = 0;
+  for (let k = 0; k < Math.max(1, Math.round(seconds * fps)); k++) {
+    const at = opens + (k * 1000) / fps;
+    while (i + 1 < shown.length && shown[i + 1].at <= at) i++;
+    files.push(shown[i].file);
+  }
+  return files;
 }
 
 export interface RecordingInfo {
