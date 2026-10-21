@@ -1,0 +1,45 @@
+name: Record and replay
+
+# The record and replay tool for tutorial screenshots (tools/record-replay). Its tests open
+# terminals through ConPTY, record a stub agent CLI and replay the recording against a local
+# bridge, so they run on Windows.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'tools/record-replay/**'
+      - '.github/workflows/record-replay.yml'
+  pull_request:
+    paths:
+      - 'tools/record-replay/**'
+      - '.github/workflows/record-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: record-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Round trip
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/record-replay
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test
+        run: cargo test --locked

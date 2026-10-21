@@ -1,6 +1,9 @@
 //! Record mode, driven the way Quay drives an agent CLI: the tool is first on the fixture's
 //! PATH as `claude.exe`, and the real CLI (here the stub agent) is further along it.
 
+// The tool stands in for Windows agent CLIs under ConPTY, so these tests run on Windows.
+#![cfg(windows)]
+
 mod common;
 
 use std::time::Duration;

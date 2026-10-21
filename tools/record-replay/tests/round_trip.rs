@@ -1,6 +1,9 @@
 //! The round trip: record a stub agent's run in a terminal, then replay the recording in a new
 //! terminal, with no agent CLI on PATH, against a new bridge, and compare.
 
+// The tool stands in for Windows agent CLIs under ConPTY, so these tests run on Windows.
+#![cfg(windows)]
+
 mod common;
 
 use std::path::{Path, PathBuf};
