@@ -3,7 +3,10 @@
 <!-- Example tutorial page for the step-card containers. `pnpm docs:dev` serves it at
      /Quay-2/_examples/step-cards; `pnpm docs:build` leaves it out of the site. It is not a
      tutorial: it shows the page shape and every container, and the slot check tests read it
-     as the page that follows every rule. -->
+     as the page that follows every rule. Each You should see holds the step's screenshot,
+     ./NN-<what>.webp in this folder, and its alt text is the caption. Step 3 also has a clip:
+     03-reply.mp4 beside 03-reply.webp plays in place of the still, so its caption says what
+     moves. The images and the clip are placeholders. -->
 
 Two agents pass one message, so you can see every slot a step card has.
 
@@ -40,7 +43,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 :::
 
 ::: see
-A single PowerShell pane: the Starter commit, then `npm install` finished.
+![A single PowerShell pane: the Starter commit, then npm install finished.](./01-starter-installed.webp)
 :::
 
 ::: must
@@ -67,7 +70,7 @@ Node 24 or later isn't on your PATH. Install it, then close and reopen Quay.
 :::
 
 ::: see
-`asker` on the left, `answerer` on the right, both at Claude Code's prompt.
+![asker on the left, answerer on the right, both at Claude Code's prompt.](./02-two-agents.webp)
 :::
 
 :::
@@ -83,7 +86,7 @@ What is 12 times 12? Answer with just the number, and nothing else, so the reply
 :::
 
 ::: see
-The message in Mission Control's trail, and `answerer` replying `144`.
+![The message moves into Mission Control's trail, then answerer replies 144.](./03-reply.webp)
 :::
 
 ::: must
@@ -116,7 +119,7 @@ Tell me exactly what answerer replied in Mission Control's trail.
 :::
 
 ::: see
-`asker` quotes the reply.
+![asker quotes the reply.](./04-asker-quotes.webp)
 :::
 
 ::: must

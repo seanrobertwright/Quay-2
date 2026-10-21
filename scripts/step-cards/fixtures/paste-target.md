@@ -23,7 +23,7 @@
 :::
 
 ::: see
-The project in the rail.
+![The project in the rail.](./01-shot.webp)
 :::
 
 :::
@@ -39,7 +39,7 @@ Say hello.
 :::
 
 ::: see
-The agent answers.
+![The agent answers.](./02-shot.webp)
 :::
 
 ::: must
@@ -61,7 +61,7 @@ The agent answers.
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./03-shot.webp)
 :::
 
 ::: done

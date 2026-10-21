@@ -21,7 +21,7 @@
 :::
 
 ::: see
-The project in the rail.
+![The project in the rail.](./01-shot.webp)
 :::
 
 :::
@@ -35,7 +35,7 @@ The project in the rail.
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./02-shot.webp)
 :::
 
 ::: done

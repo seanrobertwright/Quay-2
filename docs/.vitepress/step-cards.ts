@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
 
 type Token = ReturnType<MarkdownRenderer['parse']>[number];
@@ -26,6 +29,14 @@ const GLANCE_TILES = ['Time', 'Tokens', 'Agents', 'Level'];
 const LEVELS = ['Starter', 'Intermediate', 'Advanced'];
 const BEFORE_YOU_START = 'Before you start';
 const NEXT_UP = 'Next up';
+
+/** A step's screenshot, `./NN-<what>.webp` in the tutorial's own folder, where `NN` is the step number. */
+const SHOT = /^\.\/(\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.webp$/;
+const IMAGE_FILE = /\.(?:webp|png|jpe?g|gif|avif|svg)$/i;
+const CLIP_FILE = /\.mp4$/i;
+/** Each tutorial's sidecar manifest is `<slug>/sidecar.json` in here, for the capture script to write. */
+const SIDECARS = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
+const VERSION = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
 // Each container's tokens are `step_card_<name>_open` and `step_card_<name>_close`, so a VitePress
 // `::: tip` inside a step is never mistaken for a slot. These two are the only places that know it.
@@ -62,6 +73,12 @@ export const STEP_CARD_RULES = {
   'paste-target': `${LABELS.paste} names the pane or Quay field it goes into, as in "::: paste Mission Control"`,
   'paste-one-prompt': `${LABELS.paste} holds one copy-paste prompt: a single fenced code block of one line`,
   'see-required': `${LABELS.see} is required`,
+  'see-image': `${LABELS.see} holds one screenshot and nothing else, "![<caption>](./NN-<what>.webp)", where NN is the step number`,
+  'image-exists': `the image a ${LABELS.see} names is in the tutorial's folder`,
+  'orphan-image': "every image in the tutorial's folder is named by a step card; one that none names is drift",
+  'clip-still': 'a clip "NN-<what>.mp4" sits beside its still "NN-<what>.webp"',
+  'one-clip': 'a tutorial has at most one clip',
+  'release-sidecar': `in the release flow, the tutorial's sidecar manifest records the Quay version being released as "quayVersion"`,
   'must-may-pair': `${LABELS.must} and ${LABELS.may} come as both or neither`,
   'must-may-agent-output': `${LABELS.must} and ${LABELS.may} are required on any step with agent output, which is any step with ${LABELS.paste}`,
   'ifnot-symptom': `${LABELS.ifnot} names the symptom it fixes, as in "::: ifnot asker says it has no quay tools"`,
@@ -76,6 +93,8 @@ export interface StepCardViolation {
   /** The step's position on the page, or null when the rule is about the page. */
   step: number | null;
   title: string | null;
+  /** The files the rule is about: in the tutorial's folder, or a sidecar manifest from the repository root. */
+  files?: string[];
 }
 
 // `::: <name> <info>` opens a container and a bare `:::` closes it. Unlike markdown-it-container,
@@ -160,6 +179,44 @@ export function registerStepCardContainers(md: MarkdownRenderer): void {
     rules[containerTokenType(slot, 'close')] = () => '</div>\n';
   }
 
+  // A You should see slot's screenshot renders as a figure, its caption both the image's alt text
+  // and shown under it. When the page's folder holds a clip of the same name, the figure holds the
+  // clip instead, with the still as its poster and the caption as its text alternative; the theme's
+  // `v-step-card-clip` directive starts it unless the reader asks for reduced motion.
+  md.core.ruler.push('step_card_shots', (state) => {
+    if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
+    const { path } = state.env as PageEnv;
+    let files: Set<string> | null = null;
+    for (const step of readPage(state.tokens).steps) {
+      for (const see of step.slots.filter((slot) => slot.name === 'see')) {
+        const image = seeImage(see);
+        if (!image) continue;
+        const [paragraph, , close] = see.tokens;
+        paragraph.hidden = true;
+        close.hidden = true;
+        const still = folderFile(image.attrGet('src') ?? '');
+        const clip = still?.replace(/\.webp$/, '.mp4');
+        files ??= path ? new Set(readdirSync(dirname(path))) : new Set();
+        image.meta = { shot: { clip: clip && clip !== still && files.has(clip) ? `./${clip}` : null } };
+      }
+    }
+  });
+  const renderImage = rules.image;
+  rules.image = (tokens, idx, options, env, self) => {
+    const shot = tokens[idx].meta?.shot as { clip: string | null } | undefined;
+    if (!shot) return renderImage ? renderImage(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options);
+    const escape = md.utils.escapeHtml;
+    const caption = escape(self.renderInlineAsText(tokens[idx].children ?? [], options, env));
+    const still = escape(tokens[idx].attrGet('src') ?? '');
+    const figcaption = `<figcaption aria-hidden="true">${caption}</figcaption>`;
+    if (shot.clip === null) return `<figure class="step-card__shot"><img src="${still}" alt="${caption}">${figcaption}</figure>\n`;
+    return (
+      '<figure class="step-card__shot step-card__shot--clip">' +
+      `<video v-step-card-clip class="step-card__clip" src="${escape(shot.clip)}" poster="${still}" aria-label="${caption}" muted loop playsinline controls preload="metadata"></video>` +
+      `${figcaption}</figure>\n`
+    );
+  };
+
   rules[containerTokenType('ifnot', 'open')] = (tokens, idx) =>
     `<details class="details custom-block step-card__ifnot"><summary>${LABELS.ifnot}: ${md.renderInline(tokens[idx].info)}</summary>\n`;
   rules[containerTokenType('ifnot', 'close')] = () => '</details>\n';
@@ -201,6 +258,8 @@ interface Slot {
   info: string;
   /** The slot's direct children, opening and self-contained block tokens only. */
   children: Token[];
+  /** Every token inside the slot. */
+  tokens: Token[];
 }
 
 interface Step {
@@ -231,10 +290,12 @@ interface Page {
   learnLines: number[];
   /** Slots and page parts opened outside every step, anywhere they don't belong. */
   misplaced: number;
+  /** The `src` of every image inside a step. */
+  stepImages: string[];
 }
 
 function readPage(tokens: Token[]): Page {
-  const page: Page = { steps: [], parts: [], learnLines: [], misplaced: 0 };
+  const page: Page = { steps: [], parts: [], learnLines: [], misplaced: 0, stepImages: [] };
   let step: Step | null = null;
   let stepLevel = 0;
   let slot: Slot | null = null;
@@ -243,6 +304,7 @@ function readPage(tokens: Token[]): Page {
     const token = tokens[i];
     const container = CONTAINER_TOKENS.get(token.type);
     const opened = container?.edge === 'open' ? container.name : undefined;
+    if (step && token.type === 'inline') page.stepImages.push(...imagesIn(token).map((image) => image.attrGet('src') ?? ''));
     if (part) {
       if (container?.name === part.name && container.edge === 'close' && token.level === 0) {
         part = null;
@@ -271,7 +333,7 @@ function readPage(tokens: Token[]): Page {
       step = null;
     } else if (token.level === stepLevel + 1) {
       if (opened && isSlot(opened)) {
-        slot = { name: opened, info: token.info, children: [] };
+        slot = { name: opened, info: token.info, children: [], tokens: [] };
         step.slots.push(slot);
       } else if (opened) {
         step.misplaced++;
@@ -280,11 +342,29 @@ function readPage(tokens: Token[]): Page {
       }
     } else if (opened) {
       step.misplaced++;
-    } else if (slot && token.level === stepLevel + 2 && token.nesting !== -1) {
-      slot.children.push(token);
+    } else if (slot) {
+      slot.tokens.push(token);
+      if (token.level === stepLevel + 2 && token.nesting !== -1) slot.children.push(token);
     }
   }
   return page;
+}
+
+function imagesIn(inline: Token): Token[] {
+  return (inline.children ?? []).filter((child) => child.type === 'image');
+}
+
+/** The image a You should see slot holds when it holds one paragraph of one image and nothing else. */
+function seeImage(slot: Slot): Token | null {
+  const [paragraph, inline] = slot.tokens;
+  if (slot.children.length !== 1 || paragraph.type !== 'paragraph_open') return null;
+  const parts = (inline.children ?? []).filter((child) => child.type !== 'softbreak' && !(child.type === 'text' && child.content.trim() === ''));
+  return parts.length === 1 && parts[0].type === 'image' ? parts[0] : null;
+}
+
+/** The file a `./<file>` image names in the page's own folder, or null for a path anywhere else. */
+function folderFile(src: string): string | null {
+  return /^\.\/([^/\\]+)$/.exec(src)?.[1] ?? null;
 }
 
 /** Checks the page parts around the steps: the glance strip, You'll learn, Before you start and Next up. */
@@ -351,6 +431,11 @@ export function checkStepCards(tokens: Token[]): StepCardViolation[] {
     }
     if (!has('do') && !has('paste')) broke('do-or-paste');
     if (!has('see')) broke('see-required');
+    for (const see of step.slots.filter((slot) => slot.name === 'see')) {
+      const image = seeImage(see);
+      const number = SHOT.exec(image?.attrGet('src') ?? '')?.[1];
+      if (!image || Number(number) !== step.number || image.content.trim() === '') broke('see-image');
+    }
     if (has('must') !== has('may')) broke('must-may-pair');
     // A Paste slot hands a prompt to an agent, or to a peer through a Quay field, so its step shows
     // agent output. The check can't see output from a step with only Do.
@@ -369,27 +454,123 @@ export function checkStepCards(tokens: Token[]): StepCardViolation[] {
   return violations;
 }
 
+/**
+ * Checks a tutorial page against the files in its folder: each You should see image is there,
+ * every image there is named by a step card, each clip has its still, and there is at most one clip.
+ */
+export function checkTutorialFolder(tokens: Token[], files: string[]): StepCardViolation[] {
+  const violations: StepCardViolation[] = [];
+  const page = readPage(tokens);
+  const present = new Set(files);
+  for (const step of page.steps) {
+    for (const see of step.slots.filter((slot) => slot.name === 'see')) {
+      for (const inline of see.tokens.filter((token) => token.type === 'inline')) {
+        for (const image of imagesIn(inline)) {
+          const file = folderFile(image.attrGet('src') ?? '');
+          if (file !== null && !present.has(file)) {
+            violations.push({ rule: 'image-exists', step: step.number, title: step.title, files: [file] });
+          }
+        }
+      }
+    }
+  }
+  const named = new Set(page.stepImages.map(folderFile));
+  const sorted = [...files].sort();
+  for (const file of sorted.filter((file) => IMAGE_FILE.test(file) && !named.has(file))) {
+    violations.push({ rule: 'orphan-image', step: null, title: null, files: [file] });
+  }
+  const clips = sorted.filter((file) => CLIP_FILE.test(file));
+  for (const clip of clips.filter((clip) => !present.has(clip.replace(CLIP_FILE, '.webp')))) {
+    violations.push({ rule: 'clip-still', step: null, title: null, files: [clip] });
+  }
+  if (clips.length > 1) violations.push({ rule: 'one-clip', step: null, title: null, files: clips });
+  return violations;
+}
+
+/**
+ * Reads `QUAY_RELEASE_VERSION`, which the release flow sets to the version it is releasing, as
+ * `0.3.0` or `v0.3.0`. Unset, it returns null and the build skips the release checks.
+ */
+export function parseReleaseVersion(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const version = VERSION.exec(value)?.[1];
+  if (version === undefined) {
+    throw new Error(`QUAY_RELEASE_VERSION must be the version being released, such as 0.3.0 or v0.3.0, not ${JSON.stringify(value)}`);
+  }
+  return version;
+}
+
+/** The Quay version a sidecar manifest records as `quayVersion`, or null when it records none. */
+function sidecarQuayVersion(json: string): string | null {
+  let sidecar: unknown;
+  try {
+    sidecar = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof sidecar !== 'object' || sidecar === null || !Object.hasOwn(sidecar, 'quayVersion')) return null;
+  const { quayVersion } = sidecar as { quayVersion: unknown };
+  return typeof quayVersion === 'string' ? (VERSION.exec(quayVersion)?.[1] ?? null) : null;
+}
+
+/** Checks that the tutorial at `relativePath` has a sidecar manifest recording `release` as its captured Quay version. */
+function checkReleaseSidecar(relativePath: string, sidecars: string, release: string): StepCardViolation[] {
+  const broken = { rule: 'release-sidecar', step: null, title: null } as const;
+  const slug = /^tutorials\/[^/]+\/([^/]+)\/index\.md$/.exec(relativePath.replaceAll('\\', '/'))?.[1];
+  if (slug === undefined) return [broken];
+  let sidecar: string | null;
+  try {
+    sidecar = readFileSync(join(sidecars, slug, 'sidecar.json'), 'utf8');
+  } catch {
+    sidecar = null;
+  }
+  return sidecar !== null && sidecarQuayVersion(sidecar) === release ? [] : [{ ...broken, files: [`examples/tutorials/${slug}/sidecar.json`] }];
+}
+
 export function formatStepCardViolations(file: string, violations: StepCardViolation[]): string {
-  const lines = violations.map(({ rule, step, title }) => {
-    const where = step === null ? 'page' : title === null ? `step ${step}` : `step ${step} "${title}"`;
+  const lines = violations.map(({ rule, step, title, files = [] }) => {
+    const at = step === null ? [] : [title === null ? `step ${step}` : `step ${step} "${title}"`];
+    const where = [...at, ...files].join(', ') || 'page';
     return `  ${where}: ${STEP_CARD_RULES[rule]} (${rule})`;
   });
   return `${file} breaks the step-card rules:\n${lines.join('\n')}`;
 }
 
+interface PageEnv {
+  relativePath?: string;
+  path?: string;
+}
+
+export interface StepCardOptions {
+  /** The version the release flow is building, or null for an ordinary docs build. */
+  release: string | null;
+  /** The folder holding each tutorial's `<slug>/sidecar.json`. */
+  sidecars: string;
+}
+
 /**
- * Registers the step-card containers and the slot check. A page that uses any of the containers
- * is checked as a tutorial page, and one that breaks a rule fails to render, which fails
- * `docs:build`. Pages that use none of them render as before.
+ * Registers the step-card containers and the checks. A page that uses any of the containers is
+ * checked as a tutorial page, and one that breaks a rule fails to render, which fails
+ * `docs:build`. Pages that use none of them render as before. The folder checks read the folder
+ * of the page's `path`, which VitePress always passes; a page rendered without one skips them.
  */
+export function stepCardsPlugin({ release, sidecars }: StepCardOptions): (md: MarkdownRenderer) => void {
+  return (md) => {
+    registerStepCardContainers(md);
+    md.core.ruler.push('step_card_check', (state) => {
+      if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
+      const env = state.env as PageEnv;
+      const violations = checkStepCards(state.tokens);
+      if (env.path) violations.push(...checkTutorialFolder(state.tokens, readdirSync(dirname(env.path))));
+      if (release !== null) violations.push(...checkReleaseSidecar(env.relativePath ?? '', sidecars, release));
+      if (violations.length > 0) {
+        throw new Error(formatStepCardViolations(env.relativePath ?? env.path ?? 'A page', violations));
+      }
+    });
+  };
+}
+
+/** The step-card plugin as the site uses it: the release flow sets `QUAY_RELEASE_VERSION`. */
 export function stepCards(md: MarkdownRenderer): void {
-  registerStepCardContainers(md);
-  md.core.ruler.push('step_card_check', (state) => {
-    if (!state.tokens.some((token) => CONTAINER_TOKENS.has(token.type))) return;
-    const violations = checkStepCards(state.tokens);
-    if (violations.length > 0) {
-      const env = state.env as { relativePath?: string; path?: string };
-      throw new Error(formatStepCardViolations(env.relativePath ?? env.path ?? 'A page', violations));
-    }
-  });
+  stepCardsPlugin({ release: parseReleaseVersion(process.env.QUAY_RELEASE_VERSION), sidecars: SIDECARS })(md);
 }

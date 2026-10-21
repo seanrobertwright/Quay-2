@@ -33,7 +33,7 @@
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./02-shot.webp)
 :::
 
 ::: done

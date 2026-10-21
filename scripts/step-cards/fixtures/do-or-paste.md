@@ -23,7 +23,7 @@
 :::
 
 ::: see
-The project in the rail.
+![The project in the rail.](./01-shot.webp)
 :::
 
 :::
@@ -33,7 +33,7 @@ The project in the rail.
 ## 2. Look at the rail
 
 ::: see
-The rail. This step has neither Do nor Paste.
+![The rail. This step has neither Do nor Paste.](./02-shot.webp)
 :::
 
 :::
@@ -47,7 +47,7 @@ The rail. This step has neither Do nor Paste.
 :::
 
 ::: see
-Every test passes.
+![Every test passes.](./03-shot.webp)
 :::
 
 ::: done

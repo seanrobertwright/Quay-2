@@ -97,6 +97,16 @@ The workflow `.github/workflows/release.yml` will automatically:
 3. Sign the updater bundles (a `.sig` beside each) and compile the `latest.json` updater manifest.
 4. Publish a GitHub Release under **[Releases](https://github.com/seanrobertwright/Quay-2/releases)** with all binaries attached.
 
+### Step 4: Check the Tutorial Captures Before Deploying the Docs
+
+Build the docs with the version being released set in `QUAY_RELEASE_VERSION`:
+
+```powershell
+$env:QUAY_RELEASE_VERSION = "0.2.0"; pnpm docs:build; Remove-Item Env:QUAY_RELEASE_VERSION
+```
+
+With it set, `docs:build` fails on any tutorial whose sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, does not record that version as `quayVersion`. That catches a tutorial whose screenshots were not recaptured against this release. The variable takes `0.2.0` or `v0.2.0`, and anything else fails the build. Ordinary docs builds leave it unset and skip this check.
+
 ---
 
 ## 3. How Quay Auto-Updates
