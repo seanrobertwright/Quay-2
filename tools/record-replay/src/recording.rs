@@ -311,14 +311,14 @@ fn take_utf8(pending: &mut Vec<u8>, bytes: &[u8]) -> String {
 fn keystrokes(input: &str) -> (String, String) {
     let mut typed = String::new();
     let mut rest = input;
-    while let Some(at) = rest.find('') {
+    while let Some(at) = rest.find('\x1b') {
         typed.push_str(&rest[..at]);
         let seq = &rest[at..];
-        if !seq.starts_with("[") {
+        if !seq.starts_with("\x1b[") {
             if seq.len() == 1 {
                 return (typed, seq.to_string());
             }
-            typed.push('');
+            typed.push('\x1b');
             rest = &seq[1..];
             continue;
         }

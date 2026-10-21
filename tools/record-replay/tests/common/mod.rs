@@ -252,9 +252,9 @@ impl Terminal {
                 }
                 let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
                 // ConPTY asks where the cursor is when it starts; xterm answers, and so do we.
-                for _ in 0..chunk.matches("[6n").count() {
+                for _ in 0..chunk.matches("\x1b[6n").count() {
                     let mut w = answer.lock().unwrap();
-                    let _ = w.write_all(b"[1;1R");
+                    let _ = w.write_all(b"\x1b[1;1R");
                     let _ = w.flush();
                 }
                 sink.lock().unwrap().push_str(&chunk);
