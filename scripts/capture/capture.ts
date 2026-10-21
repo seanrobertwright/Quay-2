@@ -380,8 +380,7 @@ export interface Sidecar {
 /**
  * The sidecar manifest beside a tutorial's starter: the Quay version captured, the UTC date the
  * recordings were made and each CLI's version from that run. The docs build's release check
- * reads `quayVersion`; the quarterly sweep and the failed-run notice, not built yet, are to
- * read the rest.
+ * reads `quayVersion`; the quarterly sweep, not built yet, is to read the rest.
  */
 export function buildSidecar(input: { tutorial: string; quayVersion: string; capturedOn: string; recordings: RecordingInfo[] }): Sidecar {
   const quayVersion = VERSION.exec(input.quayVersion)?.[1];
