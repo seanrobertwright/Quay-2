@@ -1,0 +1,471 @@
+{
+  "tester": "",
+  "answers": {
+    "1.1": {
+      "status": "pass",
+      "notes": "",
+      "concern": "Looks good, but there is some redundancy: GitHub, Pre-PR Audit and session history buttons are repeated on the top header and bottom footer.  Seems to clutter the screen too much.  Do we really need them?  If so, why?",
+      "severity": "annoying",
+      "screenshots": [
+        {
+          "path": "assets/UAT-terminal-garbling-2026-10-20/1.1-1.png",
+          "name": "1.1-1.png"
+        }
+      ]
+    },
+    "1.2": {
+      "status": "fail",
+      "notes": "most times the directory selection dialog opens, but sometimes it does not - it hangs.",
+      "concern": "I really don't like the Directory selector dialog - it's too small.  I could not open it to take a screen shop because the 'browse' button did not open the dialog.",
+      "severity": "blocker",
+      "screenshots": [
+        {
+          "path": "assets/UAT-terminal-garbling-2026-10-20/1.2-1.png",
+          "name": "1.2-1.png"
+        },
+        {
+          "path": "assets/UAT-terminal-garbling-2026-10-20/1.2-2.png",
+          "name": "1.2-2.png"
+        }
+      ]
+    },
+    "1.3": {
+      "status": "pass",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "1.4": {
+      "status": "pass",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "1.5": {
+      "status": "notdone",
+      "notes": "what PROBE tool are you talking about?  Which project?",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "1.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "2.7": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "3.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "4.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "4.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "4.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "4.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "4.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.7": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.8": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.9": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.10": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.11": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.12": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.13": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.14": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.15": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "5.16": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.7": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.8": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "6.9": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "7.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "7.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "7.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "8.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "8.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.4": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.5": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.6": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "9.7": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "10.1": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "10.2": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    },
+    "10.3": {
+      "status": "",
+      "notes": "",
+      "concern": "",
+      "severity": "",
+      "screenshots": []
+    }
+  },
+  "findings": [],
+  "nextFinding": 1,
+  "annotCursor": 0,
+  "updatedAt": 1792493188388
+}
