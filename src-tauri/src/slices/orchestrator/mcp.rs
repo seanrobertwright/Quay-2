@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use tauri::Emitter;
 
 use super::models::A2ADispatchRequest;
-use super::router::A2ARouter;
+use super::router::{A2ARouter, WaitOutcome};
 use crate::slices::bridge::routes::{AppContext, AuthenticatedTerminal};
 
 #[derive(Debug, Deserialize)]
@@ -120,7 +120,7 @@ pub async fn handle_mcp_request(
                 "tools": [
                     {
                         "name": "quay_list_agents",
-                        "description": "List all active agents and terminals hosted in Quay, including their IDs, labels, run kind, and live status (Working, Idle, Waiting, etc.).",
+                        "description": "List the peers on Quay's A2A bus: their terminal IDs, names, run kind, bus level and live status (Working, Idle, Waiting, etc.). A full peer sends messages and replies; a responder replies but can't send; a listener gets messages but can't reply. Shell and Archon terminals are not peers and are not listed.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {}
@@ -128,7 +128,7 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_send_message",
-                        "description": "Send a prompt or task delegation to another agent in Quay. Can optionally wait for the agent to finish their turn and return their reply directly to you.",
+                        "description": "Send a prompt or task delegation to another peer in Quay. Can optionally wait for the peer to finish its turn and return its reply directly to you. A listener can't reply, so a wait on one returns at once and says why.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -142,7 +142,7 @@ pub async fn handle_mcp_request(
                                 },
                                 "wait_for_reply": {
                                     "type": "boolean",
-                                    "description": "If true (default), waits up to 60s for the peer agent to complete their turn and returns their answer."
+                                    "description": "If true (default), waits up to 60s for the peer to complete its turn and returns its reply. A wait on a listener returns at once."
                                 }
                             },
                             "required": ["target_terminal_id", "message"]
@@ -150,7 +150,7 @@ pub async fn handle_mcp_request(
                     },
                     {
                         "name": "quay_broadcast",
-                        "description": "Broadcast a notification or status update to all active Claude Code agents running in Quay.",
+                        "description": "Broadcast a notification or status update to every running peer in Quay. Shell and Archon terminals are skipped.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -246,12 +246,14 @@ pub async fn handle_mcp_request(
                     let terminals = ctx.pty_manager.list();
                     let agents_list: Vec<Value> = terminals
                         .into_iter()
-                        .map(|t| {
+                        .filter_map(|t| t.bus_level().map(|level| (t, level)))
+                        .map(|(t, level)| {
                             json!({
                                 "terminal_id": t.id,
                                 "name": t.name,
                                 "task_title": t.task_title,
                                 "run_kind": t.run_kind,
+                                "level": level.as_str(),
                                 "status": t.claude_status,
                                 "current_tool": t.current_tool,
                                 "auto_approved_count": t.auto_approved_count,
@@ -300,7 +302,7 @@ pub async fn handle_mcp_request(
                                 .dispatch_and_wait(request, Some(&ctx.pty_manager), 60)
                                 .await
                             {
-                                Ok(reply) => {
+                                Ok(outcome) => {
                                     if let Some(msg) = a2a_router
                                         .get_messages()
                                         .into_iter()
@@ -310,11 +312,17 @@ pub async fn handle_mcp_request(
                                         let _ = ctx.app_handle.emit("a2a-message-updated", msg.clone());
                                         let _ = ctx.app_handle.emit("a2a-message-dispatched", msg);
                                     }
+                                    let text = match outcome {
+                                        WaitOutcome::Reply(reply) => {
+                                            format!("Reply from {}:\n{}", target_id, reply)
+                                        }
+                                        WaitOutcome::NoReply(why) => why,
+                                    };
                                     Ok(json!({
                                         "content": [
                                             {
                                                 "type": "text",
-                                                "text": format!("Reply from {}:\n{}", target_id, reply)
+                                                "text": text
                                             }
                                         ]
                                     }))
@@ -375,9 +383,10 @@ pub async fn handle_mcp_request(
                                 {
                                     "type": "text",
                                     "text": format!(
-                                        "Agent {}: name='{}', status={:?}, task='{}', tool='{}', auto_approved={}, project='{}'",
+                                        "Agent {}: name='{}', level={}, status={:?}, task='{}', tool='{}', auto_approved={}, project='{}'",
                                         info.id,
                                         info.name,
+                                        info.bus_level().map_or("not a peer", |level| level.as_str()),
                                         info.claude_status,
                                         info.task_title.as_deref().unwrap_or("none"),
                                         info.current_tool.as_deref().unwrap_or("none"),
