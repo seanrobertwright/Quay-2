@@ -90,17 +90,6 @@ fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size() {
 const TOKEN: &str = "live-token-0123456789abcdef0123456789abcdef0123456789abcdef01234";
 const TAG: &str = "term-0123456789abcdef0123456789abcdef";
 
-/// The stub's bridge calls, in order, as `Received::what` names them.
-const STUB_CALLS: [&str; 7] = [
-    "session.started",
-    "initialize",
-    "tools/call quay_list_agents",
-    "turn.started",
-    "tool.started",
-    "tool.finished",
-    "turn.completed",
-];
-
 #[test]
 fn bridge_calls_pass_through_and_are_logged_without_the_token() {
     let scratch = Scratch::new("bridge");

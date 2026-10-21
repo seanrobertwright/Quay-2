@@ -103,6 +103,17 @@ impl Received {
     }
 }
 
+/// The stub's bridge calls, in order, as `Received::what` names them.
+pub const STUB_CALLS: [&str; 7] = [
+    "session.started",
+    "initialize",
+    "tools/call quay_list_agents",
+    "turn.started",
+    "tool.started",
+    "tool.finished",
+    "turn.completed",
+];
+
 /// Quay's local bridge as far as an agent CLI sees it: it answers `/v1/events` with 200 and
 /// `/mcp` calls with a JSON-RPC result naming the caller's token, and keeps every request.
 pub struct FakeBridge {

@@ -130,17 +130,6 @@ fn a_replay_shows_what_the_recorded_cli_showed_without_the_cli() {
     }
 }
 
-/// The stub's bridge calls, in order, as `Received::what` names them.
-const STUB_CALLS: [&str; 7] = [
-    "session.started",
-    "initialize",
-    "tools/call quay_list_agents",
-    "turn.started",
-    "tool.started",
-    "tool.finished",
-    "turn.completed",
-];
-
 fn whats(calls: &[Received]) -> Vec<String> {
     calls.iter().map(Received::what).collect()
 }
