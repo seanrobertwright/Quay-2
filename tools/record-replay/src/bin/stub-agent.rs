@@ -82,7 +82,8 @@ fn console_size() -> (i16, i16) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (cols, rows) = console_size();
-    println!("\x1b[32mstub-agent: hello from the real CLI\x1b[0m");
+    let name = std::env::current_exe().ok().and_then(|p| Some(p.file_stem()?.to_string_lossy().to_string()));
+    println!("\x1b[32mstub-agent: hello from the real CLI ({})\x1b[0m", name.unwrap_or_default());
     println!("stub-agent: size {cols}x{rows}");
     let _ = std::io::stdout().flush();
 

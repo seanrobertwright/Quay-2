@@ -50,47 +50,55 @@ struct Run {
     exit_code: u32,
 }
 
-/// Records the stub agent, impersonating `cli`, into `recordings`: Quay opens the terminal,
-/// and after `pause` types the prompt into it.
-fn record(scratch: &Scratch, recordings: &Path, cli: &str, pause: Duration) -> Run {
-    let tool = scratch.install(TOOL, &format!("record-{cli}/tool"), cli);
-    let real = scratch.install(STUB, &format!("record-{cli}/real-cli"), cli);
-    let bridge = FakeBridge::start();
-    let mut env = vec![
+/// A terminal the tutorial opens: the CLI Quay launches, the prompt typed into it, and how
+/// long after the CLI asks for it.
+#[derive(Clone, Copy)]
+struct Session<'a> {
+    cli: &'a str,
+    prompt: &'a str,
+    pause: Duration,
+}
+
+const CLAUDE: Session = Session { cli: "claude", prompt: PROMPT, pause: Duration::ZERO };
+
+/// Records the stub agent, standing in for `session.cli`, into `recordings`.
+fn record(scratch: &Scratch, recordings: &Path, session: &Session) -> Run {
+    let tool = scratch.install(TOOL, &format!("record-{}/tool", session.cli), session.cli);
+    let real = scratch.install(STUB, &format!("record-{}/real-cli", session.cli), session.cli);
+    let env = vec![
         ("PATH", fixture_path(&[&tool, &real])),
         ("QUAY_RECORD_DIR", recordings.display().to_string()),
     ];
-    env.extend(bridge_env(&bridge, &RECORDED));
-    run_terminal(&format!("{cli}.exe"), &claude_args(&bridge), &env, &scratch.dir("project"), &bridge, pause)
+    run_terminal(scratch, session, env, &RECORDED)
 }
 
-/// Replays the next recording for `cli` from `recordings`, with only the tool on PATH.
-fn replay(scratch: &Scratch, recordings: &Path, state: &Path, cli: &str, pause: Duration) -> Run {
-    let tool = scratch.install(TOOL, &format!("replay-{cli}"), cli);
-    let bridge = FakeBridge::start();
-    let mut env = vec![
+/// Replays the next recording for `session.cli` from `recordings`, with only the tool on PATH.
+fn replay(scratch: &Scratch, recordings: &Path, state: &Path, session: &Session) -> Run {
+    let tool = scratch.install(TOOL, &format!("replay-{}", session.cli), session.cli);
+    let env = vec![
         ("PATH", fixture_path(&[&tool])),
         ("QUAY_REPLAY_DIR", recordings.display().to_string()),
         ("QUAY_REPLAY_STATE", state.display().to_string()),
     ];
-    env.extend(bridge_env(&bridge, &LIVE));
-    run_terminal(&format!("{cli}.exe"), &claude_args(&bridge), &env, &scratch.dir("project"), &bridge, pause)
+    run_terminal(scratch, session, env, &LIVE)
 }
 
-fn run_terminal(
-    program: &str,
-    args: &[String],
-    env: &[(&str, String)],
-    cwd: &Path,
-    bridge: &FakeBridge,
-    pause: Duration,
-) -> Run {
-    let mut terminal = Terminal::open(program, args, env, cwd, 100, 30);
+/// Opens the terminal as Quay does, against a bridge of its own: a Claude terminal gets the
+/// bridge's environment and MCP config, other CLIs get neither.
+fn run_terminal(scratch: &Scratch, session: &Session, mut env: Vec<(&str, String)>, who: &Identity) -> Run {
+    let bridge = FakeBridge::start();
+    let mut args = Vec::new();
+    if session.cli == "claude" {
+        env.extend(bridge_env(&bridge, who));
+        args = claude_args(&bridge);
+    }
+    let program = format!("{}.exe", session.cli);
+    let mut terminal = Terminal::open(&program, &args, &env, &scratch.dir("project"), 100, 30);
     terminal.wait_for_text("stub-agent: waiting for a prompt", WAIT);
-    std::thread::sleep(pause);
+    std::thread::sleep(session.pause);
     let text_before_prompt = terminal.text();
     let prompted = Instant::now();
-    terminal.type_text(&format!("{PROMPT}\r"));
+    terminal.type_text(&format!("{}\r", session.prompt));
     let exit_code = terminal.wait_exit(WAIT);
     Run { calls: bridge.received(), opened: terminal.started, prompted, text_before_prompt, text: terminal.text(), exit_code }
 }
@@ -103,9 +111,9 @@ fn recordings_dir(scratch: &Scratch) -> (PathBuf, PathBuf) {
 fn a_replay_shows_what_the_recorded_cli_showed_without_the_cli() {
     let scratch = Scratch::new("round-trip-output");
     let (recordings, state) = recordings_dir(&scratch);
-    let recorded = record(&scratch, &recordings, "claude", Duration::ZERO);
+    let recorded = record(&scratch, &recordings, &CLAUDE);
 
-    let replayed = replay(&scratch, &recordings, &state, "claude", Duration::ZERO);
+    let replayed = replay(&scratch, &recordings, &state, &CLAUDE);
 
     assert_eq!(replayed.exit_code, recorded.exit_code);
     for line in [
@@ -151,9 +159,9 @@ fn seconds_between(from: Instant, to: Instant) -> f64 {
 fn a_replay_reissues_the_recorded_bridge_calls_as_the_live_terminal() {
     let scratch = Scratch::new("round-trip-bridge");
     let (recordings, state) = recordings_dir(&scratch);
-    let recorded = record(&scratch, &recordings, "claude", Duration::ZERO);
+    let recorded = record(&scratch, &recordings, &CLAUDE);
 
-    let replayed = replay(&scratch, &recordings, &state, "claude", Duration::ZERO);
+    let replayed = replay(&scratch, &recordings, &state, &CLAUDE);
 
     assert_eq!(whats(&recorded.calls), STUB_CALLS);
     assert_eq!(whats(&replayed.calls), STUB_CALLS, "the same calls, in the same order");
@@ -181,10 +189,10 @@ fn find<'a>(run: &'a Run, what: &str) -> &'a Received {
 fn a_replayed_turn_starts_only_after_its_prompt_arrives() {
     let scratch = Scratch::new("round-trip-prompt");
     let (recordings, state) = recordings_dir(&scratch);
-    let recorded = record(&scratch, &recordings, "claude", Duration::ZERO);
+    let recorded = record(&scratch, &recordings, &CLAUDE);
 
     // Quay types the prompt two seconds later than it did when the run was recorded.
-    let replayed = replay(&scratch, &recordings, &state, "claude", Duration::from_secs(2));
+    let replayed = replay(&scratch, &recordings, &state, &Session { pause: Duration::from_secs(2), ..CLAUDE });
 
     assert!(!replayed.text_before_prompt.contains("stub-agent: answered"), "{}", replayed.text_before_prompt);
     assert!(replayed.text.contains("stub-agent: answered add a health route"), "{}", replayed.text);
@@ -199,4 +207,51 @@ fn a_replayed_turn_starts_only_after_its_prompt_arrives() {
         let replayed_at = seconds_between(replayed.prompted, find(&replayed, what).at);
         assert!((recorded_at - replayed_at).abs() < 0.5, "{what} {recorded_at:.3}s after the prompt, replayed {replayed_at:.3}s after");
     }
+}
+
+#[test]
+fn a_replay_stands_in_for_the_cli_it_is_named_after_in_recorded_order() {
+    let scratch = Scratch::new("round-trip-names");
+    let (recordings, state) = recordings_dir(&scratch);
+    let first = Session { prompt: "first claude", ..CLAUDE };
+    let second = Session { prompt: "second claude", ..CLAUDE };
+    let codex = Session { cli: "codex", prompt: "the codex one", ..CLAUDE };
+    for session in [&first, &second, &codex] {
+        record(&scratch, &recordings, session);
+    }
+    assert_eq!(
+        file_names(&recordings),
+        [
+            "claude-1.cast.gz",
+            "claude-1.http.jsonl.gz",
+            "claude-2.cast.gz",
+            "claude-2.http.jsonl.gz",
+            "codex-1.cast.gz",
+            "codex-1.http.jsonl.gz",
+        ]
+    );
+    assert_eq!(gunzip(&recordings.join("codex-1.http.jsonl.gz")), "", "Quay gives Codex no bridge");
+
+    // Copied as codex.exe it replays the Codex recording; as claude.exe, the Claude ones in order.
+    let replayed = replay(&scratch, &recordings, &state, &codex);
+    assert!(replayed.text.contains("hello from the real CLI (codex)"), "{}", replayed.text);
+    assert!(replayed.text.contains("answered the codex one"), "{}", replayed.text);
+    assert!(replayed.calls.is_empty());
+    for session in [&first, &second] {
+        let replayed = replay(&scratch, &recordings, &state, session);
+        assert!(replayed.text.contains("hello from the real CLI (claude)"), "{}", replayed.text);
+        assert!(replayed.text.contains(&format!("answered {}", session.prompt)), "{}", replayed.text);
+        assert_eq!(whats(&replayed.calls), STUB_CALLS);
+    }
+
+    // A terminal with no recording left says so.
+    let tool = scratch.install(TOOL, "replay-claude", "claude");
+    let env = [
+        ("PATH", fixture_path(&[&tool])),
+        ("QUAY_REPLAY_DIR", recordings.display().to_string()),
+        ("QUAY_REPLAY_STATE", state.display().to_string()),
+    ];
+    let mut terminal = Terminal::open("claude.exe", &[], &env, &scratch.dir("project"), 100, 30);
+    assert_eq!(terminal.wait_exit(WAIT), 2);
+    assert!(terminal.text().contains("no recording of claude left to replay"), "{}", terminal.text());
 }
