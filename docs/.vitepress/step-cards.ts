@@ -256,6 +256,10 @@ export function registerStepCardContainers(md: MarkdownRenderer): void {
 interface Slot {
   name: SlotName;
   info: string;
+  /** The level of the slot's opening token. */
+  level: number;
+  /** The source lines from the slot's opening line to its closing `:::`. */
+  lines: [number, number] | null;
   /** The slot's direct children, opening and self-contained block tokens only. */
   children: Token[];
   /** Every token inside the slot. */
@@ -333,7 +337,7 @@ function readPage(tokens: Token[]): Page {
       step = null;
     } else if (token.level === stepLevel + 1) {
       if (opened && isSlot(opened)) {
-        slot = { name: opened, info: token.info, children: [], tokens: [] };
+        slot = { name: opened, info: token.info, level: token.level, lines: token.map, children: [], tokens: [] };
         step.slots.push(slot);
       } else if (opened) {
         step.misplaced++;
@@ -365,6 +369,68 @@ function seeImage(slot: Slot): Token | null {
 /** The file a `./<file>` image names in the page's own folder, or null for a path anywhere else. */
 function folderFile(src: string): string | null {
   return /^\.\/([^/\\]+)$/.exec(src)?.[1] ?? null;
+}
+
+/**
+ * The items a container holds, as written: each list item's first paragraph, or each paragraph
+ * outside a list. `level` is the level of the container's direct children.
+ */
+function itemsOf(tokens: Token[], level: number): string[] {
+  const items: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const { type, level: at } = tokens[i];
+    const item = type === 'list_item_open' && at === level + 1 && tokens[i + 1]?.type === 'paragraph_open';
+    const paragraph = type === 'paragraph_open' && at === level;
+    if (item || paragraph) items.push(tokens[i + (item ? 2 : 1)].content.replace(/\s*\n\s*/g, ' '));
+  }
+  return items;
+}
+
+/** What a test run checks off on a tutorial page, read from its step cards. */
+export interface StepCardRecord {
+  /** The page's `#` heading. */
+  title: string | null;
+  /** The Before you start items. */
+  before: string[];
+  steps: { number: number; title: string | null; must: string[]; ifnots: string[] }[];
+  /** The You're done when items, without a leading ✅. */
+  done: string[];
+  /** The Do and Paste slots in page order: what the learner and the agents do. */
+  actions: { step: number; slot: 'do' | 'paste'; info: string; source: string }[];
+}
+
+/**
+ * Reads a tutorial page's step cards for its test-run record. `tokens` come from a renderer with
+ * the step-card containers registered, and `src` is the markdown they were parsed from. A slot's
+ * source is its lines between the opener and the closing `:::`, line endings as `\n`, with
+ * trailing spaces and the blank lines around it removed.
+ */
+export function readStepCardRecord(tokens: Token[], src: string): StepCardRecord {
+  const page = readPage(tokens);
+  const lines = src.split(/\r?\n/);
+  const h1 = tokens.findIndex((token) => token.type === 'heading_open' && token.tag === 'h1');
+  const before = page.parts.find((part) => part.name === 'before');
+  const slotsOf = (step: Step, name: SlotName) => step.slots.filter((slot) => slot.name === name);
+  const slotItems = (step: Step, name: SlotName) => slotsOf(step, name).flatMap((slot) => itemsOf(slot.tokens, slot.level + 1));
+  return {
+    title: h1 === -1 ? null : tokens[h1 + 1].content,
+    before: before ? itemsOf(before.tokens, 1) : [],
+    steps: page.steps.map((step) => ({
+      number: step.number,
+      title: step.title,
+      must: slotItems(step, 'must'),
+      ifnots: slotsOf(step, 'ifnot').map((slot) => slot.info),
+    })),
+    done: page.steps.flatMap((step) => slotItems(step, 'done')).map((item) => item.replace(/^✅\s*/, '')),
+    actions: page.steps.flatMap((step) =>
+      step.slots.flatMap((slot) => {
+        if (slot.name !== 'do' && slot.name !== 'paste') return [];
+        const [open, close] = slot.lines ?? [0, 0];
+        const source = lines.slice(open + 1, close).map((line) => line.trimEnd()).join('\n').replace(/^\n+|\n+$/g, '');
+        return [{ step: step.number, slot: slot.name, info: slot.info, source }];
+      }),
+    ),
+  };
 }
 
 /** Checks the page parts around the steps: the glance strip, You'll learn, Before you start and Next up. */
