@@ -6,13 +6,14 @@ use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
 
+/// Mission Control's dispatch. The operator waits on the trail, so the peer's response is a Reply.
 #[tauri::command]
 pub async fn a2a_send_prompt(
     request: A2ADispatchRequest,
     router: State<'_, A2ARouter>,
     pty_manager: State<'_, PtyManager>,
 ) -> Result<A2AMessage, String> {
-    router.dispatch_async(request, Some(&pty_manager)).await
+    router.operator_dispatch_async(request, Some(&pty_manager)).await
 }
 
 /// Shows `msg` in the trail and, when it has just been typed into its target, raises its

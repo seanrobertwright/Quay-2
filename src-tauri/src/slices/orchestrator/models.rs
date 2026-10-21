@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+use crate::dates::now_ms;
+
+/// Now, in the epoch milliseconds the trail's times are kept in.
+pub fn trail_now() -> u64 {
+    now_ms().max(0) as u64
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum A2AMessageStatus {
@@ -25,12 +32,42 @@ pub struct A2AMessage {
     /// Whether this is one peer's notice from a broadcast, rather than a message sent to it.
     #[serde(default)]
     pub broadcast: bool,
+    /// Whether someone waited on this message's reply, so the trail labels the peer's
+    /// response a Reply rather than an Answer: a `wait_for_reply` send, or Mission Control's
+    /// dispatch, which the operator waits on in the trail. A wait on a peer that can't reply,
+    /// a no-wait send and a broadcast notice are not waited on, and a wait that ends without
+    /// the reply (it ran out, or the peer stopped being able to reply) is no longer waited on.
+    #[serde(default)]
+    pub waited: bool,
+    /// When the message was sent, in epoch milliseconds.
     pub timestamp: u64,
+    /// When the message was typed into its target, in epoch milliseconds. None while it is
+    /// Queued, and for a message that failed before it was typed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered_at: Option<u64>,
+    /// When the turn that answers the message ended, in epoch milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<u64>,
     pub status: A2AMessageStatus,
     pub response: Option<String>,
     /// What the trail shows beside the status, such as a wait that ended without a reply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+impl A2AMessage {
+    /// Moves the entry to Dispatched, typed into its target now.
+    pub fn mark_dispatched(&mut self) {
+        self.status = A2AMessageStatus::Dispatched;
+        self.delivered_at = Some(trail_now());
+    }
+
+    /// Completes the entry with `answer`, from the turn that ended now.
+    pub fn mark_completed(&mut self, answer: String) {
+        self.status = A2AMessageStatus::Completed;
+        self.completed_at = Some(trail_now());
+        self.response = Some(answer);
+    }
 }
 
 /// Who sends a broadcast, which decides the peers it reaches.

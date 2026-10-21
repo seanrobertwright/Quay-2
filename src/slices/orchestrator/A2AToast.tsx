@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { TerminalInfo } from "../terminal/types";
 import { AgentIcon } from "../terminal/AgentIcons";
+import type { TrailStatus } from "./trailEntry";
 
 export interface A2ADispatchPayload {
   id: string;
@@ -21,7 +22,7 @@ export interface A2ADispatchPayload {
   as_user?: boolean;
   broadcast?: boolean;
   timestamp: number;
-  status: "queued" | "dispatched" | "completed" | "failed";
+  status: TrailStatus;
   response?: string | null;
 }
 
@@ -40,7 +41,7 @@ interface ToastItem {
   toName?: string;
   content: string;
   response?: string | null;
-  status?: "queued" | "dispatched" | "completed" | "failed";
+  status?: TrailStatus;
   timestamp: number;
 }
 
