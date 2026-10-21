@@ -4,11 +4,11 @@
 //
 //   pnpm docs:capture <slug> --exe <Quay exe> [--tool <quay-record-replay.exe>] [--port <n>] [--fast <n>] [--by-hand]
 //
-// Exits 0 when every shot and the sidecar manifest are written, 1 when the capture fails, and
-// 2 on a bad argument.
+// Exits 0 when every shot, the tutorial's section of the changed-shot report and the sidecar
+// manifest are written, 1 when the capture fails, and 2 on a bad argument.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -32,6 +32,7 @@ import {
   type PlannedStep,
   type Shot,
 } from './capture.ts';
+import { reportShots, shotReportDir, type CapturedShot } from './shot-report.ts';
 
 const root = join(import.meta.dirname, '..', '..');
 /** WebP at quality 90 kept a 200% shot near 100 KB in the screenshot research. */
@@ -209,6 +210,37 @@ async function perform(page: Page, action: Action, timeout: number) {
     case 'type':
       return target.pressSequentially(action.text, { timeout });
   }
+}
+
+/** A file as committed at HEAD, or null when HEAD has nothing at its path. */
+function committedFile(file: string): Buffer | null {
+  const path = relative(root, file).replaceAll('\\', '/');
+  const blob = execFileSync('git', ['-C', root, 'ls-tree', '--object-only', 'HEAD', '--', path], { encoding: 'utf8' }).trim();
+  if (blob === '') return null;
+  return execFileSync('git', ['-C', root, 'cat-file', 'blob', blob], { maxBuffer: 256 * 1024 * 1024 });
+}
+
+/**
+ * Whether a shot was saved since `since`. The committed stills sit where new ones are saved, so
+ * a file that merely exists may be one nobody retook.
+ */
+function savedSince(file: string, since: number): boolean {
+  try {
+    return statSync(file).mtimeMs >= since;
+  } catch {
+    return false;
+  }
+}
+
+/** Each shot in the plan, as saved in the stills folder during this capture and as committed at HEAD. */
+function capturedShots(plan: PlannedStep[], stills: string, since: number): CapturedShot[] {
+  return plan.flatMap(({ step }) =>
+    step.shots.map((shot) => {
+      const file = join(stills, `${shot.name}.webp`);
+      if (!savedSince(file, since)) throw new Error(`${relative(root, file)} was not saved during this capture`);
+      return { name: shot.name, committed: committedFile(file), captured: readFileSync(file) };
+    }),
+  );
 }
 
 /** The version Tauri wrote into the exe's version resource, from `tauri.conf.json`. */
@@ -442,11 +474,20 @@ async function main() {
     };
     if (!args.byHand) env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${args.port}`;
     quay = spawn(args.exe, [], { env, stdio: 'ignore' });
+    // A whole second back, since some file systems keep coarser modification times than the clock.
+    const startedAt = Date.now() - 1000;
     const capturedOn = formatDateStamp(Date.now());
     let version: string;
-    if (args.byHand) version = await captureByHand(plan, replayState, setState);
+    if (args.byHand) version = await captureByHand(plan, replayState, setState, paths.stills, startedAt);
     else version = await captureOverCdp(plan, replayState, setState, paths.stills, quay);
     const sidecar = buildSidecar({ tutorial: slug, quayVersion: version, capturedOn, recordings });
+    const reportDir = shotReportDir(root, sidecar.quayVersion);
+    const report = await reportShots({ dir: reportDir, tutorial: slug, quayVersion: sidecar.quayVersion, capturedOn, shots: capturedShots(plan, paths.stills, startedAt) });
+    const differ = report.shots.filter((shot) => shot.status !== 'unchanged');
+    for (const shot of differ) console.log(`  ${shot.status}: ${shot.name}.webp`);
+    console.log(
+      `${differ.length} of ${report.shots.length} shots changed or new; review them in ${relative(root, join(reportDir, 'index.html')).replaceAll('\\', '/')}.`,
+    );
     mkdirSync(join(paths.sidecar, '..'), { recursive: true });
     writeFileSync(paths.sidecar, `${JSON.stringify(sidecar, null, 2)}\n`);
     console.log(`Wrote ${relative(root, paths.sidecar).replaceAll('\\', '/')} for Quay ${sidecar.quayVersion}.`);
@@ -505,10 +546,12 @@ async function captureOverCdp(plan: PlannedStep[], stateDir: string, setState: S
 }
 
 /** The fallback: the same fixture and holds, with a person taking each shot with ShareX or Snipping Tool. */
-async function captureByHand(plan: PlannedStep[], stateDir: string, setState: SetState): Promise<string> {
+async function captureByHand(plan: PlannedStep[], stateDir: string, setState: SetState, stills: string, since: number): Promise<string> {
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
   try {
     console.log('Quay is open on the capture fixture with no debugging port. Capture its client area only, at 200% scaling.');
+    console.log(`Save each shot as WebP in ${stills}.`);
+    mkdirSync(stills, { recursive: true });
     for (const planned of plan) {
       const { step } = planned;
       if (step.realTime) setState(STATE.speed, '1');
@@ -522,7 +565,13 @@ async function captureByHand(plan: PlannedStep[], stateDir: string, setState: Se
         const what = shot.pane === null ? 'the full window' : `the pane ${shot.pane}`;
         console.log(`  Take ${shot.name}.webp of ${what}, blurring the port badge${shot.mask.length > 0 ? ` and ${shot.mask.join(', ')}` : ''}.`);
       }
-      await prompt.question('  Press Enter when the shots are saved. ');
+      // Each shot is compared with the committed one after the capture; a missing one is asked for now.
+      for (;;) {
+        await prompt.question('  Press Enter when the shots are saved. ');
+        const missing = step.shots.filter((shot) => !savedSince(join(stills, `${shot.name}.webp`), since)).map((shot) => `${shot.name}.webp`);
+        if (missing.length === 0) break;
+        console.log(`  Not saved yet: ${missing.join(', ')}.`);
+      }
     }
     setState(STATE.runTo, null);
     return exeVersion(args.exe);
