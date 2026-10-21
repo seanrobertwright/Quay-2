@@ -24,7 +24,10 @@ pnpm tauri dev
 # 3. Run documentation locally
 pnpm docs:dev
 
-# 4. Check the docs scripts and the step-card plugin, then build the documentation site
+# 4. After adding a tutorial page, list it in the Tutorials tables of the docs and the README
+pnpm docs:tutorials
+
+# 5. Check the docs scripts and the step-card plugin, then build the documentation site
 pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
