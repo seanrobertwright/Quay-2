@@ -10,6 +10,10 @@ use tauri::{AppHandle, Emitter};
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
+use super::osc7501::{self, Osc7501, Osc7501Scanner};
+
+/// What a PTY reader runs with each OSC 7501 sequence the process prints, in order.
+pub type Osc7501Hook = Box<dyn FnMut(Osc7501) + Send>;
 
 #[derive(Clone, Serialize)]
 pub struct PtyOutputPayload {
@@ -430,6 +434,12 @@ pub(crate) fn build_command(
     if request.run_kind.is_peer() {
         set_quay_env(&mut cmd, terminal_id, bridge_port, bridge_token);
     }
+    // Quay reads Antigravity's status and answers from these, so `brief`, which drops each
+    // answer, is unset whether the workspace or Quay's own environment set it
+    if request.run_kind.prints_osc7501() {
+        cmd.env(osc7501::ENABLE_VAR, "on");
+        cmd.env_remove(osc7501::MESSAGES_VAR);
+    }
 
     // Inject custom CLI launch flags (for any supported agent)
     if request.run_kind.is_agent() {
@@ -483,6 +493,8 @@ impl PtySession {
     /// under this id (0 for a new terminal); output from this session is numbered above it,
     /// because a mounted pane drops any chunk whose seq is not above the highest it has seen.
     /// `on_first_output` runs once, on the reader thread, when the process first writes output.
+    /// `on_osc7501`, when given, runs there with each OSC 7501 sequence the output carries,
+    /// after `on_first_output`.
     pub fn spawn(
         request: SpawnTerminalRequest,
         terminal_id: String,
@@ -491,6 +503,7 @@ impl PtySession {
         bridge_token: String,
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
+        on_osc7501: Option<Osc7501Hook>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
@@ -583,6 +596,7 @@ impl PtySession {
                 let mut buf = [0u8; 8192];
                 let mut pending_utf8 = Vec::with_capacity(8);
                 let mut on_first_output = Some(on_first_output);
+                let mut osc7501 = on_osc7501.map(|hook| (Osc7501Scanner::default(), hook));
                 let mut log_file = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -605,6 +619,12 @@ impl PtySession {
 
                             if let Some(hook) = on_first_output.take() {
                                 hook();
+                            }
+
+                            if let Some((scanner, hook)) = osc7501.as_mut() {
+                                for seq in scanner.feed(&text) {
+                                    hook(seq);
+                                }
                             }
 
                             // Buffer recent output for newly-mounting xterm instances,
@@ -1124,6 +1144,22 @@ mod tests {
 
         assert_eq!(env_of(&cmd, "QUAY_TERMINAL_ID").as_deref(), Some("term-quay-wins"));
         assert_eq!(env_of(&cmd, "QUAY_A2A_TOKEN").as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn antigravity_reports_its_turns_with_their_messages_whatever_the_workspace_sets() {
+        let mut request = spawn_request(RunKind::Antigravity);
+        request.env_vars = Some(
+            [("AGY_CLI_OSC7501", "off"), ("AGY_CLI_OSC7501_MESSAGES", "brief")]
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+        );
+
+        let cmd = build_command(&request, "term-agy-osc", 4321, "tok-1");
+
+        assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501").as_deref(), Some("on"));
+        assert_eq!(env_of(&cmd, "AGY_CLI_OSC7501_MESSAGES"), None);
     }
 
     #[test]
