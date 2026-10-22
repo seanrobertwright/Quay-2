@@ -8,6 +8,7 @@ import {
   checkTutorialFolder,
   parseReleaseVersion,
   registerStepCardContainers,
+  STEP_CARD_RULES,
   stepCardsPlugin,
 } from '../../docs/.vitepress/step-cards.ts';
 import { playUnlessReduced } from '../../docs/.vitepress/theme/step-card-clip.ts';
@@ -86,7 +87,7 @@ test('without a page path, a still renders as a still', () => {
 });
 
 test('the site build fails a page whose folder breaks an image or clip rule, naming the step and the file', async () => {
-  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir() }));
+  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs: tmpdir() }));
   const path = await tutorialFolder([...stills.slice(1), '05-ghost.mp4']);
   assert.throws(() => render.render(example, { path, relativePath: 'tutorials/swarm/example/index.md' }), {
     message:
@@ -122,7 +123,7 @@ test("in the release flow, a tutorial builds only when its sidecar records the r
   const render = (renderer: typeof md, slug: string) => () =>
     renderer.render(example, { path, relativePath: `tutorials/a2a/${slug}/index.md` });
 
-  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars }));
+  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars, docs: tmpdir() }));
 
   assert.doesNotThrow(render(release, 'current'));
   assert.doesNotThrow(render(release, 'with-v'));
@@ -133,13 +134,13 @@ test("in the release flow, a tutorial builds only when its sidecar records the r
         `  examples/tutorials/${slug}/sidecar.json: in the release flow, the tutorial's sidecar manifest records the Quay version being released as "quayVersion" (release-sidecar)`,
     }, slug);
   }
-  const ordinary = await renderer(stepCardsPlugin({ release: null, sidecars }));
+  const ordinary = await renderer(stepCardsPlugin({ release: null, sidecars, docs: tmpdir() }));
   assert.doesNotThrow(render(ordinary, 'stale'));
   assert.doesNotThrow(render(ordinary, 'missing'));
 });
 
 test('in the release flow, a step-card page outside tutorials/<series>/<slug>/ has no sidecar and fails', async () => {
-  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars: tmpdir() }));
+  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars: tmpdir(), docs: tmpdir() }));
   const path = await tutorialFolder(stills);
   assert.throws(() => release.render(example, { path, relativePath: 'guide/example.md' }), /\(release-sidecar\)$/m);
 });
@@ -160,4 +161,26 @@ test('a clip plays muted unless the reader asks for reduced motion, which pauses
   assert.deepEqual(calls, ['play', 'pause']);
   // A browser that blocks autoplay rejects play(); the poster stays and the controls start it.
   await new Promise((resolve) => setImmediate(resolve));
+});
+
+test("a tutorial's Next up card must link to the next published tutorial, or to the landing page when none is", async () => {
+  // The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
+  const docs = await mkdtemp(join(tmpdir(), 'step-card-docs-'));
+  const publish = async (page: string) => {
+    await mkdir(join(docs, 'tutorials', page), { recursive: true });
+    await writeFile(join(docs, 'tutorials', page, 'index.md'), '');
+  };
+  const path = await tutorialFolder(stills);
+  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs }));
+  const asSwarm1 = () => render.render(example, { path, relativePath: 'tutorials/swarm/first-swarm/index.md' });
+
+  await publish('swarm/first-swarm');
+  assert.throws(asSwarm1, {
+    message:
+      'tutorials/swarm/first-swarm/index.md breaks the step-card rules:\n' +
+      `  docs/tutorials/index.md: ${STEP_CARD_RULES['next-up-target']} (next-up-target)`,
+  });
+  await publish('swarm/tdd-swarm-kata');
+  assert.doesNotThrow(asSwarm1);
+  assert.doesNotThrow(() => render.render(example, { path, relativePath: 'tutorials/swarm/example/index.md' }), 'not a tutorial slug');
 });

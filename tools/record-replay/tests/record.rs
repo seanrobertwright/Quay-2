@@ -91,6 +91,28 @@ fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size_start_and_cli_v
     assert!(stream("i").contains("add a health route\r"), "keystrokes are recorded as input: {:?}", stream("i"));
 }
 
+#[test]
+fn a_run_with_its_output_piped_gets_the_real_cli_as_it_is_and_is_not_recorded() {
+    // As when an agent runs `pwsh -Command ...` and the tool stands in for pwsh.exe.
+    let scratch = Scratch::new("piped");
+    let tool = scratch.install(TOOL, "tool", "pwsh");
+    let real = scratch.install(STUB, "real-cli", "pwsh");
+    let recordings = scratch.dir("recordings/demo");
+
+    let output = std::process::Command::new(tool.join("pwsh.exe"))
+        .arg("--version")
+        .env("PATH", fixture_path(&[&tool, &real]))
+        .env("QUAY_RECORD_DIR", &recordings)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(stdout, "1.2.3 (stub-agent)\n", "the CLI's own output, with no terminal sequences");
+    assert_eq!(file_names(&recordings), Vec::<String>::new(), "nothing is recorded");
+}
+
 const TOKEN: &str = "live-token-0123456789abcdef0123456789abcdef0123456789abcdef01234";
 const TAG: &str = "term-0123456789abcdef0123456789abcdef";
 

@@ -51,7 +51,7 @@ build, and nothing ships in the product:
 | `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` | `--remote-debugging-port=<port>`, only in this child's environment. |
 | `WEBVIEW2_USER_DATA_FOLDER` | A fresh folder, so this Quay starts its own browser process. See [Established](#established). |
 | `LOCALAPPDATA` | A fixture folder holding `Quay2\workspaces.json`. |
-| `CLAUDE_CONFIG_DIR` | A copy of `claude-config\` from the tutorial's recordings folder, or an empty folder. Transcripts under its `projects\` give the spend figure. |
+| `CLAUDE_CONFIG_DIR` | A copy of `claude-config\` from the tutorial's recordings folder, or an empty folder. Its scrubbed transcripts give the spend figure; see [The fixture Claude config](#the-fixture-claude-config). |
 
 The fixture `workspaces.json` has one project on the manifest's neutral project path, by
 default `C:\tutorials\<slug>`. Its saved `env_vars` put the folder holding the fake CLIs first
@@ -80,6 +80,42 @@ running from the fixture folder, then removes the fixture.
 | Clip | `docs/tutorials/<series>/<slug>/NN-<what>.mp4`, beside its still |
 | Sidecar manifest | `examples/tutorials/<slug>/sidecar.json` |
 | Changed-shot report | `capture-reports/<version>/`, which git ignores |
+
+## The fixture Claude config
+
+Quay's status strip and rail show Claude Code's spend, which Quay prices from the transcripts
+under its Claude config. Replays write no transcripts, so a capture hands Quay the recorded run's
+own transcripts, scrubbed down to their token counts. Every still then shows that run's total.
+
+After each recorded test run, write it from the Claude config the run used:
+
+```powershell
+pnpm docs:claude-config <slug> --from <Claude config folder>
+```
+
+`scripts/test-runs/README.md` says how to run it in the test account. It reads the transcripts
+in `projects\<neutral project path>\` only, for example `projects\C--tutorials-first-swarm\`,
+keeps each assistant response timestamped at or after the earliest recording started, and writes
+it to `claude-config\projects\` in the recordings folder, replacing what was there. Each kept
+line holds the response's type, request id, session id, timestamp, message id, model and token
+counts, and nothing else: no prompt, reply, tool call, path or account detail.
+
+Nothing else ever goes in `claude-config\`: no credentials file, settings, history or `.claude.json`.
+The capture checks it before Quay starts and stops, naming each file, when the folder holds
+anything but scrubbed transcripts under `projects\`. A tutorial with no Claude Code agent has no
+`claude-config\`, and its stills show a spend of $0.00.
+
+## Placeholder stills
+
+A page names its stills before its first capture, and the docs build needs every still it names.
+Until the capture writes them, a draft carries a copy of `scripts/capture/placeholder.webp`
+under each still's name, `NN-<what>.webp`, beside the page. A clip needs no placeholder.
+
+`docs:build` refuses to publish a tutorial while any still beside its page is byte for byte the
+placeholder, naming each one, unless `QUAY_TUTORIAL_DRAFT` names the tutorial. `docs:dev` and a
+draft build show the placeholders, so the first test run can follow the rendered page. The
+changed-shot report counts a committed placeholder as nothing committed, so a draft's first
+capture lists its shots as new.
 
 ## The capture manifest
 
@@ -304,6 +340,7 @@ pnpm docs:typecheck
 `capture.test.ts` covers the parts that need no Quay: the arguments, the manifest, reading the
 recordings, which replays each step waits for, the fixture workspace, the machine check, a
 clip's frames and stale clips, and the sidecar. `shot-report.test.ts` covers the pixel diff and
-the changed-shot report. The parts that drive Quay need a built Quay on a pinned machine and are
+the changed-shot report. `claude-config.test.ts` covers the scrub and the check of a fixture
+Claude config. The parts that drive Quay need a built Quay on a pinned machine and are
 checked by running a capture. `clip.ts`, which records and encodes the clip, needs a browser page
 but not Quay.

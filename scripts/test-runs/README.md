@@ -10,6 +10,60 @@ issue #14.
 The record is generated, not typed. `pnpm docs:test-run <slug>` writes each run's section from the
 page's step cards, and the maintainer fills in what the run found.
 
+## What every tutorial page shares
+
+Each run has to stand alone, and the fresh-eyes reader can't follow links, so every page carries
+its own Before you start list and the same step 1. Copy both from Swarm 1's page,
+`docs/tutorials/swarm/first-swarm/index.md`, and change only the slug.
+
+**Before you start** opens with these items, worded as they are, each linking to its section of
+the installation guide:
+
+```md
+- **Quay 2** is installed from the latest release ([Installing a Release](/guide/installation#installing-a-release)).
+- **Claude Code** 2.1.296 or later is installed and signed in ([Claude Code](/guide/installation#claude-code)). `claude --version`
+- The **event-bridge plugin** 0.1.0 or later is installed and enabled in Claude Code ([Event-bridge Plugin](/guide/installation#event-bridge-plugin)).
+- **PowerShell 7** is installed ([PowerShell 7](/guide/installation#powershell-7)). `pwsh --version`
+- **Node.js** 24 or later is installed, with npm ([Node.js and npm](/guide/installation#node-js-and-npm)). `node --version`
+- **Git** is installed and knows your name and email ([Git](/guide/installation#git)). `git --version`
+- You are using the **starter project**, because agents run in Skip mode and edit files without asking.
+```
+
+A tutorial's own extras go before the last item, in the same shape: Codex 0.154.0 or later,
+Antigravity CLI 1.4.2 or later, or a pinned model where a preset uses one. Add an installation
+guide section for any extra that has none.
+
+**Step 1, Get the starter project,** runs inside Quay, so the capture can show it. Its Do and
+Paste slots are:
+
+````md
+::: do
+1. Download [`<slug>.zip`](/starters/<slug>.zip) and unzip it into a new, empty folder.
+2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
+3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+:::
+
+::: paste PowerShell pane
+```text
+git init -b main; git add -A; git commit -m Starter; npm install
+```
+:::
+````
+
+Take its You should see, Must match, May differ and If not slots from Swarm 1 too. The
+PowerShell pane from step 1 stays open for the rest of the tutorial, so its recording is
+`pwsh-1`, and a swarm's panes open beside it in the rail.
+
+Every starter carries a `.gitignore` holding `node_modules/`, so `git status` after step 1 shows
+only what the agents change, and a `.gitattributes` holding `* text=auto eol=lf`, so the Starter
+commit prints no line-ending warnings into the step 1 still.
+
+**Next up** links to the first tutorial after this one in series order whose page is published,
+as `/tutorials/<series>/<slug>/`, or to the Tutorials landing page, `/tutorials/`, when none
+after it is. The docs build checks it. Publishing a tutorial therefore also changes the Next up
+card of the nearest published tutorial before it, in the same PR; a Next up card is not part of
+the run fingerprint, so that change needs no re-run.
+
 ## Set up the test account
 
 Do this once.
@@ -18,20 +72,30 @@ Do this once.
    config (plugins, hooks, mods, a global `CLAUDE.md`) changes what the agents do and how many
    tokens they use.
 2. **Install only what the tutorials' "Before you start" lists tell a learner to install.** Today
-   that is Node 24 or later with npm, Git, PowerShell 7 and the agent CLIs. Quay itself is
-   installed fresh before each run (below). Anything more on the account could hide a
-   prerequisite a page forgot to list.
+   that is Node 24 or later with npm, Git with a name and email set, PowerShell 7, the agent CLIs
+   and the event-bridge plugin. Quay itself is installed fresh before each run (below). Anything
+   more on the account could hide a prerequisite a page forgot to list.
 3. **Sign in each agent CLI once.** Leave every CLI on its default settings and default model. Add
-   no plugins, hooks or global instruction files.
+   no plugins, hooks or global instruction files beyond what "Before you start" lists.
 4. **Put the recording wrapper on the account's `PATH`,** so each run records the agent output
-   the screenshots replay. The wrapper is the record and replay tool in `tools/record-replay/`;
-   its README says how to build it. Copy `quay-record-replay.exe` into a folder of its own once
-   under each agent CLI's name (`claude.exe`, `codex.exe`, ...). Put that folder ahead of the
-   real CLIs in the account's user `PATH` variable, in Windows' Environment Variables settings,
-   not in a shell profile: Quay builds each terminal's environment from the registry, so a
-   `PATH` set only in a shell never reaches its terminals. The wrapper runs the real CLI further
-   along `PATH` and passes everything through, so it changes nothing the agents do. It is the one
-   thing the account holds beyond the "Before you start" lists.
+   and the PowerShell panes the screenshots replay. The wrapper is the record and replay tool in
+   `tools/record-replay/`; its README says how to build it. Copy `quay-record-replay.exe` into
+   `%USERPROFILE%\quay-record-replay` in the test account, once under each agent CLI's name
+   (`claude.exe`, `codex.exe`, ...) and once as `pwsh.exe`, since every tutorial opens a
+   PowerShell pane in step 1.
+
+   Then, as an administrator, put `%USERPROFILE%\quay-record-replay` first in the **system**
+   `Path` variable, in Windows' Environment Variables settings. Type it as it is written here: each
+   account expands it to its own profile folder, so only the test account, which has that folder,
+   finds the wrapper, and every other account is unaffected. A user `Path` entry won't do for
+   `pwsh.exe`: a terminal's `PATH` is the system `Path` followed by the user `Path`, and
+   PowerShell 7 installs into the system `Path`. A `PATH` set in a shell profile won't do either:
+   Quay builds each terminal's environment from the registry, so it never reaches its terminals.
+
+   The wrapper runs the real CLI further along `PATH` and passes everything through, so it changes
+   nothing the agents do. A run whose input or output is piped, such as a command an agent runs
+   through `pwsh`, goes straight to the real CLI unrecorded. The wrapper is the one thing the
+   account holds beyond the "Before you start" lists.
 
 ## Before each run
 
@@ -96,8 +160,21 @@ open in your own account and fill it in as you go.
 For the recording, run `quay-record-replay mark <recordings folder> NN-<what>` once each step shows
 what its You should see slot describes, with the name of that step's screenshot, such as `03-reply`.
 The capture script takes that screenshot when the replays reach the marker. When the run is over, close
-Quay and run `quay-record-replay finish <recordings folder>`. The recordings are committed with
-the record.
+Quay and run `quay-record-replay finish <recordings folder>`. Run both from a Windows PowerShell or
+Command Prompt window outside Quay, never from a Quay pane or a `pwsh` you started by name, which
+the wrapper would record as one more PowerShell pane.
+
+Then write the tutorial's fixture Claude config, which gives the stills their spend figure, from
+the test account's own Claude config. In the test account, in the checkout that holds the
+recordings:
+
+```powershell
+node scripts/capture/scrub-claude-config.ts <slug> --from "$env:USERPROFILE\.claude"
+```
+
+It is `pnpm docs:claude-config` without needing pnpm on the test account.
+`scripts/capture/README.md` says what it keeps. The recordings and the fixture Claude config are
+committed with the record.
 
 A run passes only when all of these hold:
 

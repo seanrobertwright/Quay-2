@@ -58,6 +58,28 @@ node scripts/starters-ci/check-starters.ts --tutorials <dir>   # check another f
 
 It needs Node 24 or later, which runs the checker's TypeScript without a build step.
 
+## Writing a TypeScript starter
+
+A learner runs a starter's TypeScript with `node` as it is, for example `node src/cli.ts` in
+Swarm 1, with no build step. For that to work, and type-check, under the starter's own
+`package.json` and `tsconfig.json`:
+
+- `package.json` has `"type": "module"`. Without it Node warns that the module type isn't
+  specified and parses the file twice, and `tsc` treats the files as CommonJS.
+- Imports name the `.ts` file, as `import { calculateTip } from "./tip.ts"`, since Node doesn't
+  guess extensions, and `tsconfig.json` sets `allowImportingTsExtensions`, which needs `noEmit`.
+  Without it `tsc` rejects every such import.
+- `tsconfig.json` sets `erasableSyntaxOnly`, so `tsc` rejects the syntax Node can't strip:
+  `enum`, `namespace` and parameter properties. The starter's `AGENTS.md` says so too.
+
+`examples/tutorials/first-swarm/starter/` is the pattern: `module` `nodenext`, `strict`,
+`noEmit`, `erasableSyntaxOnly`, `verbatimModuleSyntax`, `allowImportingTsExtensions` and
+`types: ["node"]`.
+
+A starter whose page has the learner read test names runs Vitest with `--reporter=verbose` in
+its `test` script. Vitest's default reporter lists only failing tests, so a passing run shows no
+names. The checker adds its own reporters after the script's, which still works.
+
 ## The expected-state format
 
 Only `typecheck` and `tests` are required.

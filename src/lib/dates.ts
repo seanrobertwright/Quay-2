@@ -83,3 +83,18 @@ export function daysBetweenDateStamps(from: string, to: string): number {
   };
   return dayNumber(to) - dayNumber(from);
 }
+
+/**
+ * The moment a UTC timestamp written "YYYY-MM-DDTHH:MM:SS", with optional fractional seconds and
+ * a closing "Z", names, in milliseconds since the epoch, such as Claude Code writes in its
+ * transcripts. Null for any other text, including a timestamp with no zone or an impossible date.
+ */
+export function parseUtcTimestamp(text: string): number | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/.exec(text);
+  if (!match || !isDateStamp(match[1])) return null;
+  const [hours, minutes, seconds] = match.slice(2, 5).map(Number);
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+  const [year, month, day] = match[1].split("-").map(Number);
+  const ms = Number((match[5] ?? "0").padEnd(3, "0").slice(0, 3));
+  return Date.UTC(year, month - 1, day, hours, minutes, seconds, ms);
+}

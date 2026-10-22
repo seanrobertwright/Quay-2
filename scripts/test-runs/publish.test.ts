@@ -1,7 +1,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import { parseRecord, parseTutorialDrafts, publication, testRunsPlugin, type Tes
 import { runFingerprint, runSection } from './test-runs.ts';
 
 const examplePage = await readFile('docs/_examples/step-cards.md', 'utf8');
+const PLACEHOLDER = 'scripts/capture/placeholder.webp';
 const plainMd = await createMarkdownRenderer('docs', { config: registerStepCardContainers });
 const record = readStepCardRecord(plainMd.parse(examplePage, {}), examplePage);
 
@@ -227,13 +228,13 @@ async function site(t: TestContext, { gate, drafts = [] }: { gate: boolean; draf
   const md = await createMarkdownRenderer('docs', {
     config: (md) => {
       registerStepCardContainers(md);
-      testRunsPlugin({ gate, drafts: new Set(drafts), examples: root })(md);
+      testRunsPlugin({ gate, drafts: new Set(drafts), examples: root, placeholder: PLACEHOLDER })(md);
     },
   });
   return {
     fingerprint: runFingerprint(record.actions, tutorialDir),
     writeRecord: (...sections: string[]) => writeFileSync(join(tutorialDir, 'test-runs.md'), recordOf(...sections)),
-    render: (relativePath = 'tutorials/swarm/step-cards/index.md') => md.render(examplePage, { relativePath }),
+    render: (relativePath = 'tutorials/swarm/step-cards/index.md', path?: string) => md.render(examplePage, { relativePath, path }),
   };
 }
 
@@ -294,4 +295,33 @@ test('the page shows the generated tiles, and a failed run as a notice under its
   );
   writeRecord(run({ date: '2026-10-24', fingerprint }), run({ date: '2026-10-23', fingerprint, ...FAILED }), run({ date: '2026-10-22', fingerprint }));
   assert.doesNotMatch(render(), /tutorial-failed-run/);
+});
+
+test('the build fails a published tutorial whose folder still holds a placeholder screenshot, naming each one', async (t) => {
+  const { fingerprint, writeRecord, render } = await site(t, { gate: true });
+  writeRecord(run({ fingerprint }), run({ fingerprint }));
+  const folder = mkdtempSync(join(tmpdir(), 'publish-page-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  copyFileSync(PLACEHOLDER, join(folder, '02-two-agents.webp'));
+  copyFileSync(PLACEHOLDER, join(folder, '01-starter-installed.webp'));
+  writeFileSync(join(folder, '03-reply.webp'), 'a captured still');
+  const page = join(folder, 'index.md');
+  const hint = 'Capture the real ones with pnpm docs:capture (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=step-cards to build it as a draft';
+  const refusal = (stills: string) => ({ message: `tutorials/swarm/step-cards/index.md cannot be published:\n  ${stills} still the placeholder screenshot. ${hint}` });
+  assert.throws(() => render(undefined, page), refusal('01-starter-installed.webp, 02-two-agents.webp are'));
+  writeFileSync(join(folder, '01-starter-installed.webp'), 'a captured still');
+  assert.throws(() => render(undefined, page), refusal('02-two-agents.webp is'));
+  writeFileSync(join(folder, '02-two-agents.webp'), 'a captured still');
+  assert.doesNotThrow(() => render(undefined, page));
+});
+
+test('a draft and a page served by docs:dev build with placeholder screenshots', async (t) => {
+  const folder = mkdtempSync(join(tmpdir(), 'publish-page-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  copyFileSync(PLACEHOLDER, join(folder, '01-starter-installed.webp'));
+  const page = join(folder, 'index.md');
+  const draft = await site(t, { gate: true, drafts: ['step-cards'] });
+  assert.doesNotThrow(() => draft.render(undefined, page));
+  const dev = await site(t, { gate: false });
+  assert.doesNotThrow(() => dev.render(undefined, page));
 });

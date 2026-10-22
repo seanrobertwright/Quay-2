@@ -103,6 +103,8 @@ A draft is not published. Only people with write access to the repository see it
 
 Do these in order at every draft release. The order comes from the decisions on [keeping screenshots current](https://github.com/seanrobertwright/Quay-2/issues/15) and on [tutorial test runs](https://github.com/seanrobertwright/Quay-2/issues/14).
 
+Steps 1 to 3 cover the tutorials published on `master`. While none is, steps 1 to 3 have nothing to do and step 5 has no branch of new shots to merge: publish the draft. A tutorial still on its branch isn't recaptured here. Its own test runs and capture use the published release's installer, and a tutorial that needs a change in Quay waits for the release that holds it.
+
 1. **Recapture every tutorial against the draft.** On the capture machine, install Quay from the draft's Windows installer, downloaded from the draft's page under Releases. Then run the capture script for each tutorial with a capture manifest, `tools/record-replay/recordings/<slug>/capture.json`, with `--exe` set to the Quay the installer put in place:
 
    ```powershell

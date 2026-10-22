@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
 import { glanceTile, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
@@ -249,16 +249,30 @@ export interface TestRunOptions {
   drafts: ReadonlySet<string>;
   /** The folder holding each tutorial's `<slug>/test-runs.md`, `starter/` and `check/`. */
   examples: string;
+  /** The placeholder screenshot a draft carries under each still's name until its first capture. */
+  placeholder: string;
+}
+
+/** The stills in the folder of the page at `pagePath` that are still byte-for-byte the placeholder. */
+function placeholderStills(pagePath: string | undefined, placeholder: Buffer): string[] {
+  if (pagePath === undefined) return [];
+  const folder = dirname(pagePath);
+  return readdirSync(folder)
+    .filter((file) => file.endsWith('.webp'))
+    .sort()
+    .filter((file) => readFileSync(join(folder, file)).equals(placeholder));
 }
 
 /**
  * Publishes tutorial pages from their test runs. On each page under `tutorials/<series>/<slug>/`,
  * it reads `<slug>/test-runs.md`, writes the Time and Tokens tiles, and adds a notice under the
  * title while the newest failed run is not cleared. A record it cannot read, or a failed run with
- * no issue link, fails the page; so does the gate, when on, unless the tutorial is a draft. Other
- * step-card pages get tiles that say nothing has been measured. Register it after the step cards.
+ * no issue link, fails the page; so does the gate, when on, unless the tutorial is a draft. The
+ * gate also fails a page whose folder still holds a placeholder screenshot. Other step-card pages
+ * get tiles that say nothing has been measured. Register it after the step cards.
  */
-export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md: MarkdownRenderer) => void {
+export function testRunsPlugin({ gate, drafts, examples, placeholder }: TestRunOptions): (md: MarkdownRenderer) => void {
+  const placeholderBytes = readFileSync(placeholder);
   return (md) => {
     md.core.ruler.push('test_runs', (state) => {
       if (!usesStepCards(state.tokens)) return;
@@ -275,13 +289,22 @@ export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md:
         const reasons = problems.map((problem) => `${shown}, ${problem}`);
         published = publication(runs, fingerprint);
         const have = published.passing.length;
-        if (gate && !drafts.has(slug) && have < RUNS_TO_PUBLISH) {
-          reasons.push(
-            fingerprint === null
-              ? `examples/tutorials/${slug}/starter/ is missing, so it has no run fingerprint and no test runs`
-              : `it has ${have} passing test run${have === 1 ? '' : 's'} for its run fingerprint ${fingerprint}, and needs ${RUNS_TO_PUBLISH}. ` +
-                  `Record them in ${shown} (see scripts/test-runs/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
-          );
+        if (gate && !drafts.has(slug)) {
+          if (have < RUNS_TO_PUBLISH) {
+            reasons.push(
+              fingerprint === null
+                ? `examples/tutorials/${slug}/starter/ is missing, so it has no run fingerprint and no test runs`
+                : `it has ${have} passing test run${have === 1 ? '' : 's'} for its run fingerprint ${fingerprint}, and needs ${RUNS_TO_PUBLISH}. ` +
+                    `Record them in ${shown} (see scripts/test-runs/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
+            );
+          }
+          const placeholders = placeholderStills((state.env as { path?: string }).path, placeholderBytes);
+          if (placeholders.length > 0) {
+            reasons.push(
+              `${placeholders.join(', ')} ${placeholders.length === 1 ? 'is' : 'are'} still the placeholder screenshot. ` +
+                `Capture the real ones with pnpm docs:capture (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
+            );
+          }
         }
         if (reasons.length > 0) throw new Error(`${relativePath} cannot be published:\n${reasons.map((reason) => `  ${reason}`).join('\n')}`);
         const notice = published.notice;
@@ -300,8 +323,15 @@ export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md:
 }
 
 const EXAMPLES = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
+/** The placeholder screenshot; scripts/capture/README.md says how a draft uses it. */
+const PLACEHOLDER = fileURLToPath(new URL('../capture/placeholder.webp', import.meta.url));
 
 /** The test-run plugin as the site uses it: the gate is on for `docs:build`, and `QUAY_TUTORIAL_DRAFT` names the drafts. */
 export function testRuns(command: 'build' | 'serve'): (md: MarkdownRenderer) => void {
-  return testRunsPlugin({ gate: command === 'build', drafts: parseTutorialDrafts(process.env.QUAY_TUTORIAL_DRAFT), examples: EXAMPLES });
+  return testRunsPlugin({
+    gate: command === 'build',
+    drafts: parseTutorialDrafts(process.env.QUAY_TUTORIAL_DRAFT),
+    examples: EXAMPLES,
+    placeholder: PLACEHOLDER,
+  });
 }
