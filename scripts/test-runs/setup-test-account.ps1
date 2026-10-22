@@ -67,8 +67,9 @@ if (Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue) {
     Write-Host "The account $UserName exists; leaving it as it is."
 } elseif ($PSCmdlet.ShouldProcess($UserName, 'Create a local account for tutorial test runs')) {
     if (-not $Password) { $Password = Read-Host -AsSecureString "Password for $UserName" }
+    # Windows caps an account's description at 48 characters.
     New-LocalUser -Name $UserName -Password $Password -FullName 'Quay test runs' `
-        -Description 'Tutorial test runs only; see scripts/test-runs/README.md' -PasswordNeverExpires | Out-Null
+        -Description 'Tutorial test runs only; see scripts/test-runs' -PasswordNeverExpires | Out-Null
     # The Users group by its SID, which every Windows language shares.
     Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $UserName
     Write-Host "Created the account $UserName."
