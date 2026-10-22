@@ -95,10 +95,13 @@ pnpm docs:claude-config <slug> --from <Claude config folder>
 
 `scripts/test-runs/README.md` says how to run it in the test account. It reads the transcripts
 in `projects\<neutral project path>\` only, for example `projects\C--tutorials-first-swarm\`,
-keeps each assistant response timestamped at or after the earliest recording started, and writes
-it to `claude-config\projects\` in the recordings folder, replacing what was there. Each kept
-line holds the response's type, request id, session id, timestamp, message id, model and token
-counts, and nothing else: no prompt, reply, tool call, path or account detail.
+keeps each assistant response timestamped between the start of the earliest recording and the
+last event of the latest, so no other run on the same project path counts, and writes it to
+`claude-config\projects\` in the recordings folder, replacing what was there only once the scrub
+has succeeded. Each kept line holds the response's type, request id, session id, timestamp,
+message id, model and token counts, plus `speed: "fast"` for a response Claude Code ran in fast
+mode, which Quay prices higher. Nothing else: no prompt, reply, tool call, path or account
+detail.
 
 Nothing else ever goes in `claude-config\`: no credentials file, settings, history or `.claude.json`.
 The capture checks it before Quay starts and stops, naming each file, when the folder holds

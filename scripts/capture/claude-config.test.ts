@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { claudeConfigProblems, claudeProjectFolder, scrubTranscript } from './claude-config.ts';
 
-const RUN_START = Date.UTC(2026, 9, 21, 19, 0, 0);
+/** The recorded run: from its earliest recording's start to its latest recording's last event. */
+const RUN = { start: Date.UTC(2026, 9, 21, 19, 0, 0), end: Date.UTC(2026, 9, 21, 19, 30, 0) };
 
 /** An assistant response line as Claude Code writes it, with everything a scrub must drop. */
 const response = (timestamp: string, id = 'msg_01') =>
@@ -48,7 +49,7 @@ test("a scrubbed transcript keeps only the recorded run's responses, cut down to
     JSON.stringify({ type: 'summary', summary: 'Tip calculator' }),
   ].join('\n');
   assert.equal(
-    scrubTranscript(transcript, RUN_START),
+    scrubTranscript(transcript, RUN),
     JSON.stringify({
       type: 'assistant',
       requestId: 'req_01',
@@ -67,11 +68,15 @@ test("a scrubbed transcript keeps only the recorded run's responses, cut down to
       },
     }) + '\n',
   );
-  assert.equal(scrubTranscript(response('2026-10-21T18:00:00Z'), RUN_START), '', 'nothing from before the run');
+  assert.equal(scrubTranscript(response('2026-10-21T18:00:00Z'), RUN), '', 'nothing from before the run');
+  assert.equal(scrubTranscript(response('2026-10-21T19:30:00.001Z'), RUN), '', 'nothing from after it, such as the next run');
+  const fast = JSON.parse(response('2026-10-21T19:02:00Z'));
+  fast.message.usage.speed = 'fast';
+  assert.match(scrubTranscript(JSON.stringify(fast), RUN), /"speed":"fast"/, 'fast mode, which Quay prices higher');
 });
 
 test('a fixture Claude config holds only scrubbed transcripts under projects/', () => {
-  const scrubbed = scrubTranscript(response('2026-10-21T19:02:00Z'), RUN_START);
+  const scrubbed = scrubTranscript(response('2026-10-21T19:02:00Z'), RUN);
   assert.deepEqual(claudeConfigProblems(new Map([['projects/C--tutorials-first-swarm/s-1.jsonl', scrubbed]])), []);
   assert.deepEqual(
     claudeConfigProblems(

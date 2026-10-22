@@ -301,7 +301,7 @@ export function testRunsPlugin({ gate, drafts, examples, placeholder }: TestRunO
           const placeholders = placeholderStills((state.env as { path?: string }).path, placeholderBytes);
           if (placeholders.length > 0) {
             reasons.push(
-              `${placeholders.join(', ')} ${placeholders.length === 1 ? 'is' : 'are'} still the placeholder screenshot. ` +
+              `${listed(placeholders)} ${placeholders.length === 1 ? 'is' : 'are'} still the placeholder screenshot. ` +
                 `Capture the real ones with pnpm docs:capture (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
             );
           }

@@ -34,30 +34,37 @@ function main() {
   const { tutorial, from } = parse();
   const paths = capturePaths(root, tutorial);
   const recordings = readRecordings(paths.recordings);
-  const starts = recordings.map((recording) => recording.startedAt);
-  if (starts.some((start) => start === null)) throw new Error('a recording does not say when it started; re-make it with the current record and replay tool');
-  // The run's transcripts, and none from an earlier run on the same project path.
-  const since = Math.min(...(starts as number[]));
+  if (recordings.some((recording) => recording.startedAt === null || recording.endedAt === null)) {
+    throw new Error('a recording does not say when it started; re-make it with the current record and replay tool');
+  }
+  // The recorded run's responses only: none from an earlier or a later run on the same project path.
+  const run = {
+    start: Math.min(...recordings.map((recording) => recording.startedAt as number)),
+    end: Math.max(...recordings.map((recording) => recording.endedAt as number)),
+  };
   const project = existsSync(paths.manifest)
     ? parseCaptureManifest(readFileSync(paths.manifest, 'utf8'), tutorial.slug).project
     : `C:\\tutorials\\${tutorial.slug}`;
   const folder = join('projects', claudeProjectFolder(project));
   if (!existsSync(join(from, folder))) throw new Error(`${join(from, folder)} does not exist; is ${from} the Claude config the test run used?`);
 
-  rmSync(paths.claudeConfig, { recursive: true, force: true });
-  let responses = 0;
+  // Scrubbed in full before the old config is replaced, so a failure leaves it as it was.
+  const scrubbed = new Map<string, string>();
   for (const [path, text] of readClaudeConfig(join(from, folder))) {
-    if (!path.endsWith('.jsonl')) continue;
-    const scrubbed = scrubTranscript(text, since);
-    if (scrubbed === '') continue;
-    const to = join(paths.claudeConfig, folder, path);
-    mkdirSync(dirname(to), { recursive: true });
-    writeFileSync(to, scrubbed);
-    responses += scrubbed.split('\n').length - 1;
+    const kept = path.endsWith('.jsonl') ? scrubTranscript(text, run) : '';
+    if (kept !== '') scrubbed.set(`${folder.replaceAll('\\', '/')}/${path}`, kept);
   }
+  const responses = [...scrubbed.values()].reduce((all, text) => all + text.split('\n').length - 1, 0);
   if (responses === 0) throw new Error(`no transcript in ${join(from, folder)} has a response from the recorded run`);
-  const problems = claudeConfigProblems(readClaudeConfig(paths.claudeConfig));
+  const problems = claudeConfigProblems(scrubbed);
   if (problems.length > 0) throw new Error(problems.join('\n'));
+
+  rmSync(paths.claudeConfig, { recursive: true, force: true });
+  for (const [path, text] of scrubbed) {
+    const to = join(paths.claudeConfig, ...path.split('/'));
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, text);
+  }
   console.log(`wrote ${responses} scrubbed responses to ${relative(root, paths.claudeConfig)}`);
 }
 

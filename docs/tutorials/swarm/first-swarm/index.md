@@ -11,6 +11,8 @@ Launch Quay's Dev & Watcher swarm: a Claude Code agent beside a PowerShell pane 
 
 **You'll learn:** how to launch a swarm from the Swarm Launcher (`Ctrl+B S`), work in a side-by-side split, move focus between panes (`Ctrl+B O`) and zoom a pane to the whole stage (`Ctrl+B Z`).
 
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+
 ::: before
 ## Before you start
 - **Quay 2** is installed from the latest release ([Installing a Release](/guide/installation#installing-a-release)).
@@ -148,11 +150,12 @@ Implement src/tip.ts so every test in test/tip.test.ts passes. Don't run the tes
 
 ::: must
 - `build-watcher` shows `Tests  5 passed (5)`.
-- `lead-dev`'s badge reads Working while it edits, then Idle again.
+- At the end, `lead-dev`'s pane header shows a green dot and `Ready`.
 - `lead-dev` tells you it believes the tests pass.
 :::
 
 ::: may
+- The tools `lead-dev`'s pane header names while it works, beside a spinner.
 - How many times the watcher re-runs on the way.
 - `lead-dev`'s wording, and how long it takes.
 :::
@@ -192,6 +195,10 @@ Vitest re-runs when a file under the project changes. Check that `lead-dev` edit
 
 ::: ifnot Ctrl+B Z did nothing
 The `Ctrl+B` prefix lasts a second and a half. Press `Ctrl+B`, let go, then press `Z` straight after.
+:::
+
+::: ifnot Ctrl+B Z zoomed lead-dev instead
+Focus was still on `lead-dev`. Press `Ctrl+B Z` to put the split back, then `Ctrl+B O` to move focus to `build-watcher`, and zoom again.
 :::
 
 :::

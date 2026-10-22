@@ -25,12 +25,14 @@ function counts(from: Json, names: readonly string[]): Json {
 }
 
 /**
- * Scrubs one transcript: keeps each assistant response with usage timestamped at or after `since`
- * (milliseconds since the epoch), cut down to its type, request id, session id, timestamp, message
- * id, model and usage counts. Everything a person or an agent wrote is left out. Returns the kept
- * lines, each ending in a newline, or an empty string when none is kept.
+ * Scrubs one transcript: keeps each assistant response with usage timestamped within the run,
+ * from `run.start` to `run.end` inclusive (milliseconds since the epoch), cut down to its type,
+ * request id, session id, timestamp, message id, model, token counts and, for a response Claude
+ * Code ran in fast mode, `speed: "fast"`, which Quay prices higher. Everything a person or an agent
+ * wrote is left out. Returns the kept lines, each ending in a newline, or an empty string when none
+ * is kept.
  */
-export function scrubTranscript(text: string, since: number): string {
+export function scrubTranscript(text: string, run: { start: number; end: number }): string {
   const kept: string[] = [];
   for (const line of text.split(/\r?\n/)) {
     let entry: unknown;
@@ -43,7 +45,7 @@ export function scrubTranscript(text: string, since: number): string {
     const { message } = entry;
     const usage = message.usage as Json;
     const at = typeof entry.timestamp === 'string' ? parseUtcTimestamp(entry.timestamp) : null;
-    if (at === null || at < since || typeof message.id !== 'string' || typeof message.model !== 'string') continue;
+    if (at === null || at < run.start || at > run.end || typeof message.id !== 'string' || typeof message.model !== 'string') continue;
     const scrubbed: Json = counts(usage, USAGE_COUNTS);
     if (isObject(usage.cache_creation)) scrubbed.cache_creation = counts(usage.cache_creation, CACHE_CREATION_COUNTS);
     if (usage.speed === 'fast') scrubbed.speed = 'fast';

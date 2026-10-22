@@ -308,7 +308,7 @@ test('the build fails a published tutorial whose folder still holds a placeholde
   const page = join(folder, 'index.md');
   const hint = 'Capture the real ones with pnpm docs:capture (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=step-cards to build it as a draft';
   const refusal = (stills: string) => ({ message: `tutorials/swarm/step-cards/index.md cannot be published:\n  ${stills} still the placeholder screenshot. ${hint}` });
-  assert.throws(() => render(undefined, page), refusal('01-starter-installed.webp, 02-two-agents.webp are'));
+  assert.throws(() => render(undefined, page), refusal('01-starter-installed.webp and 02-two-agents.webp are'));
   writeFileSync(join(folder, '01-starter-installed.webp'), 'a captured still');
   assert.throws(() => render(undefined, page), refusal('02-two-agents.webp is'));
   writeFileSync(join(folder, '02-two-agents.webp'), 'a captured still');

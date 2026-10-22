@@ -78,7 +78,7 @@ export const STEP_CARD_RULES = {
   'glance-level': `the Level tile is ${LEVELS.slice(0, -1).join(', ')} or ${LEVELS.at(-1)}`,
   'you-will-learn': `a "**You'll learn:** ..." line comes before step 1`,
   'before-you-start': `a ${BEFORE_YOU_START} checklist comes before step 1: "::: before" holding "## ${BEFORE_YOU_START}" and one list`,
-  'next-up': `a ${NEXT_UP} card comes after the last step: "::: next" opening with one link to the next tutorial in series order`,
+  'next-up': `a ${NEXT_UP} card comes after the last step: "::: next" opening with one link, to a tutorial or to the Tutorials landing page`,
   'next-up-target': `the ${NEXT_UP} card links to the first tutorial after this one in series order whose page is published, as /tutorials/<series>/<slug>/, or to the Tutorials landing page, /tutorials/, when none after it is`,
   'slot-in-step': 'slots sit directly inside a step, steps do not nest, and the page parts sit outside every step',
   'step-heading': 'each step opens with its numbered heading, "## <n>. <Title>"',

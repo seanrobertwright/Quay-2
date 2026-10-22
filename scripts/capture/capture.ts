@@ -351,6 +351,8 @@ export interface RecordingInfo {
   cli: string;
   /** When the recorded run started, in epoch milliseconds, if the recording says. */
   startedAt: number | null;
+  /** When the recording's last event happened, in epoch milliseconds, when it says when it started. */
+  endedAt: number | null;
   /** The real CLI's answer to `--version` when it was recorded, if the recording says. */
   cliVersion: string | null;
   /** The step markers in the recording, in order. */
@@ -386,14 +388,16 @@ export function readRecordings(dir: string): RecordingInfo[] {
       if (!Array.isArray(event) || typeof event[1] !== 'string' || typeof event[2] !== 'string') {
         throw new Error(`${name}: line ${i + 2} is not an event [seconds, code, data]`);
       }
-      return { code: event[1], data: event[2] };
+      return { at: typeof event[0] === 'number' ? event[0] : 0, code: event[1], data: event[2] };
     });
     const markers = events.filter((e) => e.code === 'm').map((e) => e.data);
     const first = events[0];
+    const startedAt = Number.isInteger(fields.timestamp) ? (fields.timestamp as number) * 1000 : null;
     return {
       name,
       cli: match[1],
-      startedAt: Number.isInteger(fields.timestamp) ? (fields.timestamp as number) * 1000 : null,
+      startedAt,
+      endedAt: startedAt === null ? null : startedAt + Math.max(0, ...events.map((e) => e.at)) * 1000,
       cliVersion: typeof fields.cli_version === 'string' && fields.cli_version !== '' ? fields.cli_version : null,
       markers,
       startMarker: first?.code === 'm' ? first.data : null,
