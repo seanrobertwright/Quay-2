@@ -1603,11 +1603,12 @@ mod tests {
     }
 
     /// A Claude terminal whose plugin reported a session and one finished turn.
-    fn after_a_turn(manager: &PtyManager, id: &str) {
-        launched(manager, id, RunKind::Claude);
+    fn after_a_turn(manager: &PtyManager, id: &str) -> LaunchRef {
+        let launch = launched(manager, id, RunKind::Claude);
         manager.apply_plugin_event(id, "session.started");
         manager.apply_plugin_event(id, "turn.started");
         manager.apply_plugin_event(id, "turn.completed");
+        launch
     }
 
     #[test]
@@ -1693,9 +1694,8 @@ mod tests {
     #[test]
     fn a_notification_after_the_process_exited_leaves_it_exited() {
         let manager = PtyManager::new();
-        after_a_turn(&manager, "term-late-notice");
-        manager.update_status("term-late-notice", ClaudeStatus::Exited);
-        manager.set_exit_code("term-late-notice", Some(0));
+        let launch = after_a_turn(&manager, "term-late-notice");
+        manager.exit_launch(&launch, Some(0));
 
         let sent = manager.apply_notification("term-late-notice", Some("permission_prompt")).unwrap();
 
