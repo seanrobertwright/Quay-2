@@ -89,9 +89,9 @@ The sender waits at most 60 seconds from its call. A peer that takes longer is t
 
 A peer's message arrives in its target's terminal as `[Peer agent (<sender>)]: <message>`, typed in with its Enter.
 
-- Quay types a message into a Claude Code, Codex, Antigravity or OpenCode terminal only between turns, one message per turn. A message sent while that terminal is starting, working or waiting on a tool approval or another prompt waits in the terminal's queue and shows **Queued** in the Mission Control trail. When the turn ends, Quay types the next queued message and its entry moves on to **Dispatched**.
+- Quay types a message into a Claude Code, Codex, Antigravity, OpenCode or PiG terminal only between turns, one message per turn. A message sent while that terminal is starting, working or waiting on a tool approval or another prompt waits in the terminal's queue and shows **Queued** in the Mission Control trail. When the turn ends, Quay types the next queued message and its entry moves on to **Dispatched**.
 - Quay doesn't see a Codex turn start, so a message can still reach a Codex turn you started by typing into its pane. That turn doesn't answer it; the message's own turn does.
-- A message to a listener, to a Claude Code terminal whose event-bridge plugin isn't reporting, or to an OpenCode terminal whose server Quay couldn't reach, is typed at once.
+- A message to a listener, to a Claude Code terminal whose event-bridge plugin isn't reporting, to a PiG terminal whose PiG extension isn't reporting, or to an OpenCode terminal whose server Quay couldn't reach, is typed at once.
 - If Quay can't type a message it sends at once, the call fails. A queued message Quay can't type shows **Failed** in the trail.
 - A message to the caller itself, to an Archon terminal or to a terminal that has exited is refused.
 
