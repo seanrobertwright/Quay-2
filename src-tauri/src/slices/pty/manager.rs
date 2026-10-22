@@ -817,11 +817,44 @@ impl PtyManager {
 
     /// Applies an authenticated event from the event-bridge plugin to the terminal's status,
     /// and returns the status it leaves. The event marks the plugin heard for this launch
-    /// and clears the plugin hint.
+    /// and clears the plugin hint. An `attention.notification` goes through
+    /// `apply_notification` instead.
     pub fn apply_plugin_event(
         &self,
         terminal_id: &str,
         event_type: &str,
+    ) -> Option<TerminalStatusPayload> {
+        self.apply_plugin_status(terminal_id, |heard| match event_type {
+            "turn.started" | "tool.started" => ClaudeStatus::Working,
+            "turn.completed" | "session.started" => ClaudeStatus::Idle,
+            "session.ended" => ClaudeStatus::Exited,
+            _ => heard,
+        })
+    }
+
+    /// Applies the event-bridge plugin's `attention.notification`, as `apply_plugin_event`
+    /// does, by its `notificationType`. Claude Code's `idle_prompt`, sent about a minute after
+    /// a turn ends, and its `auth_success` leave the status as it was, so an Idle terminal
+    /// keeps taking deliveries. Any other notification, such as a permission prompt, a dialog,
+    /// or one with a type Quay doesn't know or no type, makes the terminal Waiting, which
+    /// holds its deliveries.
+    pub fn apply_notification(
+        &self,
+        terminal_id: &str,
+        notification_type: Option<&str>,
+    ) -> Option<TerminalStatusPayload> {
+        self.apply_plugin_status(terminal_id, |heard| match notification_type {
+            Some("idle_prompt") | Some("auth_success") => heard,
+            _ => ClaudeStatus::Waiting,
+        })
+    }
+
+    /// Marks the plugin heard for the terminal's launch, clears the plugin hint, and sets
+    /// the status `status_for` gives from the heard status, unless the process has exited.
+    fn apply_plugin_status(
+        &self,
+        terminal_id: &str,
+        status_for: impl FnOnce(ClaudeStatus) -> ClaudeStatus,
     ) -> Option<TerminalStatusPayload> {
         let mut watches = self.plugin_watches.lock();
         let mut info_map = self.terminals_info.lock();
@@ -834,13 +867,7 @@ impl PtyManager {
             return Some(status_payload(info));
         }
         let heard = watch.hear(&info.claude_status);
-        info.claude_status = match event_type {
-            "turn.started" | "tool.started" => ClaudeStatus::Working,
-            "turn.completed" | "session.started" => ClaudeStatus::Idle,
-            "attention.notification" => ClaudeStatus::Waiting,
-            "session.ended" => ClaudeStatus::Exited,
-            _ => heard,
-        };
+        info.claude_status = status_for(heard);
         Some(status_payload(info))
     }
 
@@ -1571,6 +1598,106 @@ mod tests {
         manager.exit_launch(&launch, Some(0));
 
         let sent = manager.apply_plugin_event("term-late-codex", "turn.completed").unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Exited);
+    }
+
+    /// A Claude terminal whose plugin reported a session and one finished turn.
+    fn after_a_turn(manager: &PtyManager, id: &str) -> LaunchRef {
+        let launch = launched(manager, id, RunKind::Claude);
+        manager.apply_plugin_event(id, "session.started");
+        manager.apply_plugin_event(id, "turn.started");
+        manager.apply_plugin_event(id, "turn.completed");
+        launch
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_claude_terminal_idle_and_taking_deliveries() {
+        let manager = PtyManager::new();
+        after_a_turn(&manager, "term-idle-prompt");
+
+        let sent = manager.apply_notification("term-idle-prompt", Some("idle_prompt")).unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Idle);
+        assert!(!manager.get_info("term-idle-prompt").unwrap().holds_deliveries());
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_working_or_ended_terminal_as_it_was() {
+        // A late idle prompt must not let a held message into a turn that just began
+        let manager = PtyManager::new();
+        launched(&manager, "term-idle-working", RunKind::Claude);
+        manager.apply_plugin_event("term-idle-working", "turn.started");
+        after_a_turn(&manager, "term-idle-ended");
+        manager.apply_plugin_event("term-idle-ended", "session.ended");
+
+        manager.apply_notification("term-idle-working", Some("idle_prompt"));
+        manager.apply_notification("term-idle-ended", Some("idle_prompt"));
+
+        assert_eq!(status_of(&manager, "term-idle-working"), ClaudeStatus::Working);
+        assert_eq!(status_of(&manager, "term-idle-ended"), ClaudeStatus::Exited);
+    }
+
+    #[test]
+    fn a_permission_prompt_or_a_dialog_makes_the_terminal_waiting_and_holding_deliveries() {
+        for kind in ["permission_prompt", "elicitation_dialog"] {
+            let manager = PtyManager::new();
+            launched(&manager, "term-blocked", RunKind::Claude);
+            manager.apply_plugin_event("term-blocked", "turn.started");
+
+            manager.apply_notification("term-blocked", Some(kind));
+
+            let info = manager.get_info("term-blocked").unwrap();
+            assert_eq!(info.claude_status, ClaudeStatus::Waiting, "{kind}");
+            assert!(info.holds_deliveries(), "{kind}");
+        }
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_terminal_waiting_on_a_permission_waiting() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-still-blocked", RunKind::Claude);
+        manager.apply_plugin_event("term-still-blocked", "turn.started");
+        manager.apply_notification("term-still-blocked", Some("permission_prompt"));
+
+        manager.apply_notification("term-still-blocked", Some("idle_prompt"));
+
+        assert_eq!(status_of(&manager, "term-still-blocked"), ClaudeStatus::Waiting);
+    }
+
+    #[test]
+    fn an_auth_success_leaves_the_status_as_it_was() {
+        let manager = PtyManager::new();
+        after_a_turn(&manager, "term-auth-idle");
+        launched(&manager, "term-auth-working", RunKind::Claude);
+        manager.apply_plugin_event("term-auth-working", "turn.started");
+
+        manager.apply_notification("term-auth-idle", Some("auth_success"));
+        manager.apply_notification("term-auth-working", Some("auth_success"));
+
+        assert_eq!(status_of(&manager, "term-auth-idle"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-auth-working"), ClaudeStatus::Working);
+    }
+
+    #[test]
+    fn a_notification_of_an_unknown_type_or_none_makes_the_terminal_waiting() {
+        for kind in [Some("something_new"), None] {
+            let manager = PtyManager::new();
+            after_a_turn(&manager, "term-unknown-notice");
+
+            manager.apply_notification("term-unknown-notice", kind);
+
+            assert_eq!(status_of(&manager, "term-unknown-notice"), ClaudeStatus::Waiting, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_notification_after_the_process_exited_leaves_it_exited() {
+        let manager = PtyManager::new();
+        let launch = after_a_turn(&manager, "term-late-notice");
+        manager.exit_launch(&launch, Some(0));
+
+        let sent = manager.apply_notification("term-late-notice", Some("permission_prompt")).unwrap();
 
         assert_eq!(sent.claude_status, ClaudeStatus::Exited);
     }

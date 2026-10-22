@@ -126,6 +126,15 @@ export type ClaudeStatus =
   | "idle"
   | "exited"
   | "unknown";
+
+/**
+ * Whether an `attention.notification` of this `notificationType` blocks the agent and makes
+ * its terminal Waiting: anything but Claude Code's `idle_prompt` and `auth_success`, which
+ * leave the status as it was. Mirrors `PtyManager::apply_notification` in the backend.
+ */
+export function notificationBlocks(notificationType: unknown): boolean {
+  return notificationType !== "idle_prompt" && notificationType !== "auth_success";
+}
 // Kept on one line: the saved-swarm store's `stage_layouts_match_the_launcher` test reads it.
 export const STAGE_LAYOUTS = ["single", "split-horizontal", "split-vertical", "grid"] as const;
 export type StageLayout = (typeof STAGE_LAYOUTS)[number];

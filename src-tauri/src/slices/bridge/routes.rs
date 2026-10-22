@@ -135,6 +135,12 @@ fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
     })
 }
 
+/// The kind of notification an `attention.notification` reports, in its `notificationType`,
+/// such as Claude Code's `permission_prompt` or `idle_prompt`. `None` when it names none.
+fn notification_type(envelope: &Envelope) -> Option<&str> {
+    envelope.data.get("notificationType")?.as_str()
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -161,9 +167,11 @@ pub fn apply_event(ctx: &AppContext, envelope: Envelope) {
     let mut status = None;
     let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
     if let Some(terminal_id) = own_terminal {
-        status = ctx
-            .pty_manager
-            .apply_plugin_event(terminal_id, &envelope.event_type);
+        status = if envelope.event_type == "attention.notification" {
+            ctx.pty_manager.apply_notification(terminal_id, notification_type(&envelope))
+        } else {
+            ctx.pty_manager.apply_plugin_event(terminal_id, &envelope.event_type)
+        };
         match envelope.event_type.as_str() {
             "turn.started" => {
                 ctx.a2a_router.turn_started(terminal_id);
@@ -460,6 +468,19 @@ mod tests {
 
         event.event_type = "tool.started".to_string();
         assert!(!is_subagent_turn(&event));
+    }
+
+    #[test]
+    fn a_notification_reports_its_type_only_when_it_names_one() {
+        let mut event = event_for("term-a");
+        event.event_type = "attention.notification".to_string();
+        event.data = serde_json::json!({ "notificationType": "idle_prompt", "message": "waiting" });
+        assert_eq!(notification_type(&event), Some("idle_prompt"));
+
+        event.data = serde_json::json!({ "message": "waiting" });
+        assert_eq!(notification_type(&event), None);
+        event.data = serde_json::json!({ "notificationType": 7 });
+        assert_eq!(notification_type(&event), None);
     }
 
     #[test]
