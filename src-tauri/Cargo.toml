@@ -1,6 +1,6 @@
 [package]
 name = "tauri-app"
-version = "0.2.0"
+version = "0.3.0"
 description = "Quay 2: Native Windows Autonomous Multi-Agent Workspace & Orchestrator"
 authors = ["Sean Robert Wright"]
 edition = "2024"
