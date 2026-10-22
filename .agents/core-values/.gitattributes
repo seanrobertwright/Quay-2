@@ -1,0 +1,4 @@
+# Keep LF everywhere so the shell hook and Markdown diffs behave the same on every OS.
+* text=auto eol=lf
+*.pdf binary
+*.epub binary
