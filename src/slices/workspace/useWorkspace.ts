@@ -8,6 +8,7 @@ import {
   StageLayout,
   PermissionMode,
   showsWorkingOnDelivery,
+  notificationBlocks,
 } from "../terminal/types";
 import { Envelope, isSubagentTurn } from "../bridge/useBridgeEvents";
 import { Project } from "./types";
@@ -231,8 +232,10 @@ export function useWorkspace() {
               break;
             }
             case "attention.notification": {
-              playAttentionChime();
-              updated.claude_status = "waiting";
+              if (notificationBlocks(envelope.data?.notificationType)) {
+                playAttentionChime();
+                updated.claude_status = "waiting";
+              }
               break;
             }
             case "session.started": {

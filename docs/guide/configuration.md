@@ -80,4 +80,4 @@ Quay 2 can play a chime when an agent needs you:
 2. Under **Background Turn Chimes**, click the button to switch between **Chimes Active** and **Muted**.
 3. While chimes are active, set the **Volume** slider and try the sounds with **Test Completion Chime** and **Test Attention Ping**.
 
-The completion chime plays when a Claude Code or Codex turn ends, as reported by Claude Code's event-bridge plugin or Codex's turn-end helper. The attention chime plays when Claude Code asks for your input or a tool approval.
+The completion chime plays when a Claude Code or Codex turn ends, as reported by Claude Code's event-bridge plugin or Codex's turn-end helper. The attention chime plays when Claude Code asks for a tool approval or raises any other notification that blocks it, such as a question in a dialog. It doesn't play for Claude Code's reminder that it has sat idle at its prompt, or for its sign-in notice.
