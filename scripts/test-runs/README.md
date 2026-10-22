@@ -66,7 +66,16 @@ the run fingerprint, so that change needs no re-run.
 
 ## Set up the test account
 
-Do this once.
+Do this once. `setup-test-account.ps1` beside this file does steps 1 and 4: build the record and
+replay tool, then run it as an administrator from the repository root.
+
+```powershell
+cargo build --release --manifest-path tools/record-replay/Cargo.toml
+pwsh -File scripts\test-runs\setup-test-account.ps1   # -UserName, -Clis claude,pwsh,codex, -WhatIf
+```
+
+It asks for the new account's password, and at the end lists what to do signed in as that
+account. Run it again after rebuilding the tool, to refresh the wrapper copies.
 
 1. **Make a local Windows account used only for test runs.** Your own account won't do: its agent
    config (plugins, hooks, mods, a global `CLAUDE.md`) changes what the agents do and how many
@@ -80,14 +89,15 @@ Do this once.
 4. **Put the recording wrapper on the account's `PATH`,** so each run records the agent output
    and the PowerShell panes the screenshots replay. The wrapper is the record and replay tool in
    `tools/record-replay/`; its README says how to build it. Copy `quay-record-replay.exe` into
-   `%USERPROFILE%\quay-record-replay` in the test account, once under each agent CLI's name
-   (`claude.exe`, `codex.exe`, ...) and once as `pwsh.exe`, since every tutorial opens a
-   PowerShell pane in step 1.
+   `C:\quay-record-replay\<test account name>`, once under each agent CLI's name (`claude.exe`,
+   `codex.exe`, ...) and once as `pwsh.exe`, since every tutorial opens a PowerShell pane in
+   step 1.
 
-   Then, as an administrator, put `%USERPROFILE%\quay-record-replay` first in the **system**
-   `Path` variable, in Windows' Environment Variables settings. Type it as it is written here: each
-   account expands it to its own profile folder, so only the test account, which has that folder,
-   finds the wrapper, and every other account is unaffected. A user `Path` entry won't do for
+   Then, as an administrator, put `C:\quay-record-replay\%USERNAME%` first in the **system**
+   `Path` variable. Write it as it is written here: each account expands `%USERNAME%` to its own
+   name, so only the test account, which has a folder there, finds the wrapper, and every other
+   account is unaffected. Quay expands the entry itself, with its own `USERNAME`, when it builds a
+   terminal's environment from the registry. A user `Path` entry won't do for
    `pwsh.exe`: a terminal's `PATH` is the system `Path` followed by the user `Path`, and
    PowerShell 7 installs into the system `Path`. A `PATH` set in a shell profile won't do either:
    Quay builds each terminal's environment from the registry, so it never reaches its terminals.
