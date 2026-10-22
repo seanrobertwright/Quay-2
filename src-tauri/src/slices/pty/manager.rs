@@ -317,6 +317,7 @@ impl PtyManager {
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, &app_handle);
+        let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
@@ -327,6 +328,7 @@ impl PtyManager {
             app_handle,
             on_first_output,
             on_osc7501,
+            on_exit,
         )?;
 
         let created_at = next_created_at();
@@ -383,6 +385,11 @@ impl PtyManager {
         // Read before the old session goes: its pane stays mounted and has seen up to this seq
         let start_seq = self.last_seq(terminal_id);
 
+        let server_port = server_port_for(info.run_kind)?;
+        // Begin the new launch before the old session goes, so the old process's exit, which
+        // dropping its session causes, finds its launch over and leaves the terminal alone
+        let launch_ref = self.begin_launch(terminal_id, info.run_kind);
+
         // If an active session is running, terminate it before relaunching
         {
             let mut sessions = self.sessions.lock();
@@ -390,11 +397,9 @@ impl PtyManager {
         }
 
         let request = relaunch_request(&info, rows, cols, env_vars);
-
-        let server_port = server_port_for(info.run_kind)?;
-        let launch_ref = self.begin_launch(terminal_id, info.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
         let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, &app_handle);
+        let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
@@ -405,6 +410,7 @@ impl PtyManager {
             app_handle,
             on_first_output,
             on_osc7501,
+            on_exit,
         )?;
 
         let mut updated_info = info;
@@ -960,14 +966,35 @@ impl PtyManager {
         }
     }
 
-    pub fn set_exit_code(&self, terminal_id: &str, exit_code: Option<i32>) {
-        let mut info_map = self.terminals_info.lock();
-        if let Some(info) = info_map.get_mut(terminal_id) {
+    /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
+    /// `launch` is still current, and tells the status watcher, so held messages fail rather
+    /// than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
+    /// nothing. Returns whether the terminal moved.
+    pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
+        {
+            let mut watches = self.plugin_watches.lock();
+            if launch.current_in(&mut watches).is_none() {
+                return false;
+            }
+            let mut info_map = self.terminals_info.lock();
+            let Some(info) = info_map.get_mut(&launch.terminal_id) else {
+                return false;
+            };
             info.claude_status = ClaudeStatus::Exited;
             info.exit_code = exit_code;
-            drop(info_map);
-            self.save_sessions_to_disk();
         }
+        self.save_sessions_to_disk();
+        self.notify_status_watcher(&launch.terminal_id);
+        true
+    }
+
+    /// What a launch's exit watcher runs with the exit code once its process ends, before it
+    /// sends `terminal-exited` (see `exit_launch`).
+    fn exit_hook(&self, launch: LaunchRef) -> Box<dyn FnOnce(Option<i32>) + Send> {
+        let manager = self.clone();
+        Box::new(move |exit_code| {
+            manager.exit_launch(&launch, exit_code);
+        })
     }
 
     pub fn rename(&self, terminal_id: &str, new_name: &str) -> Result<(), String> {
@@ -1469,13 +1496,56 @@ mod tests {
         let launch = launched(&manager, "term-plugin-exited", RunKind::Claude);
         let first_output = Instant::now();
         manager.note_first_output(&launch, first_output);
-        manager.update_status("term-plugin-exited", ClaudeStatus::Exited);
+        manager.exit_launch(&launch, Some(1));
 
-        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
+        let silence_ends = first_output + Duration::from_secs(30);
+        assert!(manager.check_plugin_silence(&launch, silence_ends).is_none());
 
         let info = manager.get_info("term-plugin-exited").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Exited);
+        assert_eq!(info.exit_code, Some(1));
         assert!(!info.plugin_hint);
+    }
+
+    #[test]
+    fn a_launch_whose_process_exits_shows_exited_with_its_code_and_tells_the_status_watcher() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-exit-pig", RunKind::Pig);
+        first_output(&manager, &launch);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+
+        assert!(manager.exit_launch(&launch, Some(1)));
+
+        let info = manager.get_info("term-exit-pig").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Exited);
+        assert_eq!(info.exit_code, Some(1));
+        assert_eq!(*seen.lock(), ["term-exit-pig"]);
+    }
+
+    #[test]
+    fn an_old_launchs_exit_leaves_the_relaunched_terminal_running() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-exit-old", RunKind::Claude);
+        let new = manager.begin_launch("term-exit-old", RunKind::Claude);
+
+        assert!(!manager.exit_launch(&old, Some(1)));
+
+        let info = manager.get_info("term-exit-old").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Starting);
+        assert_eq!(info.exit_code, None);
+        assert!(manager.launch_running(&new));
+    }
+
+    #[test]
+    fn a_closed_terminals_exit_lists_nothing() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-exit-closed", RunKind::Codex);
+        manager.kill("term-exit-closed").unwrap();
+
+        assert!(!manager.exit_launch(&launch, Some(0)));
+        assert!(manager.get_info("term-exit-closed").is_none());
     }
 
     #[test]
@@ -1525,7 +1595,7 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-late-codex", RunKind::Codex);
         first_output(&manager, &launch);
-        manager.set_exit_code("term-late-codex", Some(0));
+        manager.exit_launch(&launch, Some(0));
 
         let sent = manager.apply_plugin_event("term-late-codex", "turn.completed").unwrap();
 
@@ -1871,7 +1941,7 @@ mod tests {
         let manager = PtyManager::new();
         let launch = launched(&manager, "term-agy-exit", RunKind::Antigravity);
         first_output(&manager, &launch);
-        manager.set_exit_code("term-agy-exit", Some(0));
+        manager.exit_launch(&launch, Some(0));
         let heard = turn_log(&manager);
 
         let mut turn = AntigravityTurn::default();

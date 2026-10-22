@@ -347,7 +347,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <aside aria-label="Work orders" className="w-80 border-r border-[#30363d] bg-[#161b22]/60 flex flex-col shrink-0">
             <div className="p-3.5 border-b border-[#30363d] bg-[#161b22] grid grid-cols-3 gap-1.5 text-[10px] font-mono">
-              <div className="px-2 py-1 rounded bg-[#0d1117] border border-[#30363d]" title="Measured Claude Code spend of open work orders, against their budgets">
+              <div className="px-2 py-1 rounded bg-[#0d1117] border border-[#30363d]" title="Measured Claude Code and PiG spend of open work orders, against their budgets">
                 <div className="text-[#8b949e]">SPEND</div>
                 <div className="font-bold text-xs text-[#e3b341]">
                   {status ? formatUsd(status.measuredSpendUsd) : "—"}

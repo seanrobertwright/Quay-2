@@ -98,6 +98,7 @@ export default ({ command }: ConfigEnv) => {
           text: 'Agent Fleet & Orchestration',
           items: [
             { text: 'Supported Agent CLIs', link: '/features/agent-support' },
+            { text: 'PiG (Pi in Go)', link: '/features/pig' },
             { text: 'Agent-to-Agent (A2A) Bus', link: '/features/a2a-orchestration' },
             { text: 'Swarm Presets & Splits', link: '/features/swarm-presets' },
           ],
