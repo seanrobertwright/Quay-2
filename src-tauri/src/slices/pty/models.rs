@@ -14,6 +14,7 @@ pub enum RunKind {
     Copilot,
     #[serde(rename = "opencode")]
     OpenCode,
+    Pig,
     PowerShell,
     Command,
     Archon,
@@ -33,6 +34,7 @@ impl RunKind {
                 | RunKind::Kiro
                 | RunKind::Copilot
                 | RunKind::OpenCode
+                | RunKind::Pig
                 | RunKind::Archon
         )
     }
@@ -43,7 +45,9 @@ impl RunKind {
     /// status. A terminal's level can drop below its CLI's; see `TerminalInfo::bus_level`.
     pub fn bus_level(&self) -> Option<BusLevel> {
         match self {
-            RunKind::Claude | RunKind::Codex | RunKind::OpenCode => Some(BusLevel::FullPeer),
+            RunKind::Claude | RunKind::Codex | RunKind::OpenCode | RunKind::Pig => {
+                Some(BusLevel::FullPeer)
+            }
             RunKind::Antigravity => Some(BusLevel::Responder),
             RunKind::Copilot
             | RunKind::Kiro
@@ -61,35 +65,81 @@ impl RunKind {
     }
 
     /// Whether Quay sees a turn of this CLI end, so it can show the terminal Working when a
-    /// message reaches it and Idle again after. Only Claude's event-bridge plugin reports a
-    /// turn end today. The frontend's `TURN_END_RUN_KINDS` mirrors this.
+    /// message reaches it and Idle again after. Claude's event-bridge plugin reports a turn
+    /// end, so does Codex's turn-end helper, which Codex runs through its `notify` setting,
+    /// so does Antigravity's OSC 7501 `done` (`prints_osc7501`), Quay reads OpenCode's
+    /// from the server its TUI runs (see `opencode_watch`), and Quay's PiG extension reports
+    /// PiG's. The frontend's `TURN_END_RUN_KINDS` mirrors this.
     pub fn reports_turn_end(&self) -> bool {
-        matches!(self, RunKind::Claude)
+        matches!(
+            self,
+            RunKind::Claude | RunKind::Codex | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig
+        )
+    }
+
+    /// Whether Quay hears a turn of this CLI start: from Claude's event-bridge plugin, from
+    /// Antigravity's OSC 7501 `working`, from OpenCode's watcher seeing its main session
+    /// go busy, and from Quay's PiG extension. Codex's turn-end helper runs only once a turn
+    /// has ended, so `A2ARouter::turn_completed` pairs a Codex turn with its message then.
+    pub fn reports_turn_start(&self) -> bool {
+        matches!(self, RunKind::Claude | RunKind::Antigravity | RunKind::OpenCode | RunKind::Pig)
+    }
+
+    /// Whether Quay turns on this CLI's OSC 7501 turn reports and reads them from its
+    /// output (see `osc7501`). The spawn and the PTY reader both read this.
+    pub fn prints_osc7501(&self) -> bool {
+        matches!(self, RunKind::Antigravity)
+    }
+
+    /// Whether this CLI reports through a plugin or extension that runs inside it and may
+    /// not report at all: Claude Code's event-bridge plugin, or Quay's PiG extension. Quay
+    /// gives such a terminal a silence window (see `PluginWatch`), and while it is silent the
+    /// terminal counts as a listener (`TerminalInfo::plugin_silent`).
+    pub fn reports_through_plugin(&self) -> bool {
+        matches!(self, RunKind::Claude | RunKind::Pig)
     }
 
     /// The status a Starting terminal of this CLI moves to when its pane first prints, or
-    /// `None` when its first output leaves the status alone. A Claude terminal waits for its
-    /// event-bridge plugin instead; see `PluginWatch`. A listener shows Unknown, because Quay
-    /// can't read whether it is working. Any other agent shows Idle.
+    /// `None` when its first output leaves the status alone. A Claude or PiG terminal waits
+    /// for its plugin or extension instead; see `PluginWatch`. A listener shows Unknown,
+    /// because Quay can't read whether it is working. Any other agent shows Idle.
     pub fn status_after_first_output(&self) -> Option<ClaudeStatus> {
         match self {
-            RunKind::Claude => None,
+            _ if self.reports_through_plugin() => None,
             _ if self.bus_level() == Some(BusLevel::Listener) => Some(ClaudeStatus::Unknown),
             _ if self.is_agent() => Some(ClaudeStatus::Idle),
             _ => None,
         }
     }
 
-    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI.
-    /// The spawn and the team briefing both read this, so they cannot disagree.
+    /// Whether this CLI never asks before a tool call, so Quay's Skip and Ask choice means
+    /// nothing for it. Pi and PiG are such CLIs: their `--approve` trusts project-local files
+    /// rather than skipping approvals, so Quay never passes it. The frontend's
+    /// `NEVER_ASKS_RUN_KINDS` mirrors this.
+    pub fn never_asks_before_tools(&self) -> bool {
+        matches!(self, RunKind::Pi | RunKind::Pig)
+    }
+
+    /// The permission mode a terminal of this CLI runs in: the one asked for, or Skip when
+    /// none was asked for or the CLI never asks before a tool call.
+    pub fn permission_mode(&self, requested: Option<PermissionMode>) -> PermissionMode {
+        match requested {
+            Some(mode) if !self.never_asks_before_tools() => mode,
+            _ => PermissionMode::Skip,
+        }
+    }
+
+    /// Whether Quay injects its MCP server (and so the `quay_*` tools) into this CLI. The
+    /// team briefing reads this. `build_command` wires each such CLI its own way, and its
+    /// tests check the two agree.
     pub fn gets_quay_mcp(&self) -> bool {
-        matches!(self, RunKind::Claude)
+        matches!(self, RunKind::Claude | RunKind::Codex | RunKind::OpenCode | RunKind::Pig)
     }
 
     /// How this CLI takes a launch prompt on its command line, or `None` when it takes none.
     pub fn launch_prompt_form(&self) -> Option<LaunchPromptForm> {
         match self {
-            RunKind::Claude | RunKind::Codex | RunKind::Pi | RunKind::Kiro => {
+            RunKind::Claude | RunKind::Codex | RunKind::Pi | RunKind::Kiro | RunKind::Pig => {
                 Some(LaunchPromptForm::Positional)
             }
             RunKind::OpenCode => Some(LaunchPromptForm::Flag("--prompt")),
@@ -115,6 +165,7 @@ impl RunKind {
             RunKind::Kiro => "kiro",
             RunKind::Copilot => "copilot",
             RunKind::OpenCode => "opencode",
+            RunKind::Pig => "pig",
             RunKind::PowerShell => "powershell",
             RunKind::Command => "command",
             RunKind::Archon => "archon",
@@ -134,6 +185,7 @@ impl RunKind {
             RunKind::Kiro => "Kiro",
             RunKind::Copilot => "Copilot",
             RunKind::OpenCode => "OpenCode",
+            RunKind::Pig => "PiG",
             RunKind::PowerShell => "PowerShell",
             RunKind::Command => "Command",
             RunKind::Archon => "Archon",
@@ -238,8 +290,9 @@ pub struct TerminalInfo {
 
 impl TerminalInfo {
     /// The terminal's level on the A2A bus now, or `None` when it is not a peer. It is its
-    /// CLI's level, except that a Claude terminal shown as Unknown is a listener: Quay
-    /// hasn't heard from its event-bridge plugin, so it can't see the turn end.
+    /// CLI's level, except that a Claude or PiG terminal shown as Unknown is a listener: Quay
+    /// hasn't heard from its event-bridge plugin or PiG extension, so it can't see the turn
+    /// end.
     pub fn bus_level(&self) -> Option<BusLevel> {
         if self.plugin_silent() {
             return Some(BusLevel::Listener);
@@ -247,15 +300,15 @@ impl TerminalInfo {
         self.run_kind.bus_level()
     }
 
-    /// Whether this is a Claude terminal that counts as a listener only because Quay
-    /// hasn't heard from its event-bridge plugin.
+    /// Whether this is a Claude or PiG terminal that counts as a listener only because Quay
+    /// hasn't heard from its event-bridge plugin or PiG extension. The frontend's
+    /// `isPluginSilent` mirrors this.
     pub fn plugin_silent(&self) -> bool {
-        self.run_kind == RunKind::Claude && self.claude_status == ClaudeStatus::Unknown
+        self.run_kind.reports_through_plugin() && self.claude_status == ClaudeStatus::Unknown
     }
 
     /// Whether a message reaching this terminal shows it Working: only when Quay will also
-    /// see that turn end and show it Idle again. A Claude terminal shown as Unknown doesn't,
-    /// because Quay hasn't heard from its event-bridge plugin.
+    /// see that turn end and show it Idle again. A terminal that is `plugin_silent` doesn't.
     pub fn shows_working_on_delivery(&self) -> bool {
         self.run_kind.reports_turn_end() && self.claude_status != ClaudeStatus::Unknown
     }
@@ -353,25 +406,28 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
     }
 }
 
+/// Every run kind, for tests that check a rule across all of them.
+#[cfg(test)]
+pub const ALL_RUN_KINDS: [RunKind; 14] = [
+    RunKind::Claude,
+    RunKind::Antigravity,
+    RunKind::Codex,
+    RunKind::Pi,
+    RunKind::Gemini,
+    RunKind::Grok,
+    RunKind::Aider,
+    RunKind::Kiro,
+    RunKind::Copilot,
+    RunKind::OpenCode,
+    RunKind::Pig,
+    RunKind::PowerShell,
+    RunKind::Command,
+    RunKind::Archon,
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const ALL_RUN_KINDS: [RunKind; 13] = [
-        RunKind::Claude,
-        RunKind::Antigravity,
-        RunKind::Codex,
-        RunKind::Pi,
-        RunKind::Gemini,
-        RunKind::Grok,
-        RunKind::Aider,
-        RunKind::Kiro,
-        RunKind::Copilot,
-        RunKind::OpenCode,
-        RunKind::PowerShell,
-        RunKind::Command,
-        RunKind::Archon,
-    ];
 
     fn terminal(run_kind: RunKind, claude_status: ClaudeStatus) -> TerminalInfo {
         test_terminal("term-level", run_kind, claude_status)
@@ -399,10 +455,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_codex_and_opencode_are_full_peers() {
+    fn claude_codex_opencode_and_pig_are_full_peers() {
         assert_eq!(
             kinds_at(Some(BusLevel::FullPeer)),
-            [RunKind::Claude, RunKind::Codex, RunKind::OpenCode]
+            [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]
         );
     }
 
@@ -424,6 +480,15 @@ mod tests {
                 RunKind::Copilot,
             ]
         );
+    }
+
+    #[test]
+    fn pig_is_an_agent_named_pig_that_takes_a_positional_launch_prompt() {
+        assert!(RunKind::Pig.is_agent());
+        assert_eq!(RunKind::Pig.as_str(), "pig");
+        assert_eq!(RunKind::Pig.display_name(), "PiG");
+        assert_eq!(serde_json::to_value(RunKind::Pig).unwrap(), "pig");
+        assert_eq!(RunKind::Pig.launch_prompt_form(), Some(LaunchPromptForm::Positional));
     }
 
     #[test]
@@ -466,35 +531,88 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_falls_to_listener_when_unknown() {
+    fn a_silent_pig_terminal_is_a_listener_and_any_other_status_a_full_peer() {
+        let silent = terminal(RunKind::Pig, ClaudeStatus::Unknown);
+        assert!(silent.plugin_silent());
+        assert_eq!(silent.bus_level(), Some(BusLevel::Listener));
+        assert!(!silent.shows_working_on_delivery());
+        assert!(!silent.holds_deliveries());
+        for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Idle] {
+            let reporting = terminal(RunKind::Pig, status.clone());
+            assert!(!reporting.plugin_silent(), "{:?}", status);
+            assert_eq!(reporting.bus_level(), Some(BusLevel::FullPeer), "{:?}", status);
+        }
+    }
+
+    #[test]
+    fn only_claude_and_pig_fall_to_listener_when_unknown() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| terminal(*kind, ClaudeStatus::Unknown).plugin_silent())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Pig]);
         assert_eq!(
             terminal(RunKind::Codex, ClaudeStatus::Unknown).bus_level(),
             Some(BusLevel::FullPeer)
         );
         assert_eq!(terminal(RunKind::PowerShell, ClaudeStatus::Unknown).bus_level(), None);
-        assert!(!terminal(RunKind::Codex, ClaudeStatus::Unknown).plugin_silent());
     }
 
     #[test]
-    fn only_claude_reports_a_turn_end() {
+    fn only_claude_codex_antigravity_opencode_and_pig_report_a_turn_end() {
         let kinds: Vec<RunKind> = ALL_RUN_KINDS
             .into_iter()
             .filter(|kind| kind.reports_turn_end())
             .collect();
-        assert_eq!(kinds, [RunKind::Claude]);
+        assert_eq!(
+            kinds,
+            [RunKind::Claude, RunKind::Antigravity, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]
+        );
+    }
+
+    #[test]
+    fn only_claude_antigravity_opencode_and_pig_report_a_turn_start() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.reports_turn_start())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Antigravity, RunKind::OpenCode, RunKind::Pig]);
+    }
+
+    #[test]
+    fn only_antigravity_prints_osc7501() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.prints_osc7501())
+            .collect();
+        assert_eq!(kinds, [RunKind::Antigravity]);
+    }
+
+    #[test]
+    fn only_claude_codex_opencode_and_pig_get_the_quay_mcp_server() {
+        let kinds: Vec<RunKind> = ALL_RUN_KINDS
+            .into_iter()
+            .filter(|kind| kind.gets_quay_mcp())
+            .collect();
+        assert_eq!(kinds, [RunKind::Claude, RunKind::Codex, RunKind::OpenCode, RunKind::Pig]);
     }
 
     #[test]
     fn a_terminal_shows_working_on_delivery_only_when_quay_will_see_the_turn_end() {
         assert!(terminal(RunKind::Claude, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Claude, ClaudeStatus::Unknown).shows_working_on_delivery());
-        assert!(!terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::Codex, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::Antigravity, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(terminal(RunKind::OpenCode, ClaudeStatus::Idle).shows_working_on_delivery());
+        assert!(!terminal(RunKind::OpenCode, ClaudeStatus::Unknown).shows_working_on_delivery());
+        assert!(terminal(RunKind::Pig, ClaudeStatus::Idle).shows_working_on_delivery());
         assert!(!terminal(RunKind::Gemini, ClaudeStatus::Unknown).shows_working_on_delivery());
     }
 
     #[test]
-    fn first_output_leaves_claude_to_its_plugin_and_shows_listeners_unknown() {
+    fn first_output_leaves_claude_and_pig_to_their_plugin_and_shows_listeners_unknown() {
         assert_eq!(RunKind::Claude.status_after_first_output(), None);
+        assert_eq!(RunKind::Pig.status_after_first_output(), None);
         for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Antigravity, RunKind::Archon] {
             assert_eq!(kind.status_after_first_output(), Some(ClaudeStatus::Idle), "{:?}", kind);
         }
@@ -517,14 +635,39 @@ mod tests {
     }
 
     #[test]
-    fn only_a_reporting_claude_terminal_mid_turn_holds_deliveries() {
-        for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
-            assert!(terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
+    fn a_cli_that_never_asks_runs_as_skip_whatever_was_asked() {
+        for kind in [RunKind::Pi, RunKind::Pig] {
+            for requested in [None, Some(PermissionMode::Skip), Some(PermissionMode::Normal)] {
+                assert_eq!(kind.permission_mode(requested), PermissionMode::Skip, "{:?} {:?}", kind, requested);
+            }
         }
-        for status in [ClaudeStatus::Idle, ClaudeStatus::Exited, ClaudeStatus::Unknown] {
-            assert!(!terminal(RunKind::Claude, status.clone()).holds_deliveries(), "{:?}", status);
+        assert_eq!(RunKind::Claude.permission_mode(Some(PermissionMode::Normal)), PermissionMode::Normal);
+        assert_eq!(RunKind::Claude.permission_mode(None), PermissionMode::Skip);
+    }
+
+    #[test]
+    fn never_asks_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.never_asks_before_tools())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(backend, ["pi", "pig"]);
+        assert_eq!(frontend_run_kinds("NEVER_ASKS_RUN_KINDS"), backend);
+    }
+
+    #[test]
+    fn only_a_reporting_claude_codex_antigravity_opencode_or_pig_terminal_mid_turn_holds_deliveries() {
+        let holders = [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::OpenCode, RunKind::Pig];
+        for kind in holders {
+            for status in [ClaudeStatus::Starting, ClaudeStatus::Working, ClaudeStatus::Waiting] {
+                assert!(terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
+            }
+            for status in [ClaudeStatus::Idle, ClaudeStatus::Exited, ClaudeStatus::Unknown] {
+                assert!(!terminal(kind, status.clone()).holds_deliveries(), "{:?} {:?}", kind, status);
+            }
         }
-        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Claude) {
+        for kind in ALL_RUN_KINDS.into_iter().filter(|kind| !holders.contains(kind)) {
             assert!(!terminal(kind, ClaudeStatus::Working).holds_deliveries(), "{:?}", kind);
         }
     }
@@ -546,6 +689,17 @@ mod tests {
             .map(|item| item.trim().trim_matches('"').to_string())
             .filter(|item| !item.is_empty())
             .collect()
+    }
+
+    #[test]
+    fn plugin_run_kinds_match_the_frontend() {
+        let backend: Vec<String> = ALL_RUN_KINDS
+            .iter()
+            .filter(|kind| kind.reports_through_plugin())
+            .map(|kind| kind.as_str().to_string())
+            .collect();
+        assert_eq!(backend, ["claude", "pig"]);
+        assert_eq!(frontend_run_kinds("PLUGIN_RUN_KINDS"), backend);
     }
 
     #[test]

@@ -19,9 +19,11 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { TerminalInfo, busLevel, isPluginSilent } from "../terminal/types";
+import { TerminalInfo, busLevel, isPluginSilent, showsWorkingOnDelivery } from "../terminal/types";
 import { isSamePath } from "../../utils/paths";
 import { keepSendChoices, toAgentChoices } from "./sendChoices";
+import { entryTimer, responseLabel, TrailStatus } from "./trailEntry";
+import { formatClock, formatDuration } from "../../lib/dates";
 
 interface A2AMessage {
   id: string;
@@ -31,9 +33,14 @@ interface A2AMessage {
   to_name?: string | null;
   content: string;
   as_user: boolean;
+  broadcast?: boolean;
+  waited?: boolean;
   timestamp: number;
-  status: "queued" | "dispatched" | "completed" | "failed";
+  delivered_at?: number | null;
+  completed_at?: number | null;
+  status: TrailStatus;
   response?: string | null;
+  note?: string | null;
 }
 
 interface A2APanelProps {
@@ -48,9 +55,16 @@ const agentOptionLabel = (t: TerminalInfo) =>
 
 /**
  * The agent list's tag for a peer below full peer, with the tooltip that explains it,
- * or null for a full peer, which gets no tag.
+ * or null for a full peer, which gets no tag. `pigVersion` is the PiG version Quay's PiG
+ * extension was tested with, or null until the backend has said.
  */
-function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
+function levelTag(t: TerminalInfo, pigVersion: string | null): { label: string; tooltip: string } | null {
+  if (isPluginSilent(t) && t.run_kind === "pig") {
+    return {
+      label: "Listener",
+      tooltip: `Quay's PiG extension isn't reporting. Quay was tested with PiG ${pigVersion ?? "(version unknown)"}; run pig --version to compare.`,
+    };
+  }
   if (isPluginSilent(t)) {
     return {
       label: "Listener",
@@ -71,19 +85,62 @@ function levelTag(t: TerminalInfo): { label: string; tooltip: string } | null {
   }
 }
 
+/** An entry's timer (see `entryTimer`). A running one ticks each second by itself, so only
+ *  the timer re-renders, not the whole trail. */
+const TrailTimer: FC<{ entry: A2AMessage; seesTurnEnd: boolean }> = ({ entry, seesTurnEnd }) => {
+  const [now, setNow] = useState(() => Date.now());
+  const running = entry.status === "dispatched" && seesTurnEnd;
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [running]);
+
+  const timer = entryTimer(entry, now, seesTurnEnd);
+  if (!timer) return null;
+  return (
+    <span
+      className="font-mono tabular-nums"
+      title={timer.running ? "Time since delivery" : "How long the turn took"}
+    >
+      {timer.running
+        ? // A running timer counts whole seconds, so its first second reads 0s, not milliseconds.
+          timer.ms < 1000 ? "0s" : formatDuration(timer.ms)
+        : `took ${formatDuration(timer.ms)}`}
+    </span>
+  );
+};
+
 export const A2APanel: FC<A2APanelProps> = ({
   isOpen,
   terminals,
   activeProject,
   onClose,
 }) => {
+  // The PiG version Quay's PiG extension was tested with, for a silent PiG terminal's tag
+  const [pigVersion, setPigVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    invoke<string>("get_pig_tested_version")
+      .then((version) => {
+        if (current) setPigVersion(version);
+      })
+      .catch((err) => console.error("Failed to read the tested PiG version:", err));
+    return () => {
+      current = false;
+    };
+  }, []);
+
   // Peers only: shell and Archon terminals are not on the bus.
   const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
-  // A broadcast reaches every peer that is still running.
-  const broadcastTargets = agentTerminals.filter((t) => t.claude_status !== "exited");
-  // The agent list, From Agent and To Agent show only the active project's peers, scoped
-  // the way the stage scopes its terminals: a worktree counts as its own project.
+  // The agent list, From Agent, To Agent and the Broadcast box take only the active
+  // project's peers, scoped the way the stage scopes its terminals: a worktree counts as
+  // its own project.
   const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
+  // A broadcast reaches the active project's peers that are still running.
+  const broadcastTargets = projectAgents.filter((t) => t.claude_status !== "exited");
   const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
   const [toTerminal, setToTerminal] = useState(() => keepSendChoices(projectAgents, "", "", false).to);
   const [prompt, setPrompt] = useState("");
@@ -96,7 +153,15 @@ export const A2APanel: FC<A2APanelProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // A Dispatched entry counts up only while Quay can see its target's turn end; an entry to
+  // a listener, or to a terminal that exited or closed, would count forever.
+  const seesTurnEnd = (terminalId: string) => {
+    const term = terminals.find((t) => t.id === terminalId);
+    return !!term && term.claude_status !== "exited" && showsWorkingOnDelivery(term);
+  };
 
   const getTerminalLabel = (idOrName: string, nameFallback?: string | null) => {
     if (nameFallback) return nameFallback;
@@ -200,15 +265,20 @@ export const A2APanel: FC<A2APanelProps> = ({
     if (!broadcastText.trim() || isBroadcasting) return;
 
     setIsBroadcasting(true);
+    setBroadcastError(null);
     try {
-      const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", { text: broadcastText });
-      const count = dispatched?.length || broadcastTargets.length;
+      const dispatched = await invoke<A2AMessage[]>("a2a_broadcast_toast", {
+        text: broadcastText,
+        project: activeProject,
+      });
+      const count = dispatched.length;
       setBroadcastText("");
       setBroadcastSuccess(`Broadcast sent to ${count} agent${count === 1 ? "" : "s"}!`);
       setTimeout(() => setBroadcastSuccess(null), 3500);
       await loadMessages();
     } catch (err) {
       console.error("Broadcast toast error:", err);
+      setBroadcastError(String(err));
     } finally {
       setIsBroadcasting(false);
     }
@@ -287,7 +357,7 @@ export const A2APanel: FC<A2APanelProps> = ({
               </li>
             </ul>
             <p className="text-xs text-[#8b949e] mb-2.5 leading-relaxed">
-              Quay gives Claude Code terminals the <code className="text-[#58a6ff]">quay</code> MCP server and its tools. A Claude Code peer can't answer until Quay hears from its event-bridge plugin.
+              Quay gives full peers (Claude Code, Codex, OpenCode and PiG) the <code className="text-[#58a6ff]">quay</code> MCP server and its tools. A Claude Code or PiG peer can't answer until Quay hears from its event-bridge plugin or PiG extension.
             </p>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
@@ -300,7 +370,7 @@ export const A2APanel: FC<A2APanelProps> = ({
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_broadcast</span>
-                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every running peer</p>
+                <p className="text-[10px] text-[#8b949e] font-sans mt-0.5">Type one line into every other running peer in the caller's project</p>
               </div>
               <div className="p-2 bg-[#161b22] border border-[#30363d] rounded">
                 <span className="text-[#58a6ff] font-bold">quay_get_agent_status</span>
@@ -320,7 +390,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             ) : (
               <ul aria-label="Peers in the active project" className="space-y-1">
                 {projectAgents.map((t) => {
-                  const tag = levelTag(t);
+                  const tag = levelTag(t, pigVersion);
                   return (
                     <li key={t.id} className="flex items-center gap-2 text-xs">
                       <span className="font-mono text-white truncate">{t.name}</span>
@@ -503,7 +573,7 @@ export const A2APanel: FC<A2APanelProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e] flex items-center gap-1.5">
                 <Radio className="w-3.5 h-3.5 text-[#3fb950]" />
-                <span>Broadcast Notice to All AI Agent Sessions</span>
+                <span>Broadcast Notice to the Active Project's Peers</span>
               </h3>
               <span className="text-[11px]">
                 {broadcastTargets.length > 0 ? (
@@ -511,7 +581,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                     {broadcastTargets.length} target{broadcastTargets.length === 1 ? "" : "s"} active
                   </span>
                 ) : (
-                  <span className="text-[#d29922]">No peers running</span>
+                  <span className="text-[#d29922]">No peers running in the active project</span>
                 )}
               </span>
             </div>
@@ -520,7 +590,11 @@ export const A2APanel: FC<A2APanelProps> = ({
               <input
                 type="text"
                 value={broadcastText}
-                onChange={(e) => setBroadcastText(e.target.value)}
+                onChange={(e) => {
+                  setBroadcastText(e.target.value);
+                  setBroadcastError(null);
+                }}
+                aria-label="Notice to broadcast"
                 placeholder="Notice / Toast text (e.g. 'DB migration finished, pulling updates...')"
                 className="flex-1 px-3 py-1.5 bg-[#161b22] border border-[#30363d] rounded text-xs text-white focus:outline-hidden focus:border-[#58a6ff]"
               />
@@ -547,6 +621,15 @@ export const A2APanel: FC<A2APanelProps> = ({
               <div className="flex items-center gap-1.5 text-xs text-[#3fb950] bg-[#238636]/15 border border-[#238636]/40 rounded px-2.5 py-1 animate-in fade-in">
                 <Check className="w-3.5 h-3.5" />
                 <span>{broadcastSuccess}</span>
+              </div>
+            )}
+
+            {broadcastError && (
+              <div
+                role="alert"
+                className="text-xs text-[#ff7b72] bg-[#da3633]/15 border border-[#da3633]/40 rounded px-2.5 py-1"
+              >
+                {broadcastError}
               </div>
             )}
           </div>
@@ -597,6 +680,11 @@ export const A2APanel: FC<A2APanelProps> = ({
                             as user
                           </span>
                         )}
+                        {m.broadcast && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-[#238636]/25 text-[#3fb950] font-normal">
+                            Broadcast
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         {m.status === "completed" && (
@@ -617,7 +705,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                         {m.status === "dispatched" && (
                           <span className="flex items-center gap-1 text-[#58a6ff]">
                             <Clock className="w-3 h-3 animate-spin" />
-                            <span>Working</span>
+                            <span>Dispatched</span>
                           </span>
                         )}
                         {m.status === "failed" && (
@@ -625,7 +713,9 @@ export const A2APanel: FC<A2APanelProps> = ({
                             <span>Failed</span>
                           </span>
                         )}
-                        <span>{new Date(m.timestamp).toLocaleTimeString()}</span>
+                        <TrailTimer entry={m} seesTurnEnd={seesTurnEnd(m.to_terminal)} />
+                        {m.note && <span className="italic">{m.note}</span>}
+                        <span>{formatClock(m.timestamp)}</span>
                       </div>
                     </div>
 
@@ -649,7 +739,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                     {m.response && (
                       <div className="mt-1 pl-2.5 border-l-2 border-[#3fb950] text-[#7ee787] text-[11px] font-mono relative group">
                         <div className="flex items-center justify-between text-[10px] text-[#8b949e] font-sans mb-0.5">
-                          <span>Reply:</span>
+                          <span>{responseLabel(m)}:</span>
                           <button
                             type="button"
                             onClick={() => handleCopy(`resp-${m.id}`, m.response!)}
@@ -658,7 +748,7 @@ export const A2APanel: FC<A2APanelProps> = ({
                             {copiedKey === `resp-${m.id}` ? (
                               <span className="text-[#3fb950]">Copied!</span>
                             ) : (
-                              <span>Copy Reply</span>
+                              <span>Copy {responseLabel(m)}</span>
                             )}
                           </button>
                         </div>

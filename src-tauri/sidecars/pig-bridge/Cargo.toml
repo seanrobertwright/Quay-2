@@ -1,0 +1,28 @@
+[package]
+name = "quay-pig-bridge"
+version = "0.2.0"
+description = "Quay's PiG extension: puts a PiG terminal on Quay's A2A bus as a full peer."
+authors = ["Sean Robert Wright"]
+edition = "2024"
+license = "AGPL-3.0"
+publish = false
+
+# A package of its own, not a member of the app's: the app's build script builds it into
+# a target directory of its own while the app's build holds the app's.
+[workspace]
+
+[dependencies]
+# Pinned to the tag of the PiG version Quay was tested with.
+pig-sdk = { git = "https://github.com/MichaelKinsy/PiG", tag = "v0.5.1" }
+quay-bridge-post = { path = "../bridge-post" }
+serde_json = "1"
+
+[dev-dependencies]
+quay-bridge-post = { path = "../bridge-post", features = ["testing"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

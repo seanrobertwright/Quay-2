@@ -1,6 +1,12 @@
 import { useState, useEffect, useId } from "react";
 import { Terminal, Shield, AlertTriangle, X, Sliders } from "lucide-react";
-import { RunKind, PermissionMode, SpawnTerminalRequest, isAgentRunKind } from "./types";
+import {
+  RunKind,
+  PermissionMode,
+  SpawnTerminalRequest,
+  isAgentRunKind,
+  neverAsksBeforeTools,
+} from "./types";
 import {
   ClaudeIcon,
   AntigravityIcon,
@@ -12,6 +18,7 @@ import {
   KiroIcon,
   CopilotIcon,
   OpenCodeIcon,
+  PigIcon,
   PowerShellIcon,
   CommandIcon,
 } from "./AgentIcons";
@@ -123,6 +130,13 @@ const AGENT_MODELS: Record<string, ModelOption[]> = {
     { label: "DeepSeek Chat (DeepSeek)", value: "-m deepseek/deepseek-chat" },
     { label: "Continue Previous Session", value: "--continue" },
   ],
+  pig: [
+    { label: "Default (PiG's configured model)", value: "" },
+    { label: "Claude Sonnet, latest (Thinking High)", value: "--model sonnet:high" },
+    { label: "Claude Opus, latest", value: "--model opus" },
+    { label: "High Thinking Mode", value: "--thinking high" },
+    { label: "Max Thinking Mode", value: "--thinking max" },
+  ],
 };
 
 /** Ungrouped options first, then one <optgroup> per group in first-seen order. */
@@ -164,8 +178,11 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
   const [commandText, setCommandText] = useState("");
   const [name, setName] = useState("");
   const modelSelectId = useId();
+  const permissionLabelId = useId();
 
   const isAgent = isAgentRunKind(runKind);
+  const neverAsks = neverAsksBeforeTools(runKind);
+  const effectivePermissionMode: PermissionMode = neverAsks ? "skip" : permissionMode;
 
   // Reset model flag when switching agent kinds
   useEffect(() => {
@@ -202,7 +219,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
     onSpawn({
       project_path: projectPath,
       run_kind: runKind,
-      permission_mode: isAgent ? permissionMode : undefined,
+      permission_mode: isAgent ? effectivePermissionMode : undefined,
       command_text: runKind === "command" ? commandText : undefined,
       custom_flags: mergedFlags,
       name: name.trim() || undefined,
@@ -232,6 +249,8 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
         return "GitHub Copilot CLI (GitHub & Microsoft)";
       case "opencode":
         return "OpenCode CLI (Multi-Provider Terminal Agent)";
+      case "pig":
+        return "PiG (Pi in Go)";
       default:
         return "Agent";
     }
@@ -429,6 +448,23 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                 <span className="font-semibold text-center leading-tight">OpenCode</span>
                 <span className="text-[10px] text-[#8b949e] scale-90">SST</span>
               </button>
+
+              {/* PiG (Pi in Go) */}
+              <button
+                type="button"
+                onClick={() => setRunKind("pig")}
+                className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md border text-xs font-medium transition-all ${
+                  runKind === "pig"
+                    ? "bg-[#00ADD8]/15 border-[#00ADD8] text-white shadow-sm ring-1 ring-[#00ADD8]/50"
+                    : "bg-[#0d1117] border-[#30363d] text-[#8b949e] hover:border-[#8b949e] hover:text-[#c9d1d9]"
+                }`}
+              >
+                <div className="w-6 h-6 flex items-center justify-center">
+                  <PigIcon className={`w-5 h-5 ${runKind === "pig" ? "text-[#00ADD8]" : "text-[#8b949e]"}`} />
+                </div>
+                <span className="font-semibold text-center leading-tight">PiG</span>
+                <span className="text-[10px] text-[#8b949e] scale-90">Pi in Go</span>
+              </button>
             </div>
 
             <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2 mt-2">
@@ -470,42 +506,77 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
             <div className="space-y-3 p-3 bg-[#0d1117] border border-[#30363d] rounded-md">
               {/* Permission Modes */}
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1.5">
+                <div
+                  id={permissionLabelId}
+                  className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1.5"
+                >
                   Permission Mode
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPermissionMode("skip")}
-                    className={`flex items-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
-                      permissionMode === "skip"
-                        ? "bg-[#ff7b72]/15 border-[#ff7b72] text-[#ff7b72]"
-                        : "bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#8b949e]"
-                    }`}
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-[#ff7b72] shrink-0" />
-                    <span>Skip Permissions (Default)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPermissionMode("normal")}
-                    className={`flex items-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
-                      permissionMode === "normal"
-                        ? "bg-[#3fb950]/15 border-[#3fb950] text-[#3fb950]"
-                        : "bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#8b949e]"
-                    }`}
-                  >
-                    <Shield className="w-3.5 h-3.5 text-[#3fb950] shrink-0" />
-                    <span>Interactive Approvals</span>
-                  </button>
                 </div>
+                {!neverAsks && (
+                  <div
+                    role="radiogroup"
+                    aria-labelledby={permissionLabelId}
+                    className="grid grid-cols-2 gap-2"
+                    onKeyDown={(e) => {
+                      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+                        e.preventDefault();
+                        const next: PermissionMode = permissionMode === "skip" ? "normal" : "skip";
+                        setPermissionMode(next);
+                        e.currentTarget
+                          .querySelector<HTMLElement>(`[data-mode="${next}"]`)
+                          ?.focus();
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={permissionMode === "skip"}
+                      tabIndex={permissionMode === "skip" ? 0 : -1}
+                      data-mode="skip"
+                      onClick={() => setPermissionMode("skip")}
+                      className={`flex items-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
+                        permissionMode === "skip"
+                          ? "bg-[#ff7b72]/15 border-[#ff7b72] text-[#ff7b72]"
+                          : "bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#8b949e]"
+                      }`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-[#ff7b72] shrink-0" />
+                      <span>Skip Permissions (Default)</span>
+                    </button>
 
-                {permissionMode === "skip" && (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={permissionMode === "normal"}
+                      tabIndex={permissionMode === "normal" ? 0 : -1}
+                      data-mode="normal"
+                      onClick={() => setPermissionMode("normal")}
+                      className={`flex items-center gap-2 p-2 rounded-md border text-xs font-medium transition-all ${
+                        permissionMode === "normal"
+                          ? "bg-[#3fb950]/15 border-[#3fb950] text-[#3fb950]"
+                          : "bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#8b949e]"
+                      }`}
+                    >
+                      <Shield className="w-3.5 h-3.5 text-[#3fb950] shrink-0" />
+                      <span>Interactive Approvals</span>
+                    </button>
+                  </div>
+                )}
+
+                {effectivePermissionMode === "skip" && (
                   <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[#ff7b72]">
                     <AlertTriangle className="w-3 h-3 shrink-0" />
                     <span>{getAgentLabel()} executes shell tools and edits autonomously.</span>
                   </div>
+                )}
+                {neverAsks && (
+                  <p className="mt-1 text-[11px] text-[#8b949e]">
+                    {getAgentLabel()} never asks before a tool call, so it has no Interactive
+                    Approvals mode. To
+                    trust this project's local settings, MCP config and extensions, add{" "}
+                    <code className="font-mono">--approve</code> to the custom arguments.
+                  </p>
                 )}
               </div>
 

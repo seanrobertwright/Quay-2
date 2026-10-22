@@ -4,6 +4,7 @@ import { TerminalView } from "../terminal/TerminalView";
 import { SkipBanner } from "./SkipBanner";
 import { StatusStrip } from "./StatusStrip";
 import { Placeholder } from "./Placeholder";
+import { singleLayoutTerminalId } from "./singlePane";
 import {
   Square,
   Columns2,
@@ -466,7 +467,9 @@ export const Stage: FC<StageProps> = ({
             showPaneHeader = false;
             paneStyle = { display: "none" };
           } else if (layout === "single") {
-            isVisible = term.id === (primaryTerminalId || activeTerminalId);
+            isVisible =
+              term.id ===
+              singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
             isFocused = isVisible;
             showPaneHeader = false;
             paneStyle = {

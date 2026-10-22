@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::Mutex;
@@ -10,14 +10,43 @@ use super::models::{
     ClaudeStatus, PermissionMode, PersistedTerminalSession, RunKind, SpawnTerminalRequest,
     TerminalInfo, TerminalOutputPayload, TerminalStatusPayload,
 };
+use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
-use super::session::PtySession;
+use super::session::{Osc7501Hook, PtySession};
 
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// What the server watcher runs, with a launch whose CLI serves its own events and the
+/// loopback port it serves them on.
+type ServerWatcher = Arc<dyn Fn(LaunchRef, u16) + Send + Sync>;
+
+/// A free loopback port for a launch's CLI to serve its events on, for a CLI that serves
+/// them (OpenCode), or `None`.
+fn server_port_for(run_kind: RunKind) -> Result<Option<u16>, String> {
+    if run_kind != RunKind::OpenCode {
+        return Ok(None);
+    }
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| Some(addr.port()))
+        .map_err(|e| format!("Failed to find a free port for OpenCode's server: {}", e))
+}
+
+/// What a terminal's own output says about its turn, as the turn watcher hears it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnEvent {
+    /// A turn started.
+    Started,
+    /// What a sender waiting on the running turn is told.
+    Answered(String),
+}
+
+/// What the turn watcher runs, with the id of the terminal whose output reported the turn.
+type TurnWatcher = Arc<dyn Fn(&str, TurnEvent) + Send + Sync>;
 
 static LAST_CREATED_AT: Mutex<u64> = Mutex::new(0);
 
@@ -50,6 +79,46 @@ fn get_sessions_dir() -> PathBuf {
         let _ = std::fs::create_dir_all(&base_dir);
         base_dir
     }
+}
+
+/// The session list saved at `path`. A missing file means none. A file that can't be
+/// parsed is logged and renamed to `sessions.json.corrupt-<ms>`, so the next save
+/// can't overwrite what's left of it.
+fn read_session_list(path: &Path) -> Vec<PersistedTerminalSession> {
+    // Read as bytes so that invalid UTF-8 counts as unparseable, not unreadable
+    let content = match std::fs::read(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            tracing::error!("Could not read saved terminals from {}: {}", path.display(), e);
+            return Vec::new();
+        }
+    };
+    match serde_json::from_slice::<Vec<PersistedTerminalSession>>(&content) {
+        Ok(list) => list,
+        Err(e) => {
+            let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+            let aside = path.with_file_name(format!("{}.corrupt-{}", name, crate::dates::now_ms()));
+            tracing::error!(
+                "Saved terminals in {} are unreadable ({}); moving the file to {}",
+                path.display(),
+                e,
+                aside.display()
+            );
+            if let Err(e) = std::fs::rename(path, &aside) {
+                tracing::error!("Could not move {} aside: {}", path.display(), e);
+            }
+            Vec::new()
+        }
+    }
+}
+
+/// Saves the session list to `path` through a temp file and rename, so a crash
+/// mid-save leaves the previous list in place.
+fn write_session_list(path: &Path, list: &[PersistedTerminalSession]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(list).map_err(|e| e.to_string())?;
+    crate::atomic_file::write_atomic(path, json.as_bytes())
+        .map_err(|e| format!("cannot write {}: {}", path.display(), e))
 }
 
 fn read_saved_scrollback(terminal_id: &str) -> (String, u64) {
@@ -125,6 +194,8 @@ pub struct PtyManager {
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
     submit_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     status_watcher: Arc<Mutex<Option<StatusWatcher>>>,
+    server_watcher: Arc<Mutex<Option<ServerWatcher>>>,
+    turn_watcher: Arc<Mutex<Option<TurnWatcher>>>,
     /// What tests typed into each test terminal, which stands in for its PTY.
     #[cfg(test)]
     test_input: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -139,6 +210,8 @@ impl PtyManager {
             plugin_watches: Arc::new(Mutex::new(HashMap::new())),
             submit_locks: Arc::new(Mutex::new(HashMap::new())),
             status_watcher: Arc::new(Mutex::new(None)),
+            server_watcher: Arc::new(Mutex::new(None)),
+            turn_watcher: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             test_input: Arc::new(Mutex::new(HashMap::new())),
         };
@@ -147,52 +220,50 @@ impl PtyManager {
     }
 
     pub fn load_persisted_sessions(&self) {
-        let meta_path = get_sessions_dir().join("sessions.json");
-        if let Ok(content) = std::fs::read_to_string(&meta_path) {
-            if let Ok(list) = serde_json::from_str::<Vec<PersistedTerminalSession>>(&content) {
-                let mut info_map = self.terminals_info.lock();
-                let mut dormant_map = self.dormant_buffers.lock();
+        let list = read_session_list(&get_sessions_dir().join("sessions.json"));
+        let mut info_map = self.terminals_info.lock();
+        let mut dormant_map = self.dormant_buffers.lock();
 
-                for (idx, item) in list.into_iter().enumerate() {
-                    let (scrollback, seq) = read_saved_scrollback(&item.id);
-                    dormant_map.insert(item.id.clone(), (scrollback, seq));
+        for (idx, item) in list.into_iter().enumerate() {
+            let (scrollback, seq) = read_saved_scrollback(&item.id);
+            dormant_map.insert(item.id.clone(), (scrollback, seq));
 
-                    let created_at = if item.created_at > 0 {
-                        item.created_at
-                    } else if item.last_updated > 0 {
-                        item.last_updated + idx as u64
-                    } else {
-                        next_created_at()
-                    };
+            let created_at = if item.created_at > 0 {
+                item.created_at
+            } else if item.last_updated > 0 {
+                item.last_updated + idx as u64
+            } else {
+                next_created_at()
+            };
 
-                    {
-                        let mut last = LAST_CREATED_AT.lock();
-                        if created_at > *last {
-                            *last = created_at;
-                        }
-                    }
-
-                    let info = TerminalInfo {
-                        id: item.id.clone(),
-                        name: item.name,
-                        project_path: item.project_path,
-                        run_kind: item.run_kind,
-                        permission_mode: item.permission_mode,
-                        live_mode: item.permission_mode,
-                        claude_status: ClaudeStatus::Exited,
-                        auto_approved_count: item.auto_approved_count,
-                        exit_code: Some(0),
-                        task_title: item.task_title,
-                        current_tool: None,
-                        custom_name: item.custom_name,
-                        custom_flags: item.custom_flags,
-                        command_text: item.command_text,
-                        created_at,
-                        plugin_hint: false,
-                    };
-                    info_map.insert(item.id, info);
+            {
+                let mut last = LAST_CREATED_AT.lock();
+                if created_at > *last {
+                    *last = created_at;
                 }
             }
+
+            // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
+            let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
+            let info = TerminalInfo {
+                id: item.id.clone(),
+                name: item.name,
+                project_path: item.project_path,
+                run_kind: item.run_kind,
+                permission_mode,
+                live_mode: permission_mode,
+                claude_status: ClaudeStatus::Exited,
+                auto_approved_count: item.auto_approved_count,
+                exit_code: Some(0),
+                task_title: item.task_title,
+                current_tool: None,
+                custom_name: item.custom_name,
+                custom_flags: item.custom_flags,
+                command_text: item.command_text,
+                created_at,
+                plugin_hint: false,
+            };
+            info_map.insert(item.id, info);
         }
     }
 
@@ -223,9 +294,9 @@ impl PtyManager {
 
         list.sort_by_key(|s| s.created_at);
 
-        let meta_path = get_sessions_dir().join("sessions.json");
-        if let Ok(json) = serde_json::to_string_pretty(&list) {
-            let _ = std::fs::write(meta_path, json);
+        // Still under the terminals lock, so saves can't overtake each other
+        if let Err(e) = write_session_list(&get_sessions_dir().join("sessions.json"), &list) {
+            tracing::error!("Could not save terminals: {}", e);
         }
     }
 
@@ -242,16 +313,22 @@ impl PtyManager {
             .unwrap_or_else(|| format!("term-{}", Uuid::new_v4().simple()));
 
         let start_seq = self.last_seq(&terminal_id);
+        let server_port = server_port_for(request.run_kind)?;
         let launch_ref = self.begin_launch(&terminal_id, request.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
+        let on_osc7501 = self.osc7501_hook(request.run_kind, &launch_ref, &app_handle);
+        let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request.clone(),
             terminal_id.clone(),
             start_seq,
             bridge_port,
             bridge_token,
+            server_port,
             app_handle,
             on_first_output,
+            on_osc7501,
+            on_exit,
         )?;
 
         let created_at = next_created_at();
@@ -283,6 +360,7 @@ impl PtyManager {
         self.sessions.lock().insert(terminal_id, session);
         let info = self.insert_launched(&launch_ref, info);
         self.save_sessions_to_disk();
+        self.notify_server_watcher(launch_ref, server_port);
 
         Ok(info)
     }
@@ -307,6 +385,11 @@ impl PtyManager {
         // Read before the old session goes: its pane stays mounted and has seen up to this seq
         let start_seq = self.last_seq(terminal_id);
 
+        let server_port = server_port_for(info.run_kind)?;
+        // Begin the new launch before the old session goes, so the old process's exit, which
+        // dropping its session causes, finds its launch over and leaves the terminal alone
+        let launch_ref = self.begin_launch(terminal_id, info.run_kind);
+
         // If an active session is running, terminate it before relaunching
         {
             let mut sessions = self.sessions.lock();
@@ -314,17 +397,20 @@ impl PtyManager {
         }
 
         let request = relaunch_request(&info, rows, cols, env_vars);
-
-        let launch_ref = self.begin_launch(terminal_id, info.run_kind);
         let on_first_output = self.first_output_hook(launch_ref.clone(), app_handle.clone());
+        let on_osc7501 = self.osc7501_hook(info.run_kind, &launch_ref, &app_handle);
+        let on_exit = self.exit_hook(launch_ref.clone());
         let session = PtySession::spawn(
             request,
             terminal_id.to_string(),
             start_seq,
             bridge_port,
             bridge_token,
+            server_port,
             app_handle,
             on_first_output,
+            on_osc7501,
+            on_exit,
         )?;
 
         let mut updated_info = info;
@@ -336,10 +422,30 @@ impl PtyManager {
         updated_info.exit_code = None;
         updated_info.plugin_hint = false;
 
+        let sessions = self.sessions.clone();
+        let id = terminal_id.to_string();
+        let attach = move || {
+            sessions.lock().insert(id, session);
+        };
+        let updated_info = match self.relist_launched(&launch_ref, updated_info, attach) {
+            Ok(info) => info,
+            Err(unattached) => {
+                // Dropping the session ends its process. Its reader may have written a
+                // new log after the close deleted the old one.
+                drop(unattached);
+                if self.get_info(terminal_id).is_none() {
+                    let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
+                    let _ = std::fs::remove_file(log_path);
+                }
+                return Err(format!(
+                    "Terminal {} was closed or relaunched again while it relaunched",
+                    terminal_id
+                ));
+            }
+        };
         self.dormant_buffers.lock().remove(terminal_id);
-        self.sessions.lock().insert(terminal_id.to_string(), session);
-        let updated_info = self.insert_launched(&launch_ref, updated_info);
         self.save_sessions_to_disk();
+        self.notify_server_watcher(launch_ref, server_port);
 
         Ok(updated_info)
     }
@@ -435,23 +541,25 @@ impl PtyManager {
     }
 
     pub fn kill(&self, terminal_id: &str) -> Result<(), String> {
-        // 1. Terminate running session process if active
+        // 1. End the current launch first, so a relaunch still starting sees the terminal
+        //    closed and never lists it or its session again (see `relist_launched`)
+        self.plugin_watches.lock().remove(terminal_id);
+        self.submit_locks.lock().remove(terminal_id);
+
+        // 2. Terminate running session process if active
         {
             let mut sessions = self.sessions.lock();
             sessions.remove(terminal_id);
         }
 
-        self.plugin_watches.lock().remove(terminal_id);
-        self.submit_locks.lock().remove(terminal_id);
-
-        // 2. Remove from terminals_info and dormant_buffers
+        // 3. Remove from terminals_info and dormant_buffers
         let removed = {
             let mut info_map = self.terminals_info.lock();
             info_map.remove(terminal_id).is_some()
         };
         self.dormant_buffers.lock().remove(terminal_id);
 
-        // 3. Clean up disk files
+        // 4. Clean up disk files
         let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
         let _ = std::fs::remove_file(log_path);
         self.save_sessions_to_disk();
@@ -465,8 +573,9 @@ impl PtyManager {
     }
 
     /// Runs `watcher` with a terminal's id when its status moves outside the bridge's event
-    /// route: the plugin silence clock makes it Unknown, or the terminal closes. It runs on
-    /// the thread that moved the status, with no lock of this manager held.
+    /// route: its first output moves it out of Starting, the plugin silence clock makes it
+    /// Unknown, an OSC 7501 sequence moves it (`apply_turn_report`), or the terminal closes.
+    /// It runs on the thread that moved the status, with no lock of this manager held.
     pub fn set_status_watcher(&self, watcher: impl Fn(&str) + Send + Sync + 'static) {
         *self.status_watcher.lock() = Some(Arc::new(watcher));
     }
@@ -476,6 +585,63 @@ impl PtyManager {
         if let Some(watcher) = watcher {
             watcher(terminal_id);
         }
+    }
+
+    /// Runs `watcher` with each launch whose CLI serves its own events (OpenCode), and the
+    /// loopback port it serves them on, once the launch's terminal is listed. It runs on the
+    /// thread that spawned the terminal, with no lock of this manager held.
+    pub fn set_server_watcher(&self, watcher: impl Fn(LaunchRef, u16) + Send + Sync + 'static) {
+        *self.server_watcher.lock() = Some(Arc::new(watcher));
+    }
+
+    fn notify_server_watcher(&self, launch: LaunchRef, server_port: Option<u16>) {
+        let watcher = self.server_watcher.lock().clone();
+        if let (Some(watcher), Some(port)) = (watcher, server_port) {
+            watcher(launch, port);
+        }
+    }
+
+    /// Whether `launch` is its terminal's current launch: the terminal is open and hasn't
+    /// been relaunched since.
+    pub fn launch_current(&self, launch: &LaunchRef) -> bool {
+        launch.current_in(&mut self.plugin_watches.lock()).is_some()
+    }
+
+    /// Whether `launch` is its terminal's current launch and the terminal hasn't exited.
+    pub fn launch_running(&self, launch: &LaunchRef) -> bool {
+        let mut watches = self.plugin_watches.lock();
+        if launch.current_in(&mut watches).is_none() {
+            return false;
+        }
+        self.terminals_info
+            .lock()
+            .get(&launch.terminal_id)
+            .is_some_and(|info| info.claude_status != ClaudeStatus::Exited)
+    }
+
+    /// Shows the terminal Unknown when `launch` is still running and Quay can no longer see
+    /// its turns, and tells the status watcher. Returns the new status when it moved.
+    pub fn lose_turn_sight(&self, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
+        let payload = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            if matches!(info.claude_status, ClaudeStatus::Exited | ClaudeStatus::Unknown) {
+                return None;
+            }
+            info.claude_status = ClaudeStatus::Unknown;
+            status_payload(info)
+        };
+        self.notify_status_watcher(&launch.terminal_id);
+        Some(payload)
+    }
+
+    /// Runs `watcher` with a terminal's id and what its own output says about its turn, from
+    /// Antigravity's OSC 7501 sequences (see `apply_turn_report`). It runs on the PTY reader
+    /// thread, with no lock of this manager held.
+    pub fn set_turn_watcher(&self, watcher: impl Fn(&str, TurnEvent) + Send + Sync + 'static) {
+        *self.turn_watcher.lock() = Some(Arc::new(watcher));
     }
 
     pub fn list(&self) -> Vec<TerminalInfo> {
@@ -562,14 +728,21 @@ impl PtyManager {
     }
 
     /// Moves the terminal out of Starting once `launch`, still current, has printed (see
-    /// `RunKind::status_after_first_output`). Returns the new status when it moved. Nothing
-    /// moves when the terminal isn't listed yet; `insert_launched` applies the rule then.
+    /// `RunKind::status_after_first_output`), and tells the status watcher, since a terminal
+    /// that left Starting may stop holding its messages. Returns the new status when it moved.
+    /// Nothing moves when the terminal isn't listed yet; `insert_launched` applies the rule then.
     pub fn apply_first_output_status(&self, launch: &LaunchRef) -> Option<TerminalStatusPayload> {
-        let mut watches = self.plugin_watches.lock();
-        launch.current_in(&mut watches)?;
-        let mut info_map = self.terminals_info.lock();
-        let info = info_map.get_mut(&launch.terminal_id)?;
-        settle_after_first_output(info).then(|| status_payload(info))
+        let moved = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            settle_after_first_output(info).then(|| status_payload(info))
+        };
+        if moved.is_some() {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
+        moved
     }
 
     /// Lists `info` as the terminal `launch` started, and returns it as listed. The PTY reader
@@ -587,8 +760,39 @@ impl PtyManager {
         info
     }
 
-    /// Shows the terminal as Unknown, with the plugin hint, when `launch` is still current
-    /// and its silence clock has run out at `now` with nothing heard. Returns the new
+    /// Lists `info` again as the terminal `launch` restarted, running `attach` in the same step
+    /// to put the new session in place, and returns it as listed. A terminal closed while it
+    /// relaunched stays closed: when it is no longer listed, or `launch` is no longer its
+    /// current launch, nothing is listed and `attach` comes back unrun, for the caller to drop
+    /// outside this manager's locks. `kill` ends the launch before it removes the session and
+    /// the listing, so a close either comes after this step and removes what it put in place,
+    /// or comes before it and is seen here.
+    pub fn relist_launched<F: FnOnce()>(
+        &self,
+        launch: &LaunchRef,
+        mut info: TerminalInfo,
+        attach: F,
+    ) -> Result<TerminalInfo, F> {
+        let mut watches = self.plugin_watches.lock();
+        let Some(watch) = launch.current_in(&mut watches) else {
+            return Err(attach);
+        };
+        let has_output = watch.has_output();
+        if !self.terminals_info.lock().contains_key(&launch.terminal_id) {
+            // Closed before this launch began, so the launch is the closed terminal's last trace
+            watches.remove(&launch.terminal_id);
+            return Err(attach);
+        }
+        if has_output {
+            settle_after_first_output(&mut info);
+        }
+        attach();
+        self.terminals_info.lock().insert(info.id.clone(), info.clone());
+        Ok(info)
+    }
+
+    /// Shows the terminal as Unknown, a Claude terminal with the plugin hint, when `launch`
+    /// is still current and its silence clock has run out at `now` with nothing heard. Returns the new
     /// status when it moved.
     pub fn check_plugin_silence(
         &self,
@@ -606,32 +810,127 @@ impl PtyManager {
             return None;
         }
         info.claude_status = ClaudeStatus::Unknown;
-        info.plugin_hint = true;
+        // The hint tells how to install Claude Code's plugin; PiG's extension ships with Quay
+        info.plugin_hint = info.run_kind == RunKind::Claude;
         Some(status_payload(info))
     }
 
     /// Applies an authenticated event from the event-bridge plugin to the terminal's status,
     /// and returns the status it leaves. The event marks the plugin heard for this launch
-    /// and clears the plugin hint.
+    /// and clears the plugin hint. An `attention.notification` goes through
+    /// `apply_notification` instead.
     pub fn apply_plugin_event(
         &self,
         terminal_id: &str,
         event_type: &str,
+    ) -> Option<TerminalStatusPayload> {
+        self.apply_plugin_status(terminal_id, |heard| match event_type {
+            "turn.started" | "tool.started" => ClaudeStatus::Working,
+            "turn.completed" | "session.started" => ClaudeStatus::Idle,
+            "session.ended" => ClaudeStatus::Exited,
+            _ => heard,
+        })
+    }
+
+    /// Applies the event-bridge plugin's `attention.notification`, as `apply_plugin_event`
+    /// does, by its `notificationType`. Claude Code's `idle_prompt`, sent about a minute after
+    /// a turn ends, and its `auth_success` leave the status as it was, so an Idle terminal
+    /// keeps taking deliveries. Any other notification, such as a permission prompt, a dialog,
+    /// or one with a type Quay doesn't know or no type, makes the terminal Waiting, which
+    /// holds its deliveries.
+    pub fn apply_notification(
+        &self,
+        terminal_id: &str,
+        notification_type: Option<&str>,
+    ) -> Option<TerminalStatusPayload> {
+        self.apply_plugin_status(terminal_id, |heard| match notification_type {
+            Some("idle_prompt") | Some("auth_success") => heard,
+            _ => ClaudeStatus::Waiting,
+        })
+    }
+
+    /// Marks the plugin heard for the terminal's launch, clears the plugin hint, and sets
+    /// the status `status_for` gives from the heard status, unless the process has exited.
+    fn apply_plugin_status(
+        &self,
+        terminal_id: &str,
+        status_for: impl FnOnce(ClaudeStatus) -> ClaudeStatus,
     ) -> Option<TerminalStatusPayload> {
         let mut watches = self.plugin_watches.lock();
         let mut info_map = self.terminals_info.lock();
         let watch = watches.get_mut(terminal_id)?;
         let info = info_map.get_mut(terminal_id)?;
         info.plugin_hint = false;
+        // A terminal whose process has exited stays Exited: Codex's turn-end helper runs on its
+        // own and can report a turn after Codex quit
+        if info.claude_status == ClaudeStatus::Exited && info.exit_code.is_some() {
+            return Some(status_payload(info));
+        }
         let heard = watch.hear(&info.claude_status);
-        info.claude_status = match event_type {
-            "turn.started" | "tool.started" => ClaudeStatus::Working,
-            "turn.completed" | "session.started" => ClaudeStatus::Idle,
-            "attention.notification" => ClaudeStatus::Waiting,
-            "session.ended" => ClaudeStatus::Exited,
-            _ => heard,
-        };
+        info.claude_status = status_for(heard);
         Some(status_payload(info))
+    }
+
+    /// What a launch's PTY reader runs with each OSC 7501 sequence, for a CLI that prints
+    /// them (`RunKind::prints_osc7501`): it follows the launch's turns and applies each
+    /// report, sending `terminal-status` when the status moved. `None` for any other CLI.
+    fn osc7501_hook(
+        &self,
+        run_kind: RunKind,
+        launch: &LaunchRef,
+        app_handle: &AppHandle,
+    ) -> Option<Osc7501Hook> {
+        if !run_kind.prints_osc7501() {
+            return None;
+        }
+        let manager = self.clone();
+        let launch = launch.clone();
+        let app_handle = app_handle.clone();
+        let mut turn = AntigravityTurn::default();
+        Some(Box::new(move |seq| {
+            let report = turn.read(&seq);
+            if let Some(status) = manager.apply_turn_report(&launch, &report) {
+                let _ = app_handle.emit("terminal-status", status);
+            }
+        }))
+    }
+
+    /// Applies what one of `launch`'s OSC 7501 sequences said (see `AntigravityTurn::read`),
+    /// while `launch` is still current. It sets the terminal's status, unless its process has
+    /// exited, then tells the turn watcher of a turn start and of an answer, and last the
+    /// status watcher, when the status moved: a terminal that went Idle lets its next held
+    /// message in. Returns the new status when it moved.
+    pub fn apply_turn_report(
+        &self,
+        launch: &LaunchRef,
+        report: &TurnReport,
+    ) -> Option<TerminalStatusPayload> {
+        let moved = {
+            let mut watches = self.plugin_watches.lock();
+            launch.current_in(&mut watches)?;
+            let mut info_map = self.terminals_info.lock();
+            let info = info_map.get_mut(&launch.terminal_id)?;
+            match &report.status {
+                Some(status) if *status != info.claude_status && info.exit_code.is_none() => {
+                    info.claude_status = status.clone();
+                    Some(status_payload(info))
+                }
+                _ => None,
+            }
+        };
+        let watcher = self.turn_watcher.lock().clone();
+        if let Some(watcher) = watcher {
+            if report.starts_turn {
+                watcher(&launch.terminal_id, TurnEvent::Started);
+            }
+            if let Some(answer) = &report.answer {
+                watcher(&launch.terminal_id, TurnEvent::Answered(answer.clone()));
+            }
+        }
+        if moved.is_some() {
+            self.notify_status_watcher(&launch.terminal_id);
+        }
+        moved
     }
 
     /// Hides the plugin hint for the rest of the terminal's current launch, and returns
@@ -667,14 +966,35 @@ impl PtyManager {
         }
     }
 
-    pub fn set_exit_code(&self, terminal_id: &str, exit_code: Option<i32>) {
-        let mut info_map = self.terminals_info.lock();
-        if let Some(info) = info_map.get_mut(terminal_id) {
+    /// Shows the terminal Exited with `exit_code` once `launch`'s process has ended, while
+    /// `launch` is still current, and tells the status watcher, so held messages fail rather
+    /// than wait. An earlier launch that a relaunch ended, or a closed terminal, changes
+    /// nothing. Returns whether the terminal moved.
+    pub fn exit_launch(&self, launch: &LaunchRef, exit_code: Option<i32>) -> bool {
+        {
+            let mut watches = self.plugin_watches.lock();
+            if launch.current_in(&mut watches).is_none() {
+                return false;
+            }
+            let mut info_map = self.terminals_info.lock();
+            let Some(info) = info_map.get_mut(&launch.terminal_id) else {
+                return false;
+            };
             info.claude_status = ClaudeStatus::Exited;
             info.exit_code = exit_code;
-            drop(info_map);
-            self.save_sessions_to_disk();
         }
+        self.save_sessions_to_disk();
+        self.notify_status_watcher(&launch.terminal_id);
+        true
+    }
+
+    /// What a launch's exit watcher runs with the exit code once its process ends, before it
+    /// sends `terminal-exited` (see `exit_launch`).
+    fn exit_hook(&self, launch: LaunchRef) -> Box<dyn FnOnce(Option<i32>) + Send> {
+        let manager = self.clone();
+        Box::new(move |exit_code| {
+            manager.exit_launch(&launch, exit_code);
+        })
     }
 
     pub fn rename(&self, terminal_id: &str, new_name: &str) -> Result<(), String> {
@@ -709,11 +1029,13 @@ impl PtyManager {
         }
     }
 
-    pub fn set_live_mode(&self, terminal_id: &str, mode: PermissionMode) -> Result<(), String> {
+    /// Sets the terminal's live mode and returns the mode it now has, which stays Skip for a
+    /// CLI that never asks before a tool call.
+    pub fn set_live_mode(&self, terminal_id: &str, mode: PermissionMode) -> Result<PermissionMode, String> {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {
-            info.live_mode = mode;
-            Ok(())
+            info.live_mode = info.run_kind.permission_mode(Some(mode));
+            Ok(info.live_mode)
         } else {
             Err(format!("Terminal {} not found", terminal_id))
         }
@@ -725,6 +1047,87 @@ mod tests {
     use super::*;
     use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind};
 
+    fn temp_sessions_file() -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("quay2-sessions-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sessions.json");
+        (dir, path)
+    }
+
+    fn dir_entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn persisted(id: &str) -> PersistedTerminalSession {
+        PersistedTerminalSession {
+            id: id.to_string(),
+            name: id.to_string(),
+            project_path: "E:\\Projects\\Test".to_string(),
+            run_kind: RunKind::Claude,
+            permission_mode: PermissionMode::Normal,
+            task_title: None,
+            custom_name: false,
+            auto_approved_count: 0,
+            command_text: None,
+            custom_flags: None,
+            last_updated: 1,
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn a_missing_session_list_reads_as_none_and_creates_nothing() {
+        let (dir, path) = temp_sessions_file();
+        assert!(read_session_list(&path).is_empty());
+        assert!(dir_entries(&dir).is_empty());
+    }
+
+    #[test]
+    fn a_saved_session_list_reads_back() {
+        let (dir, path) = temp_sessions_file();
+        write_session_list(&path, &[persisted("term-a"), persisted("term-b")]).unwrap();
+        let ids: Vec<String> = read_session_list(&path).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec!["term-a", "term-b"]);
+        assert_eq!(dir_entries(&dir), vec!["sessions.json"]);
+    }
+
+    #[test]
+    fn an_unparseable_session_list_is_moved_aside_and_survives_the_next_save() {
+        let (dir, path) = temp_sessions_file();
+        let truncated = "[\n  {\n    \"id\": \"term-a\",\n    \"na";
+        std::fs::write(&path, truncated).unwrap();
+
+        assert!(read_session_list(&path).is_empty());
+        let entries = dir_entries(&dir);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].starts_with("sessions.json.corrupt-"), "{:?}", entries);
+        let aside = dir.join(&entries[0]);
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), truncated);
+
+        write_session_list(&path, &[persisted("term-b")]).unwrap();
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), truncated);
+        assert_eq!(read_session_list(&path).len(), 1);
+    }
+
+    #[test]
+    fn a_session_list_cut_inside_a_character_is_moved_aside() {
+        let (dir, path) = temp_sessions_file();
+        // "é" is 0xC3 0xA9; a write cut after its first byte leaves invalid UTF-8
+        let cut = b"[{\"id\": \"term-a\", \"name\": \"caf\xC3".to_vec();
+        std::fs::write(&path, &cut).unwrap();
+
+        assert!(read_session_list(&path).is_empty());
+        let entries = dir_entries(&dir);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].starts_with("sessions.json.corrupt-"), "{:?}", entries);
+        assert_eq!(std::fs::read(dir.join(&entries[0])).unwrap(), cut);
+    }
+
     #[test]
     fn test_last_seq_reads_dormant_buffer_then_defaults_to_zero() {
         let manager = PtyManager::new();
@@ -735,6 +1138,20 @@ mod tests {
 
         assert_eq!(manager.last_seq("term-dormant"), 7);
         assert_eq!(manager.last_seq("term-unknown"), 0);
+    }
+
+    #[test]
+    fn a_terminal_whose_cli_never_asks_keeps_a_skip_live_mode() {
+        let manager = PtyManager::new();
+        for (id, run_kind) in [("term-pi", RunKind::Pi), ("term-claude", RunKind::Claude)] {
+            manager
+                .terminals_info
+                .lock()
+                .insert(id.to_string(), test_terminal(id, run_kind, ClaudeStatus::Idle));
+            manager.set_live_mode(id, PermissionMode::Normal).unwrap();
+        }
+        assert_eq!(manager.get_info("term-pi").unwrap().live_mode, PermissionMode::Skip);
+        assert_eq!(manager.get_info("term-claude").unwrap().live_mode, PermissionMode::Normal);
     }
 
     #[test]
@@ -816,12 +1233,14 @@ mod tests {
 
         assert_eq!(request.initial_prompt, None);
         assert_eq!(request.custom_flags.as_deref(), Some("--model gpt-5"));
-        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok");
+        let cmd = crate::slices::pty::session::build_command(&request, &info.id, 1234, "tok", None);
         let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(
-            args,
+            args[..4],
             ["codex.exe", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5"]
         );
+        // Then Codex's bus overrides, ending with `notify`, and no prompt after them
+        assert!(args.last().unwrap().starts_with("notify=["), "{:?}", args);
     }
 
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
@@ -851,6 +1270,66 @@ mod tests {
 
     fn status_of(manager: &PtyManager, id: &str) -> ClaudeStatus {
         manager.get_info(id).unwrap().claude_status
+    }
+
+    #[test]
+    fn a_launch_runs_until_its_terminal_exits_is_relaunched_or_closes() {
+        let manager = PtyManager::new();
+        let first = launched(&manager, "term-oc-run", RunKind::OpenCode);
+        assert!(manager.launch_running(&first));
+
+        manager.update_status("term-oc-run", ClaudeStatus::Exited);
+        assert!(!manager.launch_running(&first));
+        assert!(manager.launch_current(&first));
+
+        let second = manager.begin_launch("term-oc-run", RunKind::OpenCode);
+        manager.update_status("term-oc-run", ClaudeStatus::Starting);
+        assert!(!manager.launch_current(&first));
+        assert!(!manager.launch_running(&first));
+        assert!(manager.launch_running(&second));
+
+        let _ = manager.kill("term-oc-run");
+        assert!(!manager.launch_current(&second));
+    }
+
+    #[test]
+    fn losing_sight_of_a_launchs_turns_shows_its_terminal_unknown_once() {
+        let manager = PtyManager::new();
+        let told = Arc::new(Mutex::new(Vec::new()));
+        let seen = told.clone();
+        manager.set_status_watcher(move |id| seen.lock().push(id.to_string()));
+        let launch = launched(&manager, "term-oc-lost", RunKind::OpenCode);
+        manager.update_status("term-oc-lost", ClaudeStatus::Working);
+
+        let status = manager.lose_turn_sight(&launch).expect("the status moves");
+        assert_eq!(status.claude_status, ClaudeStatus::Unknown);
+        assert_eq!(status_of(&manager, "term-oc-lost"), ClaudeStatus::Unknown);
+        assert!(manager.lose_turn_sight(&launch).is_none());
+        assert_eq!(*told.lock(), ["term-oc-lost"]);
+    }
+
+    #[test]
+    fn losing_sight_of_an_old_launch_or_an_exited_one_changes_nothing() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-oc-old", RunKind::OpenCode);
+        manager.begin_launch("term-oc-old", RunKind::OpenCode);
+        manager.update_status("term-oc-old", ClaudeStatus::Idle);
+        assert!(manager.lose_turn_sight(&old).is_none());
+        assert_eq!(status_of(&manager, "term-oc-old"), ClaudeStatus::Idle);
+
+        let exited = launched(&manager, "term-oc-exited", RunKind::OpenCode);
+        manager.update_status("term-oc-exited", ClaudeStatus::Exited);
+        assert!(manager.lose_turn_sight(&exited).is_none());
+        assert_eq!(status_of(&manager, "term-oc-exited"), ClaudeStatus::Exited);
+    }
+
+    #[test]
+    fn only_an_opencode_launch_gets_a_server_port() {
+        let port = server_port_for(RunKind::OpenCode).unwrap().expect("OpenCode gets a port");
+        assert_ne!(port, 0);
+        for kind in [RunKind::Claude, RunKind::Codex, RunKind::Antigravity, RunKind::PowerShell] {
+            assert_eq!(server_port_for(kind).unwrap(), None, "{:?}", kind);
+        }
     }
 
     #[test]
@@ -890,6 +1369,42 @@ mod tests {
         let after = manager.get_info("term-plugin-silent").unwrap();
         assert_eq!(after.claude_status, ClaudeStatus::Unknown);
         assert!(after.plugin_hint);
+    }
+
+    #[test]
+    fn a_pig_terminal_waits_for_its_extension_then_turns_unknown_without_the_hint() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-pig-silent", RunKind::Pig);
+        let first_output = Instant::now();
+        manager.note_first_output(&launch, first_output);
+        // Its first output leaves it Starting, holding its messages, until the extension reports
+        assert!(manager.apply_first_output_status(&launch).is_none());
+        assert_eq!(status_of(&manager, "term-pig-silent"), ClaudeStatus::Starting);
+
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(29));
+        assert_eq!(status_of(&manager, "term-pig-silent"), ClaudeStatus::Starting);
+
+        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
+        let silent = manager.get_info("term-pig-silent").unwrap();
+        assert_eq!(silent.claude_status, ClaudeStatus::Unknown);
+        assert!(silent.plugin_silent());
+        // The pane's hint installs Claude Code's plugin, which a PiG terminal doesn't use
+        assert!(!silent.plugin_hint);
+    }
+
+    #[test]
+    fn a_late_session_started_brings_a_silent_pig_terminal_back_to_full_peer() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-pig-late", RunKind::Pig);
+        silent_for_thirty_seconds(&manager, &launch, Instant::now());
+        assert!(manager.get_info("term-pig-late").unwrap().plugin_silent());
+
+        manager.apply_plugin_event("term-pig-late", "session.started");
+
+        let info = manager.get_info("term-pig-late").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Idle);
+        assert!(!info.plugin_silent());
+        assert_eq!(info.bus_level(), Some(crate::slices::pty::models::BusLevel::FullPeer));
     }
 
     /// Starts the launch's clock at `first_output` and checks it once 30 seconds have passed.
@@ -981,13 +1496,56 @@ mod tests {
         let launch = launched(&manager, "term-plugin-exited", RunKind::Claude);
         let first_output = Instant::now();
         manager.note_first_output(&launch, first_output);
-        manager.update_status("term-plugin-exited", ClaudeStatus::Exited);
+        manager.exit_launch(&launch, Some(1));
 
-        manager.check_plugin_silence(&launch, first_output + Duration::from_secs(30));
+        let silence_ends = first_output + Duration::from_secs(30);
+        assert!(manager.check_plugin_silence(&launch, silence_ends).is_none());
 
         let info = manager.get_info("term-plugin-exited").unwrap();
         assert_eq!(info.claude_status, ClaudeStatus::Exited);
+        assert_eq!(info.exit_code, Some(1));
         assert!(!info.plugin_hint);
+    }
+
+    #[test]
+    fn a_launch_whose_process_exits_shows_exited_with_its_code_and_tells_the_status_watcher() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-exit-pig", RunKind::Pig);
+        first_output(&manager, &launch);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+
+        assert!(manager.exit_launch(&launch, Some(1)));
+
+        let info = manager.get_info("term-exit-pig").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Exited);
+        assert_eq!(info.exit_code, Some(1));
+        assert_eq!(*seen.lock(), ["term-exit-pig"]);
+    }
+
+    #[test]
+    fn an_old_launchs_exit_leaves_the_relaunched_terminal_running() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-exit-old", RunKind::Claude);
+        let new = manager.begin_launch("term-exit-old", RunKind::Claude);
+
+        assert!(!manager.exit_launch(&old, Some(1)));
+
+        let info = manager.get_info("term-exit-old").unwrap();
+        assert_eq!(info.claude_status, ClaudeStatus::Starting);
+        assert_eq!(info.exit_code, None);
+        assert!(manager.launch_running(&new));
+    }
+
+    #[test]
+    fn a_closed_terminals_exit_lists_nothing() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-exit-closed", RunKind::Codex);
+        manager.kill("term-exit-closed").unwrap();
+
+        assert!(!manager.exit_launch(&launch, Some(0)));
+        assert!(manager.get_info("term-exit-closed").is_none());
     }
 
     #[test]
@@ -1020,17 +1578,142 @@ mod tests {
     }
 
     #[test]
+    fn a_codex_terminal_works_from_a_delivery_until_its_helper_reports_the_turn_end() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-a2a-codex", RunKind::Codex);
+        first_output(&manager, &launch);
+
+        manager.mark_a2a_delivered("term-a2a-codex");
+        assert_eq!(status_of(&manager, "term-a2a-codex"), ClaudeStatus::Working);
+
+        let sent = manager.apply_plugin_event("term-a2a-codex", "turn.completed").unwrap();
+        assert_eq!(sent.claude_status, ClaudeStatus::Idle);
+    }
+
+    #[test]
+    fn a_turn_end_reported_after_the_process_exited_leaves_it_exited() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-late-codex", RunKind::Codex);
+        first_output(&manager, &launch);
+        manager.exit_launch(&launch, Some(0));
+
+        let sent = manager.apply_plugin_event("term-late-codex", "turn.completed").unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Exited);
+    }
+
+    /// A Claude terminal whose plugin reported a session and one finished turn.
+    fn after_a_turn(manager: &PtyManager, id: &str) -> LaunchRef {
+        let launch = launched(manager, id, RunKind::Claude);
+        manager.apply_plugin_event(id, "session.started");
+        manager.apply_plugin_event(id, "turn.started");
+        manager.apply_plugin_event(id, "turn.completed");
+        launch
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_claude_terminal_idle_and_taking_deliveries() {
+        let manager = PtyManager::new();
+        after_a_turn(&manager, "term-idle-prompt");
+
+        let sent = manager.apply_notification("term-idle-prompt", Some("idle_prompt")).unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Idle);
+        assert!(!manager.get_info("term-idle-prompt").unwrap().holds_deliveries());
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_working_or_ended_terminal_as_it_was() {
+        // A late idle prompt must not let a held message into a turn that just began
+        let manager = PtyManager::new();
+        launched(&manager, "term-idle-working", RunKind::Claude);
+        manager.apply_plugin_event("term-idle-working", "turn.started");
+        after_a_turn(&manager, "term-idle-ended");
+        manager.apply_plugin_event("term-idle-ended", "session.ended");
+
+        manager.apply_notification("term-idle-working", Some("idle_prompt"));
+        manager.apply_notification("term-idle-ended", Some("idle_prompt"));
+
+        assert_eq!(status_of(&manager, "term-idle-working"), ClaudeStatus::Working);
+        assert_eq!(status_of(&manager, "term-idle-ended"), ClaudeStatus::Exited);
+    }
+
+    #[test]
+    fn a_permission_prompt_or_a_dialog_makes_the_terminal_waiting_and_holding_deliveries() {
+        for kind in ["permission_prompt", "elicitation_dialog"] {
+            let manager = PtyManager::new();
+            launched(&manager, "term-blocked", RunKind::Claude);
+            manager.apply_plugin_event("term-blocked", "turn.started");
+
+            manager.apply_notification("term-blocked", Some(kind));
+
+            let info = manager.get_info("term-blocked").unwrap();
+            assert_eq!(info.claude_status, ClaudeStatus::Waiting, "{kind}");
+            assert!(info.holds_deliveries(), "{kind}");
+        }
+    }
+
+    #[test]
+    fn an_idle_prompt_leaves_a_terminal_waiting_on_a_permission_waiting() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-still-blocked", RunKind::Claude);
+        manager.apply_plugin_event("term-still-blocked", "turn.started");
+        manager.apply_notification("term-still-blocked", Some("permission_prompt"));
+
+        manager.apply_notification("term-still-blocked", Some("idle_prompt"));
+
+        assert_eq!(status_of(&manager, "term-still-blocked"), ClaudeStatus::Waiting);
+    }
+
+    #[test]
+    fn an_auth_success_leaves_the_status_as_it_was() {
+        let manager = PtyManager::new();
+        after_a_turn(&manager, "term-auth-idle");
+        launched(&manager, "term-auth-working", RunKind::Claude);
+        manager.apply_plugin_event("term-auth-working", "turn.started");
+
+        manager.apply_notification("term-auth-idle", Some("auth_success"));
+        manager.apply_notification("term-auth-working", Some("auth_success"));
+
+        assert_eq!(status_of(&manager, "term-auth-idle"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-auth-working"), ClaudeStatus::Working);
+    }
+
+    #[test]
+    fn a_notification_of_an_unknown_type_or_none_makes_the_terminal_waiting() {
+        for kind in [Some("something_new"), None] {
+            let manager = PtyManager::new();
+            after_a_turn(&manager, "term-unknown-notice");
+
+            manager.apply_notification("term-unknown-notice", kind);
+
+            assert_eq!(status_of(&manager, "term-unknown-notice"), ClaudeStatus::Waiting, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_notification_after_the_process_exited_leaves_it_exited() {
+        let manager = PtyManager::new();
+        let launch = after_a_turn(&manager, "term-late-notice");
+        manager.exit_launch(&launch, Some(0));
+
+        let sent = manager.apply_notification("term-late-notice", Some("permission_prompt")).unwrap();
+
+        assert_eq!(sent.claude_status, ClaudeStatus::Exited);
+    }
+
+    #[test]
     fn a2a_delivery_leaves_a_terminal_whose_turn_end_quay_cannot_see_as_it_was() {
         let manager = PtyManager::new();
-        launched(&manager, "term-a2a-codex", RunKind::Codex);
-        manager.update_status("term-a2a-codex", ClaudeStatus::Idle);
+        launched(&manager, "term-a2a-opencode", RunKind::OpenCode);
+        manager.update_status("term-a2a-opencode", ClaudeStatus::Unknown);
         launched(&manager, "term-a2a-gemini", RunKind::Gemini);
         manager.update_status("term-a2a-gemini", ClaudeStatus::Unknown);
 
-        manager.mark_a2a_delivered("term-a2a-codex");
+        manager.mark_a2a_delivered("term-a2a-opencode");
         manager.mark_a2a_delivered("term-a2a-gemini");
 
-        assert_eq!(status_of(&manager, "term-a2a-codex"), ClaudeStatus::Idle);
+        assert_eq!(status_of(&manager, "term-a2a-opencode"), ClaudeStatus::Unknown);
         assert_eq!(status_of(&manager, "term-a2a-gemini"), ClaudeStatus::Unknown);
     }
 
@@ -1167,6 +1850,108 @@ mod tests {
     }
 
     #[test]
+    fn leaving_starting_on_first_output_tells_the_status_watcher() {
+        let manager = PtyManager::new();
+        let codex = launched(&manager, "term-watched-codex", RunKind::Codex);
+        let claude = launched(&manager, "term-watched-claude", RunKind::Claude);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+
+        first_output(&manager, &codex);
+        first_output(&manager, &claude);
+
+        // The Claude terminal stayed Starting, so only the Codex one is reported
+        assert_eq!(*seen.lock(), ["term-watched-codex"]);
+    }
+
+    /// Applies the OSC 7501 sequence with body `body` as `launch`'s PTY reader does.
+    fn agy_says(
+        manager: &PtyManager,
+        launch: &LaunchRef,
+        turn: &mut AntigravityTurn,
+        body: &str,
+    ) -> Option<TerminalStatusPayload> {
+        let seq = crate::slices::pty::osc7501::Osc7501::parse(body).unwrap();
+        manager.apply_turn_report(launch, &turn.read(&seq))
+    }
+
+    /// Logs what the turn watcher hears.
+    fn turn_log(manager: &PtyManager) -> Arc<Mutex<Vec<TurnEvent>>> {
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let log = heard.clone();
+        manager.set_turn_watcher(move |_, event| log.lock().push(event));
+        heard
+    }
+
+    #[test]
+    fn an_antigravity_terminals_osc7501_states_set_its_status_and_report_its_turn() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-agy-turn", RunKind::Antigravity);
+        first_output(&manager, &launch);
+        let heard = turn_log(&manager);
+        let moved = Arc::new(Mutex::new(Vec::new()));
+        let log = moved.clone();
+        manager.set_status_watcher(move |id| log.lock().push(id.to_string()));
+        let mut turn = AntigravityTurn::default();
+
+        agy_says(&manager, &launch, &mut turn, "state=working:app=antigravity");
+        assert_eq!(status_of(&manager, "term-agy-turn"), ClaudeStatus::Working);
+        agy_says(
+            &manager,
+            &launch,
+            &mut turn,
+            "state=blocked:kind=permission:app=antigravity:msg=VHJ1c3QgdGhpcyBmb2xkZXI/",
+        );
+        assert_eq!(status_of(&manager, "term-agy-turn"), ClaudeStatus::Waiting);
+        agy_says(&manager, &launch, &mut turn, "state=working:app=antigravity");
+        let sent = agy_says(&manager, &launch, &mut turn, "state=done:app=antigravity:msg=cG9uZw==");
+
+        assert_eq!(sent.unwrap().claude_status, ClaudeStatus::Idle);
+        assert_eq!(
+            *heard.lock(),
+            [
+                TurnEvent::Started,
+                TurnEvent::Answered("blocked (permission): Trust this folder?".to_string()),
+                TurnEvent::Answered("pong".to_string()),
+            ]
+        );
+        // Each move is reported, so the Idle at the end lets a held message in
+        assert_eq!(moved.lock().len(), 4);
+    }
+
+    #[test]
+    fn a_relaunched_antigravity_terminal_ignores_the_old_launchs_sequences() {
+        let manager = PtyManager::new();
+        let old = launched(&manager, "term-agy-old", RunKind::Antigravity);
+        first_output(&manager, &old);
+        manager.begin_launch("term-agy-old", RunKind::Antigravity);
+        let heard = turn_log(&manager);
+
+        let mut turn = AntigravityTurn::default();
+        assert!(agy_says(&manager, &old, &mut turn, "state=working").is_none());
+        assert!(agy_says(&manager, &old, &mut turn, "state=done:msg=cG9uZw==").is_none());
+
+        assert_eq!(status_of(&manager, "term-agy-old"), ClaudeStatus::Idle);
+        assert!(heard.lock().is_empty());
+    }
+
+    #[test]
+    fn an_antigravity_terminal_that_exited_stays_exited_but_its_last_answer_still_counts() {
+        let manager = PtyManager::new();
+        let launch = launched(&manager, "term-agy-exit", RunKind::Antigravity);
+        first_output(&manager, &launch);
+        manager.exit_launch(&launch, Some(0));
+        let heard = turn_log(&manager);
+
+        let mut turn = AntigravityTurn::default();
+        assert!(agy_says(&manager, &launch, &mut turn, "state=done:msg=cG9uZw==").is_none());
+
+        assert_eq!(status_of(&manager, "term-agy-exit"), ClaudeStatus::Exited);
+        assert_eq!(*heard.lock(), [TurnEvent::Started, TurnEvent::Answered("pong".to_string())]);
+    }
+
+    #[test]
     fn closing_a_terminal_tells_the_status_watcher() {
         let manager = PtyManager::new();
         launched(&manager, "term-watched-close", RunKind::Claude);
@@ -1177,6 +1962,73 @@ mod tests {
         manager.kill("term-watched-close").unwrap();
 
         assert_eq!(*seen.lock(), ["term-watched-close"]);
+    }
+
+    #[test]
+    fn a_relaunch_that_finishes_lists_the_terminal_again_with_its_new_session() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-done", RunKind::Codex);
+        let info = manager.get_info("term-relist-done").unwrap();
+        let relaunch = manager.begin_launch("term-relist-done", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_ok());
+        assert!(attached);
+        assert!(manager.get_info("term-relist-done").is_some());
+    }
+
+    #[test]
+    fn a_terminal_closed_while_it_relaunches_stays_closed() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-closed", RunKind::Codex);
+        let info = manager.get_info("term-relist-closed").unwrap();
+        let relaunch = manager.begin_launch("term-relist-closed", RunKind::Codex);
+        manager.kill("term-relist-closed").unwrap();
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-closed").is_none());
+        assert!(!manager.plugin_watches.lock().contains_key("term-relist-closed"));
+    }
+
+    #[test]
+    fn a_terminal_closed_before_its_relaunch_begins_its_launch_stays_closed() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-early", RunKind::Codex);
+        let info = manager.get_info("term-relist-early").unwrap();
+        manager.kill("term-relist-early").unwrap();
+        let relaunch = manager.begin_launch("term-relist-early", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&relaunch, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-early").is_none());
+        // The launch it began for the closed terminal is gone too
+        assert!(!manager.plugin_watches.lock().contains_key("term-relist-early"));
+    }
+
+    #[test]
+    fn a_relaunch_overtaken_by_a_later_one_leaves_the_later_one_in_place() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-relist-twice", RunKind::Codex);
+        let info = manager.get_info("term-relist-twice").unwrap();
+        let earlier = manager.begin_launch("term-relist-twice", RunKind::Codex);
+        let later = manager.begin_launch("term-relist-twice", RunKind::Codex);
+        let mut attached = false;
+
+        let listed = manager.relist_launched(&earlier, info, || attached = true);
+
+        assert!(listed.is_err());
+        assert!(!attached);
+        assert!(manager.get_info("term-relist-twice").is_some());
+        assert!(later.current_in(&mut manager.plugin_watches.lock()).is_some());
     }
 
     #[test]

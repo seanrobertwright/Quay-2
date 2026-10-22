@@ -152,7 +152,7 @@ impl SwarmStore {
     fn write(&self, swarms: &[SavedSwarm]) -> Result<(), String> {
         let json = serde_json::to_string_pretty(&SwarmsFile { swarms: swarms.to_vec() })
             .map_err(|e| format!("Failed to serialize saved swarms: {}", e))?;
-        std::fs::write(&self.path, json)
+        crate::atomic_file::write_atomic(&self.path, json.as_bytes())
             .map_err(|e| format!("Failed to write {}: {}", self.path.display(), e))
     }
 }
@@ -362,6 +362,7 @@ mod tests {
         };
 
         assert!(parse("split-vertical", "opencode").is_ok());
+        assert!(parse("split-vertical", "pig").is_ok());
         assert!(parse("triple", "claude").is_err());
         assert!(parse("grid", "notepad").is_err());
     }

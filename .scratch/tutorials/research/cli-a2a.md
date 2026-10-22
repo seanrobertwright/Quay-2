@@ -226,7 +226,8 @@ assistant message.
 
 ### Pi
 
-- Launch today: `cmd.exe /c pi`, plus `--approve` in skip mode.
+- Launch today: `cmd.exe /c pi`, with no permission flag. Quay used to add `--approve` in
+  skip mode; it no longer does, and a Pi terminal has no Skip and Ask toggle (#142).
   - `--approve` is real but means "Trust project-local files for this run", not tool approval.
   - Pi does not ask before tool calls anyway (local `pi --help`, 1.3.0;
     [security.md](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/security.md)).

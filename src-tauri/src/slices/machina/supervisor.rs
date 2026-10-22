@@ -33,7 +33,7 @@ use super::paths::{patterns_overlap, validate_patterns};
 use super::spend;
 use super::vault::{self, default_vault_root, machina_data_dir};
 use crate::dates::now_ms;
-use crate::slices::pty::{PtyManager, RunKind};
+use crate::slices::pty::{ClaudeStatus, PtyManager, RunKind, TerminalInfo};
 
 const STATE_VERSION: u32 = 2;
 const MAX_TITLE_CHARS: usize = 200;
@@ -108,13 +108,50 @@ pub fn parse_wo_id(raw: &str) -> Result<String, String> {
     }
 }
 
+/// The run kind `raw` names, in any case and with any surrounding space.
+fn agent_kind(raw: &str) -> Option<RunKind> {
+    serde_json::from_value(Value::String(raw.trim().to_lowercase())).ok()
+}
+
 fn parse_agent(raw: &str) -> Result<String, String> {
-    let kind: RunKind = serde_json::from_value(Value::String(raw.trim().to_lowercase()))
-        .map_err(|_| format!("'{}' is not a known agent", raw.trim()))?;
+    let kind = agent_kind(raw).ok_or_else(|| format!("'{}' is not a known agent", raw.trim()))?;
     if kind.is_agent() {
         Ok(kind.as_str().to_string())
     } else {
         Err(format!("'{}' is not an agent CLI", raw.trim()))
+    }
+}
+
+/// A work order's author terminal, as the finish instruction reads it.
+enum Author {
+    /// None is bound yet, as when the operator previews the brief.
+    Unbound,
+    /// The bound terminal has closed.
+    Gone,
+    /// The bound terminal, as it is now.
+    Live(TerminalInfo),
+}
+
+/// Whether an `author_agent` author submits its work through Quay's MCP tool
+/// `machina_submit_deliverable` because its terminal has Quay's MCP tools now. Claude Code
+/// does: its MCP server comes with its launch, even while its event-bridge plugin is silent.
+/// PiG does once Quay has heard from Quay's PiG extension, which brings both its MCP server
+/// and its turn reports: not while the terminal is Starting, Unknown or Exited, or closed.
+/// With no terminal bound the kind decides. Every other kind says so and stops, and the
+/// operator runs the gate.
+fn submits_through_mcp(author_agent: &str, author: &Author) -> bool {
+    let kind = match author {
+        Author::Live(info) => Some(info.run_kind),
+        _ => agent_kind(author_agent),
+    };
+    match (kind, author) {
+        (Some(RunKind::Claude), _) => true,
+        (Some(RunKind::Pig), Author::Unbound) => true,
+        (Some(RunKind::Pig), Author::Live(info)) => matches!(
+            info.claude_status,
+            ClaudeStatus::Idle | ClaudeStatus::Working | ClaudeStatus::Waiting
+        ),
+        _ => false,
     }
 }
 
@@ -926,8 +963,20 @@ impl MachinaManager {
         })
     }
 
-    fn finish_instruction(wo: &MachinaWorkOrder) -> String {
-        if wo.author_agent == "claude" {
+    /// The author terminal bound to `wo`, as it is now.
+    fn author_terminal(&self, wo: &MachinaWorkOrder) -> Author {
+        let Some(id) = wo.author_terminal_id.as_deref() else {
+            return Author::Unbound;
+        };
+        match self.pty.lock().clone().and_then(|pty| pty.get_info(id)) {
+            Some(info) => Author::Live(info),
+            None => Author::Gone,
+        }
+    }
+
+    /// The last sentence of a brief or a correction: how the author ends its work.
+    fn finish_instruction(wo: &MachinaWorkOrder, author: &Author) -> String {
+        if submits_through_mcp(&wo.author_agent, author) {
             format!(
                 "When you are done, call the MCP tool machina_submit_deliverable with work_order_id \"{}\" and wait for the verdict.",
                 wo.id
@@ -940,6 +989,7 @@ impl MachinaManager {
     /// The first message for the author, as one line (a newline would submit early).
     pub fn brief_text(&self, id: &str) -> Result<String, String> {
         let wo = self.get(id)?;
+        let author = self.author_terminal(&wo);
         let protected = load_config(Path::new(&wo.repo_path))
             .map(|(c, _)| c.effective_protected())
             .unwrap_or_default();
@@ -951,7 +1001,7 @@ impl MachinaManager {
             wo.branch_name,
             wo.allowed_output_paths.join(", "),
             protected.join(", "),
-            Self::finish_instruction(&wo)
+            Self::finish_instruction(&wo, &author)
         )))
     }
 
@@ -962,6 +1012,7 @@ impl MachinaManager {
         if gate.verdict == GateVerdict::PASS {
             return Err("The last gate passed; there is nothing to correct".to_string());
         }
+        let author = self.author_terminal(&wo);
         Ok(flatten(&format!(
             "Machina {}: gate attempt {} {}. Read {}/attempt-{}.md for the findings, fix them, and stay inside the allowed paths. {}",
             wo.id,
@@ -969,7 +1020,7 @@ impl MachinaManager {
             if gate.verdict == GateVerdict::FAIL { "failed" } else { "was inconclusive" },
             FEEDBACK_REL_DIR,
             gate.attempt,
-            Self::finish_instruction(&wo)
+            Self::finish_instruction(&wo, &author)
         )))
     }
 
@@ -1603,9 +1654,41 @@ mod tests {
     }
 
     #[test]
+    fn a_reporting_pig_or_any_claude_author_submits_through_mcp_and_the_rest_say_so() {
+        use crate::slices::pty::models::test_terminal;
+        let author = |kind, status| Author::Live(test_terminal("term-author", kind, status));
+
+        for status in [ClaudeStatus::Idle, ClaudeStatus::Working, ClaudeStatus::Waiting] {
+            assert!(submits_through_mcp("pig", &author(RunKind::Pig, status.clone())), "{:?}", status);
+        }
+        // Quay hasn't heard from the extension yet, or it went silent, or PiG is gone
+        for status in [ClaudeStatus::Starting, ClaudeStatus::Unknown, ClaudeStatus::Exited] {
+            assert!(!submits_through_mcp("pig", &author(RunKind::Pig, status.clone())), "{:?}", status);
+        }
+        assert!(!submits_through_mcp("pig", &Author::Gone));
+        // Claude's MCP server comes from its launch, not from its plugin
+        assert!(submits_through_mcp("claude", &author(RunKind::Claude, ClaudeStatus::Unknown)));
+        assert!(submits_through_mcp("claude", &author(RunKind::Claude, ClaudeStatus::Idle)));
+        for kind in [RunKind::Codex, RunKind::OpenCode, RunKind::Gemini, RunKind::Pi] {
+            assert!(!submits_through_mcp(kind.as_str(), &author(kind, ClaudeStatus::Idle)), "{:?}", kind);
+        }
+    }
+
+    #[test]
+    fn with_no_author_bound_the_kind_decides() {
+        assert!(submits_through_mcp("claude", &Author::Unbound));
+        assert!(submits_through_mcp(" PiG ", &Author::Unbound));
+        assert!(!submits_through_mcp("codex", &Author::Unbound));
+        assert!(!submits_through_mcp("opencode", &Author::Unbound));
+        assert!(!submits_through_mcp("not-an-agent", &Author::Unbound));
+    }
+
+    #[test]
     fn parses_agents() {
         assert_eq!(parse_agent("Claude").unwrap(), "claude");
         assert_eq!(parse_agent("opencode").unwrap(), "opencode");
+        assert_eq!(parse_agent("pig").unwrap(), "pig");
+        assert_eq!(parse_agent("PiG").unwrap(), "pig");
         assert!(parse_agent("powershell").is_err());
         assert!(parse_agent("vim").is_err());
     }

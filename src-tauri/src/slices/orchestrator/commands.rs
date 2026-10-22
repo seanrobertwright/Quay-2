@@ -1,24 +1,24 @@
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus};
+use super::models::{A2ADispatchRequest, A2AMessage, A2AMessageStatus, Broadcast, BroadcastSender};
 use super::router::A2ARouter;
 use super::swarms::{SavedSwarm, SwarmDraft, SwarmStore};
 use crate::slices::pty::manager::PtyManager;
 
+/// Mission Control's dispatch. The operator waits on the trail, so the peer's response is a Reply.
 #[tauri::command]
 pub async fn a2a_send_prompt(
     request: A2ADispatchRequest,
     router: State<'_, A2ARouter>,
     pty_manager: State<'_, PtyManager>,
-    app_handle: AppHandle,
 ) -> Result<A2AMessage, String> {
-    let msg = router.dispatch_async(request, Some(&pty_manager)).await?;
-    emit_message(&app_handle, &msg);
-    Ok(msg)
+    router.operator_dispatch_async(request, Some(&pty_manager)).await
 }
 
 /// Shows `msg` in the trail and, when it has just been typed into its target, raises its
-/// toast. A queued message raises its toast later, when it is typed in.
+/// toast. A queued message raises its toast later, when it is typed in. The router runs
+/// it for every trail change (see `A2ARouter::set_trail_listener`).
 pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
     let _ = app_handle.emit("a2a-message-updated", msg.clone());
     if msg.status == A2AMessageStatus::Dispatched {
@@ -26,19 +26,33 @@ pub fn emit_message(app_handle: &AppHandle, msg: &A2AMessage) {
     }
 }
 
+/// The `a2a-toast` payload: the notice, and who sent it.
+#[derive(Debug, Clone, Serialize)]
+struct BroadcastToast<'a> {
+    text: &'a str,
+    from_name: &'a str,
+}
+
+/// Raises the broadcast toast for `sent`, naming its sender. The router already put each
+/// notice in the trail (see `A2ARouter::set_trail_listener`).
+pub fn emit_broadcast(app_handle: &AppHandle, text: &str, sent: &Broadcast) {
+    let _ = app_handle.emit("a2a-toast", BroadcastToast { text, from_name: &sent.from_name });
+}
+
+/// Mission Control's Broadcast box: reaches the peers in `project`, the active project.
 #[tauri::command]
 pub async fn a2a_broadcast_toast(
     text: String,
+    project: String,
     router: State<'_, A2ARouter>,
     pty_manager: State<'_, PtyManager>,
     app_handle: AppHandle,
 ) -> Result<Vec<A2AMessage>, String> {
-    let msgs = router.broadcast_toast_async(&text, &pty_manager).await;
-    for msg in &msgs {
-        emit_message(&app_handle, msg);
-    }
-    let _ = app_handle.emit("a2a-toast", text);
-    Ok(msgs)
+    let sent = router
+        .broadcast_toast_async(&text, &BroadcastSender::User { project }, &pty_manager)
+        .await?;
+    emit_broadcast(&app_handle, &text, &sent);
+    Ok(sent.notices)
 }
 
 #[tauri::command]

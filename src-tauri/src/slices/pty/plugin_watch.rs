@@ -1,5 +1,6 @@
-//! What Quay knows, in one launch of a terminal, about whether Claude Code's
-//! event-bridge plugin is loaded, and the status rules that follow from it.
+//! What Quay knows, in one launch of a terminal, about whether the plugin or extension
+//! that reports its turns is loaded (Claude Code's event-bridge plugin, or Quay's PiG
+//! extension; see `RunKind::reports_through_plugin`), and the status rules that follow.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -7,9 +8,13 @@ use std::time::{Duration, Instant};
 
 use super::models::{ClaudeStatus, RunKind};
 
-/// How long a Claude terminal may stay silent after its first output before Quay
-/// shows it as Unknown, with the plugin hint.
+/// How long a Claude or PiG terminal may stay silent after its first output before Quay
+/// shows it as Unknown (a Claude terminal with the plugin hint).
 pub const PLUGIN_SILENCE: Duration = Duration::from_secs(30);
+
+/// The PiG version Quay's PiG extension was built and tested against: the tag `pig-sdk` is
+/// pinned to in `sidecars/pig-bridge/Cargo.toml`, without its `v`, which `build.rs` reads.
+pub const PIG_TESTED_VERSION: &str = env!("QUAY_PIG_TESTED_VERSION");
 
 /// The command that installs the event-bridge plugin. The plugin hint in
 /// `src/slices/terminal/PluginHint.tsx` shows the same line.
@@ -65,13 +70,13 @@ impl PluginWatch {
     }
 
     /// Records the launch's first output at `now`. Returns true when that starts the
-    /// silence clock, which only a Claude terminal runs.
+    /// silence clock, which only a terminal that reports through a plugin runs.
     pub fn first_output(&mut self, now: Instant) -> bool {
         if self.first_output_at.is_some() {
             return false;
         }
         self.first_output_at = Some(now);
-        self.run_kind == RunKind::Claude
+        self.run_kind.reports_through_plugin()
     }
 
     /// Whether this launch has printed anything yet.
@@ -79,12 +84,12 @@ impl PluginWatch {
         self.first_output_at.is_some()
     }
 
-    /// Whether, at `now`, the silence clock has run out with nothing heard and the
-    /// hint not dismissed.
+    /// Whether, at `now`, the silence clock has run out with nothing heard and, for a Claude
+    /// terminal, the plugin hint not dismissed. Only a Claude terminal shows the hint.
     pub fn silence_due(&self, now: Instant) -> bool {
-        self.run_kind == RunKind::Claude
+        self.run_kind.reports_through_plugin()
             && !self.heard
-            && !self.hint_dismissed
+            && !(self.hint_dismissed && self.run_kind == RunKind::Claude)
             && self
                 .first_output_at
                 .is_some_and(|at| now.saturating_duration_since(at) >= PLUGIN_SILENCE)
@@ -111,6 +116,48 @@ impl PluginWatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tested_pig_version_is_the_pinned_sdk_tag() {
+        let manifest = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sidecars/pig-bridge/Cargo.toml"),
+        )
+        .unwrap();
+        let sdk = manifest.lines().find(|line| line.starts_with("pig-sdk ")).unwrap();
+        assert!(sdk.contains(&format!("tag = \"v{}\"", PIG_TESTED_VERSION)), "{sdk}");
+        assert!(PIG_TESTED_VERSION.split('.').all(|part| part.parse::<u32>().is_ok()), "{PIG_TESTED_VERSION}");
+    }
+
+    #[test]
+    fn a_silent_pig_terminal_goes_unknown_when_its_window_runs_out_and_a_late_event_brings_it_back() {
+        let start = Instant::now();
+        let mut watch = PluginWatch::new(RunKind::Pig);
+        assert!(watch.first_output(start), "PiG runs the silence clock");
+        assert!(!watch.silence_due(start + PLUGIN_SILENCE - Duration::from_millis(1)));
+        assert!(watch.silence_due(start + PLUGIN_SILENCE));
+        assert_eq!(watch.hear(&ClaudeStatus::Unknown), ClaudeStatus::Idle);
+        assert!(!watch.silence_due(start + PLUGIN_SILENCE * 2));
+    }
+
+    #[test]
+    fn dismissing_a_hint_never_stops_a_pig_terminals_clock() {
+        let start = Instant::now();
+        let mut watch = PluginWatch::new(RunKind::Pig);
+        watch.first_output(start);
+        watch.dismiss_hint();
+        assert!(watch.silence_due(start + PLUGIN_SILENCE));
+    }
+
+    #[test]
+    fn only_claude_and_pig_run_the_silence_clock() {
+        let start = Instant::now();
+        for kind in crate::slices::pty::models::ALL_RUN_KINDS {
+            let mut watch = PluginWatch::new(kind);
+            let runs = watch.first_output(start);
+            assert_eq!(runs, kind.reports_through_plugin(), "{:?}", kind);
+            assert_eq!(watch.silence_due(start + PLUGIN_SILENCE), runs, "{:?}", kind);
+        }
+    }
 
     #[test]
     fn the_install_line_matches_the_plugin_hint() {

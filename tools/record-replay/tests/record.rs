@@ -42,7 +42,7 @@ fn the_real_cli_runs_as_it_would_without_the_recorder() {
 }
 
 #[test]
-fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size() {
+fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size_start_and_cli_version() {
     let scratch = Scratch::new("asciicast");
     let tool = scratch.install(TOOL, "tool", "claude");
     let real = scratch.install(STUB, "real-cli", "claude");
@@ -70,6 +70,10 @@ fn the_terminal_is_recorded_as_a_gzipped_asciicast_with_its_size() {
     assert_eq!(header["version"], 2);
     assert_eq!(header["width"], 120);
     assert_eq!(header["height"], 40);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let started = header["timestamp"].as_u64().expect("the header says when the run started");
+    assert!(now - started < 120, "started {started}, now {now}");
+    assert_eq!(header["cli_version"], "1.2.3 (stub-agent)", "the header names the real CLI's version");
 
     let events: Vec<serde_json::Value> = lines.map(|l| serde_json::from_str(l).unwrap()).collect();
     let mut last = 0.0;

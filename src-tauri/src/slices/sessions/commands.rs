@@ -10,7 +10,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-fn get_home_dir() -> Result<PathBuf, String> {
+/// The user's home folder: `USERPROFILE`, else `HOME`.
+pub(crate) fn get_home_dir() -> Result<PathBuf, String> {
     std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .map(PathBuf::from)

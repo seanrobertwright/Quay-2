@@ -3,6 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::manager::PtyManager;
 use super::models::{SpawnTerminalRequest, TerminalInfo, TerminalOutputPayload};
 use crate::slices::bridge::state::BridgeState;
+use crate::slices::orchestrator::A2ARouter;
 
 #[tauri::command]
 pub async fn spawn_terminal(
@@ -94,6 +95,13 @@ pub async fn rename_terminal(
     pty_manager.rename(&terminal_id, &name)
 }
 
+/// The PiG version Quay's PiG extension was tested with, for the tag Mission Control shows on
+/// a PiG terminal whose extension isn't reporting.
+#[tauri::command]
+pub fn get_pig_tested_version() -> &'static str {
+    super::plugin_watch::PIG_TESTED_VERSION
+}
+
 /// Hides the plugin hint in the terminal's pane until it is relaunched.
 #[tauri::command]
 pub async fn dismiss_plugin_hint(
@@ -116,8 +124,13 @@ pub async fn relaunch_terminal(
     pty_manager: State<'_, PtyManager>,
     bridge_state: State<'_, BridgeState>,
     workspace_manager: State<'_, crate::slices::workspace::manager::WorkspaceManager>,
+    a2a_router: State<'_, A2ARouter>,
     app_handle: AppHandle,
 ) -> Result<TerminalInfo, String> {
+    // No turn of the new launch answers a message typed into the old one. A Claude terminal's
+    // plugin already said so with `session.ended`; a Codex terminal reports no session end.
+    a2a_router.forget_turns(&terminal_id);
+
     // Relaunch re-reads workspace env vars so a restarted terminal matches a fresh spawn.
     // Its launch flags come from the stored terminal info, so they are not re-merged here.
     let env_vars = pty_manager

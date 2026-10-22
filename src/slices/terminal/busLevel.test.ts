@@ -17,7 +17,14 @@ test("an Unknown Claude terminal is a listener, and a Starting one a full peer",
   assert.equal(busLevel({ run_kind: "claude", claude_status: "starting" }), "full peer");
 });
 
-test("only a Claude terminal falls to listener when Unknown", () => {
+test("an Unknown PiG terminal is a listener, and a Starting one a full peer", () => {
+  assert.equal(busLevel({ run_kind: "pig", claude_status: "unknown" }), "listener");
+  assert.ok(isPluginSilent({ run_kind: "pig", claude_status: "unknown" }));
+  assert.ok(!showsWorkingOnDelivery({ run_kind: "pig", claude_status: "unknown" }));
+  assert.equal(busLevel({ run_kind: "pig", claude_status: "starting" }), "full peer");
+});
+
+test("only a Claude or PiG terminal falls to listener when Unknown", () => {
   assert.equal(busLevel({ run_kind: "codex", claude_status: "unknown" }), "full peer");
   assert.ok(!isPluginSilent({ run_kind: "codex", claude_status: "unknown" }));
 });
@@ -25,6 +32,9 @@ test("only a Claude terminal falls to listener when Unknown", () => {
 test("a delivery shows a terminal Working only when Quay will see its turn end", () => {
   assert.ok(showsWorkingOnDelivery({ run_kind: "claude", claude_status: "idle" }));
   assert.ok(!showsWorkingOnDelivery({ run_kind: "claude", claude_status: "unknown" }));
-  assert.ok(!showsWorkingOnDelivery({ run_kind: "codex", claude_status: "idle" }));
+  assert.ok(showsWorkingOnDelivery({ run_kind: "codex", claude_status: "idle" }));
+  assert.ok(showsWorkingOnDelivery({ run_kind: "antigravity", claude_status: "idle" }));
+  assert.ok(showsWorkingOnDelivery({ run_kind: "opencode", claude_status: "idle" }));
+  assert.ok(!showsWorkingOnDelivery({ run_kind: "opencode", claude_status: "unknown" }));
   assert.ok(!showsWorkingOnDelivery({ run_kind: "gemini", claude_status: "unknown" }));
 });

@@ -1,6 +1,8 @@
+use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::net::TcpListener;
 
+use super::opencode::start_watching;
 use super::port::BRIDGE_PORT_VAR;
 use super::routes::{create_router, AppContext};
 use super::state::BridgeState;
@@ -52,6 +54,12 @@ impl BridgeServer {
             machina_manager,
             app_handle,
         };
+
+        // Each OpenCode launch from now on gets a watcher on the server its TUI runs
+        let watched = Arc::new(ctx.clone());
+        ctx.pty_manager.set_server_watcher(move |launch, port| {
+            start_watching(watched.clone(), launch, port);
+        });
 
         let app = create_router(ctx);
 

@@ -6,13 +6,15 @@
      as the page that follows every rule. Each You should see holds the step's screenshot,
      ./NN-<what>.webp in this folder, and its alt text is the caption. Step 3 also has a clip:
      03-reply.mp4 beside 03-reply.webp plays in place of the still, so its caption says what
-     moves. The images and the clip are placeholders. -->
+     moves. The images and the clip are placeholders. The Time and Tokens tiles are left empty:
+     on a tutorial the build writes them from its test runs, and here it shows that nothing has
+     been measured. -->
 
 Two agents pass one message, so you can see every slot a step card has.
 
 ::: glance
-- **Time** ~10 min
-- **Tokens** ~15k
+- **Time**
+- **Tokens**
 - **Agents** 2 × Claude
 - **Level** Starter
 :::

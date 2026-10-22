@@ -118,6 +118,29 @@ fn task_title(prompt: &str) -> Option<String> {
     (!clean.is_empty()).then(|| clean.chars().take(32).collect())
 }
 
+/// Whether `envelope` is a subagent's turn event. The plugin reports a subagent's turns
+/// with an `agentId`; they say nothing about the terminal's own turn, so Quay ignores them.
+fn is_subagent_turn(envelope: &Envelope) -> bool {
+    envelope.event_type.starts_with("turn.") && envelope.data.get("agentId").is_some()
+}
+
+/// The prompts a turn reports it started with, in its `inputMessages`, as Codex's turn-end
+/// helper sends them. `None` when the event carries no such list.
+fn turn_inputs(envelope: &Envelope) -> Option<Vec<String>> {
+    envelope.data.get("inputMessages")?.as_array().map(|inputs| {
+        inputs
+            .iter()
+            .filter_map(|input| input.as_str().map(str::to_string))
+            .collect()
+    })
+}
+
+/// The kind of notification an `attention.notification` reports, in its `notificationType`,
+/// such as Claude Code's `permission_prompt` or `idle_prompt`. `None` when it names none.
+fn notification_type(envelope: &Envelope) -> Option<&str> {
+    envelope.data.get("notificationType")?.as_str()
+}
+
 pub async fn handle_events(
     State(ctx): State<Arc<AppContext>>,
     headers: HeaderMap,
@@ -126,76 +149,95 @@ pub async fn handle_events(
     authorize_events(&ctx.bridge_state, &headers, &payload.events)?;
 
     for envelope in payload.events {
-        let tag = envelope.tag.clone();
-        ctx.bridge_state.record_envelope(envelope.clone());
-
-        let mut status = None;
-        if let Some(ref terminal_id) = tag {
-            status = ctx
-                .pty_manager
-                .apply_plugin_event(terminal_id, &envelope.event_type);
-            match envelope.event_type.as_str() {
-                "turn.started" => {
-                    if let Some(title) = envelope
-                        .data
-                        .get("prompt")
-                        .or_else(|| envelope.data.get("text"))
-                        .or_else(|| envelope.data.get("query"))
-                        .or_else(|| envelope.data.get("user_input"))
-                        .and_then(|v| v.as_str())
-                        .and_then(task_title)
-                    {
-                        ctx.pty_manager.update_task_title(terminal_id, &title);
-                    }
-                }
-                "turn.completed" => {
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                    let answer = envelope
-                        .data
-                        .get("answer")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Turn completed")
-                        .to_string();
-                    if let Some(msg) = ctx.a2a_router.resolve_pending_reply(terminal_id, answer) {
-                        let _ = ctx.app_handle.emit("a2a-message-updated", msg);
-                    }
-                }
-                "tool.started" => {
-                    let tool = envelope
-                        .data
-                        .get("tool")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Tool");
-                    ctx.pty_manager.update_current_tool(terminal_id, Some(tool.to_string()));
-                }
-                "tool.finished" => {
-                    ctx.pty_manager.increment_auto_approved(terminal_id);
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                }
-                "session.ended" => {
-                    ctx.pty_manager.update_current_tool(terminal_id, None);
-                }
-                _ => {}
-            }
-        }
-
-        // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
-        let _ = ctx.app_handle.emit("bridge-event", envelope);
-        if let Some(status) = status {
-            // A turn that ended lets the terminal's next held message in, and a session that
-            // ended fails the rest. Typing blocks for the submit delay, so it runs off the
-            // event route.
-            if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
-                let router = ctx.a2a_router.clone();
-                let pty_manager = ctx.pty_manager.clone();
-                let terminal_id = status.terminal_id.clone();
-                tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
-            }
-            let _ = ctx.app_handle.emit("terminal-status", status);
-        }
+        apply_event(&ctx, envelope);
     }
 
     Ok(StatusCode::OK.into_response())
+}
+
+/// Applies one authenticated agent event: records it, moves its terminal's status and
+/// A2A state, and sends it and the status to the frontend. The event-bridge plugin's
+/// events come through `handle_events`; Quay makes the ones for an OpenCode terminal
+/// itself (see `opencode`). Typing a held message runs on a blocking thread, so this
+/// never blocks.
+pub fn apply_event(ctx: &AppContext, envelope: Envelope) {
+    let tag = envelope.tag.clone();
+    ctx.bridge_state.record_envelope(envelope.clone());
+
+    let mut status = None;
+    let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
+    if let Some(terminal_id) = own_terminal {
+        status = if envelope.event_type == "attention.notification" {
+            ctx.pty_manager.apply_notification(terminal_id, notification_type(&envelope))
+        } else {
+            ctx.pty_manager.apply_plugin_event(terminal_id, &envelope.event_type)
+        };
+        match envelope.event_type.as_str() {
+            "turn.started" => {
+                ctx.a2a_router.turn_started(terminal_id);
+                if let Some(title) = envelope
+                    .data
+                    .get("prompt")
+                    .or_else(|| envelope.data.get("text"))
+                    .or_else(|| envelope.data.get("query"))
+                    .or_else(|| envelope.data.get("user_input"))
+                    .and_then(|v| v.as_str())
+                    .and_then(task_title)
+                {
+                    ctx.pty_manager.update_task_title(terminal_id, &title);
+                }
+            }
+            "turn.completed" => {
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+                let answer = envelope
+                    .data
+                    .get("answer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Turn completed")
+                    .to_string();
+                // The router tells the trail listener about the entry it completes
+                let inputs = turn_inputs(&envelope);
+                ctx.a2a_router.turn_completed(
+                    terminal_id,
+                    answer,
+                    inputs.as_deref(),
+                    &ctx.pty_manager,
+                );
+            }
+            "tool.started" => {
+                let tool = envelope
+                    .data
+                    .get("tool")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Tool");
+                ctx.pty_manager.update_current_tool(terminal_id, Some(tool.to_string()));
+            }
+            "tool.finished" => {
+                ctx.pty_manager.increment_auto_approved(terminal_id);
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+            }
+            "session.ended" => {
+                ctx.pty_manager.update_current_tool(terminal_id, None);
+                ctx.a2a_router.forget_turns(terminal_id);
+            }
+            _ => {}
+        }
+    }
+
+    // Broadcast to Tauri frontend. The status follows the event, so it is what the pane ends on.
+    let _ = ctx.app_handle.emit("bridge-event", envelope);
+    if let Some(status) = status {
+        // A turn that ended lets the terminal's next held message in, and a session that
+        // ended fails the rest. Typing blocks for the submit delay, so it runs off the
+        // event route.
+        if matches!(status.claude_status, ClaudeStatus::Idle | ClaudeStatus::Exited) {
+            let router = ctx.a2a_router.clone();
+            let pty_manager = ctx.pty_manager.clone();
+            let terminal_id = status.terminal_id.clone();
+            tokio::task::spawn_blocking(move || router.deliver_held(&terminal_id, &pty_manager));
+        }
+        let _ = ctx.app_handle.emit("terminal-status", status);
+    }
 }
 
 pub async fn handle_commands(
@@ -403,6 +445,42 @@ mod tests {
             headers.insert("authorization", format!("Bearer {}", token).parse().unwrap());
         }
         headers
+    }
+
+    #[test]
+    fn a_turn_reports_the_prompts_it_started_with_only_when_it_lists_them() {
+        let mut event = event_for("term-a");
+        assert_eq!(turn_inputs(&event), None);
+        event.data = serde_json::json!({ "answer": "4", "inputMessages": ["first", 2, "second"] });
+        assert_eq!(turn_inputs(&event), Some(vec!["first".to_string(), "second".to_string()]));
+    }
+
+    #[test]
+    fn a_turn_event_with_an_agent_id_is_a_subagents_turn() {
+        let mut event = event_for("term-a");
+        assert!(!is_subagent_turn(&event));
+
+        event.data = serde_json::json!({ "answer": "subagent report", "agentId": "agent-1" });
+        assert!(is_subagent_turn(&event));
+
+        event.event_type = "turn.started".to_string();
+        assert!(is_subagent_turn(&event));
+
+        event.event_type = "tool.started".to_string();
+        assert!(!is_subagent_turn(&event));
+    }
+
+    #[test]
+    fn a_notification_reports_its_type_only_when_it_names_one() {
+        let mut event = event_for("term-a");
+        event.event_type = "attention.notification".to_string();
+        event.data = serde_json::json!({ "notificationType": "idle_prompt", "message": "waiting" });
+        assert_eq!(notification_type(&event), Some("idle_prompt"));
+
+        event.data = serde_json::json!({ "message": "waiting" });
+        assert_eq!(notification_type(&event), None);
+        event.data = serde_json::json!({ "notificationType": 7 });
+        assert_eq!(notification_type(&event), None);
     }
 
     #[test]

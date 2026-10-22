@@ -9,6 +9,7 @@ export const RUN_KINDS = [
   "kiro",
   "copilot",
   "opencode",
+  "pig",
   "powershell",
   "command",
   "archon",
@@ -27,6 +28,7 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
     kind === "kiro" ||
     kind === "copilot" ||
     kind === "opencode" ||
+    kind === "pig" ||
     kind === "archon"
   );
 }
@@ -35,7 +37,7 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
  * decides how Quay treats a message; a run kind in none of these lists is not a peer.
  * Each list stays on one line: the backend's `bus_levels_match_the_frontend` test reads it.
  */
-export const FULL_PEER_RUN_KINDS = ["claude", "codex", "opencode"] as const satisfies readonly RunKind[];
+export const FULL_PEER_RUN_KINDS = ["claude", "codex", "opencode", "pig"] as const satisfies readonly RunKind[];
 export const RESPONDER_RUN_KINDS = ["antigravity"] as const satisfies readonly RunKind[];
 export const LISTENER_RUN_KINDS = ["pi", "gemini", "grok", "aider", "kiro", "copilot"] as const satisfies readonly RunKind[];
 export type BusLevel = "full peer" | "responder" | "listener";
@@ -44,14 +46,35 @@ export type BusLevel = "full peer" | "responder" | "listener";
  * The run kinds whose turn end Quay sees. Mirrors `RunKind::reports_turn_end` in the backend.
  * Kept on one line: the backend's `turn_end_run_kinds_match_the_frontend` test reads it.
  */
-export const TURN_END_RUN_KINDS = ["claude"] as const satisfies readonly RunKind[];
+export const TURN_END_RUN_KINDS = ["claude", "antigravity", "codex", "opencode", "pig"] as const satisfies readonly RunKind[];
 
 /**
- * Whether the terminal is a Claude terminal that counts as a listener only because Quay
- * hasn't heard from its event-bridge plugin. Mirrors `TerminalInfo::plugin_silent`.
+ * The run kinds whose CLI never asks before a tool call, so they get no Skip and Ask toggle
+ * and always run as Skip. Mirrors `RunKind::never_asks_before_tools` in the backend.
+ * Kept on one line: the backend's `never_asks_run_kinds_match_the_frontend` test reads it.
+ */
+export const NEVER_ASKS_RUN_KINDS = ["pi", "pig"] as const satisfies readonly RunKind[];
+
+/** Whether the CLI never asks before a tool call. */
+export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
+  return (NEVER_ASKS_RUN_KINDS as readonly unknown[]).includes(kind);
+}
+
+/**
+ * The run kinds that report through a plugin or extension that may stay silent: Claude
+ * Code's event-bridge plugin and Quay's PiG extension. Mirrors
+ * `RunKind::reports_through_plugin` in the backend.
+ * Kept on one line: the backend's `plugin_run_kinds_match_the_frontend` test reads it.
+ */
+export const PLUGIN_RUN_KINDS = ["claude", "pig"] as const satisfies readonly RunKind[];
+
+/**
+ * Whether the terminal is a Claude or PiG terminal that counts as a listener only because
+ * Quay hasn't heard from its event-bridge plugin or PiG extension. Mirrors
+ * `TerminalInfo::plugin_silent`.
  */
 export function isPluginSilent(t: Pick<TerminalInfo, "run_kind" | "claude_status">): boolean {
-  return t.run_kind === "claude" && t.claude_status === "unknown";
+  return (PLUGIN_RUN_KINDS as readonly RunKind[]).includes(t.run_kind) && t.claude_status === "unknown";
 }
 
 /**
@@ -87,6 +110,7 @@ export const LAUNCH_PROMPT_RUN_KINDS = [
   "kiro",
   "copilot",
   "opencode",
+  "pig",
 ] as const satisfies readonly RunKind[];
 export type LaunchPromptRunKind = (typeof LAUNCH_PROMPT_RUN_KINDS)[number];
 
@@ -102,6 +126,15 @@ export type ClaudeStatus =
   | "idle"
   | "exited"
   | "unknown";
+
+/**
+ * Whether an `attention.notification` of this `notificationType` blocks the agent and makes
+ * its terminal Waiting: anything but Claude Code's `idle_prompt` and `auth_success`, which
+ * leave the status as it was. Mirrors `PtyManager::apply_notification` in the backend.
+ */
+export function notificationBlocks(notificationType: unknown): boolean {
+  return notificationType !== "idle_prompt" && notificationType !== "auth_success";
+}
 // Kept on one line: the saved-swarm store's `stage_layouts_match_the_launcher` test reads it.
 export const STAGE_LAYOUTS = ["single", "split-horizontal", "split-vertical", "grid"] as const;
 export type StageLayout = (typeof STAGE_LAYOUTS)[number];

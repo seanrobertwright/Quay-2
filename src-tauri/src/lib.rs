@@ -1,3 +1,4 @@
+pub mod atomic_file;
 pub mod dates;
 pub mod slices;
 
@@ -35,7 +36,7 @@ use slices::orchestrator::{
     SwarmStore,
 };
 use slices::pty::{
-    dismiss_plugin_hint, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
+    dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
@@ -61,8 +62,10 @@ pub fn run() {
     let a2a_router_updates = a2a_router.clone();
     let machina_manager_clone = machina_manager.clone();
 
-    // A terminal that went Unknown or closed no longer holds its messages: type them in,
-    // or mark them Failed, on a thread of their own since each write waits for the submit delay.
+    // A terminal whose status moved off the bridge's event route (it left Starting, went
+    // Unknown, its OSC 7501 output moved it, or it closed) may stop holding its messages: type
+    // them in, or mark them Failed, on a thread of their own since each write waits for the
+    // submit delay.
     {
         let router = a2a_router.clone();
         let terminals = pty_manager.clone();
@@ -73,6 +76,8 @@ pub fn run() {
             std::thread::spawn(move || router.deliver_held(&terminal_id, &terminals));
         });
     }
+    // Antigravity reports its turns in its own output, which the PTY reader hands on
+    a2a_router.follow_turns(&pty_manager);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -87,11 +92,11 @@ pub fn run() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
-            // A held message that reaches its terminal, or fails to, updates the trail and,
-            // once typed in, raises the toast as a message sent at once does.
+            // Every trail entry the router adds or changes updates Mission Control's trail,
+            // and a message raises its toast when it is typed in, waited on or not.
             let a2a_events = app_handle.clone();
             a2a_router_updates
-                .set_update_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
+                .set_trail_listener(move |msg| slices::orchestrator::emit_message(&a2a_events, msg));
 
             // Forward Machina changes as events and connect it to the terminals; this
             // also starts queued work orders that are ready.
@@ -138,6 +143,7 @@ pub fn run() {
             rename_terminal,
             relaunch_terminal,
             dismiss_plugin_hint,
+            get_pig_tested_version,
             list_projects,
             add_project,
             remove_project,

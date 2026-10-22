@@ -1,8 +1,8 @@
 # Swarm 1: Glance-level fixture
 
 ::: glance
-- **Time** ~5 min
-- **Tokens** ~5k
+- **Time**
+- **Tokens**
 - **Agents** 1 × Claude
 - **Level** Beginner
 :::

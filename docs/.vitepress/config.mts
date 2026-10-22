@@ -4,9 +4,13 @@ import type { ConfigEnv } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { stepCards } from './step-cards.ts';
 import { LANDING_LINK, publishedTutorials, tutorialsSidebar } from './tutorials.ts';
+import { testRuns } from '../../scripts/test-runs/publish.ts';
 
 // https://vitepress.dev/reference/site-config
-export default ({ command }: ConfigEnv) => withMermaid(
+export default ({ command }: ConfigEnv) => {
+  // Only docs:build holds a tutorial back until it has two passing test runs; docs:dev serves drafts.
+  const publish = testRuns(command);
+  return withMermaid(
   defineConfig({
     title: "Quay 2",
     description: "Native Windows Autonomous Multi-Agent Workspace & Orchestrator",
@@ -16,7 +20,10 @@ export default ({ command }: ConfigEnv) => withMermaid(
     // The step-card example page renders under `docs:dev` only, never in the published site.
     srcExclude: command === 'build' ? ['_examples/**'] : [],
     markdown: {
-      config: stepCards,
+      config: (md) => {
+        stepCards(md);
+        publish(md);
+      },
     },
     mermaid: {
       theme: 'dark',
@@ -91,6 +98,7 @@ export default ({ command }: ConfigEnv) => withMermaid(
           text: 'Agent Fleet & Orchestration',
           items: [
             { text: 'Supported Agent CLIs', link: '/features/agent-support' },
+            { text: 'PiG (Pi in Go)', link: '/features/pig' },
             { text: 'Agent-to-Agent (A2A) Bus', link: '/features/a2a-orchestration' },
             { text: 'Swarm Presets & Splits', link: '/features/swarm-presets' },
           ],
@@ -152,3 +160,4 @@ export default ({ command }: ConfigEnv) => withMermaid(
   },
 })
 );
+};
