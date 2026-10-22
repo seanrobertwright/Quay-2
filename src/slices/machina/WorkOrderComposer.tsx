@@ -230,7 +230,7 @@ export const WorkOrderComposer: FC<WorkOrderComposerProps> = ({
             className={field}
             type="number"
             min={0.01}
-            step={0.5}
+            step={0.01}
             value={budget}
             onChange={(e) => setBudget(e.target.value)}
           />
