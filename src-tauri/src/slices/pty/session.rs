@@ -680,7 +680,8 @@ impl PtySession {
     /// `server_port` is the port an OpenCode terminal serves its events on (see
     /// `build_command`). `on_first_output` runs once, on the reader thread, when the process
     /// first writes output. `on_osc7501`, when given, runs there with each OSC 7501 sequence
-    /// the output carries, after `on_first_output`.
+    /// the output carries, after `on_first_output`. `on_exit` runs once, on the exit watcher
+    /// thread, with the exit code when the process ends, before `terminal-exited` is sent.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         request: SpawnTerminalRequest,
@@ -692,6 +693,7 @@ impl PtySession {
         app_handle: AppHandle,
         on_first_output: Box<dyn FnOnce() + Send>,
         on_osc7501: Option<Osc7501Hook>,
+        on_exit: Box<dyn FnOnce(Option<i32>) + Send>,
     ) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let rows = request.rows.unwrap_or(45);
@@ -878,6 +880,7 @@ impl PtySession {
                     Err(_) => None,
                 };
 
+                on_exit(exit_code);
                 let _ = app_handle.emit(
                     "terminal-exited",
                     PtyExitPayload {
