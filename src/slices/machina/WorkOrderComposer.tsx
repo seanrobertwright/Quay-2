@@ -1,7 +1,7 @@
 import { FC, FormEvent, useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RunKind } from "../terminal/types";
-import { AGENT_OPTIONS, agentName, splitList } from "./format";
+import { AGENT_OPTIONS, SPEND_MEASURED_AGENTS, agentName, splitList } from "./format";
 import { MachinaWorkOrder, ProjectFactoryInfo } from "./types";
 
 interface WorkOrderComposerProps {
@@ -236,9 +236,10 @@ export const WorkOrderComposer: FC<WorkOrderComposerProps> = ({
           />
         </div>
       </div>
-      {agent !== "claude" && (
+      {!SPEND_MEASURED_AGENTS.includes(agent) && (
         <p className="text-[11px] text-[#d29922]">
-          Spend is measured only for Claude Code, so the budget cannot stop a {agentName(agent)} run.
+          Spend is measured only for {SPEND_MEASURED_AGENTS.map(agentName).join(" and ")}, so the budget cannot
+          stop a {agentName(agent)} run.
         </p>
       )}
 

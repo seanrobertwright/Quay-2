@@ -32,6 +32,9 @@ export const AGENT_OPTIONS: RunKind[] = [
   "aider",
 ];
 
+/** The authors whose spend Machina can price; a test in `spend.rs` keeps it in step. */
+export const SPEND_MEASURED_AGENTS: RunKind[] = ["claude", "pig"];
+
 export function agentName(kind: RunKind | string): string {
   switch (kind) {
     case "claude":
