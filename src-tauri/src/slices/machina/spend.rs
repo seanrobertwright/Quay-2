@@ -488,6 +488,37 @@ mod tests {
         assert_eq!(s.responses, 2);
     }
 
+    /// The agents the work-order composer lists in `SPEND_MEASURED_AGENTS`, read from
+    /// `format.ts`.
+    fn composer_measured_agents() -> Vec<String> {
+        let source_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/slices/machina/format.ts");
+        let source = fs::read_to_string(&source_path).unwrap();
+        source
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("export const SPEND_MEASURED_AGENTS: RunKind[] = ["))
+            .expect("format.ts declares SPEND_MEASURED_AGENTS on one line")
+            .split(']')
+            .next()
+            .unwrap()
+            .split(',')
+            .map(|item| item.trim().trim_matches('"').to_string())
+            .filter(|item| !item.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn the_composer_warns_for_exactly_the_agents_spend_cannot_price() {
+        let tmp = TempDir::new("composer");
+        let cwd = tmp.0.to_string_lossy().to_string();
+        let measured: Vec<String> = crate::slices::pty::models::ALL_RUN_KINDS
+            .iter()
+            .map(|kind| kind.as_str().to_string())
+            .filter(|kind| measure(kind, &cwd).measured)
+            .collect();
+        assert_eq!(measured, ["claude", "pig"]);
+        assert_eq!(composer_measured_agents(), measured);
+    }
+
     /// Runs the real PiG once in a fresh folder, with PiG's own session settings, and prices
     /// the session it saved, which the test then removes. Needs PiG installed and signed in
     /// with `pig login`. Run with `cargo test live_pig_spend -- --ignored --nocapture`.
