@@ -93,26 +93,33 @@ export interface ChordKeyEvent {
   stopPropagation(): void;
 }
 
+/** The action each lower-cased `Ctrl+B` chord key runs. `1`..`9` are handled apart from this. */
+const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTerminalAt">>([
+  ["n", "openNewTerminal"],
+  ["%", "splitHorizontal"],
+  ['"', "splitVertical"],
+  ["'", "splitVertical"],
+  ["g", "splitGrid"],
+  ["s", "openSwarmModal"],
+  ["d", "openDiffInspector"],
+  ["w", "openNewWorktreeModal"],
+  ["i", "toggleGithubDrawer"],
+  ["a", "openAuditModal"],
+  ["h", "toggleSessionHistory"],
+  ["t", "toggleTokenSpend"],
+  ["$", "toggleTokenSpend"],
+  ["r", "toggleArchonGraph"],
+  ["f", "toggleFactoryStation"],
+  ["u", "toggleUpdateModal"],
+  ["m", "openA2A"],
+  ["o", "focusNextPane"],
+  ["z", "toggleZoom"],
+  ["x", "unsplit"],
+]);
+
 function chordFor(key: string, actions: CtrlBActions): (() => void) | null {
-  const lower = key.toLowerCase();
-  if (lower === "n") return actions.openNewTerminal;
-  if (key === "%") return actions.splitHorizontal;
-  if (key === '"' || key === "'") return actions.splitVertical;
-  if (lower === "g") return actions.splitGrid;
-  if (lower === "s") return actions.openSwarmModal;
-  if (lower === "d") return actions.openDiffInspector;
-  if (lower === "w") return actions.openNewWorktreeModal;
-  if (lower === "i") return actions.toggleGithubDrawer;
-  if (lower === "a") return actions.openAuditModal;
-  if (lower === "h") return actions.toggleSessionHistory;
-  if (lower === "t" || key === "$") return actions.toggleTokenSpend;
-  if (lower === "r") return actions.toggleArchonGraph;
-  if (lower === "f") return actions.toggleFactoryStation;
-  if (lower === "u") return actions.toggleUpdateModal;
-  if (lower === "m") return actions.openA2A;
-  if (lower === "o") return actions.focusNextPane;
-  if (lower === "z") return actions.toggleZoom;
-  if (lower === "x") return actions.unsplit;
+  const action = CHORD_ACTIONS.get(key.toLowerCase());
+  if (action) return actions[action];
   const num = parseInt(key, 10);
   if (!isNaN(num) && num >= 1 && num <= 9) return () => actions.selectTerminalAt(num - 1);
   return null;
