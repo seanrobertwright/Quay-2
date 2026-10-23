@@ -19,7 +19,8 @@ import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
-import { createCtrlBKeyHandler, createCtrlBPrefix, CtrlBPrefix } from "./ctrlBPrefix";
+import { createCtrlBKeyHandler } from "./ctrlBPrefix";
+import { useCtrlBPrefix } from "./useCtrlBPrefix";
 
 export type { Project };
 
@@ -1110,19 +1111,11 @@ export function useWorkspace() {
 
 
   // Keyboard shortcut listener: Ctrl+K, the ^b prefix chords in ctrlBPrefix.ts, and Alt+1..9.
-  // The prefix lives in a ref so a re-render between Ctrl+B and its second key keeps it.
-  const ctrlBPrefixRef = useRef<CtrlBPrefix | null>(null);
-  if (ctrlBPrefixRef.current === null) {
-    ctrlBPrefixRef.current = createCtrlBPrefix();
-  }
+  // The prefix outlives each render, so a re-render between Ctrl+B and its second key keeps it.
+  const ctrlBPrefix = useCtrlBPrefix();
 
   useEffect(() => {
-    const prefix = ctrlBPrefixRef.current;
-    return () => prefix?.dispose();
-  }, []);
-
-  useEffect(() => {
-    const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefixRef.current!, {
+    const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
       openNewTerminal: () => setIsNewTerminalOpen(true),
       splitHorizontal,
       splitVertical,
@@ -1174,6 +1167,7 @@ export function useWorkspace() {
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
+    ctrlBPrefix,
     visibleTerminals,
     layout,
     focusedPane,
