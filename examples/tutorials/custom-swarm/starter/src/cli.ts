@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { tally, type Tally } from "./count.ts";
+import { OPTIONS } from "./options.ts";
 
 const USAGE = `Usage: tally [--lines] [--words] [--chars] [--json] <file...>
 
@@ -25,16 +26,7 @@ function fail(message: string): never {
 
 let parsed;
 try {
-  parsed = parseArgs({
-    allowPositionals: true,
-    options: {
-      lines: { type: "boolean", short: "l" },
-      words: { type: "boolean", short: "w" },
-      chars: { type: "boolean", short: "c" },
-      json: { type: "boolean", short: "j" },
-      help: { type: "boolean", short: "h" },
-    },
-  });
+  parsed = parseArgs({ allowPositionals: true, options: OPTIONS });
 } catch (error) {
   fail(`${(error as Error).message}\n\n${USAGE}`);
 }
@@ -47,8 +39,9 @@ if (values.help) {
 if (files.length === 0) fail(`name at least one file.\n\n${USAGE}`);
 
 // The counts to print, in this order. None chosen means all three.
-const chosen = (["lines", "words", "chars"] as const).filter((count) => values[count]);
-const counts = chosen.length > 0 ? chosen : (["lines", "words", "chars"] as const);
+const COUNTS = ["lines", "words", "chars"] as const;
+const chosen = COUNTS.filter((count) => values[count]);
+const counts = chosen.length > 0 ? chosen : COUNTS;
 
 const results = new Map<string, Tally>();
 for (const file of files) {

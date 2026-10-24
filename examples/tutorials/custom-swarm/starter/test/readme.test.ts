@@ -1,14 +1,14 @@
-// The README's definition of done. These tests read README.md, package.json and src/cli.ts;
-// they never run the CLI.
+// The README's definition of done. These tests read README.md, package.json and the options
+// src/cli.ts declares; they never run the CLI.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { OPTIONS } from "../src/options.ts";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 const readme = read("README.md").replaceAll("\r\n", "\n");
 const packageJson = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
-const cli = read("src/cli.ts");
 
 const SECTIONS = ["Install", "Usage", "Options", "Scripts", "License"];
 
@@ -22,7 +22,7 @@ function section(heading: string): string {
 }
 
 /** Every long option `src/cli.ts` declares to parseArgs, as `--<name>`. */
-const flags = [...cli.matchAll(/^\s+([a-z][a-z-]*): \{ type: "(?:boolean|string)"/gm)].map(([, name]) => `--${name}`);
+const flags = Object.keys(OPTIONS).map((name) => `--${name}`);
 
 describe("README.md", () => {
   test("starts with the heading # tally", () => {
