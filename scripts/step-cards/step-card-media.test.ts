@@ -164,36 +164,37 @@ test('a clip plays muted unless the reader asks for reduced motion, which pauses
   await new Promise((resolve) => setImmediate(resolve));
 });
 
+/** Publishes the tutorial page `tutorials/<page>/index.md` under `docs`, and returns its folder. */
+async function publish(docs: string, page: string) {
+  const folder = join(docs, 'tutorials', page);
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, 'index.md'), '');
+  return folder;
+}
+
+// The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
 test("a tutorial's Next up card must link to the next published tutorial, or to the landing page when none is", async () => {
-  // The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
   const docs = await mkdtemp(join(tmpdir(), 'step-card-docs-'));
-  const publish = async (page: string) => {
-    await mkdir(join(docs, 'tutorials', page), { recursive: true });
-    await writeFile(join(docs, 'tutorials', page, 'index.md'), '');
-  };
   const path = await tutorialFolder(stills);
   const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs, placeholder: PLACEHOLDER }));
   const asSwarm1 = () => render.render(example, { path, relativePath: 'tutorials/swarm/first-swarm/index.md' });
 
-  await publish('swarm/first-swarm');
+  await publish(docs, 'swarm/first-swarm');
   assert.throws(asSwarm1, {
     message:
       'tutorials/swarm/first-swarm/index.md breaks the step-card rules:\n' +
       `  docs/tutorials/index.md: ${STEP_CARD_RULES['next-up-target']} (next-up-target)`,
   });
-  await publish('swarm/tdd-swarm-kata');
+  await publish(docs, 'swarm/tdd-swarm-kata');
   assert.doesNotThrow(asSwarm1);
   assert.doesNotThrow(() => render.render(example, { path, relativePath: 'tutorials/swarm/example/index.md' }), 'not a tutorial slug');
 });
 
 test("a tutorial whose folder still holds a placeholder still is not a Next up target until its real shots are in", async () => {
-  // The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
   const docs = await mkdtemp(join(tmpdir(), 'step-card-docs-'));
   const placeholder = join(await mkdtemp(join(tmpdir(), 'step-card-placeholder-')), 'placeholder.webp');
   await writeFile(placeholder, 'placeholder bytes');
-  const swarm2 = join(docs, 'tutorials', 'swarm', 'tdd-swarm-kata');
-  await mkdir(swarm2, { recursive: true });
-  await writeFile(join(swarm2, 'index.md'), '');
+  const swarm2 = await publish(docs, 'swarm/tdd-swarm-kata');
   await writeFile(join(swarm2, '01-starter-installed.webp'), 'a real screenshot');
   await writeFile(join(swarm2, '02-swarm-launched.webp'), 'placeholder bytes');
   const path = await tutorialFolder(stills);
