@@ -18,7 +18,7 @@ This guide covers installing **Quay 2** on Windows, from the release installer o
 
 Download the Windows installer from the latest release on the [Releases page](https://github.com/seanrobertwright/Quay-2/releases/latest): `Quay_<version>_x64-setup.exe`, or `Quay_<version>_x64_en-US.msi` if you prefer an MSI. Run it and start **Quay** from the Start menu.
 
-Then install the [agent CLIs](#agent-clis) you plan to run and, for Claude Code, the [event-bridge plugin](#event-bridge-plugin).
+Then install the [agent CLIs](#agent-clis) you plan to run and, for Claude Code, the [event-bridge plugin](#event-bridge-plugin). Quay's PowerShell panes need [PowerShell 7](#powershell-7), and the tutorials also need [Node.js](#node-js-and-npm) and [Git](#git).
 
 ---
 
@@ -202,4 +202,59 @@ To check whether Claude Code can load mods at all, run:
 
 ```powershell
 claude plugin test
+```
+
+---
+
+## PowerShell, Node.js and Git
+
+Quay's PowerShell panes need PowerShell 7. The [tutorials](/tutorials/) also need Node.js and Git, because each one starts from a small Node.js project that you commit to Git in its first step.
+
+### PowerShell 7
+
+Quay's PowerShell panes run PowerShell 7, `pwsh.exe`, not the Windows PowerShell that comes with Windows. Install it:
+
+```powershell
+winget install Microsoft.PowerShell
+```
+
+Check the version:
+
+```powershell
+pwsh --version
+```
+
+### Node.js and npm
+
+The tutorials need Node.js 24 or later, which runs TypeScript files as they are, and the npm that comes with it. Install the current LTS release:
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+Close and reopen Quay, then check the version in a new PowerShell pane:
+
+```powershell
+node --version
+```
+
+### Git
+
+Install Git:
+
+```powershell
+winget install Git.Git
+```
+
+Then tell Git your name and email, which it writes into every commit you make:
+
+```powershell
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+Check the version:
+
+```powershell
+git --version
 ```

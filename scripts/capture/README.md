@@ -1,4 +1,33 @@
-# Capture script
+# Screenshots and the capture script
+
+A tutorial's screenshots are taken by hand, while walking through the tutorial once. A tutorial
+that has test-run recordings and a capture manifest can instead be captured by the script this
+README goes on to describe. Issue #185 made the script optional.
+
+## Screenshots by hand
+
+1. Set Windows to dark mode, so every tutorial's shots look alike, and keep Quay's window
+   maximized.
+2. Follow the tutorial's page in Quay. When a step shows what its You should see caption
+   describes, take its screenshot with Snipping Tool: the Quay window, or only the pane the
+   caption shows when the step's still is of one pane.
+3. Save each shot under its still's name with `.png`, such as `03-watcher-red.png`, in one
+   folder. The names are the `NN-<what>.webp` files beside the page.
+4. Put them beside the page:
+
+   ```powershell
+   pnpm docs:shots <slug> <folder>
+   ```
+
+   It converts each PNG to WebP at quality 90 and writes it over the still of the same name,
+   placeholder or old shot. A shot already saved as `.webp` is copied as it is. It names any still
+   left without a shot, and stops before writing anything if a shot is named after no still, which
+   is most often a typo. It exits 0 when every still has a shot, 1 otherwise, and 2 on a bad
+   argument.
+
+A tutorial has a clip only if one is recorded for it, by hand or by the script; most have none.
+
+## The capture script
 
 Takes every screenshot of a tutorial, and its clip, from a built Quay that replays the
 tutorial's recordings.
@@ -51,7 +80,7 @@ build, and nothing ships in the product:
 | `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` | `--remote-debugging-port=<port>`, only in this child's environment. |
 | `WEBVIEW2_USER_DATA_FOLDER` | A fresh folder, so this Quay starts its own browser process. See [Established](#established). |
 | `LOCALAPPDATA` | A fixture folder holding `Quay2\workspaces.json`. |
-| `CLAUDE_CONFIG_DIR` | A copy of `claude-config\` from the tutorial's recordings folder, or an empty folder. Transcripts under its `projects\` give the spend figure. |
+| `CLAUDE_CONFIG_DIR` | A copy of `claude-config\` from the tutorial's recordings folder, or an empty folder. Its scrubbed transcripts give the spend figure; see [The fixture Claude config](#the-fixture-claude-config). |
 
 The fixture `workspaces.json` has one project on the manifest's neutral project path, by
 default `C:\tutorials\<slug>`. Its saved `env_vars` put the folder holding the fake CLIs first
@@ -80,6 +109,47 @@ running from the fixture folder, then removes the fixture.
 | Clip | `docs/tutorials/<series>/<slug>/NN-<what>.mp4`, beside its still |
 | Sidecar manifest | `examples/tutorials/<slug>/sidecar.json` |
 | Changed-shot report | `capture-reports/<version>/`, which git ignores |
+
+## The fixture Claude config
+
+Quay's status strip and rail show Claude Code's spend, which Quay prices from the transcripts
+under its Claude config. Replays write no transcripts, so a capture hands Quay the recorded run's
+own transcripts, scrubbed down to their token counts. Every still then shows that run's total.
+
+After each recorded test run, write it from the Claude config the run used:
+
+```powershell
+pnpm docs:claude-config <slug> --from <Claude config folder>
+```
+
+`scripts/test-runs/README.md` says how to run it in the test account. It reads the transcripts
+in `projects\<neutral project path>\` only, for example `projects\C--tutorials-first-swarm\`,
+keeps each assistant response timestamped between the start of the earliest recording and the
+last event of the latest, so no other run on the same project path counts, and writes it to
+`claude-config\projects\` in the recordings folder, replacing what was there only once the scrub
+has succeeded. Each kept line holds the response's type, request id, session id, timestamp,
+message id, model and token counts, plus `speed: "fast"` for a response Claude Code ran in fast
+mode, which Quay prices higher. Nothing else: no prompt, reply, tool call, path or account
+detail.
+
+Nothing else ever goes in `claude-config\`: no credentials file, settings, history or `.claude.json`.
+The capture checks it before Quay starts and stops, naming each file, when the folder holds
+anything but scrubbed transcripts under `projects\`. A tutorial with no Claude Code agent has no
+`claude-config\`, and its stills show a spend of $0.00.
+
+## Placeholder stills
+
+A page names its stills before they are taken, and the docs build needs every still it names.
+Until real screenshots replace them, by hand or by the capture, a draft carries a copy of
+`scripts/capture/placeholder.webp` under each still's name, `NN-<what>.webp`, beside the page. A
+clip needs no placeholder.
+
+`docs:build` refuses to publish a tutorial while any still beside its page is byte for byte the
+placeholder, naming each one, unless `QUAY_TUTORIAL_DRAFT` names the tutorial. `docs:dev` and a
+draft build show the placeholders, so the fresh-eyes read and the walk-through can follow the
+rendered page. The
+changed-shot report counts a committed placeholder as nothing committed, so a draft's first
+capture lists its shots as new.
 
 ## The capture manifest
 
@@ -178,8 +248,10 @@ whenever its still is.
   showed if that was later, so it ends on what the still shows.
 - **Real speed.** The screencast sends a frame each time Quay paints; on WebView2 the screenshot
   research found its frames at device scale. The script keeps each frame on screen until the
-  next one came and encodes the result at 30 frames a second. A clip over ten seconds fails the
-  capture; it is never sped up, so a longer motion is not a clip step.
+  next one came and encodes the result at 30 frames a second. The replays play any stretch
+  longer than a second with nothing shown as one second (`tools/record-replay/README.md`), so
+  the wait before a hand-typed marker doesn't count. A clip over ten seconds fails the capture;
+  it is never sped up, so a longer motion is not a clip step.
 - **Masks.** The port badge and the shot's `mask` selectors are covered for the whole clip by
   boxes that follow their elements as they move. Masks are matched again every 100 ms for
   elements that appear during the clip, and the frames since the match before are left out, so
@@ -245,7 +317,7 @@ the docs build's orphan-image check catches the file left behind.
 - `cliVersions` is each CLI's `--version` from the recorded run, from the headers'
   `cli_version`. Recordings of one CLI made with two versions are an error.
 
-The quarterly sweep reads all of it and lists it beside each tutorial it finds due
+The tutorial sweep reads all of it and lists it beside each tutorial it finds due
 (`scripts/test-runs/README.md`). The failed-run notice on a tutorial's page takes its CLI
 versions from the test-run record, not from here.
 
@@ -287,6 +359,15 @@ with WebView2 155:
 
 Also seen: the debugging port listens on `127.0.0.1` only.
 
+The two clip questions issue #101 left open, answered by Swarm 1's capture against Quay 0.3.0 at
+200% scaling:
+
+- **The screencast's frames come at device scale.** Swarm 1's clip, `02-swarm-launched.mp4`, is
+  2560 × 1600, the same size as its poster still, so a clip needs no resizing.
+- **The port badge stays masked in every frame.** Each of the clip's 220 frames shows the
+  badge as an empty box, including the frames where the Swarm Launcher's backdrop dims the
+  window.
+
 ## Limits
 
 - Quay's own views of the project folder, such as diffs and git state, show the starter as it
@@ -304,6 +385,7 @@ pnpm docs:typecheck
 `capture.test.ts` covers the parts that need no Quay: the arguments, the manifest, reading the
 recordings, which replays each step waits for, the fixture workspace, the machine check, a
 clip's frames and stale clips, and the sidecar. `shot-report.test.ts` covers the pixel diff and
-the changed-shot report. The parts that drive Quay need a built Quay on a pinned machine and are
+the changed-shot report. `claude-config.test.ts` covers the scrub and the check of a fixture
+Claude config. The parts that drive Quay need a built Quay on a pinned machine and are
 checked by running a capture. `clip.ts`, which records and encodes the clip, needs a browser page
 but not Quay.

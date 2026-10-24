@@ -114,7 +114,7 @@ test('the issue lists each due tutorial with its last passing run and what its r
     sidecars: { 'first-swarm': JSON.stringify({ ...SIDECAR, cliVersions: { claude: '2.1.0 | beta' } }) },
   });
   const body = sweepIssue(sweep({ root, today: '2026-10-21' }).due, '2026-10-21');
-  assert.match(body, /^The quarterly sweep on 2026-10-21 found 2 tutorials due a re-run: a latest passing test run more than 90 days old, or no passing run\.$/m);
+  assert.match(body, /^The sweep on 2026-10-21 found 2 tutorials due a re-run: a latest passing test run more than 90 days old, or no passing run\.$/m);
   assert.match(body, /The last three columns come from each tutorial's sidecar manifest/);
   assert.match(body, /\| Swarm 1: Your first swarm \| \[2026-07-22\]\(https:\/\/github\.com\/seanrobertwright\/Quay-2\/blob\/master\/examples\/tutorials\/first-swarm\/test-runs\.md\) \| 91 \| 0\.3\.0 \| 2026-06-01 \| claude 2\.1\.0 \\\| beta \|/);
   assert.match(body, /\| A2A 1: Hello, A2A \| none \| — \| — \| — \| — \|/);

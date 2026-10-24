@@ -1,0 +1,10 @@
+{
+  "tutorial": "first-swarm",
+  "quayVersion": "0.3.0",
+  "capturedOn": "2026-10-22",
+  "recordedOn": "2026-10-22",
+  "cliVersions": {
+    "claude": "2.1.308 (Claude Code)",
+    "pwsh": "PowerShell 7.6.6"
+  }
+}

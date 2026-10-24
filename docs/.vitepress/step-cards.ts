@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
-import { tutorialSlugOf } from './tutorials.ts';
+import { LANDING_LINK, TUTORIALS, nextUp, publishedTutorials, tutorialLink, tutorialPage, tutorialSlugOf } from './tutorials.ts';
 
 type Token = ReturnType<MarkdownRenderer['parse']>[number];
 type BlockRule = Parameters<MarkdownRenderer['block']['ruler']['before']>[2];
@@ -45,6 +45,8 @@ const IMAGE_FILE = /\.(?:webp|png|jpe?g|gif|avif|svg)$/i;
 const CLIP_FILE = /\.mp4$/i;
 /** Each tutorial's sidecar manifest is `<slug>/sidecar.json` in here, for the capture script to write. */
 const SIDECARS = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
+/** The docs folder, whose tutorial pages say which tutorials are published. */
+const DOCS = fileURLToPath(new URL('../', import.meta.url));
 /** A Quay version as a release names it, `0.3.0` or `v0.3.0`; the group is the version without the `v`. */
 export const VERSION = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
@@ -76,7 +78,8 @@ export const STEP_CARD_RULES = {
   'glance-level': `the Level tile is ${LEVELS.slice(0, -1).join(', ')} or ${LEVELS.at(-1)}`,
   'you-will-learn': `a "**You'll learn:** ..." line comes before step 1`,
   'before-you-start': `a ${BEFORE_YOU_START} checklist comes before step 1: "::: before" holding "## ${BEFORE_YOU_START}" and one list`,
-  'next-up': `a ${NEXT_UP} card comes after the last step: "::: next" opening with one link to the next tutorial in series order`,
+  'next-up': `a ${NEXT_UP} card comes after the last step: "::: next" opening with one link, to a tutorial or to the Tutorials landing page`,
+  'next-up-target': `the ${NEXT_UP} card links to the first tutorial after this one in series order whose page is published, as /tutorials/<series>/<slug>/, or to the Tutorials landing page, /tutorials/, when none after it is`,
   'slot-in-step': 'slots sit directly inside a step, steps do not nest, and the page parts sit outside every step',
   'step-heading': 'each step opens with its numbered heading, "## <n>. <Title>"',
   'slot-order': `a step's slots come once each, in the order ${SLOTS.map((slot) => LABELS[slot]).join(', ')}; only ${LABELS.ifnot} may repeat`,
@@ -622,6 +625,21 @@ function checkReleaseSidecar(relativePath: string, sidecars: string, release: st
   return sidecar !== null && sidecarQuayVersion(sidecar) === release ? [] : [{ ...broken, files: [`examples/tutorials/${slug}/sidecar.json`] }];
 }
 
+/**
+ * Checks that the tutorial at `relativePath` links its Next up card to the tutorial `nextUp`
+ * names, given the pages published under `docs`, or to the landing page. The violation names the
+ * page the card should link to. A step-card page that isn't a tutorial's is not checked.
+ */
+function checkNextUpTarget(tokens: Token[], relativePath: string, docs: string): StepCardViolation[] {
+  const tutorial = TUTORIALS.find((each) => tutorialPage(each) === relativePath.replaceAll('\\', '/'));
+  const card = readPage(tokens).parts.find((part) => part.name === 'next');
+  const link = card?.tokens[1]?.children?.find((token) => token.type === 'link_open');
+  if (tutorial === undefined || link === undefined) return [];
+  const next = nextUp(tutorial, publishedTutorials(docs));
+  if (link.attrGet('href') === (next === null ? LANDING_LINK : tutorialLink(next))) return [];
+  return [{ rule: 'next-up-target', step: null, title: null, files: [`docs/${next === null ? 'tutorials/index.md' : tutorialPage(next)}`] }];
+}
+
 export function formatStepCardViolations(file: string, violations: StepCardViolation[]): string {
   const lines = violations.map(({ rule, step, title, files = [] }) => {
     const at = step === null ? [] : [title === null ? `step ${step}` : `step ${step} "${title}"`];
@@ -641,6 +659,8 @@ export interface StepCardOptions {
   release: string | null;
   /** The folder holding each tutorial's `<slug>/sidecar.json`. */
   sidecars: string;
+  /** The docs folder, whose tutorial pages say which tutorials are published. */
+  docs: string;
 }
 
 /**
@@ -649,7 +669,7 @@ export interface StepCardOptions {
  * `docs:build`. Pages that use none of them render as before. The folder checks read the folder
  * of the page's `path`, which VitePress always passes; a page rendered without one skips them.
  */
-export function stepCardsPlugin({ release, sidecars }: StepCardOptions): (md: MarkdownRenderer) => void {
+export function stepCardsPlugin({ release, sidecars, docs }: StepCardOptions): (md: MarkdownRenderer) => void {
   return (md) => {
     registerStepCardContainers(md);
     md.core.ruler.push('step_card_check', (state) => {
@@ -657,6 +677,7 @@ export function stepCardsPlugin({ release, sidecars }: StepCardOptions): (md: Ma
       const env = state.env as PageEnv;
       const violations = checkStepCards(state.tokens);
       if (env.path) violations.push(...checkTutorialFolder(state.tokens, readdirSync(dirname(env.path))));
+      violations.push(...checkNextUpTarget(state.tokens, env.relativePath ?? '', docs));
       if (release !== null) violations.push(...checkReleaseSidecar(env.relativePath ?? '', sidecars, release));
       if (violations.length > 0) {
         throw new Error(formatStepCardViolations(env.relativePath ?? env.path ?? 'A page', violations));
@@ -667,5 +688,5 @@ export function stepCardsPlugin({ release, sidecars }: StepCardOptions): (md: Ma
 
 /** The step-card plugin as the site uses it: the release flow sets `QUAY_RELEASE_VERSION`. */
 export function stepCards(md: MarkdownRenderer): void {
-  stepCardsPlugin({ release: parseReleaseVersion(process.env.QUAY_RELEASE_VERSION), sidecars: SIDECARS })(md);
+  stepCardsPlugin({ release: parseReleaseVersion(process.env.QUAY_RELEASE_VERSION), sidecars: SIDECARS, docs: DOCS })(md);
 }

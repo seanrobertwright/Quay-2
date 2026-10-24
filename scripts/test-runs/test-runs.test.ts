@@ -10,7 +10,7 @@ import siteConfig from '../../docs/.vitepress/config.mts';
 import { readStepCardRecord } from '../../docs/.vitepress/step-cards.ts';
 import { addRunSection, newTestRun, parseTestRunArgs, runFingerprint, runSection } from './test-runs.ts';
 
-// As new-run.ts reads it: the build's test-run gate would refuse a page with no runs yet.
+// As new-run.ts reads it: the build's placeholder gate would refuse a draft page.
 const config = await siteConfig({ command: 'serve', mode: 'production' });
 const md = await createMarkdownRenderer('docs', config.markdown);
 const examplePage = await readFile('docs/_examples/step-cards.md', 'utf8');

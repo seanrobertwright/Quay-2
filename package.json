@@ -12,6 +12,8 @@
     "tauri": "tauri",
     "docs:dev": "vitepress dev docs",
     "docs:capture": "node scripts/capture/run.ts",
+    "docs:shots": "node scripts/capture/shots.ts",
+    "docs:claude-config":"node scripts/capture/scrub-claude-config.ts",
     "docs:build": "node scripts/swarm-presets/sync.ts && node scripts/mcp-tools/check.ts && node scripts/pack-starters.mjs && node scripts/tutorials/sync-tables.ts --check && vitepress build docs",
     "docs:presets": "node scripts/swarm-presets/sync.ts",
     "docs:fresh-eyes": "node scripts/fresh-eyes/read.ts",

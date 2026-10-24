@@ -189,7 +189,11 @@ The optimized installer and standalone executable will be generated in `src-taur
 Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus, each starting from a small starter project. They all live on the **[Tutorials page](https://seanrobertwright.github.io/Quay-2/tutorials/)**.
 
 <!-- tutorials:start -->
-The first tutorials are on their way.
+### Swarm
+
+| # | Tutorial | What you'll do |
+| --- | --- | --- |
+| 1 | [Your first swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
 <!-- tutorials:end -->
 
 ---

@@ -119,17 +119,24 @@ pnpm docs:build
 
 `docs:build` first rewrites the built-in preset lists in `README.md` and `docs/features/swarm-presets.md` from `BUILTIN_SWARM_PRESETS`, then packs each `starter/` and `check/` folder under `examples/` into `docs/public/starters/`, which git ignores. It fails on a tutorial page that breaks the step-card rules; on a tutorial folder whose images and clips don't match its step cards: a missing screenshot, an image no step card names, a clip with no still of the same name, or more than one clip; and when the tutorial tables in `docs/tutorials/index.md` and `README.md` don't list exactly the tutorials whose pages exist. After adding a tutorial page, run `pnpm docs:tutorials` to rewrite both tables; the tutorial's title and one-line summary come from the list in `docs/.vitepress/tutorials.ts`, and the page's title must match it. `docs:test` runs the packing script's tests, the step-card tests in `scripts/step-cards/`, the preset-list tests in `scripts/swarm-presets/`, the tutorial-table tests in `scripts/tutorials/` and the test-run record tests in `scripts/test-runs/`, and `docs:typecheck` type-checks the step-card plugin, the preset-list script, the tutorials list, the test-run record script and their tests.
 
-Before a tutorial is published, it passes test runs: the maintainer follows its page by hand in a dedicated Windows account. `pnpm docs:test-run <slug>` adds each run's section to the tutorial's record, `examples/tutorials/<slug>/test-runs.md`. Setting up the account and doing a run are covered in `scripts/test-runs/README.md`.
+A tutorial is written, walked through once and published:
+
+1. Write the starter and the page. The page carries the placeholder screenshot under each still's name, and builds as a draft with `QUAY_TUTORIAL_DRAFT=<slug>`.
+2. Run a fresh-eyes read of the page (below) and fix what it finds.
+3. Do the tutorial yourself in Quay, following the page, and take a screenshot for each step with Snipping Tool. Save each one under its still's name, such as `03-watcher-red.png`, in a folder of your choice, then run `pnpm docs:shots <slug> <folder>` to put them beside the page as WebP. `scripts/capture/README.md` says how to take them.
+4. Fix anything the walk-through showed the page gets wrong, and open the pull request.
+
+`docs:build` refuses a tutorial page that still holds a placeholder screenshot, unless `QUAY_TUTORIAL_DRAFT` names it. A recorded test run is optional: `pnpm docs:test-run <slug>` adds one to `examples/tutorials/<slug>/test-runs.md`, and its time and tokens fill the page's Time and Tokens tiles, which say "not measured yet" until a run is recorded. `scripts/test-runs/README.md` covers it.
 
 ### 5. Fresh-eyes read of a tutorial page
 
-Before the first test run of a tutorial's new run fingerprint, and on any pull request that changes a tutorial page's wording, run a fresh-eyes read of the page:
+Before a tutorial is first published, and on any pull request that changes a tutorial page's wording, run a fresh-eyes read of the page:
 
 ```powershell
 pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
 ```
 
-It builds the site and hands only the built page's text, screenshots and alt text to a new `claude -p` reader. The reader's system prompt is the fixed brief in `scripts/fresh-eyes/brief.md`. It has no tools, no settings, no MCP servers and no `CLAUDE.md`, and it runs in a new folder outside the repo that holds only what it is given. It prints findings tied to a step and a quoted line, ready for the run's section of the tutorial's `test-runs.md`, where each one is marked fixed or dismissed with a reason. The `fresh-eyes-read` project skill in `.claude/skills/` runs it the same way. It needs Claude Code signed in, so it runs locally and never in CI.
+It builds the site and hands only the built page's text, screenshots and alt text to a new `claude -p` reader. The reader's system prompt is the fixed brief in `scripts/fresh-eyes/brief.md`. It has no tools, no settings, no MCP servers and no `CLAUDE.md`, and it runs in a new folder outside the repo that holds only what it is given. It prints findings tied to a step and a quoted line. Put them in the pull request description, each marked fixed or dismissed with a reason, or in a recorded test run's section if you record one. The `fresh-eyes-read` project skill in `.claude/skills/` runs it the same way. It needs Claude Code signed in, so it runs locally and never in CI.
 
 ---
 
@@ -152,7 +159,7 @@ It builds the site and hands only the built page's text, screenshots and alt tex
    - Open a PR against the `master` branch.
    - Provide a clear summary of the changes, motivation, and any UI screenshots or test output.
    - Link any relevant GitHub issues (`Fixes #123`).
-   - On a UI pull request, say whether it changes what a tutorial screenshot shows. The PR template has a checklist line for it. It is a heads-up for the screenshot recapture at the next release (see `RELEASING.md`), not a gate.
+   - On a UI pull request, say whether it changes what a tutorial screenshot shows. The PR template has a checklist line for it. It tells the next release which tutorials to walk through and which screenshots to retake (see `RELEASING.md`), and is not a gate.
 
 ---
 

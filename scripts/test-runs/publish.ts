@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
 import { glanceTile, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
@@ -10,8 +10,8 @@ import { runFingerprint } from './test-runs.ts';
 type Token = ReturnType<MarkdownRenderer['parse']>[number];
 type CoreRule = Parameters<MarkdownRenderer['core']['ruler']['push']>[1];
 
-/** How many passing runs a run fingerprint needs before its tutorial is published. */
-const RUNS_TO_PUBLISH = 2;
+/** How many newer passing runs clear a failed run's notice once the page has changed since it failed. */
+const RUNS_TO_CLEAR = 2;
 /** The repository the tutorials live in, for links to its issues and files. */
 export const REPO = 'https://github.com/seanrobertwright/Quay-2';
 const NOT_MEASURED = 'not measured yet';
@@ -188,7 +188,7 @@ export interface Publication {
 
 /**
  * What a tutorial's runs, newest first, give its page at run fingerprint `fingerprint`: the
- * passing runs the gate counts, the generated tiles, and the failed run to announce. The newest
+ * passing runs the tiles are measured from, the generated tiles, and the failed run to announce. The newest
  * failed run is announced until newer passing runs for the current fingerprint clear it: one when
  * it failed on the current fingerprint, two when the page has changed since.
  */
@@ -196,7 +196,7 @@ export function publication(runs: TestRun[], fingerprint: string | null): Public
   const current = (run: TestRun) => run.result === 'pass' && run.fingerprint === fingerprint;
   const passing = runs.filter(current);
   const failed = runs.findIndex((run) => run.result === 'fail');
-  const clearedBy = failed !== -1 && runs[failed].fingerprint === fingerprint ? 1 : RUNS_TO_PUBLISH;
+  const clearedBy = failed !== -1 && runs[failed].fingerprint === fingerprint ? 1 : RUNS_TO_CLEAR;
   const notice = failed !== -1 && runs.slice(0, failed).filter(current).length < clearedBy ? runs[failed] : null;
   if (passing.length === 0) return { passing, time: NOT_MEASURED, tokens: NOT_MEASURED, notice };
   const minutes = Math.max(...passing.map((run) => run.minutes ?? 0));
@@ -204,8 +204,9 @@ export function publication(runs: TestRun[], fingerprint: string | null): Public
 }
 
 /**
- * Reads `QUAY_TUTORIAL_DRAFT`: a comma-separated list of tutorial slugs that build without
- * passing the gate, for the test runs and the fresh-eyes read that come before publication.
+ * Reads `QUAY_TUTORIAL_DRAFT`: a comma-separated list of tutorial slugs that build while they
+ * still hold placeholder screenshots, for the fresh-eyes read and any test run before the real
+ * screenshots are in place.
  */
 export function parseTutorialDrafts(value: string | undefined): Set<string> {
   const slugs = (value ?? '').split(',').map((slug) => slug.trim()).filter((slug) => slug !== '');
@@ -243,22 +244,37 @@ function fillTile(state: Parameters<CoreRule>[0], tile: GlanceTile, value: strin
 }
 
 export interface TestRunOptions {
-  /** Whether a tutorial without two passing runs for its current fingerprint fails to render. */
+  /** Whether a tutorial page that still holds a placeholder screenshot fails to render. */
   gate: boolean;
-  /** The tutorials that render without passing the gate. */
+  /** The tutorials that render with placeholder screenshots. */
   drafts: ReadonlySet<string>;
   /** The folder holding each tutorial's `<slug>/test-runs.md`, `starter/` and `check/`. */
   examples: string;
+  /** The placeholder screenshot a draft carries under each still's name until its first capture. */
+  placeholder: string;
+}
+
+/** The stills in the folder of the page at `pagePath` that are still byte-for-byte the placeholder. */
+function placeholderStills(pagePath: string | undefined, placeholder: Buffer): string[] {
+  if (pagePath === undefined) return [];
+  const folder = dirname(pagePath);
+  return readdirSync(folder)
+    .filter((file) => file.endsWith('.webp'))
+    .sort()
+    .filter((file) => readFileSync(join(folder, file)).equals(placeholder));
 }
 
 /**
  * Publishes tutorial pages from their test runs. On each page under `tutorials/<series>/<slug>/`,
  * it reads `<slug>/test-runs.md`, writes the Time and Tokens tiles, and adds a notice under the
- * title while the newest failed run is not cleared. A record it cannot read, or a failed run with
- * no issue link, fails the page; so does the gate, when on, unless the tutorial is a draft. Other
+ * title while the newest failed run is not cleared. Test runs are optional: with no passing run
+ * for the page's run fingerprint, the tiles say nothing has been measured. A record it cannot
+ * read, or a failed run with no issue link, fails the page; so does the gate, when on, for a page
+ * whose folder still holds a placeholder screenshot, unless the tutorial is a draft. Other
  * step-card pages get tiles that say nothing has been measured. Register it after the step cards.
  */
-export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md: MarkdownRenderer) => void {
+export function testRunsPlugin({ gate, drafts, examples, placeholder }: TestRunOptions): (md: MarkdownRenderer) => void {
+  const placeholderBytes = readFileSync(placeholder);
   return (md) => {
     md.core.ruler.push('test_runs', (state) => {
       if (!usesStepCards(state.tokens)) return;
@@ -274,14 +290,14 @@ export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md:
         const { runs, problems } = existsSync(file) ? parseRecord(readFileSync(file, 'utf8')) : { runs: [], problems: [] };
         const reasons = problems.map((problem) => `${shown}, ${problem}`);
         published = publication(runs, fingerprint);
-        const have = published.passing.length;
-        if (gate && !drafts.has(slug) && have < RUNS_TO_PUBLISH) {
-          reasons.push(
-            fingerprint === null
-              ? `examples/tutorials/${slug}/starter/ is missing, so it has no run fingerprint and no test runs`
-              : `it has ${have} passing test run${have === 1 ? '' : 's'} for its run fingerprint ${fingerprint}, and needs ${RUNS_TO_PUBLISH}. ` +
-                  `Record them in ${shown} (see scripts/test-runs/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
-          );
+        if (gate && !drafts.has(slug)) {
+          const placeholders = placeholderStills((state.env as { path?: string }).path, placeholderBytes);
+          if (placeholders.length > 0) {
+            reasons.push(
+              `${listed(placeholders)} ${placeholders.length === 1 ? 'is' : 'are'} still the placeholder screenshot. ` +
+                `Put the real ones in place with pnpm docs:shots (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=${slug} to build it as a draft`,
+            );
+          }
         }
         if (reasons.length > 0) throw new Error(`${relativePath} cannot be published:\n${reasons.map((reason) => `  ${reason}`).join('\n')}`);
         const notice = published.notice;
@@ -300,8 +316,15 @@ export function testRunsPlugin({ gate, drafts, examples }: TestRunOptions): (md:
 }
 
 const EXAMPLES = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
+/** The placeholder screenshot; scripts/capture/README.md says how a draft uses it. */
+const PLACEHOLDER = fileURLToPath(new URL('../capture/placeholder.webp', import.meta.url));
 
-/** The test-run plugin as the site uses it: the gate is on for `docs:build`, and `QUAY_TUTORIAL_DRAFT` names the drafts. */
+/** The test-run plugin as the site uses it: the placeholder gate is on for `docs:build`, and `QUAY_TUTORIAL_DRAFT` names the drafts. */
 export function testRuns(command: 'build' | 'serve'): (md: MarkdownRenderer) => void {
-  return testRunsPlugin({ gate: command === 'build', drafts: parseTutorialDrafts(process.env.QUAY_TUTORIAL_DRAFT), examples: EXAMPLES });
+  return testRunsPlugin({
+    gate: command === 'build',
+    drafts: parseTutorialDrafts(process.env.QUAY_TUTORIAL_DRAFT),
+    examples: EXAMPLES,
+    placeholder: PLACEHOLDER,
+  });
 }

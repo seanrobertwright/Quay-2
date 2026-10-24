@@ -1,8 +1,13 @@
 # Test runs
 
-A tutorial is published only after test runs pass. A test run is the maintainer following one
-tutorial's rendered page by hand, from getting the starter project to the check-it-worked step,
-in a Windows account kept for nothing else. Each run is written up in the tutorial's record,
+A test run is optional. It is the maintainer following one tutorial's rendered page by hand,
+from getting the starter project to the check-it-worked step, and writing up what happened.
+Recording one fills the page's Time and Tokens tiles, which read "not measured yet" without one;
+recording its terminals as well, in a Windows account kept for nothing else, is only needed for a
+scripted capture of the screenshots (`scripts/capture/README.md`). A tutorial is written, walked
+through once with a screenshot per step, and published, as `CONTRIBUTING.md` describes; issue
+#185 made the runs and the scripted capture optional. Each run is written up in the tutorial's
+record,
 `examples/tutorials/<slug>/test-runs.md`. The record sits beside `starter/` and `check/`, outside
 `docs/`, so the site never renders it. What a run is and what counts as a pass were decided in
 issue #14.
@@ -10,28 +15,102 @@ issue #14.
 The record is generated, not typed. `pnpm docs:test-run <slug>` writes each run's section from the
 page's step cards, and the maintainer fills in what the run found.
 
+## What every tutorial page shares
+
+Each run has to stand alone, and the fresh-eyes reader can't follow links, so every page carries
+its own Before you start list and the same step 1. Copy both from Swarm 1's page,
+`docs/tutorials/swarm/first-swarm/index.md`, and change only the slug.
+
+**Before you start** opens with these items, worded as they are, each linking to its section of
+the installation guide:
+
+```md
+- **Quay 2** is installed from the latest release ([Installing a Release](/guide/installation#installing-a-release)).
+- **Claude Code** 2.1.296 or later is installed and signed in ([Claude Code](/guide/installation#claude-code)). `claude --version`
+- The **event-bridge plugin** 0.1.0 or later is installed and enabled in Claude Code ([Event-bridge Plugin](/guide/installation#event-bridge-plugin)).
+- **PowerShell 7** is installed ([PowerShell 7](/guide/installation#powershell-7)). `pwsh --version`
+- **Node.js** 24 or later is installed, with npm ([Node.js and npm](/guide/installation#node-js-and-npm)). `node --version`
+- **Git** is installed and knows your name and email ([Git](/guide/installation#git)). `git --version`
+- You are using the **starter project**, because agents run in Skip mode and edit files without asking.
+```
+
+A tutorial's own extras go before the last item, in the same shape: Codex 0.154.0 or later,
+Antigravity CLI 1.4.2 or later, or a pinned model where a preset uses one. Add an installation
+guide section for any extra that has none.
+
+**Step 1, Get the starter project,** runs inside Quay, so the capture can show it. Its Do and
+Paste slots are:
+
+````md
+::: do
+1. Download [`<slug>.zip`](/starters/<slug>.zip) and unzip it into a new, empty folder.
+2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
+3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+:::
+
+::: paste PowerShell pane
+```text
+git init -b main; git add -A; git commit -m Starter; npm install
+```
+:::
+````
+
+Take its You should see, Must match, May differ and If not slots from Swarm 1 too. The
+PowerShell pane from step 1 stays open for the rest of the tutorial, so its recording is
+`pwsh-1`, and a swarm's panes open beside it in the rail.
+
+Every starter carries a `.gitignore` holding `node_modules/`, so `git status` after step 1 shows
+only what the agents change, and a `.gitattributes` holding `* text=auto eol=lf`, so the Starter
+commit prints no line-ending warnings into the step 1 still.
+
+**Next up** links to the first tutorial after this one in series order whose page is published,
+as `/tutorials/<series>/<slug>/`, or to the Tutorials landing page, `/tutorials/`, when none
+after it is. The docs build checks it. Publishing a tutorial therefore also changes the Next up
+card of the nearest published tutorial before it, in the same PR; a Next up card is not part of
+the run fingerprint, so that change needs no re-run.
+
 ## Set up the test account
 
-Do this once.
+Do this once. `setup-test-account.ps1` beside this file does steps 1 and 4: build the record and
+replay tool, then run it as an administrator from the repository root.
+
+```powershell
+cargo build --release --manifest-path tools/record-replay/Cargo.toml
+pwsh -File scripts\test-runs\setup-test-account.ps1   # -UserName, -Clis claude,pwsh,codex, -WhatIf
+```
+
+It asks for the new account's password, and at the end lists what to do signed in as that
+account. Run it again after rebuilding the tool, to refresh the wrapper copies.
 
 1. **Make a local Windows account used only for test runs.** Your own account won't do: its agent
    config (plugins, hooks, mods, a global `CLAUDE.md`) changes what the agents do and how many
    tokens they use.
 2. **Install only what the tutorials' "Before you start" lists tell a learner to install.** Today
-   that is Node 24 or later with npm, Git, PowerShell 7 and the agent CLIs. Quay itself is
-   installed fresh before each run (below). Anything more on the account could hide a
-   prerequisite a page forgot to list.
+   that is Node 24 or later with npm, Git with a name and email set, PowerShell 7, the agent CLIs
+   and the event-bridge plugin. Quay itself is installed fresh before each run (below). Anything
+   more on the account could hide a prerequisite a page forgot to list.
 3. **Sign in each agent CLI once.** Leave every CLI on its default settings and default model. Add
-   no plugins, hooks or global instruction files.
+   no plugins, hooks or global instruction files beyond what "Before you start" lists.
 4. **Put the recording wrapper on the account's `PATH`,** so each run records the agent output
-   the screenshots replay. The wrapper is the record and replay tool in `tools/record-replay/`;
-   its README says how to build it. Copy `quay-record-replay.exe` into a folder of its own once
-   under each agent CLI's name (`claude.exe`, `codex.exe`, ...). Put that folder ahead of the
-   real CLIs in the account's user `PATH` variable, in Windows' Environment Variables settings,
-   not in a shell profile: Quay builds each terminal's environment from the registry, so a
-   `PATH` set only in a shell never reaches its terminals. The wrapper runs the real CLI further
-   along `PATH` and passes everything through, so it changes nothing the agents do. It is the one
-   thing the account holds beyond the "Before you start" lists.
+   and the PowerShell panes the screenshots replay. The wrapper is the record and replay tool in
+   `tools/record-replay/`; its README says how to build it. Copy `quay-record-replay.exe` into
+   `C:\quay-record-replay\<test account name>`, once under each agent CLI's name (`claude.exe`,
+   `codex.exe`, ...) and once as `pwsh.exe`, since every tutorial opens a PowerShell pane in
+   step 1.
+
+   Then, as an administrator, put `C:\quay-record-replay\%USERNAME%` first in the **system**
+   `Path` variable. Write it as it is written here: each account expands `%USERNAME%` to its own
+   name, so only the test account, which has a folder there, finds the wrapper, and every other
+   account is unaffected. Quay expands the entry itself, with its own `USERNAME`, when it builds a
+   terminal's environment from the registry. A user `Path` entry won't do for
+   `pwsh.exe`: a terminal's `PATH` is the system `Path` followed by the user `Path`, and
+   PowerShell 7 installs into the system `Path`. A `PATH` set in a shell profile won't do either:
+   Quay builds each terminal's environment from the registry, so it never reaches its terminals.
+
+   The wrapper runs the real CLI further along `PATH` and passes everything through, so it changes
+   nothing the agents do. A run whose input or output is piped, such as a command an agent runs
+   through `pwsh`, goes straight to the real CLI unrecorded. The wrapper is the one thing the
+   account holds beyond the "Before you start" lists.
 
 ## Before each run
 
@@ -63,9 +142,9 @@ Do this once.
 
    `docs:build` packs every starter and check suite into the zips the page links to, so the
    preview has exactly what the live site will have. The preview serves the site at
-   `http://localhost:4173/Quay-2/`. `QUAY_TUTORIAL_DRAFT` lets the page build before it has the
-   two passing runs the build otherwise asks for (see [What the build does with the
-   record](#what-the-build-does-with-the-record)). It takes slugs separated by commas.
+   `http://localhost:4173/Quay-2/`. `QUAY_TUTORIAL_DRAFT` lets the page build while it still
+   holds placeholder screenshots (see `scripts/capture/README.md`). It takes slugs separated by
+   commas.
 6. **Do the fresh-eyes read first** when this is the first run of a new run fingerprint. The
    `fresh-eyes-read` project skill runs it in your own account:
 
@@ -96,8 +175,21 @@ open in your own account and fill it in as you go.
 For the recording, run `quay-record-replay mark <recordings folder> NN-<what>` once each step shows
 what its You should see slot describes, with the name of that step's screenshot, such as `03-reply`.
 The capture script takes that screenshot when the replays reach the marker. When the run is over, close
-Quay and run `quay-record-replay finish <recordings folder>`. The recordings are committed with
-the record.
+Quay and run `quay-record-replay finish <recordings folder>`. Run both from a Windows PowerShell or
+Command Prompt window outside Quay, never from a Quay pane or a `pwsh` you started by name, which
+the wrapper would record as one more PowerShell pane.
+
+Then write the tutorial's fixture Claude config, which gives the stills their spend figure, from
+the test account's own Claude config. In the test account, in the checkout that holds the
+recordings:
+
+```powershell
+node scripts/capture/scrub-claude-config.ts <slug> --from "$env:USERPROFILE\.claude"
+```
+
+It is `pnpm docs:claude-config` without needing pnpm on the test account.
+`scripts/capture/README.md` says what it keeps. The recordings and the fixture Claude config are
+committed with the record.
 
 A run passes only when all of these hold:
 
@@ -116,10 +208,9 @@ Two rules go with these:
 - After a failure, any change to a Do or Paste slot, the starter or the check suite means a new
   run from step 1. Changes to wording alone, captions or If not text don't.
 
-Each new run fingerprint needs two passing runs. Run 1 is where Must match and May differ are
-written; run 2 checks them. Anything in run 2 that differed and isn't under May differ either
-moves there, or has its prompt tightened, which changes the fingerprint, so both runs start again.
-A re-run of an unchanged fingerprint is one run.
+One passing run for the page's current run fingerprint measures the tiles. A run that follows a
+page whose stills are still the grey placeholder ([`scripts/capture/README.md`](../capture/README.md))
+writes `not checked: placeholder stills` under Differed from the screenshots.
 
 ## Filling in the section
 
@@ -140,7 +231,7 @@ each box that held, and leave the headings as they are.
 | You're done when | Tick each item that was true at the end. |
 | Fresh-eyes findings | Each finding with its step and quoted line, marked fixed, or dismissed with a reason; `none` if the read found nothing or wasn't due. |
 | Off-page knowledge | Anything you needed that the page didn't give; `none` otherwise. |
-| Differed from the screenshots | Anything on screen that didn't match a You should see image; `none` otherwise. |
+| Differed from the screenshots | Anything on screen that didn't match a You should see image; `none` otherwise. For a run that followed placeholder stills, `not checked: placeholder stills`. |
 
 Commit the record with the run's results on the tutorial's branch.
 
@@ -151,9 +242,9 @@ Commit the record with the run's results on the tutorial's branch.
 glance strip, and the build writes them; the step-card check rejects a page that types a value
 into either.
 
-- **The gate.** A tutorial page fails the build unless its record has two passing runs for the
-  page's current run fingerprint. `QUAY_TUTORIAL_DRAFT=<slug>` lifts the gate for that tutorial;
-  `docs:dev` never applies it.
+- **No gate on runs.** A tutorial page builds with no record, or with no passing run for its
+  current run fingerprint. The build's one refusal for a tutorial's content is a placeholder
+  screenshot left beside the page, which `scripts/capture/README.md` covers.
 - **Time** is the slowest of those passing runs' Total minutes, rounded up to the next 5 minutes,
   as `about 25 min`.
 - **Tokens** is the highest of those runs' totals, rounded up to two significant figures, as
@@ -171,11 +262,12 @@ into either.
   these in drafts and in `docs:dev` too. `pnpm docs:test-run` reads the record the same way, so
   it refuses to add a run until these are fixed.
 
-## The quarterly sweep
+## The tutorial sweep
 
-A published tutorial whose latest passing run is more than 90 days old is re-run on the latest
-agent CLIs. The Tutorial Sweep workflow (`.github/workflows/tutorial-sweep.yml`) works out which
-on the first day of each quarter, and on demand from the Actions tab. It reads each published
+To check which published tutorials haven't been walked through lately, run the Tutorial Sweep
+workflow (`.github/workflows/tutorial-sweep.yml`) from the Actions tab. It has no schedule. It
+lists each published tutorial whose latest passing run is more than 90 days old, or that has
+none, so it can be walked through on the latest Quay and agent CLIs. It reads each published
 tutorial's record and its sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, and opens
 an issue labelled `tutorial-sweep` listing every tutorial due, with the date of its latest
 passing run and the Quay and CLI versions its screenshots and recordings were made with. A
@@ -196,11 +288,11 @@ from before when none is.
 For each tutorial on the list:
 
 1. **Bump the starter's dependencies, or decide to leave them.** A sweep is the only time a
-   starter's pinned dependencies move. A bump changes the run fingerprint, so that tutorial needs
-   two passing runs; one whose starter is unchanged needs one.
-2. **Do the runs,** as above. Each run re-makes the tutorial's recordings.
-3. **Recapture the screenshots** from the new recordings with `pnpm docs:capture`
-   (`scripts/capture/README.md`), which rewrites the sidecar manifest.
+   starter's pinned dependencies move.
+2. **Follow the page** and fix anything that no longer works. Record the walk-through as a test
+   run, as above, to re-measure the Time and Tokens tiles.
+3. **Retake any screenshot that no longer matches** with `pnpm docs:shots`
+   (`scripts/capture/README.md`).
 
 A CLI update on its own triggers no re-run.
 

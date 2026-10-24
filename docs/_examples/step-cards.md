@@ -8,7 +8,8 @@
      03-reply.mp4 beside 03-reply.webp plays in place of the still, so its caption says what
      moves. The images and the clip are placeholders. The Time and Tokens tiles are left empty:
      on a tutorial the build writes them from its test runs, and here it shows that nothing has
-     been measured. -->
+     been measured. A tutorial's Before you start list and step 1 are longer: copy them from
+     Swarm 1's page, as "What every tutorial page shares" in scripts/test-runs/README.md says. -->
 
 Two agents pass one message, so you can see every slot a step card has.
 
@@ -34,8 +35,8 @@ Two agents pass one message, so you can see every slot a step card has.
 
 ::: do
 1. Download `example.zip` and unzip it into a new, empty folder.
-2. In Quay, click **Add Project Workspace** in the rail and pick that folder.
-3. Press `Ctrl+B N`, choose **PowerShell** and click **Start Terminal**.
+2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
+3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane

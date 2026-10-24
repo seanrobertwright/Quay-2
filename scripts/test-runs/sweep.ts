@@ -1,5 +1,5 @@
-// The quarterly sweep: which published tutorials are due a re-run because their latest passing
-// test run is more than 90 days old, and the issue that lists them. README.md beside this file
+// The tutorial sweep: which published tutorials are due a re-run because their latest passing
+// test run is more than 90 days old, or they have none, and the issue that lists them. README.md beside this file
 // says what a sweep re-run involves.
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -84,8 +84,8 @@ export function sweepIssue(due: DueTutorial[], today: string): string {
   });
   const count = due.length === 1 ? '1 tutorial' : `${due.length} tutorials`;
   return [
-    `The quarterly sweep on ${today} found ${count} due a re-run: a latest passing test run more than ${SWEEP_AFTER_DAYS} days old, or no passing run.`,
-    'Re-run each one on the latest agent CLIs, as `scripts/test-runs/README.md` says.',
+    `The sweep on ${today} found ${count} due a re-run: a latest passing test run more than ${SWEEP_AFTER_DAYS} days old, or no passing run.`,
+    'Walk through each one on the latest Quay and agent CLIs, as `scripts/test-runs/README.md` says.',
     '',
     '| Tutorial | Latest passing run | Days old | Quay captured | Recorded on | CLIs recorded |',
     '| --- | --- | --- | --- | --- | --- |',
@@ -95,9 +95,9 @@ export function sweepIssue(due: DueTutorial[], today: string): string {
     '',
     'For each tutorial:',
     '',
-    "1. Bump its starter's pinned dependencies, or decide to leave them. A sweep is the only time starter dependencies are bumped. A bump changes the run fingerprint, so the tutorial then needs two passing runs; otherwise one.",
-    '2. Do the test runs. Each run re-makes the recordings.',
-    '3. Recapture the screenshots from the new recordings with `pnpm docs:capture`, which rewrites the sidecar manifest.',
+    "1. Bump its starter's pinned dependencies, or decide to leave them. A sweep is the only time starter dependencies are bumped.",
+    '2. Follow its page and fix anything that no longer works. Record the walk-through as a test run with `pnpm docs:test-run` to re-measure its Time and Tokens tiles.',
+    '3. Retake any screenshot that no longer matches with `pnpm docs:shots`.',
     '',
     ...due.map(({ tutorial }) => `- [ ] ${tutorialTitle(tutorial)} (\`${tutorial.slug}\`)`),
     '',

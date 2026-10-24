@@ -71,6 +71,32 @@ stream and every bridge call. The CLI behaves as it does without the tool.
 A record run of Claude Code needs a `CLAUDE_CONFIG_DIR` that is past onboarding; an empty one
 puts Claude Code on its theme chooser.
 
+Only a terminal is recorded. A run whose input or output is piped, rather than a terminal, gets
+the real CLI as it is, with nothing recorded: it takes no recording's number, and whoever started
+it reads the CLI's own output. That keeps out the shell commands an agent runs through
+`pwsh.exe`, for example.
+
+### Shell panes
+
+A PowerShell pane is recorded like an agent CLI. Quay starts it as `pwsh.exe`, so the tool,
+copied as `pwsh.exe`, records the pane's whole session. Its replay then plays that session into
+the pane in a capture, so a watcher pane turns green in the stills although replays never touch
+the disk. A tutorial's PowerShell panes are numbered in the order they open: in Swarm 1, step 1's
+pane is `pwsh-1` and the swarm's `build-watcher` is `pwsh-2`.
+
+Quay starts a few other terminals through `pwsh.exe` too, and under the tool each of them is
+recorded as a `pwsh` recording, numbered with the PowerShell panes:
+
+- a Command or Archon pane, whose output the stills then show as recorded;
+- a terminal whose CLI isn't installed, which prints a message and exits;
+- an npm-shim CLI (Pi, Gemini) started with a launch prompt, whose whole terminal is then the
+  `pwsh` recording, since the CLI itself starts inside it. No tutorial uses one.
+
+On Windows, Quay builds a terminal's `PATH` from the system `Path` followed by the user `Path`,
+and PowerShell 7 installs into the system `Path`. A `pwsh.exe` copy on a user `Path` is never
+reached, so the test account puts the tool's folder at the front of the system `Path`, as
+`scripts/test-runs/README.md` describes.
+
 A capture:
 
 1. Empties the tutorial's recordings folder. Recordings are numbered per CLI in the order
@@ -94,8 +120,11 @@ recorded: the first terminal Quay opens as `claude.exe` plays `claude-1`, the se
 with no recording left says so and exits.
 
 The replay plays the terminal stream at its recorded offsets and re-issues each bridge call
-at its recorded offset, so badges, Mission Control and the trail run on real Quay code. It
-follows the wire rules:
+at its recorded offset, so badges, Mission Control and the trail run on real Quay code. A
+stretch longer than a second with nothing shown, no output and no bridge call, plays as one
+second, with whatever falls inside it, such as a marker, kept in order. Such a stretch is the
+run waiting, most often for whoever recorded it to type the next step's marker, so a capture's
+real-time clip shows the motion and not the wait. It follows the wire rules:
 
 - Every call carries `Authorization: Bearer <CLAUDE_EVENTS_TOKEN>`, the live token Quay
   handed the fake exe. MCP calls are attributed by that token.
@@ -176,4 +205,6 @@ command looked up on the `PATH` the test hands the terminal, and use a stub agen
 replays it with no agent CLI on `PATH` against a new bridge, and compares what both bridges
 received and what both terminals showed. The capture tests replay recordings written by hand
 and steer them through the state folder: the markers reached, a hold at `run-to`, and a change
-of `speed` mid-run. The `Record and replay` workflow runs them.
+of `speed` mid-run. The record tests also run the tool as `pwsh.exe` with its output piped and
+check that the real CLI's own output comes back with nothing recorded. The `Record and replay`
+workflow runs them.

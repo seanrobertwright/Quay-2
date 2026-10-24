@@ -1,6 +1,6 @@
 ---
 name: fresh-eyes-read
-description: Run a fresh-eyes read of a built Quay 2 tutorial page, so a new agent that sees only the page reports where a newcomer would get stuck. Use before the first test run of each new run fingerprint, on any pull request that changes a tutorial page's wording, or when asked for a fresh-eyes read of a tutorial.
+description: Run a fresh-eyes read of a built Quay 2 tutorial page, so a new agent that sees only the page reports where a newcomer would get stuck. Use before a tutorial is first published, after a change to its Do or Paste slots, on any pull request that changes a tutorial page's wording, or when asked for a fresh-eyes read of a tutorial.
 ---
 
 # Fresh-eyes read
@@ -9,7 +9,7 @@ A fresh-eyes read covers the maintainer's blind spot: knowing Quay too well to n
 
 ## When it runs
 
-- Before the first test run of each new run fingerprint: a new tutorial, or a change to a tutorial's Do or Paste slots, its `starter/` or its `check/`.
+- Before a tutorial is first published, and after a change to its Do or Paste slots, its `starter/` or its `check/`.
 - On any pull request that changes a tutorial page's wording.
 
 It runs locally, never in CI, so no API key goes into GitHub.
@@ -46,6 +46,6 @@ A quote the script can't find in its step is kept and marked, so check where it 
 
 ## Record the findings
 
-The script prints a `### Fresh-eyes findings` section. In `examples/tutorials/<slug>/test-runs.md`, it replaces the `### Fresh-eyes findings` section of the coming run, which `pnpm docs:test-run <slug>` adds. On a pull request, put it in the description too. Then work through it with the maintainer, and fill in each finding's Outcome: fixed, or dismissed with a reason. A fix that changes a Do or Paste slot changes the run fingerprint.
+The script prints a `### Fresh-eyes findings` section. Put it in the pull request description. When a test run is recorded, it also replaces the `### Fresh-eyes findings` section of that run in `examples/tutorials/<slug>/test-runs.md`, which `pnpm docs:test-run <slug>` adds. Then work through it with the maintainer, and fill in each finding's Outcome: fixed, or dismissed with a reason. A fix that changes a Do or Paste slot changes the run fingerprint.
 
 The script names the folder that holds what the reader was given (`page.md` and the images) and its `findings.md`. Open it when a finding seems to misread the page, to see what the reader saw.

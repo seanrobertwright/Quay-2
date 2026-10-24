@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { publishedTutorials, TUTORIALS, tutorialsSidebar } from '../../docs/.vitepress/tutorials.ts';
+import { nextUp, publishedTutorials, TUTORIALS, tutorialsSidebar } from '../../docs/.vitepress/tutorials.ts';
 
 /** A throwaway docs folder holding a page for each of `pages`, given as `<series>/<slug>`. */
 function docsWith(...pages: string[]): string {
@@ -65,4 +65,15 @@ test('a series with no published tutorial is left out of the sidebar', () => {
     { text: 'Tutorials', link: '/tutorials/' },
     { text: 'A2A', items: [{ text: '7. Broadcast coordination', link: '/tutorials/a2a/broadcast/' }] },
   ]);
+});
+
+test("a Next up card points at the first published tutorial after its own, across the series, or at none", () => {
+  const docs = docsWith('swarm/first-swarm', 'swarm/full-stack-pair', 'a2a/hello-a2a', 'a2a/second-opinion-codex');
+  const published = publishedTutorials(docs);
+  const after = (slug: string) => nextUp(TUTORIALS.find((tutorial) => tutorial.slug === slug)!, published)?.slug ?? null;
+  assert.equal(after('first-swarm'), 'full-stack-pair', 'Swarm 2 is unpublished, so Swarm 3 is next');
+  assert.equal(after('full-stack-pair'), 'hello-a2a', 'Swarm 10 leads on to A2A 1');
+  assert.equal(after('hello-a2a'), 'second-opinion-codex');
+  assert.equal(after('second-opinion-codex'), null, 'A2A 10 always leads back to the landing page');
+  assert.equal(nextUp(TUTORIALS[0], publishedTutorials(docsWith('swarm/first-swarm'))), null, 'nothing after it is published');
 });

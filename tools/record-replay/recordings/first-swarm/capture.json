@@ -1,0 +1,71 @@
+{
+  "tutorial": "first-swarm",
+  "steps": [
+    {
+      "marker": "01-starter-installed",
+      "actions": [
+        { "press": "Control+b", "in": "body" },
+        { "press": "n", "in": "body" },
+        { "click": "text=PowerShell Console" },
+        { "click": "text=Start Terminal (Enter)" },
+        { "type": "git init -b main; git add -A; git commit -m Starter; npm install", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "press": "Enter", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" }
+      ],
+      "waitFor": [".xterm:visible"],
+      "timeout": 180
+    },
+    {
+      "marker": "02-swarm-launched",
+      "actions": [
+        { "press": "Control+b", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "press": "s", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "click": "text=Launch Swarm Now" }
+      ],
+      "realTime": true,
+      "waitFor": [".xterm:visible >> nth=1"],
+      "shots": [{ "clip": true }]
+    },
+    {
+      "marker": "03-watcher-red",
+      "actions": [
+        { "press": "Control+b", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "press": "o", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "type": "npm test", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
+        { "press": "Enter", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" }
+      ],
+      "shots": [{ "pane": ".xterm:visible >> nth=1" }]
+    },
+    {
+      "marker": "04-tests-green",
+      "actions": [
+        { "press": "Control+b", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
+        { "press": "o", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
+        {
+          "type": "Implement src/tip.ts so every test in test/tip.test.ts passes. Don't run the tests yourself: the build-watcher pane is running them, and I'm watching it. Tell me when you believe they all pass.",
+          "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea"
+        },
+        { "press": "Enter", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" }
+      ],
+      "timeout": 300
+    },
+    {
+      "marker": "05-watcher-zoomed",
+      "actions": [
+        { "press": "Control+b", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "press": "o", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "click": "button[title=\"Zoom active pane (Ctrl+B z)\"]" }
+      ],
+      "waitFor": ["button[title=\"Restore split layout (Ctrl+B z)\"]"]
+    },
+    {
+      "marker": "06-cli-output",
+      "actions": [
+        { "click": "button[title=\"Restore split layout (Ctrl+B z)\"]" },
+        { "press": "q", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
+        { "type": "node src/cli.ts 42.50 18 3; git status --short", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
+        { "press": "Enter", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" }
+      ],
+      "shots": [{ "pane": ".xterm:visible >> nth=1" }]
+    }
+  ]
+}

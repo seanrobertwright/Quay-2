@@ -33,13 +33,13 @@ import {
   type MachineFacts,
   type PlannedStep,
   type Shot,
+  WEBP_QUALITY,
 } from './capture.ts';
+import { claudeConfigProblems, readClaudeConfig } from './claude-config.ts';
 import { checkFfmpeg, encodeClip, startClip } from './clip.ts';
 import { parseCatFileBatch, readSavedShot, releaseBase, reportShots, shotReportDir, type CapturedShot, type SidecarCommit } from './shot-report.ts';
 
 const root = join(import.meta.dirname, '..', '..');
-/** WebP at quality 90 kept a 200% shot near 100 KB in the screenshot research. */
-const WEBP_QUALITY = 90;
 /** The rail header's bridge-port badge, which changes every launch and is always masked. */
 const PORT_BADGE = /^:\d+$/;
 /** The badge's own background, so the mask reads as an empty badge. */
@@ -251,13 +251,19 @@ function sidecarHistory(sidecar: string): SidecarCommit[] {
   });
 }
 
-/** Each shot in the plan, as saved in the stills folder by this capture and as committed at `base`. */
+/**
+ * Each shot in the plan, as saved in the stills folder by this capture and as committed at `base`.
+ * A committed placeholder counts as nothing committed, so a draft's first capture reports its
+ * shots as new.
+ */
 function capturedShots(plan: PlannedStep[], stills: string, base: string | null): CapturedShot[] {
   const files = plan.flatMap(({ step }) => step.shots.map((shot) => ({ name: shot.name, file: join(stills, `${shot.name}.webp`) })));
   const committed = base === null ? files.map(() => null) : gitFiles(files.map(({ file }) => `${base}:${gitPath(file)}`));
+  const placeholder = readFileSync(join(root, 'scripts', 'capture', 'placeholder.webp'));
   return files.map(({ name, file }, i) => {
     if (!existsSync(file)) throw new Error(`${relative(root, file)} was not saved`);
-    return { name, committed: committed[i], captured: readFileSync(file) };
+    const shot = committed[i];
+    return { name, committed: shot?.equals(placeholder) ? null : shot, captured: readFileSync(file) };
   });
 }
 
@@ -455,6 +461,13 @@ async function main() {
   const stale = existsSync(paths.stills) ? staleClips(manifest, readdirSync(paths.stills)) : [];
   if (stale.length > 0) {
     throw new Error(`capture.json records no clip ${stale.join(' or ')}, so it would go stale beside its still in ${relative(root, paths.stills)}; delete it, or set clip on its shot`);
+  }
+  const configProblems = existsSync(paths.claudeConfig) ? claudeConfigProblems(readClaudeConfig(paths.claudeConfig)) : [];
+  if (configProblems.length > 0) {
+    throw new Error(
+      `${relative(root, paths.claudeConfig)} is not a scrubbed fixture Claude config; make it with pnpm docs:claude-config:\n` +
+        configProblems.map((problem) => `  ${problem}`).join('\n'),
+    );
   }
   const hasClip = plan.some(({ step }) => step.shots.some((shot) => shot.clip));
   if (hasClip && !args.byHand) checkFfmpeg(args.ffmpeg);

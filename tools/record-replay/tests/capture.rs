@@ -91,8 +91,8 @@ fn a_replay_holds_at_the_run_to_marker_until_it_names_a_later_step() {
             (0.2, "m", "01-first"),
             (0.3, "o", "middle\r\n"),
             (0.4, "m", "02-second"),
-            (2.4, "o", "after\r\n"),
-            (2.5, "x", "0"),
+            (1.2, "o", "after\r\n"),
+            (1.3, "x", "0"),
         ],
     );
     capture.set("run-to", "02-second");
@@ -111,7 +111,7 @@ fn a_replay_holds_at_the_run_to_marker_until_it_names_a_later_step() {
     let after = released.elapsed();
     assert_eq!(terminal.wait_exit(WAIT), 0);
     // What follows the marker keeps its recorded pace from the release, not from the start.
-    assert!(after > Duration::from_millis(1500), "\"after\" came {after:?} after the release, recorded 2 s after the marker");
+    assert!(after > Duration::from_millis(500), "\"after\" came {after:?} after the release, recorded 0.8 s after the marker");
 }
 
 #[test]
@@ -126,9 +126,33 @@ fn a_replay_with_no_run_to_file_holds_nowhere() {
 }
 
 #[test]
+fn a_replay_plays_a_long_wait_with_nothing_shown_as_one_second() {
+    let capture = Capture::new("capture-idle");
+    // Twenty seconds with nothing on screen but a marker, as a run waits for its next mark.
+    write_recording(
+        &capture.recordings,
+        "claude-1",
+        &[(0.1, "o", "start\r\n"), (19.9, "m", "01-first"), (20.0, "o", "end\r\n"), (20.1, "x", "0")],
+    );
+
+    let mut terminal = capture.replay();
+    terminal.wait_for_text("start", WAIT);
+    let started = Instant::now();
+
+    assert_eq!(terminal.wait_exit(WAIT), 0);
+    assert!(started.elapsed() < Duration::from_secs(3), "a 20 s wait at real time took {:?}", started.elapsed());
+    assert!(terminal.text().contains("end"), "{}", terminal.text());
+    assert_eq!(capture.reached(), "01-first\n");
+}
+
+#[test]
 fn a_replay_follows_the_speed_the_capture_sets_while_it_plays() {
     let capture = Capture::new("capture-speed");
-    write_recording(&capture.recordings, "claude-1", &[(0.1, "o", "start\r\n"), (20.0, "o", "end\r\n"), (20.1, "x", "0")]);
+    // Output every half second, so none of it is a wait the replay cuts.
+    let mut events = vec![(0.1, "o", "start\r\n")];
+    events.extend((1..40).map(|i| (0.1 + f64::from(i) * 0.5, "o", ".")));
+    events.extend([(20.0, "o", "end\r\n"), (20.1, "x", "0")]);
+    write_recording(&capture.recordings, "claude-1", &events);
 
     let mut terminal = capture.replay();
     terminal.wait_for_text("start", WAIT);

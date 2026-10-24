@@ -8,7 +8,7 @@ import { testRuns } from '../../scripts/test-runs/publish.ts';
 
 // https://vitepress.dev/reference/site-config
 export default ({ command }: ConfigEnv) => {
-  // Only docs:build holds a tutorial back until it has two passing test runs; docs:dev serves drafts.
+  // Only docs:build holds a tutorial back while it has placeholder screenshots; docs:dev serves drafts.
   const publish = testRuns(command);
   return withMermaid(
   defineConfig({

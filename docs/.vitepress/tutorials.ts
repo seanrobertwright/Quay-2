@@ -84,6 +84,15 @@ export function publishedTutorials(docsDir: string): Tutorial[] {
   return TUTORIALS.filter((tutorial) => existsSync(join(docsDir, tutorialPage(tutorial))));
 }
 
+/**
+ * The tutorial a tutorial's Next up card links to: the first one after it in series order whose
+ * page is published. Null when none after it is, and the card links to the landing page, as
+ * A2A 10's always does.
+ */
+export function nextUp(tutorial: Tutorial, published: readonly Tutorial[]): Tutorial | null {
+  return TUTORIALS.slice(TUTORIALS.indexOf(tutorial) + 1).find((later) => published.includes(later)) ?? null;
+}
+
 /** Each series that has a published tutorial, with those tutorials in order. */
 function bySeries(published: readonly Tutorial[]): [Series, Tutorial[]][] {
   return (Object.keys(SERIES) as Series[])

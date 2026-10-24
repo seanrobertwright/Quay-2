@@ -2,7 +2,7 @@
 //! everything through both ways, and records what passes. The CLI's events URL and MCP config
 //! point at a proxy on loopback that forwards every request to the live bridge unchanged.
 
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, IsTerminal, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -17,6 +17,12 @@ use crate::recording::{self, Header, Recorder};
 
 pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Result<i32, String> {
     let real = find_real_cli(cli, own_exe)?;
+    // Only a terminal is recorded. A run with its input or output piped, such as a shell command
+    // an agent runs through `pwsh.exe`, gets the real CLI as it is: it takes no recording's
+    // number, and its caller reads the CLI's own output, not a terminal's.
+    if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+        return pass_through(&real, args);
+    }
     let (cols, rows) = console::size();
     let live = http::Live::from_env()?;
     // Asked before the clock starts, so the run starts when the recording does.
@@ -114,6 +120,12 @@ pub fn run(cli: &str, own_exe: &Path, args: &[String], record_dir: &Path) -> Res
     recorder.exit(code);
     recorder.finish()?;
     Ok(code)
+}
+
+/// Runs the real CLI with this process's input, output and environment, and returns its exit code.
+fn pass_through(real: &Path, args: &[String]) -> Result<i32, String> {
+    let status = Command::new(real).args(args).status().map_err(|e| format!("cannot start {}: {e}", real.display()))?;
+    Ok(status.code().unwrap_or(1))
 }
 
 /// The first line the real CLI prints for `--version`, so a capture can say which version made

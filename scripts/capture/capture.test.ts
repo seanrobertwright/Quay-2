@@ -209,7 +209,7 @@ function writeRecording(dir: string, name: string, header: object, events: [numb
   writeFileSync(join(dir, `${name}.http.jsonl.gz`), gzipSync(''));
 }
 
-test("a tutorial's recordings say which CLI made each, when, at which version, and the markers each reaches", () => {
+test("a tutorial's recordings say which CLI made each, when it started and ended, at which version, and the markers each reaches", () => {
   const dir = mkdtempSync(join(tmpdir(), 'capture-recordings-'));
   writeRecording(dir, 'claude-1', { timestamp: 1_792_000_000, cli_version: '2.1.0 (Claude Code)' }, [
     [0.1, 'o', 'hello'],
@@ -226,9 +226,9 @@ test("a tutorial's recordings say which CLI made each, when, at which version, a
   writeFileSync(join(dir, 'capture.json'), '{}');
 
   assert.deepEqual(readRecordings(dir), [
-    { name: 'claude-1', cli: 'claude', startedAt: 1_792_000_000_000, cliVersion: '2.1.0 (Claude Code)', markers: ['02-two-agents', '03-reply'], startMarker: null },
-    { name: 'claude-2', cli: 'claude', startedAt: 1_792_000_030_000, cliVersion: '2.1.0 (Claude Code)', markers: ['02-two-agents', '03-reply'], startMarker: '02-two-agents' },
-    { name: 'codex-1', cli: 'codex', startedAt: null, cliVersion: null, markers: [], startMarker: null },
+    { name: 'claude-1', cli: 'claude', startedAt: 1_792_000_000_000, endedAt: 1_792_000_002_000, cliVersion: '2.1.0 (Claude Code)', markers: ['02-two-agents', '03-reply'], startMarker: null },
+    { name: 'claude-2', cli: 'claude', startedAt: 1_792_000_030_000, endedAt: 1_792_000_031_000, cliVersion: '2.1.0 (Claude Code)', markers: ['02-two-agents', '03-reply'], startMarker: '02-two-agents' },
+    { name: 'codex-1', cli: 'codex', startedAt: null, endedAt: null, cliVersion: null, markers: [], startMarker: null },
   ]);
 });
 
@@ -247,6 +247,7 @@ const recording = (name: string, markers: string[], startMarker: string | null =
   name,
   cli: name.replace(/-\d+$/, ''),
   startedAt: 1_792_000_000_000,
+  endedAt: 1_792_000_060_000,
   cliVersion: '1.0.0',
   markers,
   startMarker,
