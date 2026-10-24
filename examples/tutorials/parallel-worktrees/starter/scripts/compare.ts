@@ -17,7 +17,7 @@ function folderOf(branch: string): string {
   return branch === "main" ? project : join(project, ".worktrees", branch.replace(/[/\\]/g, "-"));
 }
 
-/** Runs the folder's tests once and gives "<passed>/<total>". */
+/** Runs the folder's tests once and gives "<passed>/<total>", "no vitest" or "error". */
 function tests(folder: string): string {
   let cli: string;
   try {
@@ -38,19 +38,22 @@ function tests(folder: string): string {
   }
 }
 
-/** Times the folder's findDuplicates on the 50,000 contacts, giving up after five seconds. */
+/**
+ * Times the folder's findDuplicates on the 50,000 contacts, giving up after CUT_OFF_MS. The time
+ * is "<ms> ms", "over <cut-off> s" or "error"; groups is "-" unless the bench finished.
+ */
 function bench(folder: string): { time: string; groups: string; bar: string } {
   const run = spawnSync(process.execPath, [join(project, "scripts", "bench.ts"), folder], {
     encoding: "utf8",
     timeout: CUT_OFF_MS,
   });
-  if (run.error !== undefined || run.signal !== null) return { time: "over 5 s", groups: "-", bar: "FAIL" };
+  if (run.error !== undefined || run.signal !== null) return { time: `over ${CUT_OFF_MS / 1_000} s`, groups: "-", bar: "FAIL" };
   if (run.status !== 0) return { time: "error", groups: "-", bar: "FAIL" };
   const { ms, groups } = JSON.parse(run.stdout.trim().split("\n").at(-1) ?? "{}");
   return { time: `${ms} ms`, groups: String(groups), bar: ms < BAR_MS ? "PASS" : "FAIL" };
 }
 
-/** The lines the folder changes under src/ against main, as "+<added> -<removed>". */
+/** The lines the folder changes under src/ against main, as "+<added> -<removed>", or "-" if git fails. */
 function srcLines(folder: string): string {
   const diff = spawnSync("git", ["diff", "--shortstat", "main", "--", "src"], { cwd: folder, encoding: "utf8" });
   if (diff.status !== 0) return "-";
