@@ -4,11 +4,12 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-const project = new URL("..", import.meta.url);
-
-/** Runs `node src/cli.ts check/fixtures/<fixture>` from the project folder. */
+/** Runs the CLI from the project folder, as `node src/cli.ts check/fixtures/<fixture>`. */
 function convert(fixture: string) {
-  return spawnSync(process.execPath, ["src/cli.ts", `check/fixtures/${fixture}`], { cwd: project, encoding: "utf8" });
+  return spawnSync(process.execPath, ["src/cli.ts", `check/fixtures/${fixture}`], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+  });
 }
 
 /** The JSON SPEC.md rule 8 asks for: indented two spaces, then one line break. */
