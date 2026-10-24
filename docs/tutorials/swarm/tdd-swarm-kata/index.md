@@ -11,7 +11,7 @@ Build a password-strength checker the test-first way with Quay's TDD Swarm: one 
 
 **You'll learn:** how to launch a four-pane preset in a 2x2 grid, move between its panes, zoom one pane to read it (`Ctrl+B Z`), and run a red, green, review loop by hand. A2A 3 automates this same loop.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. Each prompt the page gives you goes into the pane it names: click inside that pane, paste the prompt, and press Enter to run it or, in a Claude Code pane, to send it.
 
 ::: before
 ## Before you start
@@ -100,7 +100,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 :::
 
 ::: ifnot test-architect stops with an error about its model
-Your Claude Code sign-in can't use `claude-sonnet-5-5`, the model the TDD Swarm preset starts `test-architect` on. Sign in to Claude Code with an account that can use it, then close the four swarm panes and launch the swarm again.
+Your Claude Code sign-in can't use `claude-sonnet-5-5`, the model the TDD Swarm preset starts `test-architect` on. Sign in to Claude Code with an account that can use it. Then close the four swarm terminals: in the rail, hover over each of `test-architect`, `feature-impl`, `test-runner` and `reviewer` and click the **×** that appears, **Close terminal**. Launch the swarm again from the start of this step.
 :::
 
 :::
@@ -339,7 +339,11 @@ Re-read AGENTS.md, src/strength.ts and test/strength.test.ts. If all three rules
 :::
 
 ::: ifnot reviewer replies CHANGES REQUESTED
-Copy its numbered list. Paste each item that asks for a test into `test-architect`, and each item that asks for a code change into `feature-impl`, after the words `Address these, keeping every test green:`. Wait until `test-runner` shows every test passing, then paste this step's prompt into `reviewer` again.
+Copy its numbered list, then hand the items on one agent at a time:
+
+1. If any item asks for a test, send `test-architect` one message: `Add tests for these review findings. Do not touch src/:` followed by every item that asks for a test. Wait until it says it's done.
+2. If any item asks for a code change, or `test-runner` now shows a failing test, send `feature-impl` one message: `Address these review findings and make every test pass. Do not edit test/:` followed by every item that asks for a code change. Wait until `test-runner` shows every test passing.
+3. Paste this step's prompt into `reviewer` again.
 :::
 
 :::
