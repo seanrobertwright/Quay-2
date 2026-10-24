@@ -13,6 +13,8 @@ Three Claude Code agents convert one small JavaScript project to TypeScript at t
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
 
+Each **Paste** box below has a copy button at its top right. To paste into a pane, move focus to it, press `Ctrl+V`, then press Enter to run the command or send the prompt. A role prompt goes into a box in the Swarm Launcher instead: paste it there and don't press Enter.
+
 ::: before
 ## Before you start
 - **Quay 2** is installed from the latest release ([Installing a Release](/guide/installation#installing-a-release)).
@@ -28,7 +30,7 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 ## 1. Get the starter project
 
-The starter is `receipt`, a command-line tool in plain JavaScript that reads a shopping list and prints a receipt with a total. Its code sits in three folders, one for each agent: `src/parse/` reads the list, `src/format/` prints the receipt and `src/cli/` runs the command. The tests in `test/` are TypeScript already and are frozen, so each agent knows it broke nothing. `AGENTS.md` holds the rules every agent reads.
+The starter is `receipt`, a command-line tool in plain JavaScript that reads a shopping list and prints a receipt with a total. Its code sits in three folders, one for each agent: `src/parse/` reads the list, `src/format/` prints the receipt and `src/cli/` runs the command. The tests in `test/` are TypeScript already and are frozen, so each agent knows it broke nothing. `AGENTS.md` holds the rules every agent reads. The zip holds these files with no folder around them, so the folder you unzip it into is the project folder.
 
 ::: do
 1. Download [`js-to-typescript.zip`](/starters/js-to-typescript.zip) and unzip it into a new, empty folder.
@@ -80,8 +82,8 @@ No built-in preset gives each of three agents one folder and adds a shell pane, 
 2. In **Swarm Name**, replace `Custom Swarm` with `JS to TS`.
 3. Under **Layout Arrangement**, click **2x2 Quad Grid**.
 4. Click **Add Agent** twice, so the **Agents Roster** has four rows. New rows start on **Claude Code**.
-5. Fill the rows as the table below shows. In each row the CLI is the drop-down, then the role, then the session name, which becomes the pane's name.
-6. Click the first row's **Role prompt** box and paste `parse-agent`'s role prompt below.
+5. Fill the rows as the table below shows. Each row has three controls on one line: the CLI drop-down, which starts on **Claude Code**; the role box, which starts as `Agent 1`, `Agent 2` and so on; and the narrower session-name box, which starts as `agent-1`, `agent-2` and so on and becomes the pane's name. Select all the text in a box and type over it.
+6. Under that line, each row has a larger box labelled **Role prompt (optional)**. Click the first row's **Role prompt** box and paste `parse-agent`'s role prompt below.
 :::
 
 | Row | CLI | Role | Session name |
@@ -181,7 +183,7 @@ You are the CLI Migrator. You own src/cli/ and nothing else, including its impor
 ## 5. Launch the swarm
 
 ::: do
-1. Click **Launch Swarm Now**.
+1. Click **Launch Swarm Now**, the green button at the right of the launcher's footer, after **Cancel** and **Save**. Don't click **Save**: this swarm isn't kept.
 :::
 
 The launcher closes and the four panes open in a 2x2 grid, in roster order. The PowerShell pane from step 1 is still open: it is listed in the rail, just not on the stage. Terminals keep the order you opened them in, so `Ctrl+B 1` is the PowerShell pane from step 1, and `Ctrl+B 2` to `Ctrl+B 5` are `parse-agent`, `format-agent`, `cli-agent` and `tsc-watcher`.
