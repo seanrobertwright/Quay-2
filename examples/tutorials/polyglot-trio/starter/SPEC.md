@@ -1,6 +1,6 @@
 # SPEC: csv2json
 
-`src/cli.ts` reads one CSV file and prints it as JSON. These eight rules are the whole
+`src/cli.ts` reads one CSV file and prints it as JSON. These rules are the whole
 contract. Nothing else is required, and nothing here may be skipped.
 
 1. **Usage.** Run it as `node src/cli.ts <file.csv>`. With no argument, or with a file that

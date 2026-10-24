@@ -32,7 +32,7 @@ Every agent on the A2A bus is a **peer**, and Quay can type a message into any o
 
 ## 1. Get the starter project
 
-The starter is a CSV-to-JSON converter with nothing inside it yet. `SPEC.md` is the contract all three agents read: eight numbered rules, then the exact JSON the finished tool prints for `samples/orders.csv`. `AGENTS.md` says which agent may edit which file and how a review is laid out. The zip holds these files at its top level, with no folder around them, so the folder you unzip it into is the project folder you add to Quay.
+The starter is a CSV-to-JSON converter with nothing inside it yet. `SPEC.md` is the contract all three agents read: the numbered rules, then the exact JSON the finished tool prints for `samples/orders.csv`. `AGENTS.md` says which agent may edit which file and how a review is laid out. The zip holds these files at its top level, with no folder around them, so the folder you unzip it into is the project folder you add to Quay.
 
 ::: do
 1. Download [`polyglot-trio.zip`](/starters/polyglot-trio.zip) and unzip it into a new, empty folder.
@@ -328,7 +328,7 @@ Codex waited for a reply after all. The message still reached `claude-dev`, so c
 
 ## 9. Check it worked
 
-The check suite is six tests none of the agents saw. Each runs the finished converter on a CSV file of its own and checks one of `SPEC.md`'s rules.
+The check suite is a set of tests none of the agents saw. Each runs the finished converter on a CSV file of its own and checks one of `SPEC.md`'s rules.
 
 ::: do
 1. Download [`polyglot-trio-check.zip`](/starters/polyglot-trio-check.zip). Unzip it into the project folder itself, not into a new folder inside it, so that `check` sits beside `src`.
@@ -342,7 +342,7 @@ npx vitest run check; node src/cli.ts samples/orders.csv; Get-Content review.md 
 :::
 
 ::: see
-![test-runner: Vitest reports the six check tests passed, the converter prints the JSON for orders.csv, then the verdict line of review.md and the git status lines.](./09-check.webp)
+![test-runner: Vitest reports the check tests passed, the converter prints the JSON for orders.csv, then the verdict line of review.md and the git status lines.](./09-check.webp)
 :::
 
 ::: must
