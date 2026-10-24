@@ -31,7 +31,7 @@ The notes app is yours and runs on your machine. Its three holes are textbook on
 ## 1. Get the starter project
 
 ::: do
-1. Download [`red-team-blue-team.zip`](/starters/red-team-blue-team.zip) and unzip it into a new, empty folder.
+1. Download [`red-team-blue-team.zip`](/starters/red-team-blue-team.zip) and unzip it into a new, empty folder. The project's files sit at the top of the zip, so they land straight in that folder, and that folder is the project.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
 3. Press `Ctrl+B N`, choose **PowerShell Console**, type `shell` under **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
 
@@ -169,7 +169,7 @@ Read AGENTS.md, then run npm test. The red team has added failing tests under te
 :::
 
 ::: ifnot blue-team says a test is wrong
-`blue-team` stops instead of editing a test, as its role says. Press `Ctrl+B O` and paste into `red-team`: `blue-team says this test asserts something AGENTS.md doesn't require:`, followed by its reason, then `Re-read the rules and either fix the test or delete it, then tell me which.` When `red-team` answers, press `Ctrl+B O` and paste `Run npm test again and continue.` into `blue-team`.
+`blue-team` stops instead of editing a test, as its role says. Press `Ctrl+B O` and paste this one line into `red-team`: `blue-team says one of your tests asserts something AGENTS.md doesn't require. Re-read the four rules, check each of your tests against them, fix or delete any test that asserts more than a rule says, then tell me what you changed.` When `red-team` answers, press `Ctrl+B O` and paste `Run npm test again and continue.` into `blue-team`.
 :::
 
 :::
