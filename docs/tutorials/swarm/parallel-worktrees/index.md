@@ -119,8 +119,9 @@ The project's first branch isn't called `main`. Paste `git branch -m main` into 
 ::: do
 1. Click `try-scan` under **Worktrees** in the rail. The stage empties: this worktree has no terminals yet.
 2. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** selected. Check that it says **Target: try-scan**.
-3. Click **Launch Swarm Now**, and wait until `lead-dev` has confirmed its role in one line.
-4. Press `Ctrl+B O` to move focus to `build-watcher`. Its border lights up.
+3. Click **Launch Swarm Now**. Dev & Watcher opens two panes side by side in `try-scan`: `lead-dev`, a Claude Code agent, on the left, and `build-watcher`, a PowerShell pane for running the tests, on the right.
+4. Wait until `lead-dev` has confirmed its role. Quay tells each agent it launches what its job is, and the agent answers with one line starting `Role: Lead Developer`, then waits for your task.
+5. Press `Ctrl+B O` to move focus to `build-watcher`. Its border lights up.
 :::
 
 ::: paste `build-watcher`
@@ -392,8 +393,8 @@ The commit didn't happen, so `try-index` holds nothing new. Read the commit's me
 ## 11. Clean up and check it worked
 
 ::: do
-1. In the rail, hover over `try-index` under **Worktrees**, click its trash icon, **Remove worktree try-index**, and click **OK** to confirm. Its two terminals close and its row goes.
-2. Do the same for `try-scan`. This time Quay shows **Worktree not removed**, with git's error: `try-scan` still holds `lead-dev`'s uncommitted change to `src/dedupe.ts`, and nothing has been closed yet. Click **Remove anyway** to throw the experiment away. Its two terminals close and its row goes.
+1. In the rail, hover over `try-index` under **Worktrees** and click the trash icon that appears on its row. Its tooltip says **Remove worktree try-index**. Quay asks whether to remove the worktree and close its terminals: click **OK**. Its two terminals close and its row goes.
+2. Do the same for `try-scan`: hover over its row, click its trash icon and click **OK**. This time Quay shows **Worktree not removed**, with git's error: `try-scan` still holds `lead-dev`'s uncommitted change to `src/dedupe.ts`, and nothing has been closed yet. Click **Remove anyway** to throw the experiment away. Its two terminals close and its row goes.
 :::
 
 ::: paste `main-shell`
