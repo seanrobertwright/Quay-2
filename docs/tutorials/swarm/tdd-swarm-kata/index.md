@@ -339,10 +339,10 @@ Re-read AGENTS.md, src/strength.ts and test/strength.test.ts. If all three rules
 :::
 
 ::: ifnot reviewer replies CHANGES REQUESTED
-Copy its numbered list, then hand the items on one agent at a time:
+Read its list, then hand the work on one agent at a time. You don't need to copy the list: each prompt below is one line, and each agent re-reads the files itself.
 
-1. If any item asks for a test, send `test-architect` one message: `Add tests for these review findings. Do not touch src/:` followed by every item that asks for a test. Wait until it says it's done.
-2. If any item asks for a code change, or `test-runner` now shows a failing test, send `feature-impl` one message: `Address these review findings and make every test pass. Do not edit test/:` followed by every item that asks for a code change. Wait until `test-runner` shows every test passing.
+1. If any item asks for a test, paste `The reviewer asked for more tests. Re-read AGENTS.md and test/strength.test.ts and add the tests the three rules still lack. Do not touch src/.` into `test-architect`, and wait until it says it's done.
+2. Paste `The reviewer asked for changes. Re-read AGENTS.md, src/strength.ts and test/strength.test.ts, then fix src/strength.ts so all three rules are implemented and every test passes. Do not edit test/.` into `feature-impl`, and wait until `test-runner` shows every test passing.
 3. Paste this step's prompt into `reviewer` again.
 :::
 
