@@ -324,11 +324,11 @@ npm test; Test-Path data/bookmarks.db
 :::
 
 ::: ifnot a test fails
-Press `Ctrl+B 2` to bring `backend-agent` into the right pane, and paste `npm test fails. Read the failing assertion and fix server/app.ts until it passes. Do not change the tests.` When its header shows `Ready`, press `Ctrl+B 1` and paste the line above into `app` again.
+Click inside `backend-agent` in the left pane and paste `npm test fails. Read the failing assertion and fix server/app.ts until it passes. Do not change the tests.` When its header shows `Ready`, click inside `app` and paste the line above again.
 :::
 
 ::: ifnot Test-Path prints False
-The server kept its bookmarks somewhere else. Press `Ctrl+B 2` to bring `backend-agent` into the right pane, and paste `data/bookmarks.db is missing after npm start. Make createApp store bookmarks in SQLite at the dbPath it is given, in server/ only.` When its header shows `Ready`, press `Ctrl+B 1`, paste `npm start` into `app`, add a bookmark again in the browser, and repeat this step.
+The server kept its bookmarks somewhere else. Click inside `backend-agent` in the left pane and paste `data/bookmarks.db is missing after npm start. Make createApp store bookmarks in SQLite at the dbPath it is given, in server/ only.` When its header shows `Ready`, click inside `app`, paste `npm start`, add a bookmark again in the browser, and repeat this step.
 :::
 
 ::: done
