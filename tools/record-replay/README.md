@@ -120,8 +120,11 @@ recorded: the first terminal Quay opens as `claude.exe` plays `claude-1`, the se
 with no recording left says so and exits.
 
 The replay plays the terminal stream at its recorded offsets and re-issues each bridge call
-at its recorded offset, so badges, Mission Control and the trail run on real Quay code. It
-follows the wire rules:
+at its recorded offset, so badges, Mission Control and the trail run on real Quay code. A
+stretch longer than a second with nothing shown, no output and no bridge call, plays as one
+second, with whatever falls inside it, such as a marker, kept in order. Such a stretch is the
+run waiting, most often for whoever recorded it to type the next step's marker, so a capture's
+real-time clip shows the motion and not the wait. It follows the wire rules:
 
 - Every call carries `Authorization: Bearer <CLAUDE_EVENTS_TOKEN>`, the live token Quay
   handed the fake exe. MCP calls are attributed by that token.

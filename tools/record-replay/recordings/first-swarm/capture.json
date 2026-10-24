@@ -53,16 +53,14 @@
       "actions": [
         { "press": "Control+b", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
         { "press": "o", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
-        { "press": "Control+b", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
-        { "press": "z", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" }
+        { "click": "button[title=\"Zoom active pane (Ctrl+B z)\"]" }
       ],
-      "waitFor": [".xterm:visible"]
+      "waitFor": ["button[title=\"Restore split layout (Ctrl+B z)\"]"]
     },
     {
       "marker": "06-cli-output",
       "actions": [
-        { "press": "Control+b", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
-        { "press": "z", "in": ".xterm:visible >> nth=0 >> .xterm-helper-textarea" },
+        { "click": "button[title=\"Restore split layout (Ctrl+B z)\"]" },
         { "press": "q", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
         { "type": "node src/cli.ts 42.50 18 3; git status --short", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" },
         { "press": "Enter", "in": ".xterm:visible >> nth=1 >> .xterm-helper-textarea" }

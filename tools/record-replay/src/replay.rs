@@ -1,5 +1,6 @@
 //! Replay mode: the fake CLI. Plays a recording into Quay's terminal and re-issues its bridge
-//! calls against the live bridge, each at its recorded offset into the run.
+//! calls against the live bridge, each at its recorded offset into the run, except that a long
+//! stretch with nothing shown plays as one second (see `Timeline`).
 //!
 //! The replay keeps the recording's causality where the live run can be slower than the
 //! recorded one: anything recorded after a bridge call answered waits for the replayed call to
@@ -48,6 +49,10 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
     let mut items: Vec<Item> = recording.events.iter().map(Item::Cast).collect();
     items.extend(recording.calls.iter().map(Item::Call));
     items.sort_by(|a, b| a.t().total_cmp(&b.t()));
+    let timeline = Timeline::new(
+        items.iter().filter(|item| matches!(item, Item::Call(_) | Item::Cast(CastEvent { code: CastCode::Output, .. }))).map(Item::t),
+        items.last().map_or(0.0, Item::t),
+    );
 
     let _raw = console::RawMode::enter();
     let entered = count_enters();
@@ -59,7 +64,7 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
     let mut exit_code = None;
 
     for item in &items {
-        let t = item.t();
+        let t = timeline.at(item.t());
         let waited = outstanding.iter().filter(|o| o.answered_at <= t).fold(false, |waited, o| {
             let mut waited = waited;
             while !o.done.load(Ordering::SeqCst) {
@@ -101,7 +106,7 @@ pub fn run(cli: &str, replay_dir: &Path, state_dir: &Path) -> Result<i32, String
             Item::Call(call) => {
                 let Some(request) = live.bridge.as_ref().map(|_| request_for(call, &live)) else { continue };
                 let done = Arc::new(AtomicBool::new(false));
-                outstanding.push(Outstanding { answered_at: call.t + call.d, done: done.clone() });
+                outstanding.push(Outstanding { answered_at: timeline.at(call.t + call.d), done: done.clone() });
                 let live = live.clone();
                 let errors = errors.clone();
                 std::thread::spawn(move || {
@@ -245,7 +250,44 @@ impl Speed {
     }
 }
 
-/// Where the replay is in the recording, in recorded seconds, moving at the capture's speed.
+/// The longest stretch, in recorded seconds, that a replay plays with nothing new on screen.
+const IDLE: f64 = 1.0;
+
+/// Recorded time as the replay plays it. A stretch longer than `IDLE` between things the run
+/// showed, its output and its bridge calls, is squeezed evenly into `IDLE`, so what falls
+/// inside it keeps its order. Such a stretch is the run waiting, often for whoever recorded it
+/// to type the next step's marker, and is never motion; everything else keeps its recorded pace.
+struct Timeline {
+    /// Recorded times where the run showed something, each with the time it plays at.
+    knots: Vec<(f64, f64)>,
+}
+
+impl Timeline {
+    /// `shown` holds the recorded times, in order, of what the run showed; `end` is its last
+    /// event's time.
+    fn new(shown: impl IntoIterator<Item = f64>, end: f64) -> Self {
+        let mut knots = vec![(0.0, 0.0)];
+        for t in shown.into_iter().chain([end]) {
+            let (last, played) = knots[knots.len() - 1];
+            if t > last {
+                knots.push((t, played + (t - last).min(IDLE)));
+            }
+        }
+        Timeline { knots }
+    }
+
+    fn at(&self, t: f64) -> f64 {
+        let i = self.knots.partition_point(|&(k, _)| k <= t).max(1);
+        let (k0, p0) = self.knots[i - 1];
+        match self.knots.get(i) {
+            Some(&(k1, p1)) => p0 + (t - k0) * (p1 - p0) / (k1 - k0),
+            // A bridge call can answer after the run's last event.
+            None => p0 + (t - k0).clamp(0.0, IDLE),
+        }
+    }
+}
+
+/// Where the replay is in the recording, in played seconds, moving at the capture's speed.
 struct Clock {
     speed: Speed,
     at: f64,
@@ -287,5 +329,44 @@ impl Clock {
             }
             std::thread::sleep(Duration::from_secs_f64((ahead / self.rate).min(0.05)));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn motion_keeps_its_recorded_pace() {
+        let timeline = Timeline::new([0.2, 0.5, 1.4], 1.5);
+
+        for t in [0.0, 0.2, 0.35, 0.5, 1.4, 1.5] {
+            assert!(close(timeline.at(t), t), "{t} plays at {}", timeline.at(t));
+        }
+    }
+
+    #[test]
+    fn a_long_stretch_with_nothing_shown_plays_as_one_second() {
+        // Output at 1 s, then nothing until 41 s, with a marker and a focus event in between.
+        let timeline = Timeline::new([1.0, 41.0, 41.5], 41.5);
+
+        assert!(close(timeline.at(41.0), 2.0));
+        assert!(close(timeline.at(41.5), 2.5), "what follows keeps its pace");
+        // What falls inside the stretch keeps its order, spread evenly over the second.
+        assert!(close(timeline.at(11.0), 1.25));
+        assert!(close(timeline.at(31.0), 1.75));
+    }
+
+    #[test]
+    fn the_wait_before_a_closing_marker_plays_as_one_second() {
+        // The last output at 0.6 s, and the run's last event, a marker, at 61 s.
+        let timeline = Timeline::new([0.3, 0.6], 61.0);
+
+        assert!(close(timeline.at(61.0), 1.6));
+        assert!(close(timeline.at(70.0), 2.6), "an answer after the last event waits at most a second");
     }
 }
