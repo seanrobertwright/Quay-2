@@ -1,0 +1,5 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 7 },
+  "checkSuite": { "vitest": ["run", "check"], "expect": "fail", "failed": 4, "total": 6 }
+}
