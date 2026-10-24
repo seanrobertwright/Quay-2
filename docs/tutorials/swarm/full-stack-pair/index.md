@@ -292,11 +292,50 @@ The build in step 6 didn't produce the page. Look at the build output above `Lis
 The UI and the API disagree about the contract. Press `Ctrl+C` in `app` to stop the server, press `Ctrl+B 3`, and paste `npm start logged a failed request. Compare web/src/App.tsx with API.md and fix web/ only.` into `frontend-agent`. Then press `Ctrl+B 1` and paste `npm start` into `app` again.
 :::
 
+:::
+
+::: step
+
+## 8. Run the tests yourself
+
+`backend-agent` said the contract tests pass. Run them yourself, and check that the server saved its bookmarks to a file in the project folder, `data/bookmarks.db`. The server is still running in `app`, so stop it first.
+
+::: do
+1. Click inside `app` and press `Ctrl+C`. The server stops and the prompt comes back.
+:::
+
+::: paste `app`
+```text
+npm test; Test-Path data/bookmarks.db
+```
+:::
+
+::: see
+![The app pane after the server stopped: Vitest lists the contract tests in server/api.test.ts, all 8 passing, and Test-Path prints True.](./08-tests-passed.webp)
+:::
+
+::: must
+- Vitest's summary reads `Tests  8 passed (8)`.
+- The last line is `True`.
+:::
+
+::: may
+- The order of the tests and the timings.
+:::
+
+::: ifnot a test fails
+Press `Ctrl+B 2` to bring `backend-agent` into the right pane, and paste `npm test fails. Read the failing assertion and fix server/app.ts until it passes. Do not change the tests.` When its header shows `Ready`, press `Ctrl+B 1` and paste the line above into `app` again.
+:::
+
+::: ifnot Test-Path prints False
+The server kept its bookmarks somewhere else. Press `Ctrl+B 2` to bring `backend-agent` into the right pane, and paste `data/bookmarks.db is missing after npm start. Make createApp store bookmarks in SQLite at the dbPath it is given, in server/ only.` When its header shows `Ready`, press `Ctrl+B 1`, paste `npm start` into `app`, add a bookmark again in the browser, and repeat this step.
+:::
+
 ::: done
 - ✅ A bookmark you added in the browser was still listed after a refresh, and gone after you deleted it.
 - ✅ The `app` pane logged `--> POST /api/bookmarks 201`, then `--> GET /api/bookmarks 200`, then a `DELETE` answered `204`.
 - ✅ In step 6, `git status --short` listed changes only under `server/` and `web/`.
-- ✅ In step 5, `backend-agent` reported all 8 contract tests passing.
+- ✅ `npm test` showed `Tests  8 passed (8)`, and `data/bookmarks.db` exists in the project folder.
 :::
 
 :::
