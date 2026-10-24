@@ -11,7 +11,7 @@ Three agents from three vendors build one small tool. Antigravity plans a CSV-to
 
 **You'll learn:** how to launch the Polyglot Agent Trio preset; what a full peer and a responder are, and how Mission Control shows them; how to give an agent its role by hand when its CLI takes no launch prompt; how to ask a responder a short question and get its reply; how a plan and a review travel as files while the A2A bus carries only the short messages; and how a non-Claude agent sends a message.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. `Ctrl+B` followed by a digit moves focus to that terminal, counting down the rail from 1.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. `Ctrl+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, right-click in the pane and choose **Paste**, then press `Enter` to send it.
 
 Every agent on the A2A bus is a **peer**, and Quay can type a message into any of them. A **full peer** can also send messages with the `quay_*` tools and answer a sender who waits for it. A **responder** can answer a sender who waits, but it has no `quay_*` tools, so it never starts a conversation. In this tutorial Claude Code and Codex are full peers and Antigravity is a responder.
 
@@ -79,8 +79,8 @@ The four panes this step opens are four different programs: Claude Code, Antigra
 1. Press `Ctrl+B S` to open the Swarm Launcher.
 2. Select the **Polyglot Agent Trio** card. The `agy-planner` row is marked **No launch prompt**: Antigravity can't take a first message on its command line, so it starts without its role. You give it one in step 4.
 3. Click **Launch Swarm Now**.
-4. If a pane asks whether you trust this folder, click into that pane and choose to trust it. Antigravity and Codex each ask the first time they open a folder.
-5. Wait until the headers of `claude-dev`, `agy-planner` and `codex-reviewer` all read Idle.
+4. If a pane asks whether you trust this folder, click into that pane and choose to trust it. Antigravity and Codex may each ask, the first time they open a folder.
+5. Wait until the headers of `claude-dev`, `agy-planner` and `codex-reviewer` all read `Ready`, which is how Quay shows an agent waiting for its next task.
 :::
 
 ::: see
@@ -105,11 +105,11 @@ Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls B
 :::
 
 ::: ifnot the codex-reviewer pane printed Updating Codex CLI and then exited
-Codex tried to update itself and the download failed. Press `Ctrl+B 5` to move focus to `test-runner`, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then close the four swarm panes and do this step again. Relaunching only `codex-reviewer` wouldn't give it its role, because Quay sends a launch prompt only when the whole swarm launches.
+Codex tried to update itself and the download failed. Press `Ctrl+B 5` to move focus to `test-runner`, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then close the four swarm terminals and do this step again: in the rail, point at each of `claude-dev`, `agy-planner`, `codex-reviewer` and `test-runner` and click the **×** (**Close terminal**) that appears on its row. Relaunching only `codex-reviewer` wouldn't give it its role, because Quay sends a launch prompt only when the whole swarm launches.
 :::
 
 ::: ifnot agy-planner asks you to sign in
-Antigravity isn't signed in on this account. Sign in as [Antigravity CLI](/guide/installation#antigravity-cli) shows, then close the four swarm panes and do this step again.
+Antigravity isn't signed in on this account. Sign in as [Antigravity CLI](/guide/installation#antigravity-cli) shows, then close the four swarm terminals and do this step again: in the rail, point at each of `claude-dev`, `agy-planner`, `codex-reviewer` and `test-runner` and click the **×** (**Close terminal**) that appears on its row.
 :::
 
 ::: ifnot claude-dev shows the plugin hint
@@ -157,12 +157,12 @@ You are the planner on this team. You create and edit only PLAN.md and never cha
 :::
 
 ::: see
-![agy-planner is Idle after a short summary of its plan that ends with PLAN.md written, while claude-dev and codex-reviewer still wait.](./04-plan-written.webp)
+![agy-planner, its header Ready, after a short summary of its plan that ends with PLAN.md written, while claude-dev and codex-reviewer still wait.](./04-plan-written.webp)
 :::
 
 ::: must
 - `agy-planner`'s last line is `PLAN.md written`.
-- `agy-planner`'s header reads Idle.
+- `agy-planner`'s header reads `Ready`.
 :::
 
 ::: may
@@ -171,11 +171,11 @@ You are the planner on this team. You create and edit only PLAN.md and never cha
 :::
 
 ::: ifnot agy-planner shows a plan of its own and waits for you to approve it
-Antigravity can stop for you to review its plan even in Skip mode, which covers only its tool prompts. Approve the plan in `agy-planner`'s pane, and it goes on to write `PLAN.md`.
+Antigravity can stop for you to review its plan even in Skip mode, which covers only its tool prompts. Click into `agy-planner`'s pane and choose the option that approves the plan, as Antigravity's prompt lists them, then press `Enter`. It goes on to write `PLAN.md`.
 :::
 
 ::: ifnot agy-planner changed a file other than PLAN.md
-Paste `Undo every change except PLAN.md, and from now on edit only PLAN.md.` into `agy-planner`, and wait until its header reads Idle again.
+Paste `Undo every change except PLAN.md, and from now on edit only PLAN.md.` into `agy-planner`, and wait until its header reads `Ready` again.
 :::
 
 :::
@@ -211,7 +211,7 @@ Use quay_send_message to ask agy-planner this, with wait_for_reply set to true: 
 :::
 
 ::: ifnot the reply starts blocked (permission)
-Antigravity stopped to ask you something. Press `Ctrl+B 3`, answer it in `agy-planner`'s pane, wait until its header reads Idle, then press `Ctrl+B 2` and paste the line into `claude-dev` again.
+Antigravity stopped to ask you something. Press `Ctrl+B 3`, answer it in `agy-planner`'s pane, wait until its header reads `Ready`, then press `Ctrl+B 2` and paste the line into `claude-dev` again.
 :::
 
 ::: ifnot the reply starts PLAN NOT READY
@@ -219,7 +219,7 @@ Press `Ctrl+B 3` and paste `Finish PLAN.md so every rule in SPEC.md has a test c
 :::
 
 ::: ifnot claude-dev says agy-planner received the task but is still working
-Antigravity took longer than 60 seconds, so the wait ended before its answer. Wait until `agy-planner`'s header reads Idle, then paste the line into `claude-dev` again.
+Antigravity took longer than 60 seconds, so the wait ended before its answer. Wait until `agy-planner`'s header reads `Ready`, then paste the line into `claude-dev` again.
 :::
 
 :::
@@ -240,7 +240,7 @@ Read PLAN.md and build it in src/ and test/: replace every it.todo in test/csv.t
 :::
 
 ::: see
-![claude-dev is Idle with its summary: the tests it wrote pass, the type check is clean, and its last line is BUILD DONE.](./06-build-done.webp)
+![claude-dev, its header Ready, with its summary: the tests it wrote pass, the type check is clean, and its last line is BUILD DONE.](./06-build-done.webp)
 :::
 
 ::: must
@@ -275,12 +275,12 @@ Review src/ against every rule in SPEC.md. Write review.md at the project root a
 :::
 
 ::: see
-![codex-reviewer reports its verdict line and that it sent the message, while claude-dev, its header Working, starts on the message after the prefix Peer agent (codex-reviewer).](./07-review-sent.webp)
+![codex-reviewer reports its verdict line and that it sent the message, while claude-dev, its header showing a spinner, starts on the message after the prefix Peer agent (codex-reviewer).](./07-review-sent.webp)
 :::
 
 ::: must
 - `codex-reviewer` quotes a first line that starts `VERDICT:`.
-- The message appears in `claude-dev`'s pane after `[Peer agent (codex-reviewer)]:`, and `claude-dev`'s header reads Working.
+- The message appears in `claude-dev`'s pane after `[Peer agent (codex-reviewer)]:`, and `claude-dev`'s header shows a spinner while it works on it.
 :::
 
 ::: may
