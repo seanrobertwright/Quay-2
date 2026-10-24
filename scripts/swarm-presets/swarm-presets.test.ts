@@ -102,3 +102,15 @@ test('the committed README and feature page hold the lists the presets generate'
     assert.equal(file.regenerate(text), text, `${file.path} is stale: run pnpm docs:presets`);
   }
 });
+
+test('the Tri-Agent Council role prompts name only the files both of its starters hold', () => {
+  // Swarm 8 builds src/cli.ts and fills in test/cli.test.ts; A2A 8 builds src/stats.ts and nobody
+  // edits test/. Each starter's AGENTS.md says who owns what, so a prompt names only the shared files.
+  const shared = ['AGENTS.md', 'PLAN.md', 'SPEC.md'];
+  const council = BUILTIN_SWARM_PRESETS.find((preset) => preset.id === 'tri-agent-council');
+  assert.ok(council);
+  for (const agent of council.agents.filter((a) => a.role_prompt !== undefined)) {
+    const paths = agent.role_prompt?.match(/[\w.-]*\/(?:[\w/-]|\.\w)*|\b[\w-]+\.(?:md|ts|json)\b/g) ?? [];
+    assert.deepEqual(paths.filter((path) => !shared.includes(path)), [], agent.name);
+  }
+});
