@@ -19,6 +19,8 @@ const MAX_FAST = 100;
 const DEFAULT_TIMEOUT_SECONDS = 120;
 /** A clip runs at real speed for this long at most; motion that takes longer is not a clip. */
 export const MAX_CLIP_SECONDS = 10;
+/** WebP at quality 90 kept a 200% shot near 100 KB in the screenshot research. */
+export const WEBP_QUALITY = 90;
 
 export interface CaptureArgs {
   tutorial: Tutorial;
@@ -443,7 +445,7 @@ export interface Sidecar {
 /**
  * The sidecar manifest beside a tutorial's starter: the Quay version captured, the UTC date the
  * recordings were made and each CLI's version from that run. The docs build's release check
- * reads `quayVersion`; the quarterly sweep reads it all with `parseSidecar`.
+ * reads `quayVersion`; the tutorial sweep reads it all with `parseSidecar`.
  */
 export function buildSidecar(input: { tutorial: string; quayVersion: string; capturedOn: string; recordings: RecordingInfo[] }): Sidecar {
   const quayVersion = VERSION.exec(input.quayVersion)?.[1];

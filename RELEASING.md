@@ -99,35 +99,18 @@ The workflow `.github/workflows/release.yml` will automatically:
 
 A draft is not published. Only people with write access to the repository see it, and installed copies don't update to it: the updater reads `releases/latest/download/latest.json`, and GitHub's latest release is never a draft. The draft waits for the steps below.
 
-### Step 4: Recapture, Re-run, Then Publish
+### Step 4: Check the Tutorials, Then Publish
 
-Do these in order at every draft release. The order comes from the decisions on [keeping screenshots current](https://github.com/seanrobertwright/Quay-2/issues/15) and on [tutorial test runs](https://github.com/seanrobertwright/Quay-2/issues/14).
+Tutorial screenshots are taken by hand, so a release only touches the tutorials whose screens it changes. While no tutorial is published on `master`, there is nothing to check: publish the draft.
 
-Steps 1 to 3 cover the tutorials published on `master`. While none is, steps 1 to 3 have nothing to do and step 5 has no branch of new shots to merge: publish the draft. A tutorial still on its branch isn't recaptured here. Its own test runs and capture use the published release's installer, and a tutorial that needs a change in Quay waits for the release that holds it.
+1. **Find the tutorials the release changes.** List the pull requests since the last release whose description says they change what a tutorial screenshot shows (the PR template asks), and the tutorials that use a feature the release notes name. Write the release notes in the draft first, so that list is known.
+2. **Walk through those tutorials on the draft.** Install Quay from the draft's Windows installer, downloaded from the draft's page under Releases. Follow each listed tutorial's page, and retake any screenshot that no longer matches, as `scripts/capture/README.md` describes: save each under its still's name, then run `pnpm docs:shots <slug> <folder>`. A tutorial with recordings and a capture manifest, `tools/record-replay/recordings/<slug>/capture.json`, can be recaptured with `pnpm docs:capture` instead. Commit the new stills on a branch, not on `master`: a push to `master` that touches `docs/` or `examples/` deploys the docs, and the docs wait for the release.
+3. **Publish the release.** Open the draft under Releases and publish it. Installed copies now see the update.
+4. **Deploy the docs.** Check that `pnpm docs:build` passes on the branch with the new stills, then merge it into `master`, with any tutorial fix. The **Deploy Documentation to GitHub Pages** workflow deploys the site from that push.
 
-1. **Recapture every tutorial against the draft.** On the capture machine, install Quay from the draft's Windows installer, downloaded from the draft's page under Releases. Then run the capture script for each tutorial with a capture manifest, `tools/record-replay/recordings/<slug>/capture.json`, with `--exe` set to the Quay the installer put in place:
+#### When a tutorial no longer works on the draft
 
-   ```powershell
-   pnpm docs:capture <slug> --exe <installed Quay exe>
-   ```
-
-   `scripts/capture/README.md` describes the capture machine and the script. Each capture writes the tutorial's stills beside its page, its sidecar manifest, and its section of the release's changed-shot report in `capture-reports/<version>/`.
-2. **Review the changed shots.** Open `capture-reports/<version>/index.html`. It lists the tutorials with changed or new shots and shows each changed shot's committed image beside its new one. A shot that changed for no reason the release explains is a regression to chase before publishing. Commit the new stills and sidecars on a branch, not on `master`: a push to `master` that touches `docs/` or `examples/` deploys the docs, and the docs wait for the release.
-3. **Re-run the affected tutorials on the draft.** Re-run each tutorial the report lists, plus any tutorial that uses a feature the release notes name. Write the release notes in the draft first, so that list is known. Each re-run is a test run as `scripts/test-runs/README.md` describes, with Quay installed from the draft's installer.
-4. **Publish the release.** Open the draft under Releases and publish it. Installed copies now see the update.
-5. **Deploy the docs.** On the branch with the new shots, build the docs with the version being released set in `QUAY_RELEASE_VERSION`:
-
-   ```powershell
-   $env:QUAY_RELEASE_VERSION = "0.2.0"; pnpm docs:build; Remove-Item Env:QUAY_RELEASE_VERSION
-   ```
-
-   With it set, `docs:build` fails on any tutorial whose sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, does not record that version as `quayVersion`. That catches a tutorial whose screenshots were not recaptured against this release. The variable takes `0.2.0` or `v0.2.0`, and anything else fails the build. Ordinary docs builds leave it unset and skip this check.
-
-   Once it passes, merge the branch with the new shots into `master`, with any tutorial branch that holds a re-run's record or a fix. The **Deploy Documentation to GitHub Pages** workflow deploys the site from that push.
-
-#### When a re-run fails on the draft
-
-A failed re-run holds the release. The draft stays unpublished until the app or the tutorial is fixed.
+A tutorial that no longer works holds the release. The draft stays unpublished until the app or the tutorial is fixed.
 
 * **The app is at fault.** Fix it on `master`, then replace the draft. Delete the draft and its tag, tag the fixed commit, and push the tag:
 
@@ -138,8 +121,8 @@ A failed re-run holds the release. The draft stays unpublished until the app or 
   git push origin v0.2.0
   ```
 
-  The workflow builds a new draft. Start again from recapture, since the fix can change what a screenshot shows.
-* **The tutorial is at fault.** Fix it on the tutorial's branch. A fix that changes the tutorial's run fingerprint needs two passing runs, not one. The fix merges when the release is published.
+  The workflow builds a new draft. Walk through the listed tutorials again, since the fix can change what a screenshot shows.
+* **The tutorial is at fault.** Fix its page on a branch. The fix merges when the release is published.
 
 ---
 

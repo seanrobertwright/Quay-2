@@ -33,14 +33,13 @@ import {
   type MachineFacts,
   type PlannedStep,
   type Shot,
+  WEBP_QUALITY,
 } from './capture.ts';
 import { claudeConfigProblems, readClaudeConfig } from './claude-config.ts';
 import { checkFfmpeg, encodeClip, startClip } from './clip.ts';
 import { parseCatFileBatch, readSavedShot, releaseBase, reportShots, shotReportDir, type CapturedShot, type SidecarCommit } from './shot-report.ts';
 
 const root = join(import.meta.dirname, '..', '..');
-/** WebP at quality 90 kept a 200% shot near 100 KB in the screenshot research. */
-const WEBP_QUALITY = 90;
 /** The rail header's bridge-port badge, which changes every launch and is always masked. */
 const PORT_BADGE = /^:\d+$/;
 /** The badge's own background, so the mask reads as an empty badge. */

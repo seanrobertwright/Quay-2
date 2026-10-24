@@ -1,8 +1,13 @@
 # Test runs
 
-A tutorial is published only after test runs pass. A test run is the maintainer following one
-tutorial's rendered page by hand, from getting the starter project to the check-it-worked step,
-in a Windows account kept for nothing else. Each run is written up in the tutorial's record,
+A test run is optional. It is the maintainer following one tutorial's rendered page by hand,
+from getting the starter project to the check-it-worked step, and writing up what happened.
+Recording one fills the page's Time and Tokens tiles, which read "not measured yet" without one;
+recording its terminals as well, in a Windows account kept for nothing else, is only needed for a
+scripted capture of the screenshots (`scripts/capture/README.md`). A tutorial is written, walked
+through once with a screenshot per step, and published, as `CONTRIBUTING.md` describes; issue
+#185 made the runs and the scripted capture optional. Each run is written up in the tutorial's
+record,
 `examples/tutorials/<slug>/test-runs.md`. The record sits beside `starter/` and `check/`, outside
 `docs/`, so the site never renders it. What a run is and what counts as a pass were decided in
 issue #14.
@@ -137,9 +142,9 @@ account. Run it again after rebuilding the tool, to refresh the wrapper copies.
 
    `docs:build` packs every starter and check suite into the zips the page links to, so the
    preview has exactly what the live site will have. The preview serves the site at
-   `http://localhost:4173/Quay-2/`. `QUAY_TUTORIAL_DRAFT` lets the page build before it has the
-   two passing runs the build otherwise asks for (see [What the build does with the
-   record](#what-the-build-does-with-the-record)). It takes slugs separated by commas.
+   `http://localhost:4173/Quay-2/`. `QUAY_TUTORIAL_DRAFT` lets the page build while it still
+   holds placeholder screenshots (see `scripts/capture/README.md`). It takes slugs separated by
+   commas.
 6. **Do the fresh-eyes read first** when this is the first run of a new run fingerprint. The
    `fresh-eyes-read` project skill runs it in your own account:
 
@@ -203,10 +208,9 @@ Two rules go with these:
 - After a failure, any change to a Do or Paste slot, the starter or the check suite means a new
   run from step 1. Changes to wording alone, captions or If not text don't.
 
-Each new run fingerprint needs two passing runs. Run 1 is where Must match and May differ are
-written; run 2 checks them. Anything in run 2 that differed and isn't under May differ either
-moves there, or has its prompt tightened, which changes the fingerprint, so both runs start again.
-A re-run of an unchanged fingerprint is one run.
+One passing run for the page's current run fingerprint measures the tiles. A run that follows a
+page whose stills are still the grey placeholder ([`scripts/capture/README.md`](../capture/README.md))
+writes `not checked: placeholder stills` under Differed from the screenshots.
 
 ## Filling in the section
 
@@ -227,7 +231,7 @@ each box that held, and leave the headings as they are.
 | You're done when | Tick each item that was true at the end. |
 | Fresh-eyes findings | Each finding with its step and quoted line, marked fixed, or dismissed with a reason; `none` if the read found nothing or wasn't due. |
 | Off-page knowledge | Anything you needed that the page didn't give; `none` otherwise. |
-| Differed from the screenshots | Anything on screen that didn't match a You should see image; `none` otherwise. |
+| Differed from the screenshots | Anything on screen that didn't match a You should see image; `none` otherwise. For a run that followed placeholder stills, `not checked: placeholder stills`. |
 
 Commit the record with the run's results on the tutorial's branch.
 
@@ -238,9 +242,9 @@ Commit the record with the run's results on the tutorial's branch.
 glance strip, and the build writes them; the step-card check rejects a page that types a value
 into either.
 
-- **The gate.** A tutorial page fails the build unless its record has two passing runs for the
-  page's current run fingerprint. `QUAY_TUTORIAL_DRAFT=<slug>` lifts the gate for that tutorial;
-  `docs:dev` never applies it.
+- **No gate on runs.** A tutorial page builds with no record, or with no passing run for its
+  current run fingerprint. The build's one refusal for a tutorial's content is a placeholder
+  screenshot left beside the page, which `scripts/capture/README.md` covers.
 - **Time** is the slowest of those passing runs' Total minutes, rounded up to the next 5 minutes,
   as `about 25 min`.
 - **Tokens** is the highest of those runs' totals, rounded up to two significant figures, as
@@ -258,11 +262,12 @@ into either.
   these in drafts and in `docs:dev` too. `pnpm docs:test-run` reads the record the same way, so
   it refuses to add a run until these are fixed.
 
-## The quarterly sweep
+## The tutorial sweep
 
-A published tutorial whose latest passing run is more than 90 days old is re-run on the latest
-agent CLIs. The Tutorial Sweep workflow (`.github/workflows/tutorial-sweep.yml`) works out which
-on the first day of each quarter, and on demand from the Actions tab. It reads each published
+To check which published tutorials haven't been walked through lately, run the Tutorial Sweep
+workflow (`.github/workflows/tutorial-sweep.yml`) from the Actions tab. It has no schedule. It
+lists each published tutorial whose latest passing run is more than 90 days old, or that has
+none, so it can be walked through on the latest Quay and agent CLIs. It reads each published
 tutorial's record and its sidecar manifest, `examples/tutorials/<slug>/sidecar.json`, and opens
 an issue labelled `tutorial-sweep` listing every tutorial due, with the date of its latest
 passing run and the Quay and CLI versions its screenshots and recordings were made with. A
@@ -283,11 +288,11 @@ from before when none is.
 For each tutorial on the list:
 
 1. **Bump the starter's dependencies, or decide to leave them.** A sweep is the only time a
-   starter's pinned dependencies move. A bump changes the run fingerprint, so that tutorial needs
-   two passing runs; one whose starter is unchanged needs one.
-2. **Do the runs,** as above. Each run re-makes the tutorial's recordings.
-3. **Recapture the screenshots** from the new recordings with `pnpm docs:capture`
-   (`scripts/capture/README.md`), which rewrites the sidecar manifest.
+   starter's pinned dependencies move.
+2. **Follow the page** and fix anything that no longer works. Record the walk-through as a test
+   run, as above, to re-measure the Time and Tokens tiles.
+3. **Retake any screenshot that no longer matches** with `pnpm docs:shots`
+   (`scripts/capture/README.md`).
 
 A CLI update on its own triggers no re-run.
 

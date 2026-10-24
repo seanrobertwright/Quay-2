@@ -1,5 +1,5 @@
-// Writes the quarterly sweep's issue body: each published tutorial whose latest passing test run
-// is more than 90 days old. The Tutorial Sweep workflow runs it and opens the issue.
+// Writes the tutorial sweep's issue body: each published tutorial whose latest passing test run
+// is more than 90 days old, or that has none. The Tutorial Sweep workflow runs it and opens the issue.
 //
 //   pnpm docs:sweep --out <file> [--today YYYY-MM-DD]
 //

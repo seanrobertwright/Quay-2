@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import pixelmatch from 'pixelmatch';
 import sharp from 'sharp';
+import { SHOT_NAME } from '../../docs/.vitepress/step-cards.ts';
 import { TUTORIALS } from '../../docs/.vitepress/tutorials.ts';
 
 /**
@@ -134,6 +135,39 @@ export async function readSavedShot(dir: string, name: string, quality: number):
   const png = join(dir, `${name}.png`);
   if (existsSync(png)) return sharp(readFileSync(png)).webp({ quality }).toBuffer();
   return null;
+}
+
+/**
+ * Puts screenshots taken by hand beside a tutorial's page. Each still already in `stills`, a
+ * placeholder or an earlier shot, is replaced by the shot of the same name saved in `saved`, as
+ * `readSavedShot` reads it. Returns the stills it replaced and the ones `saved` had no shot for,
+ * in name order. A shot in `saved` named after no still fails before anything is written, since
+ * it is most often a typo in the name.
+ */
+export async function placeSavedShots(stills: string, saved: string, quality: number): Promise<{ placed: string[]; missing: string[] }> {
+  const names = readdirSync(stills)
+    .filter((file) => file.endsWith('.webp') && SHOT_NAME.test(file.slice(0, -'.webp'.length)))
+    .map((file) => file.slice(0, -'.webp'.length))
+    .sort();
+  const unknown = readdirSync(saved)
+    .filter((file) => /\.(?:png|webp)$/i.test(file))
+    .filter((file) => !names.includes(file.replace(/\.(?:png|webp)$/i, '')))
+    .sort();
+  if (unknown.length > 0) {
+    throw new Error(`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} named after no still beside the page; the stills are ${names.join(', ')}`);
+  }
+  const placed: string[] = [];
+  const missing: string[] = [];
+  for (const name of names) {
+    const bytes = await readSavedShot(saved, name, quality);
+    if (bytes === null) {
+      missing.push(name);
+      continue;
+    }
+    writeFileSync(join(stills, `${name}.webp`), bytes);
+    placed.push(name);
+  }
+  return { placed, missing };
 }
 
 /** One shot as the report keeps it. */

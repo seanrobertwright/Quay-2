@@ -23,7 +23,7 @@ try {
 }
 
 try {
-  // Read the page as docs:dev does: the build's test-run gate would refuse the page whose runs this records.
+  // Read the page as docs:dev does: the build's placeholder gate would refuse a draft whose runs this records.
   const config = await siteConfig({ command: 'serve', mode: 'production' });
   const md = await createMarkdownRenderer(join(root, 'docs'), config.markdown);
   const { file } = newTestRun({ root, ...args, md });

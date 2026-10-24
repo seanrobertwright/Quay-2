@@ -134,7 +134,7 @@ test('the build rejects a failed run with no issue link, and any run it cannot r
   ]);
 });
 
-test('a tutorial passes the gate with two passing runs for its current fingerprint, and only those count', () => {
+test('only passing runs for the current fingerprint measure the tiles', () => {
   const runs = runsOf(
     run({ date: '2026-10-24', fingerprint: 'bbbbbbbbbbbbbbbb' }),
     run({ date: '2026-10-23', ...FAILED }),
@@ -238,21 +238,13 @@ async function site(t: TestContext, { gate, drafts = [] }: { gate: boolean; draf
   };
 }
 
-test('the build fails for a tutorial without two passing runs for its current fingerprint, naming what is missing', async (t) => {
+test('the build publishes a tutorial with no test runs, with tiles that say nothing has been measured', async (t) => {
   const { fingerprint, writeRecord, render } = await site(t, { gate: true });
-  assert.throws(
-    () => render(),
-    {
-      message:
-        'tutorials/swarm/step-cards/index.md cannot be published:\n' +
-        `  it has 0 passing test runs for its run fingerprint ${fingerprint}, and needs 2. Record them in examples/tutorials/step-cards/test-runs.md ` +
-        '(see scripts/test-runs/README.md), or set QUAY_TUTORIAL_DRAFT=step-cards to build it as a draft',
-    },
-  );
-  writeRecord(run({ fingerprint }), run({ fingerprint: 'aaaaaaaaaaaaaaaa' }));
-  assert.throws(() => render(), /it has 1 passing test run for its run fingerprint/);
-  writeRecord(run({ fingerprint }), run({ fingerprint }));
-  assert.doesNotThrow(() => render());
+  assert.match(render(), /<li><strong>Time<\/strong> not measured yet<\/li>\n<li><strong>Tokens<\/strong> not measured yet<\/li>/);
+  writeRecord(run({ fingerprint: 'aaaaaaaaaaaaaaaa' }));
+  assert.match(render(), /<strong>Time<\/strong> not measured yet/, 'a run on an earlier fingerprint measures nothing');
+  writeRecord(run({ fingerprint }));
+  assert.doesNotMatch(render(), /not measured yet/, 'one passing run measures the tiles');
 });
 
 test('a draft, a page served by docs:dev and a page outside tutorials/ build without passing runs', async (t) => {
@@ -298,15 +290,14 @@ test('the page shows the generated tiles, and a failed run as a notice under its
 });
 
 test('the build fails a published tutorial whose folder still holds a placeholder screenshot, naming each one', async (t) => {
-  const { fingerprint, writeRecord, render } = await site(t, { gate: true });
-  writeRecord(run({ fingerprint }), run({ fingerprint }));
+  const { render } = await site(t, { gate: true });
   const folder = mkdtempSync(join(tmpdir(), 'publish-page-'));
   t.after(() => rmSync(folder, { recursive: true, force: true }));
   copyFileSync(PLACEHOLDER, join(folder, '02-two-agents.webp'));
   copyFileSync(PLACEHOLDER, join(folder, '01-starter-installed.webp'));
   writeFileSync(join(folder, '03-reply.webp'), 'a captured still');
   const page = join(folder, 'index.md');
-  const hint = 'Capture the real ones with pnpm docs:capture (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=step-cards to build it as a draft';
+  const hint = 'Put the real ones in place with pnpm docs:shots (see scripts/capture/README.md), or set QUAY_TUTORIAL_DRAFT=step-cards to build it as a draft';
   const refusal = (stills: string) => ({ message: `tutorials/swarm/step-cards/index.md cannot be published:\n  ${stills} still the placeholder screenshot. ${hint}` });
   assert.throws(() => render(undefined, page), refusal('01-starter-installed.webp and 02-two-agents.webp are'));
   writeFileSync(join(folder, '01-starter-installed.webp'), 'a captured still');

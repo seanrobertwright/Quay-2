@@ -152,11 +152,11 @@ _Avoid_: Announcement, alert, notice (except the literal `[Broadcast Notice]:` p
 ### Testing a tutorial
 
 **Test run**:
-One complete pass through a tutorial by a person following only its rendered page, from getting the starter project to the check-it-worked step. A tutorial is published only after a test run passes, and the run measures the Time and Tokens the page shows.
+One complete pass through a tutorial by a person following only its rendered page, from getting the starter project to the check-it-worked step, written up in the tutorial's record. It is optional: a recorded run measures the Time and Tokens the page shows, which read "not measured yet" without one. Writing a tutorial still includes walking through it once to take its screenshots (#185).
 _Avoid_: Dry run, playtest, QA pass
 
 **Fresh-eyes read**:
-An agent's reading of a tutorial page before its test run, listing every step that relies on something the page doesn't say. It reads; it never drives Quay.
+An agent's reading of a tutorial page before it is published, listing every step that relies on something the page doesn't say. It reads; it never drives Quay.
 _Avoid_: Review, lint, proofread
 
 **Test account**:

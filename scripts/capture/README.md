@@ -1,4 +1,33 @@
-# Capture script
+# Screenshots and the capture script
+
+A tutorial's screenshots are taken by hand, while walking through the tutorial once. A tutorial
+that has test-run recordings and a capture manifest can instead be captured by the script this
+README goes on to describe. Issue #185 made the script optional.
+
+## Screenshots by hand
+
+1. Set Windows to dark mode, so every tutorial's shots look alike, and keep Quay's window
+   maximized.
+2. Follow the tutorial's page in Quay. When a step shows what its You should see caption
+   describes, take its screenshot with Snipping Tool: the Quay window, or only the pane the
+   caption shows when the step's still is of one pane.
+3. Save each shot under its still's name with `.png`, such as `03-watcher-red.png`, in one
+   folder. The names are the `NN-<what>.webp` files beside the page.
+4. Put them beside the page:
+
+   ```powershell
+   pnpm docs:shots <slug> <folder>
+   ```
+
+   It converts each PNG to WebP at quality 90 and writes it over the still of the same name,
+   placeholder or old shot. A shot already saved as `.webp` is copied as it is. It names any still
+   left without a shot, and stops before writing anything if a shot is named after no still, which
+   is most often a typo. It exits 0 when every still has a shot, 1 otherwise, and 2 on a bad
+   argument.
+
+A tutorial has a clip only if one is recorded for it, by hand or by the script; most have none.
+
+## The capture script
 
 Takes every screenshot of a tutorial, and its clip, from a built Quay that replays the
 tutorial's recordings.
@@ -110,13 +139,15 @@ anything but scrubbed transcripts under `projects\`. A tutorial with no Claude C
 
 ## Placeholder stills
 
-A page names its stills before its first capture, and the docs build needs every still it names.
-Until the capture writes them, a draft carries a copy of `scripts/capture/placeholder.webp`
-under each still's name, `NN-<what>.webp`, beside the page. A clip needs no placeholder.
+A page names its stills before they are taken, and the docs build needs every still it names.
+Until real screenshots replace them, by hand or by the capture, a draft carries a copy of
+`scripts/capture/placeholder.webp` under each still's name, `NN-<what>.webp`, beside the page. A
+clip needs no placeholder.
 
 `docs:build` refuses to publish a tutorial while any still beside its page is byte for byte the
 placeholder, naming each one, unless `QUAY_TUTORIAL_DRAFT` names the tutorial. `docs:dev` and a
-draft build show the placeholders, so the first test run can follow the rendered page. The
+draft build show the placeholders, so the fresh-eyes read and the walk-through can follow the
+rendered page. The
 changed-shot report counts a committed placeholder as nothing committed, so a draft's first
 capture lists its shots as new.
 
@@ -217,8 +248,10 @@ whenever its still is.
   showed if that was later, so it ends on what the still shows.
 - **Real speed.** The screencast sends a frame each time Quay paints; on WebView2 the screenshot
   research found its frames at device scale. The script keeps each frame on screen until the
-  next one came and encodes the result at 30 frames a second. A clip over ten seconds fails the
-  capture; it is never sped up, so a longer motion is not a clip step.
+  next one came and encodes the result at 30 frames a second. The replays play any stretch
+  longer than a second with nothing shown as one second (`tools/record-replay/README.md`), so
+  the wait before a hand-typed marker doesn't count. A clip over ten seconds fails the capture;
+  it is never sped up, so a longer motion is not a clip step.
 - **Masks.** The port badge and the shot's `mask` selectors are covered for the whole clip by
   boxes that follow their elements as they move. Masks are matched again every 100 ms for
   elements that appear during the clip, and the frames since the match before are left out, so
@@ -284,7 +317,7 @@ the docs build's orphan-image check catches the file left behind.
 - `cliVersions` is each CLI's `--version` from the recorded run, from the headers'
   `cli_version`. Recordings of one CLI made with two versions are an error.
 
-The quarterly sweep reads all of it and lists it beside each tutorial it finds due
+The tutorial sweep reads all of it and lists it beside each tutorial it finds due
 (`scripts/test-runs/README.md`). The failed-run notice on a tutorial's page takes its CLI
 versions from the test-run record, not from here.
 
@@ -325,6 +358,15 @@ with WebView2 155:
   screenshots. That is why the capture machine pins 200% scaling rather than overriding it.
 
 Also seen: the debugging port listens on `127.0.0.1` only.
+
+The two clip questions issue #101 left open, answered by Swarm 1's capture against Quay 0.3.0 at
+200% scaling:
+
+- **The screencast's frames come at device scale.** Swarm 1's clip, `02-swarm-launched.mp4`, is
+  2560 × 1600, the same size as its poster still, so a clip needs no resizing.
+- **The port badge stays masked in every frame.** Each of the clip's 220 frames shows the
+  badge as an empty box, including the frames where the Swarm Launcher's backdrop dims the
+  window.
 
 ## Limits
 

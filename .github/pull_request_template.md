@@ -4,5 +4,5 @@
 
 ## Checklist
 
-- [ ] UI pull request: changes what a tutorial screenshot shows? Say so in the PR. A heads-up for the
-  release recapture, not a gate.
+- [ ] UI pull request: changes what a tutorial screenshot shows? Say so in the PR, naming the
+  tutorials, so the release retakes those screenshots. Not a gate.

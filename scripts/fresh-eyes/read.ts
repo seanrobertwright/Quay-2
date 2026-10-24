@@ -5,8 +5,9 @@
 // It builds the docs site, extracts each built page's text, screenshots and alt text, and hands only
 // those to a new `claude -p` reader. The reader runs in an empty folder outside the repo with
 // brief.md as its whole system prompt, no tools, no settings and no CLAUDE.md. Each page's findings
-// print to stdout, ready for the run's section of the tutorial's test-runs.md. What the reader was
-// given, and its findings, stay in a folder of their own under the system temp folder.
+// print to stdout, ready for the pull request description, or for a recorded test run's section
+// of the tutorial's test-runs.md. What the reader was given, and its findings, stay in a folder of
+// their own under the system temp folder.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,7 +68,7 @@ function git(args: string[]): string {
 
 function build(pages: string[]): void {
   console.error('fresh-eyes: building the docs site with pnpm docs:build');
-  // The read comes before a page's test runs, so its tutorials build as drafts, past the test-run gate.
+  // The read comes before a page's real screenshots, so its tutorials build as drafts, past the placeholder gate.
   const drafts = [process.env.QUAY_TUTORIAL_DRAFT ?? '', ...pages.map(tutorialSlugOf)].filter(Boolean).join(',');
   // One command string, since pnpm is a .cmd shim on Windows and only a shell can run it.
   const run = spawnSync('pnpm run docs:build', {

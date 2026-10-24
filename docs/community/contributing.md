@@ -32,7 +32,11 @@ pnpm docs:typecheck
 pnpm docs:test
 pnpm docs:build
 
-# 6. Before a tutorial's first test run, or when a pull request changes its wording:
+# 6. Before a tutorial is first published, or when a pull request changes its wording:
 #    a fresh-eyes read of the built page by a new agent that sees only the page
 pnpm docs:fresh-eyes docs/tutorials/<series>/<slug>/index.md
+
+# 7. After walking through a tutorial with a screenshot per step saved as <still name>.png:
+#    put them beside the page as WebP
+pnpm docs:shots <slug> <folder of saved shots>
 ```

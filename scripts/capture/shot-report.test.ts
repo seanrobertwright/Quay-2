@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { compareShot, parseCatFileBatch, readSavedShot, releaseBase, renderShotReport, reportShots, shotReportDir, type TutorialShots } from './shot-report.ts';
+import { compareShot, parseCatFileBatch, placeSavedShots, readSavedShot, releaseBase, renderShotReport, reportShots, shotReportDir, type TutorialShots } from './shot-report.ts';
 
 const WIDTH = 64;
 const HEIGHT = 40;
@@ -230,4 +230,38 @@ test('a shot saved by hand is read as WebP, or converted from PNG, which Snippin
   const converted = await readSavedShot(dir, '03-reply', 90);
   assert.ok(converted !== null);
   assert.deepEqual([(await sharp(converted).metadata()).format, (await sharp(converted).metadata()).width], ['webp', WIDTH]);
+});
+
+test('shots saved by hand replace the stills of the same name beside the page, and name the ones left without a shot', async () => {
+  const stills = mkdtempSync(join(tmpdir(), 'stills-'));
+  const saved = mkdtempSync(join(tmpdir(), 'saved-'));
+  const placeholder = await webp();
+  for (const name of ['01-starter', '02-two-agents', '03-reply']) writeFileSync(join(stills, `${name}.webp`), placeholder);
+  writeFileSync(join(stills, 'index.md'), '# Page\n');
+  const shot = await webp((rgba) => rgba.set([255, 0, 0, 255], pixel(1, 1)));
+  writeFileSync(join(saved, '01-starter.webp'), shot);
+  writeFileSync(join(saved, '03-reply.png'), await sharp(shot).png().toBuffer());
+
+  const result = await placeSavedShots(stills, saved, 90);
+
+  assert.deepEqual(result, { placed: ['01-starter', '03-reply'], missing: ['02-two-agents'] });
+  assert.deepEqual(readFileSync(join(stills, '01-starter.webp')), shot);
+  assert.notDeepEqual(readFileSync(join(stills, '03-reply.webp')), placeholder);
+  assert.deepEqual(readFileSync(join(stills, '02-two-agents.webp')), placeholder, 'a still with no shot is left as it was');
+  rmSync(stills, { recursive: true });
+  rmSync(saved, { recursive: true });
+});
+
+test('a shot saved by hand under a name no still has fails before any still is replaced', async () => {
+  const stills = mkdtempSync(join(tmpdir(), 'stills-'));
+  const saved = mkdtempSync(join(tmpdir(), 'saved-'));
+  const placeholder = await webp();
+  writeFileSync(join(stills, '01-starter.webp'), placeholder);
+  writeFileSync(join(saved, '01-starter.webp'), await webp((rgba) => rgba.set([255, 0, 0, 255], pixel(1, 1))));
+  writeFileSync(join(saved, '01-starer.png'), await sharp(placeholder).png().toBuffer());
+
+  await assert.rejects(placeSavedShots(stills, saved, 90), /01-starer\.png is named after no still beside the page; the stills are 01-starter/);
+  assert.deepEqual(readFileSync(join(stills, '01-starter.webp')), placeholder);
+  rmSync(stills, { recursive: true });
+  rmSync(saved, { recursive: true });
 });

@@ -19,7 +19,7 @@ async function readSite() {
 
 /**
  * The pages that use the step-card containers: the tutorial pages, which the step-card and
- * test-run checks hold to their rules. A draft would also fail the test-run gate here.
+ * test-run checks hold to their rules. A draft would also fail the placeholder gate here.
  */
 async function stepCardPages(pages: Map<string, string>) {
   const md = await createMarkdownRenderer('docs', { config: registerStepCardContainers });
