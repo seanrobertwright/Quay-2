@@ -31,7 +31,7 @@ The starter project is a link checker that isn't written yet. `SPEC.md` says wha
 ## 1. Get the starter project
 
 ::: do
-1. Download [`tri-agent-council.zip`](/starters/tri-agent-council.zip) and unzip it into a new, empty folder.
+1. Download [`tri-agent-council.zip`](/starters/tri-agent-council.zip) and unzip it into a new, empty folder. The zip has no folder of its own, so that folder now holds `SPEC.md`, `src` and the other files directly.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
 3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**. The rail lists the new terminal under your project as `pwsh`.
 :::
