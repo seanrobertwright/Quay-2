@@ -11,7 +11,7 @@ Launch Quay's Tri-Agent Council: three Claude Code agents that take one job in t
 
 **You'll learn:** how to launch the Tri-Agent Council, split one job into plan, build and verify so each agent owns one kind of file, hand work from one agent to the next through a plan file on disk, close a terminal from the rail, and check a verdict for yourself.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. `Ctrl+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+B 1` is the first one listed.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. `Ctrl+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
 The starter project is a link checker that isn't written yet. `SPEC.md` says what it must do and ends with the exact output it must print for the sample docs in `docs-sample/`. `src/cli.ts` is where it gets built, and `AGENTS.md` says which agent may change which files. All three agents run on Claude Code's default model.
 
@@ -33,7 +33,7 @@ The starter project is a link checker that isn't written yet. `SPEC.md` says wha
 ::: do
 1. Download [`tri-agent-council.zip`](/starters/tri-agent-council.zip) and unzip it into a new, empty folder.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**. The rail lists the new terminal under your project as `pwsh`.
 :::
 
 ::: paste PowerShell pane
