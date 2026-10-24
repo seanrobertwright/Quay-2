@@ -122,6 +122,7 @@ Read AGENTS.md and BUG-REPORT.md. For each of the three complaints, write one Vi
 ::: must
 - `reproducer` reports 3 tests failed and 7 passed. The seven are the starter's own tests, which passed on the buggy code all along.
 - Its reply ends with the line `REPRODUCED 3`.
+- The only file the pane shows `reproducer` writing or editing is `test/regressions.test.ts`.
 :::
 
 ::: may
@@ -157,6 +158,7 @@ Read BUG-REPORT.md and test/regressions.test.ts, then run npm test. For each fai
 ::: must
 - `tracer` says it wrote `TRACE.md`, and its reply names `addItem`, `removeItem` and `discount`.
 - Its reply ends with the line `TRACED 3`.
+- The only file the pane shows `tracer` writing or editing is `TRACE.md`.
 :::
 
 ::: may
@@ -190,6 +192,7 @@ Read TRACE.md and AGENTS.md. Fix the three causes in src/cart.ts with the smalle
 ::: must
 - `patcher` reports 10 tests passed, none failed, and a clean type check.
 - Its reply ends with the line `PATCHED`.
+- The only file the pane shows `patcher` editing is `src/cart.ts`.
 :::
 
 ::: may
