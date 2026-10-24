@@ -1,5 +1,5 @@
-// A shopping cart, priced in whole cents. Every function returns a new cart and leaves the one it
-// was given as it was.
+// A shopping cart, priced in whole cents. The functions that change a cart return a new one and
+// leave the one they were given as it was.
 
 export type Item = { sku: string; name: string; priceCents: number; quantity: number };
 export type Coupon = { kind: "percent"; value: number } | { kind: "fixed"; valueCents: number };
