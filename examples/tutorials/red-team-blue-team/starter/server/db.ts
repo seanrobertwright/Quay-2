@@ -13,6 +13,9 @@ export interface Note {
 /** The columns every query that returns notes selects, in `Note`'s order. */
 export const NOTE_COLUMNS = "id, user_id, title, body, shared, created_at";
 
+/** The order every query that lists notes uses: newest first, with the later id first on a tie. */
+export const NEWEST_FIRST = "ORDER BY created_at DESC, id DESC";
+
 /**
  * Opens the database at `dbPath`, creating the tables and seeding alice and bob when it is new.
  * `":memory:"` opens a fresh database that lives only as long as the app.

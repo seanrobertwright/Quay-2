@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
-import { NOTE_COLUMNS, openDb, type Note } from "./db.ts";
+import { NEWEST_FIRST, NOTE_COLUMNS, openDb, type Note } from "./db.ts";
 import { layout, noteCard } from "./pages.ts";
 
 type AppEnv = { Variables: { userId: number } };
@@ -45,7 +45,7 @@ export function createApp(dbPath: string): Hono<AppEnv> {
 
   app.get("/api/notes", (c) => {
     const notes = db
-      .prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ? ORDER BY created_at DESC, id DESC`)
+      .prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ? ${NEWEST_FIRST}`)
       .all(c.get("userId"));
     return c.json(notes);
   });
@@ -63,7 +63,7 @@ export function createApp(dbPath: string): Hono<AppEnv> {
     const q = c.req.query("q") ?? "";
     const notes = db
       .prepare(
-        `SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ${c.get("userId")} AND title LIKE '%${q}%' ORDER BY created_at DESC, id DESC`,
+        `SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ${c.get("userId")} AND title LIKE '%${q}%' ${NEWEST_FIRST}`,
       )
       .all();
     return c.json(notes);
@@ -79,7 +79,7 @@ export function createApp(dbPath: string): Hono<AppEnv> {
 
   app.get("/", (c) => {
     const notes = db
-      .prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ? OR shared = 1 ORDER BY created_at DESC, id DESC`)
+      .prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE user_id = ? OR shared = 1 ${NEWEST_FIRST}`)
       .all(c.get("userId")) as unknown as Note[];
     return c.html(layout("Notes", notes.map(noteCard).join("")));
   });
