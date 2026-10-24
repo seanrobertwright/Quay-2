@@ -76,7 +76,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 :::
 
 ::: see
-![The launcher closes and four panes open in a 2x2 grid: test-architect top left, feature-impl top right, test-runner bottom left at a PowerShell prompt, and reviewer bottom right. Each Claude Code pane has confirmed its role in one line and waits.](./02-swarm-launched.webp)
+![The launcher closes and four panes open in a 2x2 grid: test-architect top left, feature-impl top right, test-runner bottom left at a PowerShell prompt, and reviewer bottom right. test-architect has confirmed its role in one line, feature-impl and reviewer are still starting, and a red banner across the top of the stage names reviewer.](./02-swarm-launched.webp)
 :::
 
 ::: must
@@ -84,11 +84,13 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 - The rail lists all four under the project, beside the PowerShell pane from step 1.
 - `test-architect`, `feature-impl` and `reviewer` each confirm their role in one line, then wait for your task.
 - `test-runner` sits at a PowerShell prompt.
+- While a Claude Code pane has focus, a red **DANGEROUSLY SKIPPING PERMISSIONS** banner runs across the top of the stage and names that pane. That is expected: swarm agents run in Skip mode.
 :::
 
 ::: may
 - The wording of each one-line confirmation, and how long each pane takes to start.
 - The port number in the rail header.
+- Which pane the red banner names, and whether it shows at all while `test-runner` has focus.
 :::
 
 ::: ifnot a Claude Code pane asks you to accept Bypass Permissions mode
@@ -110,7 +112,8 @@ Your Claude Code sign-in can't use `claude-sonnet-5-5`, the model the TDD Swarm 
 ## 3. Start the test watcher
 
 ::: do
-1. Click inside `test-runner`, the bottom-left pane. Its border lights up.
+1. Close the PowerShell pane from step 1, which you don't need again: in the rail, hover over `pwsh` under the project and click the **×** that appears, **Close terminal**.
+2. Click inside `test-runner`, the bottom-left pane. Its border lights up.
 :::
 
 ::: paste `test-runner`
@@ -136,6 +139,14 @@ npm run test:watch
 `npm install` didn't finish in step 1. Paste `npm install` into `test-runner`, wait for it to finish, then paste `npm run test:watch` again.
 :::
 
+::: ifnot test-architect says it hasn't run npm run test:watch
+You pasted the line into `test-architect`, which never starts the watcher itself. Find the pane whose header says `test-runner`, click inside it, and paste the line there.
+:::
+
+::: ifnot the panes moved, or step 1's pwsh pane is in the grid
+The toolbar's **2x2 Grid Layout** button and `Ctrl+B G` both rebuild the grid: the pane that has focus goes top left and the rest follow in rail order, step 1's `pwsh` included. Close `pwsh` as this step's first line says, then go by the name in each pane's header. From here on a pane may sit somewhere other than where the page says; its name is what counts.
+:::
+
 :::
 
 ::: step
@@ -153,7 +164,7 @@ Read AGENTS.md. In test/strength.test.ts, replace the todo with failing Vitest t
 :::
 
 ::: see
-![test-architect reports the tests it wrote in test/strength.test.ts, and test-runner below it has re-run on its own and shows every test failing with "not implemented".](./04-round-one-red.webp)
+![test-architect says the tests should fail until feature-impl replaces the "not implemented" throw in src/strength.ts, and that it didn't touch src/. test-runner has re-run on its own and shows both tests failing.](./04-round-one-red.webp)
 :::
 
 ::: must
@@ -166,6 +177,8 @@ Read AGENTS.md. In test/strength.test.ts, replace the todo with failing Vitest t
 - How many tests `test-architect` writes, and their names.
 - The failure text, as long as every test fails.
 - `test-architect`'s wording, and how long it takes.
+- `test-architect` may message `feature-impl` on its own, and `feature-impl` may answer that it's ready and waiting for you. Its rail line then starts with `[Peer agent`. Nothing changes in `src/` until your prompt in step 5.
+- Grey text in a Claude Code pane's input box, such as `Tell feature-impl the tests are ready`, is a suggestion Claude Code offers. Ignore it and paste the next prompt as usual.
 :::
 
 ::: ifnot a test already passes
@@ -193,7 +206,7 @@ Read AGENTS.md. Make every test in test/ pass with the simplest correct implemen
 :::
 
 ::: see
-![feature-impl reports its change to src/strength.ts, and test-runner has turned green: every test passes and none fails.](./05-round-one-green.webp)
+![feature-impl says it left test/ alone and is ready for the next rule, and test-runner has turned green: both tests pass and none fails.](./05-round-one-green.webp)
 :::
 
 ::: must
@@ -236,6 +249,7 @@ Read AGENTS.md, src/strength.ts and test/strength.test.ts. Review them for corre
 
 ::: may
 - The findings themselves, and how many there are.
+- A row of bracketed choices Claude Code prints under the reply, such as `[ Continue ]`. Leave them alone.
 :::
 
 ::: ifnot Ctrl+B Z did nothing
