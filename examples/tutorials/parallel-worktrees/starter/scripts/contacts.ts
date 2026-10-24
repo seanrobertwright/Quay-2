@@ -1,8 +1,11 @@
 import type { Contact } from "../src/dedupe.ts";
 
-/** How many contacts the bench makes, and how many duplicate groups they hold. */
+/** How many contacts the bench makes, and the duplicate groups they hold, by kind. */
 export const CONTACT_COUNT = 50_000;
-export const GROUP_COUNT = 2_500;
+const EMAIL_PAIRS = 1_500;
+const PHONE_PAIRS = 500;
+const TRIPLES = 500;
+export const GROUP_COUNT = EMAIL_PAIRS + PHONE_PAIRS + TRIPLES;
 
 const FIRST = ["Ada", "Grace", "Alan", "Edsger", "Barbara", "Donald", "Frances", "Ken", "Radia", "Tim"];
 const LAST = ["Lovelace", "Hopper", "Turing", "Dijkstra", "Liskov", "Knuth", "Allen", "Thompson", "Perlman", "Berners-Lee"];
@@ -33,10 +36,10 @@ function emailOf(person: number, name: string): string {
 }
 
 /**
- * 50,000 contacts, shuffled, that hold exactly 2,500 duplicate groups: 1,500 pairs that share an
- * email written differently, 500 pairs that share a phone written differently, and 500 groups of
- * three joined by an email and then a phone. Every other contact is someone else, and one in ten of
- * those has no email or no phone.
+ * CONTACT_COUNT contacts, shuffled, that hold exactly GROUP_COUNT duplicate groups: EMAIL_PAIRS
+ * pairs that share an email written differently, PHONE_PAIRS pairs that share a phone written
+ * differently, and TRIPLES groups of three joined by an email and then a phone. Every other contact
+ * is someone else, and one in ten of those has no email or no phone.
  */
 export function makeContacts(): Contact[] {
   const next = random(20261024);
@@ -52,10 +55,10 @@ export function makeContacts(): Contact[] {
   for (let group = 0; group < GROUP_COUNT; group++) {
     const p = someone();
     const q = someone();
-    if (group < 1_500) {
+    if (group < EMAIL_PAIRS) {
       contacts.push({ name: p.name, email: p.email, phone: formatPhone(p.phone, group) });
       contacts.push({ name: p.name, email: ` ${p.email.toUpperCase()} `, phone: formatPhone(q.phone, group + 1) });
-    } else if (group < 2_000) {
+    } else if (group < EMAIL_PAIRS + PHONE_PAIRS) {
       contacts.push({ name: p.name, email: p.email, phone: formatPhone(p.phone, group) });
       contacts.push({ name: p.name, email: q.email, phone: formatPhone(p.phone, group + 1) });
     } else {
