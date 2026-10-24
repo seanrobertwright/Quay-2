@@ -11,7 +11,7 @@ Three agents from three vendors build one small tool. Antigravity plans a CSV-to
 
 **You'll learn:** how to launch the Polyglot Agent Trio preset; what a full peer and a responder are, and how Mission Control shows them; how to give an agent its role by hand when its CLI takes no launch prompt; how to ask a responder a short question and get its reply; how a plan and a review travel as files while the A2A bus carries only the short messages; and how a non-Claude agent sends a message.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. `Ctrl+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, right-click in the pane and choose **Paste**, then press `Enter` to send it.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. The letter after `Ctrl+B` is the plain key, with no `Shift`. `Ctrl+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, right-click in the pane and choose **Paste**, then press `Enter` to send it.
 
 Every agent on the A2A bus is a **peer**, and Quay can type a message into any of them. A **full peer** can also send messages with the `quay_*` tools and answer a sender who waits for it. A **responder** can answer a sender who waits, but it has no `quay_*` tools, so it never starts a conversation. In this tutorial Claude Code and Codex are full peers and Antigravity is a responder.
 
@@ -304,7 +304,7 @@ Codex waited for a reply after all. The message still reached `claude-dev`, so c
 
 ::: do
 1. Press `Ctrl+B 2` to move focus to `claude-dev`, and wait until it ends with `FIXES DONE`.
-2. Press `Ctrl+B M` to open Mission Control, and read the message trail, newest first: `codex-reviewer → claude-dev`, then `claude-dev → agy-planner`.
+2. Press `Ctrl+B M` to open Mission Control, scroll to **Live A2A Message Trail** at the bottom of the panel, and read its entries, newest first: `codex-reviewer → claude-dev`, then `claude-dev → agy-planner`.
 3. Press `Esc` to close Mission Control.
 :::
 
