@@ -194,6 +194,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 5 | [Bug Hunt](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/bug-hunt/) | Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn. |
 <!-- tutorials:end -->
 
 ---
