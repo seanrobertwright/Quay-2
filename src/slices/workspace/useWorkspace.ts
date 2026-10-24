@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -19,6 +19,8 @@ import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
+import { createCtrlBKeyHandler } from "./ctrlBPrefix";
+import { useCtrlBPrefix } from "./useCtrlBPrefix";
 
 export type { Project };
 
@@ -506,18 +508,21 @@ export function useWorkspace() {
 
   // Open New Worktree modal. Without a repoPath it targets the active project's root,
   // so a worktree is never nested inside the selected worktree.
-  const openNewWorktreeModal = (repoPath?: string, suggestedIssueNumber?: number) => {
-    const targetPath = repoPath || resolveRootRepo(activeProject, projects, projectWorktrees);
-    const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
-      name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
-    };
-    setWorktreeModalTarget({
-      repoPath: targetPath,
-      projectName: proj.name,
-      suggestedIssueNumber,
-    });
-    setIsNewWorktreeOpen(true);
-  };
+  const openNewWorktreeModal = useCallback(
+    (repoPath?: string, suggestedIssueNumber?: number) => {
+      const targetPath = repoPath || resolveRootRepo(activeProject, projects, projectWorktrees);
+      const proj = projects.find((p) => isSamePath(p.path, targetPath)) || {
+        name: targetPath.split(/[/\\]/).filter(Boolean).pop() || "Repo",
+      };
+      setWorktreeModalTarget({
+        repoPath: targetPath,
+        projectName: proj.name,
+        suggestedIssueNumber,
+      });
+      setIsNewWorktreeOpen(true);
+    },
+    [activeProject, projects, projectWorktrees]
+  );
 
   // Create a worktree and optionally launch Claude Code
   const createWorktree = async (
@@ -642,7 +647,10 @@ export function useWorkspace() {
   };
 
   // Visible terminals for active project
-  const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
+  const visibleTerminals = useMemo(
+    () => terminals.filter((t) => isSamePath(t.project_path, activeProject)),
+    [terminals, activeProject]
+  );
 
   // Keep primary and secondary terminal IDs synced with visible terminals
   useEffect(() => {
@@ -1102,10 +1110,37 @@ export function useWorkspace() {
   };
 
 
-  // Keyboard shortcut listener: Ctrl+K, and the ^b prefix chords handled by the branches below
+  // Keyboard shortcut listener: Ctrl+K, the ^b prefix chords in ctrlBPrefix.ts, and Alt+1..9.
+  // The prefix outlives each render, so a re-render between Ctrl+B and its second key keeps it.
+  const ctrlBPrefix = useCtrlBPrefix();
+
   useEffect(() => {
-    let ctrlBActive = false;
-    let ctrlBTimer: any = null;
+    const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
+      openNewTerminal: () => setIsNewTerminalOpen(true),
+      splitHorizontal,
+      splitVertical,
+      splitGrid,
+      openSwarmModal: () => setIsSwarmModalOpen(true),
+      openDiffInspector: () => setIsDiffInspectorOpen(true),
+      openNewWorktreeModal,
+      toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
+      openAuditModal: () => setIsAuditModalOpen(true),
+      toggleSessionHistory: () => setIsSessionHistoryOpen((prev) => !prev),
+      toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
+      toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
+      toggleFactoryStation: () => setIsFactoryStationOpen((prev) => !prev),
+      toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
+      openA2A: () => setIsA2AOpen(true),
+      focusNextPane,
+      toggleZoom,
+      unsplit,
+      selectTerminalAt: (index) => {
+        const target = visibleTerminals[index];
+        if (target) {
+          selectTerminal(target.id);
+        }
+      },
+    });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Global Ctrl+K / Cmd+K Command Palette trigger
@@ -1116,177 +1151,7 @@ export function useWorkspace() {
         return;
       }
 
-      // Check for Ctrl+B prefix sequence (tmux/psmux style). The prefix is
-      // swallowed so xterm never forwards it to the focused pane, where
-      // Claude Code would read Ctrl+B as "background the running task".
-      if (e.ctrlKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        e.stopPropagation();
-        ctrlBActive = true;
-        clearTimeout(ctrlBTimer);
-        ctrlBTimer = setTimeout(() => {
-          ctrlBActive = false;
-        }, 1500); // 1.5s prefix window
-        return;
-      }
-
-      if (ctrlBActive) {
-        if (e.key.toLowerCase() === "n") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsNewTerminalOpen(true);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key === "%") {
-          e.preventDefault();
-          e.stopPropagation();
-          splitHorizontal();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key === '"' || e.key === "'") {
-          e.preventDefault();
-          e.stopPropagation();
-          splitVertical();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "g") {
-          e.preventDefault();
-          e.stopPropagation();
-          splitGrid();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "s") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsSwarmModalOpen(true);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "d") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDiffInspectorOpen(true);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "w") {
-          e.preventDefault();
-          e.stopPropagation();
-          openNewWorktreeModal();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "i") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsGithubDrawerOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "a") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsAuditModalOpen(true);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "h") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsSessionHistoryOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "t" || e.key === "$") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsTokenSpendOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "r") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsArchonGraphOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "f") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsFactoryStationOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "u") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsUpdateModalOpen((prev) => !prev);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "m") {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsA2AOpen(true);
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "o") {
-          e.preventDefault();
-          e.stopPropagation();
-          focusNextPane();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "z") {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleZoom();
-          ctrlBActive = false;
-          return;
-        }
-
-        if (e.key.toLowerCase() === "x") {
-          e.preventDefault();
-          e.stopPropagation();
-          unsplit();
-          ctrlBActive = false;
-          return;
-        }
-
-        const num = parseInt(e.key, 10);
-        if (!isNaN(num) && num >= 1 && num <= 9) {
-          e.preventDefault();
-          e.stopPropagation();
-          const target = visibleTerminals[num - 1];
-          if (target) {
-            selectTerminal(target.id);
-          }
-          ctrlBActive = false;
-          return;
-        }
-      }
+      if (handleCtrlBChord(e)) return;
 
       // Also support standard Alt+1..9 for accessibility
       if (e.altKey && !isNaN(parseInt(e.key, 10))) {
@@ -1302,6 +1167,7 @@ export function useWorkspace() {
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
+    ctrlBPrefix,
     visibleTerminals,
     layout,
     focusedPane,
@@ -1316,6 +1182,7 @@ export function useWorkspace() {
     toggleZoom,
     unsplit,
     selectTerminal,
+    openNewWorktreeModal,
   ]);
 
   // Rename terminal
