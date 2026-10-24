@@ -10,4 +10,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 4 | [Build and save a custom swarm](/tutorials/swarm/custom-swarm/) | Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart. |
 <!-- tutorials:end -->
