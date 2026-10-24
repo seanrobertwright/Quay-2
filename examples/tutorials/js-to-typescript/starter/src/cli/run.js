@@ -30,4 +30,3 @@ export function run(argv, io) {
   io.out(args.totalOnly ? receipt.split("\n").at(-1) : receipt);
   return 0;
 }
-
