@@ -195,6 +195,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | --- | --- | --- |
 | 1 | [Your first swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
 | 2 | [TDD Swarm kata](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/tdd-swarm-kata/) | Build a password-strength checker test-first, driving a tester, an implementer and a reviewer one pane at a time. |
+| 10 | [Parallel experiments with worktrees](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/parallel-worktrees/) | Try two designs at once in two git worktrees, measure them, merge the winner and throw the loser away. |
 <!-- tutorials:end -->
 
 ---
