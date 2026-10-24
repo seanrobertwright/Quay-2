@@ -124,7 +124,7 @@ A tutorial is written, walked through once and published:
 1. Write the starter and the page. The page carries the placeholder screenshot under each still's name, and builds as a draft with `QUAY_TUTORIAL_DRAFT=<slug>`.
 2. Run a fresh-eyes read of the page (below) and fix what it finds.
 3. Do the tutorial yourself in Quay, following the page, and take a screenshot for each step with Snipping Tool. Save each one under its still's name, such as `03-watcher-red.png`, in a folder of your choice, then run `pnpm docs:shots <slug> <folder>` to put them beside the page as WebP. `scripts/capture/README.md` says how to take them.
-4. Fix anything the walk-through showed the page gets wrong, and open the pull request.
+4. Fix anything the walk-through showed the page gets wrong, point the Next up card of the nearest published tutorial before it at the new page, and open the pull request. While the page still holds a placeholder screenshot it is a draft, and the docs build keeps that card on its old link; once the real screenshots are in, the build asks for the new one.
 
 `docs:build` refuses a tutorial page that still holds a placeholder screenshot, unless `QUAY_TUTORIAL_DRAFT` names it. A recorded test run is optional: `pnpm docs:test-run <slug>` adds one to `examples/tutorials/<slug>/test-runs.md`, and its time and tokens fill the page's Time and Tokens tiles, which say "not measured yet" until a run is recorded. `scripts/test-runs/README.md` covers it.
 

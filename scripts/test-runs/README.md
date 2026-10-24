@@ -65,9 +65,11 @@ commit prints no line-ending warnings into the step 1 still.
 
 **Next up** links to the first tutorial after this one in series order whose page is published,
 as `/tutorials/<series>/<slug>/`, or to the Tutorials landing page, `/tutorials/`, when none
-after it is. The docs build checks it. Publishing a tutorial therefore also changes the Next up
-card of the nearest published tutorial before it, in the same PR; a Next up card is not part of
-the run fingerprint, so that change needs no re-run.
+after it is. The docs build checks it. A Next up card never links to a draft, a page whose
+folder still holds a placeholder still, so while a tutorial is a draft the card before it keeps
+its link. Putting the real screenshots in place therefore also changes the Next up card of the
+nearest published tutorial before it, in the same PR; a Next up card is not part of the run
+fingerprint, so that change needs no re-run.
 
 ## Set up the test account
 

@@ -7,6 +7,7 @@ import { createMarkdownRenderer, disposeMdItInstance, type MarkdownOptions } fro
 import {
   checkTutorialFolder,
   parseReleaseVersion,
+  PLACEHOLDER,
   registerStepCardContainers,
   STEP_CARD_RULES,
   stepCardsPlugin,
@@ -87,7 +88,7 @@ test('without a page path, a still renders as a still', () => {
 });
 
 test('the site build fails a page whose folder breaks an image or clip rule, naming the step and the file', async () => {
-  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs: tmpdir() }));
+  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs: tmpdir(), placeholder: PLACEHOLDER }));
   const path = await tutorialFolder([...stills.slice(1), '05-ghost.mp4']);
   assert.throws(() => render.render(example, { path, relativePath: 'tutorials/swarm/example/index.md' }), {
     message:
@@ -123,7 +124,7 @@ test("in the release flow, a tutorial builds only when its sidecar records the r
   const render = (renderer: typeof md, slug: string) => () =>
     renderer.render(example, { path, relativePath: `tutorials/a2a/${slug}/index.md` });
 
-  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars, docs: tmpdir() }));
+  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars, docs: tmpdir(), placeholder: PLACEHOLDER }));
 
   assert.doesNotThrow(render(release, 'current'));
   assert.doesNotThrow(render(release, 'with-v'));
@@ -134,13 +135,13 @@ test("in the release flow, a tutorial builds only when its sidecar records the r
         `  examples/tutorials/${slug}/sidecar.json: in the release flow, the tutorial's sidecar manifest records the Quay version being released as "quayVersion" (release-sidecar)`,
     }, slug);
   }
-  const ordinary = await renderer(stepCardsPlugin({ release: null, sidecars, docs: tmpdir() }));
+  const ordinary = await renderer(stepCardsPlugin({ release: null, sidecars, docs: tmpdir(), placeholder: PLACEHOLDER }));
   assert.doesNotThrow(render(ordinary, 'stale'));
   assert.doesNotThrow(render(ordinary, 'missing'));
 });
 
 test('in the release flow, a step-card page outside tutorials/<series>/<slug>/ has no sidecar and fails', async () => {
-  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars: tmpdir(), docs: tmpdir() }));
+  const release = await renderer(stepCardsPlugin({ release: '0.3.0', sidecars: tmpdir(), docs: tmpdir(), placeholder: PLACEHOLDER }));
   const path = await tutorialFolder(stills);
   assert.throws(() => release.render(example, { path, relativePath: 'guide/example.md' }), /\(release-sidecar\)$/m);
 });
@@ -163,24 +164,48 @@ test('a clip plays muted unless the reader asks for reduced motion, which pauses
   await new Promise((resolve) => setImmediate(resolve));
 });
 
+/** Publishes the tutorial page `tutorials/<page>/index.md` under `docs`, and returns its folder. */
+async function publish(docs: string, page: string) {
+  const folder = join(docs, 'tutorials', page);
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, 'index.md'), '');
+  return folder;
+}
+
+// The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
 test("a tutorial's Next up card must link to the next published tutorial, or to the landing page when none is", async () => {
-  // The example page's card links to Swarm 2, /tutorials/swarm/tdd-swarm-kata/.
   const docs = await mkdtemp(join(tmpdir(), 'step-card-docs-'));
-  const publish = async (page: string) => {
-    await mkdir(join(docs, 'tutorials', page), { recursive: true });
-    await writeFile(join(docs, 'tutorials', page, 'index.md'), '');
-  };
   const path = await tutorialFolder(stills);
-  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs }));
+  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs, placeholder: PLACEHOLDER }));
   const asSwarm1 = () => render.render(example, { path, relativePath: 'tutorials/swarm/first-swarm/index.md' });
 
-  await publish('swarm/first-swarm');
+  await publish(docs, 'swarm/first-swarm');
   assert.throws(asSwarm1, {
     message:
       'tutorials/swarm/first-swarm/index.md breaks the step-card rules:\n' +
       `  docs/tutorials/index.md: ${STEP_CARD_RULES['next-up-target']} (next-up-target)`,
   });
-  await publish('swarm/tdd-swarm-kata');
+  await publish(docs, 'swarm/tdd-swarm-kata');
   assert.doesNotThrow(asSwarm1);
   assert.doesNotThrow(() => render.render(example, { path, relativePath: 'tutorials/swarm/example/index.md' }), 'not a tutorial slug');
+});
+
+test("a tutorial whose folder still holds a placeholder still is not a Next up target until its real shots are in", async () => {
+  const docs = await mkdtemp(join(tmpdir(), 'step-card-docs-'));
+  const placeholder = join(await mkdtemp(join(tmpdir(), 'step-card-placeholder-')), 'placeholder.webp');
+  await writeFile(placeholder, 'placeholder bytes');
+  const swarm2 = await publish(docs, 'swarm/tdd-swarm-kata');
+  await writeFile(join(swarm2, '01-starter-installed.webp'), 'a real screenshot');
+  await writeFile(join(swarm2, '02-swarm-launched.webp'), 'placeholder bytes');
+  const path = await tutorialFolder(stills);
+  const render = await renderer(stepCardsPlugin({ release: null, sidecars: tmpdir(), docs, placeholder }));
+  const asSwarm1 = () => render.render(example, { path, relativePath: 'tutorials/swarm/first-swarm/index.md' });
+
+  assert.throws(asSwarm1, {
+    message:
+      'tutorials/swarm/first-swarm/index.md breaks the step-card rules:\n' +
+      `  docs/tutorials/index.md: ${STEP_CARD_RULES['next-up-target']} (next-up-target)`,
+  });
+  await writeFile(join(swarm2, '02-swarm-launched.webp'), 'another real screenshot');
+  assert.doesNotThrow(asSwarm1);
 });

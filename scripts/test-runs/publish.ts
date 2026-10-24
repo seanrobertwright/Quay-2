@@ -1,9 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
-import { glanceTile, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
-import { TUTORIALS, tutorialSlugOf } from '../../docs/.vitepress/tutorials.ts';
+import { PLACEHOLDER, glanceTile, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
+import { TUTORIALS, placeholderStills, tutorialSlugOf } from '../../docs/.vitepress/tutorials.ts';
 import { isDateStamp } from '../../src/lib/dates.ts';
 import { runFingerprint } from './test-runs.ts';
 
@@ -254,16 +254,6 @@ export interface TestRunOptions {
   placeholder: string;
 }
 
-/** The stills in the folder of the page at `pagePath` that are still byte-for-byte the placeholder. */
-function placeholderStills(pagePath: string | undefined, placeholder: Buffer): string[] {
-  if (pagePath === undefined) return [];
-  const folder = dirname(pagePath);
-  return readdirSync(folder)
-    .filter((file) => file.endsWith('.webp'))
-    .sort()
-    .filter((file) => readFileSync(join(folder, file)).equals(placeholder));
-}
-
 /**
  * Publishes tutorial pages from their test runs. On each page under `tutorials/<series>/<slug>/`,
  * it reads `<slug>/test-runs.md`, writes the Time and Tokens tiles, and adds a notice under the
@@ -316,8 +306,6 @@ export function testRunsPlugin({ gate, drafts, examples, placeholder }: TestRunO
 }
 
 const EXAMPLES = fileURLToPath(new URL('../../examples/tutorials/', import.meta.url));
-/** The placeholder screenshot; scripts/capture/README.md says how a draft uses it. */
-const PLACEHOLDER = fileURLToPath(new URL('../capture/placeholder.webp', import.meta.url));
 
 /** The test-run plugin as the site uses it: the placeholder gate is on for `docs:build`, and `QUAY_TUTORIAL_DRAFT` names the drafts. */
 export function testRuns(command: 'build' | 'serve'): (md: MarkdownRenderer) => void {

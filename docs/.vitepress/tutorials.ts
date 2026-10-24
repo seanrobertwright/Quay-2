@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { DefaultTheme } from 'vitepress';
 
 export type Series = 'swarm' | 'a2a';
@@ -84,13 +84,32 @@ export function publishedTutorials(docsDir: string): Tutorial[] {
   return TUTORIALS.filter((tutorial) => existsSync(join(docsDir, tutorialPage(tutorial))));
 }
 
+/** The stills in the folder of the page at `pagePath` that are still byte for byte the placeholder. */
+export function placeholderStills(pagePath: string | undefined, placeholder: Buffer): string[] {
+  if (pagePath === undefined) return [];
+  const folder = dirname(pagePath);
+  return readdirSync(folder)
+    .filter((file) => file.endsWith('.webp'))
+    .sort()
+    .filter((file) => readFileSync(join(folder, file)).equals(placeholder));
+}
+
 /**
- * The tutorial a tutorial's Next up card links to: the first one after it in series order whose
- * page is published. Null when none after it is, and the card links to the landing page, as
- * A2A 10's always does.
+ * The published tutorials under `docsDir` that a Next up card may link to, in series order. A
+ * tutorial whose folder still holds a copy of `placeholder` is a draft, which `docs:build` refuses
+ * to publish, so no card links to it until its real screenshots are in.
  */
-export function nextUp(tutorial: Tutorial, published: readonly Tutorial[]): Tutorial | null {
-  return TUTORIALS.slice(TUTORIALS.indexOf(tutorial) + 1).find((later) => published.includes(later)) ?? null;
+export function nextUpTargets(docsDir: string, placeholder: Buffer): Tutorial[] {
+  return publishedTutorials(docsDir).filter((tutorial) => placeholderStills(join(docsDir, tutorialPage(tutorial)), placeholder).length === 0);
+}
+
+/**
+ * The tutorial a tutorial's Next up card links to: the first one after it in series order among
+ * `targets`. Null when none after it is, and the card links to the landing page, as A2A 10's
+ * always does.
+ */
+export function nextUp(tutorial: Tutorial, targets: readonly Tutorial[]): Tutorial | null {
+  return TUTORIALS.slice(TUTORIALS.indexOf(tutorial) + 1).find((later) => targets.includes(later)) ?? null;
 }
 
 /** Each series that has a published tutorial, with those tutorials in order. */
