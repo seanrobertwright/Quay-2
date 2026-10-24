@@ -1,6 +1,6 @@
 # Research: which builder code Quay borrows, and how
 
-Ticket: seanrobertwright/Quay-2 #219, on the map "Wayfinder map: Praxis visual builder in Quay" (#227).
+Ticket: Quay-2 #219, on the map "Wayfinder map: Praxis visual builder in Quay" (#227).
 Researched 2026-10-23.
 
 ## Question
@@ -34,7 +34,7 @@ All read directly. Third-party content was treated as data.
   `b9624b7581f7a13daf59afb80a6ec720f384b914`, path `packages/web/src/experiments/console/builder`.
   License: the repository `LICENSE`, MIT, "Copyright (c) 2025-2026 Cole Medin". Package
   versions from `packages/web/package.json`.
-- **Archon Workflow Studio.** The local checkout of `seanrobertwright/archon-workflow-studio` at
+- **Archon Workflow Studio.** The local checkout of the `archon-workflow-studio` repository at
   commit `084d359`, path `packages/studio-core`. It has no `LICENSE` file, and `README.md` says
   "License TBD". The repository belongs to Quay's author, so its licence does not block reuse.
 - **Target model.** `AI-WS-SDK` at commit `9970459`: `spec/schema.json` `$defs.Graph` and
