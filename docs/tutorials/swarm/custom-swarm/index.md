@@ -167,7 +167,7 @@ You write only the role prompt. When the swarm launches, Quay adds the rest of e
 ## 5. Save and launch the squad
 
 ::: do
-1. Click **Save**. Once Docs Squad is saved, the button reads **Update**.
+1. Click **Save**, in the launcher's footer between **Cancel** and **Launch Swarm Now**. Once Docs Squad is saved, the button reads **Update**.
 2. Click **Launch Swarm Now**.
 :::
 
@@ -243,7 +243,7 @@ Paste `Run npm test, read the failing assertion in test/readme.test.ts, and fix 
 
 ::: do
 1. Wait for `writer` to say the draft is ready.
-2. Press `Ctrl+B O` to move focus to `editor`. Its border lights up.
+2. Press `Ctrl+B O` to move focus to `editor`. `Ctrl+B O` moves focus to the other pane each time you press it, and the focused pane's border lights up.
 :::
 
 ::: paste `editor`
@@ -341,7 +341,7 @@ Saved swarms belong to your Windows user. If you skipped **Save** in step 5, or 
 ## 10. Check it worked
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `editor`, on the right.
+1. Press `Ctrl+B O` until `editor`, on the right, has focus and its border lights up.
 2. Press `Ctrl+B N`, choose **PowerShell Console**, type `check` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**. The `check` pane takes the right side of the stage.
 :::
 
