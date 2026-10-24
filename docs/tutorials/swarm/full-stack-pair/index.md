@@ -15,7 +15,7 @@ Two Claude Code agents build one web app at the same time: `backend-agent` write
 
 **You'll learn:** how to launch the Full-Stack Pair preset, give two agents parallel tasks that can't collide, move focus (`Ctrl+B O`) and zoom (`Ctrl+B Z`) while both work, and bring a hidden terminal back into a pane (`Ctrl+B 1`).
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. The pane with **focus** has a lit border, and what you type or paste goes into it. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. The pane with **focus** has a lit border, and what you type or paste goes into it. When a step gives you a line to paste into a pane, click into that pane, paste the line and press Enter to run or send it. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
 
 ::: before
 ## Before you start
