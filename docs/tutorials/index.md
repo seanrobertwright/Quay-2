@@ -10,4 +10,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 5 | [Bug Hunt](/tutorials/swarm/bug-hunt/) | Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn. |
 <!-- tutorials:end -->
