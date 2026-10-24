@@ -8,7 +8,7 @@ export function toCents(amount) {
   return Math.round(amount * 100);
 }
 
-/** Pads text with spaces on the left to at least width characters. */
-export function padLeft(text, width) {
-  return text.padStart(width);
+/** An amount of money right-aligned in a column width characters wide. */
+export function moneyColumn(amount, width) {
+  return formatMoney(amount).padStart(width);
 }

@@ -1,4 +1,4 @@
-import { formatMoney, padLeft, toCents } from "./money.js";
+import { formatMoney, moneyColumn, toCents } from "./money.js";
 
 const MONEY_WIDTH = 8;
 
@@ -22,5 +22,5 @@ export function renderReceipt(items) {
 }
 
 function line(label, cents, width) {
-  return label.padEnd(width) + padLeft(formatMoney(cents / 100), MONEY_WIDTH);
+  return label.padEnd(width) + moneyColumn(cents / 100, MONEY_WIDTH);
 }
