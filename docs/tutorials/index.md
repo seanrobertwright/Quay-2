@@ -10,4 +10,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 2 | [TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/) | Build a password-strength checker test-first, driving a tester, an implementer and a reviewer one pane at a time. |
 <!-- tutorials:end -->

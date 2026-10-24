@@ -239,7 +239,7 @@ node src/cli.ts 42.50 18 3; git status --short
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 2: TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/)
 
-The next tutorial in series order, Swarm 2: TDD Swarm kata, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Build a password-strength checker test-first with four panes in a 2x2 grid, and drive the red, green, review loop yourself.
 :::
