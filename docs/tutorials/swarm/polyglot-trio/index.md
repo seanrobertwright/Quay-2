@@ -32,7 +32,7 @@ Every agent on the A2A bus is a **peer**, and Quay can type a message into any o
 
 ## 1. Get the starter project
 
-The starter is a CSV-to-JSON converter with nothing inside it yet. `SPEC.md` is the contract all three agents read: eight numbered rules, then the exact JSON the finished tool prints for `samples/orders.csv`. `AGENTS.md` says which agent may edit which file and how a review is laid out.
+The starter is a CSV-to-JSON converter with nothing inside it yet. `SPEC.md` is the contract all three agents read: eight numbered rules, then the exact JSON the finished tool prints for `samples/orders.csv`. `AGENTS.md` says which agent may edit which file and how a review is laid out. The zip holds these files at its top level, with no folder around them, so the folder you unzip it into is the project folder you add to Quay.
 
 ::: do
 1. Download [`polyglot-trio.zip`](/starters/polyglot-trio.zip) and unzip it into a new, empty folder.
@@ -113,7 +113,7 @@ Antigravity isn't signed in on this account. Sign in as [Antigravity CLI](/guide
 :::
 
 ::: ifnot claude-dev shows the plugin hint
-Quay isn't hearing from the event-bridge plugin. Install it as the hint says, then run `/reload-plugins` in `claude-dev`. The hint goes away as soon as Quay hears from the plugin.
+The plugin hint is an amber strip under `claude-dev`'s header that starts `No events from the event-bridge plugin.` It means Quay isn't hearing from the plugin. If Claude Code is showing a prompt in the pane, answer it. Otherwise click **Copy** on the strip, press `Ctrl+B 5`, paste the line into `test-runner` and press `Enter`. When it finishes, press `Ctrl+B 2` and run `/reload-plugins` in `claude-dev`. The hint goes away as soon as Quay hears from the plugin.
 :::
 
 :::
