@@ -194,6 +194,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 8 | [Tri-Agent Council: plan, build, verify](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/tri-agent-council/) | Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict. |
 <!-- tutorials:end -->
 
 ---
