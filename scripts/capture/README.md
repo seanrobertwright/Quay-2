@@ -149,7 +149,9 @@ placeholder, naming each one, unless `QUAY_TUTORIAL_DRAFT` names the tutorial. `
 draft build show the placeholders, so the fresh-eyes read and the walk-through can follow the
 rendered page. The
 changed-shot report counts a committed placeholder as nothing committed, so a draft's first
-capture lists its shots as new.
+capture lists its shots as new. No Next up card may link to a draft yet, so the card of the
+tutorial before it keeps its link until the real shots are in; `scripts/test-runs/README.md`
+says what changes then.
 
 ## The capture manifest
 
