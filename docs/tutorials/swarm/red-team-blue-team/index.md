@@ -9,7 +9,7 @@ Two Claude Code agents play attacker and defender on a small notes app you own. 
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to launch the Red/Blue Team preset, give two agents opposed goals and separate folders so they can't undo each other's work, read a test run as a scoreboard, and use the Pre-PR Audit Gate (`Ctrl+B A`): what it scans, what it doesn't, and how to fix a blocker with one click.
+**You'll learn:** how to launch the Red/Blue Team preset, give two agents opposed goals and separate folders so they don't undo each other's work, read a test run as a scoreboard, and use the Pre-PR Audit Gate (`Ctrl+B A`): what it scans, what it doesn't, and how to fix a blocker with one click.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
 
@@ -77,7 +77,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 2. Click the **Red/Blue Team** card.
 3. Click **Launch Swarm Now**.
 
-`shell` keeps running. The rail lists it as the project's first terminal, then `red-team` and `blue-team`, and `Ctrl+B 1`, `Ctrl+B 2` and `Ctrl+B 3` put each of them in the pane that has focus.
+`shell` keeps running. The rail lists it as the project's first terminal, then `red-team` and `blue-team`. `Ctrl+B 1`, `Ctrl+B 2` and `Ctrl+B 3` pick them by that order: one already in a pane gets focus, and one that isn't takes the place of the pane that has focus.
 :::
 
 ::: see
