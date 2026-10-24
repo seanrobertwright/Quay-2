@@ -35,7 +35,7 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 ## 1. Get the starter project
 
 ::: do
-1. Download [`full-stack-pair.zip`](/starters/full-stack-pair.zip) and unzip it into a new, empty folder.
+1. Download [`full-stack-pair.zip`](/starters/full-stack-pair.zip) and unzip it into a new, empty folder. The project's files, such as `API.md` and `package.json`, land straight in that folder, with no folder of their own around them.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
 3. Press `Ctrl+B N`, choose **PowerShell Console**, type `app` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
 :::
