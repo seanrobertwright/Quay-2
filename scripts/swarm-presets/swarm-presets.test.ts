@@ -103,14 +103,16 @@ test('the committed README and feature page hold the lists the presets generate'
   }
 });
 
+// A word with a slash in it (src/, test/cli.test.ts), or a bare file name ending .md, .ts or .json.
+const PATH_LIKE = /[\w.-]*\/(?:[\w/-]|\.\w)*|\b[\w-]+\.(?:md|ts|json)\b/g;
+
 test('the Tri-Agent Council role prompts name only the files both of its starters hold', () => {
-  // Swarm 8 builds src/cli.ts and fills in test/cli.test.ts; A2A 8 builds src/stats.ts and nobody
-  // edits test/. Each starter's AGENTS.md says who owns what, so a prompt names only the shared files.
+  // Why only these three: see the comment above tri-agent-council in BUILTIN_SWARM_PRESETS.
   const shared = ['AGENTS.md', 'PLAN.md', 'SPEC.md'];
   const council = BUILTIN_SWARM_PRESETS.find((preset) => preset.id === 'tri-agent-council');
   assert.ok(council);
-  for (const agent of council.agents.filter((a) => a.role_prompt !== undefined)) {
-    const paths = agent.role_prompt?.match(/[\w.-]*\/(?:[\w/-]|\.\w)*|\b[\w-]+\.(?:md|ts|json)\b/g) ?? [];
+  for (const agent of council.agents) {
+    const paths = agent.role_prompt?.match(PATH_LIKE) ?? [];
     assert.deepEqual(paths.filter((path) => !shared.includes(path)), [], agent.name);
   }
 });
