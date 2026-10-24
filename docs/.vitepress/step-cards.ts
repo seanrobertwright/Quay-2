@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
-import { LANDING_LINK, TUTORIALS, nextUp, publishedTutorials, tutorialLink, tutorialPage, tutorialSlugOf } from './tutorials.ts';
+import { LANDING_LINK, TUTORIALS, nextUp, nextUpTargets, tutorialLink, tutorialPage, tutorialSlugOf } from './tutorials.ts';
 
 type Token = ReturnType<MarkdownRenderer['parse']>[number];
 type BlockRule = Parameters<MarkdownRenderer['block']['ruler']['before']>[2];
@@ -627,30 +627,17 @@ function checkReleaseSidecar(relativePath: string, sidecars: string, release: st
   return sidecar !== null && sidecarQuayVersion(sidecar) === release ? [] : [{ ...broken, files: [`examples/tutorials/${slug}/sidecar.json`] }];
 }
 
-/** The stills in the folder of the page at `pagePath` that are still byte for byte the placeholder. */
-export function placeholderStills(pagePath: string | undefined, placeholder: Buffer): string[] {
-  if (pagePath === undefined) return [];
-  const folder = dirname(pagePath);
-  return readdirSync(folder)
-    .filter((file) => file.endsWith('.webp'))
-    .sort()
-    .filter((file) => readFileSync(join(folder, file)).equals(placeholder));
-}
-
 /**
  * Checks that the tutorial at `relativePath` links its Next up card to the tutorial `nextUp`
- * names, given the pages published under `docs`, or to the landing page. A page whose folder still
- * holds a placeholder still is a draft, which `docs:build` refuses to publish, so it is not a
- * target until its real screenshots are in. The violation names the page the card should link to.
- * A step-card page that isn't a tutorial's is not checked.
+ * names among the `nextUpTargets` under `docs`, or to the landing page. The violation names the
+ * page the card should link to. A step-card page that isn't a tutorial's is not checked.
  */
 function checkNextUpTarget(tokens: Token[], relativePath: string, docs: string, placeholder: Buffer): StepCardViolation[] {
   const tutorial = TUTORIALS.find((each) => tutorialPage(each) === relativePath.replaceAll('\\', '/'));
   const card = readPage(tokens).parts.find((part) => part.name === 'next');
   const link = card?.tokens[1]?.children?.find((token) => token.type === 'link_open');
   if (tutorial === undefined || link === undefined) return [];
-  const targets = publishedTutorials(docs).filter((each) => placeholderStills(join(docs, tutorialPage(each)), placeholder).length === 0);
-  const next = nextUp(tutorial, targets);
+  const next = nextUp(tutorial, nextUpTargets(docs, placeholder));
   if (link.attrGet('href') === (next === null ? LANDING_LINK : tutorialLink(next))) return [];
   return [{ rule: 'next-up-target', step: null, title: null, files: [`docs/${next === null ? 'tutorials/index.md' : tutorialPage(next)}`] }];
 }

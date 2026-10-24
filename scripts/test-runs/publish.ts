@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MarkdownRenderer } from 'vitepress';
-import { PLACEHOLDER, glanceTile, placeholderStills, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
-import { TUTORIALS, tutorialSlugOf } from '../../docs/.vitepress/tutorials.ts';
+import { PLACEHOLDER, glanceTile, readStepCardRecord, usesStepCards, type GlanceTile } from '../../docs/.vitepress/step-cards.ts';
+import { TUTORIALS, placeholderStills, tutorialSlugOf } from '../../docs/.vitepress/tutorials.ts';
 import { isDateStamp } from '../../src/lib/dates.ts';
 import { runFingerprint } from './test-runs.ts';
 
