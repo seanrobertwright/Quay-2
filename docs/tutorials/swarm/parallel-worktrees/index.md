@@ -74,7 +74,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ::: do
 1. Rename the PowerShell pane, so it can't be mixed up with the swarms' panes later: in the rail, double-click `pwsh` under the project, type `main-shell` and press Enter.
 2. Press `Ctrl+B W`. The **New Git Worktree** dialog opens.
-3. Type `try-scan` as the **Branch Name**. Leave **Create as new branch** ticked, from `main`.
+3. Type `try-scan` as the **Branch Name**. Leave **Create as new branch** ticked, with `main` in the **from** box beside it.
 4. Untick **Launch Claude Code terminal immediately**. You'll launch a whole swarm there instead.
 5. Click **Create Worktree**.
 6. Do 2 to 5 again with `try-index` as the **Branch Name**.
@@ -153,8 +153,8 @@ The launcher launches into the folder selected in the rail. Press `Esc` to close
 Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls Bypass Permissions mode, and Claude Code asks once before its first session in that mode. Click into `lead-dev`, choose **Yes, I accept** and press Enter. It then confirms its role.
 :::
 
-::: ifnot lead-dev shows the plugin hint
-Quay isn't hearing from the event-bridge plugin. Install it as the hint says, then run `/reload-plugins` in `lead-dev`. The hint goes away as soon as Quay hears from the plugin.
+::: ifnot lead-dev shows No events from the event-bridge plugin
+That line, across the top of `lead-dev`'s pane, means Quay isn't hearing from the event-bridge plugin. If Claude Code is asking you something in `lead-dev`, answer it first. Otherwise install the plugin as [Event-bridge Plugin](/guide/installation#event-bridge-plugin) shows, then run `/reload-plugins` in `lead-dev`. The line goes away as soon as Quay hears from the plugin.
 :::
 
 :::
