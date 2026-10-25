@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="px08-title px08-desc">
+  <title id="px08-title">Praxis workflow engine logo: Fork and Join</title>
+  <desc id="px08-desc">A graph that splits into parallel branches and joins at one highlighted result.</desc>
+  <g id="px08-icon"><g stroke="#0F172A" stroke-width="4" stroke-linecap="round"><line x1="16" y1="48" x2="48" y2="22"/><line x1="16" y1="48" x2="48" y2="74"/><line x1="48" y1="22" x2="80" y2="48"/><line x1="48" y1="74" x2="80" y2="48"/></g><circle cx="16" cy="48" r="9" fill="#0F172A"/><circle cx="48" cy="22" r="9" fill="#0F172A"/><circle cx="48" cy="74" r="9" fill="#0F172A"/><circle cx="80" cy="48" r="10" fill="#06B6D4"/></g>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px25-title px25-desc">
+  <title id="px25-title">Praxis workflow engine logo: Assembly Line</title>
+  <desc id="px25-desc">Finished parts on a conveyor with the next one still dashed: a software factory in motion.</desc>
+  <g id="px25-icon"><rect x="6" y="60" width="84" height="18" rx="9" fill="none" stroke="#1F2937" stroke-width="4"/><circle cx="19" cy="69" r="3.5" fill="#1F2937"/><circle cx="38" cy="69" r="3.5" fill="#1F2937"/><circle cx="57" cy="69" r="3.5" fill="#1F2937"/><circle cx="76" cy="69" r="3.5" fill="#1F2937"/><rect x="12" y="36" width="20" height="20" rx="3" fill="#F97316"/><rect x="38" y="36" width="20" height="20" rx="3" fill="#FDBA74"/><rect x="65" y="37" width="18" height="18" rx="3" fill="none" stroke="#F97316" stroke-width="2" stroke-dasharray="3 3"/></g>
+  <g id="px25-wordmark">
+    <text x="114" y="54" font-family="Bahnschrift, 'DIN Alternate', 'Arial Narrow', sans-serif" font-size="42" font-weight="700" letter-spacing="2" fill="#1F2937">PRAXIS</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#F97316">WORKFLOW ENGINE</text>
+  </g>
+</svg>
