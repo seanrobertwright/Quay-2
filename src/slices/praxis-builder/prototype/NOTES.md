@@ -101,32 +101,17 @@ decision's `outputSchema` doesn't declare its `field`.
 
 Variant A, with B's schema editor.
 
-### Node look
-
-- A: a wide card with a kind strip, the id, a config summary and in/out chips.
-
-### DECISION `then` and `else`
-
-- A: green and red source handles. Dragging one sets `config.then` or
-  `config.else` and `dependsOn` together. A side handle gives plain dependents.
-
-### Inspector
-
-- A: a docked right panel with every section stacked.
-
-### `inputSchema` and `outputSchema`
-
-- B: a field table (name, type, required) with a raw JSON toggle. A schema the
-  table can't show opens as JSON.
-
-### Validation issues
-
-- A: a count badge on the node, and a collapsible Problems list under the
-  canvas.
-- The palette must never cover the Problems list. In the prototype, A's
-  palette is about 430px tall and runs into the list when the window is under
-  about 600px tall.
-
-### Palette
-
-- A: an icon strip on the canvas.
+- **Node look:** A. A wide card with a kind strip, the id, a config summary
+  and in/out chips.
+- **DECISION `then` and `else`:** A. Green and red source handles; dragging
+  one sets `config.then` or `config.else` and `dependsOn` together. A side
+  handle gives plain dependents.
+- **Inspector:** A. A docked right panel with every section stacked.
+- **`inputSchema` and `outputSchema`:** B. A field table (name, type,
+  required) with a raw JSON toggle. A schema the table can't show opens as
+  JSON.
+- **Validation issues:** A. A count badge on the node, and a collapsible
+  Problems list under the canvas. The palette must never cover that list: in
+  the prototype, A's palette is about 430px tall and runs into the list when
+  the window is under about 600px tall.
+- **Palette:** A. An icon strip on the canvas.
