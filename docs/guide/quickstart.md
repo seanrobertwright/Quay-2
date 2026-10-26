@@ -8,15 +8,15 @@ This tutorial guides you through your first session with **Quay 2**, from regist
 
 When Quay 2 launches, you are greeted by the **Navigation Rail** on the left side of the window.
 
-1. Click the **`+`** icon next to **Projects** in the rail, or press `Ctrl+K` and choose **"Add Project Folder"**.
+1. Click the **`+`** icon next to **Projects** in the rail, or press `Ctrl+Shift+P` and choose **"Add Project Folder"**.
 2. Select your local git repository directory (e.g. `E:\Projects\MyProject`).
 3. Quay 2 registers the workspace, detects existing git branches, and discovers any secondary git worktrees associated with the repository.
 
 ---
 
-## 2. Launching Your First Terminal (`Ctrl+B N`)
+## 2. Launching Your First Terminal (`Ctrl+Shift+B N`)
 
-1. Press `Ctrl+B N` (or click **"New Terminal"** in the navigation rail).
+1. Press `Ctrl+Shift+B N` (or click **"New Terminal"** in the navigation rail).
 2. The **New Terminal** dialog appears with options:
    - **Command Type**: Choose an agent (Claude Code, Antigravity, Codex, Pi, PiG, Gemini, Grok, Aider, Kiro, Copilot or OpenCode), a PowerShell Console, or a Custom Command, which runs any command line, such as `cmd.exe` or `wsl.exe`.
    - **Model**: For an agent, pick one of its presets (for Claude Code, e.g. **Claude Opus 5.5** or **Claude Sonnet 5.5**), or leave it on **Default**, the agent's own setting. See the [Agent Compatibility Matrix](../features/agent-support.md#agent-compatibility-matrix).
@@ -29,23 +29,23 @@ When Quay 2 launches, you are greeted by the **Navigation Rail** on the left sid
 
 ## 3. Keyboard Navigation Essentials
 
-All workspace management in Quay 2 is driven by the `Ctrl+B` prefix key chord:
+All workspace management in Quay 2 is driven by the `Ctrl+Shift+B` prefix key chord:
 
-- **Switch Terminals**: Press `Ctrl+B 1` through `Ctrl+B 9` (or `Alt+1` .. `Alt+9`).
-- **Split Stage Side-by-Side**: Press `Ctrl+B %` to split horizontally.
-- **Split Stage Top-and-Bottom**: Press `Ctrl+B "` to split vertically.
-- **2x2 Quad Grid**: Press `Ctrl+B G` to tile 4 terminals simultaneously.
-- **Zoom / Maximize**: Press `Ctrl+B Z` to toggle zoom on the active pane.
-- **Cycle Focus**: Press `Ctrl+B O` to cycle input focus between panes.
-- **Unsplit**: Press `Ctrl+B X` to restore single active pane.
+- **Switch Terminals**: Press `Ctrl+Shift+B 1` through `Ctrl+Shift+B 9` (or `Alt+1` .. `Alt+9`).
+- **Split Stage Side-by-Side**: Press `Ctrl+Shift+B %` to split horizontally.
+- **Split Stage Top-and-Bottom**: Press `Ctrl+Shift+B "` to split vertically.
+- **2x2 Quad Grid**: Press `Ctrl+Shift+B G` to tile 4 terminals simultaneously.
+- **Zoom / Maximize**: Press `Ctrl+Shift+B Z` to toggle zoom on the active pane.
+- **Cycle Focus**: Press `Ctrl+Shift+B O` to cycle input focus between panes.
+- **Unsplit**: Press `Ctrl+Shift+B X` to restore single active pane.
 
 ---
 
-## 4. Spawning a 1-Click Multi-Agent Swarm (`Ctrl+B S`)
+## 4. Spawning a 1-Click Multi-Agent Swarm (`Ctrl+Shift+B S`)
 
 Instead of configuring multiple splits manually, Quay 2 provides **Swarm Presets**:
 
-1. Press `Ctrl+B S` to open the Swarm Launcher.
+1. Press `Ctrl+Shift+B S` to open the Swarm Launcher.
 2. Select a preset. The launcher selects the first built-in preset when it opens. [Swarm Presets & Splits](/features/swarm-presets) lists every built-in preset with its agents, and shows how to save your own swarms.
 3. Click **Launch Swarm Now**. Quay automatically splits the stage and launches the coordinated processes.
 
@@ -65,17 +65,17 @@ Every Claude Code session launched inside Quay 2 is automatically connected to t
 
 ---
 
-## 6. Triaging GitHub Issues (`Ctrl+B I`)
+## 6. Triaging GitHub Issues (`Ctrl+Shift+B I`)
 
-1. Press `Ctrl+B I` to slide out the **GitHub Companion Drawer**.
+1. Press `Ctrl+Shift+B I` to slide out the **GitHub Companion Drawer**.
 2. View all open issues and pull requests for your repository.
 3. Notice any issues marked with a red **`BLOCKED`** tag: hover over the tag to see the exact issue numbers currently blocking work.
 4. Click **"Implement with Claude"** or **"Implement with Archon"** on any ready issue. Quay will automatically create an isolated worktree branch and prompt the agent to implement the requested solution.
 
 ---
 
-## 7. Tracking Spend & Audio Chimes (`Ctrl+B T`)
+## 7. Tracking Spend & Audio Chimes (`Ctrl+Shift+B T`)
 
 1. Check the bottom toolbar in the navigation rail to see your live all-time token spend.
-2. Press `Ctrl+B T` to open the **Token Spend & Audio Settings** dialog.
+2. Press `Ctrl+Shift+B T` to open the **Token Spend & Audio Settings** dialog.
 3. Inspect model breakdowns (Opus 5.5, Sonnet 5.5, Haiku 5.5) and enable subtle audio chimes to notify you when long-running agent turns finish while you work in other applications.

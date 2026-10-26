@@ -2,7 +2,7 @@
 
 **Machina** is an industrial-grade AI software manufacturing engine built on deterministic state machines, deliverable gates, and formal work orders.
 
-Quay 2 features an embedded, native **Machina Cockpit** (`Ctrl+B F`), providing direct oversight over automated software production pipelines without external servers.
+Quay 2 features an embedded, native **Machina Cockpit** (`Ctrl+Shift+B F`), providing direct oversight over automated software production pipelines without external servers.
 
 ---
 
@@ -13,7 +13,7 @@ flowchart LR
     Quay["Quay 2 Desktop"] --> Supervisor["Rust Praxis Supervisor"]
     Supervisor --> Node["Embedded Node 24 Runtime"]
     Node --> DB[("%LOCALAPPDATA%\Quay2\praxis\praxis.db")]
-    Supervisor --> Cockpit["Machina Cockpit UI (Ctrl+B F)"]
+    Supervisor --> Cockpit["Machina Cockpit UI (Ctrl+Shift+B F)"]
     
     Cockpit --> Stages["Pipeline Stages (Spec -> Design -> Code -> Verify)"]
     Cockpit --> Gates["Deliverable Gate Checkpoints"]

@@ -41,7 +41,9 @@ import {
   Cpu,
   ArrowUpCircle,
   Workflow,
+  X,
 } from "lucide-react";
+import { useOverlay } from "../overlay/useOverlay";
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
@@ -130,16 +132,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Focus input when opened
+  // Start each opening fresh; useOverlay puts focus in the input
   useEffect(() => {
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
     }
   }, [isOpen]);
+
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose, initialFocusRef: inputRef });
 
   // Build command items
   const allCommands = useMemo<CommandItem[]>(() => {
@@ -153,7 +154,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Single Pane Layout",
         subtitle: "Maximize active terminal",
         icon: <Square className="w-4 h-4 text-[#8b949e]" />,
-        shortcut: "Ctrl+B x",
+        shortcut: "Ctrl+Shift+B x",
         action: () => onSetLayout("single"),
       },
       {
@@ -162,7 +163,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Side-by-Side Split",
         subtitle: "Two vertical panes side by side",
         icon: <Columns2 className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B %",
+        shortcut: "Ctrl+Shift+B %",
         action: () => onSetLayout("split-horizontal"),
       },
       {
@@ -171,7 +172,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Stacked Split",
         subtitle: "Two horizontal panes stacked",
         icon: <Rows2 className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: 'Ctrl+B "',
+        shortcut: 'Ctrl+Shift+B "',
         action: () => onSetLayout("split-vertical"),
       },
       {
@@ -180,7 +181,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "2x2 Quad Grid Layout",
         subtitle: "Four terminal panes arranged in a grid",
         icon: <LayoutGrid className="w-4 h-4 text-[#bc8cff]" />,
-        shortcut: "Ctrl+B g",
+        shortcut: "Ctrl+Shift+B g",
         action: () => onSetLayout("grid"),
       },
       {
@@ -189,7 +190,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Toggle Zoom Active Pane",
         subtitle: "Expand current pane to full screen and back",
         icon: <Maximize2 className="w-4 h-4 text-[#d29922]" />,
-        shortcut: "Ctrl+B z",
+        shortcut: "Ctrl+Shift+B z",
         action: () => onToggleZoom(),
       },
       {
@@ -198,7 +199,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Cycle Next Pane Focus",
         subtitle: "Shift focus to next terminal pane",
         icon: <RotateCcw className="w-4 h-4 text-[#8b949e]" />,
-        shortcut: "Ctrl+B o",
+        shortcut: "Ctrl+Shift+B o",
         action: () => onFocusNextPane(),
       }
     );
@@ -211,7 +212,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "New Claude Code Agent",
         subtitle: "Launch a new Claude Code AI session",
         icon: <ClaudeIcon className="w-4 h-4 text-[#f0883e]" />,
-        shortcut: "Ctrl+B n",
+        shortcut: "Ctrl+Shift+B n",
         action: () => onNewTerminal("claude"),
       },
       {
@@ -332,7 +333,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Mission Control",
         subtitle: "Send messages to agents and read the A2A bus's message trail",
         icon: <Network className="w-4 h-4 text-[#bc8cff]" />,
-        shortcut: "Ctrl+B m",
+        shortcut: "Ctrl+Shift+B m",
         action: () => onOpenA2A(),
       },
       {
@@ -360,7 +361,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "New Git Worktree...",
         subtitle: "Create isolated working tree branch and launch Claude Code",
         icon: <GitBranch className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B w",
+        shortcut: "Ctrl+Shift+B w",
         action: () => onOpenNewWorktree(),
       });
     }
@@ -372,7 +373,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "GitHub Issues & Pull Requests",
         subtitle: "Browse issues, label filters, PR status checks, and 1-click agent dispatch",
         icon: <GithubIcon className="w-4 h-4 text-white" />,
-        shortcut: "Ctrl+B i",
+        shortcut: "Ctrl+Shift+B i",
         action: () => onOpenGithubDrawer(),
       });
     }
@@ -384,7 +385,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Pre-PR Audit Gate...",
         subtitle: "Scan git diff & untracked files for secrets, paths, and claim leaks",
         icon: <ShieldAlert className="w-4 h-4 text-[#f85149]" />,
-        shortcut: "Ctrl+B a",
+        shortcut: "Ctrl+Shift+B a",
         action: () => onOpenPrePrAudit(),
       });
     }
@@ -396,7 +397,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Session History & Auto-Resume...",
         subtitle: "Browse past Claude sessions and resume with context restored",
         icon: <History className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B h",
+        shortcut: "Ctrl+Shift+B h",
         action: () => onOpenSessionHistory(),
       });
     }
@@ -408,7 +409,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Token Spend & Audio Turn Chimes...",
         subtitle: "View live token usage, cache savings, and audio notification settings",
         icon: <Coins className="w-4 h-4 text-[#e3b341]" />,
-        shortcut: "Ctrl+B t",
+        shortcut: "Ctrl+Shift+B t",
         action: () => onOpenTokenSpend(),
       });
     }
@@ -420,7 +421,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Archon & SDD Spec Graph Inspector...",
         subtitle: "Inspect Archon workflow DAGs, SDD tasks, and ADR decision trails",
         icon: <ArchonIcon className="w-4 h-4" />,
-        shortcut: "Ctrl+B r",
+        shortcut: "Ctrl+Shift+B r",
         action: () => onOpenArchonGraph(),
       });
     }
@@ -432,7 +433,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Machina Factory Station...",
         subtitle: "AI Software Factory Cockpit: 6-Stage Pipeline DAG, Holdback Vault & Governed Holds",
         icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B f",
+        shortcut: "Ctrl+Shift+B f",
         action: () => onOpenFactoryStation(),
       });
     }
@@ -444,7 +445,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Praxis Builder...",
         subtitle: "Browse the project's Praxis graphs, contracts, grants and triggers",
         icon: <Workflow className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B p",
+        shortcut: "Ctrl+Shift+B p",
         action: () => onOpenPraxisBuilder(),
       });
     }
@@ -467,7 +468,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         title: "Check for Updates...",
         subtitle: `Quay v${APP_CURRENT_VERSION} — check GitHub releases and updater`,
         icon: <ArrowUpCircle className="w-4 h-4 text-[#58a6ff]" />,
-        shortcut: "Ctrl+B u",
+        shortcut: "Ctrl+Shift+B u",
         action: () => onCheckForUpdates(),
       });
     }
@@ -620,9 +621,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         target.action();
         onClose();
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
   };
 
@@ -638,9 +636,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4">
-      <div className="fixed inset-0" aria-hidden="true" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150">
+    // z-60 keeps the palette above a drawer it was opened over
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-60 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4"
+    >
+      <div
+        {...panelProps}
+        aria-label="Command palette"
+        className="focus:outline-hidden relative w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Search Input Bar */}
         <div className="px-4 py-3 border-b border-[#30363d] flex items-center gap-3 bg-[#0d1117]">
           <Search className="w-5 h-5 text-[#8b949e] shrink-0" />
@@ -656,9 +660,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder="Type a command, terminal, layout, or workspace..."
             className="w-full bg-transparent border-none text-sm text-white placeholder-[#8b949e] focus:outline-hidden"
           />
-          <kbd className="px-1.5 py-0.5 rounded bg-[#21262d] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-            ESC
-          </kbd>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 shrink-0 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded transition-colors"
+            title="Close (Esc)"
+            aria-label="Close command palette"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Results List */}

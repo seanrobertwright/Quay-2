@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.dev/readiness/1.0.0",
+  "$ref": "#/$defs/Manifest",
+  "$defs": {
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TOOL",
+            "OUTPUT",
+            "CONTEXT",
+            "ISOLATION"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "supported"
+      ],
+      "additionalProperties": false
+    },
+    "Requirement": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TOOL",
+            "OUTPUT",
+            "CONTEXT",
+            "ISOLATION"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "assurance": {
+          "enum": [
+            "DECLARED",
+            "VERIFIED"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "assurance"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ISOLATION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "assurance": {
+                "const": "VERIFIED"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TOOL",
+            "OUTPUT",
+            "CONTEXT",
+            "ISOLATION"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "evidenceRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "validUntilMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "evidenceRef",
+        "validUntilMs"
+      ],
+      "additionalProperties": false
+    },
+    "Manifest": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-capabilities/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "implementationDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "provider",
+        "model",
+        "implementationDigest",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "Requirements": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-requirements/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-capability-snapshot/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "manifest": {
+          "$ref": "#/$defs/Manifest"
+        },
+        "observedAtMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "validUntilMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "manifest",
+        "observedAtMs",
+        "validUntilMs",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "Binding": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-readiness-binding/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "requirements": {
+          "$ref": "#/$defs/Requirements"
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "manifestDigest",
+        "requirements"
+      ],
+      "additionalProperties": false
+    },
+    "Check": {
+      "type": "object",
+      "properties": {
+        "requirement": {
+          "$ref": "#/$defs/Requirement"
+        },
+        "observed": {
+          "enum": [
+            "SUPPORTED",
+            "UNSUPPORTED",
+            "MISSING"
+          ]
+        },
+        "status": {
+          "enum": [
+            "SATISFIED",
+            "MISSING",
+            "UNSUPPORTED",
+            "UNVERIFIED",
+            "EVIDENCE_EXPIRED",
+            "STALE"
+          ]
+        },
+        "evidenceRef": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          ]
+        },
+        "remediation": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "requirement",
+        "observed",
+        "status",
+        "evidenceRef",
+        "remediation"
+      ],
+      "additionalProperties": false
+    },
+    "Report": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-readiness/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "requirementsDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedManifestDigest": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          ]
+        },
+        "evaluatedAtMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "enum": [
+            "READY",
+            "BLOCKED"
+          ]
+        },
+        "authorized": {
+          "const": false
+        },
+        "agentMatches": {
+          "type": "boolean"
+        },
+        "pinMatches": {
+          "type": "boolean"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "maxItems": 256
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "manifestDigest",
+        "requirementsDigest",
+        "expectedManifestDigest",
+        "evaluatedAtMs",
+        "status",
+        "authorized",
+        "agentMatches",
+        "pinMatches",
+        "fresh",
+        "reasons",
+        "checks"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

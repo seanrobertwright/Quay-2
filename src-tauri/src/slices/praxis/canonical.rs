@@ -9,10 +9,8 @@
 use serde_json::{Map, Value};
 
 use super::models::PraxisKind;
+use super::revision::content_revision;
 use crate::slices::machina::vault::sha256_hex;
-
-/// How many hex digits of the SHA-256 a revision keeps after `sha256:`.
-pub const REVISION_HEX_LEN: usize = 16;
 
 // Property orders from the SDK's `spec/schema.json` `$defs`.
 const GRAPH_KEYS: &[&str] = &["id", "revision", "nodes"];
@@ -130,23 +128,17 @@ fn has_revision(kind: PraxisKind) -> bool {
     matches!(kind, PraxisKind::Graphs | PraxisKind::Triggers)
 }
 
-/// The revision `record` should carry: `sha256:` and the first hex digits of the digest of
-/// its canonical text without `revision`.
-pub fn revision_of(kind: PraxisKind, record: &Map<String, Value>) -> String {
-    let mut without = record.clone();
-    without.shift_remove("revision");
-    let text = to_canonical_text(&Value::Object(order_record(kind, without)));
-    format!("sha256:{}", &sha256_hex(text.as_bytes())[..REVISION_HEX_LEN])
-}
-
 /// The record as it is written: keys in schema order and, for graphs and triggers,
-/// `revision` set from the content.
+/// `revision` set from the content by `content_revision`, the same digest the validator
+/// checks it against. Content the SDK can't digest (an unsafe number, say) keeps the
+/// revision it has, and the validator then has nothing to compare it with either.
 pub fn canonical_record(kind: PraxisKind, record: Map<String, Value>) -> Map<String, Value> {
     let mut map = order_record(kind, record);
     if has_revision(kind) {
-        let revision = revision_of(kind, &map);
-        map.insert("revision".to_string(), Value::String(revision));
-        map = order_record(kind, map);
+        if let Some(revision) = content_revision(&Value::Object(map.clone())) {
+            map.insert("revision".to_string(), Value::String(revision));
+            map = order_record(kind, map);
+        }
     }
     map
 }
@@ -233,26 +225,18 @@ mod tests {
     // --- the revision digest ---------------------------------------------------------
 
     #[test]
-    fn the_revision_is_a_sha256_prefix_of_the_canonical_text_without_revision() {
-        let graph = object(json!({"id": "g", "nodes": []}));
-        let expected_text = "{\n  \"id\": \"g\",\n  \"nodes\": []\n}\n";
-        let expected = format!("sha256:{}", &sha256_hex(expected_text.as_bytes())[..REVISION_HEX_LEN]);
-        assert_eq!(revision_of(PraxisKind::Graphs, &graph), expected);
-        assert_eq!(expected.len(), "sha256:".len() + REVISION_HEX_LEN);
+    fn a_saved_graph_carries_the_revision_the_validator_expects() {
+        let graph = json!({"nodes": [{"id": "end", "kind": "END", "dependsOn": [], "config": {}}], "id": "g", "revision": "1"});
+        let saved = Value::Object(canonical_record(PraxisKind::Graphs, object(graph)));
+        // The value revision.rs pins for this graph's content.
+        assert_eq!(saved["revision"], "sha256:e05c3dd2ee43378d");
+        assert_eq!(content_revision(&saved).as_deref(), saved["revision"].as_str());
     }
 
     #[test]
-    fn the_revision_ignores_the_old_revision_and_key_order() {
-        let a = object(json!({"id": "g", "revision": "old", "nodes": []}));
-        let b = object(json!({"nodes": [], "id": "g", "revision": "something else"}));
-        assert_eq!(revision_of(PraxisKind::Graphs, &a), revision_of(PraxisKind::Graphs, &b));
-    }
-
-    #[test]
-    fn the_revision_changes_with_the_content() {
-        let a = object(json!({"id": "g", "nodes": []}));
-        let b = object(json!({"id": "h", "nodes": []}));
-        assert_ne!(revision_of(PraxisKind::Graphs, &a), revision_of(PraxisKind::Graphs, &b));
+    fn content_the_sdk_cant_digest_keeps_its_revision() {
+        let graph = object(json!({"id": "g", "revision": "hand", "nodes": [], "n": 1.5}));
+        assert_eq!(canonical_record(PraxisKind::Graphs, graph)["revision"], "hand");
     }
 
     #[test]

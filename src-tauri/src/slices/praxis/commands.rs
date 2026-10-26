@@ -4,6 +4,7 @@ use tauri::State;
 
 use super::models::{DefinitionFile, DefinitionList, LayoutInput, PraxisKind, SaveOutcome};
 use super::store;
+use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
 
 async fn blocking<T: Send + 'static>(
@@ -42,6 +43,14 @@ pub async fn praxis_read(
 ) -> Result<DefinitionFile, String> {
     let workspace = workspace.inner().clone();
     blocking(move || store::read_definition(&project_root(&workspace, &project_path)?, kind, &id)).await
+}
+
+/// Validates a definition's content offline with the vendored AI-WS-SDK, reporting every
+/// issue with its location. The content is passed in, not read from disk, so an unsaved
+/// draft can be checked.
+#[tauri::command]
+pub async fn praxis_validate(kind: PraxisKind, content: serde_json::Value) -> Result<Validation, String> {
+    blocking(move || validate::validate_definition(kind, &content)).await
 }
 
 /// Shows a definition file in the system file manager.

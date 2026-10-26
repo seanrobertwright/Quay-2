@@ -9,7 +9,10 @@ import {
   GithubRepoInfo,
 } from "./types";
 import { GithubIcon } from "./GithubIcon";
+import { loadedCountLabel, type PagedList } from "./paging";
+import { useLoadMoreSentinel, usePagedGithubList } from "./usePagedGithubList";
 import { ArchonWorkflow, ArchonRun } from "../archon/types";
+import { useOverlay } from "../overlay/useOverlay";
 import {
   X,
   GitPullRequest,
@@ -114,6 +117,56 @@ const BlockedTag: FC<BlockedTagProps> = ({
   );
 };
 
+interface LoadMoreRowProps {
+  list: PagedList<unknown>;
+  isLoadingMore: boolean;
+  error: string | null;
+  onRetry: () => void;
+  sentinelRef: (node: HTMLElement | null) => void;
+}
+
+/**
+ * Bottom row of a paged list. While more pages remain it is the infinite-scroll
+ * sentinel ("Loading more"); once everything is in it shows the final count.
+ */
+const LoadMoreRow: FC<LoadMoreRowProps> = ({ list, isLoadingMore, error, onRetry, sentinelRef }) => {
+  if (list.items.length === 0 && !list.hasNextPage) return null;
+  const count = loadedCountLabel(list);
+
+  if (list.hasNextPage && error) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-3 text-[11px] text-[#8b949e]">
+        <span className="text-[#ff7b72] line-clamp-1" title={error}>
+          Couldn't load more
+        </span>
+        <span className="font-mono">({count})</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-white font-medium transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (list.hasNextPage) {
+    return (
+      <div
+        ref={sentinelRef}
+        className="flex items-center justify-center gap-2 py-3 text-[11px] text-[#8b949e]"
+      >
+        <RotateCw className={`w-3.5 h-3.5 text-[#58a6ff] ${isLoadingMore ? "animate-spin" : ""}`} />
+        <span>Loading more</span>
+        <span className="font-mono">({count})</span>
+      </div>
+    );
+  }
+
+  return <div className="py-3 text-center text-[11px] text-[#8b949e] font-mono">{count}</div>;
+};
+
 interface GithubCompanionDrawerProps {
   isOpen: boolean;
   repoPath: string;
@@ -138,10 +191,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   onOpenArchonMonitor,
 }) => {
   const [activeTab, setActiveTab] = useState<"issues" | "prs">("issues");
-  const [issues, setIssues] = useState<GithubIssue[]>([]);
-  const [prs, setPrs] = useState<GithubPullRequest[]>([]);
   const [repoInfo, setRepoInfo] = useState<GithubRepoInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archonWorkflows, setArchonWorkflows] = useState<ArchonWorkflow[]>([]);
   const [archonRuns, setArchonRuns] = useState<ArchonRun[]>([]);
@@ -153,65 +203,84 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const [issueStateFilter, setIssueStateFilter] = useState<"open" | "closed" | "all">("open");
   const [prStateFilter, setPrStateFilter] = useState<"open" | "closed" | "all">("open");
 
+  // Issues and PRs load a page at a time; scrolling to the bottom fetches the next page
+  const issuePages = usePagedGithubList<GithubIssue>("list_github_issues", repoPath, issueStateFilter);
+  const prPages = usePagedGithubList<GithubPullRequest>("list_github_prs", repoPath, prStateFilter);
+  const issues = issuePages.list.items;
+  const prs = prPages.list.items;
+  const { loadFirstPage: loadFirstIssuePage } = issuePages;
+  const { loadFirstPage: loadFirstPrPage } = prPages;
+  const issueSentinelRef = useLoadMoreSentinel(issuePages.loadMore, issues.length);
+  const prSentinelRef = useLoadMoreSentinel(prPages.loadMore, prs.length);
+
   // Selected issue detail
   const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [issueDetail, setIssueDetail] = useState<GithubIssueDetail | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Fetch repo info, issues, and PRs
-  const refreshData = useCallback(async () => {
-    if (!repoPath) return;
-    setIsLoading(true);
-    setError(null);
-
+  // Each load spawns `gh` or `archon` processes, so each one reruns only when its own
+  // inputs change: a filter change refetches its own list and nothing else.
+  const [pendingLoads, setPendingLoads] = useState(0);
+  const isLoading = pendingLoads > 0;
+  const track = useCallback(async (load: () => Promise<void>) => {
+    setPendingLoads((n) => n + 1);
     try {
-      // Check repo info
-      const info = await invoke<GithubRepoInfo | null>("get_github_repo_info", {
-        repoPath,
-      });
-      setRepoInfo(info);
-
-      // Load issues
-      const issueList = await invoke<GithubIssue[]>("list_github_issues", {
-        repoPath,
-        state: issueStateFilter,
-        limit: 50,
-      });
-      setIssues(issueList || []);
-
-      // Load PRs
-      const prList = await invoke<GithubPullRequest[]>("list_github_prs", {
-        repoPath,
-        state: prStateFilter,
-        limit: 30,
-      });
-      setPrs(prList || []);
-
-      // Load Archon workflows & runs (best-effort)
-      try {
-        const [wfs, rns] = await Promise.all([
-          invoke<ArchonWorkflow[]>("archon_get_workflows").catch(() => []),
-          invoke<ArchonRun[]>("archon_get_runs").catch(() => []),
-        ]);
-        setArchonWorkflows(wfs || []);
-        setArchonRuns(rns || []);
-      } catch {
-        // Archon not running or not installed
-      }
+      await load();
     } catch (err: any) {
       console.error("Failed to load GitHub data:", err);
       setError(err?.toString() || "Failed to load GitHub data via gh CLI");
     } finally {
-      setIsLoading(false);
+      setPendingLoads((n) => n - 1);
     }
-  }, [repoPath, issueStateFilter, prStateFilter]);
+  }, []);
+
+  // Repo info and Archon workflows & runs (best-effort): once per open.
+  const loadRepoAndArchon = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(async () => {
+      const [info, wfs, rns] = await Promise.all([
+        invoke<GithubRepoInfo | null>("get_github_repo_info", { repoPath }),
+        invoke<ArchonWorkflow[]>("archon_get_workflows").catch(() => []),
+        invoke<ArchonRun[]>("archon_get_runs").catch(() => []),
+      ]);
+      setRepoInfo(info);
+      setArchonWorkflows(wfs || []);
+      setArchonRuns(rns || []);
+    });
+  }, [repoPath, track]);
+
+  // The first page of issues and PRs; later pages load on scroll
+  const loadIssues = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(loadFirstIssuePage);
+  }, [repoPath, loadFirstIssuePage, track]);
+
+  const loadPrs = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(loadFirstPrPage);
+  }, [repoPath, loadFirstPrPage, track]);
+
+  // The refresh button reloads everything.
+  const refreshData = useCallback(() => {
+    setError(null);
+    return Promise.all([loadRepoAndArchon(), loadIssues(), loadPrs()]);
+  }, [loadRepoAndArchon, loadIssues, loadPrs]);
 
   useEffect(() => {
     if (isOpen) {
-      refreshData();
+      setError(null);
+      loadRepoAndArchon();
     }
-  }, [isOpen, refreshData]);
+  }, [isOpen, loadRepoAndArchon]);
+
+  useEffect(() => {
+    if (isOpen) loadIssues();
+  }, [isOpen, loadIssues]);
+
+  useEffect(() => {
+    if (isOpen) loadPrs();
+  }, [isOpen, loadPrs]);
 
   // Fetch detailed issue description when an issue is selected
   useEffect(() => {
@@ -242,16 +311,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
     };
   }, [selectedIssueNumber, repoPath]);
 
-  // Handle ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
   // Available label filters
   const allLabels = useMemo(() => {
@@ -322,9 +382,14 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+    >
       <div
-        className={`bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
+        {...panelProps}
+        aria-label="GitHub Companion"
+        className={`focus:outline-hidden bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
           isExpanded ? "w-full" : "w-full max-w-4xl"
         }`}
       >
@@ -354,7 +419,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                 type="button"
                 onClick={onOpenArchonMonitor}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-[#a371f7] bg-[#a371f7]/10 hover:bg-[#a371f7]/20 border border-[#a371f7]/30 rounded font-medium transition-colors"
-                title="Open Archon Run Monitor (^b r)"
+                title="Open Archon Run Monitor (Ctrl+Shift+B r)"
               >
                 <Workflow className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Archon Monitor</span>
@@ -404,6 +469,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
               <span>Issues</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#0d1117] text-[#8b949e] font-mono">
                 {issues.length}
+                {issuePages.list.hasNextPage ? "+" : ""}
               </span>
             </button>
 
@@ -420,6 +486,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
               <span>Pull Requests</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#0d1117] text-[#8b949e] font-mono">
                 {prs.length}
+                {prPages.list.hasNextPage ? "+" : ""}
               </span>
             </button>
 
@@ -591,6 +658,13 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                     );
                   })
                 )}
+                <LoadMoreRow
+                  list={issuePages.list}
+                  isLoadingMore={issuePages.isLoadingMore}
+                  error={issuePages.loadMoreError}
+                  onRetry={issuePages.loadMore}
+                  sentinelRef={issueSentinelRef}
+                />
               </div>
 
               {/* Issue Detail & Action Panel */}
@@ -829,6 +903,13 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                   );
                 })
               )}
+              <LoadMoreRow
+                list={prPages.list}
+                isLoadingMore={prPages.isLoadingMore}
+                error={prPages.loadMoreError}
+                onRetry={prPages.loadMore}
+                sentinelRef={prSentinelRef}
+              />
             </div>
           )}
         </div>

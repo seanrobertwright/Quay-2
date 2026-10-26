@@ -729,25 +729,7 @@ impl PtySession {
             format!("Failed to take master writer: {}", e)
         })?));
 
-        let log_dir = {
-            #[cfg(test)]
-            {
-                let t = std::env::temp_dir().join("quay2_test_sessions");
-                let _ = std::fs::create_dir_all(&t);
-                t
-            }
-            #[cfg(not(test))]
-            {
-                let d = if let Ok(local) = std::env::var("LOCALAPPDATA") {
-                    std::path::Path::new(&local).join("Quay2").join("sessions")
-                } else {
-                    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-                    std::path::Path::new(&home).join(".quay2").join("sessions")
-                };
-                let _ = std::fs::create_dir_all(&d);
-                d
-            }
-        };
+        let log_dir = super::manager::get_sessions_dir();
         let log_path = log_dir.join(format!("{}.log", terminal_id));
 
         // Read existing scrollback if relaunching an existing terminal
@@ -958,11 +940,14 @@ impl PtySession {
     }
 
     pub fn get_output(&self) -> TerminalOutputPayload {
+        let (rows, cols) = *self.current_size.lock();
         let guard = self.output_buffer.lock();
         TerminalOutputPayload {
             terminal_id: self.id.clone(),
             data: guard.0.clone(),
             last_seq: guard.1,
+            rows: Some(rows),
+            cols: Some(cols),
         }
     }
 
@@ -1703,13 +1688,13 @@ mod tests {
         #[cfg(windows)]
         {
             assert_eq!(args[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), PIG_NOT_INSTALLED);
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }
         #[cfg(not(windows))]
         {
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", PIG_NOT_INSTALLED));
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }

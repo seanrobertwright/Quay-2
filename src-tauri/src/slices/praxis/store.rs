@@ -462,7 +462,7 @@ mod tests {
         std::fs::create_dir_all(link.parent().unwrap()).unwrap();
         #[cfg(windows)]
         {
-            let status = std::process::Command::new("cmd")
+            let status = crate::spawn::hidden_command("cmd")
                 .args(["/C", "mklink", "/J"])
                 .arg(link)
                 .arg(target)

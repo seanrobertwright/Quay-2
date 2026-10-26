@@ -1,6 +1,6 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph on the canvas, where its nodes can be dragged and saved.
-// Closing only hides it, so each project's session, drafts included, survives until Quay
+// definitions and shows a graph on the canvas, with its validation problems, where its
+// nodes can be dragged and saved. Closing only hides it, so each project's session, drafts included, survives until Quay
 // quits. Quitting with unsaved drafts asks first.
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC, type Ref } from "react";
 import { createPortal } from "react-dom";
@@ -22,7 +22,7 @@ import {
 import { normalizePath } from "../../utils/paths.ts";
 import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
-import { GraphCanvas } from "./GraphCanvas.tsx";
+import { GraphView, UndrawnGraphProblems } from "./GraphView.tsx";
 import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
 import {
   applyDiskRead,
@@ -112,6 +112,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [listShown, setListShown] = useState(true);
+  const [problemsShown, setProblemsShown] = useState(true);
+  const toggleProblems = useCallback(() => setProblemsShown((v) => !v), []);
+  // Whether each graph validated so far is invalid, keyed by project and definition, for
+  // the list's error badge.
+  const [invalid, setInvalid] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [revealError, setRevealError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -391,6 +396,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [projectPath, openKey]
   );
 
+  const recordValidity = useCallback(
+    (verdict: string | null) => {
+      if (!projectKey || !openKey) return;
+      const key = `${projectKey}|${openKey}`;
+      const isInvalid = verdict !== null;
+      setInvalid((m) => (m.get(key) === isInvalid ? m : new Map(m).set(key, isInvalid)));
+    },
+    [projectKey, openKey]
+  );
+
   const canvasReady = useCallback(
     (read: () => Viewport) => {
       viewportReader.current = { key: `${projectKey}|${openKey}`, read };
@@ -433,7 +448,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             Praxis Builder
           </h2>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
-            Ctrl+B P
+            Ctrl+Shift+B P
           </span>
           {project && (
             <span className="text-xs text-[#8b949e] truncate min-w-0" title={project.path}>
@@ -573,6 +588,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                 <ListRow
                                   id={def.id}
                                   problem={def.problem}
+                                  invalid={invalid.get(`${projectKey}|${key}`) === true}
                                   draft={draft}
                                   current={isOpenDef}
                                   onOpen={() => openDefinition(ref)}
@@ -614,6 +630,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   onViewportChange={saveViewport}
                   onMoveNodes={moveOpenNodes}
                   onReady={canvasReady}
+                  onValidated={recordValidity}
+                  problemsShown={problemsShown}
+                  onToggleProblems={toggleProblems}
                 />
               ) : !current ? (
                 <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>
@@ -638,6 +657,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   file={current.file!}
                   onReveal={() => void reveal(open)}
                   revealError={revealError}
+                  problemsShown={problemsShown}
+                  onToggleProblems={toggleProblems}
                 />
               )}
             </main>
@@ -678,13 +699,20 @@ const draftLabel = (d: DirtyDraft) =>
 const ListRow: FC<{
   id: string;
   problem: FileProblem | undefined;
+  /** The definition was validated and the SDK refuses it. */
+  invalid: boolean;
   draft: GraphDraft | undefined;
   current: boolean;
   onOpen: () => void;
-}> = ({ id, problem, draft, current, onOpen }) => {
+}> = ({ id, problem, invalid, draft, current, onOpen }) => {
   const dirty = draft ? isDirty(draft) : false;
   const deleted = draft?.deletedOnDisk ?? false;
-  const notes = [problem && problem.message, deleted && "deleted on disk", dirty && "unsaved changes"].filter(Boolean);
+  const notes = [
+    problem && problem.message,
+    !problem && invalid && "invalid, see Problems",
+    deleted && "deleted on disk",
+    dirty && "unsaved changes",
+  ].filter(Boolean);
   return (
     <button
       type="button"
@@ -703,10 +731,10 @@ const ListRow: FC<{
         </span>
       )}
       {deleted && <span className="sr-only">(deleted on disk)</span>}
-      {problem && (
+      {(problem || invalid) && (
         <span className="ml-auto inline-flex items-center text-[#ff7b72] shrink-0">
           <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="sr-only">(can't be opened)</span>
+          <span className="sr-only">{problem ? "(can't be opened)" : "(invalid)"}</span>
         </span>
       )}
     </button>
@@ -752,7 +780,9 @@ const DefinitionView: FC<{
   file: DefinitionFile;
   onReveal: () => void;
   revealError: string | null;
-}> = ({ open, file, onReveal, revealError }) => {
+  problemsShown: boolean;
+  onToggleProblems: () => void;
+}> = ({ open, file, onReveal, revealError, problemsShown, onToggleProblems }) => {
   const graph = useMemo(() => (open.kind === "graphs" ? parseGraph(file.content) : null), [open.kind, file.content]);
   if (!graph) {
     return (
@@ -766,12 +796,17 @@ const DefinitionView: FC<{
   }
   if (!graph.ok) {
     return (
-      <ProblemView
-        title={`${definitionPath(open)} can't be shown as a graph`}
-        problem={{ message: graph.message }}
-        onReveal={onReveal}
-        revealError={revealError}
-      />
+      <>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <ProblemView
+            title={`${definitionPath(open)} can't be shown as a graph`}
+            problem={{ message: graph.message }}
+            onReveal={onReveal}
+            revealError={revealError}
+          />
+        </div>
+        <UndrawnGraphProblems content={file.content} problemsShown={problemsShown} onToggleProblems={onToggleProblems} />
+      </>
     );
   }
   return <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>;
@@ -784,7 +819,20 @@ const GraphDraftView: FC<{
   onViewportChange: (viewport: Viewport) => void;
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   onReady: (read: () => Viewport) => void;
-}> = ({ draft, layoutProblem, viewport, onViewportChange, onMoveNodes, onReady }) => {
+  onValidated: (verdict: string | null) => void;
+  problemsShown: boolean;
+  onToggleProblems: () => void;
+}> = ({
+  draft,
+  layoutProblem,
+  viewport,
+  onViewportChange,
+  onMoveNodes,
+  onReady,
+  onValidated,
+  problemsShown,
+  onToggleProblems,
+}) => {
   // Drafts are made only from graphs the canvas can draw, so this always parses.
   const graph = useMemo(() => parseGraph(draft.content), [draft.content]);
   if (!graph.ok) return null;
@@ -805,16 +853,18 @@ const GraphDraftView: FC<{
           </span>
         </p>
       )}
-      <div className="flex-1 min-h-0 relative">
-        <GraphCanvas
-          graph={graph.value}
-          positions={draft.positions}
-          viewport={viewport}
-          onViewportChange={onViewportChange}
-          onMoveNodes={onMoveNodes}
-          onReady={onReady}
-        />
-      </div>
+      <GraphView
+        graph={graph.value}
+        content={draft.content}
+        positions={draft.positions}
+        viewport={viewport}
+        onViewportChange={onViewportChange}
+        onMoveNodes={onMoveNodes}
+        onReady={onReady}
+        onValidated={onValidated}
+        problemsShown={problemsShown}
+        onToggleProblems={onToggleProblems}
+      />
     </>
   );
 };

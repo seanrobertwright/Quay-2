@@ -133,9 +133,9 @@ Installed Quay clients stay up to date through an opt-in user flow:
 ### 1. Update Detection
 * **Background Startup Check**: 3.5 seconds after Quay launches, it quietly checks `latest.json` (and the GitHub Releases API as fallback).
 * **Manual Check**:
-  * **Hotkey**: Press `Ctrl+B u` (tmux sequence) at any time.
-  * **Command Palette**: Press `Ctrl+K` and type `Check for Updates...`.
-  * **Settings**: Open Workspace Settings (`Ctrl+B ,`) and click **Check for Updates**.
+  * **Hotkey**: Press `Ctrl+Shift+B u` (tmux sequence) at any time.
+  * **Command Palette**: Press `Ctrl+Shift+P` and type `Check for Updates...`.
+  * **Settings**: Open Workspace Settings (`Ctrl+Shift+B ,`) and click **Check for Updates**.
 
 ### 2. User Consent Modal
 When a new version is detected, Quay displays the **Quay Software Update** dialog with:

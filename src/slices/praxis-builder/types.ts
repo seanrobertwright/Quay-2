@@ -56,3 +56,30 @@ export interface LayoutInput {
 export type SaveOutcome =
   | { status: "saved"; content: Record<string, unknown>; contentHash: string; layoutError?: string }
   | { status: "conflict"; reason: "changed" | "deleted" };
+
+/** How serious an issue is: `error` when the SDK refuses the record, `info` otherwise. */
+export type Severity = "error" | "info";
+
+/** One issue in a definition, from `praxis_validate`. */
+export interface Diagnostic {
+  /** The SDK's error code, or a Quay code such as `REVISION_MISMATCH`. */
+  code: string;
+  severity: Severity;
+  message: string;
+  /** A JSON Pointer to the value at fault, `""` for the record as a whole. */
+  path: string;
+  /** The graph node the issue is on, when it is on one. */
+  nodeId?: string;
+  /** The place inside that node, dotted (`config.then`), when it isn't the whole node. */
+  field?: string;
+}
+
+/** `praxis_validate`'s result. With a verdict, the first diagnostic carries its code. */
+export interface Validation {
+  /** The SDK's verdict: the first rule the record breaks, or null when the SDK accepts it. */
+  verdict: string | null;
+  /** At most the backend's cap (500) of the issues found. */
+  diagnostics: Diagnostic[];
+  /** The issues found beyond `diagnostics`, by severity. */
+  omitted: { errors: number; info: number };
+}

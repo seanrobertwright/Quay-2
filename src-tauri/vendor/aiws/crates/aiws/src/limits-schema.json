@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.example/spec/limits-v1/schema.json",
+  "$defs": {
+    "Quantity": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,99})$"
+    },
+    "Limits": {
+      "type": "object",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activeMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "elapsedMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "handoff": {
+          "$ref": "#/$defs/Quantity"
+        }
+      },
+      "required": [
+        "cost",
+        "activeMs",
+        "elapsedMs",
+        "attempts",
+        "handoff"
+      ],
+      "additionalProperties": false
+    },
+    "Scope": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "parentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "WORK_ORDER",
+            "RUN",
+            "BRANCH",
+            "NODE"
+          ]
+        },
+        "workOrderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nodeId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "uniqueItems": true
+        },
+        "startMs": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        }
+      },
+      "required": [
+        "id",
+        "parentId",
+        "kind",
+        "workOrderId",
+        "runId",
+        "nodeId",
+        "dependsOn",
+        "startMs",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
+    "Config": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "aiws-limits/1"
+        },
+        "ledgerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "costUnit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "approvalRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/Scope"
+          }
+        }
+      },
+      "required": [
+        "protocol",
+        "ledgerId",
+        "costUnit",
+        "approvalRef",
+        "scopes"
+      ],
+      "additionalProperties": false
+    },
+    "Facts": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "actorKind": {
+          "enum": [
+            "HUMAN",
+            "AGENT",
+            "RULE"
+          ]
+        },
+        "policyRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "evidenceRef": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorizedAtMs": {
+          "$ref": "#/$defs/Quantity"
+        }
+      },
+      "required": [
+        "allowed",
+        "actorId",
+        "actorKind",
+        "policyRef",
+        "evidenceRef",
+        "authorizedAtMs"
+      ],
+      "additionalProperties": false
+    },
+    "Command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "reserve"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "operationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "scopeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "runId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "purpose": {
+              "enum": [
+                "ORDINARY",
+                "HANDOFF",
+                "CLEANUP"
+              ]
+            },
+            "amount": {
+              "$ref": "#/$defs/Quantity"
+            },
+            "maxActiveMs": {
+              "$ref": "#/$defs/Quantity"
+            }
+          },
+          "required": [
+            "type",
+            "attemptId",
+            "operationId",
+            "scopeId",
+            "runId",
+            "purpose",
+            "amount",
+            "maxActiveMs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "dispatch"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "type",
+            "attemptId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "release"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "type",
+            "attemptId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "unknown"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "type",
+            "attemptId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "stop"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "type",
+            "attemptId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "settle"
+            },
+            "attemptId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "actualCost": {
+              "$ref": "#/$defs/Quantity"
+            }
+          },
+          "required": [
+            "type",
+            "attemptId",
+            "actualCost"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "adjust"
+            },
+            "scopeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "limits": {
+              "$ref": "#/$defs/Limits"
+            }
+          },
+          "required": [
+            "type",
+            "scopeId",
+            "limits"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Request": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "command": {
+          "$ref": "#/$defs/Command"
+        }
+      },
+      "required": [
+        "requestId",
+        "expectedRevision",
+        "command"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

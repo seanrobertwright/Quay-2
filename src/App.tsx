@@ -5,7 +5,7 @@ import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
-import { AddProjectModal } from "./slices/workspace/AddProjectModal";
+import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
 import { A2APanel } from "./slices/orchestrator/A2APanel";
 import { PermissionModal } from "./slices/bridge/PermissionModal";
@@ -504,7 +504,7 @@ export function App() {
         onRelaunchTerminal={relaunchTerminal}
       />
 
-      {/* Global Command Palette (Ctrl+K / Cmd+K) */}
+      {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
@@ -609,14 +609,16 @@ export function App() {
         />
       )}
 
-      {/* Add Project Dialog */}
-      <AddProjectModal
+      {/* Open Project Dialog */}
+      <OpenProjectDialog
         isOpen={isAddProjectOpen}
         onClose={() => setIsAddProjectOpen(false)}
+        projects={projects}
         onAddProject={addProject}
+        onSelectProject={(path) => setActiveProject(path)}
       />
 
-      {/* New Terminal Dialog (^b n) */}
+      {/* New Terminal Dialog (Ctrl+Shift+B n) */}
       <NewTerminalModal
         isOpen={isNewTerminalOpen}
         projectPath={activeProject}
@@ -651,7 +653,7 @@ export function App() {
         }}
       />
 
-      {/* Git Worktree Creation Modal (^b w) */}
+      {/* Git Worktree Creation Modal (Ctrl+Shift+B w) */}
       <NewWorktreeModal
         isOpen={isNewWorktreeOpen}
         repoPath={worktreeModalTarget?.repoPath || activeRootRepo}
@@ -669,7 +671,7 @@ export function App() {
         }}
       />
 
-      {/* GitHub Companion Drawer (^b i) */}
+      {/* GitHub Companion Drawer (Ctrl+Shift+B i) */}
       <GithubCompanionDrawer
         isOpen={isGithubDrawerOpen}
         repoPath={activeRootRepo}
@@ -682,7 +684,7 @@ export function App() {
         onOpenArchonMonitor={() => setIsArchonGraphOpen(true)}
       />
 
-      {/* Pre-PR Audit Gate Modal (^b a) */}
+      {/* Pre-PR Audit Gate Modal (Ctrl+Shift+B a) */}
       <PrePrAuditModal
         isOpen={isAuditModalOpen}
         projectPath={activeRootRepo}
@@ -691,7 +693,7 @@ export function App() {
         onFixWithClaude={handleFixAuditWithClaude}
       />
 
-      {/* Claude Session History & Auto-Resume Drawer (^b h) */}
+      {/* Claude Session History & Auto-Resume Drawer (Ctrl+Shift+B h) */}
       <SessionHistoryDrawer
         isOpen={isSessionHistoryOpen}
         activeProject={activeProject}
@@ -699,7 +701,7 @@ export function App() {
         onResumeSession={(sessionId, projectPath) => resumeSession(sessionId, projectPath)}
       />
 
-      {/* Claude Live Token Spend & Background Turn Chime Modal (^b t) */}
+      {/* Claude Live Token Spend & Background Turn Chime Modal (Ctrl+Shift+B t) */}
       <TokenSpendModal
         isOpen={isTokenSpendOpen}
         stats={claudeStats}
@@ -707,7 +709,7 @@ export function App() {
         onClose={() => setIsTokenSpendOpen(false)}
       />
 
-      {/* Archon & SDD Spec Graph Inspector Modal (^b r) */}
+      {/* Archon & SDD Spec Graph Inspector Modal (Ctrl+Shift+B r) */}
       <ArchonGraphModal
         isOpen={isArchonGraphOpen}
         activeProject={activeProject}
@@ -719,7 +721,7 @@ export function App() {
         onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
       />
 
-      {/* Machina software factory (^b f) */}
+      {/* Machina software factory (Ctrl+Shift+B f) */}
       <FactoryStationModal
         isOpen={isFactoryStationOpen}
         activeProject={activeProject}
@@ -729,7 +731,7 @@ export function App() {
         onSpawnTerminal={spawnTerminal}
       />
 
-      {/* Praxis Builder (^b p): hidden, never unmounted, when closed */}
+      {/* Praxis Builder (Ctrl+Shift+B p): hidden, never unmounted, when closed */}
       <PraxisBuilderModal
         isOpen={isPraxisBuilderOpen}
         project={builderProject}
@@ -744,7 +746,7 @@ export function App() {
         onSelectTerminal={selectTerminal}
       />
 
-      {/* Software Update Checker & Installer Modal (^b u) */}
+      {/* Software Update Checker & Installer Modal (Ctrl+Shift+B u) */}
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}

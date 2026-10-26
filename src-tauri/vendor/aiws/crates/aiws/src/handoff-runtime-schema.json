@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed",
+        "actorId",
+        "actorKind",
+        "policy",
+        "authorizedAtMs",
+        "materials",
+        "materialErrors",
+        "admissions",
+        "clearEvidence",
+        "restartAllowed"
+      ],
+      "properties": {
+        "allowed": {
+          "const": true
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "actorKind": {
+          "enum": [
+            "HUMAN",
+            "RULE",
+            "AGENT"
+          ]
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "revision"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        },
+        "authorizedAtMs": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,99})$"
+        },
+        "materials": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "materialErrors": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "ARTIFACT_UNAVAILABLE",
+              "ARTIFACT_MISMATCH",
+              "DATA_SCHEMA"
+            ]
+          }
+        },
+        "admissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "clearEvidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "restartAllowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "expectedRevision",
+        "ownerEpoch",
+        "runId",
+        "command"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expectedRevision": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,99})$"
+        },
+        "ownerEpoch": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,99})$"
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "command": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

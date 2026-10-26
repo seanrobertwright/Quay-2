@@ -1,9 +1,6 @@
 use super::models::{AuditReport, AuditViolation};
 use std::collections::HashSet;
-use std::process::Command;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use crate::spawn::hidden_command;
 
 #[tauri::command]
 pub async fn run_pre_pr_audit(
@@ -20,13 +17,8 @@ pub(crate) fn run_pre_pr_audit_sync(project_path: &str, base_branch: Option<&str
     let mut files_scanned_set = HashSet::new();
 
     // 1. Check git status for suspicious uncommitted or untracked files
-    let mut status_cmd = Command::new("git");
+    let mut status_cmd = hidden_command("git");
     status_cmd.args(["status", "--porcelain"]).current_dir(project_path);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        status_cmd.creation_flags(CREATE_NO_WINDOW);
-    }
 
     if let Ok(output) = status_cmd.output() {
         if output.status.success() {
@@ -109,13 +101,8 @@ fn get_git_diff_output(project_path: &str, base_branch: Option<&str>) -> Result<
         args.push("HEAD");
     }
 
-    let mut cmd = Command::new("git");
+    let mut cmd = hidden_command("git");
     cmd.args(&args).current_dir(project_path);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
 
     let output = cmd.output().map_err(|e| format!("Failed to execute git diff: {}", e))?;
     let mut diff_str = String::from_utf8_lossy(&output.stdout).to_string();
@@ -123,13 +110,8 @@ fn get_git_diff_output(project_path: &str, base_branch: Option<&str>) -> Result<
     // If working tree vs HEAD diff is completely empty and no base branch was specified,
     // also check HEAD~1 to audit the most recent commit on the branch
     if diff_str.trim().is_empty() && base_branch.is_none() {
-        let mut head_cmd = Command::new("git");
+        let mut head_cmd = hidden_command("git");
         head_cmd.args(["diff", "HEAD~1"]).current_dir(project_path);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            head_cmd.creation_flags(CREATE_NO_WINDOW);
-        }
         if let Ok(head_output) = head_cmd.output() {
             diff_str = String::from_utf8_lossy(&head_output.stdout).to_string();
         }
