@@ -21,6 +21,7 @@ import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
+import { chooseGridSlots } from "./gridSlots";
 
 export type { Project };
 
@@ -958,18 +959,17 @@ export function useWorkspace() {
 
   // Split Grid (2x2)
   const splitGrid = useCallback(() => {
-    const ids = visibleTerminals.map((t) => t.id);
-    const slot0 = activeTerminalId || ids[0] || null;
-    const rem1 = ids.filter((id) => id !== slot0);
-    const slot1 = rem1[0] || null;
-    const rem2 = rem1.filter((id) => id !== slot1);
-    const slot2 = rem2[0] || null;
-    const rem3 = rem2.filter((id) => id !== slot2);
-    const slot3 = rem3[0] || null;
-    setGridTerminalIds([slot0, slot1, slot2, slot3]);
+    setGridTerminalIds((prev) =>
+      chooseGridSlots({
+        layout,
+        currentSlots: prev,
+        visibleTerminalIds: visibleTerminals.map((t) => t.id),
+        activeTerminalId,
+      })
+    );
     setLayout("grid");
     setZoomedFromLayout(null);
-  }, [visibleTerminals, activeTerminalId]);
+  }, [layout, visibleTerminals, activeTerminalId]);
 
   // Spawn terminal
   const spawnTerminal = async (request: SpawnTerminalRequest) => {
