@@ -5,6 +5,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use super::models::{Project, ProjectView};
+use super::recents::{self, RecentProject};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedWorkspaces {
@@ -14,6 +15,10 @@ pub struct PersistedWorkspaces {
     /// written before per-project view state; a malformed entry is dropped, never the file.
     #[serde(default, deserialize_with = "lenient_views")]
     pub views: HashMap<String, ProjectView>,
+    /// Recently opened projects, newest first. Missing in files written before the Open
+    /// Project dialog; those are seeded from the project list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent: Option<Vec<RecentProject>>,
 }
 
 /// Reads the `views` map, keeping every entry that parses and dropping any that don't, so a
@@ -98,6 +103,7 @@ pub struct WorkspaceManager {
     projects: Arc<Mutex<Vec<Project>>>,
     active_project: Arc<Mutex<Option<String>>>,
     views: Arc<Mutex<HashMap<String, ProjectView>>>,
+    recent: Arc<Mutex<Vec<RecentProject>>>,
 }
 
 impl WorkspaceManager {
@@ -123,11 +129,18 @@ impl WorkspaceManager {
                         .active_project
                         .filter(|act| projects.iter().any(|p| &p.path == act))
                         .or_else(|| projects.first().map(|p| p.path.clone()));
+                    let recent = persisted.recent.unwrap_or_else(|| {
+                        recents::seed(
+                            projects.iter().map(|p| (p.path.as_str(), p.name.as_str())),
+                            active.as_deref(),
+                        )
+                    });
 
                     return Self {
                         projects: Arc::new(Mutex::new(projects)),
                         active_project: Arc::new(Mutex::new(active)),
                         views: Arc::new(Mutex::new(persisted.views)),
+                        recent: Arc::new(Mutex::new(recent)),
                     };
                 }
             }
@@ -154,6 +167,10 @@ impl WorkspaceManager {
         };
 
         let manager = Self {
+            recent: Arc::new(Mutex::new(recents::seed(
+                [(initial_project.path.as_str(), initial_project.name.as_str())],
+                None,
+            ))),
             projects: Arc::new(Mutex::new(vec![initial_project])),
             active_project: Arc::new(Mutex::new(Some(default_path))),
             views: Arc::new(Mutex::new(HashMap::new())),
@@ -184,6 +201,7 @@ impl WorkspaceManager {
                 })
                 .collect(),
             views: views_guard.clone(),
+            recent: Some(self.recent.lock().clone()),
         };
 
         if let Ok(json) = serde_json::to_string_pretty(&persisted) {
@@ -239,9 +257,20 @@ impl WorkspaceManager {
         self.list_projects()
     }
 
+    /// Makes `path` the active project. Opening or switching to a project (not a worktree)
+    /// also moves it to the front of the recent-projects list.
     pub fn set_active_project(&self, path: &str) {
         *self.active_project.lock() = Some(path.to_string());
+        let project = self.projects.lock().iter().find(|p| p.path == path).cloned();
+        if let Some(project) = project {
+            recents::touch(&mut self.recent.lock(), &project.path, &project.name, recents::now_secs());
+        }
         self.save_to_disk();
+    }
+
+    /// Recently opened projects, newest first.
+    pub fn list_recent_projects(&self) -> Vec<RecentProject> {
+        self.recent.lock().clone()
     }
 
     pub fn get_active_project(&self) -> Option<String> {
@@ -349,6 +378,7 @@ mod tests {
                 },
             ],
             views: HashMap::new(),
+            recent: None,
         };
 
         let json = serde_json::to_string(&workspaces).unwrap();
@@ -366,6 +396,7 @@ mod tests {
             projects: Arc::new(Mutex::new(Vec::new())),
             active_project: Arc::new(Mutex::new(None)),
             views: Arc::new(Mutex::new(HashMap::new())),
+            recent: Arc::new(Mutex::new(Vec::new())),
         };
 
         manager.add_project("C:\\Test\\Alpha");
@@ -393,6 +424,7 @@ mod tests {
             projects: Arc::new(Mutex::new(Vec::new())),
             active_project: Arc::new(Mutex::new(None)),
             views: Arc::new(Mutex::new(HashMap::new())),
+            recent: Arc::new(Mutex::new(Vec::new())),
         };
 
         manager.add_project("C:\\Test\\Alpha");
@@ -441,6 +473,7 @@ mod tests {
             active_project: None,
             projects: Vec::new(),
             views,
+            recent: None,
         };
 
         let json = serde_json::to_string(&workspaces).unwrap();

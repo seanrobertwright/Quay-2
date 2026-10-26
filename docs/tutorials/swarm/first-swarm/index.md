@@ -30,7 +30,7 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 ::: do
 1. Download [`first-swarm.zip`](/starters/first-swarm.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
 3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 

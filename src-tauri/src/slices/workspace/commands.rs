@@ -1,7 +1,9 @@
 use tauri::State;
 
 use super::manager::WorkspaceManager;
+use super::browse::{self, FolderInfo, FolderListing};
 use super::models::{Project, ProjectView};
+use super::recents::RecentProjectInfo;
 
 #[tauri::command]
 pub async fn list_projects(
@@ -60,29 +62,6 @@ pub async fn save_project_view(
 }
 
 #[tauri::command]
-pub async fn pick_folder() -> Result<Option<String>, String> {
-    tokio::task::spawn_blocking(|| {
-        let output = crate::spawn::hidden_command("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Project Folder'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
-            ])
-            .output()
-            .map_err(|e| format!("Failed to open folder picker: {}", e))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if stdout.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(stdout))
-        }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-}
-
-#[tauri::command]
 pub async fn validate_path(path: String) -> Result<bool, String> {
     Ok(std::path::Path::new(&path).is_dir())
 }
@@ -95,4 +74,58 @@ pub async fn update_project_settings(
     manager: State<'_, WorkspaceManager>,
 ) -> Result<Project, String> {
     manager.update_project_settings(&path, env_vars, default_flags)
+}
+
+/// One folder's visible subfolders, with git state, for the Open Project dialog.
+#[tauri::command]
+pub async fn list_folder(path: String) -> Result<FolderListing, String> {
+    tokio::task::spawn_blocking(move || browse::list_folder(&path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Whether `path` is a folder, and its git state, for the Open Project path bar.
+#[tauri::command]
+pub async fn inspect_folder(path: String) -> Result<FolderInfo, String> {
+    tokio::task::spawn_blocking(move || browse::inspect_folder(&path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))
+}
+
+#[derive(serde::Serialize)]
+pub struct OpenProjectPlaces {
+    pub home: Option<String>,
+    pub drives: Vec<String>,
+}
+
+/// The home folder and drive roots for the Open Project sidebar.
+#[tauri::command]
+pub async fn open_project_places() -> Result<OpenProjectPlaces, String> {
+    Ok(OpenProjectPlaces { home: browse::home_folder(), drives: browse::drives() })
+}
+
+/// Recently opened projects, newest first, with each folder's current git state.
+#[tauri::command]
+pub async fn list_recent_projects(
+    manager: State<'_, WorkspaceManager>,
+) -> Result<Vec<RecentProjectInfo>, String> {
+    let recent = manager.list_recent_projects();
+    tokio::task::spawn_blocking(move || {
+        recent
+            .into_iter()
+            .map(|r| {
+                let info = browse::inspect_folder(&r.path);
+                RecentProjectInfo {
+                    path: r.path,
+                    name: r.name,
+                    last_opened: r.last_opened,
+                    exists: info.exists,
+                    is_git: info.is_git,
+                    branch: info.branch,
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))
 }

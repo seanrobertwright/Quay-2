@@ -5,7 +5,7 @@ import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
-import { AddProjectModal } from "./slices/workspace/AddProjectModal";
+import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
 import { A2APanel } from "./slices/orchestrator/A2APanel";
 import { PermissionModal } from "./slices/bridge/PermissionModal";
@@ -605,11 +605,13 @@ export function App() {
         />
       )}
 
-      {/* Add Project Dialog */}
-      <AddProjectModal
+      {/* Open Project Dialog */}
+      <OpenProjectDialog
         isOpen={isAddProjectOpen}
         onClose={() => setIsAddProjectOpen(false)}
+        projects={projects}
         onAddProject={addProject}
+        onSelectProject={(path) => setActiveProject(path)}
       />
 
       {/* New Terminal Dialog (Ctrl+Shift+B n) */}

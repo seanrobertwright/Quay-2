@@ -43,8 +43,9 @@ use slices::pty::{
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
-    add_project, get_active_project, get_project_views, list_projects, pick_folder, remove_project,
-    save_project_view, set_active_project, update_project_settings, validate_path, WorkspaceManager,
+    add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
+    list_recent_projects, open_project_places, remove_project, save_project_view, set_active_project,
+    update_project_settings, validate_path, WorkspaceManager,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -154,8 +155,11 @@ pub fn run() {
             update_project_settings,
             get_project_views,
             save_project_view,
-            pick_folder,
             validate_path,
+            list_folder,
+            inspect_folder,
+            open_project_places,
+            list_recent_projects,
             a2a_send_prompt,
             a2a_broadcast_toast,
             a2a_get_messages,
