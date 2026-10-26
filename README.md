@@ -87,6 +87,7 @@ flowchart LR
 - Opens with `Ctrl+B P` or **Praxis Builder...** in the command palette.
 - Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph read-only on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
 - Files that aren't valid JSON are listed with an error badge, and opening one shows the line and column of the error.
+- Validates each graph offline with the AI-WS-SDK's own Rust crate, vendored in `src-tauri/vendor/aiws`. Each node shows a problem count, and a Problems list under the canvas gives every issue's node, field, message and code. Choosing an issue selects its node and zooms to it.
 
 ### 🪟 Tiling Window Management & 1-Click Swarm Presets
 - Split your stage instantly:

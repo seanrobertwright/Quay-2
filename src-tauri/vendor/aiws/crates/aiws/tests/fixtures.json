@@ -1,0 +1,6007 @@
+[
+  {
+    "name": "success-needs-verification-and-acceptance",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "COMPLETED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "accept",
+          "runId": "r",
+          "authority": "owner",
+          "verificationRevision": "v1",
+          "decision": "ACCEPTED",
+          "rationale": "Accepted deliverable"
+        },
+        "now": "10",
+        "expect": {
+          "/assessments/r/acceptance": "ACCEPTED",
+          "/spent": "3",
+          "/reserved": "0"
+        }
+      }
+    ]
+  },
+  {
+    "name": "contract-without-criteria",
+    "error": "INVALID_CONTRACT",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": []
+  },
+  {
+    "name": "terminal-run-cannot-reopen",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "FAILED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "READY"
+        },
+        "now": "10",
+        "error": "INVALID_TRANSITION"
+      }
+    ]
+  },
+  {
+    "name": "terminal-continuation-rejected",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "FAILED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "continueRun",
+          "runId": "r",
+          "segmentId": "s1"
+        },
+        "now": "10",
+        "error": "EXECUTION_BLOCKED"
+      }
+    ]
+  },
+  {
+    "name": "plan-compare-and-swap",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "activatePlan",
+          "runId": "r",
+          "planId": "p2",
+          "expectedPlan": "initial"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "activatePlan",
+          "runId": "r",
+          "planId": "p3",
+          "expectedPlan": "initial"
+        },
+        "now": "10",
+        "error": "REVISION_CONFLICT"
+      }
+    ]
+  },
+  {
+    "name": "delegated-grant-is-native",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "child",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "20",
+            "canDelegate": true,
+            "depth": "1",
+            "parentId": "g"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "child",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10",
+        "expect": {
+          "/grants/child/spent": "3",
+          "/grants/g/spent": "3"
+        }
+      }
+    ]
+  },
+  {
+    "name": "delegation-cannot-expand",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "child",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2",
+            "parentId": "g"
+          }
+        },
+        "now": "10",
+        "error": "AUTHORITY_DENIED"
+      }
+    ]
+  },
+  {
+    "name": "revocation-rechecked-at-dispatch",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "revokeGrant",
+          "grantId": "g"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "AUTHORITY_DENIED"
+      }
+    ]
+  },
+  {
+    "name": "stale-owner-is-fenced",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "continueRun",
+          "runId": "r",
+          "segmentId": "s1"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "STALE_OWNER"
+      }
+    ]
+  },
+  {
+    "name": "unknown-effect-retains-reservation",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "UNKNOWN",
+          "actualCost": "0"
+        },
+        "now": "10",
+        "expect": {
+          "/reserved": "10"
+        }
+      },
+      {
+        "command": {
+          "type": "retry",
+          "operationId": "o",
+          "attemptId": "a2",
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "UNSAFE_RETRY"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "COMPLETED"
+        },
+        "now": "10",
+        "error": "UNSETTLED_WORK"
+      }
+    ]
+  },
+  {
+    "name": "reconciliation-releases-exposure",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "UNKNOWN",
+          "actualCost": "0"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10",
+        "expect": {
+          "/reserved": "0",
+          "/operations/o/effect": "CONFIRMED_APPLIED"
+        }
+      }
+    ]
+  },
+  {
+    "name": "retry-and-late-duplicate",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_NOT_APPLIED",
+          "actualCost": "0"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "retry",
+          "operationId": "o",
+          "attemptId": "a2",
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a2",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_NOT_APPLIED",
+          "actualCost": "0"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a2",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "2"
+        },
+        "now": "10",
+        "expect": {
+          "/spent": "2",
+          "/reserved": "0"
+        }
+      }
+    ]
+  },
+  {
+    "name": "budget-atomic-rejection",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "80",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o2",
+          "attemptId": "a2",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "30",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "BUDGET_EXHAUSTED",
+        "expect": {
+          "/reserved": "80"
+        }
+      }
+    ]
+  },
+  {
+    "name": "stale-authority",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "0",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "20",
+        "error": "AUTHORITY_STALE"
+      }
+    ]
+  },
+  {
+    "name": "mandatory-policy-check-error",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": false
+        },
+        "now": "10",
+        "error": "POLICY_CHECK_ERROR"
+      }
+    ]
+  },
+  {
+    "name": "indeterminate-policy-denied",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "INDETERMINATE",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "POLICY_DENIED"
+      }
+    ]
+  },
+  {
+    "name": "approval-fingerprint-and-use",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": true,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "approve",
+          "approval": {
+            "id": "ap",
+            "runId": "r",
+            "approver": "owner",
+            "fingerprint": "sha256:50487a924d1b8f40e5051f0f8d278469acb1cd15d08dbef8f1010e7f54ae9ef0",
+            "expiresAt": "1000",
+            "uses": "1"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "approvalId": "ap"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o2",
+          "attemptId": "a2",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "approvalId": "ap"
+        },
+        "now": "10",
+        "error": "APPROVAL_CONSUMED"
+      },
+      {
+        "command": {
+          "type": "withdrawApproval",
+          "approvalId": "ap"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "APPROVAL_INVALID"
+      }
+    ]
+  },
+  {
+    "name": "changed-material-needs-new-approval",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": true,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "approve",
+          "approval": {
+            "id": "ap",
+            "runId": "r",
+            "approver": "owner",
+            "fingerprint": "sha256:50487a924d1b8f40e5051f0f8d278469acb1cd15d08dbef8f1010e7f54ae9ef0",
+            "expiresAt": "1000",
+            "uses": "1"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 2
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "approvalId": "ap"
+        },
+        "now": "10",
+        "error": "APPROVAL_INVALID"
+      }
+    ]
+  },
+  {
+    "name": "duplicate-verification-id",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v2",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10",
+        "error": "DUPLICATE_ID"
+      }
+    ]
+  },
+  {
+    "name": "acceptance-revision-bound",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "accept",
+          "runId": "r",
+          "authority": "owner",
+          "verificationRevision": "wrong",
+          "decision": "ACCEPTED",
+          "rationale": "Accepted deliverable"
+        },
+        "now": "10",
+        "error": "REVISION_CONFLICT"
+      }
+    ]
+  },
+  {
+    "name": "invalidation-propagates",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "accept",
+          "runId": "r",
+          "authority": "owner",
+          "verificationRevision": "v1",
+          "decision": "ACCEPTED",
+          "rationale": "Accepted deliverable"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "invalidate",
+          "runId": "r",
+          "reason": "Evidence changed"
+        },
+        "now": "10",
+        "expect": {
+          "/assessments/r/acceptance": "INVALIDATED"
+        }
+      }
+    ]
+  },
+  {
+    "name": "wait-all-and-correlation",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "WAITING"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "resume",
+          "waitId": "w",
+          "correlation": "wrong"
+        },
+        "now": "10",
+        "error": "CORRELATION_MISMATCH"
+      },
+      {
+        "command": {
+          "type": "resume",
+          "waitId": "w",
+          "correlation": "corr"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "join",
+          "runId": "r",
+          "waitIds": [
+            "w"
+          ],
+          "mode": "ALL"
+        },
+        "now": "10",
+        "expect": {
+          "/runs/r/state": "READY"
+        }
+      }
+    ]
+  },
+  {
+    "name": "wait-any-cancels-unselected",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w2",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "WAITING"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "resume",
+          "waitId": "w",
+          "correlation": "corr"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "join",
+          "runId": "r",
+          "waitIds": [
+            "w",
+            "w2"
+          ],
+          "mode": "ANY"
+        },
+        "now": "10",
+        "expect": {
+          "/waits/w2/status": "CANCELED"
+        }
+      }
+    ]
+  },
+  {
+    "name": "wait-expiry",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "resume",
+          "waitId": "w",
+          "correlation": "corr"
+        },
+        "now": "100",
+        "error": "WAIT_EXPIRED"
+      }
+    ]
+  },
+  {
+    "name": "trigger-duplicate-admits-once",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "other",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "expect": {
+          "/triggers/t/count": "1",
+          "/triggers/t/runIds": [
+            "r"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "trigger-conflicting-duplicate",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "other",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": false
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "EVENT_ID_CONFLICT"
+      }
+    ]
+  },
+  {
+    "name": "trigger-source-mismatch",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "spoof",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "EVENT_SOURCE"
+      }
+    ]
+  },
+  {
+    "name": "trigger-expired-event",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "0",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "200",
+        "error": "EVENT_EXPIRED"
+      }
+    ]
+  },
+  {
+    "name": "trigger-causal-depth",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "4"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_DEPTH"
+      }
+    ]
+  },
+  {
+    "name": "trigger-rate-limit",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "1",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r2",
+          "event": {
+            "id": "e2",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_RATE"
+      }
+    ]
+  },
+  {
+    "name": "trigger-concurrency",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "1",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r2",
+          "event": {
+            "id": "e2",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_CONCURRENCY"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "COMPLETED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r2",
+          "event": {
+            "id": "e2",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "trigger-suspended",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "missionState",
+          "state": "SUSPENDED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_INACTIVE"
+      }
+    ]
+  },
+  {
+    "name": "condition-edge-reset",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "CONDITION",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3",
+            "conditionMode": "EDGE",
+            "filter": {
+              "field": "flag",
+              "equals": true
+            }
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "ignored",
+          "event": {
+            "id": "e2",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "ignored2",
+          "event": {
+            "id": "e3",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": false
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r2",
+          "event": {
+            "id": "e4",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "expect": {
+          "/triggers/t/count": "2"
+        }
+      }
+    ]
+  },
+  {
+    "name": "condition-level",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "CONDITION",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3",
+            "conditionMode": "LEVEL",
+            "filter": {
+              "field": "flag",
+              "equals": true
+            }
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r2",
+          "event": {
+            "id": "e2",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "expect": {
+          "/triggers/t/count": "2"
+        }
+      }
+    ]
+  },
+  {
+    "name": "external-response-correlated",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EXTERNAL_RESPONSE",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "RESUME_WAIT",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3",
+            "waitId": "w"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10",
+        "error": "WAIT_CORRELATION"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0",
+            "correlation": "corr"
+          }
+        },
+        "now": "10",
+        "expect": {
+          "/waits/w/status": "SATISFIED"
+        }
+      }
+    ]
+  },
+  {
+    "name": "trigger-outside-contract",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "other",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_CONTRACT"
+      }
+    ]
+  },
+  {
+    "name": "trigger-zero-limit",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "0",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_LIMIT"
+      }
+    ]
+  },
+  {
+    "name": "trigger-resume-without-wait",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EXTERNAL_RESPONSE",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "RESUME_WAIT",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_TARGET"
+      }
+    ]
+  },
+  {
+    "name": "trigger-condition-without-filter",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "CONDITION",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "TRIGGER_CONDITION"
+      }
+    ]
+  },
+  {
+    "name": "trigger-scheduled-without-schedule",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "SCHEDULED",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "SCHEDULE_CONFIG"
+      }
+    ]
+  },
+  {
+    "name": "trigger-feature-required",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": []
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "EVENT",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10",
+        "error": "UNSUPPORTED_FEATURE"
+      }
+    ]
+  },
+  {
+    "name": "trigger-kind-MANUAL",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "MANUAL",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "trigger-kind-SCHEDULED",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "SCHEDULED",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3",
+            "schedule": {
+              "startMs": "0",
+              "intervalMs": "10",
+              "catchUp": "LATEST",
+              "maxCatchUp": "1"
+            }
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "trigger-kind-RESOURCE_CHANGE",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "RESOURCE_CHANGE",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "trigger-kind-WORKFLOW_LIFECYCLE",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "WORKFLOW_LIFECYCLE",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "2",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "fireTrigger",
+          "triggerId": "t",
+          "runId": "r",
+          "event": {
+            "id": "e",
+            "source": "trusted",
+            "type": "doc.changed",
+            "occurredAt": "10",
+            "data": {
+              "flag": true
+            },
+            "depth": "0"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "task-bound-before-dispatch",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10",
+        "error": "NODE_NOT_READY"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "nodeId": "task"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "operationId": "o"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "end",
+          "result": {
+            "disposition": "COMPLETED"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "COMPLETED"
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "task-cannot-complete-without-proof",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "operationId": "missing"
+          }
+        },
+        "now": "10",
+        "error": "NOT_FOUND"
+      }
+    ]
+  },
+  {
+    "name": "graph-completion-cannot-bypass-nodes",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "r",
+          "to": "COMPLETED"
+        },
+        "now": "10",
+        "error": "UNSETTLED_NODES"
+      }
+    ]
+  },
+  {
+    "name": "graph-cycle",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "x",
+                "kind": "FORK",
+                "dependsOn": [
+                  "y"
+                ],
+                "config": {}
+              },
+              {
+                "id": "y",
+                "kind": "FORK",
+                "dependsOn": [
+                  "x"
+                ],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "y"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "GRAPH_CYCLE"
+      }
+    ]
+  },
+  {
+    "name": "graph-missing-reference",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "missing"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "INVALID_DEPENDENCY"
+      }
+    ]
+  },
+  {
+    "name": "graph-dependency-before-schema",
+    "decision": "Spec-silent (#166): a node with both an unknown dependency and an unsupported schema reports INVALID_DEPENDENCY. Structural faults are checked before node schemas in all three SDKs.",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "missing"
+                ],
+                "config": {},
+                "inputSchema": {
+                  "type": "string",
+                  "format": "email"
+                }
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "INVALID_DEPENDENCY"
+      }
+    ]
+  },
+  {
+    "name": "graph-duplicate-node",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "DUPLICATE_NODE"
+      }
+    ]
+  },
+  {
+    "name": "graph-requires-end",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "x",
+                "kind": "FORK",
+                "dependsOn": [],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "MISSING_END"
+      }
+    ]
+  },
+  {
+    "name": "graph-unsupported-config",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION",
+                  "unbounded": true
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "NODE_CONFIG"
+      }
+    ]
+  },
+  {
+    "name": "graph-no-end-path",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "x",
+                "kind": "FORK",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "NO_END_PATH"
+      }
+    ]
+  },
+  {
+    "name": "graph-schema-unsupported",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                },
+                "inputSchema": {
+                  "type": "string",
+                  "format": "email"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "SCHEMA_UNSUPPORTED"
+      }
+    ]
+  },
+  {
+    "name": "graph-schema-invalid",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                },
+                "outputSchema": {
+                  "type": "object",
+                  "required": "proof"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10",
+        "error": "SCHEMA_INVALID"
+      }
+    ]
+  },
+  {
+    "name": "decision-and-any-join",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "d",
+                "kind": "DECISION",
+                "dependsOn": [],
+                "config": {
+                  "field": "ok",
+                  "equals": true,
+                  "then": "yes",
+                  "else": "no"
+                }
+              },
+              {
+                "id": "yes",
+                "kind": "FORK",
+                "dependsOn": [
+                  "d"
+                ],
+                "config": {}
+              },
+              {
+                "id": "no",
+                "kind": "FORK",
+                "dependsOn": [
+                  "d"
+                ],
+                "config": {}
+              },
+              {
+                "id": "j",
+                "kind": "JOIN",
+                "dependsOn": [
+                  "yes",
+                  "no"
+                ],
+                "config": {
+                  "mode": "ANY"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "j"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "d",
+          "result": {
+            "data": {
+              "ok": true
+            }
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "no",
+          "result": {}
+        },
+        "now": "10",
+        "error": "NODE_NOT_READY"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "yes",
+          "result": {}
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "j",
+          "result": {}
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "end",
+          "result": {
+            "disposition": "COMPLETED"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "loop-bound-is-terminal",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "LOOP",
+                "dependsOn": [],
+                "config": {
+                  "maxIterations": "1"
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "nodeId": "task"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "operationId": "o",
+            "done": false
+          }
+        },
+        "now": "10",
+        "expect": {
+          "/runs/r/state": "FAILED",
+          "/runs/r/nodes/task/iterations": "1"
+        }
+      }
+    ]
+  },
+  {
+    "name": "wait-node-checkpoint",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "WAIT",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "wait",
+          "runId": "r",
+          "waitId": "w",
+          "correlation": "corr",
+          "deadline": "100",
+          "kind": "INPUT"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "waitId": "w"
+          }
+        },
+        "now": "10",
+        "error": "NODE_WAIT"
+      },
+      {
+        "command": {
+          "type": "resume",
+          "waitId": "w",
+          "correlation": "corr"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "waitId": "w"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "approval-node-checkpoint",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "APPROVAL",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "approve",
+          "approval": {
+            "id": "ap",
+            "runId": "r",
+            "approver": "owner",
+            "fingerprint": "sha256:50487a924d1b8f40e5051f0f8d278469acb1cd15d08dbef8f1010e7f54ae9ef0",
+            "expiresAt": "1000",
+            "uses": "1"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "approvalId": "ap"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "verification-acceptance-nodes",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "v",
+                "kind": "VERIFICATION",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "a",
+                "kind": "ACCEPTANCE",
+                "dependsOn": [
+                  "v"
+                ],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "a"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "v",
+          "result": {
+            "revision": "v1"
+          }
+        },
+        "now": "10",
+        "error": "VERIFICATION_NOT_PASSED"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "r",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "v",
+          "result": {
+            "revision": "v1"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "a",
+          "result": {
+            "revision": "v1"
+          }
+        },
+        "now": "10",
+        "error": "ACCEPTANCE_REQUIRED"
+      },
+      {
+        "command": {
+          "type": "accept",
+          "runId": "r",
+          "authority": "owner",
+          "verificationRevision": "v1",
+          "decision": "ACCEPTED",
+          "rationale": "Accepted deliverable"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "a",
+          "result": {
+            "revision": "v1"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "subworkflow-requires-accepted-child",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "SUBWORKFLOW",
+                "dependsOn": [],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "child"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "childRunId": "child"
+          }
+        },
+        "now": "10",
+        "error": "CHILD_NOT_ACCEPTED"
+      },
+      {
+        "command": {
+          "type": "transition",
+          "runId": "child",
+          "to": "COMPLETED"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "verify",
+          "runId": "child",
+          "assessor": "reviewer",
+          "revision": "v1",
+          "results": {
+            "review": "PASS"
+          },
+          "evidence": [
+            "sha256:evidence"
+          ],
+          "rationale": "Review performed"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "accept",
+          "runId": "child",
+          "authority": "owner",
+          "verificationRevision": "v1",
+          "decision": "ACCEPTED",
+          "rationale": "Accepted deliverable"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "childRunId": "child"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "reconciliation-and-compensation-nodes",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                }
+              },
+              {
+                "id": "reconcile",
+                "kind": "RECONCILIATION",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              },
+              {
+                "id": "undo",
+                "kind": "COMPENSATION",
+                "dependsOn": [
+                  "reconcile"
+                ],
+                "config": {}
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "undo"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "nodeId": "task"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "a",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "3"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "operationId": "o"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "reconcile",
+          "result": {
+            "operationId": "o"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "undo",
+          "attemptId": "au",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "au",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "nodeId": "undo"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "settle",
+          "attemptId": "au",
+          "effect": "CONFIRMED_APPLIED",
+          "actualCost": "2"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "undo",
+          "result": {
+            "operationId": "undo",
+            "originalOperationId": "o"
+          }
+        },
+        "now": "10"
+      }
+    ]
+  },
+  {
+    "name": "scheduled-tick-durable-cursor",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "registerTrigger",
+          "trigger": {
+            "id": "t",
+            "revision": "1",
+            "kind": "SCHEDULED",
+            "source": "trusted",
+            "eventType": "doc.changed",
+            "contractId": "c",
+            "action": "START_RUN",
+            "enabled": true,
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "maxAgeMs": "100",
+            "maxConcurrent": "10",
+            "rateLimit": "10",
+            "rateWindowMs": "100",
+            "maxDepth": "3",
+            "schedule": {
+              "startMs": "0",
+              "intervalMs": "10",
+              "catchUp": "ALL",
+              "maxCatchUp": "2"
+            }
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "tickTrigger",
+          "triggerId": "t"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "tickTrigger",
+          "triggerId": "t"
+        },
+        "now": "10",
+        "expect": {
+          "/triggers/t/count": "2",
+          "/triggers/t/nextSlot": "2"
+        }
+      }
+    ]
+  },
+  {
+    "name": "node-input-schema-before-effect",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "TASK",
+                "dependsOn": [],
+                "config": {
+                  "executionKind": "FUNCTION"
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "required": [
+                    "requiredField"
+                  ]
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "grant",
+          "grant": {
+            "id": "g",
+            "subject": "agent",
+            "profile": "finite-v1",
+            "actions": [
+              "write"
+            ],
+            "resources": [
+              "doc"
+            ],
+            "notBefore": "0",
+            "expiresAt": "10000",
+            "limit": "100",
+            "canDelegate": true,
+            "depth": "2"
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "admit",
+          "runId": "r",
+          "operationId": "o",
+          "attemptId": "a",
+          "grantId": "g",
+          "subject": "agent",
+          "action": {
+            "capability": "write",
+            "resource": "doc",
+            "payload": {
+              "value": 1
+            },
+            "preconditions": {
+              "revision": 1
+            }
+          },
+          "amount": "10",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "dispatch",
+          "attemptId": "a",
+          "authorizationCheckedAt": "10",
+          "policy": "ALLOW",
+          "mandatoryChecksOk": true,
+          "nodeId": "task"
+        },
+        "now": "10",
+        "error": "DATA_SCHEMA"
+      }
+    ]
+  },
+  {
+    "name": "node-output-schema-before-completion",
+    "contract": {
+      "id": "c",
+      "missionId": "m",
+      "aiwsEdition": "0.4",
+      "profile": "finite-v1",
+      "budget": "100",
+      "deadline": "10000",
+      "criteria": [
+        "review"
+      ],
+      "actions": [
+        "write"
+      ],
+      "resources": [
+        "doc"
+      ],
+      "requiresApproval": false,
+      "maxAttempts": "2",
+      "maxAuthorizationAgeMs": "10",
+      "features": [
+        "triggers",
+        "graphs"
+      ]
+    },
+    "steps": [
+      {
+        "command": {
+          "type": "startRun",
+          "runId": "r"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "registerGraph",
+          "graph": {
+            "id": "graph",
+            "revision": "1",
+            "nodes": [
+              {
+                "id": "task",
+                "kind": "FORK",
+                "dependsOn": [],
+                "config": {},
+                "outputSchema": {
+                  "type": "object",
+                  "required": [
+                    "proof"
+                  ]
+                }
+              },
+              {
+                "id": "end",
+                "kind": "END",
+                "dependsOn": [
+                  "task"
+                ],
+                "config": {}
+              }
+            ]
+          }
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "attachGraph",
+          "runId": "r",
+          "graphId": "graph"
+        },
+        "now": "10"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {}
+        },
+        "now": "10",
+        "error": "DATA_SCHEMA"
+      },
+      {
+        "command": {
+          "type": "completeNode",
+          "runId": "r",
+          "nodeId": "task",
+          "result": {
+            "proof": true
+          }
+        },
+        "now": "10"
+      }
+    ]
+  }
+]

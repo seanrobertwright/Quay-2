@@ -1,6 +1,6 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph read-only on the canvas. Closing only hides it, so each
-// project's session survives until Quay quits.
+// definitions and shows a graph read-only on the canvas, with its validation problems.
+// Closing only hides it, so each project's session survives until Quay quits.
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Viewport } from "@xyflow/react";
@@ -18,7 +18,7 @@ import {
 import { normalizePath } from "../../utils/paths.ts";
 import { parseGraph, parseLayoutPositions } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
-import { GraphCanvas } from "./GraphCanvas.tsx";
+import { GraphView, UndrawnGraphProblems } from "./GraphView.tsx";
 import { definitionKey, sessionFor, updateSession, type Sessions } from "./session.ts";
 import type { DefinitionFile, DefinitionList, DefinitionRef, FileProblem, PraxisKind } from "./types.ts";
 
@@ -59,6 +59,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [listShown, setListShown] = useState(true);
+  const [problemsShown, setProblemsShown] = useState(true);
+  const toggleProblems = useCallback(() => setProblemsShown((v) => !v), []);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
 
@@ -359,6 +361,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
                   onViewportChange={saveViewport}
                   onReveal={() => void reveal(open)}
                   revealError={revealError}
+                  problemsShown={problemsShown}
+                  onToggleProblems={toggleProblems}
                 />
               )}
             </main>
@@ -409,7 +413,9 @@ const DefinitionView: FC<{
   onViewportChange: (viewport: Viewport) => void;
   onReveal: () => void;
   revealError: string | null;
-}> = ({ open, file, viewport, onViewportChange, onReveal, revealError }) => {
+  problemsShown: boolean;
+  onToggleProblems: () => void;
+}> = ({ open, file, viewport, onViewportChange, onReveal, revealError, problemsShown, onToggleProblems }) => {
   const graph = useMemo(() => (open.kind === "graphs" ? parseGraph(file.content) : null), [open.kind, file.content]);
   const positions = useMemo(() => parseLayoutPositions(file.layout), [file.layout]);
 
@@ -425,12 +431,17 @@ const DefinitionView: FC<{
   }
   if (!graph.ok) {
     return (
-      <ProblemView
-        title={`${definitionPath(open)} can't be shown as a graph`}
-        problem={{ message: graph.message }}
-        onReveal={onReveal}
-        revealError={revealError}
-      />
+      <>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <ProblemView
+            title={`${definitionPath(open)} can't be shown as a graph`}
+            problem={{ message: graph.message }}
+            onReveal={onReveal}
+            revealError={revealError}
+          />
+        </div>
+        <UndrawnGraphProblems content={file.content} problemsShown={problemsShown} onToggleProblems={onToggleProblems} />
+      </>
     );
   }
   return (
@@ -443,14 +454,15 @@ const DefinitionView: FC<{
           </span>
         </p>
       )}
-      <div className="flex-1 min-h-0 relative">
-        <GraphCanvas
-          graph={graph.value}
-          positions={positions}
-          viewport={viewport}
-          onViewportChange={onViewportChange}
-        />
-      </div>
+      <GraphView
+        graph={graph.value}
+        content={file.content}
+        positions={positions}
+        viewport={viewport}
+        onViewportChange={onViewportChange}
+        problemsShown={problemsShown}
+        onToggleProblems={onToggleProblems}
+      />
     </>
   );
 };
