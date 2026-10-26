@@ -9,6 +9,7 @@ import {
   markSaved,
   moveNodes,
   reconcileWithDisk,
+  withChanges,
   type GraphDraft,
 } from "./drafts.ts";
 import type { JsonObject } from "./model.ts";
@@ -104,7 +105,7 @@ test("a save makes the written content and the positions sent the new base", () 
   const moved = moveNodes(draft(), [["end-1", { x: 30, y: 40 }]]);
   const sent = layoutForSave(moved, undefined);
   const written = { ...content, revision: "sha256:bbbb" };
-  const saved = markSaved(moved, { content: written, contentHash: "hash-2" }, sent);
+  const saved = markSaved(moved, { content: written, contentHash: "hash-2" }, { content: moved.content, layout: sent });
   assert.equal(isDirty(saved), false);
   assert.equal(saved.baseHash, "hash-2");
   assert.deepEqual(saved.content, written);
@@ -114,15 +115,29 @@ test("a move made while the save was in flight stays dirty after it", () => {
   const moved = moveNodes(draft(), [["end-1", { x: 30, y: 40 }]]);
   const sent = layoutForSave(moved, undefined);
   const movedAgain = moveNodes(moved, [["end-1", { x: 60, y: 40 }]]);
-  const saved = markSaved(movedAgain, { content, contentHash: "hash-2" }, sent);
+  const saved = markSaved(movedAgain, { content, contentHash: "hash-2" }, { content: moved.content, layout: sent });
   assert.equal(isDirty(saved), true);
   assert.deepEqual(saved.positions.get("end-1"), { x: 60, y: 40 });
+});
+
+test("an edit made while the save was in flight is kept, and stays dirty after it", () => {
+  const before = draft();
+  const sent = layoutForSave(before, undefined);
+  const edited = withChanges(before, { ...before.content, nodes: [] }, before.positions);
+  const written = { ...content, revision: "sha256:bbbb" };
+  const saved = markSaved(edited, { content: written, contentHash: "hash-2" }, { content: before.content, layout: sent });
+  assert.deepEqual(saved.content.nodes, []);
+  assert.equal(saved.baseHash, "hash-2");
+  assert.equal(isDirty(saved), true);
+  // Saving the edit as it now stands makes the draft clean.
+  const resaved = markSaved(saved, { content: saved.content, contentHash: "hash-3" }, { content: saved.content, layout: sent });
+  assert.equal(isDirty(resaved), false);
 });
 
 test("a save clears the deleted-on-disk mark", () => {
   const deleted = markDeletedOnDisk(draft());
   assert.equal(deleted.deletedOnDisk, true);
-  const saved = markSaved(deleted, { content, contentHash: "hash-2" }, layoutForSave(deleted, undefined));
+  const saved = markSaved(deleted, { content, contentHash: "hash-2" }, { content: deleted.content, layout: layoutForSave(deleted, undefined) });
   assert.equal(saved.deletedOnDisk, false);
 });
 

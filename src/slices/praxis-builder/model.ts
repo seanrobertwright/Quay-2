@@ -19,6 +19,10 @@ export const NODE_KINDS = [
 ] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
 
+export function isNodeKind(kind: string): kind is NodeKind {
+  return (NODE_KINDS as readonly string[]).includes(kind);
+}
+
 /** The SDK caps a graph at this many nodes. */
 export const MAX_NODES = 1000;
 
@@ -139,28 +143,4 @@ export function branchOf(source: PraxisNode, target: string): "then" | "else" | 
   if (source.config.then === target) return "then";
   if (source.config.else === target) return "else";
   return null;
-}
-
-/** The one-line config summary a card shows under the node id, or "" for none. */
-export function configSummary(node: PraxisNode): string {
-  const c = node.config;
-  switch (node.kind) {
-    case "TASK":
-      return typeof c.executionKind === "string" && c.executionKind
-        ? c.executionKind
-        : "no execution kind";
-    case "DECISION":
-      return typeof c.field === "string" && c.field
-        ? `${c.field} == ${JSON.stringify(c.equals ?? null)}`
-        : "no field";
-    case "JOIN":
-      return `wait for ${c.mode === "ANY" ? "any" : "all"}`;
-    case "LOOP":
-      // The SDK stores a decimal string; a hand-edited number still shows what it says.
-      return (typeof c.maxIterations === "string" && c.maxIterations) || typeof c.maxIterations === "number"
-        ? `≤ ${c.maxIterations} iterations`
-        : "no iteration limit";
-    default:
-      return "";
-  }
 }
