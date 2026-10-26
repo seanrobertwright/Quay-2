@@ -1703,13 +1703,13 @@ mod tests {
         #[cfg(windows)]
         {
             assert_eq!(args[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), PIG_NOT_INSTALLED);
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }
         #[cfg(not(windows))]
         {
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", PIG_NOT_INSTALLED));
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }

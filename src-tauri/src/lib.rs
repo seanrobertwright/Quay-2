@@ -1,6 +1,7 @@
 pub mod atomic_file;
 pub mod dates;
 pub mod slices;
+pub mod spawn;
 
 use tauri::Emitter;
 

@@ -1,20 +1,15 @@
 use std::collections::HashMap;
 use std::process::Command;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use crate::spawn::hidden_command;
 
 use super::models::{
     GithubIssue, GithubIssueDetail, GithubIssueRef, GithubPullRequest, GithubRepoInfo,
 };
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 fn create_gh_command(dir: &str) -> Command {
-    let mut cmd = Command::new("gh");
+    let mut cmd = hidden_command("gh");
     cmd.current_dir(dir);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
 }
 
@@ -127,10 +122,8 @@ fn fetch_blocked_by(repo_path: &str, numbers: &[u32]) -> HashMap<u32, BlockerInf
 #[tauri::command]
 pub async fn check_gh_cli_installed() -> Result<bool, String> {
     tokio::task::spawn_blocking(|| {
-        let mut cmd = Command::new("gh");
+        let mut cmd = hidden_command("gh");
         cmd.arg("--version");
-        #[cfg(windows)]
-        cmd.creation_flags(CREATE_NO_WINDOW);
         match cmd.output() {
             Ok(output) => Ok(output.status.success()),
             Err(_) => Ok(false),
