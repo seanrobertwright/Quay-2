@@ -143,10 +143,6 @@ npm run test:watch
 You pasted the line into `test-architect`, which never starts the watcher itself. Find the pane whose header says `test-runner`, click inside it, and paste the line there.
 :::
 
-::: ifnot the panes moved, or step 1's pwsh pane is in the grid
-The toolbar's **2x2 Grid Layout** button and `Ctrl+B G` both rebuild the grid: the pane that has focus goes top left and the rest follow in rail order, step 1's `pwsh` included. Close `pwsh` as this step's first line says, then go by the name in each pane's header. From here on a pane may sit somewhere other than where the page says; its name is what counts.
-:::
-
 :::
 
 ::: step
