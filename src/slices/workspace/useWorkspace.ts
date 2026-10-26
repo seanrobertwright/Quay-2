@@ -1140,6 +1140,11 @@ export function useWorkspace() {
           selectTerminal(target.id);
         }
       },
+      sendPrefixToTerminal: () => {
+        if (activeTerminalId) {
+          invoke("write_pty", { terminalId: activeTerminalId, data: "\x02" }).catch(console.error);
+        }
+      },
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1168,6 +1173,7 @@ export function useWorkspace() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     ctrlBPrefix,
+    activeTerminalId,
     visibleTerminals,
     layout,
     focusedPane,
