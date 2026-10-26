@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px10-title px10-desc">
+  <title id="px10-title">Praxis workflow engine logo: Continuum</title>
+  <desc id="px10-desc">A gradient infinity loop for long-running, resumable workflows.</desc>
+  <defs><linearGradient id="px10-g" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="86" y2="0"><stop offset="0" stop-color="#06B6D4"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+  <g id="px10-icon"><path d="M48,48 C34,24 10,24 10,48 C10,72 34,72 48,48 C62,24 86,24 86,48 C86,72 62,72 48,48 Z" fill="none" stroke="url(#px10-g)" stroke-width="9" stroke-linejoin="round"/></g>
+  <g id="px10-wordmark">
+    <text x="114" y="54" font-family="'Century Gothic', Futura, 'Avenir Next', 'Segoe UI', sans-serif" font-size="46" font-weight="400" letter-spacing="1" fill="#4C1D95">praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#0891B2">WORKFLOW ENGINE</text>
+  </g>
+</svg>

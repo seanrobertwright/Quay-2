@@ -220,7 +220,8 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
 
         {/* Auto approved count */}
         {isAgent && (
-          <div
+          <button
+            type="button"
             className="flex min-w-[2.5rem] shrink-[20] items-center gap-1 text-[#8b949e] hover:text-[#c9d1d9] cursor-pointer"
             onClick={onOpenActionLog}
             title={`${terminal.auto_approved_count} auto-approved. Click to view Action Log`}
@@ -228,7 +229,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
             <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#3fb950]" />
             <strong className="shrink-0 text-white font-mono">{terminal.auto_approved_count}</strong>
             <span className="truncate @max-[56rem]:hidden">auto-approved</span>
-          </div>
+          </button>
         )}
 
         {isAgent && (
@@ -256,7 +257,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           <StripButton
             Icon={GithubIcon}
             label="GitHub"
-            title="GitHub Issues & Pull Requests Companion (^b i)"
+            title="GitHub Issues & Pull Requests Companion (Ctrl+Shift+B i)"
             className="text-[#c9d1d9] hover:text-white"
             onClick={onOpenGithubDrawer}
           />
@@ -266,7 +267,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           <StripButton
             Icon={ShieldAlert}
             label="Audit"
-            title="Run Pre-PR Audit Leak & Claim Scanner (^b a)"
+            title="Run Pre-PR Audit Leak & Claim Scanner (Ctrl+Shift+B a)"
             className="text-[#f85149] hover:text-[#ff7b72]"
             onClick={onOpenAuditModal}
           />
@@ -276,7 +277,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           <StripButton
             Icon={History}
             label="History"
-            title="Browse & Auto-Resume Past Claude Sessions (^b h)"
+            title="Browse & Auto-Resume Past Claude Sessions (Ctrl+Shift+B h)"
             className="text-[#c9d1d9] hover:text-white"
             onClick={onOpenSessionHistory}
           />
@@ -290,7 +291,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
             className="flex shrink-0 items-center gap-1 px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#e3b341] hover:text-[#f2cc60] font-mono text-[11px] font-semibold cursor-pointer border border-[#30363d] transition-colors"
             title={`All-time API-equivalent Claude spend · today (UTC) $${(
               claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
-            ).toFixed(2)} (^b t)`}
+            ).toFixed(2)} (Ctrl+Shift+B t)`}
           >
             <Coins className="w-3.5 h-3.5 text-[#e3b341]" />
             <span>${(claudeStats?.total_cost_usd ?? 0).toFixed(2)}</span>

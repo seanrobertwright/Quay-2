@@ -15,7 +15,7 @@ On Windows, Quay keeps its state under `%LOCALAPPDATA%\Quay2`. Without `LOCALAPP
 | `%LOCALAPPDATA%\Quay2\sessions\sessions.json` | The terminals Quay restores at startup |
 | `%LOCALAPPDATA%\Quay2\sessions\<terminal id>.log` | Each terminal's scrollback |
 | `%LOCALAPPDATA%\Quay2\token-ledger.json` | Quay's token ledger, behind the daily totals in Token Spend |
-| `%LOCALAPPDATA%\Quay2\machina\` | Machina Praxis state (`state.json`) and its holdback vault (`vault\`) |
+| `%LOCALAPPDATA%\Quay2\machina\` | Machina state (`state.json`) and its holdback vault (`vault\`) |
 | `~/.claude/projects/` | Claude Code session transcripts, scanned for token spend. `CLAUDE_CONFIG_DIR` replaces `~/.claude` when set |
 
 ---
@@ -58,7 +58,7 @@ Quay 2 also reads `QUAY_BRIDGE_PORT` from its own environment at startup to pin 
 
 ## Custom CLI Flags
 
-When you launch an agent terminal with `Ctrl+B N`, you can pick a model and add **Custom CLI Arguments**. Quay puts the model's flag first, then your arguments:
+When you launch an agent terminal with `Ctrl+Shift+B N`, you can pick a model and add **Custom CLI Arguments**. Quay puts the model's flag first, then your arguments:
 
 ```powershell
 --model claude-sonnet-5-5 --verbose
@@ -76,7 +76,7 @@ The [CLI flags reference](../reference/cli-flags.md#how-a-command-line-is-built)
 
 Quay 2 can play a chime when an agent needs you:
 
-1. Press `Ctrl+B T` to open **Token Spend & Audio Chime Meter**.
+1. Press `Ctrl+Shift+B T` to open **Token Spend & Audio Chime Meter**.
 2. Under **Background Turn Chimes**, click the button to switch between **Chimes Active** and **Muted**.
 3. While chimes are active, set the **Volume** slider and try the sounds with **Test Completion Chime** and **Test Attention Ping**.
 

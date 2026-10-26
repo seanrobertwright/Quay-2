@@ -93,6 +93,14 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
     }
   }, [activeProject]);
 
+  const cancelListRefresh = useCallback(() => {
+    listSeq.current++;
+  }, []);
+
+  const cancelProjectLoad = useCallback(() => {
+    projectSeq.current++;
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     void refresh();
@@ -103,17 +111,17 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
     return () => {
       window.clearInterval(timer);
       void unlisten.then((stop) => stop());
-      listSeq.current++;
+      cancelListRefresh();
     };
-  }, [isOpen, refresh]);
+  }, [isOpen, refresh, cancelListRefresh]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadProject();
     return () => {
-      projectSeq.current++;
+      cancelProjectLoad();
     };
-  }, [isOpen, loadProject]);
+  }, [isOpen, loadProject, cancelProjectLoad]);
 
   // A ticking clock for live durations, only while something is running.
   const anyRunning = (status?.runningJobs ?? 0) > 0;
@@ -207,10 +215,10 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 id={titleId} className="text-sm font-bold text-white tracking-wide">
-                  MACHINA PRAXIS
+                  MACHINA
                 </h2>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d]">
-                  Ctrl+B F
+                  Ctrl+Shift+B F
                 </span>
                 {status && (
                   <span
@@ -318,7 +326,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close Machina Praxis"
+              aria-label="Close Machina"
               className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md transition-colors"
             >
               <X className="w-4 h-4" aria-hidden="true" />
@@ -335,7 +343,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                 : "bg-[#1f6feb]/15 border-[#58a6ff]/40 text-[#58a6ff]"
             }`}
           >
-            <span className="break-words">{loadError ? `Could not load Machina Praxis: ${loadError}` : notice?.text}</span>
+            <span className="break-words">{loadError ? `Could not load Machina: ${loadError}` : notice?.text}</span>
             {notice && (
               <button type="button" onClick={() => setNotice(null)} className="text-[11px] hover:underline shrink-0">
                 Dismiss

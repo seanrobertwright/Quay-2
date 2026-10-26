@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="px02-title px02-desc">
+  <title id="px02-title">Praxis workflow engine logo: State Machine</title>
+  <desc id="px02-desc">Three states in a closed cycle, one of them active. Praxis runs on deterministic transitions.</desc>
+  <defs><marker id="px02-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#0F766E"/></marker></defs>
+  <g id="px02-icon"><path d="M59.24,22.18 A30,30 0 0 1 77.98,51.05" fill="none" stroke="#0F766E" stroke-width="4" stroke-linecap="round" marker-end="url(#px02-arrow)"/><path d="M66.47,73.64 A30,30 0 0 1 32.1,75.44" fill="none" stroke="#0F766E" stroke-width="4" stroke-linecap="round" marker-end="url(#px02-arrow)"/><path d="M18.29,54.18 A30,30 0 0 1 33.92,23.51" fill="none" stroke="#0F766E" stroke-width="4" stroke-linecap="round" marker-end="url(#px02-arrow)"/><circle cx="48" cy="20" r="9" fill="#134E4A"/><circle cx="73.98" cy="65" r="8" fill="#FFFFFF" stroke="#134E4A" stroke-width="4"/><circle cx="22.02" cy="65" r="8" fill="#FFFFFF" stroke="#134E4A" stroke-width="4"/></g>
+</svg>

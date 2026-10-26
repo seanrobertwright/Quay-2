@@ -1,7 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { UpdateInfo, UpdateProgress } from "./types";
 
-export const APP_CURRENT_VERSION = "0.3.1";
+export const APP_CURRENT_VERSION = "0.4.0";
 const GITHUB_REPO = "seanrobertwright/Quay-2";
 
 /**
