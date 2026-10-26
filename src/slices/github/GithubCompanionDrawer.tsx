@@ -12,6 +12,7 @@ import { GithubIcon } from "./GithubIcon";
 import { loadedCountLabel, type PagedList } from "./paging";
 import { useLoadMoreSentinel, usePagedGithubList } from "./usePagedGithubList";
 import { ArchonWorkflow, ArchonRun } from "../archon/types";
+import { useOverlay } from "../overlay/useOverlay";
 import {
   X,
   GitPullRequest,
@@ -310,16 +311,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
     };
   }, [selectedIssueNumber, repoPath]);
 
-  // Handle ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
   // Available label filters
   const allLabels = useMemo(() => {
@@ -390,9 +382,14 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+    >
       <div
-        className={`bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
+        {...panelProps}
+        aria-label="GitHub Companion"
+        className={`focus:outline-hidden bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
           isExpanded ? "w-full" : "w-full max-w-4xl"
         }`}
       >

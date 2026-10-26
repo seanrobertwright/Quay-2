@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AuditReport, AuditViolation } from "./types";
+import { useOverlay } from "../overlay/useOverlay";
 import {
   X,
   ShieldCheck,
@@ -60,16 +61,7 @@ export const PrePrAuditModal: FC<PrePrAuditModalProps> = ({
     }
   }, [isOpen, runAudit]);
 
-  // Handle ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
   if (!isOpen) return null;
 
@@ -107,8 +99,14 @@ export const PrePrAuditModal: FC<PrePrAuditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+    >
+      <div
+        {...panelProps}
+        aria-label="Pre-PR Audit Gate"
+        className="focus:outline-hidden w-full max-w-3xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-[#30363d] flex items-center justify-between bg-[#0d1117]/80 shrink-0">
           <div className="flex items-center gap-3">

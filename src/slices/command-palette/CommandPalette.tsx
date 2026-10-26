@@ -41,7 +41,9 @@ import {
   Cpu,
   ArrowUpCircle,
   Workflow,
+  X,
 } from "lucide-react";
+import { useOverlay } from "../overlay/useOverlay";
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
@@ -130,16 +132,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Focus input when opened
+  // Start each opening fresh; useOverlay puts focus in the input
   useEffect(() => {
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
     }
   }, [isOpen]);
+
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose, initialFocusRef: inputRef });
 
   // Build command items
   const allCommands = useMemo<CommandItem[]>(() => {
@@ -620,9 +621,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         target.action();
         onClose();
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
   };
 
@@ -638,9 +636,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4">
-      <div className="fixed inset-0" aria-hidden="true" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150">
+    // z-60 keeps the palette above a drawer it was opened over
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-60 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4"
+    >
+      <div
+        {...panelProps}
+        aria-label="Command palette"
+        className="focus:outline-hidden relative w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Search Input Bar */}
         <div className="px-4 py-3 border-b border-[#30363d] flex items-center gap-3 bg-[#0d1117]">
           <Search className="w-5 h-5 text-[#8b949e] shrink-0" />
@@ -656,9 +660,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder="Type a command, terminal, layout, or workspace..."
             className="w-full bg-transparent border-none text-sm text-white placeholder-[#8b949e] focus:outline-hidden"
           />
-          <kbd className="px-1.5 py-0.5 rounded bg-[#21262d] text-[10px] font-mono text-[#8b949e] border border-[#30363d]">
-            ESC
-          </kbd>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 shrink-0 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded transition-colors"
+            title="Close (Esc)"
+            aria-label="Close command palette"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Results List */}
