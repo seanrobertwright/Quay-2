@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px04-title px04-desc">
+  <title id="px04-title">Praxis workflow engine logo: Classical Monogram</title>
+  <desc id="px04-desc">A serifed P in a double gold ring. Praxis is the Greek word for action put into practice.</desc>
+  <g id="px04-icon"><circle cx="48" cy="48" r="43" fill="none" stroke="#B08D57" stroke-width="2"/><circle cx="48" cy="48" r="38.5" fill="none" stroke="#B08D57" stroke-width="0.75"/><path d="M35,72 V26 H49 A12,12 0 0 1 49,50 H35" fill="none" stroke="#1C1917" stroke-width="7"/><path d="M27,72 H43" stroke="#1C1917" stroke-width="3"/></g>
+  <g id="px04-wordmark">
+    <text x="114" y="54" font-family="'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif" font-size="46" font-weight="400" letter-spacing="1" fill="#1C1917">Praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#B08D57">WORKFLOW ENGINE</text>
+  </g>
+</svg>

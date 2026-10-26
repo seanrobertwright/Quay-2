@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useId } from "react";
 import { Project } from "./types";
 import {
   X,
@@ -64,6 +64,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const defaultFlagsInputId = useId();
 
   useEffect(() => {
     if (project) {
@@ -216,7 +217,10 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
           {/* Section 1: Default CLI Launch Flags */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[#c9d1d9] flex items-center gap-1.5">
+              <label
+                htmlFor={defaultFlagsInputId}
+                className="text-xs font-semibold text-[#c9d1d9] flex items-center gap-1.5"
+              >
                 <Terminal className="w-3.5 h-3.5 text-[#58a6ff]" />
                 <span>Default Claude CLI Flags</span>
               </label>
@@ -226,6 +230,7 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
             </div>
 
             <input
+              id={defaultFlagsInputId}
               type="text"
               value={defaultFlags}
               onChange={(e) => setDefaultFlags(e.target.value)}
@@ -253,10 +258,10 @@ export const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-xs font-semibold text-[#c9d1d9] flex items-center gap-1.5">
+                <div className="text-xs font-semibold text-[#c9d1d9] flex items-center gap-1.5">
                   <Variable className="w-3.5 h-3.5 text-[#3fb950]" />
                   <span>Workspace Environment Variables</span>
-                </label>
+                </div>
                 <p className="text-[11px] text-[#8b949e] mt-0.5">
                   Injected into the ConPTY process for Claude Code and PowerShell sessions
                 </p>

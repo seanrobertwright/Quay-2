@@ -157,6 +157,17 @@ fn set_event_bridge_env(
     cmd.env("CLAUDE_EVENTS_PERMISSIONS", permissions);
 }
 
+pub(crate) const CLAUDE_EVENT_KEYS: [&str; 5] = [
+    "CLAUDE_EVENTS_URL",
+    "CLAUDE_EVENTS_TOKEN",
+    "CLAUDE_EVENTS_TAG",
+    "CLAUDE_EVENTS_TOOLS",
+    "CLAUDE_EVENTS_PERMISSIONS",
+];
+
+pub(crate) const QUAY_ENV_KEYS: [&str; 4] =
+    ["QUAY_TERMINAL_ID", "QUAY_A2A_TOKEN", "QUAY_MCP_URL", "QUAY_EVENTS_URL"];
+
 /// Sets the variables every peer terminal gets, whatever its level, so a CLI's own wiring
 /// onto the bus can read the terminal's id, token and bridge URLs from its environment.
 fn set_quay_env(cmd: &mut CommandBuilder, terminal_id: &str, bridge_port: u16, bridge_token: &str) {
@@ -164,6 +175,18 @@ fn set_quay_env(cmd: &mut CommandBuilder, terminal_id: &str, bridge_port: u16, b
     cmd.env("QUAY_A2A_TOKEN", bridge_token);
     cmd.env("QUAY_MCP_URL", format!("http://127.0.0.1:{}/mcp", bridge_port));
     cmd.env("QUAY_EVENTS_URL", format!("http://127.0.0.1:{}/v1/events", bridge_port));
+}
+
+fn clear_event_bridge_env(cmd: &mut CommandBuilder) {
+    for key in CLAUDE_EVENT_KEYS {
+        cmd.env_remove(key);
+    }
+}
+
+fn clear_quay_env(cmd: &mut CommandBuilder) {
+    for key in QUAY_ENV_KEYS {
+        cmd.env_remove(key);
+    }
 }
 
 /// Decodes a byte chunk into UTF-8 while preserving incomplete multi-byte UTF-8 sequences
@@ -610,9 +633,13 @@ pub(crate) fn build_command(
     // After the workspace's variables, so none of them can stand in for the terminal's own
     if request.run_kind == RunKind::Claude {
         set_event_bridge_env(&mut cmd, terminal_id, bridge_port, bridge_token, perm);
+    } else {
+        clear_event_bridge_env(&mut cmd);
     }
     if request.run_kind.is_peer() {
         set_quay_env(&mut cmd, terminal_id, bridge_port, bridge_token);
+    } else {
+        clear_quay_env(&mut cmd);
     }
     if request.run_kind == RunKind::OpenCode {
         let workspace = cmd.get_env(OPENCODE_CONFIG_VAR).map(|v| v.to_string_lossy().to_string());
@@ -729,25 +756,7 @@ impl PtySession {
             format!("Failed to take master writer: {}", e)
         })?));
 
-        let log_dir = {
-            #[cfg(test)]
-            {
-                let t = std::env::temp_dir().join("quay2_test_sessions");
-                let _ = std::fs::create_dir_all(&t);
-                t
-            }
-            #[cfg(not(test))]
-            {
-                let d = if let Ok(local) = std::env::var("LOCALAPPDATA") {
-                    std::path::Path::new(&local).join("Quay2").join("sessions")
-                } else {
-                    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-                    std::path::Path::new(&home).join(".quay2").join("sessions")
-                };
-                let _ = std::fs::create_dir_all(&d);
-                d
-            }
-        };
+        let log_dir = super::manager::get_sessions_dir();
         let log_path = log_dir.join(format!("{}.log", terminal_id));
 
         // Read existing scrollback if relaunching an existing terminal
@@ -958,11 +967,14 @@ impl PtySession {
     }
 
     pub fn get_output(&self) -> TerminalOutputPayload {
+        let (rows, cols) = *self.current_size.lock();
         let guard = self.output_buffer.lock();
         TerminalOutputPayload {
             terminal_id: self.id.clone(),
             data: guard.0.clone(),
             last_seq: guard.1,
+            rows: Some(rows),
+            cols: Some(cols),
         }
     }
 
@@ -1312,9 +1324,6 @@ mod tests {
         }
     }
 
-    const QUAY_ENV_KEYS: [&str; 4] =
-        ["QUAY_TERMINAL_ID", "QUAY_A2A_TOKEN", "QUAY_MCP_URL", "QUAY_EVENTS_URL"];
-
     fn env_of(cmd: &CommandBuilder, key: &str) -> Option<String> {
         cmd.get_env(key).map(|v| v.to_string_lossy().to_string())
     }
@@ -1421,7 +1430,9 @@ mod tests {
         assert_eq!(env_of(&cmd, "CLAUDE_EVENTS_PERMISSIONS").as_deref(), Some("off"));
         // The event-bridge plugin reads only Claude's variables
         let codex = build_command(&spawn_request(RunKind::Codex), "term-codex-env", 4321, "tok-1", Some(4567));
-        assert_eq!(env_of(&codex, "CLAUDE_EVENTS_TOKEN"), None);
+        for key in CLAUDE_EVENT_KEYS {
+            assert_eq!(env_of(&codex, key), None, "{:?} got {}", RunKind::Codex, key);
+        }
     }
 
     #[test]
@@ -1703,13 +1714,13 @@ mod tests {
         #[cfg(windows)]
         {
             assert_eq!(args[..4], ["pwsh.exe", "-NoProfile", "-NoLogo", "-Command"]);
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), PIG_NOT_INSTALLED);
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }
         #[cfg(not(windows))]
         {
-            let out = std::process::Command::new(&args[0]).args(&args[1..]).output().unwrap();
+            let out = crate::spawn::hidden_command(&args[0]).args(&args[1..]).output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", PIG_NOT_INSTALLED));
             assert!(!out.status.success(), "a launch that couldn't start PiG exits as a failure");
         }

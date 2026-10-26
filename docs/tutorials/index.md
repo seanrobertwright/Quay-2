@@ -10,5 +10,6 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 2 | [TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/) | Build a password-strength checker test-first, driving a tester, an implementer and a reviewer one pane at a time. |
 | 6 | [Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/) | Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed. |
 <!-- tutorials:end -->

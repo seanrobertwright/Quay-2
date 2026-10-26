@@ -1,4 +1,4 @@
-import { FC, useState, useEffect } from "react";
+import { FC, useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   ArrowRight,
@@ -53,15 +53,18 @@ interface A2AToastProps {
 export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const resolveTerminalInfo = (idOrName?: string) => {
-    if (!idOrName) return undefined;
-    return terminals.find(
-      (t) =>
-        t.id === idOrName ||
-        t.name.toLowerCase() === idOrName.toLowerCase() ||
-        t.run_kind.toLowerCase() === idOrName.toLowerCase()
-    );
-  };
+  const resolveTerminalInfo = useCallback(
+    (idOrName?: string) => {
+      if (!idOrName) return undefined;
+      return terminals.find(
+        (t) =>
+          t.id === idOrName ||
+          t.name.toLowerCase() === idOrName.toLowerCase() ||
+          t.run_kind.toLowerCase() === idOrName.toLowerCase()
+      );
+    },
+    [terminals]
+  );
 
   useEffect(() => {
     // 1. Listen for A2A Message Dispatched
@@ -143,7 +146,7 @@ export const A2AToast: FC<A2AToastProps> = ({ terminals, onSelectTerminal }) => 
       unlistenUpdatedPromise.then((unlisten) => unlisten());
       unlistenBroadcastPromise.then((unlisten) => unlisten());
     };
-  }, [terminals]);
+  }, [resolveTerminalInfo]);
 
   if (toasts.length === 0) return null;
 

@@ -35,7 +35,7 @@ flowchart LR
     Bus <--> Claude2["🤖 Agent: Backend (Claude Code)"]
     Bus <--> Antigravity["🚀 Agent: Systems (Antigravity CLI)"]
     Stage --> Archon["📐 Archon SDD Graph & Logs"]
-    Stage --> Machina["🏭 Machina Praxis Factory"]
+    Stage --> Machina["🏭 Machina Factory"]
     Stage --> Audit["🛡️ Pre-PR Audit Gate"]
 ```
 
@@ -78,18 +78,26 @@ flowchart LR
 - Built-in Architectural Decision Records (ADR) viewer and Spec Task progress checklists.
 - 1-click **"Implement with Archon"** integration directly from GitHub issues.
 
-### 🏭 Machina Praxis AI Software Factory Cockpit
-- Native supervisor for the Machina Praxis deterministic software manufacturing engine.
+### 🏭 Machina AI Software Factory Cockpit
+- Native supervisor for the Machina deterministic software manufacturing engine.
 - SQLite-backed state persistence in `%LOCALAPPDATA%\Quay2\praxis\`.
 - Real-time milestone stages, deliverable gates, hold resolution, and operator claim management.
 
+### 🧭 Praxis Builder
+- Opens with `Ctrl+Shift+B P` or **Praxis Builder...** in the command palette.
+- Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
+- Edit a graph on the canvas: drag a kind from the palette strip to add a node, drag from one card's handle to another to add a dependency, and drag from a decision's green `then` or red `else` handle to set that branch. The inspector beside the canvas edits the selected node's id, its kind's config and its `dependsOn`, shows the problems found in each field, and deletes the node. Renaming or deleting a node updates every `dependsOn`, decision branch and layout entry that names it.
+- Drag a graph's nodes and press **Save** (`Ctrl+S`) to write the graph and its layout. Files are written in one canonical form, so a save that changes nothing makes no diff, and graphs get a content-digest `revision`. Unsaved drafts show `*` in the list and a dot on the project in the rail, and Quay asks before it quits with any unsaved. An invalid graph still saves, and the list marks it with an error badge.
+- Files that aren't valid JSON are listed with an error badge, and opening one shows the line and column of the error.
+- Validates each graph offline with the AI-WS-SDK's own Rust crate, vendored in `src-tauri/vendor/aiws`. Each node shows a problem count, and a Problems list under the canvas gives every issue's node, field, message and code. Choosing an issue selects its node and zooms to it.
+
 ### 🪟 Tiling Window Management & 1-Click Swarm Presets
 - Split your stage instantly:
-  - Side-by-Side Horizontal Split (`Ctrl+B %`)
-  - Top-and-Bottom Vertical Split (`Ctrl+B "`)
-  - 2x2 Quad Grid Layout (`Ctrl+B G`)
-  - Zoom Active Pane (`Ctrl+B Z`)
-- **1-Click Multi-Agent Swarms** (`Ctrl+B S`):
+  - Side-by-Side Horizontal Split (`Ctrl+Shift+B %`)
+  - Top-and-Bottom Vertical Split (`Ctrl+Shift+B "`)
+  - 2x2 Quad Grid Layout (`Ctrl+Shift+B G`)
+  - Zoom Active Pane (`Ctrl+Shift+B Z`)
+- **1-Click Multi-Agent Swarms** (`Ctrl+Shift+B S`):
   <!-- BEGIN GENERATED: builtin-swarm-presets. `pnpm docs:presets` writes this list from BUILTIN_SWARM_PRESETS in src/slices/orchestrator/swarmTypes.ts, and `pnpm docs:build` runs it first. Edit the presets there, not this list. -->
   - *Dev & Watcher* (`lead-dev`, `build-watcher`): Claude Code paired with an active PowerShell terminal running build watchers or tests.
   - *TDD Swarm* (`test-architect`, `feature-impl`, `test-runner`, `reviewer`): 4-way 2x2 grid pairing Test Architect, Implementer, Test Runner, and Code Reviewer.
@@ -101,12 +109,12 @@ flowchart LR
   <!-- END GENERATED: builtin-swarm-presets -->
 
 ### 🌿 Git Worktrees Integration
-- Create and manage isolated Git worktree branches without leaving Quay (`Ctrl+B W`).
+- Create and manage isolated Git worktree branches without leaving Quay (`Ctrl+Shift+B W`).
 - Worktrees in the navigation rail start collapsed by default to save precious vertical space.
 - A smart indicator dot marks any collapsed worktree housing the active terminal.
 
 ### 🐙 GitHub Companion Drawer with Dependency Triage
-- Keyboard-accessible drawer (`Ctrl+B I`) for issues and pull requests.
+- Keyboard-accessible drawer (`Ctrl+Shift+B I`) for issues and pull requests.
 - Filter by label, author, or state (`open`, `closed`).
 - **Native Blocked Issue Detection**: Automatically queries GitHub GraphQL issue dependencies; blocked issues display a prominent red **`BLOCKED`** tag listing their open blocker issue numbers.
 - 1-click **"Implement with Claude"** and **"Implement with Archon"** prompts automatically pre-filled and launched in dedicated worktrees.
@@ -117,36 +125,37 @@ flowchart LR
 - Subtle audio chimes notify you when an agent finishes its turn or requires attention.
 
 ### 🛡️ Pre-PR Audit Gate & Safety Guardrails
-- Pre-PR Audit Gate (`Ctrl+B A`) scanning changed file names and the git diff for secrets, key files and personal paths. See [Pre-PR Audit Gate](https://seanrobertwright.github.io/Quay-2/features/security-audit).
+- Pre-PR Audit Gate (`Ctrl+Shift+B A`) scanning changed file names and the git diff for secrets, key files and personal paths. See [Pre-PR Audit Gate](https://seanrobertwright.github.io/Quay-2/features/security-audit).
 - Distinct visual badges for terminals running with `--dangerously-skip-permissions`.
 
 ---
 
-## ⌨️ Keyboard-First Workflow (`Ctrl+B` Prefix)
+## ⌨️ Keyboard-First Workflow (`Ctrl+Shift+B` Prefix)
 
-Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions use the `Ctrl+B` chord:
+Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions use the `Ctrl+Shift+B` chord:
 
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| `Ctrl+B N` | **New Terminal** | Open agent & command launcher modal |
-| `Ctrl+B 1` .. `9` | **Switch Terminal** | Jump directly to terminal slot 1 through 9 |
+| `Ctrl+Shift+B N` | **New Terminal** | Open agent & command launcher modal |
+| `Ctrl+Shift+B 1` .. `9` | **Switch Terminal** | Jump directly to terminal slot 1 through 9 |
 | `Alt+1` .. `9` | **Fast Switcher** | Quick terminal jump |
-| `Ctrl+B %` | **Split Horizontal** | Stage splits side-by-side |
-| `Ctrl+B "` | **Split Vertical** | Stage splits top-and-bottom |
-| `Ctrl+B G` | **Quad Grid** | 2x2 multi-pane terminal grid |
-| `Ctrl+B Z` | **Toggle Zoom** | Maximize/restore active pane |
-| `Ctrl+B O` | **Cycle Focus** | Move focus to next pane |
-| `Ctrl+B X` | **Close / Unsplit** | Return to single active terminal |
-| `Ctrl+B S` | **Swarm Presets** | Launch multi-agent swarm arrangements |
-| `Ctrl+B D` | **Diff Inspector** | Open the log of agents' Edit and Write tool calls |
-| `Ctrl+B W` | **New Worktree** | Create an isolated branch worktree |
-| `Ctrl+B I` | **GitHub Companion** | Open GitHub Issues & PR drawer |
-| `Ctrl+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
-| `Ctrl+B H` | **Session History** | Search and auto-resume past Claude sessions |
-| `Ctrl+B T` | **Token Spend** | View token meter & turn chime settings |
-| `Ctrl+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
-| `Ctrl+B F` | **Machina Praxis** | Open AI Software Factory cockpit |
-| `Ctrl+K` | **Command Palette** | Global searchable command palette |
+| `Ctrl+Shift+B %` | **Split Horizontal** | Stage splits side-by-side |
+| `Ctrl+Shift+B "` | **Split Vertical** | Stage splits top-and-bottom |
+| `Ctrl+Shift+B G` | **Quad Grid** | 2x2 multi-pane terminal grid |
+| `Ctrl+Shift+B Z` | **Toggle Zoom** | Maximize/restore active pane |
+| `Ctrl+Shift+B O` | **Cycle Focus** | Move focus to next pane |
+| `Ctrl+Shift+B X` | **Close / Unsplit** | Return to single active terminal |
+| `Ctrl+Shift+B S` | **Swarm Presets** | Launch multi-agent swarm arrangements |
+| `Ctrl+Shift+B D` | **Diff Inspector** | Open the log of agents' Edit and Write tool calls |
+| `Ctrl+Shift+B W` | **New Worktree** | Create an isolated branch worktree |
+| `Ctrl+Shift+B I` | **GitHub Companion** | Open GitHub Issues & PR drawer |
+| `Ctrl+Shift+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
+| `Ctrl+Shift+B H` | **Session History** | Search and auto-resume past Claude sessions |
+| `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |
+| `Ctrl+Shift+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
+| `Ctrl+Shift+B F` | **Machina** | Open AI Software Factory cockpit |
+| `Ctrl+Shift+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |
+| `Ctrl+Shift+P` | **Command Palette** | Global searchable command palette. `Ctrl+K` also opens it when a terminal does not have focus |
 | `Esc` | **Dismiss** | Close active modal or drawer |
 
 ---
@@ -194,6 +203,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Your first swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
+| 2 | [TDD Swarm kata](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/tdd-swarm-kata/) | Build a password-strength checker test-first, driving a tester, an implementer and a reviewer one pane at a time. |
 | 6 | [Red Team / Blue Team: notes app](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/red-team-blue-team/) | Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed. |
 <!-- tutorials:end -->
 
@@ -208,7 +218,7 @@ Comprehensive, searchable documentation is hosted on **GitHub Pages**:
 - **[Architecture Deep-Dive](https://seanrobertwright.github.io/Quay-2/guide/architecture)**: Vertical Slice Architecture, ConPTY lifecycle, and wire protocols.
 - **[A2A Orchestration Protocol](https://seanrobertwright.github.io/Quay-2/features/a2a-orchestration)**: JSON-RPC tools and autonomous multi-agent handoff recipes.
 - **[Archon & SDD Workflows](https://seanrobertwright.github.io/Quay-2/features/archon-sdd)**: Visual DAG execution, live streaming logs, and ADR tracking.
-- **[Machina Praxis Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Software manufacturing pipeline setup.
+- **[Machina Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Software manufacturing pipeline setup.
 - **[API & IPC Specification](https://seanrobertwright.github.io/Quay-2/reference/ipc-api)**: Tauri IPC command contracts and event structures.
 
 To run the documentation locally:

@@ -5,6 +5,7 @@ pub mod git;
 pub mod github;
 pub mod machina;
 pub mod orchestrator;
+pub mod praxis;
 pub mod pty;
 pub mod sessions;
 pub mod workspace;

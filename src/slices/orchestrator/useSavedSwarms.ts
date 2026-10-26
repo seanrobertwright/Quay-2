@@ -94,15 +94,17 @@ export function useSavedSwarms() {
     return list;
   }, []);
 
+  const cancelPending = useCallback(() => {
+    // A load still in flight at unmount is ignored.
+    latestRequest.current++;
+  }, []);
+
   useEffect(() => {
     importLegacySwarmsOnce()
       .then(() => apply(invoke<SavedSwarm[]>("list_saved_swarms")))
       .catch((err) => console.error("Failed to load saved swarms:", err));
-    return () => {
-      // A load still in flight at unmount is ignored.
-      latestRequest.current++;
-    };
-  }, [apply]);
+    return cancelPending;
+  }, [apply, cancelPending]);
 
   /** Saves the form under its name, replacing a saved swarm with the same name. */
   const saveSwarm = useCallback(

@@ -28,16 +28,16 @@ By assigning each autonomous agent to its own dedicated worktree:
 
 ---
 
-## 1-Click Worktree Creation (`Ctrl+B W`)
+## 1-Click Worktree Creation (`Ctrl+Shift+B W`)
 
-Pressing `Ctrl+B W` opens the **New Git Worktree** dialog for the active project. The dialog's footer shows the project folder it will use.
+Pressing `Ctrl+Shift+B W` opens the **New Git Worktree** dialog for the active project. The dialog's footer shows the project folder it will use.
 
 1. **Branch Name**: Enter a branch name (e.g. `feat/oauth2`), or click a prefix button (`+feat/issue-`, `+fix/issue-`, `+wayfinder/issue-`) to start one. The label beside the field shows the folder the worktree will get, `.worktrees/<branch>`, with each `/` or `\` in the branch name replaced by `-`. For example, `feat/oauth2` goes in `.worktrees/feat-oauth2`.
 2. **Create as new branch**: Checked by default. Quay creates the branch from the base branch in the **from** field, which defaults to `main`. Uncheck it to check out an existing branch instead.
 3. **Launch Claude Code terminal immediately**: Checked by default. Quay opens a Claude Code terminal inside the new worktree as soon as it is created.
 4. Click **Create Worktree**.
 
-Quay always creates the worktree from the project's root repository. Pressing `Ctrl+B W` while a worktree is selected adds another worktree of the project, never one nested inside the selected worktree.
+Quay always creates the worktree from the project's root repository. Pressing `Ctrl+Shift+B W` while a worktree is selected adds another worktree of the project, never one nested inside the selected worktree.
 
 ---
 
