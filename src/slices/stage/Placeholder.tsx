@@ -14,7 +14,7 @@ export const Placeholder: React.FC<PlaceholderProps> = ({ onNewTerminal }) => {
         No Terminal in this Project
       </h3>
       <p className="text-xs text-[#8b949e] max-w-sm text-center mb-6 font-mono">
-        Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white text-[11px]">Ctrl+B N</kbd> or click below to launch an AI Agent, PowerShell, or a custom Command.
+        Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white text-[11px]">Ctrl+Shift+B N</kbd> or click below to launch an AI Agent, PowerShell, or a custom Command.
       </p>
       <button
         onClick={onNewTerminal}

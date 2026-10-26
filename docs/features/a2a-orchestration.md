@@ -252,7 +252,7 @@ Neither hand-off waits for a reply, because neither job fits in 60 seconds. Each
 
 Besides the agents' own messages, you can send messages yourself:
 
-1. Click the **Mission Control** icon (the network icon) in the bottom rail toolbar, press `Ctrl+B M`, or press `Ctrl+K` and choose **Mission Control**. Press `Esc` to close it.
+1. Click the **Mission Control** icon (the network icon) in the bottom rail toolbar, press `Ctrl+Shift+B M`, or press `Ctrl+Shift+P` and choose **Mission Control**. Press `Esc` to close it.
 2. **From Agent**: select any running agent, or check **Dispatch as User**.
 3. **To Agent**: select the recipient.
 4. Type the message.

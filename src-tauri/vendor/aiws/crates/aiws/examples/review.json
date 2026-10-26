@@ -1,0 +1,153 @@
+{
+  "contract": {
+    "id": "c",
+    "missionId": "m",
+    "aiwsEdition": "0.4",
+    "profile": "finite-v1",
+    "budget": "100",
+    "deadline": "10000",
+    "criteria": [
+      "review"
+    ],
+    "actions": [
+      "write"
+    ],
+    "resources": [
+      "doc"
+    ],
+    "requiresApproval": false,
+    "maxAttempts": "2",
+    "maxAuthorizationAgeMs": "10",
+    "features": [
+      "triggers",
+      "graphs"
+    ]
+  },
+  "commands": [
+    {
+      "type": "startRun",
+      "runId": "r"
+    },
+    {
+      "type": "registerGraph",
+      "graph": {
+        "id": "graph",
+        "revision": "1",
+        "nodes": [
+          {
+            "id": "task",
+            "kind": "TASK",
+            "dependsOn": [],
+            "config": {
+              "executionKind": "FUNCTION"
+            }
+          },
+          {
+            "id": "end",
+            "kind": "END",
+            "dependsOn": [
+              "task"
+            ],
+            "config": {}
+          }
+        ]
+      }
+    },
+    {
+      "type": "attachGraph",
+      "runId": "r",
+      "graphId": "graph"
+    },
+    {
+      "type": "grant",
+      "grant": {
+        "id": "g",
+        "subject": "agent",
+        "profile": "finite-v1",
+        "actions": [
+          "write"
+        ],
+        "resources": [
+          "doc"
+        ],
+        "notBefore": "0",
+        "expiresAt": "10000",
+        "limit": "100",
+        "canDelegate": true,
+        "depth": "2"
+      }
+    },
+    {
+      "type": "admit",
+      "runId": "r",
+      "operationId": "o",
+      "attemptId": "a",
+      "grantId": "g",
+      "subject": "agent",
+      "action": {
+        "capability": "write",
+        "resource": "doc",
+        "payload": {
+          "value": 1
+        },
+        "preconditions": {
+          "revision": 1
+        }
+      },
+      "amount": "10",
+      "authorizationCheckedAt": "10",
+      "policy": "ALLOW",
+      "mandatoryChecksOk": true
+    },
+    {
+      "type": "dispatch",
+      "attemptId": "a",
+      "authorizationCheckedAt": "10",
+      "policy": "ALLOW",
+      "mandatoryChecksOk": true,
+      "nodeId": "task"
+    },
+    {
+      "type": "completeNode",
+      "runId": "r",
+      "nodeId": "task",
+      "result": {
+        "operationId": "o"
+      }
+    },
+    {
+      "type": "completeNode",
+      "runId": "r",
+      "nodeId": "end",
+      "result": {
+        "disposition": "COMPLETED"
+      }
+    },
+    {
+      "type": "transition",
+      "runId": "r",
+      "to": "COMPLETED"
+    },
+    {
+      "type": "verify",
+      "runId": "r",
+      "assessor": "reviewer",
+      "revision": "v1",
+      "results": {
+        "review": "PASS"
+      },
+      "evidence": [
+        "sha256:evidence"
+      ],
+      "rationale": "Review performed"
+    },
+    {
+      "type": "accept",
+      "runId": "r",
+      "authority": "owner",
+      "verificationRevision": "v1",
+      "decision": "ACCEPTED",
+      "rationale": "Accepted deliverable"
+    }
+  ]
+}

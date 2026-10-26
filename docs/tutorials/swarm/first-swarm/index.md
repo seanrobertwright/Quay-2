@@ -9,9 +9,9 @@ Launch Quay's Dev & Watcher swarm: a Claude Code agent beside a PowerShell pane 
 - **Level** Starter
 :::
 
-**You'll learn:** how to launch a swarm from the Swarm Launcher (`Ctrl+B S`), work in a side-by-side split, move focus between panes (`Ctrl+B O`) and zoom a pane to the whole stage (`Ctrl+B Z`).
+**You'll learn:** how to launch a swarm from the Swarm Launcher (`Ctrl+Shift+B S`), work in a side-by-side split, move focus between panes (`Ctrl+Shift+B O`) and zoom a pane to the whole stage (`Ctrl+Shift+B Z`).
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
 
 ::: before
 ## Before you start
@@ -30,8 +30,8 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 ::: do
 1. Download [`first-swarm.zip`](/starters/first-swarm.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -68,7 +68,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Launch the swarm
 
 ::: do
-1. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** already selected.
+1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** already selected.
 2. Click **Launch Swarm Now**.
 :::
 
@@ -102,7 +102,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 ## 3. Start the watcher
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `build-watcher`. Its border lights up.
+1. Press `Ctrl+Shift+B O` to move focus to `build-watcher`. Its border lights up.
 :::
 
 ::: paste `build-watcher`
@@ -135,7 +135,7 @@ npm test
 ## 4. Give lead-dev the job
 
 ::: do
-1. Press `Ctrl+B O` to move focus back to `lead-dev`.
+1. Press `Ctrl+Shift+B O` to move focus back to `lead-dev`.
 :::
 
 ::: paste `lead-dev`
@@ -175,9 +175,9 @@ Vitest re-runs when a file under the project changes. Check that `lead-dev` edit
 ## 5. Zoom in on the result
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `build-watcher`.
-2. Press `Ctrl+B Z` to zoom it to the whole stage, and read the five passing tests.
-3. Press `Ctrl+B Z` again to put the split back.
+1. Press `Ctrl+Shift+B O` to move focus to `build-watcher`.
+2. Press `Ctrl+Shift+B Z` to zoom it to the whole stage, and read the five passing tests.
+3. Press `Ctrl+Shift+B Z` again to put the split back.
 :::
 
 ::: see
@@ -193,12 +193,12 @@ Vitest re-runs when a file under the project changes. Check that `lead-dev` edit
 - The times beside each test.
 :::
 
-::: ifnot Ctrl+B Z did nothing
-The `Ctrl+B` prefix lasts a second and a half. Press `Ctrl+B`, let go, then press `Z` straight after.
+::: ifnot Ctrl+Shift+B Z did nothing
+The `Ctrl+Shift+B` prefix lasts a second and a half. Press `Ctrl+Shift+B`, let go, then press `Z` straight after.
 :::
 
-::: ifnot Ctrl+B Z zoomed lead-dev instead
-Focus was still on `lead-dev`. Press `Ctrl+B Z` to put the split back, then `Ctrl+B O` to move focus to `build-watcher`, and zoom again.
+::: ifnot Ctrl+Shift+B Z zoomed lead-dev instead
+Focus was still on `lead-dev`. Press `Ctrl+Shift+B Z` to put the split back, then `Ctrl+Shift+B O` to move focus to `build-watcher`, and zoom again.
 :::
 
 :::

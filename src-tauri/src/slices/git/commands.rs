@@ -1,18 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 use super::models::{CreateWorktreeRequest, GitWorktree};
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 fn create_git_command(dir: &str) -> Command {
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::spawn::hidden_command("git");
     cmd.current_dir(dir);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
 }
 
@@ -121,6 +114,10 @@ pub async fn is_git_repo(project_path: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn list_git_worktrees(project_path: String) -> Result<Vec<GitWorktree>, String> {
     tokio::task::spawn_blocking(move || {
+        let repo_path = Path::new(&project_path);
+        if !repo_path.exists() || !repo_path.join(".git").exists() {
+            return Ok(Vec::new());
+        }
         let mut cmd = create_git_command(&project_path);
         cmd.args(["worktree", "list", "--porcelain"]);
         let output = match cmd.output() {
@@ -445,5 +442,14 @@ detached
 
         assert_eq!(worktrees[2].branch, "detached");
         assert!(!worktrees[2].is_main);
+    }
+
+    #[tokio::test]
+    async fn non_git_folder_returns_empty_worktree_list() {
+        let root = std::env::temp_dir().join(format!("quay-nogit-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let res = list_git_worktrees(root.to_string_lossy().to_string()).await.unwrap();
+        assert!(res.is_empty());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

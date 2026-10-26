@@ -93,6 +93,14 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
     }
   }, [activeProject]);
 
+  const cancelListRefresh = useCallback(() => {
+    listSeq.current++;
+  }, []);
+
+  const cancelProjectLoad = useCallback(() => {
+    projectSeq.current++;
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     void refresh();
@@ -103,17 +111,17 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
     return () => {
       window.clearInterval(timer);
       void unlisten.then((stop) => stop());
-      listSeq.current++;
+      cancelListRefresh();
     };
-  }, [isOpen, refresh]);
+  }, [isOpen, refresh, cancelListRefresh]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadProject();
     return () => {
-      projectSeq.current++;
+      cancelProjectLoad();
     };
-  }, [isOpen, loadProject]);
+  }, [isOpen, loadProject, cancelProjectLoad]);
 
   // A ticking clock for live durations, only while something is running.
   const anyRunning = (status?.runningJobs ?? 0) > 0;
@@ -210,7 +218,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                   MACHINA
                 </h2>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d]">
-                  Ctrl+B F
+                  Ctrl+Shift+B F
                 </span>
                 {status && (
                   <span

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
-import { AddProjectModal } from "./slices/workspace/AddProjectModal";
+import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
 import { A2APanel } from "./slices/orchestrator/A2APanel";
 import { PermissionModal } from "./slices/bridge/PermissionModal";
@@ -27,12 +27,13 @@ import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
+import { BuilderProject, PraxisBuilderModal } from "./slices/praxis-builder/PraxisBuilderModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
-import { resolveRootRepo } from "./utils/paths";
+import { isSamePath, resolveRootRepo } from "./utils/paths";
 
 export function App() {
   const {
@@ -100,6 +101,8 @@ export function App() {
     setIsArchonGraphOpen,
     isFactoryStationOpen,
     setIsFactoryStationOpen,
+    isPraxisBuilderOpen,
+    setIsPraxisBuilderOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
@@ -199,6 +202,22 @@ export function App() {
     () => resolveRootRepo(activeProject, projects, projectWorktrees),
     [activeProject, projects, projectWorktrees]
   );
+
+  // The builder works on the active project when it is a registered project or one of its
+  // worktrees, the same folders the backend's praxis commands accept.
+  const builderProject = useMemo<BuilderProject | null>(() => {
+    const registered = projects.find((p) => isSamePath(p.path, activeProject));
+    if (registered) return { path: registered.path, name: registered.name };
+    for (const p of projects) {
+      const wt = projectWorktrees[p.path]?.find((w) => isSamePath(w.path, activeProject));
+      if (wt) return { path: wt.path, name: `${p.name} · ${wt.branch || "worktree"}` };
+    }
+    return null;
+  }, [projects, projectWorktrees, activeProject]);
+  const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
+  // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
+  const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
+  const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
 
   // 1-Click: Execute real Archon Workflow Run for an issue
   const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
@@ -412,6 +431,7 @@ export function App() {
       <Rail
         projects={projects}
         activeProject={activeProject}
+        unsavedPraxisProjects={praxisUnsaved}
         terminals={terminals}
         activeTerminalId={activeTerminalId}
         bridgePort={bridgePort}
@@ -484,7 +504,7 @@ export function App() {
         onRelaunchTerminal={relaunchTerminal}
       />
 
-      {/* Global Command Palette (Ctrl+K / Cmd+K) */}
+      {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
@@ -528,6 +548,7 @@ export function App() {
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}
         onToggleLiveMode={
           activeTerminalId
@@ -588,14 +609,16 @@ export function App() {
         />
       )}
 
-      {/* Add Project Dialog */}
-      <AddProjectModal
+      {/* Open Project Dialog */}
+      <OpenProjectDialog
         isOpen={isAddProjectOpen}
         onClose={() => setIsAddProjectOpen(false)}
+        projects={projects}
         onAddProject={addProject}
+        onSelectProject={(path) => setActiveProject(path)}
       />
 
-      {/* New Terminal Dialog (^b n) */}
+      {/* New Terminal Dialog (Ctrl+Shift+B n) */}
       <NewTerminalModal
         isOpen={isNewTerminalOpen}
         projectPath={activeProject}
@@ -630,7 +653,7 @@ export function App() {
         }}
       />
 
-      {/* Git Worktree Creation Modal (^b w) */}
+      {/* Git Worktree Creation Modal (Ctrl+Shift+B w) */}
       <NewWorktreeModal
         isOpen={isNewWorktreeOpen}
         repoPath={worktreeModalTarget?.repoPath || activeRootRepo}
@@ -648,7 +671,7 @@ export function App() {
         }}
       />
 
-      {/* GitHub Companion Drawer (^b i) */}
+      {/* GitHub Companion Drawer (Ctrl+Shift+B i) */}
       <GithubCompanionDrawer
         isOpen={isGithubDrawerOpen}
         repoPath={activeRootRepo}
@@ -661,7 +684,7 @@ export function App() {
         onOpenArchonMonitor={() => setIsArchonGraphOpen(true)}
       />
 
-      {/* Pre-PR Audit Gate Modal (^b a) */}
+      {/* Pre-PR Audit Gate Modal (Ctrl+Shift+B a) */}
       <PrePrAuditModal
         isOpen={isAuditModalOpen}
         projectPath={activeRootRepo}
@@ -670,7 +693,7 @@ export function App() {
         onFixWithClaude={handleFixAuditWithClaude}
       />
 
-      {/* Claude Session History & Auto-Resume Drawer (^b h) */}
+      {/* Claude Session History & Auto-Resume Drawer (Ctrl+Shift+B h) */}
       <SessionHistoryDrawer
         isOpen={isSessionHistoryOpen}
         activeProject={activeProject}
@@ -678,7 +701,7 @@ export function App() {
         onResumeSession={(sessionId, projectPath) => resumeSession(sessionId, projectPath)}
       />
 
-      {/* Claude Live Token Spend & Background Turn Chime Modal (^b t) */}
+      {/* Claude Live Token Spend & Background Turn Chime Modal (Ctrl+Shift+B t) */}
       <TokenSpendModal
         isOpen={isTokenSpendOpen}
         stats={claudeStats}
@@ -686,7 +709,7 @@ export function App() {
         onClose={() => setIsTokenSpendOpen(false)}
       />
 
-      {/* Archon & SDD Spec Graph Inspector Modal (^b r) */}
+      {/* Archon & SDD Spec Graph Inspector Modal (Ctrl+Shift+B r) */}
       <ArchonGraphModal
         isOpen={isArchonGraphOpen}
         activeProject={activeProject}
@@ -698,7 +721,7 @@ export function App() {
         onWritePty={(terminalId, data) => invoke("write_pty", { terminalId, data })}
       />
 
-      {/* Machina software factory (^b f) */}
+      {/* Machina software factory (Ctrl+Shift+B f) */}
       <FactoryStationModal
         isOpen={isFactoryStationOpen}
         activeProject={activeProject}
@@ -708,13 +731,22 @@ export function App() {
         onSpawnTerminal={spawnTerminal}
       />
 
+      {/* Praxis Builder (Ctrl+Shift+B p): hidden, never unmounted, when closed */}
+      <PraxisBuilderModal
+        isOpen={isPraxisBuilderOpen}
+        project={builderProject}
+        onClose={closePraxisBuilder}
+        onAddProject={() => setIsAddProjectOpen(true)}
+        onUnsavedProjectsChange={onPraxisUnsavedChange}
+      />
+
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}
       <A2AToast
         terminals={terminals}
         onSelectTerminal={selectTerminal}
       />
 
-      {/* Software Update Checker & Installer Modal (^b u) */}
+      {/* Software Update Checker & Installer Modal (Ctrl+Shift+B u) */}
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}

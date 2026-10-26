@@ -5,9 +5,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 pub struct GitOut {
     pub code: Option<i32>,
     pub stdout: String,
@@ -30,16 +27,11 @@ impl GitOut {
 }
 
 fn git_cmd(dir: &Path) -> Command {
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::spawn::hidden_command("git");
     cmd.current_dir(dir)
         .args(["-c", "core.quotepath=false"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
     cmd
 }
 

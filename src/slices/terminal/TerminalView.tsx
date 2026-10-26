@@ -177,13 +177,18 @@ export const TerminalView: FC<TerminalViewProps> = ({
   const showPluginHint = !!terminal?.plugin_hint && terminal.claude_status !== "exited";
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o
     <div
-      onClick={() => {
+      onClick={(e) => {
         onSelect?.();
-        focusTerminal();
+        if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
+          focusTerminal();
+        }
       }}
-      onMouseDown={() => {
-        focusTerminal();
+      onMouseDown={(e) => {
+        if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
+          focusTerminal();
+        }
       }}
       className={`overflow-hidden transition-colors bg-[#0d1117] ${
         isVisible ? "flex flex-col" : "hidden"
@@ -284,7 +289,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   onZoomPane();
                 }}
                 className="p-1 hover:bg-[#30363d] text-[#8b949e] hover:text-white rounded transition-colors cursor-pointer"
-                title="Zoom pane (Ctrl+B z)"
+                title="Zoom pane (Ctrl+Shift+B z)"
               >
                 <Maximize2 className="w-3 h-3" />
               </button>
@@ -385,7 +390,6 @@ export const TerminalView: FC<TerminalViewProps> = ({
         <div
           ref={containerRef}
           tabIndex={-1}
-          onClick={() => focusTerminal()}
           className="w-full h-full focus:outline-hidden"
         />
       </div>
