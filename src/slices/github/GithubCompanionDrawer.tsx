@@ -9,6 +9,8 @@ import {
   GithubRepoInfo,
 } from "./types";
 import { GithubIcon } from "./GithubIcon";
+import { loadedCountLabel, type PagedList } from "./paging";
+import { useLoadMoreSentinel, usePagedGithubList } from "./usePagedGithubList";
 import { ArchonWorkflow, ArchonRun } from "../archon/types";
 import {
   X,
@@ -114,6 +116,56 @@ const BlockedTag: FC<BlockedTagProps> = ({
   );
 };
 
+interface LoadMoreRowProps {
+  list: PagedList<unknown>;
+  isLoadingMore: boolean;
+  error: string | null;
+  onRetry: () => void;
+  sentinelRef: (node: HTMLElement | null) => void;
+}
+
+/**
+ * Bottom row of a paged list. While more pages remain it is the infinite-scroll
+ * sentinel ("Loading more"); once everything is in it shows the final count.
+ */
+const LoadMoreRow: FC<LoadMoreRowProps> = ({ list, isLoadingMore, error, onRetry, sentinelRef }) => {
+  if (list.items.length === 0 && !list.hasNextPage) return null;
+  const count = loadedCountLabel(list);
+
+  if (list.hasNextPage && error) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-3 text-[11px] text-[#8b949e]">
+        <span className="text-[#ff7b72] line-clamp-1" title={error}>
+          Couldn't load more
+        </span>
+        <span className="font-mono">({count})</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-white font-medium transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (list.hasNextPage) {
+    return (
+      <div
+        ref={sentinelRef}
+        className="flex items-center justify-center gap-2 py-3 text-[11px] text-[#8b949e]"
+      >
+        <RotateCw className={`w-3.5 h-3.5 text-[#58a6ff] ${isLoadingMore ? "animate-spin" : ""}`} />
+        <span>Loading more</span>
+        <span className="font-mono">({count})</span>
+      </div>
+    );
+  }
+
+  return <div className="py-3 text-center text-[11px] text-[#8b949e] font-mono">{count}</div>;
+};
+
 interface GithubCompanionDrawerProps {
   isOpen: boolean;
   repoPath: string;
@@ -138,8 +190,6 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   onOpenArchonMonitor,
 }) => {
   const [activeTab, setActiveTab] = useState<"issues" | "prs">("issues");
-  const [issues, setIssues] = useState<GithubIssue[]>([]);
-  const [prs, setPrs] = useState<GithubPullRequest[]>([]);
   const [repoInfo, setRepoInfo] = useState<GithubRepoInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +202,16 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const [selectedLabel, setSelectedLabel] = useState<string>("all");
   const [issueStateFilter, setIssueStateFilter] = useState<"open" | "closed" | "all">("open");
   const [prStateFilter, setPrStateFilter] = useState<"open" | "closed" | "all">("open");
+
+  // Issues and PRs load a page at a time; scrolling to the bottom fetches the next page
+  const issuePages = usePagedGithubList<GithubIssue>("list_github_issues", repoPath, issueStateFilter);
+  const prPages = usePagedGithubList<GithubPullRequest>("list_github_prs", repoPath, prStateFilter);
+  const issues = issuePages.list.items;
+  const prs = prPages.list.items;
+  const { loadFirstPage: loadFirstIssuePage } = issuePages;
+  const { loadFirstPage: loadFirstPrPage } = prPages;
+  const issueSentinelRef = useLoadMoreSentinel(issuePages.loadMore, issues.length);
+  const prSentinelRef = useLoadMoreSentinel(prPages.loadMore, prs.length);
 
   // Selected issue detail
   const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
@@ -172,21 +232,9 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
       });
       setRepoInfo(info);
 
-      // Load issues
-      const issueList = await invoke<GithubIssue[]>("list_github_issues", {
-        repoPath,
-        state: issueStateFilter,
-        limit: 50,
-      });
-      setIssues(issueList || []);
-
-      // Load PRs
-      const prList = await invoke<GithubPullRequest[]>("list_github_prs", {
-        repoPath,
-        state: prStateFilter,
-        limit: 30,
-      });
-      setPrs(prList || []);
+      // Load the first page of issues and PRs; later pages load on scroll
+      await loadFirstIssuePage();
+      await loadFirstPrPage();
 
       // Load Archon workflows & runs (best-effort)
       try {
@@ -205,7 +253,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [repoPath, issueStateFilter, prStateFilter]);
+  }, [repoPath, loadFirstIssuePage, loadFirstPrPage]);
 
   useEffect(() => {
     if (isOpen) {
@@ -404,6 +452,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
               <span>Issues</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#0d1117] text-[#8b949e] font-mono">
                 {issues.length}
+                {issuePages.list.hasNextPage ? "+" : ""}
               </span>
             </button>
 
@@ -420,6 +469,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
               <span>Pull Requests</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#0d1117] text-[#8b949e] font-mono">
                 {prs.length}
+                {prPages.list.hasNextPage ? "+" : ""}
               </span>
             </button>
 
@@ -591,6 +641,13 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                     );
                   })
                 )}
+                <LoadMoreRow
+                  list={issuePages.list}
+                  isLoadingMore={issuePages.isLoadingMore}
+                  error={issuePages.loadMoreError}
+                  onRetry={issuePages.loadMore}
+                  sentinelRef={issueSentinelRef}
+                />
               </div>
 
               {/* Issue Detail & Action Panel */}
@@ -829,6 +886,13 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                   );
                 })
               )}
+              <LoadMoreRow
+                list={prPages.list}
+                isLoadingMore={prPages.isLoadingMore}
+                error={prPages.loadMoreError}
+                onRetry={prPages.loadMore}
+                sentinelRef={prSentinelRef}
+              />
             </div>
           )}
         </div>
