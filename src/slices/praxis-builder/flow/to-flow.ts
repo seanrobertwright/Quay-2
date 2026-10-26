@@ -14,6 +14,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { branchOf, type PraxisGraph, type PraxisNode, type XYPosition } from "../model.ts";
 import { NODE_HEIGHT, NODE_WIDTH, placeNodes } from "./layout.ts";
+import type { NodeIssues } from "../issues.ts";
 
 /** The xyflow `nodeTypes` key every Praxis node renders under. */
 export const PRAXIS_NODE_TYPE = "praxisNode";
@@ -23,6 +24,8 @@ export const EDGE_COLOR = { plain: "#6e7681", then: "#3fb950", else: "#f85149" }
 /** The data payload on each canvas node: the whole graph node. */
 export interface PraxisNodeData {
   node: PraxisNode;
+  /** The node's validation issues, set by the canvas for the card's badge. */
+  issues?: NodeIssues;
   /** Required by React Flow's Node<T> constraint — do not rely on this for typed access. */
   [key: string]: unknown;
 }

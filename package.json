@@ -26,7 +26,9 @@
     "docs:typecheck": "tsc -p scripts/step-cards && tsc -p scripts/swarm-presets && tsc -p scripts/mcp-tools && tsc -p scripts/tutorials && tsc -p scripts/test-runs && tsc -p scripts/fresh-eyes && tsc -p scripts/capture",
     "starters:check": "node scripts/starters-ci/check-starters.ts",
     "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
-    "starters:typecheck": "tsc -p scripts/starters-ci"
+    "starters:typecheck": "tsc -p scripts/starters-ci",
+    "aiws:sync": "node scripts/aiws-sdk/sync.ts",
+    "aiws:check": "node scripts/aiws-sdk/sync.ts --check && node --test \"scripts/aiws-sdk/*.test.ts\" && tsc -p scripts/aiws-sdk"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.3",

@@ -1,0 +1,430 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.dev/access-policy/1.0.0",
+  "$ref": "#/$defs/WorkflowAccess",
+  "$defs": {
+    "Grant": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "FILESYSTEM",
+            "TOOL",
+            "NETWORK",
+            "CREDENTIAL",
+            "ARTIFACT",
+            "EXTERNAL_EFFECT"
+          ]
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._-]*$",
+          "not": {
+            "pattern": "[^a-z0-9._-]"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "READ",
+              "WRITE",
+              "EXECUTE",
+              "CONNECT",
+              "USE",
+              "PUBLISH",
+              "COMMIT"
+            ]
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "resource",
+        "actions"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FILESYSTEM"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "READ",
+                    "WRITE"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "TOOL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "EXECUTE"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "NETWORK"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "CONNECT"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "CREDENTIAL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "USE"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ARTIFACT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "PUBLISH"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "EXTERNAL_EFFECT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actions": {
+                "items": {
+                  "enum": [
+                    "COMMIT"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Policy": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-access-policy/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "policyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._-]*$",
+          "not": {
+            "pattern": "[^a-z0-9._-]"
+          }
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[1-9][0-9]*$",
+          "not": {
+            "pattern": "[^0-9]"
+          }
+        },
+        "resourcesDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "grants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Grant"
+          },
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "policyId",
+        "revision",
+        "resourcesDigest",
+        "grants"
+      ],
+      "additionalProperties": false
+    },
+    "NodeAccess": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Grant"
+          },
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "taskId",
+        "requirements"
+      ],
+      "additionalProperties": false
+    },
+    "WorkflowAccess": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-workflow-access/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "workOrderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "policy": {
+          "$ref": "#/$defs/Policy"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeAccess"
+          },
+          "maxItems": 128,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "workOrderId",
+        "runId",
+        "policy",
+        "nodes"
+      ],
+      "additionalProperties": false
+    },
+    "BindingPreview": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-access-binding-preview/1"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "workOrderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "definitionDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "hostPolicyDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "workflowAccessDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "nodeAccessDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "resourcesDigest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "not": {
+            "pattern": "[^a-f0-9]"
+          }
+        },
+        "authorizationRevision": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[1-9][0-9]*$",
+          "not": {
+            "pattern": "[^0-9]"
+          }
+        },
+        "coordinatorEpoch": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^[1-9][0-9]*$",
+          "not": {
+            "pattern": "[^0-9]"
+          }
+        },
+        "authorized": {
+          "const": false
+        },
+        "enforced": {
+          "const": false
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "workOrderId",
+        "runId",
+        "taskId",
+        "attemptId",
+        "definitionDigest",
+        "hostPolicyDigest",
+        "workflowAccessDigest",
+        "nodeAccessDigest",
+        "resourcesDigest",
+        "authorizationRevision",
+        "coordinatorEpoch",
+        "authorized",
+        "enforced"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

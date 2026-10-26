@@ -47,3 +47,6 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Vendored AI-WS-SDK matches its SOURCE
+        run: pnpm aiws:check
