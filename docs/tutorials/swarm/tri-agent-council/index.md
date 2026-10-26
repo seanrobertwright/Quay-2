@@ -11,7 +11,7 @@ Launch Quay's Tri-Agent Council: three Claude Code agents that take one job in t
 
 **You'll learn:** how to launch the Tri-Agent Council, split one job into plan, build and verify so each agent owns one kind of file, hand work from one agent to the next through a plan file on disk, close a terminal from the rail, and check a verdict for yourself.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+B N` is `Ctrl+B`, then `n`, and Shift makes no difference. `Ctrl+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
 The starter project is a link checker that isn't written yet. `SPEC.md` says what it must do and ends with the exact output it must print for the sample docs in `docs-sample/`. `src/cli.ts` is where it gets built, and `AGENTS.md` says which agent may change which files. All three agents run on Claude Code's default model.
 
@@ -32,8 +32,8 @@ The starter project is a link checker that isn't written yet. `SPEC.md` says wha
 
 ::: do
 1. Download [`tri-agent-council.zip`](/starters/tri-agent-council.zip) and unzip it into a new, empty folder. The zip has no folder of its own, so that folder now holds `SPEC.md`, `src` and the other files directly.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**. The rail lists the new terminal under your project as `pwsh`.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**. The rail lists the new terminal under your project as `pwsh`.
 :::
 
 ::: paste PowerShell pane
@@ -71,7 +71,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. In the rail, point at the `pwsh` terminal under your project and click the **×** at the right end of its row (**Close terminal**). The terminal closes at once. The Council brings its own PowerShell pane, so this one isn't needed.
-2. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
+2. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
 3. Click the **Tri-Agent Council** card.
 4. Click **Launch Swarm Now**.
 :::
@@ -100,7 +100,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 :::
 
 ::: ifnot the rail lists five terminals, pwsh first
-The PowerShell terminal from step 1 is still open, so every `Ctrl+B` number on this page would pick the terminal before the one you want. Close `pwsh` as in Do 1. The grid keeps its four panes.
+The PowerShell terminal from step 1 is still open, so every `Ctrl+Shift+B` number on this page would pick the terminal before the one you want. Close `pwsh` as in Do 1. The grid keeps its four panes.
 :::
 
 :::
@@ -110,7 +110,7 @@ The PowerShell terminal from step 1 is still open, so every `Ctrl+B` number on t
 ## 3. Brief the Planner
 
 ::: do
-1. Press `Ctrl+B 1` to move focus to `planner-agent`. Its border lights up.
+1. Press `Ctrl+Shift+B 1` to move focus to `planner-agent`. Its border lights up.
 :::
 
 ::: paste `planner-agent`
@@ -145,7 +145,7 @@ Paste `Undo every change you made outside PLAN.md with git checkout -- src test,
 ## 4. Brief the Builder
 
 ::: do
-1. Press `Ctrl+B 2` to move focus to `builder-agent`. The plan travels on disk: `planner-agent` wrote `PLAN.md`, and `builder-agent` reads it, so your brief only has to point at it.
+1. Press `Ctrl+Shift+B 2` to move focus to `builder-agent`. The plan travels on disk: `planner-agent` wrote `PLAN.md`, and `builder-agent` reads it, so your brief only has to point at it.
 :::
 
 ::: paste `builder-agent`
@@ -185,8 +185,8 @@ Paste `Undo your changes there with git checkout -- docs-sample SPEC.md, then fi
 ## 5. Ask the Verifier
 
 ::: do
-1. Press `Ctrl+B 3` to move focus to `verifier-agent`.
-2. Press `Ctrl+B Z` to zoom it to the whole stage, so its report is easy to read.
+1. Press `Ctrl+Shift+B 3` to move focus to `verifier-agent`.
+2. Press `Ctrl+Shift+B Z` to zoom it to the whole stage, so its report is easy to read.
 :::
 
 ::: paste `verifier-agent`
@@ -209,7 +209,7 @@ Run node src/cli.ts docs-sample and compare its stdout and exit code with the ex
 :::
 
 ::: ifnot the last line is REJECTED
-Press `Ctrl+B Z` to put the grid back and `Ctrl+B 2` to move focus to `builder-agent`. Paste `verifier-agent rejected the build. Run node src/cli.ts docs-sample, compare its output with the expected output at the end of SPEC.md, and fix src/cli.ts until they match exactly. End with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, do this step once more from Do 1.
+Press `Ctrl+Shift+B Z` to put the grid back and `Ctrl+Shift+B 2` to move focus to `builder-agent`. Paste `verifier-agent rejected the build. Run node src/cli.ts docs-sample, compare its output with the expected output at the end of SPEC.md, and fix src/cli.ts until they match exactly. End with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, do this step once more from Do 1.
 :::
 
 ::: ifnot the last line is REJECTED a second time
@@ -223,9 +223,9 @@ Stop asking here and go on to step 6. Its check runs the same comparison in fron
 ## 6. Check it worked
 
 ::: do
-1. Press `Ctrl+B Z` to put the grid back.
+1. Press `Ctrl+Shift+B Z` to put the grid back.
 2. Download [`tri-agent-council-check.zip`](/starters/tri-agent-council-check.zip). Right-click it, choose **Extract All...**, set the destination to your project folder and click **Extract**. The zip holds one folder, `check`, which now sits beside `src`.
-3. Press `Ctrl+B 4` to move focus to `terminal-shell`.
+3. Press `Ctrl+Shift+B 4` to move focus to `terminal-shell`.
 :::
 
 ::: paste `terminal-shell`
@@ -256,7 +256,7 @@ node src/cli.ts docs-sample; "exit $LASTEXITCODE"; npx vitest run check; git sta
 :::
 
 ::: ifnot the checker's lines differ from the end of SPEC.md
-Press `Ctrl+B 2` and paste `node src/cli.ts docs-sample does not match the expected output at the end of SPEC.md. Fix src/cli.ts until it matches exactly, then end with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, press `Ctrl+B 4` and paste this step's line into `terminal-shell` again.
+Press `Ctrl+Shift+B 2` and paste `node src/cli.ts docs-sample does not match the expected output at the end of SPEC.md. Fix src/cli.ts until it matches exactly, then end with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, press `Ctrl+Shift+B 4` and paste this step's line into `terminal-shell` again.
 :::
 
 ::: ifnot Vitest says No test files found
@@ -264,7 +264,7 @@ The `check` folder isn't beside `src`. Extract the zip into the project folder a
 :::
 
 ::: ifnot a check test fails
-Press `Ctrl+B 2` and paste `A test in check/cli.check.test.ts fails. Read it, read the rule it tests in SPEC.md, and fix src/cli.ts until npx vitest run check passes. Do not edit check/. End with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, press `Ctrl+B 4` and paste this step's line into `terminal-shell` again.
+Press `Ctrl+Shift+B 2` and paste `A test in check/cli.check.test.ts fails. Read it, read the rule it tests in SPEC.md, and fix src/cli.ts until npx vitest run check passes. Do not edit check/. End with the line npm test passing.` into `builder-agent`. When it ends with `npm test passing`, press `Ctrl+Shift+B 4` and paste this step's line into `terminal-shell` again.
 :::
 
 ::: done
