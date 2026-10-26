@@ -958,11 +958,14 @@ impl PtySession {
     }
 
     pub fn get_output(&self) -> TerminalOutputPayload {
+        let (rows, cols) = *self.current_size.lock();
         let guard = self.output_buffer.lock();
         TerminalOutputPayload {
             terminal_id: self.id.clone(),
             data: guard.0.clone(),
             last_seq: guard.1,
+            rows: Some(rows),
+            cols: Some(cols),
         }
     }
 

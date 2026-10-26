@@ -114,27 +114,171 @@ export const Stage: FC<StageProps> = ({
   const activeTerminal =
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
 
+  // Every terminal of every project, hidden unless its project is active. Both returns render
+  // them in the same keyed viewport, so a project with no terminals never remounts them.
+  const terminalViews = terminals.map((term) => {
+    const isProjectActive = isSamePath(term.project_path, activeProject);
+    let isVisible = false;
+    let isFocused = false;
+    let showPaneHeader = false;
+    let paneStyle: CSSProperties = { display: "none" };
+    let onPaneSelect: (() => void) | undefined = undefined;
+    let onSwitchTerm: ((newId: string) => void) | undefined = undefined;
+
+    if (!isProjectActive) {
+      isVisible = false;
+      isFocused = false;
+      showPaneHeader = false;
+      paneStyle = { display: "none" };
+    } else if (layout === "single") {
+      isVisible =
+        term.id ===
+        singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
+      isFocused = isVisible;
+      showPaneHeader = false;
+      paneStyle = {
+        position: "absolute",
+        inset: 0,
+        display: isVisible ? "flex" : "none",
+      };
+    } else if (layout === "split-horizontal") {
+      const isPrimary = term.id === primaryTerminalId;
+      const isSecondary = term.id === secondaryTerminalId;
+      isVisible = isPrimary || isSecondary;
+      isFocused = isPrimary ? focusedPane === "primary" : focusedPane === "secondary";
+      showPaneHeader = true;
+      onPaneSelect = () => onSelectPane(isPrimary ? "primary" : "secondary");
+      onSwitchTerm = (newId) =>
+        onSwitchPaneTerminal(isPrimary ? "primary" : "secondary", newId);
+
+      if (isPrimary) {
+        paneStyle = {
+          position: "absolute",
+          top: "4px",
+          bottom: "4px",
+          left: "4px",
+          width: `calc(${splitRatio}% - 8px)`,
+          display: "flex",
+        };
+      } else if (isSecondary) {
+        paneStyle = {
+          position: "absolute",
+          top: "4px",
+          bottom: "4px",
+          left: `calc(${splitRatio}% + 4px)`,
+          right: "4px",
+          display: "flex",
+        };
+      }
+    } else if (layout === "split-vertical") {
+      const isPrimary = term.id === primaryTerminalId;
+      const isSecondary = term.id === secondaryTerminalId;
+      isVisible = isPrimary || isSecondary;
+      isFocused = isPrimary ? focusedPane === "primary" : focusedPane === "secondary";
+      showPaneHeader = true;
+      onPaneSelect = () => onSelectPane(isPrimary ? "primary" : "secondary");
+      onSwitchTerm = (newId) =>
+        onSwitchPaneTerminal(isPrimary ? "primary" : "secondary", newId);
+
+      if (isPrimary) {
+        paneStyle = {
+          position: "absolute",
+          top: "4px",
+          left: "4px",
+          right: "4px",
+          height: `calc(${splitRatio}% - 8px)`,
+          display: "flex",
+        };
+      } else if (isSecondary) {
+        paneStyle = {
+          position: "absolute",
+          top: `calc(${splitRatio}% + 4px)`,
+          bottom: "4px",
+          left: "4px",
+          right: "4px",
+          display: "flex",
+        };
+      }
+    } else if (layout === "grid") {
+      const slotIdx = gridTerminalIds.indexOf(term.id);
+      isVisible = slotIdx !== -1;
+      isFocused = focusedPane === `grid-${slotIdx}`;
+      showPaneHeader = true;
+      if (slotIdx !== -1) {
+        onPaneSelect = () => onSelectPane(slotIdx);
+        onSwitchTerm = (newId) => onSwitchPaneTerminal(slotIdx, newId);
+
+        // 0: top-left, 1: top-right, 2: bottom-left, 3: bottom-right
+        if (slotIdx === 0) {
+          paneStyle = {
+            position: "absolute",
+            top: "4px",
+            left: "4px",
+            width: "calc(50% - 6px)",
+            height: "calc(50% - 6px)",
+            display: "flex",
+          };
+        } else if (slotIdx === 1) {
+          paneStyle = {
+            position: "absolute",
+            top: "4px",
+            right: "4px",
+            width: "calc(50% - 6px)",
+            height: "calc(50% - 6px)",
+            display: "flex",
+          };
+        } else if (slotIdx === 2) {
+          paneStyle = {
+            position: "absolute",
+            bottom: "4px",
+            left: "4px",
+            width: "calc(50% - 6px)",
+            height: "calc(50% - 6px)",
+            display: "flex",
+          };
+        } else if (slotIdx === 3) {
+          paneStyle = {
+            position: "absolute",
+            bottom: "4px",
+            right: "4px",
+            width: "calc(50% - 6px)",
+            height: "calc(50% - 6px)",
+            display: "flex",
+          };
+        }
+      }
+    }
+
+    return (
+      <TerminalView
+        key={term.id}
+        terminalId={term.id}
+        isVisible={isVisible}
+        isFocused={isFocused}
+        terminal={term}
+        allTerminals={visibleTerminals}
+        showPaneHeader={showPaneHeader}
+        onSelect={onPaneSelect}
+        onZoomPane={onToggleZoom}
+        onClosePane={onUnsplit}
+        onSwitchTerminal={onSwitchTerm}
+        onRelaunch={onRelaunchTerminal ? () => onRelaunchTerminal(term.id) : undefined}
+        style={paneStyle}
+      />
+    );
+  });
+
   if (!activeTerminal || visibleTerminals.length === 0) {
     return (
-      <>
+      <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         <Placeholder onNewTerminal={onNewTerminal} />
-        {terminals.length > 0 && (
-          <div className="hidden" aria-hidden="true">
-            {terminals.map((term) => (
-              <TerminalView
-                key={term.id}
-                terminalId={term.id}
-                isVisible={false}
-                isFocused={false}
-                terminal={term}
-                allTerminals={visibleTerminals}
-                showPaneHeader={false}
-                style={{ display: "none" }}
-              />
-            ))}
-          </div>
-        )}
-      </>
+        <div key="stage-viewport" className="hidden" aria-hidden="true">
+          {terminalViews}
+          {/* A second child keeps the panes nested as they are in the stage viewport below;
+              as the only child they would sit one level higher and React would remount them. */}
+          {null}
+        </div>
+      </main>
     );
   }
 
@@ -406,161 +550,12 @@ export const Stage: FC<StageProps> = ({
 
       {/* Main Terminal Viewport (Persistently mounts all terminals across all projects) */}
       <div
+        key="stage-viewport"
         ref={containerRef}
         className="flex-1 relative overflow-hidden bg-[#0d1117] p-1.5"
       >
         {/* Render all terminals so switching projects/worktrees never destroys xterm buffers */}
-        {terminals.map((term) => {
-          const isProjectActive = isSamePath(term.project_path, activeProject);
-          let isVisible = false;
-          let isFocused = false;
-          let showPaneHeader = false;
-          let paneStyle: CSSProperties = { display: "none" };
-          let onPaneSelect: (() => void) | undefined = undefined;
-          let onSwitchTerm: ((newId: string) => void) | undefined = undefined;
-
-          if (!isProjectActive) {
-            isVisible = false;
-            isFocused = false;
-            showPaneHeader = false;
-            paneStyle = { display: "none" };
-          } else if (layout === "single") {
-            isVisible =
-              term.id ===
-              singleLayoutTerminalId({ primaryTerminalId, activeTerminalId, zoomed: zoomedFromLayout !== null });
-            isFocused = isVisible;
-            showPaneHeader = false;
-            paneStyle = {
-              position: "absolute",
-              inset: 0,
-              display: isVisible ? "flex" : "none",
-            };
-          } else if (layout === "split-horizontal") {
-            const isPrimary = term.id === primaryTerminalId;
-            const isSecondary = term.id === secondaryTerminalId;
-            isVisible = isPrimary || isSecondary;
-            isFocused = isPrimary ? focusedPane === "primary" : focusedPane === "secondary";
-            showPaneHeader = true;
-            onPaneSelect = () => onSelectPane(isPrimary ? "primary" : "secondary");
-            onSwitchTerm = (newId) =>
-              onSwitchPaneTerminal(isPrimary ? "primary" : "secondary", newId);
-
-            if (isPrimary) {
-              paneStyle = {
-                position: "absolute",
-                top: "4px",
-                bottom: "4px",
-                left: "4px",
-                width: `calc(${splitRatio}% - 8px)`,
-                display: "flex",
-              };
-            } else if (isSecondary) {
-              paneStyle = {
-                position: "absolute",
-                top: "4px",
-                bottom: "4px",
-                left: `calc(${splitRatio}% + 4px)`,
-                right: "4px",
-                display: "flex",
-              };
-            }
-          } else if (layout === "split-vertical") {
-            const isPrimary = term.id === primaryTerminalId;
-            const isSecondary = term.id === secondaryTerminalId;
-            isVisible = isPrimary || isSecondary;
-            isFocused = isPrimary ? focusedPane === "primary" : focusedPane === "secondary";
-            showPaneHeader = true;
-            onPaneSelect = () => onSelectPane(isPrimary ? "primary" : "secondary");
-            onSwitchTerm = (newId) =>
-              onSwitchPaneTerminal(isPrimary ? "primary" : "secondary", newId);
-
-            if (isPrimary) {
-              paneStyle = {
-                position: "absolute",
-                top: "4px",
-                left: "4px",
-                right: "4px",
-                height: `calc(${splitRatio}% - 8px)`,
-                display: "flex",
-              };
-            } else if (isSecondary) {
-              paneStyle = {
-                position: "absolute",
-                top: `calc(${splitRatio}% + 4px)`,
-                bottom: "4px",
-                left: "4px",
-                right: "4px",
-                display: "flex",
-              };
-            }
-          } else if (layout === "grid") {
-            const slotIdx = gridTerminalIds.indexOf(term.id);
-            isVisible = slotIdx !== -1;
-            isFocused = focusedPane === `grid-${slotIdx}`;
-            showPaneHeader = true;
-            if (slotIdx !== -1) {
-              onPaneSelect = () => onSelectPane(slotIdx);
-              onSwitchTerm = (newId) => onSwitchPaneTerminal(slotIdx, newId);
-
-              // 0: top-left, 1: top-right, 2: bottom-left, 3: bottom-right
-              if (slotIdx === 0) {
-                paneStyle = {
-                  position: "absolute",
-                  top: "4px",
-                  left: "4px",
-                  width: "calc(50% - 6px)",
-                  height: "calc(50% - 6px)",
-                  display: "flex",
-                };
-              } else if (slotIdx === 1) {
-                paneStyle = {
-                  position: "absolute",
-                  top: "4px",
-                  right: "4px",
-                  width: "calc(50% - 6px)",
-                  height: "calc(50% - 6px)",
-                  display: "flex",
-                };
-              } else if (slotIdx === 2) {
-                paneStyle = {
-                  position: "absolute",
-                  bottom: "4px",
-                  left: "4px",
-                  width: "calc(50% - 6px)",
-                  height: "calc(50% - 6px)",
-                  display: "flex",
-                };
-              } else if (slotIdx === 3) {
-                paneStyle = {
-                  position: "absolute",
-                  bottom: "4px",
-                  right: "4px",
-                  width: "calc(50% - 6px)",
-                  height: "calc(50% - 6px)",
-                  display: "flex",
-                };
-              }
-            }
-          }
-
-          return (
-            <TerminalView
-              key={term.id}
-              terminalId={term.id}
-              isVisible={isVisible}
-              isFocused={isFocused}
-              terminal={term}
-              allTerminals={visibleTerminals}
-              showPaneHeader={showPaneHeader}
-              onSelect={onPaneSelect}
-              onZoomPane={onToggleZoom}
-              onClosePane={onUnsplit}
-              onSwitchTerminal={onSwitchTerm}
-              onRelaunch={onRelaunchTerminal ? () => onRelaunchTerminal(term.id) : undefined}
-              style={paneStyle}
-            />
-          );
-        })}
+        {terminalViews}
 
         {/* Draggable Divider for split-horizontal */}
         {layout === "split-horizontal" && (
