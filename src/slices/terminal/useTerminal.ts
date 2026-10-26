@@ -259,6 +259,7 @@ export function useTerminal(
 
     // Tracking sequence numbers for clean deduplication
     let highestSeq = -1;
+    let disposed = false;
     let initialLoaded = false;
     let firstPtyOutputFocused = false;
     const queuedEvents: PtyOutputPayload[] = [];
@@ -291,7 +292,17 @@ export function useTerminal(
     // Fetch initial buffer once on mount
     invoke<TerminalOutputPayload>("get_terminal_output", { terminalId })
       .then((res) => {
+        // The pane unmounted before the snapshot came back; the next mount fetches its own
+        if (disposed) return;
         syncPtySize();
+        // A pane that mounts hidden can't be fitted, so xterm would stay at its default 80x24
+        // and lay out the replay and every live chunk for the wrong size. Give it the PTY's
+        // size; when the pane shows, its fit then sees any real change and asks for a redraw.
+        if (lastPtySizeRef.current.cols === 0 && res?.rows && res?.cols) {
+          term.resize(res.cols, res.rows);
+          lastPtySizeRef.current = { rows: res.rows, cols: res.cols };
+          fittedTerminalDimensions.set(terminalId, { rows: res.rows, cols: res.cols });
+        }
         if (res && res.data) {
           term.write(res.data);
           highestSeq = res.last_seq;
@@ -339,6 +350,7 @@ export function useTerminal(
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      disposed = true;
       clearTimeout(fitTimer);
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf);

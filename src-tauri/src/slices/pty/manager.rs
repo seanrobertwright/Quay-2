@@ -522,6 +522,8 @@ impl PtyManager {
                     terminal_id: terminal_id.to_string(),
                     data: data.clone(),
                     last_seq: *last_seq,
+                    rows: None,
+                    cols: None,
                 });
             }
         }
@@ -534,6 +536,8 @@ impl PtyManager {
                 terminal_id: terminal_id.to_string(),
                 data,
                 last_seq: seq,
+                rows: None,
+                cols: None,
             });
         }
 
