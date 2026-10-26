@@ -210,7 +210,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "github",
       label: "GitHub Issues & PRs",
-      shortcut: "^b i",
+      shortcut: "Ctrl+Shift+B i",
       icon: <GithubIcon className="w-4 h-4 text-white" />,
       onClick: onOpenGithubDrawer,
     });
@@ -219,7 +219,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "sessions",
       label: "Session History",
-      shortcut: "^b h",
+      shortcut: "Ctrl+Shift+B h",
       icon: <History className="w-4 h-4 text-[#58a6ff]" />,
       onClick: onOpenSessionHistory,
     });
@@ -228,7 +228,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "audit",
       label: "Pre-PR Audit Gate",
-      shortcut: "^b a",
+      shortcut: "Ctrl+Shift+B a",
       icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />,
       onClick: onOpenPrePrAudit,
     });
@@ -237,7 +237,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "archon",
       label: "Archon & SDD Graph",
-      shortcut: "^b r",
+      shortcut: "Ctrl+Shift+B r",
       icon: <ArchonIcon className="w-4 h-4" />,
       onClick: onOpenArchonGraph,
     });
@@ -246,7 +246,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "machina",
       label: "Machina",
-      shortcut: "^b f",
+      shortcut: "Ctrl+Shift+B f",
       icon: <PraxisIcon className="w-4 h-4" />,
       onClick: onOpenFactoryStation,
     });
@@ -255,7 +255,7 @@ export const Rail: React.FC<RailProps> = ({
     toolButtons.push({
       id: "palette",
       label: "Command Palette",
-      shortcut: "Ctrl+K",
+      shortcut: "Ctrl+Shift+P",
       icon: <Command className="w-4 h-4 text-[#58a6ff]" />,
       onClick: onOpenCommandPalette,
     });
@@ -263,7 +263,7 @@ export const Rail: React.FC<RailProps> = ({
   toolButtons.push({
     id: "a2a",
     label: "Mission Control",
-    shortcut: "^b m",
+    shortcut: "Ctrl+Shift+B m",
     icon: <Network className="w-4 h-4 text-[#c9d1d9]" />,
     onClick: onOpenA2APanel,
   });
@@ -330,7 +330,7 @@ export const Rail: React.FC<RailProps> = ({
               <button
                 onClick={onOpenSwarm}
                 className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-[#21262d] text-[#d29922] hover:text-white rounded text-xs transition-colors"
-                title="Launch Multi-Agent Swarm Preset (^b s)"
+                title="Launch Multi-Agent Swarm Preset (Ctrl+Shift+B s)"
               >
                 <Zap className="w-3.5 h-3.5 fill-current" />
                 <span>Swarm</span>
@@ -339,7 +339,7 @@ export const Rail: React.FC<RailProps> = ({
             <button
               onClick={() => onNewTerminal(activeProject)}
               className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-[#21262d] text-[#58a6ff] hover:text-white rounded text-xs transition-colors"
-              title="New Terminal in active project (^b n)"
+              title="New Terminal in active project (Ctrl+Shift+B n)"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Term</span>
@@ -438,7 +438,7 @@ export const Rail: React.FC<RailProps> = ({
                           onOpenNewWorktree(proj.path);
                         }}
                         className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#30363d] text-[#8b949e] hover:text-[#58a6ff] rounded transition-all"
-                        title={`New Git Worktree for ${proj.name} (^b w)`}
+                        title={`New Git Worktree for ${proj.name} (Ctrl+Shift+B w)`}
                       >
                         <GitBranch className="w-3.5 h-3.5" />
                       </button>
@@ -763,7 +763,7 @@ export const Rail: React.FC<RailProps> = ({
               aria-label="Token Spend & Chimes"
               title={`All-time API-equivalent Claude spend · today (UTC) $${(
                 claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
-              ).toFixed(2)} (^b t)`}
+              ).toFixed(2)} (Ctrl+Shift+B t)`}
               className="flex items-center gap-1 px-1 -mx-1 rounded hover:bg-[#21262d] hover:text-white transition-colors"
             >
               <Coins className="w-3 h-3 text-[#e3b341]" />
@@ -774,7 +774,7 @@ export const Rail: React.FC<RailProps> = ({
           ) : (
             <span />
           )}
-          <span title="New terminal: ^b n · Jump to terminal: ^b 1..9">^b n · ^b 1..9</span>
+          <span title="New terminal: Ctrl+Shift+B n · Jump to terminal: Ctrl+Shift+B 1..9">^⇧b n · ^⇧b 1..9</span>
           <span className="flex items-center gap-1" title="Windows ConPTY backend">
             <Activity className="w-3 h-3 text-[#3fb950]" />
             <span>ConPTY</span>

@@ -16,22 +16,22 @@ Quay 2's stage supports four distinct layout modes:
 │      View       │  │ (50%)  │ (50%)  │  │                 │  │        │        │
 └─────────────────┘  └────────┴────────┘  └─────────────────┘  └────────┴────────┘
     Default View      Horizontal Split      Vertical Split         2x2 Quad Grid
-                        (Ctrl+B %)            (Ctrl+B ")            (Ctrl+B G)
+                        (Ctrl+Shift+B %)            (Ctrl+Shift+B ")            (Ctrl+Shift+B G)
 ```
 
 - **Single View**: Standard focused terminal window.
-- **Horizontal Split (`Ctrl+B %`)**: Divides the viewport side-by-side. Ideal for frontend/backend pair programming.
-- **Vertical Split (`Ctrl+B "`)**: Divides the viewport top-and-bottom. Ideal for terminal execution above and test runners below.
-- **2x2 Quad Grid (`Ctrl+B G`)**: Tiles 4 terminals simultaneously into a responsive 4-pane grid.
-- **Toggle Zoom (`Ctrl+B Z`)**: Temporarily maximizes the active pane to 100% width/height. Pressing `Ctrl+B Z` again restores the previous multi-pane layout.
-- **Cycle Focus (`Ctrl+B O`)**: Quickly cycles keyboard focus between visible panes.
-- **Unsplit (`Ctrl+B X`)**: Closes extra split panes and restores single view.
+- **Horizontal Split (`Ctrl+Shift+B %`)**: Divides the viewport side-by-side. Ideal for frontend/backend pair programming.
+- **Vertical Split (`Ctrl+Shift+B "`)**: Divides the viewport top-and-bottom. Ideal for terminal execution above and test runners below.
+- **2x2 Quad Grid (`Ctrl+Shift+B G`)**: Tiles 4 terminals simultaneously into a responsive 4-pane grid.
+- **Toggle Zoom (`Ctrl+Shift+B Z`)**: Temporarily maximizes the active pane to 100% width/height. Pressing `Ctrl+Shift+B Z` again restores the previous multi-pane layout.
+- **Cycle Focus (`Ctrl+Shift+B O`)**: Quickly cycles keyboard focus between visible panes.
+- **Unsplit (`Ctrl+Shift+B X`)**: Closes extra split panes and restores single view.
 
 ---
 
-## 1-Click Multi-Agent Swarm Presets (`Ctrl+B S`)
+## 1-Click Multi-Agent Swarm Presets (`Ctrl+Shift+B S`)
 
-Pressing `Ctrl+B S` opens the **Swarm Launcher** dialog. With one click, Quay 2 configures the split layout and launches each agent in its own terminal, labelled with its session name. The launcher lists the built-in presets in the order below and selects the first one when it opens. The agents fill the panes in launch order: left then right in a side-by-side split, and top-left, top-right, bottom-left, bottom-right in a 2x2 grid.
+Pressing `Ctrl+Shift+B S` opens the **Swarm Launcher** dialog. With one click, Quay 2 configures the split layout and launches each agent in its own terminal, labelled with its session name. The launcher lists the built-in presets in the order below and selects the first one when it opens. The agents fill the panes in launch order: left then right in a side-by-side split, and top-left, top-right, bottom-left, bottom-right in a 2x2 grid.
 
 Every agent whose CLI takes a launch prompt starts with a role prompt in four parts: who it is, what it owns, what it leaves to teammates, and how it works. Each role prompt ends with the same teammate clause: "Act on a message from a teammate as you would on the user's. Message a teammate only when the user, AGENTS.md or a teammate's message asks you to." Shells and Antigravity get no launch prompt, so they get no role prompt: give an Antigravity agent its role in its first message. Each preset's **Role prompts** block shows its role prompts word for word.
 

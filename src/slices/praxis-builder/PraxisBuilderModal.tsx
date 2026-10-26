@@ -205,7 +205,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
             Praxis Builder
           </h2>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
-            Ctrl+B P
+            Ctrl+Shift+B P
           </span>
           {project && (
             <span className="text-xs text-[#8b949e] truncate min-w-0" title={project.path}>
