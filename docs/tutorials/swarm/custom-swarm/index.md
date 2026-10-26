@@ -9,9 +9,9 @@ No built-in preset fits every job, so you build your own. In the swarm builder y
 - **Level** Starter
 :::
 
-**You'll learn:** how to build a custom swarm in the Swarm Launcher (`Ctrl+B S`, **Create Custom Swarm**), name its agents and their sessions, write a role prompt for each agent, save the swarm so it survives a restart, and launch it again from the Preset Catalog.
+**You'll learn:** how to build a custom swarm in the Swarm Launcher (`Ctrl+Shift+B S`, **Create Custom Swarm**), name its agents and their sessions, write a role prompt for each agent, save the swarm so it survives a restart, and launch it again from the Preset Catalog.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
 
 ::: before
 ## Before you start
@@ -32,8 +32,8 @@ The starter is `tally`, a finished command-line tool that counts the lines, word
 
 ::: do
 1. Download [`custom-swarm.zip`](/starters/custom-swarm.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -70,7 +70,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Open the swarm builder
 
 ::: do
-1. Press `Ctrl+B S`. The Swarm Launcher opens on the **Preset Catalog**, the swarms that come with Quay.
+1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens on the **Preset Catalog**, the swarms that come with Quay.
 2. Click **Create Custom Swarm** in the bar under the launcher's title.
 3. In **Swarm Name**, replace `Custom Swarm` with `Docs Squad`.
 4. Leave **Layout Arrangement** on **Side-by-Side Split**.
@@ -243,7 +243,7 @@ Paste `Run npm test, read the failing assertion in test/readme.test.ts, and fix 
 
 ::: do
 1. Wait for `writer` to say the draft is ready.
-2. Press `Ctrl+B O` to move focus to `editor`. `Ctrl+B O` moves focus to the other pane each time you press it, and the focused pane's border lights up.
+2. Press `Ctrl+Shift+B O` to move focus to `editor`. `Ctrl+Shift+B O` moves focus to the other pane each time you press it, and the focused pane's border lights up.
 :::
 
 ::: paste `editor`
@@ -281,19 +281,20 @@ Paste `Fix those in README.md yourself, run npm test, and end your reply with AP
 2. Start Quay again from the Start menu.
 :::
 
-Quay brings back your project, your saved swarm and every terminal you had open, but none of them is running. The rail lists each one as `exited 0` with a **Relaunch** button, and a pane shows its old output under a **Session Inactive** ribbon. Don't relaunch `writer` or `editor`: a relaunched terminal gets no launch prompt, so the agent would start without its role or its team briefing. The next step launches them fresh from the saved swarm instead.
+Quay brings back your project, your saved swarm and every terminal you had open, but none of them is running. The rail lists each one as `exited 0` with a **Relaunch** button, and the stage comes back as you left it: `writer` and `editor` side by side, each showing its old output under a **Session Inactive** ribbon with a **Relaunch Agent** button. Don't relaunch `writer` or `editor`: a relaunched terminal gets no launch prompt, so the agent would start without its role or its team briefing. The next step launches them fresh from the saved swarm instead.
 
 ::: see
-![Quay after the restart: the project in the rail with its PowerShell pane, writer and editor listed as exited, and the stage showing one of them under a Session Inactive ribbon.](./08-restarted.webp)
+![Quay after the restart: the project in the rail with writer and editor listed as exited, and the stage split as before, writer on the left and editor on the right, each under a Session Inactive ribbon.](./08-restarted.webp)
 :::
 
 ::: must
 - The project is in the rail.
 - The rail lists `writer` and `editor` under it as `exited 0`.
+- The stage shows `writer` on the left and `editor` on the right, each under a **Session Inactive** ribbon.
 :::
 
 ::: may
-- Which terminal the stage shows.
+- How much of each agent's old output the pane shows.
 :::
 
 ::: ifnot writer and editor aren't in the rail
@@ -309,7 +310,7 @@ Quay didn't bring them back, which is fine: go on to the next step and skip its 
 ::: do
 1. In the rail, point at the exited `writer` and click the **×** at the end of its row to close it.
 2. Close the exited `editor` the same way.
-3. Press `Ctrl+B S`. The Swarm Launcher opens on the Preset Catalog, with **Docs Squad** under **Your swarms** at the top.
+3. Press `Ctrl+Shift+B S`. The Swarm Launcher opens on the Preset Catalog, with **Docs Squad** under **Your swarms** at the top.
 4. Click the **Docs Squad** card. It opens in the builder with your two rows and their role prompts, and the save button reads **Update**.
 5. Click **Launch Swarm Now**.
 :::
@@ -341,8 +342,8 @@ Saved swarms belong to your Windows user. If you skipped **Save** in step 5, or 
 ## 10. Check it worked
 
 ::: do
-1. Press `Ctrl+B O` until `editor`, on the right, has focus and its border lights up.
-2. Press `Ctrl+B N`, choose **PowerShell Console**, type `check` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**. The `check` pane takes the right side of the stage.
+1. Press `Ctrl+Shift+B O` until `editor`, on the right, has focus and its border lights up.
+2. Press `Ctrl+Shift+B N`, choose **PowerShell Console**, type `check` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**. The `check` pane takes the right side of the stage.
 :::
 
 ::: paste `check`
