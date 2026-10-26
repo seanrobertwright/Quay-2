@@ -23,6 +23,16 @@ import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
 import { opensCommandPalette } from "./paletteKey";
 import { chooseGridSlots } from "./gridSlots";
+import {
+  ProjectView,
+  StoredProjectView,
+  dropMissingTerminals,
+  findStoredView,
+  restoreProjectView,
+  showTerminal,
+  switchLayout,
+  toStoredView,
+} from "./viewState";
 
 export type { Project };
 
@@ -31,10 +41,13 @@ interface PtyExitPayload {
   exit_code?: number | null;
 }
 
+/** How long a project's view must sit still before it is written to disk. */
+const VIEW_SAVE_DEBOUNCE_MS = 500;
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProject, setActiveProject] = useState<string>("E:\\Projects\\Quay2");
+  // Empty until the backend reports the persisted active project
+  const [activeProject, setActiveProject] = useState<string>("");
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [bridgePort, setBridgePort] = useState<number>(0);
@@ -80,6 +93,15 @@ export function useWorkspace() {
   const [splitRatio, setSplitRatio] = useState<number>(50);
   const [zoomedFromLayout, setZoomedFromLayout] = useState<StageLayout | null>(null);
 
+  // Per-project view state, saved to workspaces.json. The stage shows the view of
+  // viewOwnerRef's project; until the first restore it is null and nothing is saved.
+  const storedViewsRef = useRef<Record<string, StoredProjectView>>({});
+  const [storedViewsLoaded, setStoredViewsLoaded] = useState(false);
+  const [terminalsLoaded, setTerminalsLoaded] = useState(false);
+  const viewOwnerRef = useRef<string | null>(null);
+  const pendingViewSavesRef = useRef<Map<string, StoredProjectView>>(new Map());
+  const viewSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     invoke<number>("get_bridge_port")
       .then((port) => {
@@ -94,23 +116,95 @@ export function useWorkspace() {
       const projs = await invoke<Project[]>("list_projects");
       setProjects(projs);
       const active = await invoke<string | null>("get_active_project");
-      if (active) setActiveProject(active);
+      // Once a project's view is showing, switching goes through enterProject
+      if (active && viewOwnerRef.current === null) setActiveProject(active);
     } catch (err) {
       console.error("Failed to load projects:", err);
     }
   }, []);
 
+  // The selected terminal comes from the restored project view, not from this list
   const refreshTerminals = useCallback(async () => {
     try {
       const terms = await invoke<TerminalInfo[]>("list_terminals");
       setTerminals(terms);
-      if (terms.length > 0 && !activeTerminalId) {
-        setActiveTerminalId(terms[0].id);
-      }
+      setTerminalsLoaded(true);
     } catch (err) {
       console.error("Failed to load terminals:", err);
     }
-  }, [activeTerminalId]);
+  }, []);
+
+  useEffect(() => {
+    invoke<Record<string, StoredProjectView>>("get_project_views")
+      .then((views) => {
+        storedViewsRef.current = views ?? {};
+      })
+      .catch((err) => console.error("Failed to load project views:", err))
+      .finally(() => setStoredViewsLoaded(true));
+  }, []);
+
+  // Write every view changed since the last flush
+  const flushViewSaves = useCallback(() => {
+    if (viewSaveTimerRef.current) {
+      clearTimeout(viewSaveTimerRef.current);
+      viewSaveTimerRef.current = null;
+    }
+    for (const [path, view] of pendingViewSavesRef.current) {
+      invoke("save_project_view", { path, view }).catch((err) =>
+        console.error("Failed to save project view:", err)
+      );
+    }
+    pendingViewSavesRef.current.clear();
+  }, []);
+
+  // Record a project's view now and write it once it stops changing (a split drag fires per mousemove)
+  const rememberView = useCallback(
+    (path: string, view: ProjectView) => {
+      const stored = toStoredView(view);
+      if (JSON.stringify(storedViewsRef.current[path]) === JSON.stringify(stored)) return;
+      storedViewsRef.current = { ...storedViewsRef.current, [path]: stored };
+      pendingViewSavesRef.current.set(path, stored);
+      if (viewSaveTimerRef.current) clearTimeout(viewSaveTimerRef.current);
+      viewSaveTimerRef.current = setTimeout(flushViewSaves, VIEW_SAVE_DEBOUNCE_MS);
+    },
+    [flushViewSaves]
+  );
+
+  useEffect(() => {
+    window.addEventListener("beforeunload", flushViewSaves);
+    return () => {
+      window.removeEventListener("beforeunload", flushViewSaves);
+      flushViewSaves();
+    };
+  }, [flushViewSaves]);
+
+  // Make `path` the active project and show its saved view. `terminalList` must include any
+  // terminal just spawned for it; `targetTerminalId` is selected on top of the restored view.
+  const enterProject = useCallback(
+    (path: string, terminalList: TerminalInfo[], targetTerminalId?: string) => {
+      const ids = terminalList.filter((t) => isSamePath(t.project_path, path)).map((t) => t.id);
+      let view = restoreProjectView(findStoredView(storedViewsRef.current, path), ids);
+      if (targetTerminalId && ids.includes(targetTerminalId)) {
+        view = showTerminal(view, targetTerminalId);
+      }
+      viewOwnerRef.current = path;
+      setActiveProject(path);
+      if (path) {
+        invoke("set_active_project", { path }).catch((err) =>
+          console.error("Failed to save active project:", err)
+        );
+      }
+      setLayout(view.layout);
+      setPrimaryTerminalId(view.primaryTerminalId);
+      setSecondaryTerminalId(view.secondaryTerminalId);
+      setGridTerminalIds(view.gridTerminalIds);
+      setFocusedPane(view.focusedPane);
+      setSplitRatio(view.splitRatio);
+      setZoomedFromLayout(view.zoomedFromLayout);
+      setActiveTerminalId(view.activeTerminalId);
+    },
+    []
+  );
 
   const refreshClaudeStats = useCallback(async () => {
     try {
@@ -368,9 +462,7 @@ export function useWorkspace() {
 
       if (isSamePath(activeProject, path)) {
         const nextActive = updated[0]?.path || "";
-        setActiveProject(nextActive);
-        const nextTerms = terminals.filter((t) => isSamePath(t.project_path, nextActive));
-        setActiveTerminalId(nextTerms[0]?.id || null);
+        enterProject(nextActive, terminals.filter((t) => !projectTerms.includes(t)));
       }
     } catch (err) {
       console.error("Failed to remove project:", err);
@@ -563,9 +655,7 @@ export function useWorkspace() {
         });
         setTerminals((prev) => [...prev, term!]);
         void syncStartingStatus([term!.id]);
-        setActiveProject(created.path);
-        setPrimaryTerminalId(term.id);
-        setActiveTerminalId(term.id);
+        enterProject(created.path, [...terminals, term], term.id);
       }
 
       return { worktree: created, terminal: term };
@@ -611,7 +701,10 @@ export function useWorkspace() {
       await refreshWorktrees(repoPath);
 
       if (isSamePath(activeProject, worktreePath)) {
-        setActiveProject(repoPath);
+        enterProject(
+          repoPath,
+          terminals.filter((t) => !isSamePath(t.project_path, worktreePath))
+        );
       }
       return result;
     } catch (err) {
@@ -638,9 +731,7 @@ export function useWorkspace() {
       });
       setTerminals((prev) => [...prev, term]);
       void syncStartingStatus([term.id]);
-      setActiveProject(targetPath);
-      setPrimaryTerminalId(term.id);
-      setActiveTerminalId(term.id);
+      enterProject(targetPath, [...terminals, term], term.id);
       setIsSessionHistoryOpen(false);
       return term;
     } catch (err) {
@@ -655,91 +746,76 @@ export function useWorkspace() {
     [terminals, activeProject]
   );
 
-  // Keep primary and secondary terminal IDs synced with visible terminals
+  // Keep the panes and the selection on terminals that exist in the active project. A pane
+  // whose terminal is gone is left empty rather than given another terminal.
   useEffect(() => {
-    if (visibleTerminals.length === 0) {
-      if (primaryTerminalId) setPrimaryTerminalId(null);
-      if (secondaryTerminalId) setSecondaryTerminalId(null);
-      if (activeTerminalId) setActiveTerminalId(null);
-      return;
-    }
-
-    // Ensure primaryTerminalId is valid
-    let curPrimary = primaryTerminalId;
-    if (!curPrimary || !visibleTerminals.some((t) => t.id === curPrimary)) {
-      curPrimary = visibleTerminals[0].id;
-      setPrimaryTerminalId(curPrimary);
-      if (focusedPane === "primary" || !activeTerminalId) {
-        setActiveTerminalId(curPrimary);
-      }
-    }
-
-    // Ensure secondaryTerminalId is valid in split layout
-    if (layout === "split-horizontal" || layout === "split-vertical") {
-      let curSecondary = secondaryTerminalId;
-      if (
-        !curSecondary ||
-        !visibleTerminals.some((t) => t.id === curSecondary) ||
-        curSecondary === curPrimary
-      ) {
-        const other = visibleTerminals.find((t) => t.id !== curPrimary);
-        if (other) {
-          setSecondaryTerminalId(other.id);
-          if (focusedPane === "secondary") {
-            setActiveTerminalId(other.id);
-          }
-        } else {
-          // If only 1 terminal remains, fall back to single view
-          setLayout("single");
-          setSecondaryTerminalId(null);
-          setFocusedPane("primary");
-          setActiveTerminalId(curPrimary);
-        }
-      }
-    }
+    const current: ProjectView = {
+      layout,
+      primaryTerminalId,
+      secondaryTerminalId,
+      gridTerminalIds,
+      focusedPane,
+      splitRatio,
+      zoomedFromLayout,
+      activeTerminalId,
+    };
+    const next = dropMissingTerminals(current, visibleTerminals.map((t) => t.id));
+    if (next === current) return;
+    setPrimaryTerminalId(next.primaryTerminalId);
+    setSecondaryTerminalId(next.secondaryTerminalId);
+    setGridTerminalIds(next.gridTerminalIds);
+    setActiveTerminalId(next.activeTerminalId);
   }, [
     visibleTerminals,
     activeTerminalId,
     primaryTerminalId,
     secondaryTerminalId,
+    gridTerminalIds,
     layout,
     focusedPane,
+    splitRatio,
+    zoomedFromLayout,
   ]);
 
-  // Switch active project
+  // On startup, once the active project, its saved view and the terminals are known, show that view
+  useEffect(() => {
+    if (viewOwnerRef.current !== null || !activeProject || !storedViewsLoaded || !terminalsLoaded) return;
+    enterProject(activeProject, terminals);
+  }, [activeProject, storedViewsLoaded, terminalsLoaded, terminals, enterProject]);
+
+  // Save the active project's view whenever it changes
+  useEffect(() => {
+    const owner = viewOwnerRef.current;
+    if (!activeProject || owner === null || !isSamePath(owner, activeProject)) return;
+    rememberView(activeProject, {
+      layout,
+      primaryTerminalId,
+      secondaryTerminalId,
+      gridTerminalIds,
+      focusedPane,
+      splitRatio,
+      zoomedFromLayout,
+      activeTerminalId,
+    });
+  }, [
+    activeProject,
+    layout,
+    primaryTerminalId,
+    secondaryTerminalId,
+    gridTerminalIds,
+    focusedPane,
+    splitRatio,
+    zoomedFromLayout,
+    activeTerminalId,
+    rememberView,
+  ]);
+
+  // Switch active project, restoring the layout it was left in
   const selectProject = useCallback(
     async (path: string, targetTerminalId?: string) => {
-      try {
-        await invoke("set_active_project", { path });
-        setActiveProject(path);
-
-        // Select terminal belonging to this project if one exists
-        const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path));
-        if (projectTerms.length > 0) {
-          const chosenId =
-            targetTerminalId && projectTerms.some((t) => t.id === targetTerminalId)
-              ? targetTerminalId
-              : activeTerminalId && projectTerms.some((t) => t.id === activeTerminalId)
-              ? activeTerminalId
-              : projectTerms[0].id;
-          const secondId = projectTerms.find((t) => t.id !== chosenId)?.id || null;
-          setPrimaryTerminalId(chosenId);
-          setSecondaryTerminalId(secondId);
-          setActiveTerminalId(chosenId);
-          setFocusedPane("primary");
-          if (projectTerms.length < 2 && (layout === "split-horizontal" || layout === "split-vertical")) {
-            setLayout("single");
-          }
-        } else {
-          setPrimaryTerminalId(null);
-          setSecondaryTerminalId(null);
-          setActiveTerminalId(null);
-        }
-      } catch (err) {
-        console.error("Failed to switch project:", err);
-      }
+      enterProject(path, terminals, targetTerminalId);
     },
-    [terminals, activeTerminalId, layout]
+    [terminals, enterProject]
   );
 
   // Select / activate a terminal (e.g. from Rail or shortcut)
@@ -839,6 +915,39 @@ export function useWorkspace() {
     []
   );
 
+  // Change the layout at the user's request; a new split gets a terminal in its second pane
+  const changeLayout = useCallback(
+    (nextLayout: StageLayout) => {
+      const next = switchLayout(
+        {
+          layout,
+          primaryTerminalId,
+          secondaryTerminalId,
+          gridTerminalIds,
+          focusedPane,
+          splitRatio,
+          zoomedFromLayout,
+          activeTerminalId,
+        },
+        nextLayout,
+        visibleTerminals.map((t) => t.id)
+      );
+      setLayout(next.layout);
+      setSecondaryTerminalId(next.secondaryTerminalId);
+    },
+    [
+      layout,
+      primaryTerminalId,
+      secondaryTerminalId,
+      gridTerminalIds,
+      focusedPane,
+      splitRatio,
+      zoomedFromLayout,
+      activeTerminalId,
+      visibleTerminals,
+    ]
+  );
+
   // Toggle Zoom on active pane
   const toggleZoom = useCallback(() => {
     if (layout !== "single") {
@@ -848,9 +957,9 @@ export function useWorkspace() {
       setLayout(zoomedFromLayout);
       setZoomedFromLayout(null);
     } else if (visibleTerminals.length > 1) {
-      setLayout("split-horizontal");
+      changeLayout("split-horizontal");
     }
-  }, [layout, zoomedFromLayout, visibleTerminals.length]);
+  }, [layout, zoomedFromLayout, visibleTerminals.length, changeLayout]);
 
   // Focus next pane
   const focusNextPane = useCallback(() => {
@@ -1240,7 +1349,7 @@ export function useWorkspace() {
     selectTerminal,
     focusPane,
     switchPaneTerminal,
-    setLayout,
+    setLayout: changeLayout,
     setSplitRatio,
     toggleZoom,
     focusNextPane,

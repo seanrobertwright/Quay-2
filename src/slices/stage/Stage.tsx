@@ -22,11 +22,8 @@ import {
   Zap,
   GitCompare,
   GitBranch,
-  History,
-  ShieldCheck,
   Cpu,
 } from "lucide-react";
-import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath } from "../../utils/paths";
 
@@ -370,45 +367,6 @@ export const Stage: FC<StageProps> = ({
             >
               <GitCompare className="w-3.5 h-3.5" />
               <span>Diffs{diffCount > 0 ? ` (${diffCount})` : ""}</span>
-            </button>
-          )}
-
-          {/* GitHub Issues & PR Companion Button */}
-          {onOpenGithubDrawer && (
-            <button
-              type="button"
-              onClick={onOpenGithubDrawer}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="GitHub Issues & Pull Requests Companion (Ctrl+Shift+B i)"
-            >
-              <GithubIcon className="w-3.5 h-3.5" />
-              <span>GitHub</span>
-            </button>
-          )}
-
-          {/* Pre-PR Audit Gate Button */}
-          {onOpenAuditModal && (
-            <button
-              type="button"
-              onClick={onOpenAuditModal}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#f85149] hover:text-[#ff7b72] rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Pre-PR Leak & Claim Audit Gate (Ctrl+Shift+B a)"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#f85149]" />
-              <span>Audit</span>
-            </button>
-          )}
-
-          {/* Session History & Auto-Resume Button */}
-          {onOpenSessionHistory && (
-            <button
-              type="button"
-              onClick={onOpenSessionHistory}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Session History & Auto-Resume (Ctrl+Shift+B h)"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>History</span>
             </button>
           )}
 

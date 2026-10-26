@@ -21,10 +21,10 @@ import {
   History,
   ShieldCheck,
   Coins,
-  Cpu,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
+import { PraxisIcon } from "../praxis-builder/PraxisIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf } from "../../utils/paths";
 
@@ -205,7 +205,6 @@ export const Rail: React.FC<RailProps> = ({
     shortcut?: string;
     icon: ReactNode;
     onClick: () => void;
-    accent?: boolean;
   }[] = [];
   if (onOpenGithubDrawer) {
     toolButtons.push({
@@ -248,9 +247,8 @@ export const Rail: React.FC<RailProps> = ({
       id: "machina",
       label: "Machina",
       shortcut: "Ctrl+Shift+B f",
-      icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
+      icon: <PraxisIcon className="w-4 h-4" />,
       onClick: onOpenFactoryStation,
-      accent: true,
     });
   }
   if (onOpenCommandPalette) {
@@ -737,9 +735,7 @@ export const Rail: React.FC<RailProps> = ({
                 onClick={tool.onClick}
                 aria-label={tool.label}
                 aria-describedby={tool.shortcut ? shortcutId : undefined}
-                className={`group/tool relative p-1.5 rounded-md transition-colors hover:bg-[#21262d] ${
-                  tool.accent ? "ring-1 ring-[#58a6ff]/40 bg-[#0d1117]" : ""
-                }`}
+                className="group/tool relative p-1.5 rounded-md transition-colors hover:bg-[#21262d]"
               >
                 {tool.icon}
                 <span
