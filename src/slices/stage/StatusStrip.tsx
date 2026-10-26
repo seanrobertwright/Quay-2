@@ -220,7 +220,8 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
 
         {/* Auto approved count */}
         {isAgent && (
-          <div
+          <button
+            type="button"
             className="flex min-w-[2.5rem] shrink-[20] items-center gap-1 text-[#8b949e] hover:text-[#c9d1d9] cursor-pointer"
             onClick={onOpenActionLog}
             title={`${terminal.auto_approved_count} auto-approved. Click to view Action Log`}
@@ -228,7 +229,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
             <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#3fb950]" />
             <strong className="shrink-0 text-white font-mono">{terminal.auto_approved_count}</strong>
             <span className="truncate @max-[56rem]:hidden">auto-approved</span>
-          </div>
+          </button>
         )}
 
         {isAgent && (

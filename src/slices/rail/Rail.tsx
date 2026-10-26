@@ -277,15 +277,14 @@ export const Rail: React.FC<RailProps> = ({
       className="relative shrink-0 bg-[#0d1117] border-r border-[#30363d] flex flex-col h-full select-none text-[#c9d1d9]"
     >
       {/* Draggable rail edge: drag, arrow keys, or Home/End resize; double click resets */}
-      <div
-        role="separator"
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow) */}
+      <div role="separator" tabIndex={0}
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         aria-controls={`${railId}-panel`}
         aria-valuenow={railWidth}
         aria-valuemin={RAIL_MIN_WIDTH}
         aria-valuemax={RAIL_MAX_WIDTH}
-        tabIndex={0}
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={() => setRailWidth(RAIL_MIN_WIDTH)}
         onKeyDown={handleResizeKeyDown}
@@ -382,7 +381,15 @@ export const Rail: React.FC<RailProps> = ({
               >
                 {/* Project Header Row */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onSelectProject(proj.path)}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onSelectProject(proj.path);
+                    }
+                  }}
                   className={`group flex items-center justify-between px-2.5 py-1.5 text-xs rounded-t cursor-pointer transition-colors ${
                     isProjectActive
                       ? "bg-[#21262d] text-white font-medium"
@@ -568,10 +575,21 @@ export const Rail: React.FC<RailProps> = ({
                             return (
                               <div key={wt.path} className="flex flex-col">
                                 <div
+                                  role="button"
+                                  tabIndex={0}
                                   onClick={() => {
                                     onSelectProject(wt.path);
                                     if (wtTerminals.length > 0) {
                                       onSelectTerminal(wtTerminals[0].id);
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                                      e.preventDefault();
+                                      onSelectProject(wt.path);
+                                      if (wtTerminals.length > 0) {
+                                        onSelectTerminal(wtTerminals[0].id);
+                                      }
                                     }
                                   }}
                                   className={`group/wt flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer transition-colors ${

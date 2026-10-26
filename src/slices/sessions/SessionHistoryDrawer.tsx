@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, FC } from "react";
+import { useState, useEffect, useCallback, useMemo, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ClaudeSessionSummary } from "./types";
 import {
@@ -33,7 +33,7 @@ export const SessionHistoryDrawer: FC<SessionHistoryDrawerProps> = ({
   const [filterCurrentOnly, setFilterCurrentOnly] = useState(true);
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     setIsLoading(true);
     try {
       const list = await invoke<ClaudeSessionSummary[]>("list_claude_sessions", {
@@ -46,13 +46,13 @@ export const SessionHistoryDrawer: FC<SessionHistoryDrawerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeProject, filterCurrentOnly]);
 
   useEffect(() => {
     if (isOpen) {
       loadSessions();
     }
-  }, [isOpen, activeProject, filterCurrentOnly]);
+  }, [isOpen, loadSessions]);
 
   // Handle ESC
   useEffect(() => {

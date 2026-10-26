@@ -606,9 +606,24 @@ export const Stage: FC<StageProps> = ({
 
         {/* Draggable Divider for split-horizontal */}
         {layout === "split-horizontal" && (
-          <div
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
+          <div role="separator" tabIndex={0}
+            aria-orientation="vertical"
+            aria-label="Resize split panes"
+            aria-valuenow={Math.round(splitRatio)}
+            aria-valuemin={15}
+            aria-valuemax={85}
             onMouseDown={handleDividerMouseDown}
             onDoubleClick={() => onSetSplitRatio(50)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                onSetSplitRatio(Math.max(15, splitRatio - 5));
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                onSetSplitRatio(Math.min(85, splitRatio + 5));
+              }
+            }}
             className={`absolute top-0 bottom-0 z-20 cursor-col-resize flex items-center justify-center transition-colors group select-none ${
               isDragging ? "bg-[#58a6ff]/20" : "hover:bg-[#58a6ff]/10"
             }`}
@@ -631,9 +646,24 @@ export const Stage: FC<StageProps> = ({
 
         {/* Draggable Divider for split-vertical */}
         {layout === "split-vertical" && (
-          <div
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow)
+          <div role="separator" tabIndex={0}
+            aria-orientation="horizontal"
+            aria-label="Resize split panes"
+            aria-valuenow={Math.round(splitRatio)}
+            aria-valuemin={15}
+            aria-valuemax={85}
             onMouseDown={handleDividerMouseDown}
             onDoubleClick={() => onSetSplitRatio(50)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                onSetSplitRatio(Math.max(15, splitRatio - 5));
+              } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                onSetSplitRatio(Math.min(85, splitRatio + 5));
+              }
+            }}
             className={`absolute left-0 right-0 z-20 cursor-row-resize flex items-center justify-center transition-colors group select-none ${
               isDragging ? "bg-[#58a6ff]/20" : "hover:bg-[#58a6ff]/10"
             }`}
@@ -669,15 +699,16 @@ export const Stage: FC<StageProps> = ({
               slotPos = { bottom: "4px", right: "4px", width: "calc(50% - 6px)", height: "calc(50% - 6px)" };
 
             return (
-              <div
+              <button
                 key={`empty-grid-${slotIdx}`}
+                type="button"
                 style={{ ...slotPos, position: "absolute" }}
                 onClick={onNewTerminal}
                 className="border border-dashed border-[#30363d] rounded-md bg-[#161b22]/40 hover:bg-[#161b22]/70 flex flex-col items-center justify-center cursor-pointer transition-colors text-[#8b949e] hover:text-[#58a6ff] gap-2 select-none group"
               >
                 <Plus className="w-6 h-6 text-[#8b949e] group-hover:text-[#58a6ff] transition-colors" />
                 <span className="text-xs font-medium">Add Terminal to Slot {slotIdx + 1}</span>
-              </div>
+              </button>
             );
           })}
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, FC } from "react";
+import { useState, useEffect, useCallback, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AuditReport, AuditViolation } from "./types";
 import {
@@ -35,7 +35,7 @@ export const PrePrAuditModal: FC<PrePrAuditModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState<"all" | "blocker" | "warning">("all");
 
-  const runAudit = async () => {
+  const runAudit = useCallback(async () => {
     if (!projectPath) return;
     setIsLoading(true);
     setError(null);
@@ -52,13 +52,13 @@ export const PrePrAuditModal: FC<PrePrAuditModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [projectPath]);
 
   useEffect(() => {
     if (isOpen) {
       runAudit();
     }
-  }, [isOpen, projectPath]);
+  }, [isOpen, runAudit]);
 
   // Handle ESC
   useEffect(() => {
