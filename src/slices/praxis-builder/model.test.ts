@@ -2,12 +2,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  configSummary,
   MAX_NODES,
   parseGraph,
   parseLayoutPositions,
   parseLayoutViewport,
-  type PraxisNode,
 } from "./model.ts";
 
 describe("parseGraph", () => {
@@ -74,23 +72,6 @@ describe("parseLayoutPositions", () => {
     const positions = parseLayoutPositions(JSON.parse('{"nodes":{"__proto__":{"x":1,"y":2},"constructor":{"x":3,"y":4}}}'));
     assert.deepEqual(positions.get("__proto__"), { x: 1, y: 2 });
     assert.deepEqual(positions.get("constructor"), { x: 3, y: 4 });
-  });
-});
-
-describe("configSummary", () => {
-  const n = (kind: string, config: PraxisNode["config"]): PraxisNode => ({ id: "x", kind, dependsOn: [], config });
-
-  test("summarizes each configurable kind on one line", () => {
-    assert.equal(configSummary(n("TASK", { executionKind: "TOOL" })), "TOOL");
-    assert.equal(configSummary(n("TASK", { executionKind: "" })), "no execution kind");
-    assert.equal(configSummary(n("DECISION", { field: "passed", equals: true })), "passed == true");
-    assert.equal(configSummary(n("DECISION", { field: "" })), "no field");
-    assert.equal(configSummary(n("JOIN", { mode: "ANY" })), "wait for any");
-    assert.equal(configSummary(n("JOIN", { mode: "ALL" })), "wait for all");
-    assert.equal(configSummary(n("LOOP", { maxIterations: "5" })), "≤ 5 iterations");
-    assert.equal(configSummary(n("LOOP", { maxIterations: 5 })), "≤ 5 iterations");
-    assert.equal(configSummary(n("LOOP", {})), "no iteration limit");
-    assert.equal(configSummary(n("END", {})), "");
   });
 });
 

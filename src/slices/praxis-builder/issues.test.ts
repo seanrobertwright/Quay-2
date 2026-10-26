@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { issueField, issuesByNode, problemCounts } from "./issues.ts";
+import { issueField, issuesByNode, nodeIssuesBySlot, problemCounts, withKeys } from "./issues.ts";
 import type { Diagnostic } from "./types.ts";
 
 const error = (path: string, nodeId?: string, field?: string): Diagnostic => ({
@@ -79,5 +79,44 @@ describe("problemCounts", () => {
   it("adds the issues the backend left out of the list", () => {
     const validation = { verdict: "NODE_CONFIG", diagnostics: [error("/nodes")], omitted: { errors: 900, info: 3 } };
     assert.deepEqual(problemCounts(validation), { errors: 901, info: 3 });
+  });
+});
+
+describe("nodeIssuesBySlot", () => {
+  const slots = ["id", "dependsOn", "config.then", "config.else"];
+
+  it("files each of the node's issues under the control it is about", () => {
+    const d = [
+      error("/nodes/0/config/then", "a", "config.then"),
+      error("/nodes/0/dependsOn/1", "a", "dependsOn.1"),
+      error("/nodes/0/dependsOn", "a", "dependsOn"),
+      error("/nodes/0/id", "a", "id"),
+      error("/nodes/1/config/then", "b", "config.then"),
+      error("/revision"),
+    ];
+    const bySlot = nodeIssuesBySlot(d, "a", slots);
+    assert.deepEqual([...bySlot.keys()], ["config.then", "dependsOn", "id"]);
+    assert.deepEqual(bySlot.get("dependsOn"), [d[1], d[2]]);
+    assert.deepEqual(bySlot.get("config.then"), [d[0]]);
+  });
+
+  it("files the whole node's issues, and those on fields with no control, under \"\"", () => {
+    const d = [
+      error("/nodes/0", "a"),
+      error("/nodes/0/config/extra", "a", "config.extra"),
+      error("/nodes/0/config", "a", "config"),
+      error("/nodes/0/config/thenx", "a", "config.thenx"),
+      error("/nodes/0/outputSchema", "a", "outputSchema"),
+    ];
+    assert.deepEqual([...nodeIssuesBySlot(d, "a", slots)], [["", d]]);
+  });
+});
+
+describe("withKeys", () => {
+  it("numbers the second of two diagnostics that say the same thing", () => {
+    const d = [error("/nodes/0/config", "a"), error("/nodes/0/config", "a"), error("/nodes/1", "b")];
+    const keys = withKeys(d).map(([key]) => key);
+    assert.equal(new Set(keys).size, 3);
+    assert.deepEqual(withKeys(d).map(([, diagnostic]) => diagnostic), d);
   });
 });
