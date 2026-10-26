@@ -246,7 +246,7 @@ export const Rail: React.FC<RailProps> = ({
   if (onOpenFactoryStation) {
     toolButtons.push({
       id: "machina",
-      label: "Machina Praxis",
+      label: "Machina",
       shortcut: "^b f",
       icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
       onClick: onOpenFactoryStation,

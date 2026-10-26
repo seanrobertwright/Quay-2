@@ -53,7 +53,7 @@ The gate checks no other key formats, and it has no command filter.
 - **Copy Report** copies the findings as plain text.
 - **Fix Violations with Claude** sends the findings to the active terminal as a prompt. When no terminal is active, it opens a new Claude Code terminal named `audit-fixer` and sends the prompt there.
 
-Machina Praxis runs the same scan in its own gate, over the branch's diff against its base commit, and fails a candidate that has blockers.
+Machina runs the same scan in its own gate, over the branch's diff against its base commit, and fails a candidate that has blockers.
 
 ---
 

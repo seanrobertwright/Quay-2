@@ -15,7 +15,7 @@ On Windows, Quay keeps its state under `%LOCALAPPDATA%\Quay2`. Without `LOCALAPP
 | `%LOCALAPPDATA%\Quay2\sessions\sessions.json` | The terminals Quay restores at startup |
 | `%LOCALAPPDATA%\Quay2\sessions\<terminal id>.log` | Each terminal's scrollback |
 | `%LOCALAPPDATA%\Quay2\token-ledger.json` | Quay's token ledger, behind the daily totals in Token Spend |
-| `%LOCALAPPDATA%\Quay2\machina\` | Machina Praxis state (`state.json`) and its holdback vault (`vault\`) |
+| `%LOCALAPPDATA%\Quay2\machina\` | Machina state (`state.json`) and its holdback vault (`vault\`) |
 | `~/.claude/projects/` | Claude Code session transcripts, scanned for token spend. `CLAUDE_CONFIG_DIR` replaces `~/.claude` when set |
 
 ---
