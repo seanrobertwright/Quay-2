@@ -1,8 +1,11 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph read-only on the canvas. Closing only hides it, so each
-// project's session survives until Quay quits.
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC } from "react";
+// definitions and shows a graph on the canvas, where its nodes can be dragged and saved.
+// Closing only hides it, so each project's session, drafts included, survives until Quay
+// quits. Quitting with unsaved drafts asks first.
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC, type Ref } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Viewport } from "@xyflow/react";
 import {
   CircleAlert,
@@ -11,16 +14,28 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Save,
   TriangleAlert,
   Workflow,
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
-import { parseGraph, parseLayoutPositions } from "./model.ts";
+import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
 import { GraphCanvas } from "./GraphCanvas.tsx";
-import { definitionKey, sessionFor, updateSession, type Sessions } from "./session.ts";
-import type { DefinitionFile, DefinitionList, DefinitionRef, FileProblem, PraxisKind } from "./types.ts";
+import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
+import {
+  applyDiskRead,
+  definitionKey,
+  dirtyDrafts,
+  dirtyProjectKeys,
+  dropDraft,
+  sessionFor,
+  updateSession,
+  type DirtyDraft,
+  type Sessions,
+} from "./session.ts";
+import type { DefinitionFile, DefinitionList, DefinitionRef, FileProblem, PraxisKind, SaveOutcome } from "./types.ts";
 
 export interface BuilderProject {
   path: string;
@@ -33,6 +48,8 @@ interface PraxisBuilderModalProps {
   project: BuilderProject | null;
   onClose: () => void;
   onAddProject: () => void;
+  /** Called with the normalized paths of the projects that have unsaved drafts, whenever they change. */
+  onUnsavedProjectsChange?: (projectKeys: string[]) => void;
 }
 
 type KindListing = { list: DefinitionList; error?: undefined } | { list?: undefined; error: string };
@@ -49,18 +66,67 @@ interface Loaded {
   error?: string;
 }
 
+/** A save that found the file changed or deleted under its draft, waiting for the user. */
+interface Conflict {
+  projectPath: string;
+  ref: DefinitionRef;
+  reason: "changed" | "deleted";
+}
+
 const definitionPath = (ref: DefinitionRef) => `.praxis/${ref.kind}/${ref.id}.json`;
 
-export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, project, onClose, onAddProject }) => {
+const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex="0"]';
+
+/** Keeps Tab and Shift+Tab cycling inside `root`. Returns true when it moved focus. */
+function trapTab(root: HTMLElement, e: { shiftKey: boolean; preventDefault: () => void }): boolean {
+  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+  if (focusable.length === 0) return false;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || active === root || !root.contains(active))) {
+    e.preventDefault();
+    last.focus();
+    return true;
+  }
+  if (!e.shiftKey && (active === last || !root.contains(active))) {
+    e.preventDefault();
+    first.focus();
+    return true;
+  }
+  return false;
+}
+
+export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
+  isOpen,
+  project,
+  onClose,
+  onAddProject,
+  onUnsavedProjectsChange,
+}) => {
   const titleId = useId();
   const listId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const conflictRef = useRef<HTMLDivElement | null>(null);
   const [sessions, setSessions] = useState<Sessions>(new Map());
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [listShown, setListShown] = useState(true);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ tone: "error" | "warning"; text: string } | null>(null);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
+
+  // Saves and the quit check read the latest sessions without waiting for a render.
+  const sessionsRef = useRef(sessions);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+  // Reads the shown canvas's viewport at save time. Keyed by project and definition, so a
+  // canvas that is no longer shown is never asked.
+  const viewportReader = useRef<{ key: string; read: () => Viewport } | null>(null);
 
   const projectPath = project?.path ?? null;
   const projectKey = projectPath ? normalizePath(projectPath) : "";
@@ -69,6 +135,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
   const openKind = open?.kind;
   const openId = open?.id;
   const openKey = open ? definitionKey(open) : "";
+  const openDraft = session && openKey ? session.drafts[openKey] : undefined;
+
+  const unsavedKey = useMemo(() => dirtyProjectKeys(sessions).join("\n"), [sessions]);
+  useEffect(() => {
+    onUnsavedProjectsChange?.(unsavedKey ? unsavedKey.split("\n") : []);
+  }, [unsavedKey, onUnsavedProjectsChange]);
 
   // List the project's definitions each time the builder is shown, so files changed on
   // disk while it was hidden appear. A response that arrives after a newer request, or
@@ -93,16 +165,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
     };
   }, [isOpen, projectPath, refreshCount]);
 
-  // Read the open definition each time it, or the builder, is shown.
+  // Read the open definition each time it, or the builder, is shown. A graph's draft is
+  // then kept, reloaded or marked deleted on disk, as `applyDiskRead` decides.
   useEffect(() => {
     if (!isOpen || !projectPath || !openKind || openId === undefined) return;
     let stale = false;
     const key = normalizePath(projectPath);
-    const defKey = definitionKey({ kind: openKind, id: openId });
+    const ref = { kind: openKind, id: openId };
+    const defKey = definitionKey(ref);
     setRevealError(null);
     invoke<DefinitionFile>("praxis_read", { projectPath, kind: openKind, id: openId }).then(
       (file) => {
-        if (!stale) setLoaded({ projectKey: key, defKey, file });
+        if (stale) return;
+        setLoaded({ projectKey: key, defKey, file });
+        if (ref.kind === "graphs") {
+          setSessions((s) => updateSession(s, projectPath, (cur) => applyDiskRead(cur, ref, file)));
+        }
       },
       (e) => {
         if (!stale) setLoaded({ projectKey: key, defKey, error: String(e) });
@@ -121,42 +199,171 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
     return () => previous?.focus();
   }, [isOpen]);
 
-  // Keys pressed inside the builder: Escape hides it (it is read-only for now, so there is
-  // nothing smaller to cancel first), and Tab cycles through its controls instead of
-  // leaving for the app behind it. Keys from elsewhere, such as the command palette or
-  // another modal open over it, are left alone.
+  // The conflict prompt takes focus on Cancel, the choice that changes nothing, and gives
+  // it back when it closes, to the builder if what had it is gone, so keys such as
+  // Ctrl+S keep reaching the builder.
+  const hasConflict = conflict !== null;
+  useEffect(() => {
+    if (!hasConflict) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    conflictRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
+    return () => {
+      if (previous?.isConnected) previous.focus();
+      else dialog?.focus();
+    };
+  }, [hasConflict]);
+
+  /**
+   * Saves one draft through `praxis_save`, expecting the file to still have the hash the
+   * draft loaded unless `force` is set. The draft records the result: a save makes the
+   * written content its new base, and a deleted file marks it.
+   */
+  const saveDraft = useCallback(async (path: string, ref: DefinitionRef, force: boolean): Promise<SaveOutcome> => {
+    const key = definitionKey(ref);
+    const current = sessionFor(sessionsRef.current, path);
+    const draft = current.drafts[key];
+    if (!draft) throw new Error(`${definitionPath(ref)} has nothing to save.`);
+    const reader = viewportReader.current;
+    const viewport = reader && reader.key === `${normalizePath(path)}|${key}` ? reader.read() : current.viewports[key];
+    const layout = layoutForSave(draft, viewport);
+    const outcome = await invoke<SaveOutcome>("praxis_save", {
+      projectPath: path,
+      kind: ref.kind,
+      id: ref.id,
+      content: draft.content,
+      layout,
+      expectedHash: draft.baseHash,
+      force,
+    });
+    setSessions((s) =>
+      updateSession(s, path, (cur) => {
+        const d = cur.drafts[key];
+        if (!d) return cur;
+        const next =
+          outcome.status === "saved"
+            ? markSaved(d, { content: outcome.content as JsonObject, contentHash: outcome.contentHash }, layout)
+            : outcome.reason === "deleted"
+              ? markDeletedOnDisk(d)
+              : d;
+        return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [key]: next } };
+      })
+    );
+    // Re-list, so the saved file and any badge show.
+    if (outcome.status === "saved") setRefreshCount((n) => n + 1);
+    return outcome;
+  }, []);
+
+  /** Saves one draft from the builder, asking about a conflict instead of overwriting. */
+  const saveFromBuilder = useCallback(
+    async (path: string, ref: DefinitionRef, force: boolean) => {
+      setSaving(true);
+      setSaveMessage(null);
+      try {
+        const outcome = await saveDraft(path, ref, force);
+        if (outcome.status === "conflict") {
+          setConflict({ projectPath: path, ref, reason: outcome.reason });
+          return;
+        }
+        setConflict(null);
+        if (outcome.layoutError) {
+          setSaveMessage({ tone: "warning", text: `Saved, but the layout file wasn't written: ${outcome.layoutError}` });
+        }
+      } catch (e) {
+        setSaveMessage({ tone: "error", text: String(e) });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [saveDraft]
+  );
+
+  const saveOpen = useCallback(() => {
+    if (!projectPath || !open || !openDraft || saving) return;
+    void saveFromBuilder(projectPath, open, false);
+  }, [projectPath, open, openDraft, saving, saveFromBuilder]);
+
+  /** Drops the conflicting draft and reads the file again, which makes a fresh one. */
+  const reloadConflict = (c: Conflict) => {
+    setConflict(null);
+    setSessions((s) => updateSession(s, c.projectPath, (cur) => dropDraft(cur, c.ref)));
+    setRefreshCount((n) => n + 1);
+  };
+
+  // Keys pressed inside the builder: Ctrl/Cmd+S saves the open definition. Escape closes
+  // the conflict prompt when it is shown and otherwise hides the builder. Tab cycles
+  // through the prompt's or the builder's controls instead of leaving for the app behind
+  // it. Keys from elsewhere, such as the command palette or another modal open over it,
+  // are left alone.
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const dialog = dialogRef.current;
       if (e.defaultPrevented || !dialog || !(e.target instanceof Node) || !dialog.contains(e.target)) return;
-      if (e.key === "Escape") {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        onClose();
+        if (!conflict) saveOpen();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (conflict) setConflict(null);
+        else onClose();
       } else if (e.key === "Tab") {
-        const focusable = Array.from(
-          dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input, select, textarea, [tabindex="0"]')
-        ).filter((el) => el.offsetParent !== null);
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        const active = document.activeElement;
-        if (e.shiftKey && (active === first || active === dialog)) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && active === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        const root = conflict ? conflictRef.current : dialog;
+        if (root) trapTab(root, e);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, conflict, saveOpen]);
+
+  // Closing Quay with unsaved drafts asks first (#221). The listener stays for the
+  // builder's lifetime, which is Quay's, since closing the builder only hides it.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onCloseRequested((event) => {
+        if (dirtyDrafts(sessionsRef.current).length === 0) return;
+        event.preventDefault();
+        setQuitPrompt({ failures: [], busy: false });
+      })
+      .then(
+        (fn) => {
+          if (disposed) fn();
+          else unlisten = fn;
+        },
+        (e) => console.error("[praxis-builder] can't watch for the window closing:", e)
+      );
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const saveAllAndQuit = async () => {
+    setQuitPrompt({ failures: [], busy: true });
+    const failures: string[] = [];
+    for (const d of dirtyDrafts(sessionsRef.current)) {
+      try {
+        const outcome = await saveDraft(d.projectPath, d.draft.ref, false);
+        if (outcome.status === "conflict") {
+          failures.push(`${draftLabel(d)}: the file was ${outcome.reason} on disk.`);
+        }
+      } catch (e) {
+        failures.push(`${draftLabel(d)}: ${String(e)}`);
+      }
+    }
+    if (failures.length === 0) {
+      await getCurrentWindow().destroy();
+    } else {
+      setQuitPrompt({ failures, busy: false });
+    }
+  };
 
   const openDefinition = (ref: DefinitionRef) => {
-    if (!projectPath) return;
-    setSessions((s) => updateSession(s, projectPath, (cur) => ({ ...cur, open: ref })));
+    if (!project) return;
+    setSaveMessage(null);
+    setSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
 
   const saveViewport = useCallback(
@@ -167,6 +374,28 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
       );
     },
     [projectPath, openKey]
+  );
+
+  const moveOpenNodes = useCallback(
+    (moved: [string, XYPosition][]) => {
+      if (!projectPath || !openKey) return;
+      setSessions((s) =>
+        updateSession(s, projectPath, (cur) => {
+          const d = cur.drafts[openKey];
+          if (!d) return cur;
+          const next = moveNodes(d, moved);
+          return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [openKey]: next } };
+        })
+      );
+    },
+    [projectPath, openKey]
+  );
+
+  const canvasReady = useCallback(
+    (read: () => Viewport) => {
+      viewportReader.current = { key: `${projectKey}|${openKey}`, read };
+    },
+    [projectKey, openKey]
   );
 
   const reveal = async (ref: DefinitionRef) => {
@@ -184,6 +413,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
   const isEmpty =
     currentListing !== null &&
     RECORD_KINDS.every(({ kind }) => currentListing.byKind[kind].list?.entries.length === 0);
+  const openDirty = openDraft ? isDirty(openDraft) : false;
 
   return (
     <div className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}>
@@ -193,7 +423,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
+        className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
       >
         <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-[#58a6ff]/15 border border-[#58a6ff]/40 flex items-center justify-center shrink-0">
@@ -208,12 +438,38 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
           {project && (
             <span className="text-xs text-[#8b949e] truncate min-w-0" title={project.path}>
               {project.name}
-              {open && <span className="font-mono text-[#c9d1d9]"> · {definitionPath(open)}</span>}
+              {open && (
+                <span className="font-mono text-[#c9d1d9]">
+                  {" "}
+                  · {definitionPath(open)}
+                  {openDirty && (
+                    <span className="text-[#e3b341]">
+                      <span aria-hidden="true"> *</span>
+                      <span className="sr-only"> (unsaved changes)</span>
+                    </span>
+                  )}
+                </span>
+              )}
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
             {project && (
               <>
+                {openDraft && (
+                  <button
+                    type="button"
+                    onClick={saveOpen}
+                    // Not `disabled`: that would blur the focused button and send keys to
+                    // the app behind the builder. `saveOpen` ignores presses while saving.
+                    aria-disabled={saving}
+                    aria-keyshortcuts="Control+S Meta+S"
+                    title="Save (Ctrl+S)"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#238636] hover:bg-[#2ea043] aria-disabled:opacity-50 text-white text-xs font-semibold"
+                  >
+                    <Save className="w-3.5 h-3.5" aria-hidden="true" />
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-expanded={listShown}
@@ -251,6 +507,17 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
           </div>
         </header>
 
+        {saveMessage && (
+          <p
+            role={saveMessage.tone === "error" ? "alert" : "status"}
+            className={`shrink-0 px-4 py-1.5 text-[11px] break-words border-b border-[#30363d] bg-[#161b22] ${
+              saveMessage.tone === "error" ? "text-[#ff7b72]" : "text-[#e3b341]"
+            }`}
+          >
+            {saveMessage.text}
+          </p>
+        )}
+
         {!project ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
             <p className="text-sm text-[#c9d1d9]">Open a project to author Praxis definitions</p>
@@ -275,6 +542,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
               {currentListing &&
                 RECORD_KINDS.map(({ kind, label, icon: Icon }) => {
                   const entry = currentListing.byKind[kind];
+                  const listed = new Set(entry.list?.entries.map((e) => e.id));
+                  // Drafts whose file is gone stay in the list, so their changes can be saved.
+                  const orphans = Object.values(session?.drafts ?? {}).filter(
+                    (d) => d.ref.kind === kind && !listed.has(d.ref.id)
+                  );
+                  const rows = [
+                    ...(entry.list?.entries ?? []).map((def) => ({ id: def.id, problem: def.problem })),
+                    ...orphans.map((d) => ({ id: d.ref.id, problem: undefined })),
+                  ];
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
                       <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
@@ -285,30 +561,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
                           {entry.error}
                         </p>
                       )}
-                      {entry.list && (
+                      {rows.length > 0 && (
                         <ul>
-                          {entry.list.entries.map((def) => {
+                          {rows.map((def) => {
                             const ref = { kind, id: def.id };
-                            const isOpenDef = openKey === definitionKey(ref);
+                            const key = definitionKey(ref);
+                            const isOpenDef = openKey === key;
+                            const draft = session?.drafts[key];
                             return (
                               <li key={def.id}>
-                                <button
-                                  type="button"
-                                  aria-current={isOpenDef ? "page" : undefined}
-                                  onClick={() => openDefinition(ref)}
-                                  title={def.problem ? `${def.id}: ${def.problem.message}` : def.id}
-                                  className={`w-[calc(100%-0.75rem)] mx-1.5 px-2 py-1 rounded-md flex items-center gap-1.5 text-left text-xs font-mono ${
-                                    isOpenDef ? "bg-[#1f6feb]/25 text-white" : "text-[#c9d1d9] hover:bg-[#21262d]"
-                                  }`}
-                                >
-                                  <span className="truncate">{def.id}</span>
-                                  {def.problem && (
-                                    <span className="ml-auto inline-flex items-center text-[#ff7b72] shrink-0">
-                                      <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" />
-                                      <span className="sr-only">(can't be opened)</span>
-                                    </span>
-                                  )}
-                                </button>
+                                <ListRow
+                                  id={def.id}
+                                  problem={def.problem}
+                                  draft={draft}
+                                  current={isOpenDef}
+                                  onOpen={() => openDefinition(ref)}
+                                />
                               </li>
                             );
                           })}
@@ -336,11 +604,26 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
                     <p>Choose a definition from the list.</p>
                   )}
                 </div>
+              ) : openDraft ? (
+                <GraphDraftView
+                  // Remount per definition, so the canvas fits or restores its viewport.
+                  key={`${projectKey}|${openKey}`}
+                  draft={openDraft}
+                  layoutProblem={current?.file?.layoutProblem}
+                  viewport={session?.viewports[openKey]}
+                  onViewportChange={saveViewport}
+                  onMoveNodes={moveOpenNodes}
+                  onReady={canvasReady}
+                />
               ) : !current ? (
                 <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>
               ) : current.error !== undefined ? (
                 <p role="alert" className="p-6 text-sm text-[#ff7b72] break-words">
                   {current.error}
+                </p>
+              ) : current.file?.missing ? (
+                <p role="status" className="p-6 text-sm text-[#8b949e]">
+                  {definitionPath(open)} doesn't exist on disk.
                 </p>
               ) : current.file?.problem ? (
                 <ProblemView
@@ -351,12 +634,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
                 />
               ) : (
                 <DefinitionView
-                  // Remount per definition, so the canvas fits or restores its viewport.
-                  key={`${projectKey}|${openKey}`}
                   open={open}
                   file={current.file!}
-                  viewport={session?.viewports[openKey]}
-                  onViewportChange={saveViewport}
                   onReveal={() => void reveal(open)}
                   revealError={revealError}
                 />
@@ -364,8 +643,73 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({ isOpen, projec
             </main>
           </div>
         )}
+
+        {conflict && (
+          <ConflictPrompt
+            rootRef={conflictRef}
+            conflict={conflict}
+            busy={saving}
+            onOverwrite={() => void saveFromBuilder(conflict.projectPath, conflict.ref, true)}
+            onReload={() => reloadConflict(conflict)}
+            onCancel={() => setConflict(null)}
+          />
+        )}
       </div>
+      {/* Portalled, so it shows while the builder itself is hidden. */}
+      {quitPrompt &&
+        createPortal(
+          <QuitPrompt
+            drafts={dirtyDrafts(sessions)}
+            failures={quitPrompt.failures}
+            busy={quitPrompt.busy}
+            onSaveAll={() => void saveAllAndQuit()}
+            onDiscard={() => void getCurrentWindow().destroy()}
+            onCancel={() => setQuitPrompt(null)}
+          />,
+          document.body
+        )}
     </div>
+  );
+};
+
+const draftLabel = (d: DirtyDraft) =>
+  `${d.projectName || d.projectPath} · ${definitionPath(d.draft.ref)}`;
+
+const ListRow: FC<{
+  id: string;
+  problem: FileProblem | undefined;
+  draft: GraphDraft | undefined;
+  current: boolean;
+  onOpen: () => void;
+}> = ({ id, problem, draft, current, onOpen }) => {
+  const dirty = draft ? isDirty(draft) : false;
+  const deleted = draft?.deletedOnDisk ?? false;
+  const notes = [problem && problem.message, deleted && "deleted on disk", dirty && "unsaved changes"].filter(Boolean);
+  return (
+    <button
+      type="button"
+      aria-current={current ? "page" : undefined}
+      onClick={onOpen}
+      title={notes.length > 0 ? `${id}: ${notes.join("; ")}` : id}
+      className={`w-[calc(100%-0.75rem)] mx-1.5 px-2 py-1 rounded-md flex items-center gap-1.5 text-left text-xs font-mono ${
+        current ? "bg-[#1f6feb]/25 text-white" : "text-[#c9d1d9] hover:bg-[#21262d]"
+      }`}
+    >
+      <span className={`truncate ${deleted ? "line-through text-[#8b949e]" : ""}`}>{id}</span>
+      {dirty && (
+        <span className="text-[#e3b341] shrink-0">
+          <span aria-hidden="true">*</span>
+          <span className="sr-only">(unsaved changes)</span>
+        </span>
+      )}
+      {deleted && <span className="sr-only">(deleted on disk)</span>}
+      {problem && (
+        <span className="ml-auto inline-flex items-center text-[#ff7b72] shrink-0">
+          <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" />
+          <span className="sr-only">(can't be opened)</span>
+        </span>
+      )}
+    </button>
   );
 };
 
@@ -402,17 +746,14 @@ const ProblemView: FC<{
   </div>
 );
 
+/** A definition without a draft: a graph the canvas can't draw, or another kind's preview. */
 const DefinitionView: FC<{
   open: DefinitionRef;
   file: DefinitionFile;
-  viewport: Viewport | undefined;
-  onViewportChange: (viewport: Viewport) => void;
   onReveal: () => void;
   revealError: string | null;
-}> = ({ open, file, viewport, onViewportChange, onReveal, revealError }) => {
+}> = ({ open, file, onReveal, revealError }) => {
   const graph = useMemo(() => (open.kind === "graphs" ? parseGraph(file.content) : null), [open.kind, file.content]);
-  const positions = useMemo(() => parseLayoutPositions(file.layout), [file.layout]);
-
   if (!graph) {
     return (
       <div className="flex-1 overflow-auto">
@@ -433,24 +774,201 @@ const DefinitionView: FC<{
       />
     );
   }
+  return <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>;
+};
+
+const GraphDraftView: FC<{
+  draft: GraphDraft;
+  layoutProblem: FileProblem | undefined;
+  viewport: Viewport | undefined;
+  onViewportChange: (viewport: Viewport) => void;
+  onMoveNodes: (moved: [string, XYPosition][]) => void;
+  onReady: (read: () => Viewport) => void;
+}> = ({ draft, layoutProblem, viewport, onViewportChange, onMoveNodes, onReady }) => {
+  // Drafts are made only from graphs the canvas can draw, so this always parses.
+  const graph = useMemo(() => parseGraph(draft.content), [draft.content]);
+  if (!graph.ok) return null;
+  const path = definitionPath(draft.ref);
   return (
     <>
-      {file.layoutProblem && (
+      {draft.deletedOnDisk && (
+        <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#ff7b72] border-b border-[#30363d] bg-[#161b22]">
+          <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <span className="break-words">{path} was deleted on disk. Saving writes this draft back.</span>
+        </p>
+      )}
+      {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           <span className="break-words">
-            .praxis/layout/{open.id}.json was ignored, so the graph is laid out automatically: {file.layoutProblem.message}
+            .praxis/layout/{draft.ref.id}.json was ignored, so the graph is laid out automatically: {layoutProblem.message}
           </span>
         </p>
       )}
       <div className="flex-1 min-h-0 relative">
         <GraphCanvas
           graph={graph.value}
-          positions={positions}
+          positions={draft.positions}
           viewport={viewport}
           onViewportChange={onViewportChange}
+          onMoveNodes={onMoveNodes}
+          onReady={onReady}
         />
       </div>
     </>
+  );
+};
+
+const promptButton =
+  "px-3 py-1.5 rounded-md text-xs font-semibold border border-[#30363d] disabled:opacity-50";
+
+/** Asks what to do when a save finds the file changed or deleted under its draft. */
+const ConflictPrompt: FC<{
+  rootRef: Ref<HTMLDivElement>;
+  conflict: Conflict;
+  busy: boolean;
+  onOverwrite: () => void;
+  onReload: () => void;
+  onCancel: () => void;
+}> = ({ rootRef, conflict, busy, onOverwrite, onReload, onCancel }) => {
+  const titleId = useId();
+  const path = definitionPath(conflict.ref);
+  const changed = conflict.reason === "changed";
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-6">
+      <div
+        ref={rootRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="max-w-md w-full rounded-lg border border-[#30363d] bg-[#161b22] p-4 space-y-3 shadow-2xl"
+      >
+        <h3 id={titleId} className="text-sm font-semibold text-white break-words">
+          {changed ? `${path} changed on disk` : `${path} was deleted on disk`}
+        </h3>
+        <p className="text-xs text-[#c9d1d9]">
+          {changed
+            ? "The file changed after the builder loaded it. Overwrite replaces it with this draft. Reload drops this draft's changes and loads the file."
+            : "The file was deleted after the builder loaded it. Save anyway writes this draft back to it."}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onOverwrite}
+            className={`${promptButton} bg-[#da3633] hover:bg-[#f85149] text-white`}
+          >
+            {changed ? "Overwrite" : "Save anyway"}
+          </button>
+          {changed && (
+            <button type="button" disabled={busy} onClick={onReload} className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}>
+              Reload
+            </button>
+          )}
+          <button
+            type="button"
+            data-cancel
+            onClick={onCancel}
+            className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Lists the unsaved drafts when Quay is closing, with Save all / Discard / Cancel (#221). */
+const QuitPrompt: FC<{
+  drafts: DirtyDraft[];
+  failures: string[];
+  busy: boolean;
+  onSaveAll: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}> = ({ drafts, failures, busy, onSaveAll, onDiscard, onCancel }) => {
+  const titleId = useId();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    rootRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
+    return () => previous?.focus();
+  }, []);
+  // Escape cancels, and Tab stays inside the prompt, wherever focus is.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const root = rootRef.current;
+      if (e.defaultPrevented || !root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (!busy) onCancel();
+      } else if (e.key === "Tab") {
+        trapTab(root, e);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onCancel]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
+      <div
+        ref={rootRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="max-w-lg w-full rounded-lg border border-[#30363d] bg-[#161b22] p-4 space-y-3 shadow-2xl text-[#c9d1d9]"
+      >
+        <h2 id={titleId} className="text-sm font-semibold text-white">
+          Save changes to these Praxis definitions before quitting?
+        </h2>
+        <ul className="max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
+          {drafts.map((d) => (
+            <li key={`${d.projectPath}|${definitionKey(d.draft.ref)}`} className="break-words">
+              {draftLabel(d)}
+            </li>
+          ))}
+        </ul>
+        {failures.length > 0 && (
+          <div role="alert" className="text-xs text-[#ff7b72] space-y-0.5">
+            <p>These weren't saved, so Quay is still open:</p>
+            <ul className="list-disc pl-4">
+              {failures.map((f) => (
+                <li key={f} className="break-words">
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onSaveAll}
+            className={`${promptButton} bg-[#238636] hover:bg-[#2ea043] text-white`}
+          >
+            {busy ? "Saving…" : "Save all"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDiscard}
+            className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            data-cancel
+            disabled={busy}
+            onClick={onCancel}
+            className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };

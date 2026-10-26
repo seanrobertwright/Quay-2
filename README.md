@@ -85,7 +85,8 @@ flowchart LR
 
 ### 🧭 Praxis Builder
 - Opens with `Ctrl+B P` or **Praxis Builder...** in the command palette.
-- Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph read-only on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
+- Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
+- Drag a graph's nodes and press **Save** (`Ctrl+S`) to write the graph and its layout. Files are written in one canonical form, so a save that changes nothing makes no diff, and graphs get a content-digest `revision`. Unsaved drafts show `*` in the list and a dot on the project in the rail, and Quay asks before it quits with any unsaved.
 - Files that aren't valid JSON are listed with an error badge, and opening one shows the line and column of the error.
 
 ### 🪟 Tiling Window Management & 1-Click Swarm Presets

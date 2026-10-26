@@ -122,6 +122,17 @@ export function parseLayoutPositions(layout: unknown): Map<string, XYPosition> {
   return positions;
 }
 
+/**
+ * Reads the viewport a layout file saved, or `undefined` when it has none or it isn't
+ * finite numbers with a positive zoom.
+ */
+export function parseLayoutViewport(layout: unknown): { x: number; y: number; zoom: number } | undefined {
+  if (!isObject(layout) || !isObject(layout.viewport)) return undefined;
+  const { x, y, zoom } = layout.viewport;
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  return finite(x) && finite(y) && finite(zoom) && zoom > 0 ? { x, y, zoom } : undefined;
+}
+
 /** The DECISION branch, if any, that `target` is for `source`. */
 export function branchOf(source: PraxisNode, target: string): "then" | "else" | null {
   if (source.kind !== "DECISION") return null;

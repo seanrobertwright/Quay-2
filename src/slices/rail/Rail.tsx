@@ -26,7 +26,7 @@ import {
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { ClaudeTokenStats } from "../sessions/types";
-import { isSamePath, isSubpathOf } from "../../utils/paths";
+import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths";
 
 // The rail was a fixed 288px (`w-72`); the drag range is measured from that width
 const RAIL_BASE_WIDTH = 288;
@@ -51,6 +51,8 @@ function loadRailWidth(): number {
 interface RailProps {
   projects: Project[];
   activeProject: string;
+  /** Normalized paths of the projects and worktrees with unsaved Praxis Builder drafts. */
+  unsavedPraxisProjects?: ReadonlySet<string>;
   terminals: TerminalInfo[];
   activeTerminalId: string | null;
   bridgePort: number;
@@ -78,9 +80,17 @@ interface RailProps {
   onRelaunchTerminal?: (id: string) => void;
 }
 
+/** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
+const UnsavedDot = () => (
+  <span className="w-1.5 h-1.5 rounded-full bg-[#e3b341] shrink-0" title="Unsaved Praxis Builder changes">
+    <span className="sr-only">(unsaved Praxis Builder changes)</span>
+  </span>
+);
+
 export const Rail: React.FC<RailProps> = ({
   projects,
   activeProject,
+  unsavedPraxisProjects,
   terminals,
   activeTerminalId,
   bridgePort,
@@ -413,6 +423,7 @@ export const Rail: React.FC<RailProps> = ({
                     <span className="truncate font-medium" title={proj.path}>
                       {proj.name}
                     </span>
+                    {unsavedPraxisProjects?.has(normalizePath(proj.path)) && <UnsavedDot />}
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
@@ -606,6 +617,7 @@ export const Rail: React.FC<RailProps> = ({
                                       }`}
                                     />
                                     <span className="truncate text-[11px] font-mono">{branchName}</span>
+                                    {unsavedPraxisProjects?.has(normalizePath(wt.path)) && <UnsavedDot />}
                                   </div>
 
                                   <div className="flex items-center gap-1 shrink-0">
