@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useId, useRef } from "react";
 import { GitBranch, X, FolderGit2, Sparkles, Plus, AlertCircle } from "lucide-react";
 
 interface NewWorktreeModalProps {
@@ -31,6 +31,9 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
   const [launchClaude, setLaunchClaude] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const branchInputId = useId();
+  const launchClaudeId = useId();
+  const branchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -45,6 +48,9 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
       setBaseBranch("main");
       setLaunchClaude(true);
       setError(null);
+      setTimeout(() => {
+        branchInputRef.current?.focus();
+      }, 0);
     }
   }, [isOpen, initialBranch, suggestedIssueNumber]);
 
@@ -121,7 +127,10 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
 
           {/* Branch Name */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#c9d1d9] flex items-center justify-between">
+            <label
+              htmlFor={branchInputId}
+              className="text-xs font-semibold text-[#c9d1d9] flex items-center justify-between"
+            >
               <span>Branch Name</span>
               <span className="text-[11px] text-[#8b949e] font-normal">
                 Folder: <code className="text-[#58a6ff]">.worktrees/{branch ? branch.replace(/[\/\\]/g, "-") : "..."}</code>
@@ -130,12 +139,13 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
             <div className="relative">
               <GitBranch className="w-4 h-4 text-[#8b949e] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id={branchInputId}
+                ref={branchInputRef}
                 type="text"
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
                 placeholder="e.g. feat/issue-86 or fix/buffer-leak"
                 className="w-full pl-9 pr-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs font-mono text-white placeholder-[#8b949e] focus:outline-hidden focus:border-[#58a6ff]"
-                autoFocus
               />
             </div>
 
@@ -182,24 +192,26 @@ export const NewWorktreeModal: React.FC<NewWorktreeModalProps> = ({
           </div>
 
           {/* Launch Claude Option */}
-          <div className="p-3 bg-[#0d1117] border border-[#30363d] rounded-md">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={launchClaude}
-                onChange={(e) => setLaunchClaude(e.target.checked)}
-                className="rounded border-[#30363d] text-[#58a6ff] focus:ring-0"
-              />
-              <div>
-                <span className="text-xs font-semibold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#58a6ff]" />
-                  <span>Launch Claude Code terminal immediately</span>
-                </span>
-                <p className="text-[11px] text-[#8b949e] mt-0.5">
-                  Opens a new terminal pane inside the worktree with workspace environment variables
-                </p>
-              </div>
-            </label>
+          <div className="p-3 bg-[#0d1117] border border-[#30363d] rounded-md flex items-center gap-2.5">
+            <input
+              id={launchClaudeId}
+              type="checkbox"
+              checked={launchClaude}
+              onChange={(e) => setLaunchClaude(e.target.checked)}
+              className="rounded border-[#30363d] text-[#58a6ff] focus:ring-0 cursor-pointer"
+            />
+            <div>
+              <label
+                htmlFor={launchClaudeId}
+                className="text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#58a6ff]" />
+                Launch Claude Code terminal immediately
+              </label>
+              <p className="text-[11px] text-[#8b949e] mt-0.5">
+                Opens a new terminal pane inside the worktree with workspace environment variables
+              </p>
+            </div>
           </div>
 
           {/* Footer Actions */}

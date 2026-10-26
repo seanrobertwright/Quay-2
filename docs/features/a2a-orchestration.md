@@ -173,7 +173,7 @@ Reports one terminal's level, status, current task and tool.
   - `terminal_id` (string, required): The target's terminal ID or session name (see [How a target is matched](#how-a-target-is-matched)).
 - **Response**: one line of text, for example `Agent term-2: name='backend-dev', level=full peer, status=idle, task='Write the UserProfile type', tool='none', auto_approved=3, project='E:\Projects\Quay2'`. The status is in the lowercase form `quay_list_agents` uses. The task is the first line of the prompt that started the agent's latest turn, cut to 32 characters, without the `[Peer agent (<name>)]:` prefix a peer's message arrives with.
 
-The same server serves three work-order tools for [Machina Praxis](./machina-praxis.md), Quay's software factory. A human admits each work order, launches its author agent and merges the result.
+The same server serves three work-order tools for [Machina](./machina-praxis.md), Quay's software factory. A human admits each work order, launches its author agent and merges the result.
 
 ### `machina_submit_work_order`
 
@@ -252,7 +252,7 @@ Neither hand-off waits for a reply, because neither job fits in 60 seconds. Each
 
 Besides the agents' own messages, you can send messages yourself:
 
-1. Click the **Mission Control** icon (the network icon) in the bottom rail toolbar, press `Ctrl+B M`, or press `Ctrl+K` and choose **Mission Control**. Press `Esc` to close it.
+1. Click the **Mission Control** icon (the network icon) in the bottom rail toolbar, press `Ctrl+Shift+B M`, or press `Ctrl+Shift+P` and choose **Mission Control**. Press `Esc` to close it.
 2. **From Agent**: select any running agent, or check **Dispatch as User**.
 3. **To Agent**: select the recipient.
 4. Type the message.

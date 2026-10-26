@@ -28,13 +28,9 @@ pub(crate) fn get_claude_dir() -> Result<PathBuf, String> {
     Ok(get_home_dir()?.join(".claude"))
 }
 
-/// Where Quay keeps its token ledger: `%LOCALAPPDATA%/Quay2` on Windows, else `~/.quay2`.
-fn get_ledger_path() -> Result<PathBuf, String> {
-    let base = match std::env::var("LOCALAPPDATA") {
-        Ok(local) if !local.trim().is_empty() => PathBuf::from(local).join("Quay2"),
-        _ => get_home_dir()?.join(".quay2"),
-    };
-    Ok(base.join("token-ledger.json"))
+/// Where Quay keeps its token ledger: `token-ledger.json` in Quay's storage folder.
+pub(crate) fn get_ledger_path() -> Result<PathBuf, String> {
+    Ok(crate::slices::workspace::manager::storage_dir().join("token-ledger.json"))
 }
 
 #[tauri::command]

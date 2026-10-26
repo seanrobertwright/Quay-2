@@ -1,7 +1,6 @@
 use std::fs;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use super::models::{
@@ -10,18 +9,9 @@ use super::models::{
 };
 use super::monitor::{action_request, archon_request, build_run_detail, parse_run, validate_id};
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 /// `Command` for the archon binary that never opens a console window.
-fn archon_command(bin: &Path) -> Command {
-    let mut cmd = Command::new(bin);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd
+fn archon_command(bin: &Path) -> std::process::Command {
+    crate::spawn::hidden_command(bin)
 }
 
 /// The port the Archon web server is listening on (the configured port, else 3737).

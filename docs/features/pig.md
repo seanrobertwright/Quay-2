@@ -32,7 +32,7 @@ Quay starts `pig.exe` directly, never through `cmd.exe` or npm's shim. If it can
 
 ## Launching a PiG Terminal
 
-Pick **PiG** in the **New Terminal** dialog (`Ctrl+B N`), or **New PiG (Pi in Go) Agent** in the command palette. The terminal is named `pig` unless you name it.
+Pick **PiG** in the **New Terminal** dialog (`Ctrl+Shift+B N`), or **New PiG (Pi in Go) Agent** in the command palette. The terminal is named `pig` unless you name it.
 
 The **Model** list has these presets:
 

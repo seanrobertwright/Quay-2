@@ -54,7 +54,7 @@ export const PluginHint: FC<PluginHintProps> = ({ flags, onDismiss }) => {
   return (
     <div
       role="status"
-      onClick={(e) => e.stopPropagation()}
+      data-no-terminal-focus
       className="px-2.5 py-1 border-b border-[#d29922]/40 bg-[#d29922]/10 flex items-center gap-2 text-[11px] text-[#c9d1d9] shrink-0"
     >
       <p className="flex-1 min-w-0 leading-5">

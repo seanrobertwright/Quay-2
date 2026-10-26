@@ -358,6 +358,10 @@ pub struct TerminalOutputPayload {
     pub terminal_id: String,
     pub data: String,
     pub last_seq: u64,
+    /// The running PTY's size, which `data` was laid out for. A pane that mounts hidden has
+    /// no layout to fit, so it takes this size before replaying. None for an exited terminal.
+    pub rows: Option<u16>,
+    pub cols: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

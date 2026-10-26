@@ -3,10 +3,6 @@
 //! conversation and any pending approval.
 
 use std::collections::HashMap;
-use std::process::Command;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 use serde_json::Value;
 
@@ -15,9 +11,6 @@ use super::models::{
     ArchonRunDetail,
 };
 use crate::dates;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// The run log keeps the most recent entries only; a long run has thousands of events.
 pub const MAX_LOG_ENTRIES: usize = 600;
@@ -36,7 +29,7 @@ pub fn archon_request(
 ) -> Result<Value, String> {
     let url = format!("http://127.0.0.1:{}{}", port, path);
     let program = if cfg!(windows) { "curl.exe" } else { "curl" };
-    let mut cmd = Command::new(program);
+    let mut cmd = crate::spawn::hidden_command(program);
     cmd.args([
         "-s",
         "-S",
@@ -60,8 +53,6 @@ pub fn archon_request(
         ]);
     }
     cmd.arg(&url);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
 
     let out = cmd
         .output()

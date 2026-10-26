@@ -5,6 +5,21 @@ import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
+import { terminalKeyAction } from "./terminalKeys";
+import { isTerminalReport } from "./terminalReports";
+import { isOverlayOpen } from "../overlay/useOverlay";
+
+/**
+ * Focuses a terminal unless an overlay is open: these focus calls run on timers and output
+ * events, and would otherwise pull focus out from under an overlay opened in the meantime.
+ */
+function focusXterm(term: Terminal) {
+  if (isOverlayOpen()) return;
+  try {
+    term.focus();
+    term.textarea?.focus({ preventScroll: true });
+  } catch (_) {}
+}
 
 const EMOJI_PRESENTATION_RE = /\p{Emoji_Presentation}/u;
 
@@ -221,37 +236,56 @@ export function useTerminal(
 
     // Immediately request focus if active on mount
     if (isVisibleRef.current && isFocusedRef.current) {
-      requestAnimationFrame(() => {
-        try {
-          term.focus();
-          term.textarea?.focus({ preventScroll: true });
-        } catch (_) {}
-      });
-      setTimeout(() => {
-        try {
-          term.focus();
-          term.textarea?.focus({ preventScroll: true });
-        } catch (_) {}
-      }, 50);
+      requestAnimationFrame(() => focusXterm(term));
+      setTimeout(() => focusXterm(term), 50);
     }
 
     const onResultsDispose = searchAddon.onDidChangeResults((e) => {
       setSearchResult({ index: e.resultIndex, count: e.resultCount });
     });
 
-    // Intercept Ctrl+F while typing in xterm canvas
+    // Copy, paste and search keys (terminalKeys.ts). xterm runs this for keydown, keypress and
+    // keyup, so the action runs on keydown only while every phase is kept from the shell.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
+      const action = terminalKeyAction(e, term.hasSelection());
+      if (action === "shell") return true;
+
+      e.preventDefault();
+      if (e.type !== "keydown") return false;
+      // The pane's window Ctrl+F listener would toggle the search a second time.
+      e.stopPropagation();
+
+      if (action === "copy") {
+        const selection = term.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection).catch((err) => {
+            console.error("Failed to copy terminal selection:", err);
+          });
+          term.clearSelection();
+        }
+      } else if (action === "paste") {
+        // xterm turns Ctrl+V into ^V and cancels it, so no paste event fires; read the clipboard
+        // here. term.paste applies bracketed paste mode and line-ending fixes.
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) term.paste(text);
+          })
+          .catch((err) => {
+            console.error("Failed to paste into terminal:", err);
+          });
+      } else {
         onToggleSearchRef.current?.();
-        return false;
       }
-      return true;
+      return false;
     });
 
     // Send user keystrokes to Rust ConPTY
     const onDataDispose = term.onData((data) => {
       if (!initialLoaded) return;
+      // The replay holds old queries, and xterm answers them as it parses. Those replies would
+      // reach the live program as typed input, so drop them; the user's own keys still go through.
+      if (replaying && isTerminalReport(data)) return;
       invoke("write_pty", { terminalId, data }).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });
@@ -259,7 +293,9 @@ export function useTerminal(
 
     // Tracking sequence numbers for clean deduplication
     let highestSeq = -1;
+    let disposed = false;
     let initialLoaded = false;
+    let replaying = false;
     let firstPtyOutputFocused = false;
     const queuedEvents: PtyOutputPayload[] = [];
 
@@ -270,12 +306,7 @@ export function useTerminal(
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
-        requestAnimationFrame(() => {
-          try {
-            term.focus();
-            term.textarea?.focus({ preventScroll: true });
-          } catch (_) {}
-        });
+        requestAnimationFrame(() => focusXterm(term));
       }
 
       if (!initialLoaded) {
@@ -291,18 +322,30 @@ export function useTerminal(
     // Fetch initial buffer once on mount
     invoke<TerminalOutputPayload>("get_terminal_output", { terminalId })
       .then((res) => {
+        // The pane unmounted before the snapshot came back; the next mount fetches its own
+        if (disposed) return;
         syncPtySize();
+        // A pane that mounts hidden can't be fitted, so xterm would stay at its default 80x24
+        // and lay out the replay and every live chunk for the wrong size. Give it the PTY's
+        // size; when the pane shows, its fit then sees any real change and asks for a redraw.
+        if (lastPtySizeRef.current.cols === 0 && res?.rows && res?.cols) {
+          term.resize(res.cols, res.rows);
+          lastPtySizeRef.current = { rows: res.rows, cols: res.cols };
+          fittedTerminalDimensions.set(terminalId, { rows: res.rows, cols: res.cols });
+        }
         if (res && res.data) {
-          term.write(res.data);
+          // xterm parses the write later. Its callback runs once this chunk is parsed and before
+          // any live chunk queued after it, whose queries the live program is waiting on.
+          replaying = true;
+          term.write(res.data, () => {
+            replaying = false;
+          });
           highestSeq = res.last_seq;
         }
         initialLoaded = true;
 
         if (isVisibleRef.current && isFocusedRef.current) {
-          try {
-            term.focus();
-            term.textarea?.focus({ preventScroll: true });
-          } catch (_) {}
+          focusXterm(term);
         }
 
         // Drain any queued events that arrived after the snapshot
@@ -339,6 +382,7 @@ export function useTerminal(
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      disposed = true;
       clearTimeout(fitTimer);
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf);
@@ -354,7 +398,8 @@ export function useTerminal(
 
   // Robust focus method that targets both xterm core and helper textarea
   const focusTerminal = useCallback(() => {
-    if (!termRef.current) return;
+    // An open overlay keeps focus; it hands focus back itself when it closes.
+    if (!termRef.current || isOverlayOpen()) return;
     try {
       termRef.current.focus();
       const textarea =

@@ -1,0 +1,1672 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.dev/readiness/2.0.0",
+  "$comment": "Readiness 2.0.0, the current version, specified in spec/engine-v1/AGENT-BINDING.md sections 2 and 9 from the accepted record shapes in docs/prototypes/agent-binding-records. SDK 0.4.0 decodes and encodes it in TypeScript, Rust and Python; the engine does not implement it yet. The frozen 1.0.0 schema is readiness.schema-1.0.0.json.",
+  "$ref": "#/$defs/Manifest",
+  "$defs": {
+    "Str": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "CapabilityKind": {
+      "enum": [
+        "TOOL",
+        "OUTPUT",
+        "CONTEXT",
+        "ISOLATION",
+        "MODEL"
+      ]
+    },
+    "ModelCapabilityName": {
+      "$comment": "One name per model confinement condition, plus the optional served-model-reported capability a human may require for a run.",
+      "enum": [
+        "host-set-primary-model",
+        "configuration-pinned",
+        "fallback-off",
+        "no-agent-chosen-model-outside-set",
+        "served-model-reported"
+      ]
+    },
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "supported"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CapabilityKind"
+        },
+        "name": {
+          "$ref": "#/$defs/Str"
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "MODEL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/ModelCapabilityName"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "assurance"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CapabilityKind"
+        },
+        "name": {
+          "$ref": "#/$defs/Str"
+        },
+        "assurance": {
+          "enum": [
+            "DECLARED",
+            "VERIFIED"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ISOLATION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "assurance": {
+                "const": "VERIFIED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "MODEL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/ModelCapabilityName"
+              },
+              "assurance": {
+                "const": "VERIFIED"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "capabilities"
+      ],
+      "properties": {
+        "profile": {
+          "const": "aiws-requirements/2"
+        },
+        "version": {
+          "const": "2.0.0"
+        },
+        "agentId": {
+          "$ref": "#/$defs/Str"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Requirement"
+          },
+          "maxItems": 256
+        }
+      }
+    },
+    "Binding": {
+      "$comment": "One immutable binding per node assignment, stored one row per node assignment (AGENT-BINDING.md section 4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "version",
+        "manifestDigest",
+        "requirements"
+      ],
+      "properties": {
+        "profile": {
+          "const": "aiws-readiness-binding/2"
+        },
+        "version": {
+          "const": "2.0.0"
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "requirements": {
+          "$ref": "#/$defs/Requirements"
+        }
+      }
+    },
+    "ModelSetEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "model",
+        "primary",
+        "purpose"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/Str"
+        },
+        "model": {
+          "$ref": "#/$defs/Str",
+          "$comment": "A pinned identifier, matched by exact equality. Never an alias."
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "purpose": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Str"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "$comment": "Reviewed, never enforced. Null on the primary entry, required on every other entry."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "primary": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "purpose": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "purpose": {
+                "$ref": "#/$defs/Str"
+              }
+            }
+          }
+        },
+        {
+          "$comment": "The 1.0.0 placeholders are not model identifiers: \"no models\" is the empty set (AGENT-BINDING.md section 2).",
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "const": "local-process"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "model"
+                ],
+                "properties": {
+                  "model": {
+                    "const": "none"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "ModelSet": {
+      "$comment": "An empty array is 'this agent's own harness makes no model request': no primary model, no MODEL capabilities, no sentinel entry. A non-empty set has exactly one primary entry.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModelSetEntry"
+      },
+      "maxItems": 32,
+      "if": {
+        "minItems": 1
+      },
+      "then": {
+        "contains": {
+          "properties": {
+            "primary": {
+              "const": true
+            }
+          }
+        },
+        "minContains": 1,
+        "maxContains": 1
+      }
+    },
+    "SettingValue": {
+      "$comment": "A number is a safe integer, like every number in a canonical readiness record. A fractional setting, such as a sampling temperature, is recorded as a string.",
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 512
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "maxItems": 64
+        }
+      ]
+    },
+    "Setting": {
+      "$comment": "One resolved setting the inspector observed. 'via' says where the adapter put it. A null value means 'observed unset'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value",
+        "via"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Str"
+        },
+        "value": {
+          "$ref": "#/$defs/SettingValue"
+        },
+        "via": {
+          "enum": [
+            "FLAG",
+            "ENV",
+            "SETTINGS_FILE",
+            "REQUEST_BODY",
+            "ADAPTER_CODE",
+            "SERVER_LAUNCH"
+          ]
+        }
+      }
+    },
+    "WeightsIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "digest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "OLLAMA_MANIFEST_DIGEST"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository",
+            "revision"
+          ],
+          "properties": {
+            "kind": {
+              "const": "REPOSITORY_REVISION"
+            },
+            "repository": {
+              "$ref": "#/$defs/Str"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "digest"
+          ],
+          "properties": {
+            "kind": {
+              "const": "FILE_SHA256"
+            },
+            "digest": {
+              "$ref": "#/$defs/Digest"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigurationSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "owner",
+        "state",
+        "digest",
+        "excludedBy"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/Str"
+        },
+        "owner": {
+          "enum": [
+            "HOST",
+            "WORKSPACE",
+            "MACHINE_POLICY",
+            "TOOL_DEFAULT"
+          ]
+        },
+        "state": {
+          "enum": [
+            "PRESENT",
+            "ABSENT",
+            "EXCLUDED"
+          ]
+        },
+        "digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "excludedBy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Setting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "PRESENT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "digest": {
+                "$ref": "#/$defs/Digest"
+              },
+              "excludedBy": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "EXCLUDED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "digest": {
+                "type": "null"
+              },
+              "excludedBy": {
+                "$ref": "#/$defs/Setting"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "ABSENT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "digest": {
+                "type": "null"
+              },
+              "excludedBy": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AccountBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ORGANIZATION",
+            "WORKSPACE",
+            "PROJECT",
+            "CHATGPT_ACCOUNT"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Str"
+        }
+      }
+    },
+    "DeliveredField": {
+      "$comment": "A delivered credential's scope field. CONFIRMED: observed from the provider at issuance, at exchange or by a check that runs no model. RECORDED: entered by an operator; cannot detect a swapped secret.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "marking"
+      ],
+      "properties": {
+        "value": {},
+        "marking": {
+          "enum": [
+            "CONFIRMED",
+            "RECORDED"
+          ]
+        }
+      }
+    },
+    "LoginField": {
+      "$comment": "A login's scope field. TOOL_ENFORCED: the tool itself refuses another value because of a lock the adapter wrote into the login directory; 'enforcedBy' names that lock, which must appear in the projection's loginLocks.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "marking",
+        "enforcedBy"
+      ],
+      "properties": {
+        "value": {},
+        "marking": {
+          "enum": [
+            "CONFIRMED",
+            "RECORDED",
+            "TOOL_ENFORCED"
+          ]
+        },
+        "enforcedBy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Str"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "marking": {
+                "const": "TOOL_ENFORCED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "enforcedBy": {
+                "$ref": "#/$defs/Str"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "enforcedBy": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DeliveredCredential": {
+      "$comment": "An API-key agent: the reference and scope are reviewed material, the secret is not. Acquired before commit, redeemed at spawn, released at attempt end.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "custody",
+        "reference",
+        "deliveryForm",
+        "scope"
+      ],
+      "properties": {
+        "custody": {
+          "const": "DELIVERED"
+        },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "credentialProvider",
+            "name"
+          ],
+          "properties": {
+            "credentialProvider": {
+              "$ref": "#/$defs/Str",
+              "$comment": "The host credential provider (HC-09). Never an environment provider."
+            },
+            "name": {
+              "$ref": "#/$defs/Str"
+            }
+          }
+        },
+        "deliveryForm": {
+          "enum": [
+            "HELPER",
+            "FILE",
+            "ENVIRONMENT",
+            "IN_PROCESS"
+          ],
+          "$comment": "IN_PROCESS: a host adapter that is itself the harness redeems the handle in memory, and its child processes never see the secret (AGENT-BINDING.md section 3)."
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "endpoint",
+            "accountBoundary",
+            "grantedActions",
+            "modelRestriction",
+            "lifetime"
+          ],
+          "properties": {
+            "provider": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/Str"
+                    }
+                  }
+                }
+              ]
+            },
+            "endpoint": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/Str"
+                    }
+                  }
+                }
+              ]
+            },
+            "accountBoundary": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/AccountBoundary"
+                    }
+                  }
+                }
+              ]
+            },
+            "grantedActions": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/Str"
+                      },
+                      "minItems": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "modelRestriction": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "enum": [
+                        "RESTRICTED_TO_MODEL_SET",
+                        "UNRESTRICTED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "lifetime": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/DeliveredField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "maxMs"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "PER_ATTEMPT",
+                            "FEDERATED",
+                            "STATIC"
+                          ]
+                        },
+                        "maxMs": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/$defs/Ms"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "LoginCredential": {
+      "$comment": "A subscription CLI agent: the host holds a login directory per agent, never the login. Method and account boundary are reviewed; tokens, plan tier and email are not.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "custody",
+        "loginDirectoryId",
+        "statusProbe",
+        "scope"
+      ],
+      "properties": {
+        "custody": {
+          "const": "LOGIN_DIRECTORY"
+        },
+        "loginDirectoryId": {
+          "$ref": "#/$defs/Str"
+        },
+        "statusProbe": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Str"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "$comment": "The command run at credential admission. Null means the tool has none: gap LOGIN_STATE_NOT_CHECKABLE."
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "endpoint",
+            "loginMethod",
+            "accountBoundary"
+          ],
+          "properties": {
+            "provider": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/LoginField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/Str"
+                    }
+                  }
+                }
+              ]
+            },
+            "endpoint": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/LoginField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/Str"
+                    }
+                  }
+                }
+              ]
+            },
+            "loginMethod": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/LoginField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/Str"
+                    }
+                  }
+                }
+              ]
+            },
+            "accountBoundary": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/LoginField"
+                },
+                {
+                  "properties": {
+                    "value": {
+                      "$ref": "#/$defs/AccountBoundary"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "ModelConfiguration": {
+      "$comment": "The model-relevant configuration projection. It is inline, so it sits behind the capability digest (the manifest digest) and the categorised replacement diff can be computed from two manifests.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harness",
+        "endpoints",
+        "primaryModelDispatch",
+        "fallback",
+        "agentModelChoice",
+        "modelLock",
+        "requestedTier",
+        "overage",
+        "subprocessScrub",
+        "persistence",
+        "loginLocks",
+        "operatorPins",
+        "consumptionStop",
+        "configurationSources",
+        "credential"
+      ],
+      "properties": {
+        "harness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "name",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "CLI_TOOL",
+                "HOST_ADAPTER"
+              ]
+            },
+            "name": {
+              "$ref": "#/$defs/Str"
+            },
+            "version": {
+              "$ref": "#/$defs/Str"
+            }
+          }
+        },
+        "endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provider",
+              "url"
+            ],
+            "properties": {
+              "provider": {
+                "$ref": "#/$defs/Str"
+              },
+              "url": {
+                "$ref": "#/$defs/Str"
+              }
+            }
+          }
+        },
+        "primaryModelDispatch": {
+          "$ref": "#/$defs/Setting",
+          "$comment": "Condition 'host-set-primary-model': how the host passes the primary model."
+        },
+        "fallback": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "maxItems": 32,
+          "$comment": "Condition 'fallback-off': every documented fallback switch, observed off."
+        },
+        "agentModelChoice": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "maxItems": 32,
+          "$comment": "Subagent and auxiliary model settings."
+        },
+        "modelLock": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "maxItems": 32,
+          "$comment": "Condition 'no-agent-chosen-model-outside-set': the lock contents, or the switch that removes agent choice."
+        },
+        "requestedTier": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provider",
+              "tier",
+              "setting"
+            ],
+            "properties": {
+              "provider": {
+                "$ref": "#/$defs/Str"
+              },
+              "tier": {
+                "$ref": "#/$defs/Str"
+              },
+              "setting": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/Setting"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "overage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "control",
+            "switch"
+          ],
+          "properties": {
+            "control": {
+              "enum": [
+                "OFF",
+                "ON",
+                "NO_SWITCH",
+                "NOT_APPLICABLE"
+              ],
+              "$comment": "ON is a reviewed choice (gap PLAN_OVERAGE_ENABLED). NO_SWITCH is gap PLAN_OVERAGE_MAY_BE_BILLED. NOT_APPLICABLE for a delivered credential."
+            },
+            "switch": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Setting"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "control": {
+                    "enum": [
+                      "OFF",
+                      "ON"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "switch": {
+                    "$ref": "#/$defs/Setting"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "switch": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "subprocessScrub": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Setting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "persistence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "maxItems": 32
+        },
+        "loginLocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "maxItems": 16
+        },
+        "operatorPins": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provider",
+              "model",
+              "observedWeights",
+              "observedFrom",
+              "serverSwitches"
+            ],
+            "properties": {
+              "provider": {
+                "$ref": "#/$defs/Str"
+              },
+              "model": {
+                "$ref": "#/$defs/Str"
+              },
+              "observedWeights": {
+                "$ref": "#/$defs/WeightsIdentity"
+              },
+              "observedFrom": {
+                "$ref": "#/$defs/Str",
+                "$comment": "The host-owned file the inspector read. Never a request to the server."
+              },
+              "serverSwitches": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Setting"
+                },
+                "maxItems": 16
+              }
+            }
+          }
+        },
+        "consumptionStop": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hostMeter",
+            "toolBudgetSwitch"
+          ],
+          "properties": {
+            "hostMeter": {
+              "type": "boolean",
+              "$comment": "The worker prices streamed usage and stops at the node's stop threshold."
+            },
+            "toolBudgetSwitch": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Setting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "$comment": "Backstop only. Its value is null here because it is set per attempt from the node's stop threshold."
+            }
+          }
+        },
+        "configurationSources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConfigurationSource"
+          },
+          "minItems": 1,
+          "maxItems": 32
+        },
+        "credential": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DeliveredCredential"
+            },
+            {
+              "$ref": "#/$defs/LoginCredential"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "$comment": "Null only for an endpoint that takes no credential, such as a host-owned local server. Never a placeholder credential."
+        }
+      }
+    },
+    "UsageReporting": {
+      "$comment": "What the adapter's model usage report can and cannot say. Admission derives the price keys it needs from this; gaps are derived from it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "servedModel",
+        "perModel",
+        "categories",
+        "servedTier",
+        "rateModifiers",
+        "sessionCumulative",
+        "credentialSourceReported",
+        "auxiliaryCallKinds",
+        "agentScalableCallKinds"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/Str"
+        },
+        "servedModel": {
+          "enum": [
+            "SERVED_ALWAYS",
+            "SERVED_PARTIAL",
+            "REQUESTED_ONLY"
+          ]
+        },
+        "perModel": {
+          "type": "boolean"
+        },
+        "categories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/TokenCategory"
+          }
+        },
+        "servedTier": {
+          "type": "boolean"
+        },
+        "rateModifiers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SPEED",
+              "REGION",
+              "CONTEXT_BAND"
+            ]
+          }
+        },
+        "sessionCumulative": {
+          "type": "boolean"
+        },
+        "credentialSourceReported": {
+          "type": "boolean"
+        },
+        "auxiliaryCallKinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Str"
+          },
+          "maxItems": 16,
+          "$comment": "Bounded auxiliary gaps: named here, listed in each report, unpriced."
+        },
+        "agentScalableCallKinds": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "callKind",
+              "switchedOffBy"
+            ],
+            "properties": {
+              "callKind": {
+                "$ref": "#/$defs/Str"
+              },
+              "switchedOffBy": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/Setting"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "$comment": "A call kind that is not switched off makes every report INCOMPLETE."
+        }
+      }
+    },
+    "GapCode": {
+      "enum": [
+        "LOGIN_DISPLACEABLE",
+        "LOGIN_STATE_NOT_CHECKABLE",
+        "CREDENTIAL_SOURCE_NOT_REPORTED",
+        "PERSISTED_STATE_WITHOUT_SWITCH",
+        "PLAN_OVERAGE_MAY_BE_BILLED",
+        "PLAN_OVERAGE_ENABLED",
+        "CONSUMPTION_NOT_BOUNDED_DURING_ATTEMPT",
+        "DELIVERED_CREDENTIAL_REACHABLE_BY_SUBPROCESSES",
+        "WORKSPACE_WRITABLE_CONFIGURATION",
+        "UNREPORTED_AUXILIARY_CALLS",
+        "AGENT_SCALABLE_CALLS_UNREPORTED"
+      ]
+    },
+    "Gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "subject"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/GapCode"
+        },
+        "subject": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Str"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "implementationDigest",
+        "modelSet",
+        "configuration",
+        "usageReporting",
+        "capabilities",
+        "gaps"
+      ],
+      "properties": {
+        "profile": {
+          "const": "aiws-capabilities/2"
+        },
+        "version": {
+          "const": "2.0.0"
+        },
+        "agentId": {
+          "$ref": "#/$defs/Str"
+        },
+        "implementationDigest": {
+          "$ref": "#/$defs/Digest",
+          "$comment": "Adapter code and tool binary only. It no longer hashes environment values."
+        },
+        "modelSet": {
+          "$ref": "#/$defs/ModelSet"
+        },
+        "configuration": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ModelConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usageReporting": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UsageReporting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "maxItems": 256
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gap"
+          },
+          "maxItems": 64
+        }
+      },
+      "if": {
+        "properties": {
+          "modelSet": {
+            "maxItems": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "configuration": {
+            "type": "null"
+          },
+          "usageReporting": {
+            "type": "null"
+          },
+          "capabilities": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "kind": {
+                    "const": "MODEL"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "configuration": {
+            "$ref": "#/$defs/ModelConfiguration"
+          },
+          "usageReporting": {
+            "$ref": "#/$defs/UsageReporting"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$comment": "A set larger than one requires a per-model usage report (AGENT-BINDING.md section 2).",
+          "if": {
+            "required": [
+              "modelSet"
+            ],
+            "properties": {
+              "modelSet": {
+                "minItems": 2
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "usageReporting": {
+                "required": [
+                  "perModel"
+                ],
+                "properties": {
+                  "perModel": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TokenCategory": {
+      "enum": [
+        "UNCACHED_INPUT",
+        "CACHE_READ",
+        "CACHE_WRITE",
+        "OUTPUT",
+        "SERVER_TOOL_REQUEST"
+      ]
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "evidenceRef",
+        "validUntilMs"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CapabilityKind"
+        },
+        "name": {
+          "$ref": "#/$defs/Str"
+        },
+        "evidenceRef": {
+          "$ref": "#/$defs/Str"
+        },
+        "validUntilMs": {
+          "$ref": "#/$defs/Ms"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "MODEL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/ModelCapabilityName"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "version",
+        "manifest",
+        "observedAtMs",
+        "validUntilMs",
+        "evidence"
+      ],
+      "properties": {
+        "profile": {
+          "const": "aiws-capability-snapshot/2"
+        },
+        "version": {
+          "const": "2.0.0"
+        },
+        "manifest": {
+          "$ref": "#/$defs/Manifest"
+        },
+        "observedAtMs": {
+          "$ref": "#/$defs/Ms"
+        },
+        "validUntilMs": {
+          "$ref": "#/$defs/Ms"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "maxItems": 256
+        }
+      }
+    },
+    "Check": {
+      "type": "object",
+      "properties": {
+        "requirement": {
+          "$ref": "#/$defs/Requirement"
+        },
+        "observed": {
+          "enum": [
+            "SUPPORTED",
+            "UNSUPPORTED",
+            "MISSING"
+          ]
+        },
+        "status": {
+          "enum": [
+            "SATISFIED",
+            "MISSING",
+            "UNSUPPORTED",
+            "UNVERIFIED",
+            "EVIDENCE_EXPIRED",
+            "STALE"
+          ]
+        },
+        "evidenceRef": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          ]
+        },
+        "remediation": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "requirement",
+        "observed",
+        "status",
+        "evidenceRef",
+        "remediation"
+      ],
+      "additionalProperties": false
+    },
+    "Report": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-readiness/2"
+        },
+        "version": {
+          "const": "2.0.0"
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "requirementsDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedManifestDigest": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          ]
+        },
+        "evaluatedAtMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "enum": [
+            "READY",
+            "BLOCKED"
+          ]
+        },
+        "authorized": {
+          "const": false
+        },
+        "agentMatches": {
+          "type": "boolean"
+        },
+        "pinMatches": {
+          "type": "boolean"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "maxItems": 256
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "agentId",
+        "manifestDigest",
+        "requirementsDigest",
+        "expectedManifestDigest",
+        "evaluatedAtMs",
+        "status",
+        "authorized",
+        "agentMatches",
+        "pinMatches",
+        "fresh",
+        "reasons",
+        "checks"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { Terminal, Shield, AlertTriangle, X, Sliders } from "lucide-react";
 import {
   RunKind,
@@ -179,14 +179,53 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
   const [name, setName] = useState("");
   const modelSelectId = useId();
   const permissionLabelId = useId();
+  const customFlagsInputId = useId();
+  const commandInputId = useId();
+  const nameInputId = useId();
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
 
   const isAgent = isAgentRunKind(runKind);
   const neverAsks = neverAsksBeforeTools(runKind);
   const effectivePermissionMode: PermissionMode = neverAsks ? "skip" : permissionMode;
 
+  const handleSubmit = useCallback(() => {
+    const mergedFlags = [selectedModelFlag, customFlags].filter(Boolean).join(" ").trim() || undefined;
+
+    // Explicitly blur any input/button in the modal so focus smoothly transfers to new terminal
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    onSpawn({
+      project_path: projectPath,
+      run_kind: runKind,
+      permission_mode: isAgent ? effectivePermissionMode : undefined,
+      command_text: runKind === "command" ? commandText : undefined,
+      custom_flags: mergedFlags,
+      name: name.trim() || undefined,
+    });
+    onClose();
+  }, [
+    selectedModelFlag,
+    customFlags,
+    onSpawn,
+    projectPath,
+    runKind,
+    isAgent,
+    effectivePermissionMode,
+    commandText,
+    name,
+    onClose,
+  ]);
+
   // Reset model flag when switching agent kinds
   useEffect(() => {
     setSelectedModelFlag("");
+    if (runKind === "command") {
+      setTimeout(() => {
+        commandInputRef.current?.focus();
+      }, 0);
+    }
   }, [runKind]);
 
   useEffect(() => {
@@ -204,28 +243,9 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, runKind, permissionMode, commandText, name, projectPath, selectedModelFlag, customFlags]);
+  }, [isOpen, runKind, commandText, onClose, handleSubmit]);
 
   if (!isOpen) return null;
-
-  const handleSubmit = () => {
-    const mergedFlags = [selectedModelFlag, customFlags].filter(Boolean).join(" ").trim() || undefined;
-
-    // Explicitly blur any input/button in the modal so focus smoothly transfers to new terminal
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
-    onSpawn({
-      project_path: projectPath,
-      run_kind: runKind,
-      permission_mode: isAgent ? effectivePermissionMode : undefined,
-      command_text: runKind === "command" ? commandText : undefined,
-      custom_flags: mergedFlags,
-      name: name.trim() || undefined,
-    });
-    onClose();
-  };
 
   const getAgentLabel = () => {
     switch (runKind) {
@@ -275,9 +295,9 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
         <div className="space-y-4 pt-4">
           {/* Run Kind Selection with Official Icons */}
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2">
+            <div className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2">
               Autonomous AI Agents
-            </label>
+            </div>
             <div className="grid grid-cols-5 sm:grid-cols-5 gap-2 mb-3">
               {/* Claude Code */}
               <button
@@ -467,9 +487,9 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
               </button>
             </div>
 
-            <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2 mt-2">
+            <div className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-2 mt-2">
               Shells & Commands
-            </label>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {/* PowerShell */}
               <button
@@ -515,6 +535,7 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
                 {!neverAsks && (
                   <div
                     role="radiogroup"
+                    tabIndex={-1}
                     aria-labelledby={permissionLabelId}
                     className="grid grid-cols-2 gap-2"
                     onKeyDown={(e) => {
@@ -605,11 +626,15 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
 
               {/* Extra CLI Flags */}
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1 flex items-center gap-1">
+                <label
+                  htmlFor={customFlagsInputId}
+                  className="text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1 flex items-center gap-1"
+                >
                   <Sliders className="w-3 h-3" />
                   <span>Custom CLI Arguments (Optional)</span>
                 </label>
                 <input
+                  id={customFlagsInputId}
                   type="text"
                   value={customFlags}
                   onChange={(e) => setCustomFlags(e.target.value)}
@@ -629,15 +654,19 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
           {/* Command text for Command Kind */}
           {runKind === "command" && (
             <div>
-              <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1.5">
+              <label
+                htmlFor={commandInputId}
+                className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1.5"
+              >
                 Command Line
               </label>
               <input
+                id={commandInputId}
+                ref={commandInputRef}
                 type="text"
                 value={commandText}
                 onChange={(e) => setCommandText(e.target.value)}
                 placeholder="e.g. git status, cargo test, npm run dev"
-                autoFocus
                 className="w-full px-3 py-2 bg-[#0d1117] border border-[#30363d] rounded-md text-xs text-white focus:outline-hidden focus:border-[#58a6ff] transition-colors"
               />
             </div>
@@ -645,10 +674,14 @@ export const NewTerminalModal: React.FC<NewTerminalModalProps> = ({
 
           {/* Optional Name */}
           <div>
-            <label className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1">
+            <label
+              htmlFor={nameInputId}
+              className="block text-xs font-medium uppercase tracking-wider text-[#8b949e] mb-1"
+            >
               Terminal Label (Optional)
             </label>
             <input
+              id={nameInputId}
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
