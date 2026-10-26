@@ -59,7 +59,8 @@ export interface GithubPullRequest {
   baseRefName: string;
   labels: GithubLabel[];
   author?: GithubUser | null;
-  statusCheckRollup?: any;
+  /** The head commit's check rollup, e.g. `{ state: "SUCCESS" }`. */
+  statusCheckRollup?: { state: string } | null;
   mergeable?: string | null;
   url: string;
 }

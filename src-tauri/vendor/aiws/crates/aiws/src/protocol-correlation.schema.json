@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.example/spec/protocol-correlation-v1/schema.json",
+  "$ref": "#/$defs/ProtocolCorrelation",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "Decimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,99})$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
+    },
+    "RemoteRef": {
+      "$comment": "The SDKs also bound the value to 2048 UTF-8 bytes, which JSON Schema cannot express.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+    },
+    "ProtocolBindingRef": {
+      "type": "object",
+      "properties": {
+        "bindingId": {
+          "$ref": "#/$defs/Id"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "protocol": {
+          "enum": [
+            "MCP",
+            "A2A",
+            "AG_UI"
+          ]
+        },
+        "protocolVersion": {
+          "$ref": "#/$defs/Version"
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "capabilityDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "bindingId",
+        "bindingRevision",
+        "protocol",
+        "protocolVersion",
+        "manifestDigest",
+        "capabilityDigest"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolOperationRef": {
+      "type": "object",
+      "properties": {
+        "workOrderId": {
+          "$ref": "#/$defs/Id"
+        },
+        "runId": {
+          "$ref": "#/$defs/Id"
+        },
+        "taskId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Id"
+            }
+          ]
+        },
+        "operationId": {
+          "$ref": "#/$defs/Id"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/Id"
+        },
+        "remoteIdentityRef": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/RemoteRef"
+            }
+          ]
+        },
+        "remoteOperationId": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/RemoteRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "workOrderId",
+        "runId",
+        "taskId",
+        "operationId",
+        "attemptId",
+        "remoteIdentityRef",
+        "remoteOperationId"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolCorrelation": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "aiws-protocol-correlation/1"
+        },
+        "binding": {
+          "$ref": "#/$defs/ProtocolBindingRef"
+        },
+        "operation": {
+          "$ref": "#/$defs/ProtocolOperationRef"
+        },
+        "authoritative": {
+          "const": false
+        }
+      },
+      "required": [
+        "profile",
+        "binding",
+        "operation",
+        "authoritative"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

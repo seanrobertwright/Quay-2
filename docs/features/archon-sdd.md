@@ -2,7 +2,7 @@
 
 **Archon** is an autonomous software development framework that compiles functional specifications into executable Directed Acyclic Graphs (DAGs) and Architectural Decision Records (ADRs).
 
-Quay 2 features a first-class, embedded **Archon & SDD Graph Inspector** (`Ctrl+B R`), providing visual execution tracking, live streaming logs, and spec task monitoring right inside your desktop environment.
+Quay 2 features a first-class, embedded **Archon & SDD Graph Inspector** (`Ctrl+Shift+B R`), providing visual execution tracking, live streaming logs, and spec task monitoring right inside your desktop environment.
 
 ---
 
@@ -44,7 +44,7 @@ flowchart TD
 
 ## 1-Click "Implement with Archon" from GitHub
 
-When browsing GitHub issues in the **GitHub Companion Drawer** (`Ctrl+B I`), Quay 2 provides a dedicated **"Implement with Archon"** button.
+When browsing GitHub issues in the **GitHub Companion Drawer** (`Ctrl+Shift+B I`), Quay 2 provides a dedicated **"Implement with Archon"** button.
 
 Clicking this button:
 1. Creates an isolated git worktree branch for the issue.

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px15-title px15-desc">
+  <title id="px15-title">Praxis workflow engine logo: Blueprint</title>
+  <desc id="px15-desc">A P drawn on a blueprint grid with its construction circle still visible.</desc>
+  <g id="px15-icon"><rect x="4" y="4" width="88" height="88" rx="12" fill="#1E40AF"/><g stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="1"><line x1="16" y1="4" x2="16" y2="92"/><line x1="4" y1="16" x2="92" y2="16"/><line x1="28" y1="4" x2="28" y2="92"/><line x1="4" y1="28" x2="92" y2="28"/><line x1="40" y1="4" x2="40" y2="92"/><line x1="4" y1="40" x2="92" y2="40"/><line x1="52" y1="4" x2="52" y2="92"/><line x1="4" y1="52" x2="92" y2="52"/><line x1="64" y1="4" x2="64" y2="92"/><line x1="4" y1="64" x2="92" y2="64"/><line x1="76" y1="4" x2="76" y2="92"/><line x1="4" y1="76" x2="92" y2="76"/><line x1="88" y1="4" x2="88" y2="92"/><line x1="4" y1="88" x2="92" y2="88"/></g><circle cx="50" cy="37" r="19" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1" stroke-dasharray="2 3"/><path d="M47,37 H53 M50,34 V40" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="1"/><path d="M34,74 V24 H50 A13,13 0 0 1 50,50 H34" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="px15-wordmark">
+    <text x="114" y="54" font-family="Bahnschrift, 'DIN Alternate', 'Arial Narrow', sans-serif" font-size="40" font-weight="400" letter-spacing="6" fill="#1E40AF">PRAXIS</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#3B82F6">WORKFLOW ENGINE</text>
+  </g>
+</svg>

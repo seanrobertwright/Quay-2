@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px24-title px24-desc">
+  <title id="px24-title">Praxis workflow engine logo: Prism</title>
+  <desc id="px24-desc">One beam of intent enters, separate deliverables leave: a single spec fanned into parallel work.</desc>
+  <defs><linearGradient id="px24-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EEF2FF"/><stop offset="1" stop-color="#C7D2FE"/></linearGradient></defs>
+  <g id="px24-icon"><line x1="2" y1="56" x2="32" y2="45" stroke="#475569" stroke-width="3" stroke-linecap="round"/><line x1="62.4" y1="42.1" x2="94" y2="32" stroke="#EF4444" stroke-width="3" stroke-linecap="round"/><line x1="65.6" y1="47.9" x2="94" y2="48" stroke="#22C55E" stroke-width="3" stroke-linecap="round"/><line x1="68.8" y1="53.7" x2="94" y2="64" stroke="#3B82F6" stroke-width="3" stroke-linecap="round"/><polygon points="48,16 80,74 16,74" fill="url(#px24-g)" stroke="#4338CA" stroke-width="3" stroke-linejoin="round"/><polygon points="32,45 62.4,42.1 68.8,53.7" fill="#FFFFFF" fill-opacity="0.75"/></g>
+  <g id="px24-wordmark">
+    <text x="114" y="54" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="44" font-weight="600" letter-spacing="0" fill="#312E81">Praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#4338CA">WORKFLOW ENGINE</text>
+  </g>
+</svg>

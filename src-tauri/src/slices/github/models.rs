@@ -89,6 +89,7 @@ pub struct GithubPullRequest {
     #[serde(default)]
     pub labels: Vec<GithubLabel>,
     pub author: Option<GithubUser>,
+    /// The head commit's check rollup, `{ "state": "SUCCESS" | "FAILURE" | ... }`.
     #[serde(rename = "statusCheckRollup", default)]
     pub status_check_rollup: Option<serde_json::Value>,
     pub mergeable: Option<String>,
@@ -102,4 +103,15 @@ pub struct GithubRepoInfo {
     pub name: String,
     pub nwo: String,
     pub is_authenticated: bool,
+}
+
+/// One page of a cursor-paged GitHub list. Pass `end_cursor` back as `after` to get
+/// the next page; `has_next_page` is false on the last one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubPage<T> {
+    pub items: Vec<T>,
+    #[serde(rename = "endCursor")]
+    pub end_cursor: Option<String>,
+    #[serde(rename = "hasNextPage")]
+    pub has_next_page: bool,
 }
