@@ -40,6 +40,7 @@ import {
   ShieldAlert,
   Cpu,
   ArrowUpCircle,
+  Workflow,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
@@ -87,6 +88,7 @@ interface CommandPaletteProps {
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
+  onOpenPraxisBuilder?: () => void;
   onCheckForUpdates?: () => void;
 }
 
@@ -118,6 +120,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenTokenSpend,
   onOpenArchonGraph,
   onOpenFactoryStation,
+  onOpenPraxisBuilder,
   onCheckForUpdates,
   onToggleLiveMode,
   onAddProject,
@@ -434,6 +437,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    if (onOpenPraxisBuilder) {
+      items.push({
+        id: "action-praxis-builder",
+        category: "Tools & Actions",
+        title: "Praxis Builder...",
+        subtitle: "Browse the project's Praxis graphs, contracts, grants and triggers",
+        icon: <Workflow className="w-4 h-4 text-[#58a6ff]" />,
+        shortcut: "Ctrl+B p",
+        action: () => onOpenPraxisBuilder(),
+      });
+    }
+
     if (onToggleLiveMode) {
       items.push({
         id: "action-toggle-gatekeeper",
@@ -557,6 +572,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenTokenSpend,
     onOpenArchonGraph,
     onOpenFactoryStation,
+    onOpenPraxisBuilder,
     onCheckForUpdates,
     onToggleLiveMode,
     onAddProject,
