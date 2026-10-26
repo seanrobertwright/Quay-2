@@ -61,17 +61,32 @@ pub struct PersistedProject {
     pub default_flags: Option<String>,
 }
 
-/// The directory Quay keeps its JSON files in: `%LOCALAPPDATA%\Quay2`, or
-/// `%USERPROFILE%\.quay2` when `LOCALAPPDATA` is unset.
+/// The directory Quay keeps all its data in: workspaces, terminal sessions, the token
+/// ledger and Machina's state. Every path into the user's Quay data goes through here.
+///
+/// In tests this is a folder of the test process's own under the temp directory, so no
+/// test can read or overwrite the user's real data.
 pub fn storage_dir() -> PathBuf {
-    let dir = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        Path::new(&local_app_data).join("Quay2")
-    } else {
-        let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-        Path::new(&home).join(".quay2")
-    };
+    #[cfg(not(test))]
+    let dir = user_storage_dir();
+    #[cfg(test)]
+    let dir = std::env::temp_dir().join(format!("quay2-test-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     dir
+}
+
+/// The user's real Quay data folder: `%LOCALAPPDATA%\Quay2`, or `%USERPROFILE%\.quay2`
+/// when `LOCALAPPDATA` is unset.
+fn user_storage_dir() -> PathBuf {
+    match std::env::var("LOCALAPPDATA") {
+        Ok(local_app_data) if !local_app_data.trim().is_empty() => {
+            Path::new(&local_app_data).join("Quay2")
+        }
+        _ => {
+            let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+            Path::new(&home).join(".quay2")
+        }
+    }
 }
 
 fn get_storage_path() -> PathBuf {
@@ -288,6 +303,32 @@ impl WorkspaceManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Guard: a test run must never read or write the user's real Quay data (#293).
+    #[test]
+    fn tests_never_reach_the_users_real_quay_data() {
+        let test_dir = storage_dir();
+        let real_dirs = [
+            user_storage_dir(),
+            std::env::var("LOCALAPPDATA").map(|d| Path::new(&d).join("Quay2")).unwrap_or_default(),
+            std::env::var("USERPROFILE").map(|d| Path::new(&d).join(".quay2")).unwrap_or_default(),
+        ];
+        for real in real_dirs.iter().filter(|d| !d.as_os_str().is_empty()) {
+            assert!(!test_dir.starts_with(real), "tests store data in {}", test_dir.display());
+        }
+        assert!(test_dir.starts_with(std::env::temp_dir()), "{}", test_dir.display());
+
+        let data_paths = [
+            get_storage_path(),
+            crate::slices::pty::manager::get_sessions_dir(),
+            crate::slices::sessions::commands::get_ledger_path().unwrap(),
+            crate::slices::machina::vault::machina_data_dir(),
+            crate::slices::machina::vault::default_vault_root(),
+        ];
+        for path in data_paths {
+            assert!(path.starts_with(&test_dir), "{} is outside {}", path.display(), test_dir.display());
+        }
+    }
 
     #[test]
     fn test_persisted_workspaces_serialization() {
