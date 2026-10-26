@@ -4,12 +4,51 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use super::models::Project;
+use super::models::{Project, ProjectView};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedWorkspaces {
     pub active_project: Option<String>,
     pub projects: Vec<PersistedProject>,
+    /// Each project's stage layout, keyed by project or worktree path. Missing in files
+    /// written before per-project view state; a malformed entry is dropped, never the file.
+    #[serde(default, deserialize_with = "lenient_views")]
+    pub views: HashMap<String, ProjectView>,
+}
+
+/// Reads the `views` map, keeping every entry that parses and dropping any that don't, so a
+/// bad view can never stop the project list from loading.
+fn lenient_views<'de, D>(deserializer: D) -> Result<HashMap<String, ProjectView>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let serde_json::Value::Object(entries) = value else {
+        return Ok(HashMap::new());
+    };
+    Ok(entries
+        .into_iter()
+        .filter_map(|(path, view)| {
+            serde_json::from_value::<ProjectView>(view)
+                .ok()
+                .map(|view| (path, view))
+        })
+        .collect())
+}
+
+/// Normalises a path for comparison: forward slashes, no trailing slash, lower case.
+fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+
+/// Drops the saved views of `removed` and of every worktree under it.
+fn prune_views(views: &mut HashMap<String, ProjectView>, removed: &str) {
+    let root = normalize_path(removed);
+    let prefix = format!("{}/", root);
+    views.retain(|path, _| {
+        let path = normalize_path(path);
+        path != root && !path.starts_with(&prefix)
+    });
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +82,7 @@ fn get_storage_path() -> PathBuf {
 pub struct WorkspaceManager {
     projects: Arc<Mutex<Vec<Project>>>,
     active_project: Arc<Mutex<Option<String>>>,
+    views: Arc<Mutex<HashMap<String, ProjectView>>>,
 }
 
 impl WorkspaceManager {
@@ -72,6 +112,7 @@ impl WorkspaceManager {
                     return Self {
                         projects: Arc::new(Mutex::new(projects)),
                         active_project: Arc::new(Mutex::new(active)),
+                        views: Arc::new(Mutex::new(persisted.views)),
                     };
                 }
             }
@@ -100,6 +141,7 @@ impl WorkspaceManager {
         let manager = Self {
             projects: Arc::new(Mutex::new(vec![initial_project])),
             active_project: Arc::new(Mutex::new(Some(default_path))),
+            views: Arc::new(Mutex::new(HashMap::new())),
         };
         manager.save_to_disk();
         manager
@@ -109,6 +151,7 @@ impl WorkspaceManager {
         let path = get_storage_path();
         let projects_guard = self.projects.lock();
         let active_guard = self.active_project.lock();
+        let views_guard = self.views.lock();
 
         let persisted = PersistedWorkspaces {
             active_project: active_guard.clone(),
@@ -125,6 +168,7 @@ impl WorkspaceManager {
                     default_flags: p.default_flags.clone(),
                 })
                 .collect(),
+            views: views_guard.clone(),
         };
 
         if let Ok(json) = serde_json::to_string_pretty(&persisted) {
@@ -174,6 +218,7 @@ impl WorkspaceManager {
         }
         drop(active);
         drop(projects);
+        prune_views(&mut self.views.lock(), path);
 
         self.save_to_disk();
         self.list_projects()
@@ -186,6 +231,17 @@ impl WorkspaceManager {
 
     pub fn get_active_project(&self) -> Option<String> {
         self.active_project.lock().clone()
+    }
+
+    /// Every saved project view, keyed by project or worktree path.
+    pub fn get_project_views(&self) -> HashMap<String, ProjectView> {
+        self.views.lock().clone()
+    }
+
+    /// Saves how `path`'s stage is laid out and writes it to disk.
+    pub fn save_project_view(&self, path: &str, view: ProjectView) {
+        self.views.lock().insert(path.to_string(), view);
+        self.save_to_disk();
     }
 
     pub fn associate_terminal(&self, project_path: &str, terminal_id: &str) {
@@ -251,6 +307,7 @@ mod tests {
                     default_flags: None,
                 },
             ],
+            views: HashMap::new(),
         };
 
         let json = serde_json::to_string(&workspaces).unwrap();
@@ -267,6 +324,7 @@ mod tests {
         let manager = WorkspaceManager {
             projects: Arc::new(Mutex::new(Vec::new())),
             active_project: Arc::new(Mutex::new(None)),
+            views: Arc::new(Mutex::new(HashMap::new())),
         };
 
         manager.add_project("C:\\Test\\Alpha");
@@ -293,6 +351,7 @@ mod tests {
         let manager = WorkspaceManager {
             projects: Arc::new(Mutex::new(Vec::new())),
             active_project: Arc::new(Mutex::new(None)),
+            views: Arc::new(Mutex::new(HashMap::new())),
         };
 
         manager.add_project("C:\\Test\\Alpha");
@@ -310,6 +369,96 @@ mod tests {
         let (retrieved_envs, flags) = manager.get_project_settings("C:\\Test\\Alpha").unwrap();
         assert_eq!(retrieved_envs.get("ANTHROPIC_API_KEY").map(|s| s.as_str()), Some("sk-test-123"));
         assert_eq!(flags.as_deref(), Some("--model claude-sonnet-5-5"));
+    }
+
+    #[test]
+    fn a_workspaces_file_from_before_view_state_still_loads() {
+        let json = r#"{
+            "active_project": "C:\\Projects\\Old",
+            "projects": [{ "path": "C:\\Projects\\Old", "name": "Old" }]
+        }"#;
+        let loaded: PersistedWorkspaces = serde_json::from_str(json).unwrap();
+        assert_eq!(loaded.projects.len(), 1);
+        assert!(loaded.views.is_empty());
+    }
+
+    #[test]
+    fn project_views_round_trip_through_the_workspaces_file() {
+        let view = ProjectView {
+            layout: "grid".to_string(),
+            primary_terminal_id: Some("t1".to_string()),
+            secondary_terminal_id: None,
+            grid_terminal_ids: vec![Some("t1".to_string()), None, Some("t3".to_string()), None],
+            split_ratio: 62.5,
+            zoomed_from_layout: None,
+            focused_pane: "grid-2".to_string(),
+            active_terminal_id: Some("t3".to_string()),
+        };
+        let mut views = HashMap::new();
+        views.insert("C:\\Projects\\A".to_string(), view.clone());
+        let workspaces = PersistedWorkspaces {
+            active_project: None,
+            projects: Vec::new(),
+            views,
+        };
+
+        let json = serde_json::to_string(&workspaces).unwrap();
+        let loaded: PersistedWorkspaces = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.views.get("C:\\Projects\\A"), Some(&view));
+    }
+
+    #[test]
+    fn a_partial_view_fills_in_defaults() {
+        let json = r#"{
+            "active_project": null,
+            "projects": [],
+            "views": { "C:\\A": { "layout": "split-vertical", "split_ratio": 30 } }
+        }"#;
+        let loaded: PersistedWorkspaces = serde_json::from_str(json).unwrap();
+        let view = loaded.views.get("C:\\A").unwrap();
+        assert_eq!(view.layout, "split-vertical");
+        assert_eq!(view.split_ratio, 30.0);
+        assert_eq!(view.focused_pane, "primary");
+        assert_eq!(view.grid_terminal_ids, vec![None; 4]);
+    }
+
+    #[test]
+    fn a_malformed_view_is_dropped_without_losing_the_projects() {
+        let json = r#"{
+            "active_project": "C:\\A",
+            "projects": [{ "path": "C:\\A", "name": "A" }],
+            "views": {
+                "C:\\A": { "layout": "single", "split_ratio": "wide" },
+                "C:\\B": { "layout": "grid" }
+            }
+        }"#;
+        let loaded: PersistedWorkspaces = serde_json::from_str(json).unwrap();
+        assert_eq!(loaded.projects.len(), 1);
+        assert!(!loaded.views.contains_key("C:\\A"));
+        assert_eq!(loaded.views.get("C:\\B").map(|v| v.layout.as_str()), Some("grid"));
+
+        let not_a_map = r#"{ "active_project": null, "projects": [], "views": [1, 2] }"#;
+        let loaded: PersistedWorkspaces = serde_json::from_str(not_a_map).unwrap();
+        assert!(loaded.views.is_empty());
+    }
+
+    #[test]
+    fn removing_a_project_prunes_its_view_and_its_worktrees_views() {
+        let mut views = HashMap::new();
+        for path in [
+            "C:\\Repos\\Quay",
+            "c:/repos/quay/.claude/worktrees/wt-1",
+            "C:\\Repos\\Quay-2",
+            "C:\\Repos\\Other",
+        ] {
+            views.insert(path.to_string(), ProjectView::default());
+        }
+
+        prune_views(&mut views, "C:\\Repos\\Quay");
+
+        let mut left: Vec<&str> = views.keys().map(|k| k.as_str()).collect();
+        left.sort();
+        assert_eq!(left, vec!["C:\\Repos\\Other", "C:\\Repos\\Quay-2"]);
     }
 }
 
