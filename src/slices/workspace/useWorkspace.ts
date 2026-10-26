@@ -23,6 +23,7 @@ import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
 import { opensCommandPalette } from "./paletteKey";
 import { chooseGridSlots } from "./gridSlots";
+import { areWorktreesEqual, findProjectsNeedingWorktreeRefresh } from "./worktreeSync";
 import {
   ProjectView,
   StoredProjectView,
@@ -567,16 +568,36 @@ export function useWorkspace() {
     }
   };
 
+  // In-flight refresh promises to prevent parallel duplicate spawns
+  const inFlightWorktreeRefreshes = useRef<Map<string, Promise<GitWorktree[]>>>(new Map());
+  const checkedTerminalPathsRef = useRef<Set<string>>(new Set());
+
   // Refresh git worktrees for a repo
   const refreshWorktrees = useCallback(async (repoPath: string) => {
-    try {
-      const list = await invoke<GitWorktree[]>("list_git_worktrees", { projectPath: repoPath });
-      setProjectWorktrees((prev) => ({ ...prev, [repoPath]: list }));
-      return list;
-    } catch (err) {
-      console.error("Failed to list worktrees:", err);
-      return [];
+    const existing = inFlightWorktreeRefreshes.current.get(repoPath);
+    if (existing) {
+      return existing;
     }
+    const promise = (async () => {
+      try {
+        const list = await invoke<GitWorktree[]>("list_git_worktrees", { projectPath: repoPath });
+        setProjectWorktrees((prev) => {
+          const current = prev[repoPath];
+          if (areWorktreesEqual(current, list)) {
+            return prev;
+          }
+          return { ...prev, [repoPath]: list };
+        });
+        return list;
+      } catch (err) {
+        console.error("Failed to list worktrees:", err);
+        return [];
+      } finally {
+        inFlightWorktreeRefreshes.current.delete(repoPath);
+      }
+    })();
+    inFlightWorktreeRefreshes.current.set(repoPath, promise);
+    return promise;
   }, []);
 
   // Auto-refresh worktrees when projects update
@@ -588,16 +609,14 @@ export function useWorkspace() {
 
   // Auto-refresh worktrees if any terminal belongs to a worktree subpath not yet cached
   useEffect(() => {
-    projects.forEach((p) => {
-      const knownWts = projectWorktrees[p.path] || [];
-      const hasUnknownSubpath = terminals.some((t) => {
-        if (!isSubpathOf(t.project_path, p.path)) return false;
-        if (isSamePath(t.project_path, p.path)) return false;
-        return !knownWts.some((wt) => isSamePath(wt.path, t.project_path));
-      });
-      if (hasUnknownSubpath) {
-        refreshWorktrees(p.path);
-      }
+    const needingRefresh = findProjectsNeedingWorktreeRefresh(
+      projects,
+      terminals,
+      projectWorktrees,
+      checkedTerminalPathsRef.current
+    );
+    needingRefresh.forEach((path) => {
+      refreshWorktrees(path);
     });
   }, [projects, terminals, projectWorktrees, refreshWorktrees]);
 
