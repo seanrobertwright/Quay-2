@@ -58,7 +58,7 @@ Quay 2 also reads `QUAY_BRIDGE_PORT` from its own environment at startup to pin 
 
 ## Custom CLI Flags
 
-When you launch an agent terminal with `Ctrl+B N`, you can pick a model and add **Custom CLI Arguments**. Quay puts the model's flag first, then your arguments:
+When you launch an agent terminal with `Ctrl+Shift+B N`, you can pick a model and add **Custom CLI Arguments**. Quay puts the model's flag first, then your arguments:
 
 ```powershell
 --model claude-sonnet-5-5 --verbose
@@ -76,7 +76,7 @@ The [CLI flags reference](../reference/cli-flags.md#how-a-command-line-is-built)
 
 Quay 2 can play a chime when an agent needs you:
 
-1. Press `Ctrl+B T` to open **Token Spend & Audio Chime Meter**.
+1. Press `Ctrl+Shift+B T` to open **Token Spend & Audio Chime Meter**.
 2. Under **Background Turn Chimes**, click the button to switch between **Chimes Active** and **Muted**.
 3. While chimes are active, set the **Volume** slider and try the sounds with **Test Completion Chime** and **Test Attention Ping**.
 

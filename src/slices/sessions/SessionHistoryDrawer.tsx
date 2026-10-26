@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ClaudeSessionSummary } from "./types";
+import { useOverlay } from "../overlay/useOverlay";
 import {
   X,
   History,
@@ -54,16 +55,7 @@ export const SessionHistoryDrawer: FC<SessionHistoryDrawerProps> = ({
     }
   }, [isOpen, loadSessions]);
 
-  // Handle ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
   const filteredSessions = useMemo(() => {
     if (!searchQuery.trim()) return sessions;
@@ -96,8 +88,14 @@ export const SessionHistoryDrawer: FC<SessionHistoryDrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full">
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+    >
+      <div
+        {...panelProps}
+        aria-label="Claude Session History"
+        className="focus:outline-hidden w-full max-w-2xl bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full">
         {/* Header */}
         <div className="h-12 px-4 border-b border-[#30363d] flex items-center justify-between bg-[#161b22] shrink-0">
           <div className="flex items-center gap-3">

@@ -1,6 +1,6 @@
 # Token Spend & Cost Telemetry
 
-Autonomous AI coding agents consume millions of tokens during large refactors, architectural sweeps, and continuous test cycles. **Quay 2** includes a high-performance **Token Spend Meter** (`Ctrl+B T`) to track your exact expenditure across all active and historical sessions.
+Autonomous AI coding agents consume millions of tokens during large refactors, architectural sweeps, and continuous test cycles. **Quay 2** includes a high-performance **Token Spend Meter** (`Ctrl+Shift+B T`) to track your exact expenditure across all active and historical sessions.
 
 ---
 
@@ -37,9 +37,9 @@ Quay 2 calculates costs using official Anthropic API pricing tiers:
 
 At the bottom of the navigation rail, Quay 2 displays your live cumulative spend:
 ```text
-[🪙 $42.18]   ^b n · ^b 1..9   🟢 ConPTY
+[🪙 $42.18]   ^⇧b n · ^⇧b 1..9   🟢 ConPTY
 ```
-Clicking the spend pill (or pressing `Ctrl+B T`) opens the detailed telemetry modal, featuring:
+Clicking the spend pill (or pressing `Ctrl+Shift+B T`) opens the detailed telemetry modal, featuring:
 - Total sessions scanned.
 - Total input, output, and cached token counts.
 - Cost breakdown by model.

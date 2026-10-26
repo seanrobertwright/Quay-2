@@ -527,7 +527,7 @@ mod tests {
     fn live_pig_spend() {
         let tmp = TempDir::new("live");
         let cwd = tmp.0.to_string_lossy().to_string();
-        let out = std::process::Command::new("pig")
+        let out = crate::spawn::hidden_command("pig")
             .args(["-p", "Reply with OK"])
             .current_dir(&tmp.0)
             .output()

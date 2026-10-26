@@ -3,13 +3,12 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+
+use crate::spawn::hidden_command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Output kept in memory per command; older output is dropped from the front.
 const MAX_CAPTURE_BYTES: usize = 1 << 20;
@@ -35,15 +34,14 @@ fn shell_command(command: &str) -> Command {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let mut cmd = Command::new("cmd");
+        let mut cmd = hidden_command("cmd");
         // `/S` makes cmd strip exactly the outer quotes and run the rest verbatim.
         cmd.args(["/D", "/S", "/C"]).raw_arg(format!("\"{}\"", command));
-        cmd.creation_flags(CREATE_NO_WINDOW);
         cmd
     }
     #[cfg(not(windows))]
     {
-        let mut cmd = Command::new("sh");
+        let mut cmd = hidden_command("sh");
         cmd.args(["-c", command]);
         cmd
     }
@@ -53,10 +51,8 @@ fn shell_command(command: &str) -> Command {
 fn kill_tree(child: &mut Child) {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let _ = Command::new("taskkill")
+        let _ = hidden_command("taskkill")
             .args(["/T", "/F", "/PID", &child.id().to_string()])
-            .creation_flags(CREATE_NO_WINDOW)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();

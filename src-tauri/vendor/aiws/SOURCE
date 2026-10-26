@@ -1,0 +1,5 @@
+# Vendored from seanrobertwright/AI-WS-SDK by scripts/aiws-sdk/sync.ts.
+# Never edit the copy by hand; run the sync again at a new commit.
+commit: e68b827f40c7cb958a1fd98b6b5ddd6ce6e542ea
+schema-sha256: 7281ec4153b17028d15b6de67d7d607e2e7f4e8f32d813f204f37f9969888b26
+tree-sha256: 4b77a1ffb7aa2b762a3df1eb03a8cd12b0e72325f2585e6ac80ca4b48ec02a1b
