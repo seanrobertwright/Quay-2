@@ -1,7 +1,7 @@
 use tauri::State;
 
 use super::manager::WorkspaceManager;
-use super::models::Project;
+use super::models::{Project, ProjectView};
 
 #[tauri::command]
 pub async fn list_projects(
@@ -40,6 +40,23 @@ pub async fn get_active_project(
     manager: State<'_, WorkspaceManager>,
 ) -> Result<Option<String>, String> {
     Ok(manager.get_active_project())
+}
+
+#[tauri::command]
+pub async fn get_project_views(
+    manager: State<'_, WorkspaceManager>,
+) -> Result<std::collections::HashMap<String, ProjectView>, String> {
+    Ok(manager.get_project_views())
+}
+
+#[tauri::command]
+pub async fn save_project_view(
+    path: String,
+    view: ProjectView,
+    manager: State<'_, WorkspaceManager>,
+) -> Result<(), String> {
+    manager.save_project_view(&path, view);
+    Ok(())
 }
 
 #[tauri::command]

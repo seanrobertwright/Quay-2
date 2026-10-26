@@ -22,11 +22,8 @@ import {
   Zap,
   GitCompare,
   GitBranch,
-  History,
-  ShieldCheck,
   Cpu,
 } from "lucide-react";
-import { GithubIcon } from "../github/GithubIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath } from "../../utils/paths";
 
@@ -238,7 +235,7 @@ export const Stage: FC<StageProps> = ({
                   ? "bg-[#21262d] text-white shadow-xs"
                   : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
               }`}
-              title="Single Pane (Ctrl+B x)"
+              title="Single Pane (Ctrl+Shift+B x)"
             >
               <Square className="w-3.5 h-3.5" />
             </button>
@@ -251,7 +248,7 @@ export const Stage: FC<StageProps> = ({
                   ? "bg-[#21262d] text-[#58a6ff] shadow-xs"
                   : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
               }`}
-              title="Side-by-Side Split (Ctrl+B %)"
+              title="Side-by-Side Split (Ctrl+Shift+B %)"
             >
               <Columns2 className="w-3.5 h-3.5" />
             </button>
@@ -264,7 +261,7 @@ export const Stage: FC<StageProps> = ({
                   ? "bg-[#21262d] text-[#58a6ff] shadow-xs"
                   : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
               }`}
-              title='Stacked Split (Ctrl+B ")'
+              title='Stacked Split (Ctrl+Shift+B ")'
             >
               <Rows2 className="w-3.5 h-3.5" />
             </button>
@@ -296,8 +293,8 @@ export const Stage: FC<StageProps> = ({
             }`}
             title={
               zoomedFromLayout
-                ? "Restore split layout (Ctrl+B z)"
-                : "Zoom active pane (Ctrl+B z)"
+                ? "Restore split layout (Ctrl+Shift+B z)"
+                : "Zoom active pane (Ctrl+Shift+B z)"
             }
           >
             {zoomedFromLayout ? (
@@ -313,7 +310,7 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onUnsplit}
               className="p-1.5 rounded text-[#8b949e] hover:text-[#ff7b72] hover:bg-[#21262d] transition-colors"
-              title="Close split layout (Ctrl+B x)"
+              title="Close split layout (Ctrl+Shift+B x)"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -340,7 +337,7 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onOpenSwarm}
               className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#d29922] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Launch Multi-Agent Swarm Preset (^b s)"
+              title="Launch Multi-Agent Swarm Preset (Ctrl+Shift+B s)"
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
               <span>Swarm</span>
@@ -353,7 +350,7 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onOpenFactoryStation}
               className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded border border-[#58a6ff]/30 transition-colors text-xs font-medium cursor-pointer"
-              title="Machina AI Software Factory Cockpit (Ctrl+B F)"
+              title="Machina AI Software Factory Cockpit (Ctrl+Shift+B F)"
             >
               <Cpu className="w-3.5 h-3.5" />
               <span>Factory</span>
@@ -366,49 +363,10 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onOpenDiffInspector}
               className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#3fb950] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Visual Diff & File Changes (^b d)"
+              title="Visual Diff & File Changes (Ctrl+Shift+B d)"
             >
               <GitCompare className="w-3.5 h-3.5" />
               <span>Diffs{diffCount > 0 ? ` (${diffCount})` : ""}</span>
-            </button>
-          )}
-
-          {/* GitHub Issues & PR Companion Button */}
-          {onOpenGithubDrawer && (
-            <button
-              type="button"
-              onClick={onOpenGithubDrawer}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="GitHub Issues & Pull Requests Companion (^b i)"
-            >
-              <GithubIcon className="w-3.5 h-3.5" />
-              <span>GitHub</span>
-            </button>
-          )}
-
-          {/* Pre-PR Audit Gate Button */}
-          {onOpenAuditModal && (
-            <button
-              type="button"
-              onClick={onOpenAuditModal}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#f85149] hover:text-[#ff7b72] rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Pre-PR Leak & Claim Audit Gate (^b a)"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#f85149]" />
-              <span>Audit</span>
-            </button>
-          )}
-
-          {/* Session History & Auto-Resume Button */}
-          {onOpenSessionHistory && (
-            <button
-              type="button"
-              onClick={onOpenSessionHistory}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Session History & Auto-Resume (^b h)"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>History</span>
             </button>
           )}
 
@@ -418,7 +376,7 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onOpenNewWorktree}
               className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Create Git Worktree for active project (^b w)"
+              title="Create Git Worktree for active project (Ctrl+Shift+B w)"
             >
               <GitBranch className="w-3.5 h-3.5" />
               <span>Worktree</span>
@@ -430,7 +388,7 @@ export const Stage: FC<StageProps> = ({
             type="button"
             onClick={onNewTerminal}
             className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-            title="New Terminal (Ctrl+B n)"
+            title="New Terminal (Ctrl+Shift+B n)"
           >
             <Plus className="w-3.5 h-3.5 text-[#58a6ff]" />
             <span>New Terminal</span>

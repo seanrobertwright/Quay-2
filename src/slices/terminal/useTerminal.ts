@@ -5,6 +5,7 @@ import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
+import { terminalKeyAction } from "./terminalKeys";
 
 const EMOJI_PRESENTATION_RE = /\p{Emoji_Presentation}/u;
 
@@ -239,14 +240,40 @@ export function useTerminal(
       setSearchResult({ index: e.resultIndex, count: e.resultCount });
     });
 
-    // Intercept Ctrl+F while typing in xterm canvas
+    // Copy, paste and search keys (terminalKeys.ts). xterm runs this for keydown, keypress and
+    // keyup, so the action runs on keydown only while every phase is kept from the shell.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
+      const action = terminalKeyAction(e, term.hasSelection());
+      if (action === "shell") return true;
+
+      e.preventDefault();
+      if (e.type !== "keydown") return false;
+      // The pane's window Ctrl+F listener would toggle the search a second time.
+      e.stopPropagation();
+
+      if (action === "copy") {
+        const selection = term.getSelection();
+        if (selection) {
+          navigator.clipboard.writeText(selection).catch((err) => {
+            console.error("Failed to copy terminal selection:", err);
+          });
+          term.clearSelection();
+        }
+      } else if (action === "paste") {
+        // xterm turns Ctrl+V into ^V and cancels it, so no paste event fires; read the clipboard
+        // here. term.paste applies bracketed paste mode and line-ending fixes.
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) term.paste(text);
+          })
+          .catch((err) => {
+            console.error("Failed to paste into terminal:", err);
+          });
+      } else {
         onToggleSearchRef.current?.();
-        return false;
       }
-      return true;
+      return false;
     });
 
     // Send user keystrokes to Rust ConPTY

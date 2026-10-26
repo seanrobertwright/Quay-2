@@ -2,7 +2,7 @@
 
 Giving autonomous agents shell access requires safety guardrails. An agent running with `--dangerously-skip-permissions` can accidentally commit secrets, personal paths or key files.
 
-**Quay 2** provides the **Pre-PR Audit Gate** (`Ctrl+B A`) to catch these leaks before code leaves your machine. The gate reads your working tree and your git diff. It does not watch the commands an agent runs in a terminal.
+**Quay 2** provides the **Pre-PR Audit Gate** (`Ctrl+Shift+B A`) to catch these leaks before code leaves your machine. The gate reads your working tree and your git diff. It does not watch the commands an agent runs in a terminal.
 
 ---
 

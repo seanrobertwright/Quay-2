@@ -4,7 +4,8 @@ use std::process::Command;
 use crate::spawn::hidden_command;
 
 use super::models::{
-    GithubIssue, GithubIssueDetail, GithubIssueRef, GithubPullRequest, GithubRepoInfo,
+    GithubIssue, GithubIssueDetail, GithubIssueRef, GithubPage, GithubPullRequest,
+    GithubRepoInfo,
 };
 
 fn create_gh_command(dir: &str) -> Command {
@@ -119,8 +120,160 @@ fn fetch_blocked_by(repo_path: &str, numbers: &[u32]) -> HashMap<u32, BlockerInf
     }
 }
 
+/// Items per page when the caller doesn't say. GitHub caps `first` at 100.
+const DEFAULT_PAGE_SIZE: u32 = 50;
+const MAX_PAGE_SIZE: u32 = 100;
+
+/// GraphQL `states:` argument for an issue state filter; `None` means every state.
+fn issue_states(state: &str) -> Result<Option<&'static str>, String> {
+    match state {
+        "open" => Ok(Some("[OPEN]")),
+        "closed" => Ok(Some("[CLOSED]")),
+        "all" => Ok(None),
+        other => Err(format!("Unknown issue state filter: {}", other)),
+    }
+}
+
+/// GraphQL `states:` argument for a pull request state filter. "closed" includes
+/// merged pull requests, as `gh pr list --state closed` does.
+fn pr_states(state: &str) -> Result<Option<&'static str>, String> {
+    match state {
+        "open" => Ok(Some("[OPEN]")),
+        "closed" => Ok(Some("[CLOSED, MERGED]")),
+        "merged" => Ok(Some("[MERGED]")),
+        "all" => Ok(None),
+        other => Err(format!("Unknown pull request state filter: {}", other)),
+    }
+}
+
+const AUTHOR_FIELDS: &str = "author { login ... on User { name } }";
+const LABEL_FIELDS: &str = "labels(first: 20) { nodes { name color description } }";
+
+/// Builds the query for one page of issues, newest first (the `gh issue list` order).
+fn build_issues_page_query(states: Option<&str>) -> String {
+    let states_arg = states.map(|s| format!(", states: {s}")).unwrap_or_default();
+    format!(
+        "query($owner: String!, $name: String!, $first: Int!, $after: String) {{ repository(owner: $owner, name: $name) {{ \
+         issues(first: $first, after: $after{states_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{ \
+         pageInfo {{ endCursor hasNextPage }} \
+         nodes {{ number title state url updatedAt {AUTHOR_FIELDS} {LABEL_FIELDS} assignees(first: 10) {{ nodes {{ login name }} }} }} }} }} }}"
+    )
+}
+
+/// Builds the query for one page of pull requests, newest first (the `gh pr list` order).
+fn build_prs_page_query(states: Option<&str>) -> String {
+    let states_arg = states.map(|s| format!(", states: {s}")).unwrap_or_default();
+    format!(
+        "query($owner: String!, $name: String!, $first: Int!, $after: String) {{ repository(owner: $owner, name: $name) {{ \
+         pullRequests(first: $first, after: $after{states_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{ \
+         pageInfo {{ endCursor hasNextPage }} \
+         nodes {{ number title state isDraft headRefName baseRefName url mergeable {AUTHOR_FIELDS} {LABEL_FIELDS} \
+         commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state }} }} }} }} }} }} }} }}"
+    )
+}
+
+/// Runs a page query against the repository at `repo_path` and returns the parsed JSON.
+fn run_page_query(
+    repo_path: &str,
+    query: &str,
+    page_size: u32,
+    after: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let mut cmd = create_gh_command(repo_path);
+    // gh fills {owner} and {repo} from the repository of the working directory.
+    cmd.args([
+        "api",
+        "graphql",
+        "-F",
+        "owner={owner}",
+        "-F",
+        "name={repo}",
+        "-F",
+        &format!("first={}", page_size.clamp(1, MAX_PAGE_SIZE)),
+        "-f",
+        &format!("query={}", query),
+    ]);
+    if let Some(cursor) = after {
+        cmd.args(["-f", &format!("after={}", cursor)]);
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute gh api graphql: {}", e))?;
+    serde_json::from_slice::<serde_json::Value>(&output.stdout).map_err(|_| {
+        format!(
+            "gh api graphql failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+    })
+}
+
+/// Turns a GraphQL connection's `{ nodes: [...] }` into a plain array.
+fn flatten_nodes(node: &mut serde_json::Value, field: &str) {
+    let nodes = node[field]["nodes"].take();
+    node[field] = if nodes.is_array() {
+        nodes
+    } else {
+        serde_json::Value::Array(vec![])
+    };
+}
+
+/// Parses one page of the connection at `data.repository.<connection>`. `shape` reshapes
+/// each GraphQL node into the JSON `gh ... list --json` prints, so the existing models
+/// deserialize it. GraphQL errors with no data come back as `Err`.
+fn parse_page<T: serde::de::DeserializeOwned>(
+    json: &serde_json::Value,
+    connection: &str,
+    shape: impl Fn(&mut serde_json::Value),
+) -> Result<GithubPage<T>, String> {
+    let conn = &json["data"]["repository"][connection];
+    if !conn.is_object() {
+        let messages: Vec<&str> = json["errors"]
+            .as_array()
+            .map(|errs| errs.iter().filter_map(|e| e["message"].as_str()).collect())
+            .unwrap_or_default();
+        return Err(if messages.is_empty() {
+            format!("GitHub returned no {} for this repository", connection)
+        } else {
+            messages.join("; ")
+        });
+    }
+    let mut items = Vec::new();
+    for node in conn["nodes"].as_array().into_iter().flatten() {
+        if node.is_null() {
+            continue;
+        }
+        let mut node = node.clone();
+        shape(&mut node);
+        let item = serde_json::from_value(node)
+            .map_err(|e| format!("Failed to parse {} page: {}", connection, e))?;
+        items.push(item);
+    }
+    Ok(GithubPage {
+        items,
+        end_cursor: conn["pageInfo"]["endCursor"].as_str().map(str::to_string),
+        has_next_page: conn["pageInfo"]["hasNextPage"].as_bool().unwrap_or(false),
+    })
+}
+
+fn parse_issues_page(json: &serde_json::Value) -> Result<GithubPage<GithubIssue>, String> {
+    parse_page(json, "issues", |node| {
+        flatten_nodes(node, "labels");
+        flatten_nodes(node, "assignees");
+    })
+}
+
+fn parse_prs_page(json: &serde_json::Value) -> Result<GithubPage<GithubPullRequest>, String> {
+    parse_page(json, "pullRequests", |node| {
+        flatten_nodes(node, "labels");
+        node["statusCheckRollup"] = node["commits"]["nodes"][0]["commit"]["statusCheckRollup"].take();
+        if let Some(obj) = node.as_object_mut() {
+            obj.remove("commits");
+        }
+    })
+}
+
 #[tauri::command]
-pub async fn check_gh_cli_installed() -> Result<bool, String> {
+pub async fn check_gh_cli_installed()-> Result<bool, String> {
     tokio::task::spawn_blocking(|| {
         let mut cmd = hidden_command("gh");
         cmd.arg("--version");
@@ -175,40 +328,25 @@ pub async fn get_github_repo_info(repo_path: String) -> Result<Option<GithubRepo
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// One page of issues. `after` is the previous page's `endCursor`; omit it for the
+/// first page. Blockers are looked up in one batched query per page.
 #[tauri::command]
 pub async fn list_github_issues(
     repo_path: String,
     state: Option<String>,
-    limit: Option<usize>,
-) -> Result<Vec<GithubIssue>, String> {
+    after: Option<String>,
+    page_size: Option<u32>,
+) -> Result<GithubPage<GithubIssue>, String> {
     tokio::task::spawn_blocking(move || {
-        let mut cmd = create_gh_command(&repo_path);
-        let limit_str = limit.unwrap_or(30).to_string();
-        let state_str = state.unwrap_or_else(|| "open".to_string());
-
-        cmd.args([
-            "issue",
-            "list",
-            "--limit",
-            &limit_str,
-            "--state",
-            &state_str,
-            "--json",
-            "number,title,state,author,labels,assignees,updatedAt,url",
-        ]);
-
-        let output = cmd
-            .output()
-            .map_err(|e| format!("Failed to execute gh issue list: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("gh issue list failed: {}", stderr.trim()));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut issues: Vec<GithubIssue> = serde_json::from_str(&stdout)
-            .map_err(|e| format!("Failed to parse issues JSON: {}", e))?;
+        let states = issue_states(state.as_deref().unwrap_or("open"))?;
+        let json = run_page_query(
+            &repo_path,
+            &build_issues_page_query(states),
+            page_size.unwrap_or(DEFAULT_PAGE_SIZE),
+            after.as_deref(),
+        )?;
+        let mut page = parse_issues_page(&json)?;
+        let issues = &mut page.items;
 
         let open_numbers: Vec<u32> = issues
             .iter()
@@ -223,7 +361,7 @@ pub async fn list_github_issues(
             }
         }
 
-        Ok(issues)
+        Ok(page)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -272,42 +410,24 @@ pub async fn get_github_issue(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// One page of pull requests. `after` is the previous page's `endCursor`; omit it for
+/// the first page.
 #[tauri::command]
 pub async fn list_github_prs(
     repo_path: String,
     state: Option<String>,
-    limit: Option<usize>,
-) -> Result<Vec<GithubPullRequest>, String> {
+    after: Option<String>,
+    page_size: Option<u32>,
+) -> Result<GithubPage<GithubPullRequest>, String> {
     tokio::task::spawn_blocking(move || {
-        let mut cmd = create_gh_command(&repo_path);
-        let limit_str = limit.unwrap_or(25).to_string();
-        let state_str = state.unwrap_or_else(|| "open".to_string());
-
-        cmd.args([
-            "pr",
-            "list",
-            "--limit",
-            &limit_str,
-            "--state",
-            &state_str,
-            "--json",
-            "number,title,state,isDraft,headRefName,baseRefName,labels,author,statusCheckRollup,mergeable,url",
-        ]);
-
-        let output = cmd
-            .output()
-            .map_err(|e| format!("Failed to execute gh pr list: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("gh pr list failed: {}", stderr.trim()));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let prs: Vec<GithubPullRequest> = serde_json::from_str(&stdout)
-            .map_err(|e| format!("Failed to parse PRs JSON: {}", e))?;
-
-        Ok(prs)
+        let states = pr_states(state.as_deref().unwrap_or("open"))?;
+        let json = run_page_query(
+            &repo_path,
+            &build_prs_page_query(states),
+            page_size.unwrap_or(DEFAULT_PAGE_SIZE),
+            after.as_deref(),
+        )?;
+        parse_prs_page(&json)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -374,8 +494,9 @@ mod tests {
         if let Ok(dir) = std::env::var("QUAY_DUMP_DIR") {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let issues = rt
-                .block_on(list_github_issues(repo.clone(), Some("open".into()), Some(30)))
-                .unwrap();
+                .block_on(list_github_issues(repo.clone(), Some("open".into()), None, Some(30)))
+                .unwrap()
+                .items;
             std::fs::write(
                 std::path::Path::new(&dir).join("list_github_issues.json"),
                 serde_json::to_string_pretty(&issues).unwrap(),
@@ -403,5 +524,105 @@ mod tests {
         let map = parse_blocked_by_response(&json);
         assert_eq!(map[&1].open_count, 30);
         assert_eq!(map[&1].open.len(), 1);
+    }
+
+    #[test]
+    fn state_filters_map_to_graphql_states() {
+        assert_eq!(issue_states("open").unwrap(), Some("[OPEN]"));
+        assert_eq!(issue_states("closed").unwrap(), Some("[CLOSED]"));
+        assert_eq!(issue_states("all").unwrap(), None);
+        assert!(issue_states("merged").is_err());
+        assert_eq!(pr_states("closed").unwrap(), Some("[CLOSED, MERGED]"));
+        assert_eq!(pr_states("all").unwrap(), None);
+    }
+
+    #[test]
+    fn page_queries_take_a_cursor_and_omit_states_for_all() {
+        let open = build_issues_page_query(Some("[OPEN]"));
+        assert!(open.contains("$after: String"));
+        assert!(open.contains("issues(first: $first, after: $after, states: [OPEN],"));
+        assert!(open.contains("pageInfo { endCursor hasNextPage }"));
+        let all = build_prs_page_query(None);
+        assert!(all.contains("pullRequests(first: $first, after: $after, orderBy:"));
+        assert!(!all.contains("states:"));
+    }
+
+    #[test]
+    fn parse_issues_page_flattens_connections() {
+        let json = serde_json::json!({
+            "data": { "repository": { "issues": {
+                "pageInfo": { "endCursor": "Y3Vy", "hasNextPage": true },
+                "nodes": [{
+                    "number": 286, "title": "Open Project dialog", "state": "OPEN",
+                    "url": "https://github.com/o/r/issues/286",
+                    "updatedAt": "2026-10-26T15:01:35Z",
+                    "author": { "login": "sean", "name": "Sean" },
+                    "labels": { "nodes": [
+                        { "name": "wayfinder:task", "color": "c5def5", "description": null }
+                    ]},
+                    "assignees": { "nodes": [{ "login": "sean", "name": "Sean" }] }
+                }, {
+                    "number": 1, "title": "ghost author", "state": "CLOSED",
+                    "url": "", "updatedAt": "2026-01-01T00:00:00Z",
+                    "author": null,
+                    "labels": { "nodes": [] }, "assignees": { "nodes": [] }
+                }]
+            }}}
+        });
+        let page = parse_issues_page(&json).unwrap();
+        assert_eq!(page.end_cursor.as_deref(), Some("Y3Vy"));
+        assert!(page.has_next_page);
+        assert_eq!(page.items.len(), 2);
+        let first = &page.items[0];
+        assert_eq!(first.number, 286);
+        assert_eq!(first.labels[0].name, "wayfinder:task");
+        assert_eq!(first.labels[0].color, "c5def5");
+        assert_eq!(first.assignees[0].login, "sean");
+        assert_eq!(first.author.as_ref().unwrap().login, "sean");
+        assert!(first.blocked_by.is_empty());
+        assert!(page.items[1].author.is_none());
+    }
+
+    #[test]
+    fn parse_prs_page_lifts_the_head_commit_rollup() {
+        let json = serde_json::json!({
+            "data": { "repository": { "pullRequests": {
+                "pageInfo": { "endCursor": null, "hasNextPage": false },
+                "nodes": [{
+                    "number": 276, "title": "Validation problems", "state": "MERGED",
+                    "isDraft": false, "headRefName": "ticket-257", "baseRefName": "master",
+                    "url": "https://github.com/o/r/pull/276", "mergeable": "UNKNOWN",
+                    "author": { "login": "app/dependabot" },
+                    "labels": { "nodes": [] },
+                    "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] }
+                }, {
+                    "number": 277, "title": "No checks", "state": "OPEN",
+                    "isDraft": true, "headRefName": "x", "baseRefName": "master",
+                    "url": "", "mergeable": "CONFLICTING", "author": { "login": "sean" },
+                    "labels": { "nodes": [] },
+                    "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] }
+                }]
+            }}}
+        });
+        let page = parse_prs_page(&json).unwrap();
+        assert!(!page.has_next_page);
+        assert_eq!(page.end_cursor, None);
+        let pr = &page.items[0];
+        assert_eq!(pr.head_ref_name, "ticket-257");
+        assert_eq!(pr.status_check_rollup.as_ref().unwrap()["state"], "SUCCESS");
+        assert!(pr.author.as_ref().unwrap().name.is_none());
+        assert!(page.items[1].status_check_rollup.is_none());
+        assert!(page.items[1].is_draft);
+        assert_eq!(page.items[1].mergeable.as_deref(), Some("CONFLICTING"));
+    }
+
+    #[test]
+    fn parse_page_reports_graphql_errors() {
+        let json = serde_json::json!({
+            "data": { "repository": null },
+            "errors": [{ "message": "Could not resolve to a Repository" }]
+        });
+        let err = parse_issues_page(&json).unwrap_err();
+        assert!(err.contains("Could not resolve"));
     }
 }

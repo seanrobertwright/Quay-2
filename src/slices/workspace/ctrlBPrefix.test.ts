@@ -57,7 +57,6 @@ function recordingActions(calls: string[]): CtrlBActions {
     toggleZoom: record("toggleZoom"),
     unsplit: record("unsplit"),
     selectTerminalAt: (index) => calls.push(`selectTerminalAt(${index})`),
-    sendPrefixToTerminal: record("sendPrefixToTerminal"),
   };
 }
 
@@ -82,11 +81,20 @@ const xtermTextarea = element("textarea", { className: "xterm-helper-textarea" }
 /** A keydown as the window listener sees it, recording whether it was swallowed. */
 function keydown(
   key: string,
-  { ctrlKey = false, repeat = false, target = xtermTextarea as EventTarget | null } = {}
+  {
+    ctrlKey = false,
+    shiftKey = false,
+    altKey = false,
+    repeat = false,
+    target = xtermTextarea as EventTarget | null,
+  } = {}
 ) {
   const event = {
     key,
     ctrlKey,
+    shiftKey,
+    altKey,
+    metaKey: false,
     repeat,
     target,
     defaultPrevented: false,
@@ -101,14 +109,14 @@ function keydown(
   return event;
 }
 
-test("Ctrl+B then Z zooms even when Quay re-renders between the two keys", () => {
+test("Ctrl+Shift+B then Z zooms even when Quay re-renders between the two keys", () => {
   const { clock } = fakeClock();
   // The hook keeps one prefix for its whole life; each render's effect builds a fresh handler.
   const prefix = createCtrlBPrefix(clock);
   const firstRenderCalls: string[] = [];
   const firstRender = createCtrlBKeyHandler(prefix, recordingActions(firstRenderCalls));
 
-  assert.equal(firstRender(keydown("b", { ctrlKey: true })), true);
+  assert.equal(firstRender(keydown("B", { ctrlKey: true, shiftKey: true })), true);
 
   // Terminal output arrives: the effect is torn down and set up again with new callbacks.
   const secondRenderCalls: string[] = [];
@@ -122,17 +130,17 @@ test("Ctrl+B then Z zooms even when Quay re-renders between the two keys", () =>
   assert.equal(z.propagationStopped, true);
 });
 
-test("the prefix lapses 1.5 s after Ctrl+B, and the next key goes to the terminal", () => {
+test("the prefix lapses 1.5 s after Ctrl+Shift+B, and the next key goes to the terminal", () => {
   const { clock, advance } = fakeClock();
   const prefix = createCtrlBPrefix(clock);
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(prefix, recordingActions(calls));
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   advance(1499);
   assert.equal(handle(keydown("o")), true, "still inside the window at 1499 ms");
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   advance(1500);
   const z = keydown("z");
   assert.equal(handle(z), false);
@@ -147,7 +155,7 @@ test("unmounting clears the pending prefix and its timer", () => {
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(prefix, recordingActions(calls));
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   assert.equal(pendingTimers(), 1);
 
   prefix.dispose();
@@ -156,7 +164,7 @@ test("unmounting clears the pending prefix and its timer", () => {
   assert.deepEqual(calls, []);
 });
 
-test("every Ctrl+B chord keeps its key and is swallowed", () => {
+test("every Ctrl+Shift+B chord keeps its key and is swallowed", () => {
   // The chord table as it stood in useWorkspace before the prefix moved into this module.
   const chords: [string, string][] = [
     ["n", "openNewTerminal"],
@@ -187,15 +195,15 @@ test("every Ctrl+B chord keeps its key and is swallowed", () => {
   for (const [key, action] of chords) {
     const calls: string[] = [];
     const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
-    const prefixKey = keydown("b", { ctrlKey: true });
+    const prefixKey = keydown("B", { ctrlKey: true, shiftKey: true });
     handle(prefixKey);
-    assert.equal(prefixKey.defaultPrevented && prefixKey.propagationStopped, true, "Ctrl+B is swallowed");
+    assert.equal(prefixKey.defaultPrevented && prefixKey.propagationStopped, true, "Ctrl+Shift+B is swallowed");
 
     const chordKey = keydown(key);
-    assert.equal(handle(chordKey), true, `Ctrl+B ${key}`);
-    assert.deepEqual(calls, [action], `Ctrl+B ${key}`);
-    assert.equal(chordKey.defaultPrevented && chordKey.propagationStopped, true, `Ctrl+B ${key} is swallowed`);
-    assert.equal(handle(keydown(key)), false, `Ctrl+B ${key} uses up the prefix`);
+    assert.equal(handle(chordKey), true, `Ctrl+Shift+B ${key}`);
+    assert.deepEqual(calls, [action], `Ctrl+Shift+B ${key}`);
+    assert.equal(chordKey.defaultPrevented && chordKey.propagationStopped, true, `Ctrl+Shift+B ${key} is swallowed`);
+    assert.equal(handle(keydown(key)), false, `Ctrl+Shift+B ${key} uses up the prefix`);
   }
 });
 
@@ -209,11 +217,11 @@ test("keys with no pending prefix reach the terminal", () => {
   assert.deepEqual(calls, []);
 });
 
-test("a non-chord key after Ctrl+B ends the prefix and reaches the terminal", () => {
+test("a non-chord key after Ctrl+Shift+B ends the prefix and reaches the terminal", () => {
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   for (const key of ["q", "z"]) {
     const event = keydown(key);
     assert.equal(handle(event), false, `${key} is left for the terminal`);
@@ -222,11 +230,11 @@ test("a non-chord key after Ctrl+B ends the prefix and reaches the terminal", ()
   assert.deepEqual(calls, []);
 });
 
-test("modifier keys keep the prefix pending, so Ctrl+B Shift+5 still splits", () => {
+test("modifier keys keep the prefix pending, so Ctrl+Shift+B Shift+5 still splits", () => {
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   for (const key of ["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsLock", "NumLock", "Fn", "Dead"]) {
     assert.equal(handle(keydown(key)), false, `${key} is left alone`);
   }
@@ -234,33 +242,49 @@ test("modifier keys keep the prefix pending, so Ctrl+B Shift+5 still splits", ()
   assert.deepEqual(calls, ["splitHorizontal"]);
 });
 
-test("Ctrl+B Ctrl+B sends one Ctrl+B to the terminal and ends the prefix", () => {
+test("a plain Ctrl+B is not the prefix: it reaches the terminal's shell", () => {
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-  const first = keydown("b", { ctrlKey: true });
-  assert.equal(handle(first), true);
-  assert.equal(first.defaultPrevented && first.propagationStopped, true, "a single Ctrl+B is swallowed");
+  const ctrlB = keydown("b", { ctrlKey: true });
+  assert.equal(handle(ctrlB), false);
+  assert.equal(ctrlB.defaultPrevented || ctrlB.propagationStopped, false, "Ctrl+B is not swallowed");
+  assert.equal(handle(keydown("z")), false, "Ctrl+B armed no prefix");
   assert.deepEqual(calls, []);
-
-  const second = keydown("b", { ctrlKey: true });
-  assert.equal(handle(second), true);
-  assert.equal(second.defaultPrevented && second.propagationStopped, true, "xterm must not send a second ^B");
-  assert.deepEqual(calls, ["sendPrefixToTerminal"]);
-
-  assert.equal(handle(keydown("z")), false, "the prefix ended");
-  assert.deepEqual(calls, ["sendPrefixToTerminal"]);
 });
 
-test("holding Ctrl+B never sends a Ctrl+B to the terminal", () => {
+test("a Ctrl key after the prefix goes to the shell instead of running a chord", () => {
+  for (const key of ["a", "x", "z", "n", "1"]) {
+    const calls: string[] = [];
+    const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
+
+    handle(keydown("B", { ctrlKey: true, shiftKey: true }));
+    const event = keydown(key, { ctrlKey: true });
+    assert.equal(handle(event), false, `Ctrl+${key} is left for the terminal`);
+    assert.equal(event.defaultPrevented || event.propagationStopped, false, `Ctrl+${key} is not swallowed`);
+    assert.equal(handle(keydown(key)), false, `Ctrl+${key} ended the prefix`);
+    assert.deepEqual(calls, [], `Ctrl+${key}`);
+  }
+});
+
+test("AltGr, which Windows reports as Ctrl+Alt, can still type a chord key", () => {
+  const calls: string[] = [];
+  const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
+
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
+  assert.equal(handle(keydown('"', { ctrlKey: true, altKey: true })), true);
+  assert.deepEqual(calls, ["splitVertical"]);
+});
+
+test("holding Ctrl+Shift+B never sends anything to the terminal", () => {
   const { clock, advance } = fakeClock();
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(clock), recordingActions(calls));
 
-  assert.equal(handle(keydown("b", { ctrlKey: true })), true);
+  assert.equal(handle(keydown("B", { ctrlKey: true, shiftKey: true })), true);
   for (let i = 0; i < 3; i++) {
     advance(1000);
-    const held = keydown("b", { ctrlKey: true, repeat: true });
+    const held = keydown("B", { ctrlKey: true, shiftKey: true, repeat: true });
     assert.equal(handle(held), true);
     assert.equal(held.defaultPrevented && held.propagationStopped, true, "the repeat is swallowed");
   }
@@ -268,12 +292,12 @@ test("holding Ctrl+B never sends a Ctrl+B to the terminal", () => {
   assert.equal(handle(keydown("z")), true, "each repeat restarted the window");
   assert.deepEqual(calls, ["toggleZoom"]);
 
-  // Held after Ctrl+B Ctrl+B: the repeats do not arm a new prefix.
-  handle(keydown("b", { ctrlKey: true }));
-  handle(keydown("b", { ctrlKey: true }));
-  handle(keydown("b", { ctrlKey: true, repeat: true }));
+  // Pressing it twice keeps the prefix pending for one chord.
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
+  assert.equal(handle(keydown("z")), true);
   assert.equal(handle(keydown("z")), false);
-  assert.deepEqual(calls, ["toggleZoom", "sendPrefixToTerminal"]);
+  assert.deepEqual(calls, ["toggleZoom", "toggleZoom"]);
 });
 
 test("chords still work from inputs that take no typed text", () => {
@@ -282,13 +306,13 @@ test("chords still work from inputs that take no typed text", () => {
     const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
     const target = element("input", { type });
 
-    assert.equal(handle(keydown("b", { ctrlKey: true, target })), true, `Ctrl+B on a ${type}`);
+    assert.equal(handle(keydown("B", { ctrlKey: true, shiftKey: true, target })), true, `Ctrl+Shift+B on a ${type}`);
     assert.equal(handle(keydown("z", { target })), true, `Z on a ${type}`);
     assert.deepEqual(calls, ["toggleZoom"], type);
   }
 });
 
-test("Ctrl+B in a text field neither arms the prefix nor is swallowed", () => {
+test("Ctrl+Shift+B in a text field neither arms the prefix nor is swallowed", () => {
   const fields: [string, EventTarget][] = [
     ["input", element("input")],
     ["text input", element("input", { type: "text" })],
@@ -301,11 +325,11 @@ test("Ctrl+B in a text field neither arms the prefix nor is swallowed", () => {
     const calls: string[] = [];
     const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-    const ctrlB = keydown("b", { ctrlKey: true, target });
-    assert.equal(handle(ctrlB), false, `Ctrl+B in ${name}`);
-    assert.equal(ctrlB.defaultPrevented || ctrlB.propagationStopped, false, `Ctrl+B in ${name} is not swallowed`);
+    const ctrlB = keydown("B", { ctrlKey: true, shiftKey: true, target });
+    assert.equal(handle(ctrlB), false, `Ctrl+Shift+B in ${name}`);
+    assert.equal(ctrlB.defaultPrevented || ctrlB.propagationStopped, false, `Ctrl+Shift+B in ${name} is not swallowed`);
     assert.equal(handle(keydown("n", { target })), false, `N in ${name} is typed, not a chord`);
-    assert.equal(handle(keydown("n")), false, `Ctrl+B in ${name} left no prefix behind`);
+    assert.equal(handle(keydown("n")), false, `Ctrl+Shift+B in ${name} left no prefix behind`);
     assert.deepEqual(calls, [], name);
   }
 });
@@ -314,18 +338,18 @@ test("a key typed into a text field ends a prefix armed in the terminal", () => 
   const calls: string[] = [];
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-  handle(keydown("b", { ctrlKey: true }));
+  handle(keydown("B", { ctrlKey: true, shiftKey: true }));
   assert.equal(handle(keydown("n", { target: element("input") })), false);
   assert.equal(handle(keydown("n")), false, "the prefix ended");
   assert.deepEqual(calls, []);
 });
 
-test("Ctrl+B from xterm's helper textarea, or from no element, arms the prefix", () => {
+test("Ctrl+Shift+B from xterm's helper textarea, or from no element, arms the prefix", () => {
   for (const target of [xtermTextarea, null]) {
     const calls: string[] = [];
     const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
-    assert.equal(handle(keydown("b", { ctrlKey: true, target })), true);
+    assert.equal(handle(keydown("B", { ctrlKey: true, shiftKey: true, target })), true);
     assert.equal(handle(keydown("n", { target })), true);
     assert.deepEqual(calls, ["openNewTerminal"]);
   }
