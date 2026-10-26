@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { terminalKeyAction } from "./terminalKeys";
+import { isTerminalReport } from "./terminalReports";
 import { isOverlayOpen } from "../overlay/useOverlay";
 
 /**
@@ -282,6 +283,9 @@ export function useTerminal(
     // Send user keystrokes to Rust ConPTY
     const onDataDispose = term.onData((data) => {
       if (!initialLoaded) return;
+      // The replay holds old queries, and xterm answers them as it parses. Those replies would
+      // reach the live program as typed input, so drop them; the user's own keys still go through.
+      if (replaying && isTerminalReport(data)) return;
       invoke("write_pty", { terminalId, data }).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });
@@ -291,6 +295,7 @@ export function useTerminal(
     let highestSeq = -1;
     let disposed = false;
     let initialLoaded = false;
+    let replaying = false;
     let firstPtyOutputFocused = false;
     const queuedEvents: PtyOutputPayload[] = [];
 
@@ -329,7 +334,12 @@ export function useTerminal(
           fittedTerminalDimensions.set(terminalId, { rows: res.rows, cols: res.cols });
         }
         if (res && res.data) {
-          term.write(res.data);
+          // xterm parses the write later. Its callback runs once this chunk is parsed and before
+          // any live chunk queued after it, whose queries the live program is waiting on.
+          replaying = true;
+          term.write(res.data, () => {
+            replaying = false;
+          });
           highestSeq = res.last_seq;
         }
         initialLoaded = true;
