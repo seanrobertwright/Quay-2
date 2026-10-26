@@ -9,9 +9,9 @@ A shopping-cart library ships with a bug report naming three things that go wron
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to launch the Bug Hunter swarm from the Swarm Launcher (`Ctrl+B S`), give four agents one job each in a fixed order, hand work from one pane to the next through files the agents write, move focus around a 2x2 grid (`Ctrl+B O`), bring an earlier terminal back onto the stage (`Ctrl+B 1`), and prove a fix with tests the agents never saw.
+**You'll learn:** how to launch the Bug Hunter swarm from the Swarm Launcher (`Ctrl+Shift+B S`), give four agents one job each in a fixed order, hand work from one pane to the next through files the agents write, move focus around a 2x2 grid (`Ctrl+Shift+B O`), bring an earlier terminal back onto the stage (`Ctrl+Shift+B 1`), and prove a fix with tests the agents never saw.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status, and the pane that has focus has a lit border. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. Each Paste box names the pane its line goes into: with that pane focused, press `Ctrl+V` to paste the line, then press Enter to run it, or to send it to the agent.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status, and the pane that has focus has a lit border. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. Each Paste box names the pane its line goes into: with that pane focused, press `Ctrl+V` to paste the line, then press Enter to run it, or to send it to the agent.
 
 The starter project is a cart library that works in whole cents, with a command that prints a receipt for a cart file. Its seven tests pass even though the library has three bugs, because none of the tests reaches one. The agents pass their work along in files: `reproducer` writes `test/regressions.test.ts`, `tracer` writes `TRACE.md`, `patcher` changes `src/cart.ts` and `verifier` writes `VERDICT.md`. Each agent ends its reply with a fixed last line, so you can tell at a glance that it finished.
 
@@ -32,8 +32,8 @@ The starter project is a cart library that works in whole cents, with a command 
 
 ::: do
 1. Download [`bug-hunt.zip`](/starters/bug-hunt.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -70,7 +70,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Launch the Bug Hunter
 
 ::: do
-1. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** already selected.
+1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** already selected.
 2. Click the **Bug Hunter** card. Its Team Roster lists Reproducer (`reproducer`), Tracer (`tracer`), Patcher (`patcher`) and Verifier (`verifier`).
 3. Click **Launch Swarm Now**.
 :::
@@ -106,7 +106,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 
 ::: do
 1. Click inside `reproducer`, the top-left pane. Its border lights up.
-2. Press `Ctrl+B Z` to zoom it to the whole stage.
+2. Press `Ctrl+Shift+B Z` to zoom it to the whole stage.
 :::
 
 ::: paste `reproducer`
@@ -141,8 +141,8 @@ One complaint isn't reproduced yet. Paste `One of the complaints is not reproduc
 ## 4. Hand the failing tests to the tracer
 
 ::: do
-1. Press `Ctrl+B Z` to put the grid back.
-2. Press `Ctrl+B O` to move focus to `tracer`, the top-right pane.
+1. Press `Ctrl+Shift+B Z` to put the grid back.
+2. Press `Ctrl+Shift+B O` to move focus to `tracer`, the top-right pane.
 :::
 
 ::: paste `tracer`
@@ -165,8 +165,8 @@ Read BUG-REPORT.md and test/regressions.test.ts, then run npm test. For each fai
 - The order of the three causes, and how each is worded.
 :::
 
-::: ifnot Ctrl+B O moved focus to a different pane
-`Ctrl+B O` moves focus left to right along the top row, then along the bottom row. Press it again until `tracer`'s border lights up, or click inside `tracer`.
+::: ifnot Ctrl+Shift+B O moved focus to a different pane
+`Ctrl+Shift+B O` moves focus left to right along the top row, then along the bottom row. Press it again until `tracer`'s border lights up, or click inside `tracer`.
 :::
 
 :::
@@ -176,7 +176,7 @@ Read BUG-REPORT.md and test/regressions.test.ts, then run npm test. For each fai
 ## 5. Hand the trace to the patcher
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `patcher`, the bottom-left pane.
+1. Press `Ctrl+Shift+B O` to move focus to `patcher`, the bottom-left pane.
 :::
 
 ::: paste `patcher`
@@ -214,8 +214,8 @@ Paste `Run git checkout -- test to undo your changes there, then make npm test p
 ## 6. Ask the verifier for a verdict
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `verifier`, the bottom-right pane.
-2. Press `Ctrl+B Z` to zoom it to the whole stage.
+1. Press `Ctrl+Shift+B O` to move focus to `verifier`, the bottom-right pane.
+2. Press `Ctrl+Shift+B Z` to zoom it to the whole stage.
 :::
 
 ::: paste `verifier`
@@ -238,7 +238,7 @@ Run npm test and npm run typecheck yourself, then read git diff, BUG-REPORT.md a
 :::
 
 ::: ifnot the last line is REJECTED
-`VERDICT.md` lists what `verifier` found wrong. Press `Ctrl+B Z` to put the grid back, press `Ctrl+B O` until `patcher`'s border lights up, and paste `Read VERDICT.md and fix every item it lists, changing src/cart.ts only. Run npm test and npm run typecheck, then end with PATCHED.` into `patcher`. Then do this step again, once.
+`VERDICT.md` lists what `verifier` found wrong. Press `Ctrl+Shift+B Z` to put the grid back, press `Ctrl+Shift+B O` until `patcher`'s border lights up, and paste `Read VERDICT.md and fix every item it lists, changing src/cart.ts only. Run npm test and npm run typecheck, then end with PATCHED.` into `patcher`. Then do this step again, once.
 :::
 
 ::: ifnot the last line is REJECTED a second time
@@ -252,8 +252,8 @@ Stop asking the agents. Open `VERDICT.md` and `src/cart.ts` in a text editor, ma
 ## 7. Check it worked
 
 ::: do
-1. Press `Ctrl+B Z` to put the grid back. Focus stays on `verifier`, the bottom-right pane.
-2. Press `Ctrl+B 1`. The PowerShell pane from step 1 takes the bottom-right cell. `verifier` keeps running, and the rail still lists it.
+1. Press `Ctrl+Shift+B Z` to put the grid back. Focus stays on `verifier`, the bottom-right pane.
+2. Press `Ctrl+Shift+B 1`. The PowerShell pane from step 1 takes the bottom-right cell. `verifier` keeps running, and the rail still lists it.
 3. Download [`bug-hunt-check.zip`](/starters/bug-hunt-check.zip), the check suite: six tests the agents never saw. In File Explorer, right-click it, choose **Extract All...**, set the destination to the project folder itself, the folder that holds `src`, and click **Extract**. A `check` folder appears beside `src`.
 :::
 
@@ -284,11 +284,11 @@ The `check` folder isn't beside `src`. Extract All puts a zip in a new folder na
 :::
 
 ::: ifnot a check test fails
-The patch fixed the reproducer's tests but not all the behaviour behind them. Press `Ctrl+B O` until `patcher`'s border lights up, then paste `The check suite in check/ now exists and has failures. Run npx vitest run check, fix src/cart.ts until it passes without changing any test, and end with PATCHED.` into `patcher`. Then press `Ctrl+B O` until the PowerShell pane's border lights up and paste the line above again.
+The patch fixed the reproducer's tests but not all the behaviour behind them. Press `Ctrl+Shift+B O` until `patcher`'s border lights up, then paste `The check suite in check/ now exists and has failures. Run npx vitest run check, fix src/cart.ts until it passes without changing any test, and end with PATCHED.` into `patcher`. Then press `Ctrl+Shift+B O` until the PowerShell pane's border lights up and paste the line above again.
 :::
 
-::: ifnot Ctrl+B 1 shows a different terminal
-`Ctrl+B 1` brings back the first terminal you opened in this project, so it is the PowerShell pane only when you opened nothing before it. Click the PowerShell pane in the rail instead; it takes the focused cell the same way.
+::: ifnot Ctrl+Shift+B 1 shows a different terminal
+`Ctrl+Shift+B 1` brings back the first terminal you opened in this project, so it is the PowerShell pane only when you opened nothing before it. Click the PowerShell pane in the rail instead; it takes the focused cell the same way.
 :::
 
 ::: done
