@@ -103,14 +103,9 @@ pub fn sha256_hex(data: &[u8]) -> String {
 }
 
 
-/// `%LOCALAPPDATA%\Quay2\machina`, or the temp directory when LOCALAPPDATA is unset.
+/// `machina` in Quay's storage folder (`%LOCALAPPDATA%\Quay2\machina`).
 pub fn machina_data_dir() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("Quay2").join("machina")
+    crate::slices::workspace::manager::storage_dir().join("machina")
 }
 
 pub fn default_vault_root() -> PathBuf {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, FormEvent, FC } from "react";
+import { useState, useEffect, useMemo, useId, FormEvent, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -134,11 +134,17 @@ export const A2APanel: FC<A2APanelProps> = ({
   }, []);
 
   // Peers only: shell and Archon terminals are not on the bus.
-  const agentTerminals = terminals.filter((t) => busLevel(t) !== null);
+  const agentTerminals = useMemo(
+    () => terminals.filter((t) => busLevel(t) !== null),
+    [terminals]
+  );
   // The agent list, From Agent, To Agent and the Broadcast box take only the active
   // project's peers, scoped the way the stage scopes its terminals: a worktree counts as
   // its own project.
-  const projectAgents = agentTerminals.filter((t) => isSamePath(t.project_path, activeProject));
+  const projectAgents = useMemo(
+    () => agentTerminals.filter((t) => isSamePath(t.project_path, activeProject)),
+    [agentTerminals, activeProject]
+  );
   // A broadcast reaches the active project's peers that are still running.
   const broadcastTargets = projectAgents.filter((t) => t.claude_status !== "exited");
   const [fromTerminal, setFromTerminal] = useState(projectAgents[0]?.id || "");
@@ -176,7 +182,7 @@ export const A2APanel: FC<A2APanelProps> = ({
     const { from, to } = keepSendChoices(projectAgents, fromTerminal, toTerminal, asUser);
     if (from !== fromTerminal) setFromTerminal(from);
     if (to !== toTerminal) setToTerminal(to);
-  }, [terminals, activeProject, asUser, fromTerminal, toTerminal]);
+  }, [projectAgents, asUser, fromTerminal, toTerminal]);
 
   useEffect(() => {
     if (!isOpen) return;

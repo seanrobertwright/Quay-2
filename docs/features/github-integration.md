@@ -1,6 +1,6 @@
 # GitHub Companion & Dependency Triage
 
-The **GitHub Companion Drawer** (`Ctrl+B I`) provides a keyboard-driven interface to triage issues, inspect pull requests, and resolve dependency blockers directly from Quay 2.
+The **GitHub Companion Drawer** (`Ctrl+Shift+B I`) provides a keyboard-driven interface to triage issues, inspect pull requests, and resolve dependency blockers directly from Quay 2.
 
 ---
 

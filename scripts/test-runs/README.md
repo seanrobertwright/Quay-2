@@ -45,7 +45,7 @@ Paste slots are:
 ::: do
 1. Download [`<slug>.zip`](/starters/<slug>.zip) and unzip it into a new, empty folder.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane

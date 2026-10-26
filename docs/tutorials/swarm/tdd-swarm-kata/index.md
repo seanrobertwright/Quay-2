@@ -9,9 +9,9 @@ Build a password-strength checker the test-first way with Quay's TDD Swarm: one 
 - **Level** Starter
 :::
 
-**You'll learn:** how to launch a four-pane preset in a 2x2 grid, move between its panes, zoom one pane to read it (`Ctrl+B Z`), and run a red, green, review loop by hand. A2A 3 automates this same loop.
+**You'll learn:** how to launch a four-pane preset in a 2x2 grid, move between its panes, zoom one pane to read it (`Ctrl+Shift+B Z`), and run a red, green, review loop by hand. A2A 3 automates this same loop.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. Each prompt the page gives you goes into the pane it names: click inside that pane, paste the prompt, and press Enter to run it or, in a Claude Code pane, to send it.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. Each prompt the page gives you goes into the pane it names: click inside that pane, paste the prompt, and press Enter to run it or, in a Claude Code pane, to send it.
 
 ::: before
 ## Before you start
@@ -31,8 +31,8 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 ::: do
 1. Download [`tdd-swarm-kata.zip`](/starters/tdd-swarm-kata.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -69,7 +69,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Launch the TDD Swarm
 
 ::: do
-1. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
+1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
 2. Click the **TDD Swarm** card.
 3. Click **Launch Swarm Now**.
 4. Wait until each of the three Claude Code panes has confirmed its role in one line.
@@ -141,10 +141,6 @@ npm run test:watch
 
 ::: ifnot test-architect says it hasn't run npm run test:watch
 You pasted the line into `test-architect`, which never starts the watcher itself. Find the pane whose header says `test-runner`, click inside it, and paste the line there.
-:::
-
-::: ifnot the panes moved, or step 1's pwsh pane is in the grid
-The toolbar's **2x2 Grid Layout** button and `Ctrl+B G` both rebuild the grid: the pane that has focus goes top left and the rest follow in rail order, step 1's `pwsh` included. Close `pwsh` as this step's first line says, then go by the name in each pane's header. From here on a pane may sit somewhere other than where the page says; its name is what counts.
 :::
 
 :::
@@ -227,8 +223,8 @@ Read AGENTS.md. Make every test in test/ pass with the simplest correct implemen
 
 ::: do
 1. Click inside `reviewer`, the bottom-right pane, and paste the prompt below.
-2. When `reviewer` has replied, press `Ctrl+B Z` to zoom it to the whole stage, and read its findings.
-3. Press `Ctrl+B Z` again to put the grid back.
+2. When `reviewer` has replied, press `Ctrl+Shift+B Z` to zoom it to the whole stage, and read its findings.
+3. Press `Ctrl+Shift+B Z` again to put the grid back.
 :::
 
 ::: paste `reviewer`
@@ -252,12 +248,12 @@ Read AGENTS.md, src/strength.ts and test/strength.test.ts. Review them for corre
 - A row of bracketed choices Claude Code prints under the reply, such as `[ Continue ]`. Leave them alone.
 :::
 
-::: ifnot Ctrl+B Z did nothing
-The `Ctrl+B` prefix lasts a second and a half. Press `Ctrl+B`, let go, then press `Z` straight after.
+::: ifnot Ctrl+Shift+B Z did nothing
+The `Ctrl+Shift+B` prefix lasts a second and a half. Press `Ctrl+Shift+B`, let go, then press `Z` straight after.
 :::
 
-::: ifnot Ctrl+B Z zoomed another pane
-Focus was on that pane, not `reviewer`. Press `Ctrl+B Z` to put the grid back, click inside `reviewer`, and zoom again.
+::: ifnot Ctrl+Shift+B Z zoomed another pane
+Focus was on that pane, not `reviewer`. Press `Ctrl+Shift+B Z` to put the grid back, click inside `reviewer`, and zoom again.
 :::
 
 :::
