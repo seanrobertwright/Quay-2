@@ -1,6 +1,7 @@
 pub mod atomic_file;
 pub mod dates;
 pub mod slices;
+pub mod spawn;
 
 use tauri::Emitter;
 
@@ -35,14 +36,16 @@ use slices::orchestrator::{
     list_saved_swarms, remove_saved_swarm, save_swarm, swarm_launch_prompts, A2ARouter,
     SwarmStore,
 };
+use slices::praxis::{praxis_list, praxis_read, praxis_reveal, praxis_save, praxis_validate};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
-    add_project, get_active_project, list_projects, pick_folder, remove_project,
-    set_active_project, update_project_settings, validate_path, WorkspaceManager,
+    add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
+    list_recent_projects, open_project_places, remove_project, save_project_view, set_active_project,
+    update_project_settings, validate_path, WorkspaceManager,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -150,8 +153,13 @@ pub fn run() {
             set_active_project,
             get_active_project,
             update_project_settings,
-            pick_folder,
+            get_project_views,
+            save_project_view,
             validate_path,
+            list_folder,
+            inspect_folder,
+            open_project_places,
+            list_recent_projects,
             a2a_send_prompt,
             a2a_broadcast_toast,
             a2a_get_messages,
@@ -198,6 +206,11 @@ pub fn run() {
             machina_get_project_info,
             machina_save_project_config,
             machina_approve_project_config,
+            praxis_list,
+            praxis_read,
+            praxis_reveal,
+            praxis_save,
+            praxis_validate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -233,7 +233,15 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
     return (
       <div
         key={preset.id}
+        role="button"
+        tabIndex={0}
         onClick={() => selectPreset(preset)}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            selectPreset(preset);
+          }
+        }}
         className={`p-4 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
           isSelected
             ? "bg-[#1f2937]/70 border-[#58a6ff] shadow-md shadow-[#58a6ff]/5"
@@ -434,7 +442,7 @@ export const SwarmModal: React.FC<SwarmModalProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[#c9d1d9]">Layout Arrangement</label>
+                <div className="text-xs font-semibold text-[#c9d1d9]">Layout Arrangement</div>
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { id: "split-horizontal", label: "Side-by-Side Split", icon: Columns2 },

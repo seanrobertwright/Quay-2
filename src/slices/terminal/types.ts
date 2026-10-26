@@ -208,4 +208,7 @@ export interface TerminalOutputPayload {
   terminal_id: string;
   data: string;
   last_seq: number;
+  /** The running PTY's size, which `data` was laid out for; null once the terminal has exited. */
+  rows: number | null;
+  cols: number | null;
 }

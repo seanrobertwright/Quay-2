@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useId } from "react";
+import React, { useState, useEffect, useId, useRef } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
 export interface WorktreeRemovalPrompt {
@@ -25,10 +25,16 @@ export const RemoveWorktreeDialog: React.FC<RemoveWorktreeDialogProps> = ({
   const messageId = useId();
   const [isRemoving, setIsRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setIsRemoving(false);
     setError(null);
+    if (prompt) {
+      setTimeout(() => {
+        cancelButtonRef.current?.focus();
+      }, 0);
+    }
   }, [prompt]);
 
   useEffect(() => {
@@ -102,8 +108,8 @@ export const RemoveWorktreeDialog: React.FC<RemoveWorktreeDialogProps> = ({
 
         <div className="px-5 py-3 border-t border-[#30363d] flex items-center justify-end gap-2">
           <button
+            ref={cancelButtonRef}
             type="button"
-            autoFocus
             onClick={onCancel}
             disabled={isRemoving}
             className="px-3.5 py-1.5 text-xs text-[#c9d1d9] hover:bg-[#21262d] rounded-md transition-colors disabled:opacity-50"

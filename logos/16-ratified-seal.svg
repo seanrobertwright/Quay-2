@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px16-title px16-desc">
+  <title id="px16-title">Praxis workflow engine logo: Ratified Seal</title>
+  <desc id="px16-desc">A stamped seal with the engine's full name around a check: approved, signed off, released.</desc>
+  <defs><path id="px16-ring" d="M12.5,48 A35.5,35.5 0 1 1 83.5,48 A35.5,35.5 0 1 1 12.5,48"/></defs>
+  <g id="px16-icon"><circle cx="48" cy="48" r="44" fill="none" stroke="#9F1239" stroke-width="2.5"/><circle cx="48" cy="48" r="31" fill="none" stroke="#9F1239" stroke-width="1.25"/><text font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7.5" font-weight="700" fill="#9F1239"><textPath href="#px16-ring" textLength="221.05" lengthAdjust="spacing">MACHINA PRAXIS • WORKFLOW ENGINE • </textPath></text><path d="M35,49 L44,58 L62,39" fill="none" stroke="#9F1239" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="px16-wordmark">
+    <text x="114" y="54" font-family="'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif" font-size="46" font-weight="600" letter-spacing="0" fill="#881337">Praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#9F1239">WORKFLOW ENGINE</text>
+  </g>
+</svg>

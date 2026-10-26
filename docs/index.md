@@ -36,7 +36,7 @@ features:
     details: Interactive visual DAG inspector, real-time node execution logs, live chat event stream, and ADR tracking.
     icon: 📐
     link: /features/archon-sdd
-  - title: 🏭 Machina Praxis Factory
+  - title: 🏭 Machina Factory
     details: Native deterministic AI software manufacturing cockpit with stage progression, deliverable gates, and worker oversight.
     icon: 🏭
     link: /features/machina-praxis

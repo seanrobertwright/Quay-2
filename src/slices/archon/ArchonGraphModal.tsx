@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, FC } from "react";
+import { useState, useEffect, useCallback, useMemo, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   X,
@@ -78,22 +78,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     }
   }, [activeTerminalId, terminals]);
 
-  // Load Archon and repo data when modal opens + live poll runs every 2.5s
-  useEffect(() => {
-    if (!isOpen) return;
-    refreshData();
-    const timer = setInterval(async () => {
-      try {
-        const runsList = await invoke<ArchonRun[]>("archon_get_runs");
-        setRuns(runsList);
-      } catch {
-        // ignore transient poll error
-      }
-    }, 2500);
-    return () => clearInterval(timer);
-  }, [isOpen, activeProject]);
-
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -105,10 +90,11 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
       try {
         const wfList = await invoke<ArchonWorkflow[]>("archon_get_workflows");
         setWorkflows(wfList);
-        if (wfList.length > 0 && !selectedWorkflowId) {
+        if (wfList.length > 0) {
           // Default to first workflow with plan if available, or first in list
           const withPlan = wfList.find((w) => w.plan && w.plan.nodes && w.plan.nodes.length > 0);
-          setSelectedWorkflowId(withPlan ? withPlan.id : wfList[0].id);
+          const defaultId = withPlan ? withPlan.id : wfList[0].id;
+          setSelectedWorkflowId((prev) => prev || defaultId);
         }
       } catch (err: any) {
         console.warn("Could not load workflows:", err);
@@ -136,7 +122,22 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeProject]);
+
+  // Load Archon and repo data when modal opens + live poll runs every 2.5s
+  useEffect(() => {
+    if (!isOpen) return;
+    refreshData();
+    const timer = setInterval(async () => {
+      try {
+        const runsList = await invoke<ArchonRun[]>("archon_get_runs");
+        setRuns(runsList);
+      } catch {
+        // ignore transient poll error
+      }
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [isOpen, refreshData]);
 
   // Selected Workflow
   const currentWorkflow = useMemo(() => {
@@ -588,8 +589,9 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                           latestWorkflowRun?.status === "completed";
 
                         return (
-                          <div
+                          <button
                             key={node.id}
+                            type="button"
                             onClick={() => setSelectedNodeId(node.id)}
                             style={{
                               position: "absolute",
@@ -598,7 +600,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                               width: `${node.width}px`,
                               height: `${node.height}px`,
                             }}
-                            className={`p-3 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
+                            className={`p-3 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between ${
                               isLiveRunning
                                 ? "bg-[#1c2128] border-[#e3b341] shadow-lg ring-2 ring-[#e3b341]/50 -translate-y-0.5"
                                 : isSelected
@@ -647,7 +649,7 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                                 </span>
                               )}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -725,14 +727,15 @@ export const ArchonGraphModal: FC<ArchonGraphModalProps> = ({
                         {selectedNode.depends_on && selectedNode.depends_on.length > 0 ? (
                           <div className="space-y-1.5">
                             {selectedNode.depends_on.map((dep) => (
-                              <div
+                              <button
                                 key={dep}
+                                type="button"
                                 onClick={() => setSelectedNodeId(dep)}
-                                className="p-2 bg-[#0d1117] border border-[#30363d] rounded text-xs flex items-center justify-between cursor-pointer hover:border-[#58a6ff]"
+                                className="w-full text-left p-2 bg-[#0d1117] border border-[#30363d] rounded text-xs flex items-center justify-between cursor-pointer hover:border-[#58a6ff]"
                               >
                                 <span className="font-mono text-[#58a6ff]">{dep}</span>
                                 <span className="text-[10px] text-[#3fb950] font-medium">Ready</span>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         ) : (

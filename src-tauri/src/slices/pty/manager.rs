@@ -61,24 +61,12 @@ pub fn next_created_at() -> u64 {
     next
 }
 
-fn get_sessions_dir() -> PathBuf {
-    #[cfg(test)]
-    {
-        let t = std::env::temp_dir().join("quay2_test_sessions");
-        let _ = std::fs::create_dir_all(&t);
-        t
-    }
-    #[cfg(not(test))]
-    {
-        let base_dir = if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            PathBuf::from(local).join("Quay2").join("sessions")
-        } else {
-            let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".quay2").join("sessions")
-        };
-        let _ = std::fs::create_dir_all(&base_dir);
-        base_dir
-    }
+/// Where terminal sessions and their scrollback logs are kept: `sessions` in Quay's
+/// storage folder.
+pub(crate) fn get_sessions_dir() -> PathBuf {
+    let dir = crate::slices::workspace::manager::storage_dir().join("sessions");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 /// The session list saved at `path`. A missing file means none. A file that can't be
@@ -522,6 +510,8 @@ impl PtyManager {
                     terminal_id: terminal_id.to_string(),
                     data: data.clone(),
                     last_seq: *last_seq,
+                    rows: None,
+                    cols: None,
                 });
             }
         }
@@ -534,6 +524,8 @@ impl PtyManager {
                 terminal_id: terminal_id.to_string(),
                 data,
                 last_seq: seq,
+                rows: None,
+                cols: None,
             });
         }
 

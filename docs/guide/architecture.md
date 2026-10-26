@@ -29,7 +29,7 @@ graph TB
         BridgeSlice["bridge: Embedded Axum HTTP Wire Protocol"]
         OrchSlice["orchestrator: Loopback A2A MCP Server"]
         ArchonB["archon: Archon Runtime Bridge & DAG"]
-        MachinaB["machina: Praxis SQLite Factory Engine"]
+        MachinaB["machina: Native Factory Engine"]
         GithubB["github: Native gh CLI & GraphQL"]
         SessionB["sessions: Token Scanner & Deduplication"]
         AuditB["audit: Pre-PR Secret & Leak Scanner"]
@@ -78,8 +78,8 @@ graph TB
 - Streams live task execution logs and chat events.
 
 ### 5. `machina` — Deterministic Factory Supervisor
-- Supervises headless Node.js sidecar instances running Machina Praxis.
-- Manages SQLite schema migrations in `%LOCALAPPDATA%\Quay2\praxis\praxis.db`.
+- Runs the Machina factory in-process in Quay's Rust backend, scaffolding isolated git worktrees and running project-configured gate checks.
+- Persists work orders and holdback vaults in `%LOCALAPPDATA%\Quay2\machina\`.
 - Translates factory work order events into real-time UI state.
 
 ### 6. `github` — Issue & PR Triage with Dependency Resolution

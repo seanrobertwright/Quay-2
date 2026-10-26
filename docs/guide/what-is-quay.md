@@ -4,7 +4,7 @@
 
 While AI coding tools such as **Claude Code**, **Antigravity CLI**, **OpenAI Codex**, **Pi**, **Google Gemini CLI**, and **Aider** have revolutionized autonomous engineering, supervising multiple long-running agents simultaneously in conventional terminal emulators or console multiplexers is fragmented and error-prone.
 
-Quay 2 solves this by bridging the raw execution speed of the native **Windows ConPTY** API with an embedded **Agent-to-Agent (A2A) MCP orchestration bus**, an integrated **Archon & Spec-Driven Development (SDD) Graph Inspector**, a native **Machina Praxis Software Factory cockpit**, and deep **Git Worktree** isolation.
+Quay 2 solves this by bridging the raw execution speed of the native **Windows ConPTY** API with an embedded **Agent-to-Agent (A2A) MCP orchestration bus**, an integrated **Archon & Spec-Driven Development (SDD) Graph Inspector**, a native **Machina Software Factory cockpit**, and deep **Git Worktree** isolation.
 
 ---
 
@@ -46,7 +46,7 @@ flowchart TD
         Rail["Navigation Rail (Projects, Worktrees, Tools)"]
         Stage["Tiling Stage (Splits, 2x2 Grid, Zoom)"]
         ArchonModal["Archon SDD Graph & Logs"]
-        MachinaModal["Machina Praxis Cockpit"]
+        MachinaModal["Machina Cockpit"]
         GithubDrawer["GitHub Companion Drawer"]
     end
 
@@ -71,7 +71,7 @@ Every agent spawned inside Quay is automatically enrolled in an in-process Model
 ### 3. Integrated Engineering Cockpit
 Rather than juggling dozens of disparate browser tabs, Quay 2 embeds your entire development feedback loop:
 - Visual Archon workflow graphs and execution checklists.
-- Deterministic Machina Praxis factory pipelines.
+- Deterministic Machina factory pipelines.
 - Instant Git worktree switching.
 - Direct GitHub issue triage and dependency blocker resolution.
 - Live cost accounting across all active and historical sessions.

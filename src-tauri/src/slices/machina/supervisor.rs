@@ -1815,7 +1815,11 @@ mod tests {
     /// HALT cancels a running gate, kills its command, and the work order resumes.
     #[test]
     fn halt_cancels_a_running_gate() {
-        let slow = if cfg!(windows) { "ping -n 30 127.0.0.1 > nul" } else { "sleep 30" };
+        let slow = if cfg!(windows) {
+            "echo started > gate-started.txt && ping -n 30 127.0.0.1 > nul"
+        } else {
+            "touch gate-started.txt && sleep 30"
+        };
         let (root, repo) = test_repo(&format!(
             r#"{{ "tier1": [{{ "name": "slow", "run": "{}" }}], "timeoutSec": 120 }}"#,
             slow
@@ -1827,9 +1831,17 @@ mod tests {
         fs::create_dir_all(wt.join("src")).unwrap();
         fs::write(wt.join("src").join("a.txt"), "hello\n").unwrap();
 
+        let marker = wt.join("gate-started.txt");
         let started = std::time::Instant::now();
         mgr.start_gate("WO-1", None).unwrap();
-        std::thread::sleep(Duration::from_millis(1500));
+        for _ in 0..200 {
+            if marker.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(marker.exists(), "the slow check never started");
+        std::thread::sleep(Duration::from_millis(100));
         mgr.set_loop_mode(FactoryLoopMode::HALTED);
         assert_eq!(mgr.get("WO-1").unwrap().status, WorkOrderStatus::INTERRUPTED);
         for _ in 0..200 {
