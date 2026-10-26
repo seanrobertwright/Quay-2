@@ -552,6 +552,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenActionLog,
     onOpenA2A,
     onOpenDiffInspector,
+    onOpenPrePrAudit,
+    onOpenSessionHistory,
+    onOpenTokenSpend,
+    onOpenArchonGraph,
+    onOpenFactoryStation,
+    onCheckForUpdates,
     onToggleLiveMode,
     onAddProject,
     onSelectProject,
@@ -616,14 +622,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4">
+      <div className="fixed inset-0" aria-hidden="true" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-2xl bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-150">
         {/* Search Input Bar */}
         <div className="px-4 py-3 border-b border-[#30363d] flex items-center gap-3 bg-[#0d1117]">
           <Search className="w-5 h-5 text-[#8b949e] shrink-0" />
@@ -654,15 +655,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             filteredCommands.map((item, idx) => {
               const isSelected = idx === selectedIndex;
               return (
-                <div
+                <button
                   key={item.id}
+                  type="button"
                   data-index={idx}
                   onClick={() => {
                     item.action();
                     onClose();
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors ${
+                  className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors ${
                     isSelected
                       ? "bg-[#21262d] text-white"
                       : "text-[#c9d1d9] hover:bg-[#161b22]"
@@ -699,7 +701,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       </kbd>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })
           )}

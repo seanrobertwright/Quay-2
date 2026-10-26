@@ -433,12 +433,20 @@ export const ActionLogDrawer: FC<ActionLogDrawerProps> = ({
               >
                 {/* Card Header Row */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => toggleExpand(rec.id)}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      toggleExpand(rec.id);
+                    }
+                  }}
                   className="p-2.5 flex items-center justify-between cursor-pointer hover:bg-[#161b22]/70 transition-colors select-none"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <button
-                      type="button"
+                    <span
+                      aria-hidden="true"
                       className="text-[#8b949e] p-0.5 hover:text-white rounded"
                     >
                       {isCardExpanded ? (
@@ -446,7 +454,7 @@ export const ActionLogDrawer: FC<ActionLogDrawerProps> = ({
                       ) : (
                         <ChevronRight className="w-3.5 h-3.5" />
                       )}
-                    </button>
+                    </span>
 
                     {/* Status Icon */}
                     {rec.isDestructive ? (

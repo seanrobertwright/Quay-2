@@ -56,7 +56,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
       setQuery("");
       onClear();
     }
-  }, [isOpen]);
+  }, [isOpen, onClear]);
 
   // Incremental search as user types
   useEffect(() => {
@@ -65,7 +65,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
       return;
     }
     onFindNext(query, { caseSensitive, regex, wholeWord });
-  }, [query, caseSensitive, regex, wholeWord]);
+  }, [query, caseSensitive, regex, wholeWord, onClear, onFindNext]);
 
   if (!isOpen) return null;
 
@@ -110,7 +110,7 @@ export const TerminalSearchBar: FC<TerminalSearchBarProps> = ({
 
   return (
     <div
-      onClick={(e) => e.stopPropagation()}
+      data-no-terminal-focus
       className="absolute top-2 right-3 z-30 flex items-center gap-1.5 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl px-2.5 py-1.5 text-xs text-[#c9d1d9] animate-in fade-in slide-in-from-top-1 select-none"
     >
       <Search className="w-3.5 h-3.5 text-[#8b949e] shrink-0" />

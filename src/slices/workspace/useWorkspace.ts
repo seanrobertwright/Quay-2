@@ -705,37 +705,40 @@ export function useWorkspace() {
   ]);
 
   // Switch active project
-  const selectProject = async (path: string, targetTerminalId?: string) => {
-    try {
-      await invoke("set_active_project", { path });
-      setActiveProject(path);
+  const selectProject = useCallback(
+    async (path: string, targetTerminalId?: string) => {
+      try {
+        await invoke("set_active_project", { path });
+        setActiveProject(path);
 
-      // Select terminal belonging to this project if one exists
-      const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path));
-      if (projectTerms.length > 0) {
-        const chosenId =
-          targetTerminalId && projectTerms.some((t) => t.id === targetTerminalId)
-            ? targetTerminalId
-            : activeTerminalId && projectTerms.some((t) => t.id === activeTerminalId)
-            ? activeTerminalId
-            : projectTerms[0].id;
-        const secondId = projectTerms.find((t) => t.id !== chosenId)?.id || null;
-        setPrimaryTerminalId(chosenId);
-        setSecondaryTerminalId(secondId);
-        setActiveTerminalId(chosenId);
-        setFocusedPane("primary");
-        if (projectTerms.length < 2 && (layout === "split-horizontal" || layout === "split-vertical")) {
-          setLayout("single");
+        // Select terminal belonging to this project if one exists
+        const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path));
+        if (projectTerms.length > 0) {
+          const chosenId =
+            targetTerminalId && projectTerms.some((t) => t.id === targetTerminalId)
+              ? targetTerminalId
+              : activeTerminalId && projectTerms.some((t) => t.id === activeTerminalId)
+              ? activeTerminalId
+              : projectTerms[0].id;
+          const secondId = projectTerms.find((t) => t.id !== chosenId)?.id || null;
+          setPrimaryTerminalId(chosenId);
+          setSecondaryTerminalId(secondId);
+          setActiveTerminalId(chosenId);
+          setFocusedPane("primary");
+          if (projectTerms.length < 2 && (layout === "split-horizontal" || layout === "split-vertical")) {
+            setLayout("single");
+          }
+        } else {
+          setPrimaryTerminalId(null);
+          setSecondaryTerminalId(null);
+          setActiveTerminalId(null);
         }
-      } else {
-        setPrimaryTerminalId(null);
-        setSecondaryTerminalId(null);
-        setActiveTerminalId(null);
+      } catch (err) {
+        console.error("Failed to switch project:", err);
       }
-    } catch (err) {
-      console.error("Failed to switch project:", err);
-    }
-  };
+    },
+    [terminals, activeTerminalId, layout]
+  );
 
   // Select / activate a terminal (e.g. from Rail or shortcut)
   const selectTerminal = useCallback(
@@ -789,7 +792,7 @@ export function useWorkspace() {
         );
       }, 100);
     },
-    [terminals, activeProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
+    [terminals, activeProject, selectProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
   );
 
   // Focus a specific pane
@@ -916,7 +919,7 @@ export function useWorkspace() {
         console.error("Failed to spawn terminal for split:", e);
       }
     }
-  }, [secondaryTerminalId, activeTerminalId, visibleTerminals, activeProject]);
+  }, [secondaryTerminalId, activeTerminalId, visibleTerminals, activeProject, syncStartingStatus]);
 
   // Split Vertical (stacked)
   const splitVertical = useCallback(async () => {
@@ -955,7 +958,7 @@ export function useWorkspace() {
         console.error("Failed to spawn terminal for split:", e);
       }
     }
-  }, [secondaryTerminalId, activeTerminalId, visibleTerminals, activeProject]);
+  }, [secondaryTerminalId, activeTerminalId, visibleTerminals, activeProject, syncStartingStatus]);
 
   // Split Grid (2x2)
   const splitGrid = useCallback(() => {

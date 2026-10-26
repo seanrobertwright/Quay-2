@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, FC } from "react";
+import { useState, useEffect, useCallback, useMemo, FC } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -160,7 +160,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Fetch repo info, issues, and PRs
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     if (!repoPath) return;
     setIsLoading(true);
     setError(null);
@@ -205,13 +205,13 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [repoPath, issueStateFilter, prStateFilter]);
 
   useEffect(() => {
     if (isOpen) {
       refreshData();
     }
-  }, [isOpen, repoPath, issueStateFilter, prStateFilter]);
+  }, [isOpen, refreshData]);
 
   // Fetch detailed issue description when an issue is selected
   useEffect(() => {
@@ -530,7 +530,15 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                     return (
                       <div
                         key={issue.number}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setSelectedIssueNumber(issue.number)}
+                        onKeyDown={(e) => {
+                          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                            e.preventDefault();
+                            setSelectedIssueNumber(issue.number);
+                          }
+                        }}
                         className={`p-3 rounded-md cursor-pointer transition-colors ${
                           isSelected
                             ? "bg-[#21262d] border border-[#58a6ff]/40 text-white"

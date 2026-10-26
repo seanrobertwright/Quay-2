@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import { FolderGit2, FolderOpen, X, CheckCircle, AlertCircle } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -18,6 +18,28 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const folderInputId = useId();
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleConfirm = useCallback(async () => {
+    const trimmed = folderPath.trim();
+    if (!trimmed) {
+      setErrorMsg("Please provide a valid folder path.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setErrorMsg("");
+      await onAddProject(trimmed);
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to add project:", err);
+      setErrorMsg(typeof err === "string" ? err : "Failed to add project");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [folderPath, onAddProject, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -25,6 +47,9 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       setIsValid(null);
       setErrorMsg("");
       setIsSubmitting(false);
+      setTimeout(() => {
+        folderInputRef.current?.focus();
+      }, 0);
     }
   }, [isOpen]);
 
@@ -40,7 +65,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, folderPath, isSubmitting]);
+  }, [isOpen, onClose, handleConfirm]);
 
   if (!isOpen) return null;
 
@@ -80,26 +105,6 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     }
   };
 
-  const handleConfirm = async () => {
-    const trimmed = folderPath.trim();
-    if (!trimmed) {
-      setErrorMsg("Please provide a valid folder path.");
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      setErrorMsg("");
-      await onAddProject(trimmed);
-      onClose();
-    } catch (err: any) {
-      console.error("Failed to add project:", err);
-      setErrorMsg(typeof err === "string" ? err : "Failed to add project");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs">
       <div className="w-[500px] bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl p-6 text-[#c9d1d9] animate-in fade-in zoom-in-95 duration-100">
@@ -124,14 +129,18 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
           </p>
 
           <div>
-            <label className="block text-xs font-medium text-[#8b949e] mb-1.5 uppercase tracking-wide">
+            <label
+              htmlFor={folderInputId}
+              className="block text-xs font-medium text-[#8b949e] mb-1.5 uppercase tracking-wide"
+            >
               Folder Path
             </label>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
+                  id={folderInputId}
+                  ref={folderInputRef}
                   type="text"
-                  autoFocus
                   value={folderPath}
                   onChange={(e) => {
                     setFolderPath(e.target.value);

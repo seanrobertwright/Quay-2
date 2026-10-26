@@ -285,10 +285,11 @@ export const DiffViewerDrawer: React.FC<DiffViewerDrawerProps> = ({
                   const isSelected = change.id === selectedChangeId;
                   const term = terminals.find((t) => t.id === change.terminalId);
                   return (
-                    <div
+                    <button
                       key={change.id}
+                      type="button"
                       onClick={() => setSelectedChangeId(change.id)}
-                      className={`p-2.5 rounded-md cursor-pointer transition-colors ${
+                      className={`w-full text-left p-2.5 rounded-md cursor-pointer transition-colors ${
                         isSelected
                           ? "bg-[#21262d] border border-[#58a6ff]/40 text-white"
                           : "text-[#c9d1d9] hover:bg-[#161b22]"
@@ -330,7 +331,7 @@ export const DiffViewerDrawer: React.FC<DiffViewerDrawerProps> = ({
                         <span className="truncate">{term?.name || change.terminalId.slice(0, 8)}</span>
                         <span>{new Date(change.ts).toLocaleTimeString()}</span>
                       </div>
-                    </div>
+                    </button>
                   );
                 })
               )}
