@@ -62,7 +62,7 @@ pub async fn save_project_view(
 #[tauri::command]
 pub async fn pick_folder() -> Result<Option<String>, String> {
     tokio::task::spawn_blocking(|| {
-        let output = std::process::Command::new("powershell")
+        let output = crate::spawn::hidden_command("powershell")
             .args([
                 "-NoProfile",
                 "-Command",

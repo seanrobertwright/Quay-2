@@ -191,7 +191,6 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"issues" | "prs">("issues");
   const [repoInfo, setRepoInfo] = useState<GithubRepoInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archonWorkflows, setArchonWorkflows] = useState<ArchonWorkflow[]>([]);
   const [archonRuns, setArchonRuns] = useState<ArchonRun[]>([]);
@@ -219,47 +218,68 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Fetch repo info, issues, and PRs
-  const refreshData = useCallback(async () => {
-    if (!repoPath) return;
-    setIsLoading(true);
-    setError(null);
-
+  // Each load spawns `gh` or `archon` processes, so each one reruns only when its own
+  // inputs change: a filter change refetches its own list and nothing else.
+  const [pendingLoads, setPendingLoads] = useState(0);
+  const isLoading = pendingLoads > 0;
+  const track = useCallback(async (load: () => Promise<void>) => {
+    setPendingLoads((n) => n + 1);
     try {
-      // Check repo info
-      const info = await invoke<GithubRepoInfo | null>("get_github_repo_info", {
-        repoPath,
-      });
-      setRepoInfo(info);
-
-      // Load the first page of issues and PRs; later pages load on scroll
-      await loadFirstIssuePage();
-      await loadFirstPrPage();
-
-      // Load Archon workflows & runs (best-effort)
-      try {
-        const [wfs, rns] = await Promise.all([
-          invoke<ArchonWorkflow[]>("archon_get_workflows").catch(() => []),
-          invoke<ArchonRun[]>("archon_get_runs").catch(() => []),
-        ]);
-        setArchonWorkflows(wfs || []);
-        setArchonRuns(rns || []);
-      } catch {
-        // Archon not running or not installed
-      }
+      await load();
     } catch (err: any) {
       console.error("Failed to load GitHub data:", err);
       setError(err?.toString() || "Failed to load GitHub data via gh CLI");
     } finally {
-      setIsLoading(false);
+      setPendingLoads((n) => n - 1);
     }
-  }, [repoPath, loadFirstIssuePage, loadFirstPrPage]);
+  }, []);
+
+  // Repo info and Archon workflows & runs (best-effort): once per open.
+  const loadRepoAndArchon = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(async () => {
+      const [info, wfs, rns] = await Promise.all([
+        invoke<GithubRepoInfo | null>("get_github_repo_info", { repoPath }),
+        invoke<ArchonWorkflow[]>("archon_get_workflows").catch(() => []),
+        invoke<ArchonRun[]>("archon_get_runs").catch(() => []),
+      ]);
+      setRepoInfo(info);
+      setArchonWorkflows(wfs || []);
+      setArchonRuns(rns || []);
+    });
+  }, [repoPath, track]);
+
+  // The first page of issues and PRs; later pages load on scroll
+  const loadIssues = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(loadFirstIssuePage);
+  }, [repoPath, loadFirstIssuePage, track]);
+
+  const loadPrs = useCallback(() => {
+    if (!repoPath) return Promise.resolve();
+    return track(loadFirstPrPage);
+  }, [repoPath, loadFirstPrPage, track]);
+
+  // The refresh button reloads everything.
+  const refreshData = useCallback(() => {
+    setError(null);
+    return Promise.all([loadRepoAndArchon(), loadIssues(), loadPrs()]);
+  }, [loadRepoAndArchon, loadIssues, loadPrs]);
 
   useEffect(() => {
     if (isOpen) {
-      refreshData();
+      setError(null);
+      loadRepoAndArchon();
     }
-  }, [isOpen, refreshData]);
+  }, [isOpen, loadRepoAndArchon]);
+
+  useEffect(() => {
+    if (isOpen) loadIssues();
+  }, [isOpen, loadIssues]);
+
+  useEffect(() => {
+    if (isOpen) loadPrs();
+  }, [isOpen, loadPrs]);
 
   // Fetch detailed issue description when an issue is selected
   useEffect(() => {
