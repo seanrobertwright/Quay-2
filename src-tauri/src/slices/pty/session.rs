@@ -729,25 +729,7 @@ impl PtySession {
             format!("Failed to take master writer: {}", e)
         })?));
 
-        let log_dir = {
-            #[cfg(test)]
-            {
-                let t = std::env::temp_dir().join("quay2_test_sessions");
-                let _ = std::fs::create_dir_all(&t);
-                t
-            }
-            #[cfg(not(test))]
-            {
-                let d = if let Ok(local) = std::env::var("LOCALAPPDATA") {
-                    std::path::Path::new(&local).join("Quay2").join("sessions")
-                } else {
-                    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-                    std::path::Path::new(&home).join(".quay2").join("sessions")
-                };
-                let _ = std::fs::create_dir_all(&d);
-                d
-            }
-        };
+        let log_dir = super::manager::get_sessions_dir();
         let log_path = log_dir.join(format!("{}.log", terminal_id));
 
         // Read existing scrollback if relaunching an existing terminal
