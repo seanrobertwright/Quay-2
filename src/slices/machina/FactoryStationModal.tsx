@@ -218,7 +218,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                   MACHINA
                 </h2>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d]">
-                  Ctrl+B F
+                  Ctrl+Shift+B F
                 </span>
                 {status && (
                   <span

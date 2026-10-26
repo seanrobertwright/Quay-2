@@ -21,6 +21,7 @@ import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
+import { opensCommandPalette } from "./paletteKey";
 import { chooseGridSlots } from "./gridSlots";
 
 export type { Project };
@@ -1114,8 +1115,10 @@ export function useWorkspace() {
   };
 
 
-  // Keyboard shortcut listener: Ctrl+K, the ^b prefix chords in ctrlBPrefix.ts, and Alt+1..9.
-  // The prefix outlives each render, so a re-render between Ctrl+B and its second key keeps it.
+  // Keyboard shortcut listener: the command palette keys in paletteKey.ts, the Ctrl+Shift+B prefix
+  // chords in ctrlBPrefix.ts, and Alt+1..9. Ctrl+B, Ctrl+K and the other shell keys pass through
+  // to a focused terminal. The prefix outlives each render, so a re-render between Ctrl+Shift+B and
+  // its second key keeps it.
   const ctrlBPrefix = useCtrlBPrefix();
 
   useEffect(() => {
@@ -1145,16 +1148,11 @@ export function useWorkspace() {
           selectTerminal(target.id);
         }
       },
-      sendPrefixToTerminal: () => {
-        if (activeTerminalId) {
-          invoke("write_pty", { terminalId: activeTerminalId, data: "\x02" }).catch(console.error);
-        }
-      },
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Global Ctrl+K / Cmd+K Command Palette trigger
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      // Ctrl+Shift+P anywhere, or Ctrl+K / Cmd+K outside a terminal, toggles the command palette
+      if (opensCommandPalette(e)) {
         e.preventDefault();
         e.stopPropagation();
         setIsCommandPaletteOpen((prev) => !prev);
@@ -1178,7 +1176,6 @@ export function useWorkspace() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [
     ctrlBPrefix,
-    activeTerminalId,
     visibleTerminals,
     layout,
     focusedPane,

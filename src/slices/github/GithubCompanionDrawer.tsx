@@ -354,7 +354,7 @@ export const GithubCompanionDrawer: FC<GithubCompanionDrawerProps> = ({
                 type="button"
                 onClick={onOpenArchonMonitor}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-[#a371f7] bg-[#a371f7]/10 hover:bg-[#a371f7]/20 border border-[#a371f7]/30 rounded font-medium transition-colors"
-                title="Open Archon Run Monitor (^b r)"
+                title="Open Archon Run Monitor (Ctrl+Shift+B r)"
               >
                 <Workflow className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Archon Monitor</span>

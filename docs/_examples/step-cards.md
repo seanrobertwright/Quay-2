@@ -36,7 +36,7 @@ Two agents pass one message, so you can see every slot a step card has.
 ::: do
 1. Download `example.zip` and unzip it into a new, empty folder.
 2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -68,8 +68,8 @@ Node 24 or later isn't on your PATH. Install it, then close and reopen Quay.
 ## 2. Open two Claude Code agents
 
 ::: do
-1. Press `Ctrl+B N`, choose **Claude**, label it `asker` and click **Start Terminal**.
-2. Press `Ctrl+B %`, then `Ctrl+B N` again, and label the second one `answerer`.
+1. Press `Ctrl+Shift+B N`, choose **Claude**, label it `asker` and click **Start Terminal**.
+2. Press `Ctrl+Shift+B %`, then `Ctrl+Shift+B N` again, and label the second one `answerer`.
 :::
 
 ::: see

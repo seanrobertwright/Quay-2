@@ -1,4 +1,4 @@
-/** How long a `Ctrl+B` prefix waits for its second key before it lapses. */
+/** How long the `Ctrl+Shift+B` prefix waits for its second key before it lapses. */
 export const CTRL_B_PREFIX_TIMEOUT_MS = 1500;
 
 /** The timer functions the prefix uses, so tests can drive the timeout by hand. */
@@ -13,12 +13,12 @@ const windowClock: PrefixClock = {
 };
 
 /**
- * The pending half of a `Ctrl+B` chord (tmux/psmux style). The workspace hook owns one for its
+ * The pending half of a `Ctrl+Shift+B` chord (tmux/psmux style). The workspace hook owns one for its
  * whole life, so a re-render between the two keys, which tears down and rebuilds the keydown
  * listener, does not drop the prefix.
  */
 export interface CtrlBPrefix {
-  /** Whether `Ctrl+B` was pressed and no later key has ended it, nor has it timed out. */
+  /** Whether `Ctrl+Shift+B` was pressed and no later key has ended it, nor has it timed out. */
   readonly pending: boolean;
   /** Starts, or restarts, the prefix window. */
   arm(): void;
@@ -61,7 +61,7 @@ export function createCtrlBPrefix(clock: PrefixClock = windowClock): CtrlBPrefix
   };
 }
 
-/** What each `Ctrl+B` chord does. */
+/** What each `Ctrl+Shift+B` chord does. */
 export interface CtrlBActions {
   openNewTerminal(): void;
   splitHorizontal(): void;
@@ -82,16 +82,17 @@ export interface CtrlBActions {
   focusNextPane(): void;
   toggleZoom(): void;
   unsplit(): void;
-  /** `Ctrl+B 1`..`9`: the zero-based index of the visible terminal to select. */
+  /** `Ctrl+Shift+B 1`..`9`: the zero-based index of the visible terminal to select. */
   selectTerminalAt(index: number): void;
-  /** `Ctrl+B Ctrl+B`: writes one literal `Ctrl+B` (`\x02`) to the active terminal's PTY. */
-  sendPrefixToTerminal(): void;
 }
 
 /** The parts of a `KeyboardEvent` the chord handler reads and calls. */
 export interface ChordKeyEvent {
   key: string;
   ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
   /** True for the auto-repeat keydowns the OS sends while a key is held. */
   repeat: boolean;
   target: EventTarget | null;
@@ -99,8 +100,8 @@ export interface ChordKeyEvent {
   stopPropagation(): void;
 }
 
-/** The action each lower-cased `Ctrl+B` chord key runs. `1`..`9` are handled apart from this. */
-const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTerminalAt" | "sendPrefixToTerminal">>([
+/** The action each lower-cased `Ctrl+Shift+B` chord key runs. `1`..`9` are handled apart from this. */
+const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTerminalAt">>([
   ["n", "openNewTerminal"],
   ["%", "splitHorizontal"],
   ['"', "splitVertical"],
@@ -168,6 +169,11 @@ function isTextField(target: EventTarget | null): boolean {
   }
 }
 
+/** `Ctrl+Shift+B`, the chord prefix. With Shift held the browser reports `B`. */
+function isPrefixKey(e: ChordKeyEvent): boolean {
+  return e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "b";
+}
+
 function chordFor(key: string, actions: CtrlBActions): (() => void) | null {
   const action = CHORD_ACTIONS.get(key.toLowerCase());
   if (action) return actions[action];
@@ -177,16 +183,15 @@ function chordFor(key: string, actions: CtrlBActions): (() => void) | null {
 }
 
 /**
- * Builds the keydown handler for `Ctrl+B` chords, tmux style. Returns true when it handled, and
- * swallowed, the key; on false the key is left for the terminal or the focused field.
+ * Builds the keydown handler for `Ctrl+Shift+B` chords, tmux style. Returns true when it handled,
+ * and swallowed, the key; on false the key is left for the terminal or the focused field.
  *
- * - A single `Ctrl+B` is swallowed so xterm never forwards it to the pane, where Claude Code would
- *   read it as "background the running task", and it arms the prefix.
- * - `Ctrl+B Ctrl+B` sends one literal `Ctrl+B` to the active terminal and ends the prefix. The
- *   auto-repeat of a held `Ctrl+B` is swallowed and only restarts a pending prefix's window, so
- *   holding the keys never sends one.
- * - A chord key runs its action and ends the prefix. A modifier-only key leaves it pending. Any
- *   other key ends it and is left for the terminal.
+ * - `Ctrl+Shift+B` is swallowed and arms the prefix. Pressing or holding it again restarts the
+ *   window. A plain `Ctrl+B` is not the prefix: it goes to the terminal's shell.
+ * - A chord key runs its action and ends the prefix. The chord key is pressed without `Ctrl`, so a
+ *   `Ctrl` key, such as `Ctrl+A` for the shell, ends the prefix and goes to the terminal instead of
+ *   running the `a` chord. A modifier-only key leaves the prefix pending. Any other key ends it and
+ *   is left for the terminal.
  * - A key from a text field outside the terminal is always left alone and ends any pending prefix.
  */
 export function createCtrlBKeyHandler(
@@ -204,22 +209,16 @@ export function createCtrlBKeyHandler(
       return false;
     }
 
-    if (e.ctrlKey && e.key.toLowerCase() === "b") {
+    if (isPrefixKey(e)) {
       swallow(e);
-      if (e.repeat) {
-        if (prefix.pending) prefix.arm();
-      } else if (prefix.pending) {
-        actions.sendPrefixToTerminal();
-        prefix.end();
-      } else {
-        prefix.arm();
-      }
+      prefix.arm();
       return true;
     }
 
     if (!prefix.pending || MODIFIER_KEYS.has(e.key)) return false;
 
-    const chord = chordFor(e.key, actions);
+    // AltGr on Windows reports Ctrl+Alt and still types a chord key, so only Ctrl without Alt ends it.
+    const chord = (e.ctrlKey && !e.altKey) || e.metaKey ? null : chordFor(e.key, actions);
     prefix.end();
     if (!chord) return false;
 
