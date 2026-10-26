@@ -426,7 +426,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       items.push({
         id: "action-factory-station",
         category: "Tools & Actions",
-        title: "Machina Praxis Factory Station...",
+        title: "Machina Factory Station...",
         subtitle: "AI Software Factory Cockpit: 6-Stage Pipeline DAG, Holdback Vault & Governed Holds",
         icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
         shortcut: "Ctrl+B f",

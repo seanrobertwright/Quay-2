@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px18-title px18-desc">
+  <title id="px18-title">Praxis workflow engine logo: Single Path</title>
+  <desc id="px18-desc">One unbroken line spirals into a P and ends on a red point: one deterministic path to done.</desc>
+  <g id="px18-icon"><path d="M24,82 V18 H72 V58 H40 V34 H56 V46" fill="none" stroke="#111827" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="56" cy="46" r="6" fill="#EF4444"/></g>
+  <g id="px18-wordmark">
+    <text x="114" y="54" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="-1" fill="#111827">praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#EF4444">WORKFLOW ENGINE</text>
+  </g>
+</svg>

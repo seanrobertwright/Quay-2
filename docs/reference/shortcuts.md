@@ -49,7 +49,7 @@ Quay 2 swallows the `Ctrl+B` prefix, as tmux does, so the focused terminal pane 
 | `Ctrl+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
 | `Ctrl+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
-| `Ctrl+B F` | **Machina Praxis** | Opens native AI Software Factory cockpit |
+| `Ctrl+B F` | **Machina** | Opens native AI Software Factory cockpit |
 | `Ctrl+B M` | **Mission Control** | Opens Mission Control, where you send messages to agents on the A2A bus and read its message trail |
 | `Ctrl+K` | **Command Palette** | Opens global command launcher and searchable palette |
 | `Esc` | **Dismiss / Close** | Closes any open modal, dialog, or drawer |

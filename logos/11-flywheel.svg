@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-labelledby="px11-title px11-desc">
+  <title id="px11-title">Praxis workflow engine logo: Flywheel</title>
+  <desc id="px11-desc">Three interlocking chevron segments turning one way: momentum from repeatable process.</desc>
+  <g id="px11-icon"><path d="M52.29,7.22 A41,41 0 0 1 85.46,64.68 L75.36,66.45 L70.84,58.17 A25,25 0 0 0 50.61,23.14 L57.1,16.28 Z" fill="#9F1239" stroke="#9F1239" stroke-width="1.5" stroke-linejoin="round"/><path d="M81.17,72.1 A41,41 0 0 1 14.83,72.1 L18.34,62.47 L27.77,62.69 A25,25 0 0 0 68.23,62.69 L70.92,71.74 Z" fill="#E11D48" stroke="#E11D48" stroke-width="1.5" stroke-linejoin="round"/><path d="M10.54,64.68 A41,41 0 0 1 43.71,7.22 L50.3,15.08 L45.39,23.14 A25,25 0 0 0 25.16,58.17 L15.98,55.98 Z" fill="#FB7185" stroke="#FB7185" stroke-width="1.5" stroke-linejoin="round"/><circle cx="48" cy="48" r="7" fill="#881337"/></g>
+  <g id="px11-wordmark">
+    <text x="114" y="54" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="0" fill="#881337">Praxis</text>
+    <text x="116" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="3.2" fill="#E11D48">WORKFLOW ENGINE</text>
+  </g>
+</svg>
