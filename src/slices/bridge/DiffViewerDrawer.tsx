@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Envelope } from "./useBridgeEvents";
 import { TerminalInfo } from "../terminal/types";
 import { computeLineDiff, FileChangeRecord } from "./diffUtils";
+import { useOverlay } from "../overlay/useOverlay";
 import {
   X,
   GitCompare,
@@ -45,16 +46,7 @@ export const DiffViewerDrawer: React.FC<DiffViewerDrawerProps> = ({
     }
   }, [isOpen, activeTerminalId]);
 
-  // Close on ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
   // Extract all file mutation events
   const fileChanges = useMemo<FileChangeRecord[]>(() => {
@@ -191,9 +183,14 @@ export const DiffViewerDrawer: React.FC<DiffViewerDrawerProps> = ({
   const totalDeletions = fileChanges.reduce((acc, c) => acc + c.deletions, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div
+      {...backdropProps}
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+    >
       <div
-        className={`bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
+        {...panelProps}
+        aria-label="Diff Inspector"
+        className={`focus:outline-hidden bg-[#0d1117] border-l border-[#30363d] shadow-2xl flex flex-col h-full transition-all duration-200 ${
           isExpanded ? "w-full" : "w-full max-w-5xl"
         }`}
       >

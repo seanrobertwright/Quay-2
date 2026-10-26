@@ -6,6 +6,19 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { terminalKeyAction } from "./terminalKeys";
+import { isOverlayOpen } from "../overlay/useOverlay";
+
+/**
+ * Focuses a terminal unless an overlay is open: these focus calls run on timers and output
+ * events, and would otherwise pull focus out from under an overlay opened in the meantime.
+ */
+function focusXterm(term: Terminal) {
+  if (isOverlayOpen()) return;
+  try {
+    term.focus();
+    term.textarea?.focus({ preventScroll: true });
+  } catch (_) {}
+}
 
 const EMOJI_PRESENTATION_RE = /\p{Emoji_Presentation}/u;
 
@@ -222,18 +235,8 @@ export function useTerminal(
 
     // Immediately request focus if active on mount
     if (isVisibleRef.current && isFocusedRef.current) {
-      requestAnimationFrame(() => {
-        try {
-          term.focus();
-          term.textarea?.focus({ preventScroll: true });
-        } catch (_) {}
-      });
-      setTimeout(() => {
-        try {
-          term.focus();
-          term.textarea?.focus({ preventScroll: true });
-        } catch (_) {}
-      }, 50);
+      requestAnimationFrame(() => focusXterm(term));
+      setTimeout(() => focusXterm(term), 50);
     }
 
     const onResultsDispose = searchAddon.onDidChangeResults((e) => {
@@ -298,12 +301,7 @@ export function useTerminal(
       // When first output packet arrives from newly spawned agent, ensure focus is locked on terminal
       if (!firstPtyOutputFocused && isVisibleRef.current && isFocusedRef.current) {
         firstPtyOutputFocused = true;
-        requestAnimationFrame(() => {
-          try {
-            term.focus();
-            term.textarea?.focus({ preventScroll: true });
-          } catch (_) {}
-        });
+        requestAnimationFrame(() => focusXterm(term));
       }
 
       if (!initialLoaded) {
@@ -337,10 +335,7 @@ export function useTerminal(
         initialLoaded = true;
 
         if (isVisibleRef.current && isFocusedRef.current) {
-          try {
-            term.focus();
-            term.textarea?.focus({ preventScroll: true });
-          } catch (_) {}
+          focusXterm(term);
         }
 
         // Drain any queued events that arrived after the snapshot
@@ -393,7 +388,8 @@ export function useTerminal(
 
   // Robust focus method that targets both xterm core and helper textarea
   const focusTerminal = useCallback(() => {
-    if (!termRef.current) return;
+    // An open overlay keeps focus; it hands focus back itself when it closes.
+    if (!termRef.current || isOverlayOpen()) return;
     try {
       termRef.current.focus();
       const textarea =
