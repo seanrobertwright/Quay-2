@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
@@ -27,12 +27,13 @@ import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
+import { BuilderProject, PraxisBuilderModal } from "./slices/praxis-builder/PraxisBuilderModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
-import { resolveRootRepo } from "./utils/paths";
+import { isSamePath, resolveRootRepo } from "./utils/paths";
 
 export function App() {
   const {
@@ -100,6 +101,8 @@ export function App() {
     setIsArchonGraphOpen,
     isFactoryStationOpen,
     setIsFactoryStationOpen,
+    isPraxisBuilderOpen,
+    setIsPraxisBuilderOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
@@ -199,6 +202,19 @@ export function App() {
     () => resolveRootRepo(activeProject, projects, projectWorktrees),
     [activeProject, projects, projectWorktrees]
   );
+
+  // The builder works on the active project when it is a registered project or one of its
+  // worktrees, the same folders the backend's praxis commands accept.
+  const builderProject = useMemo<BuilderProject | null>(() => {
+    const registered = projects.find((p) => isSamePath(p.path, activeProject));
+    if (registered) return { path: registered.path, name: registered.name };
+    for (const p of projects) {
+      const wt = projectWorktrees[p.path]?.find((w) => isSamePath(w.path, activeProject));
+      if (wt) return { path: wt.path, name: `${p.name} · ${wt.branch || "worktree"}` };
+    }
+    return null;
+  }, [projects, projectWorktrees, activeProject]);
+  const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
 
   // 1-Click: Execute real Archon Workflow Run for an issue
   const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
@@ -528,6 +544,7 @@ export function App() {
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}
         onToggleLiveMode={
           activeTerminalId
@@ -706,6 +723,14 @@ export function App() {
         onClose={() => setIsFactoryStationOpen(false)}
         onSelectTerminal={selectTerminal}
         onSpawnTerminal={spawnTerminal}
+      />
+
+      {/* Praxis Builder (^b p): hidden, never unmounted, when closed */}
+      <PraxisBuilderModal
+        isOpen={isPraxisBuilderOpen}
+        project={builderProject}
+        onClose={closePraxisBuilder}
+        onAddProject={() => setIsAddProjectOpen(true)}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

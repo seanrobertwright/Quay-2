@@ -83,6 +83,11 @@ flowchart LR
 - SQLite-backed state persistence in `%LOCALAPPDATA%\Quay2\praxis\`.
 - Real-time milestone stages, deliverable gates, hold resolution, and operator claim management.
 
+### 🧭 Praxis Builder
+- Opens with `Ctrl+B P` or **Praxis Builder...** in the command palette.
+- Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph read-only on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
+- Files that aren't valid JSON are listed with an error badge, and opening one shows the line and column of the error.
+
 ### 🪟 Tiling Window Management & 1-Click Swarm Presets
 - Split your stage instantly:
   - Side-by-Side Horizontal Split (`Ctrl+B %`)
@@ -146,6 +151,7 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+B T` | **Token Spend** | View token meter & turn chime settings |
 | `Ctrl+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
 | `Ctrl+B F` | **Machina** | Open AI Software Factory cockpit |
+| `Ctrl+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |
 | `Ctrl+K` | **Command Palette** | Global searchable command palette |
 | `Esc` | **Dismiss** | Close active modal or drawer |
 
