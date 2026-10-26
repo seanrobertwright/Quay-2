@@ -35,7 +35,7 @@ flowchart LR
     Bus <--> Claude2["🤖 Agent: Backend (Claude Code)"]
     Bus <--> Antigravity["🚀 Agent: Systems (Antigravity CLI)"]
     Stage --> Archon["📐 Archon SDD Graph & Logs"]
-    Stage --> Machina["🏭 Machina Praxis Factory"]
+    Stage --> Machina["🏭 Machina Factory"]
     Stage --> Audit["🛡️ Pre-PR Audit Gate"]
 ```
 
@@ -78,8 +78,8 @@ flowchart LR
 - Built-in Architectural Decision Records (ADR) viewer and Spec Task progress checklists.
 - 1-click **"Implement with Archon"** integration directly from GitHub issues.
 
-### 🏭 Machina Praxis AI Software Factory Cockpit
-- Native supervisor for the Machina Praxis deterministic software manufacturing engine.
+### 🏭 Machina AI Software Factory Cockpit
+- Native supervisor for the Machina deterministic software manufacturing engine.
 - SQLite-backed state persistence in `%LOCALAPPDATA%\Quay2\praxis\`.
 - Real-time milestone stages, deliverable gates, hold resolution, and operator claim management.
 
@@ -145,7 +145,7 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+B H` | **Session History** | Search and auto-resume past Claude sessions |
 | `Ctrl+B T` | **Token Spend** | View token meter & turn chime settings |
 | `Ctrl+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
-| `Ctrl+B F` | **Machina Praxis** | Open AI Software Factory cockpit |
+| `Ctrl+B F` | **Machina** | Open AI Software Factory cockpit |
 | `Ctrl+K` | **Command Palette** | Global searchable command palette |
 | `Esc` | **Dismiss** | Close active modal or drawer |
 
@@ -208,7 +208,7 @@ Comprehensive, searchable documentation is hosted on **GitHub Pages**:
 - **[Architecture Deep-Dive](https://seanrobertwright.github.io/Quay-2/guide/architecture)**: Vertical Slice Architecture, ConPTY lifecycle, and wire protocols.
 - **[A2A Orchestration Protocol](https://seanrobertwright.github.io/Quay-2/features/a2a-orchestration)**: JSON-RPC tools and autonomous multi-agent handoff recipes.
 - **[Archon & SDD Workflows](https://seanrobertwright.github.io/Quay-2/features/archon-sdd)**: Visual DAG execution, live streaming logs, and ADR tracking.
-- **[Machina Praxis Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Software manufacturing pipeline setup.
+- **[Machina Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Software manufacturing pipeline setup.
 - **[API & IPC Specification](https://seanrobertwright.github.io/Quay-2/reference/ipc-api)**: Tauri IPC command contracts and event structures.
 
 To run the documentation locally:
