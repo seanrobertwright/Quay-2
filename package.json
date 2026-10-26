@@ -28,7 +28,8 @@
     "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
     "starters:typecheck": "tsc -p scripts/starters-ci",
     "aiws:sync": "node scripts/aiws-sdk/sync.ts",
-    "aiws:check": "node scripts/aiws-sdk/sync.ts --check && node --test \"scripts/aiws-sdk/*.test.ts\" && tsc -p scripts/aiws-sdk"
+    "aiws:check": "node scripts/aiws-sdk/sync.ts --check && node --test \"scripts/aiws-sdk/*.test.ts\" && tsc -p scripts/aiws-sdk",
+    "proto:open-project": "vite --port 1425 --strictPort --open \"/?prototype=open-project&variant=A\""
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.3",
