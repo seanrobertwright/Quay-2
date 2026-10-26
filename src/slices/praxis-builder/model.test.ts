@@ -1,7 +1,14 @@
 /// <reference types="node" />
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { configSummary, MAX_NODES, parseGraph, parseLayoutPositions, type PraxisNode } from "./model.ts";
+import {
+  configSummary,
+  MAX_NODES,
+  parseGraph,
+  parseLayoutPositions,
+  parseLayoutViewport,
+  type PraxisNode,
+} from "./model.ts";
 
 describe("parseGraph", () => {
   test("reads a well-formed graph", () => {
@@ -84,5 +91,19 @@ describe("configSummary", () => {
     assert.equal(configSummary(n("LOOP", { maxIterations: 5 })), "≤ 5 iterations");
     assert.equal(configSummary(n("LOOP", {})), "no iteration limit");
     assert.equal(configSummary(n("END", {})), "");
+  });
+});
+
+describe("parseLayoutViewport", () => {
+  test("reads a saved viewport", () => {
+    assert.deepEqual(parseLayoutViewport({ viewport: { x: -3, y: 4, zoom: 0.8 } }), { x: -3, y: 4, zoom: 0.8 });
+  });
+
+  test("ignores a missing or unusable viewport", () => {
+    assert.equal(parseLayoutViewport(undefined), undefined);
+    assert.equal(parseLayoutViewport({ nodes: {} }), undefined);
+    assert.equal(parseLayoutViewport({ viewport: { x: 0, y: 0, zoom: 0 } }), undefined);
+    assert.equal(parseLayoutViewport({ viewport: { x: "0", y: 0, zoom: 1 } }), undefined);
+    assert.equal(parseLayoutViewport({ viewport: [0, 0, 1] }), undefined);
   });
 });

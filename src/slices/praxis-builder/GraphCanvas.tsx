@@ -1,8 +1,19 @@
-// A read-only canvas for one Praxis graph: #226's variant A cards, laid out top to bottom,
-// each with a badge counting its validation issues. It must sit inside a ReactFlowProvider,
-// which the caller supplies so a sibling (the Problems list) can move the viewport.
-import { useMemo, type FC } from "react";
-import { Background, Controls, Handle, Position, ReactFlow, type NodeProps, type Viewport } from "@xyflow/react";
+// The canvas for one Praxis graph: #226's variant A cards, laid out top to bottom, each
+// with a badge counting its validation issues. Nodes can be dragged; everything else about
+// the graph is read-only for now. It must sit inside a ReactFlowProvider, which the caller
+// supplies so a sibling (the Problems list) can move the viewport.
+import { useMemo, useState, type FC } from "react";
+import {
+  applyNodeChanges,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  ReactFlow,
+  type NodeChange,
+  type NodeProps,
+  type Viewport,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { configSummary, type PraxisGraph, type XYPosition } from "./model.ts";
 import { nodeKindMeta, UNKNOWN_KIND_META } from "./kinds.ts";
@@ -96,7 +107,7 @@ const FIRST_FIT = { minZoom: 0.6, maxZoom: 1 } as const;
 
 interface GraphCanvasProps {
   graph: PraxisGraph;
-  /** Saved positions from the layout file; nodes missing one are placed by dagre. */
+  /** Node positions from the draft; nodes missing one are placed by dagre. */
   positions: ReadonlyMap<string, XYPosition>;
   /** The viewport this graph was last shown at, if it has been shown this session. */
   viewport: Viewport | undefined;
@@ -106,6 +117,10 @@ interface GraphCanvasProps {
   /** The node shown as selected, if any. */
   selectedId: string | null;
   onPaneClick: () => void;
+  /** Called once per drag, on drop, with the final position of each node dragged. */
+  onMoveNodes: (moved: [string, XYPosition][]) => void;
+  /** Hands over a way to read the viewport now, which a save writes to the layout file. */
+  onReady?: (getViewport: () => Viewport) => void;
 }
 
 export const GraphCanvas: FC<GraphCanvasProps> = ({
@@ -116,6 +131,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   issues,
   selectedId,
   onPaneClick,
+  onMoveNodes,
+  onReady,
 }) => {
   const flow = useMemo(() => graphToFlow(graph, positions), [graph, positions]);
   const withIssues = useMemo(
@@ -124,16 +141,27 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   );
   // Only the selected node gets a new object, so a change of selection re-renders the two
   // cards it touches rather than every card.
-  const nodes = useMemo(
+  const shown = useMemo(
     () => withIssues.map((n) => (n.id === selectedId ? { ...n, selected: true } : n)),
     [withIssues, selectedId]
   );
+  // The canvas moves nodes in its own state while a drag runs, and reports only the drop.
+  // New nodes from the draft (a drop, a reload, a save) or new issues replace that state.
+  const [nodes, setNodes] = useState<PraxisFlowNode[]>(shown);
+  const [synced, setSynced] = useState(shown);
+  if (synced !== shown) {
+    setSynced(shown);
+    setNodes(shown);
+  }
+  const onNodesChange = (changes: NodeChange<PraxisFlowNode>[]) => setNodes((ns) => applyNodeChanges(changes, ns));
   return (
     <ReactFlow
       nodes={nodes}
       edges={flow.edges}
       nodeTypes={nodeTypes}
-      nodesDraggable={false}
+      onNodesChange={onNodesChange}
+      onNodeDragStop={(_, __, dragged) => onMoveNodes(dragged.map((n) => [n.id, n.position]))}
+      onInit={(instance) => onReady?.(() => instance.getViewport())}
       nodesConnectable={false}
       elementsSelectable={false}
       edgesFocusable={false}
@@ -143,7 +171,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       minZoom={0.2}
       onMoveEnd={(_, vp) => onViewportChange(vp)}
       onPaneClick={onPaneClick}
-      aria-label={`Graph ${graph.id || "without an id"}, read-only`}
+      aria-label={`Graph ${graph.id || "without an id"}`}
     >
       <Background gap={20} color="#21262d" />
       <Controls showInteractive={false} />

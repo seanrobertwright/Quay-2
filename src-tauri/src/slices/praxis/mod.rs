@@ -1,3 +1,4 @@
+pub mod canonical;
 pub mod commands;
 pub mod models;
 pub mod revision;

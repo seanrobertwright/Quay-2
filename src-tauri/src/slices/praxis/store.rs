@@ -1,11 +1,20 @@
-//! Reads Praxis definitions from `<repo>/.praxis/<kind>/<id>.json`. Callers name a
-//! definition by project, kind and id and never by path: the id is checked against the
+//! Reads and saves Praxis definitions in `<repo>/.praxis/<kind>/<id>.json`. Callers name
+//! a definition by project, kind and id and never by path: the id is checked against the
 //! filename-safe rule, and every folder is canonicalized and refused when it resolves
 //! outside the repository (through a symlink or junction).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-use super::models::{DefinitionEntry, DefinitionFile, DefinitionList, FileProblem, PraxisKind};
+use serde_json::{json, Map, Value};
+
+use super::canonical::{canonical_record, content_hash, to_canonical_text};
+use super::models::{
+    ConflictReason, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem, LayoutInput, PraxisKind,
+    SaveOutcome,
+};
+use crate::atomic_file::write_atomic;
 
 /// The most entries `list_definitions` returns for one kind.
 pub const MAX_LISTED: usize = 1000;
@@ -16,8 +25,14 @@ pub const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 /// The longest id the filename-safe rule allows.
 pub const MAX_ID_LEN: usize = 128;
 
+/// The `version` a layout file is written with.
+pub const LAYOUT_VERSION: u64 = 1;
+
 const PRAXIS_DIR: &str = ".praxis";
 const LAYOUT_DIR: &str = "layout";
+
+/// Serializes saves, so two saves from Quay can't interleave their check and write.
+static SAVE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Checks an id against the filename-safe rule: 1 to 128 of `[A-Za-z0-9._-]`, no leading
 /// dot, and not a Windows reserved device name (`CON`, `NUL`, `COM1` and the rest),
@@ -131,9 +146,35 @@ fn confined_file(repo: &Path, dir: &Path, id: &str) -> Result<Option<PathBuf>, S
     Ok(Some(canonical))
 }
 
-/// Reads and parses a file that must hold one JSON object, describing anything that
-/// stops it being one. A leading UTF-8 byte order mark is ignored.
-fn parse_object_file(path: &Path) -> Result<serde_json::Value, FileProblem> {
+/// The `<repo>/.praxis/<folder>` folder, created when it is missing, and canonicalized.
+/// `.praxis/` is checked before the folder is made inside it, so a link that leads out
+/// of the repository is refused before anything is created through it.
+fn ensure_confined_dir(repo: &Path, folder: &str) -> Result<PathBuf, String> {
+    let mut canonical = repo.to_path_buf();
+    for (dir, name) in [
+        (repo.join(PRAXIS_DIR), PRAXIS_DIR.to_string()),
+        (repo.join(PRAXIS_DIR).join(folder), format!("{}/{}", PRAXIS_DIR, folder)),
+    ] {
+        if std::fs::symlink_metadata(&dir).is_err() {
+            match std::fs::create_dir(&dir) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(format!("{} can't be created: {}", name, e)),
+            }
+        }
+        canonical = std::fs::canonicalize(&dir).map_err(|e| format!("{} can't be opened: {}", name, e))?;
+        if !canonical.starts_with(repo) {
+            return Err(format!("{} resolves outside the repository, so Quay won't write to it.", name));
+        }
+        if !canonical.is_dir() {
+            return Err(format!("{} is not a folder.", name));
+        }
+    }
+    Ok(canonical)
+}
+
+/// A file's bytes, refused when it is larger than `MAX_FILE_BYTES`.
+fn read_capped(path: &Path) -> Result<Vec<u8>, FileProblem> {
     let size = std::fs::metadata(path)
         .map_err(|e| FileProblem::new(format!("Can't read the file: {}", e)))?
         .len();
@@ -143,10 +184,21 @@ fn parse_object_file(path: &Path) -> Result<serde_json::Value, FileProblem> {
             size, MAX_FILE_BYTES
         )));
     }
-    let text = std::fs::read_to_string(path)
+    std::fs::read(path).map_err(|e| FileProblem::new(format!("Can't read the file: {}", e)))
+}
+
+/// Reads and parses a file that must hold one JSON object.
+fn parse_object_file(path: &Path) -> Result<Value, FileProblem> {
+    parse_object(&read_capped(path)?)
+}
+
+/// Parses bytes that must hold one JSON object, describing anything that stops them
+/// being one. A leading UTF-8 byte order mark is ignored.
+fn parse_object(bytes: &[u8]) -> Result<Value, FileProblem> {
+    let text = std::str::from_utf8(bytes)
         .map_err(|e| FileProblem::new(format!("Can't read the file as UTF-8: {}", e)))?;
-    let body = text.strip_prefix('\u{feff}').unwrap_or(&text);
-    let value: serde_json::Value = serde_json::from_str(body).map_err(|e| FileProblem {
+    let body = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let value: Value = serde_json::from_str(body).map_err(|e| FileProblem {
         message: format!("Not valid JSON: {}", e),
         line: Some(e.line()),
         column: Some(e.column()),
@@ -199,10 +251,28 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
     Ok(DefinitionList { entries, truncated })
 }
 
-/// Reads one definition, and for a graph its layout file too.
+/// Reads one definition, and for a graph its layout file too. A file that doesn't exist
+/// reads as `missing`, so the builder can mark a draft whose file was deleted.
 pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<DefinitionFile, String> {
-    let path = definition_path(repo, kind, id)?;
-    let (content, problem) = split(parse_object_file(&path));
+    let Some(path) = find_definition(repo, kind, id)? else {
+        return Ok(DefinitionFile {
+            id: id.to_string(),
+            kind,
+            missing: true,
+            content_hash: None,
+            content: None,
+            problem: None,
+            layout: None,
+            layout_problem: None,
+        });
+    };
+    let (content, problem, content_hash) = match read_capped(&path) {
+        Err(problem) => (None, Some(problem), None),
+        Ok(bytes) => {
+            let (content, problem) = split(parse_object(&bytes));
+            (content, problem, Some(content_hash(&bytes)))
+        }
+    };
     // A layout that can't be used is reported and ignored: the graph still opens, laid out
     // by dagre.
     let (layout, layout_problem) = if kind == PraxisKind::Graphs {
@@ -217,7 +287,16 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
     } else {
         (None, None)
     };
-    Ok(DefinitionFile { id: id.to_string(), kind, content, problem, layout, layout_problem })
+    Ok(DefinitionFile {
+        id: id.to_string(),
+        kind,
+        missing: false,
+        content_hash,
+        content,
+        problem,
+        layout,
+        layout_problem,
+    })
 }
 
 fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {
@@ -227,13 +306,138 @@ fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {
     }
 }
 
+/// The canonical path of a definition file confined to the repository, or `None` when
+/// there is no such file.
+fn find_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Option<PathBuf>, String> {
+    validate_id(id)?;
+    match confined_dir(repo, kind.folder())? {
+        None => Ok(None),
+        Some(dir) => confined_file(repo, &dir, id),
+    }
+}
+
 /// The path of an existing definition file, confined to the repository, for "Reveal in
 /// folder".
 pub fn definition_path(repo: &Path, kind: PraxisKind, id: &str) -> Result<PathBuf, String> {
+    find_definition(repo, kind, id)?
+        .ok_or_else(|| format!("{}/{}/{}.json doesn't exist.", PRAXIS_DIR, kind.folder(), id))
+}
+
+/// The layout file's JSON for `record`: positions rounded to integers, in node order, with
+/// positions for nodes the graph no longer has dropped, and the viewport. Refuses
+/// positions or a viewport that aren't finite numbers.
+fn layout_value(layout: &LayoutInput, record: &Map<String, Value>) -> Result<Value, String> {
+    let mut by_id: HashMap<&str, (i64, i64)> = HashMap::new();
+    for p in &layout.nodes {
+        if !p.x.is_finite() || !p.y.is_finite() {
+            return Err(format!("The position of node '{}' isn't a finite number.", p.id));
+        }
+        by_id.entry(p.id.as_str()).or_insert((p.x.round() as i64, p.y.round() as i64));
+    }
+    let mut nodes = Map::new();
+    let ids = record
+        .get("nodes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|n| n.get("id").and_then(Value::as_str));
+    for id in ids {
+        if let Some((x, y)) = by_id.get(id) {
+            if !nodes.contains_key(id) {
+                nodes.insert(id.to_string(), json!({ "x": x, "y": y }));
+            }
+        }
+    }
+    let mut out = Map::new();
+    out.insert("version".to_string(), json!(LAYOUT_VERSION));
+    out.insert("nodes".to_string(), Value::Object(nodes));
+    if let Some(v) = layout.viewport {
+        if !(v.x.is_finite() && v.y.is_finite() && v.zoom.is_finite() && v.zoom > 0.0) {
+            return Err("The viewport isn't a finite position and a positive zoom.".to_string());
+        }
+        let zoom = (v.zoom * 1000.0).round() / 1000.0;
+        out.insert(
+            "viewport".to_string(),
+            json!({ "x": v.x.round() as i64, "y": v.y.round() as i64, "zoom": zoom }),
+        );
+    }
+    Ok(Value::Object(out))
+}
+
+/// Whether `dir` holds `<id>.json` under any capitalization, for file systems that tell
+/// `Graph.json` and `graph.json` apart.
+fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
+    let read = std::fs::read_dir(dir).map_err(|e| format!("The folder can't be listed: {}", e))?;
+    Ok(read.flatten().any(|entry| {
+        entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_suffix(".json"))
+            .is_some_and(|stem| stem.eq_ignore_ascii_case(id))
+    }))
+}
+
+/// Saves a definition in its canonical form (#222), and for a graph its layout file.
+///
+/// `expected_hash` is the content hash the draft loaded. When it is set and the file no
+/// longer has that hash, or no longer exists, nothing is written and the conflict is
+/// returned, unless `force` says to overwrite. When it is `None` the definition is new,
+/// and the save is refused when its id is already taken, ignoring case. The id must be
+/// filename-safe. An invalid definition is still written: whatever later runs it refuses
+/// it. The definition is written first, so a layout that fails to write afterwards is
+/// reported in the outcome and the definition stays saved.
+pub fn save_definition(
+    repo: &Path,
+    kind: PraxisKind,
+    id: &str,
+    content: Value,
+    layout: Option<&LayoutInput>,
+    expected_hash: Option<&str>,
+    force: bool,
+) -> Result<SaveOutcome, String> {
     validate_id(id)?;
-    let missing = || format!("{}/{}/{}.json doesn't exist.", PRAXIS_DIR, kind.folder(), id);
-    let dir = confined_dir(repo, kind.folder())?.ok_or_else(missing)?;
-    confined_file(repo, &dir, id)?.ok_or_else(missing)
+    let Value::Object(record) = content else {
+        return Err("A definition must be a JSON object.".to_string());
+    };
+    let record = canonical_record(kind, record);
+    let layout = match layout {
+        Some(layout) if kind == PraxisKind::Graphs => Some(layout_value(layout, &record)?),
+        _ => None,
+    };
+
+    let _guard = SAVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let dir = ensure_confined_dir(repo, kind.folder())?;
+    let existing = confined_file(repo, &dir, id)?;
+    let taken = || format!("The id '{}' is already taken by another {} file.", id, kind.folder());
+    match (&existing, expected_hash) {
+        (Some(_), None) => return Err(taken()),
+        (None, None) if id_taken_ignoring_case(&dir, id)? => return Err(taken()),
+        (None, None) => {}
+        (None, Some(_)) if !force => return Ok(SaveOutcome::Conflict { reason: ConflictReason::Deleted }),
+        (Some(path), Some(expected)) if !force => {
+            let bytes = std::fs::read(path).map_err(|e| format!("{}.json can't be read: {}", id, e))?;
+            if content_hash(&bytes) != expected {
+                return Ok(SaveOutcome::Conflict { reason: ConflictReason::Changed });
+            }
+        }
+        _ => {}
+    }
+
+    let value = Value::Object(record);
+    let text = to_canonical_text(&value);
+    write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
+        .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, kind.folder(), id, e))?;
+
+    let layout_error = layout.and_then(|layout| {
+        let write = || -> Result<(), String> {
+            let dir = ensure_confined_dir(repo, LAYOUT_DIR)?;
+            confined_file(repo, &dir, id)?;
+            write_atomic(&dir.join(format!("{}.json", id)), to_canonical_text(&layout).as_bytes())
+                .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, LAYOUT_DIR, id, e))
+        };
+        write().err()
+    });
+    Ok(SaveOutcome::Saved { content: value, content_hash: content_hash(text.as_bytes()), layout_error })
 }
 
 #[cfg(test)]
@@ -551,15 +755,195 @@ mod tests {
     }
 
     #[test]
-    fn reading_refuses_bad_ids_and_missing_files() {
+    fn reading_refuses_bad_ids_and_reports_missing_files() {
         let repo = temp_repo();
         write(&repo, ".praxis/graphs/g.json", "{}");
         assert!(read_definition(&repo, PraxisKind::Graphs, "../graphs/g").is_err());
-        assert!(read_definition(&repo, PraxisKind::Graphs, "missing").is_err());
+        let missing = read_definition(&repo, PraxisKind::Graphs, "missing").unwrap();
+        assert!(missing.missing);
+        assert!(missing.content.is_none() && missing.problem.is_none() && missing.content_hash.is_none());
+        assert!(read_definition(&repo, PraxisKind::Contracts, "no-folder").unwrap().missing);
         assert!(definition_path(&repo, PraxisKind::Graphs, "missing").is_err());
         assert_eq!(
             definition_path(&repo, PraxisKind::Graphs, "g").unwrap(),
             repo.join(".praxis").join("graphs").join("g.json")
         );
+    }
+
+    #[test]
+    fn reading_returns_the_hash_of_the_bytes_on_disk() {
+        let repo = temp_repo();
+        let body = "{\"id\": \"g\", \"nodes\": []}";
+        write(&repo, ".praxis/graphs/g.json", body);
+        let file = read_definition(&repo, PraxisKind::Graphs, "g").unwrap();
+        assert!(!file.missing);
+        assert_eq!(file.content_hash.unwrap(), content_hash(body.as_bytes()));
+    }
+
+    // --- saving ----------------------------------------------------------------------
+
+    fn read(repo: &Path, rel: &str) -> String {
+        std::fs::read_to_string(repo.join(rel)).unwrap()
+    }
+
+    fn graph() -> Value {
+        json!({
+            "nodes": [
+                {"config": {}, "dependsOn": [], "kind": "TASK", "id": "task-1"},
+                {"id": "end-1", "kind": "END", "dependsOn": ["task-1"], "config": {}}
+            ],
+            "id": "g",
+            "revision": "1"
+        })
+    }
+
+    fn saved(outcome: SaveOutcome) -> (Value, String, Option<String>) {
+        match outcome {
+            SaveOutcome::Saved { content, content_hash, layout_error } => (content, content_hash, layout_error),
+            other => panic!("expected a save, got {other:?}"),
+        }
+    }
+
+    fn layout(nodes: &[(&str, f64, f64)], viewport: Option<(f64, f64, f64)>) -> LayoutInput {
+        LayoutInput {
+            nodes: nodes
+                .iter()
+                .map(|(id, x, y)| super::super::models::LayoutPosition { id: id.to_string(), x: *x, y: *y })
+                .collect(),
+            viewport: viewport.map(|(x, y, zoom)| super::super::models::LayoutViewport { x, y, zoom }),
+        }
+    }
+
+    #[test]
+    fn saving_a_new_graph_writes_the_canonical_file_with_a_revision() {
+        let repo = temp_repo();
+        let (content, hash, layout_error) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+        assert!(layout_error.is_none());
+        let text = read(&repo, ".praxis/graphs/g.json");
+        assert!(text.starts_with("{\n  \"id\": \"g\",\n  \"revision\": \"sha256:"), "{text}");
+        assert!(text.ends_with("}\n") && !text.contains('\r'));
+        assert_eq!(hash, content_hash(text.as_bytes()));
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), content);
+        assert_eq!(content["nodes"][0]["id"], "task-1");
+        assert!(!repo.join(".praxis/layout").exists(), "no layout was sent");
+    }
+
+    #[test]
+    fn saving_unchanged_content_again_leaves_the_bytes_alone() {
+        let repo = temp_repo();
+        let (content, hash, _) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+        let before = read(&repo, ".praxis/graphs/g.json");
+        let (_, again, _) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), false).unwrap());
+        assert_eq!(read(&repo, ".praxis/graphs/g.json"), before);
+        assert_eq!(again, hash);
+    }
+
+    #[test]
+    fn a_file_changed_since_it_was_loaded_is_a_conflict_until_forced() {
+        let repo = temp_repo();
+        let (content, hash, _) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+        write(&repo, ".praxis/graphs/g.json", "{\"id\": \"g\", \"edited\": true}");
+        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, Some(&hash), false).unwrap();
+        assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Changed });
+        assert!(read(&repo, ".praxis/graphs/g.json").contains("edited"), "a conflict writes nothing");
+
+        let (_, forced, _) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), true).unwrap());
+        assert_eq!(forced, hash);
+        assert!(!read(&repo, ".praxis/graphs/g.json").contains("edited"));
+    }
+
+    #[test]
+    fn a_deleted_file_is_a_conflict_until_forced() {
+        let repo = temp_repo();
+        let (content, hash, _) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+        std::fs::remove_file(repo.join(".praxis/graphs/g.json")).unwrap();
+        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, Some(&hash), false).unwrap();
+        assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Deleted });
+        assert!(!repo.join(".praxis/graphs/g.json").exists());
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), true).unwrap());
+        assert!(repo.join(".praxis/graphs/g.json").exists());
+    }
+
+    #[test]
+    fn saving_refuses_an_id_that_is_taken_or_not_filename_safe() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graphs/Taken.json", "{}");
+        assert!(save_definition(&repo, PraxisKind::Graphs, "Taken", graph(), None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, true).is_err());
+        assert_eq!(read(&repo, ".praxis/graphs/Taken.json"), "{}");
+        for bad in ["../g", "a b", "nul", ".g"] {
+            assert!(save_definition(&repo, PraxisKind::Graphs, bad, graph(), None, None, false).is_err(), "{bad}");
+        }
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", json!([1]), None, None, false).is_err());
+    }
+
+    #[test]
+    fn saving_writes_an_invalid_graph() {
+        let repo = temp_repo();
+        // No nodes, an unknown kind and a dangling dependency: the schema refuses all three.
+        let invalid = json!({"id": "g", "nodes": [{"id": "a", "kind": "NOPE", "dependsOn": ["ghost"]}]});
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", invalid, None, None, false).unwrap());
+        assert!(read(&repo, ".praxis/graphs/g.json").contains("NOPE"));
+    }
+
+    #[test]
+    fn the_layout_is_written_with_integer_positions_the_viewport_and_no_deleted_nodes() {
+        let repo = temp_repo();
+        let sent = layout(
+            &[("end-1", 10.4, -3.6), ("gone", 1.0, 1.0), ("task-1", 0.5, 99.0)],
+            Some((-12.7, 40.2, 0.81234)),
+        );
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).unwrap());
+        assert_eq!(
+            read(&repo, ".praxis/layout/g.json"),
+            "{\n  \"version\": 1,\n  \"nodes\": {\n    \"task-1\": {\n      \"x\": 1,\n      \"y\": 99\n    },\n    \"end-1\": {\n      \"x\": 10,\n      \"y\": -4\n    }\n  },\n  \"viewport\": {\n    \"x\": -13,\n    \"y\": 40,\n    \"zoom\": 0.812\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn saving_refuses_positions_that_are_not_finite_and_writes_nothing() {
+        let repo = temp_repo();
+        let sent = layout(&[("task-1", f64::NAN, 0.0)], None);
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).is_err());
+        let sent = layout(&[], Some((0.0, 0.0, 0.0)));
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).is_err());
+        assert!(!repo.join(".praxis").exists());
+    }
+
+    #[test]
+    fn only_graphs_write_a_layout() {
+        let repo = temp_repo();
+        let sent = layout(&[], None);
+        saved(save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), Some(&sent), None, false).unwrap());
+        assert!(!repo.join(".praxis/layout").exists());
+    }
+
+    #[test]
+    fn saving_refuses_a_praxis_folder_that_links_outside_the_repo() {
+        let repo = temp_repo();
+        let outside = temp_repo();
+        link_dir(&outside, &repo.join(".praxis"));
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).is_err());
+        assert!(!outside.join("graphs").exists(), "nothing is created through the link");
+    }
+
+    #[test]
+    fn a_layout_folder_outside_the_repo_is_reported_and_the_graph_is_saved() {
+        let repo = temp_repo();
+        let outside = temp_repo();
+        link_dir(&outside, &repo.join(".praxis/layout"));
+        let sent = layout(&[("task-1", 0.0, 0.0)], None);
+        let (_, _, layout_error) =
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).unwrap());
+        assert!(layout_error.unwrap().contains("outside"));
+        assert!(repo.join(".praxis/graphs/g.json").exists());
+        assert!(!outside.join("g.json").exists());
     }
 }

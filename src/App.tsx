@@ -215,6 +215,9 @@ export function App() {
     return null;
   }, [projects, projectWorktrees, activeProject]);
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
+  // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
+  const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
+  const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
 
   // 1-Click: Execute real Archon Workflow Run for an issue
   const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
@@ -428,6 +431,7 @@ export function App() {
       <Rail
         projects={projects}
         activeProject={activeProject}
+        unsavedPraxisProjects={praxisUnsaved}
         terminals={terminals}
         activeTerminalId={activeTerminalId}
         bridgePort={bridgePort}
@@ -733,6 +737,7 @@ export function App() {
         project={builderProject}
         onClose={closePraxisBuilder}
         onAddProject={() => setIsAddProjectOpen(true)}
+        onUnsavedProjectsChange={onPraxisUnsavedChange}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

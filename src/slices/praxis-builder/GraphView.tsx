@@ -1,6 +1,6 @@
-// One graph in the work area: the canvas, and the Problems list under it. The graph's file
+// One graph in the work area: the canvas, and the Problems list under it. The graph's
 // content is validated by the backend's `praxis_validate`, never in the frontend (#220).
-import { useCallback, useMemo, useState, type FC } from "react";
+import { useCallback, useEffect, useMemo, useState, type FC } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
 import { GraphCanvas } from "./GraphCanvas.tsx";
 import { ProblemsPanel } from "./ProblemsPanel.tsx";
@@ -10,11 +10,17 @@ import type { PraxisGraph, XYPosition } from "./model.ts";
 
 interface GraphViewProps {
   graph: PraxisGraph;
-  /** The file's JSON as read from disk, which is what gets validated. */
+  /** The draft's JSON, as loaded or last saved, which is what gets validated. */
   content: unknown;
   positions: ReadonlyMap<string, XYPosition>;
   viewport: Viewport | undefined;
   onViewportChange: (viewport: Viewport) => void;
+  /** Called once per drag, on drop, with the final position of each node dragged. */
+  onMoveNodes: (moved: [string, XYPosition][]) => void;
+  /** Hands over a way to read the canvas viewport now. */
+  onReady?: (getViewport: () => Viewport) => void;
+  /** Called with the SDK's verdict each time the content is validated: null when it is valid. */
+  onValidated?: (verdict: string | null) => void;
   problemsShown: boolean;
   onToggleProblems: () => void;
 }
@@ -57,11 +63,18 @@ const GraphViewInner: FC<GraphViewProps> = ({
   positions,
   viewport,
   onViewportChange,
+  onMoveNodes,
+  onReady,
+  onValidated,
   problemsShown,
   onToggleProblems,
 }) => {
   const flow = useReactFlow();
   const status = useValidation("graphs", content);
+  const verdict = status.state === "done" ? status.validation.verdict : undefined;
+  useEffect(() => {
+    if (verdict !== undefined) onValidated?.(verdict);
+  }, [verdict, onValidated]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : null;
@@ -88,6 +101,8 @@ const GraphViewInner: FC<GraphViewProps> = ({
           issues={issues}
           selectedId={selectedId}
           onPaneClick={clearSelection}
+          onMoveNodes={onMoveNodes}
+          onReady={onReady}
         />
       </div>
       <ProblemsPanel

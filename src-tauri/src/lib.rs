@@ -36,7 +36,7 @@ use slices::orchestrator::{
     list_saved_swarms, remove_saved_swarm, save_swarm, swarm_launch_prompts, A2ARouter,
     SwarmStore,
 };
-use slices::praxis::{praxis_list, praxis_read, praxis_reveal, praxis_validate};
+use slices::praxis::{praxis_list, praxis_read, praxis_reveal, praxis_save, praxis_validate};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
@@ -209,6 +209,7 @@ pub fn run() {
             praxis_list,
             praxis_read,
             praxis_reveal,
+            praxis_save,
             praxis_validate,
         ])
         .run(tauri::generate_context!())

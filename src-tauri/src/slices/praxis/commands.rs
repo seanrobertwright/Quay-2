@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use super::models::{DefinitionFile, DefinitionList, PraxisKind};
+use super::models::{DefinitionFile, DefinitionList, LayoutInput, PraxisKind, SaveOutcome};
 use super::store;
 use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
@@ -66,6 +66,29 @@ pub async fn praxis_reveal(
         let path = store::definition_path(&project_root(&workspace, &project_path)?, kind, &id)?;
         tauri_plugin_opener::reveal_item_in_dir(&path)
             .map_err(|e| format!("Could not reveal {}: {}", path.display(), e))
+    })
+    .await
+}
+
+/// Saves one definition in its canonical form, and a graph's layout. Nothing is written
+/// when the file no longer has `expectedHash` (the hash the draft loaded) unless `force`
+/// is set; `expectedHash` is null for a definition that has never been saved.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn praxis_save(
+    project_path: String,
+    kind: PraxisKind,
+    id: String,
+    content: serde_json::Value,
+    layout: Option<LayoutInput>,
+    expected_hash: Option<String>,
+    force: bool,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<SaveOutcome, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        let repo = project_root(&workspace, &project_path)?;
+        store::save_definition(&repo, kind, &id, content, layout.as_ref(), expected_hash.as_deref(), force)
     })
     .await
 }
