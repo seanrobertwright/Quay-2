@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { UpdateInfo, UpdateProgress } from "./types";
 
@@ -128,7 +129,8 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
 
 /**
  * Downloads and applies the update if user agrees.
- * Uses native downloadAndInstall + restart when available, or opens download link.
+ * Uses the native download, then saves the terminals' screens, installs and restarts when
+ * available; otherwise opens the download link.
  */
 export async function applyUpdate(
   update: UpdateInfo,
@@ -138,7 +140,7 @@ export async function applyUpdate(
     let downloaded = 0;
     let contentLength = 0;
 
-    await update.rawUpdate.downloadAndInstall((event: any) => {
+    await update.rawUpdate.download((event: any) => {
       switch (event.event) {
         case "Started":
           contentLength = event.data?.contentLength ?? 0;
@@ -154,6 +156,13 @@ export async function applyUpdate(
           break;
       }
     });
+
+    // On Windows the installer closes Quay without its exit event, so save each running
+    // terminal's screen first. A failed save mustn't stop the update.
+    await invoke("save_terminal_screens").catch((err) => {
+      console.error("Failed to save terminal screens before the update:", err);
+    });
+    await update.rawUpdate.install();
 
     // Relaunch app into new version
     const { relaunch } = await import("@tauri-apps/plugin-process");
