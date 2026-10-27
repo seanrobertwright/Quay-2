@@ -1,0 +1,23 @@
+{
+  "name": "fan-out-fan-in",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:parser": "vitest run test/parser.test.ts",
+    "test:render": "vitest run test/render.test.ts",
+    "test:cli": "vitest run test/cli.test.ts",
+    "e2e": "vitest run test/e2e.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "node bin/ssg.ts build site dist"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}
