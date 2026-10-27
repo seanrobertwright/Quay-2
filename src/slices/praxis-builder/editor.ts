@@ -27,7 +27,11 @@ export type GraphEdit =
   /** Removes a node, its position, and every `dependsOn` entry and branch that names it. */
   | { type: "delete-node"; id: string }
   /** Sets one entry of a node's config. */
-  | { type: "set-config"; id: string; key: string; value: Json };
+  | { type: "set-config"; id: string; key: string; value: Json }
+  /** Sets a node's `inputSchema` or `outputSchema`, or removes it when `schema` is null. */
+  | { type: "set-schema"; id: string; which: SchemaSlot; schema: JsonObject | null };
+
+export type SchemaSlot = "inputSchema" | "outputSchema";
 
 /** The SDK's longest node id, in characters (code points, as JSON Schema counts them). */
 const MAX_ID_LENGTH = 256;
@@ -167,6 +171,21 @@ function apply(nodes: JsonObject[], positions: ReadonlyMap<string, XYPosition>, 
         const config = configOf(n);
         const same = Object.prototype.hasOwnProperty.call(config, key) && JSON.stringify(config[key]) === JSON.stringify(value);
         return same ? n : { ...n, config: { ...config, [key]: value } };
+      });
+    }
+
+    case "set-schema": {
+      const { id, which, schema } = edit;
+      return mapped((n) => {
+        if (n.id !== id) return n;
+        const had = Object.prototype.hasOwnProperty.call(n, which);
+        if (schema === null) {
+          if (!had) return n;
+          const next = { ...n };
+          delete next[which];
+          return next;
+        }
+        return had && JSON.stringify(n[which]) === JSON.stringify(schema) ? n : { ...n, [which]: schema };
       });
     }
   }
