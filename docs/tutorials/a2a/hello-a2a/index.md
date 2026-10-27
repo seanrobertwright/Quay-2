@@ -43,7 +43,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 :::
 
 ::: see
-![The PowerShell pane in the hello-a2a folder: git makes the Starter commit, then npm install finishes with no vulnerabilities.](./01-starter-installed.webp)
+![The PowerShell pane in the hello-a2a folder, the only terminal in the rail: git makes the Starter commit, then npm install ends with found 0 vulnerabilities and an npm notice that a new major version of npm is available.](./01-starter-installed.webp)
 :::
 
 ::: must
@@ -53,6 +53,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 
 ::: may
 - The commit id, and the package counts and timings `npm install` prints.
+- Whether `npm install` ends with an `npm notice` block about a new major version of npm, after `found 0 vulnerabilities`.
 :::
 
 ::: ifnot node or npm is not recognised
@@ -72,8 +73,9 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ::: do
 1. Press `Ctrl+Shift+B N`. Under **Autonomous AI Agents**, click **Claude**. Leave **Permission Mode** on **Skip Permissions (Default)** and **Model** on **Default (your Claude Code /model setting)**. Type `asker` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**. `asker` takes the stage, and the PowerShell terminal keeps running behind it.
 2. Wait until the status strip at the bottom of the stage shows a green tick and `Ready for next prompt`. Claude Code may ask first whether you trust this folder, and to accept Bypass Permissions mode; the If nots below show how to answer.
-3. Paste the line below into `asker`. Claude Code opens its plugin screen.
-4. Find `event-bridge` on that screen, then press `Esc` to close it.
+3. Paste the line below into `asker`. Claude Code opens its plugin screen on the **Discover** tab, which lists plugins you can install, not the ones you have.
+4. Press `Tab` once to move to the **Installed** tab, then type `event` to filter its list down to the `event-bridge` row.
+5. Press `Esc` until the plugin screen closes. The first press only clears the search.
 :::
 
 ::: paste `asker`
@@ -83,17 +85,16 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 :::
 
 ::: see
-![asker's pane shows Claude Code's plugin screen, with event-bridge installed and enabled.](./02-plugin-check.webp)
+![Claude Code's plugin screen on the Installed tab, filtered by event: the event-bridge row has a green tick and reads Plugin and event-bridge.](./02-plugin-check.webp)
 :::
 
 ::: must
-- Claude Code's plugin screen lists `event-bridge` as installed and enabled.
-- After `Esc`, the status strip shows a green tick and begins `Ready`, and `asker`'s pane shows no plugin hint.
+- On the **Installed** tab, filtered by `event`, the `event-bridge` row has a green tick and reads `event-bridge  Plugin  event-bridge`.
+- After the plugin screen closes, the status strip shows a green tick and begins `Ready`, and `asker`'s pane shows no plugin hint.
 :::
 
 ::: may
-- Any other plugins you have installed.
-- The event-bridge version, as long as it is 0.1.0 or later.
+- Any other plugins, skills or servers the filter `event` matches.
 - How Claude Code lays out its plugin screen.
 :::
 
@@ -110,11 +111,7 @@ The hint is one line at the top of the pane that begins `No events from the even
 :::
 
 ::: ifnot event-bridge is listed but disabled
-Press `Esc` to close the plugin screen. Press `Ctrl+Shift+B 1` and paste `claude plugin enable event-bridge@event-bridge` into the PowerShell pane. Then press `Ctrl+Shift+B 2`, type `/reload-plugins` in `asker` and press Enter.
-:::
-
-::: ifnot the event-bridge version is older than 0.1.0
-Press `Ctrl+Shift+B 1` and paste `claude plugin update event-bridge@event-bridge` into the PowerShell pane. Then press `Ctrl+Shift+B 2`, type `/reload-plugins` in `asker` and press Enter.
+Press `Esc` until the plugin screen closes. Press `Ctrl+Shift+B 1` and paste `claude plugin enable event-bridge@event-bridge` into the PowerShell pane. Then press `Ctrl+Shift+B 2`, type `/reload-plugins` in `asker` and press Enter.
 :::
 
 :::
@@ -131,7 +128,7 @@ Press `Ctrl+Shift+B 1` and paste `claude plugin update event-bridge@event-bridge
 :::
 
 ::: see
-![The stage split in two: asker on the left and answerer on the right, both at Claude Code's prompt and Ready.](./03-two-agents.webp)
+![The stage split in two: asker on the left and answerer on the right, both at Claude Code's prompt, each pane header with a green dot and Ready, and the rail listing pwsh, asker and answerer.](./03-two-agents.webp)
 :::
 
 ::: must
@@ -160,10 +157,10 @@ Do step 2's fix for the plugin hint, but in `answerer`: `/reload-plugins` goes i
 
 ::: do
 1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`. Mission Control opens over the stage.
-2. Under **Dispatch Prompt / Handoff Task**, tick **Dispatch as User**. **From Agent** greys out and reads **You**.
+2. Scroll down inside Mission Control to **Dispatch Prompt / Handoff Task**, which sits below the first screenful. Under it, tick **Dispatch as User**. **From Agent** greys out and reads **You**.
 3. Check that **To Agent** shows `answerer`. If it doesn't, choose `answerer` there.
 4. Paste the line below into the message box under them, then click **Dispatch Task**. With **Dispatch as User**, the message reaches `answerer` exactly as if you had typed it into its pane. A message from another agent arrives with a `[Peer agent (<name>)]:` prefix instead, as step 6 shows.
-5. Watch the **Live A2A Message Trail** further down the panel until the new entry reads **Completed**.
+5. Watch the **Live A2A Message Trail** below the form until the new entry reads **Completed**.
 :::
 
 ::: paste Mission Control
@@ -173,7 +170,7 @@ Say hello in one short sentence, then tell me the name of the folder you are wor
 :::
 
 ::: see
-![Mission Control's trail with one entry, You → answerer, tagged as user and Completed, with answerer's greeting and the folder name under Reply.](./04-dispatch-as-user.webp)
+![Mission Control scrolled down to the Dispatch Prompt / Handoff Task form, with Dispatch as User ticked, From Agent reading You and To Agent on answerer; below it the trail holds one entry, You → answerer tagged as user and Completed, with answerer's greeting naming the hello-a2a folder under Reply.](./04-dispatch-as-user.webp)
 :::
 
 ::: must
@@ -184,8 +181,8 @@ Say hello in one short sentence, then tell me the name of the folder you are wor
 
 ::: may
 - The greeting's wording.
-- The times on the entry.
-- Whether you saw the toast in the top right as the message left. It leaves after a few seconds.
+- The times on the entry, including how long it took.
+- Whether you saw the toast in the top right as the message left, `You → answerer` marked **DISPATCHED** with a **View Terminal** button. It leaves after a few seconds.
 :::
 
 ::: ifnot the trail lists older entries below yours
@@ -214,17 +211,17 @@ Call the quay_list_agents tool and list every agent it returns whose project is 
 :::
 
 ::: see
-![asker's pane: a quay_list_agents tool call, then two lines, one for asker and one for answerer.](./05-list-agents.webp)
+![Both panes: asker on the left shows Called quay, then lists asker as claude, full peer, working and answerer as claude, full peer, idle; answerer on the right shows its greeting from step 4.](./05-list-agents.webp)
 :::
 
 ::: must
-- `asker`'s pane shows a `quay_list_agents` tool call.
+- `asker`'s pane shows `Called quay`, and its answer names `quay_list_agents` or reports what it returned.
 - Two agents in this folder: `asker` and `answerer`, both of run kind `claude` and level `full peer`. The PowerShell terminal is not a peer, so it isn't listed.
 - `answerer`'s status is `idle`. `asker`'s is `working`, because it is busy with your request.
 :::
 
 ::: may
-- How Claude Code shows the tool call, and how `asker` lays out the list.
+- How `asker` words its answer and lays out the list.
 - Whether `asker` also mentions agents in your other projects, or terminal ids.
 :::
 
@@ -245,12 +242,12 @@ Use quay_send_message to send answerer this message, and wait for the reply: Rea
 :::
 
 ::: see
-![answerer on the right received the message with the Peer agent (asker) prefix and answered it; asker on the left quotes the reply: hello-a2a, 0.3.0, and the scripts greet, test and typecheck.](./06-reply-quoted.webp)
+![Both panes: answerer on the right received the message with the Peer agent (asker) prefix, read package.json and replied hello-a2a v0.3.0, with three scripts: greet, test, typecheck; asker on the left shows Called quay, then answerer replied: and quotes that line.](./06-reply-quoted.webp)
 :::
 
 ::: must
 - The message arrives in `answerer`'s pane with the `[Peer agent (asker)]:` prefix, and `answerer` answers it.
-- `asker`'s `quay_send_message` call returns `Reply from answerer:` and the answer.
+- `asker`'s pane shows `Called quay`, then quotes `answerer`'s reply.
 - `asker`'s quote names `hello-a2a`, `0.3.0`, and the scripts `greet`, `test` and `typecheck`.
 - At the end, both pane headers show a green dot and `Ready`.
 :::
@@ -286,11 +283,11 @@ Call quay_get_agent_status for answerer and tell me in one line its status and i
 :::
 
 ::: see
-![asker's pane: a quay_get_agent_status tool call, then one line saying answerer is idle and its last task was reading package.json.](./07-agent-status.webp)
+![Both panes: asker on the left shows Called quay, then says answerer is idle and its last task was "Read package.json and reply in o"; answerer on the right is Ready.](./07-agent-status.webp)
 :::
 
 ::: must
-- `asker`'s pane shows a `quay_get_agent_status` tool call.
+- `asker`'s pane shows `Called quay`, and its answer reports `answerer`'s status and last task.
 - `answerer`'s status is `idle`.
 - Its last task begins `Read package.json`, without the `[Peer agent (asker)]:` prefix.
 :::
@@ -313,7 +310,7 @@ Call quay_broadcast with the text: Hello, A2A is working. Then tell me it was se
 :::
 
 ::: see
-![A Swarm Broadcast from asker toast in the top right reads Hello, A2A is working., and answerer's pane shows the broadcast notice and a short acknowledgement.](./08-broadcast.webp)
+![The Swarm Broadcast from asker toast in the top right reads Hello, A2A is working.; answerer's pane shows the same broadcast in a banner along its top and [Broadcast Notice]: Hello, A2A is working. as its newest prompt, while asker is still at work on the call.](./08-broadcast.webp)
 :::
 
 ::: must
@@ -324,6 +321,7 @@ Call quay_broadcast with the text: Hello, A2A is working. Then tell me it was se
 
 ::: may
 - What `answerer` says back.
+- Whether `answerer`'s pane also shows a one-line banner along its top, `Swarm Broadcast from asker: Hello, A2A is working.`
 - Whether you saw the toast, **Swarm Broadcast from asker**. It leaves after a few seconds; the notice in `answerer`'s pane is the lasting evidence.
 :::
 
@@ -334,7 +332,7 @@ Call quay_broadcast with the text: Hello, A2A is working. Then tell me it was se
 ## 9. Check it worked
 
 ::: do
-1. Open Mission Control again, with its icon or `Ctrl+Shift+B M`, and read the **Live A2A Message Trail**.
+1. Open Mission Control again, with its icon or `Ctrl+Shift+B M`, and scroll down to the **Live A2A Message Trail**. The trail scrolls on its own inside Mission Control and shows about two entries at a time: scroll the trail to see the third.
 2. Press `Esc` to close it.
 3. Press `Ctrl+Shift+B O` to move focus to the right pane, then `Ctrl+Shift+B 1` to show the PowerShell terminal there. `answerer` keeps running behind it.
 :::
@@ -346,7 +344,7 @@ git status --short
 :::
 
 ::: see
-![Mission Control's trail, newest first: asker → answerer tagged Broadcast, asker → answerer with the package.json reply, and You → answerer tagged as user.](./09-message-trail.webp)
+![Mission Control's trail of three, showing its two newest entries: asker → answerer tagged Broadcast, Completed, with answerer's acknowledgement under Answer, and below it asker → answerer with the package.json message, Completed.](./09-message-trail.webp)
 :::
 
 ::: must
