@@ -11,5 +11,8 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | --- | --- | --- |
 | 1 | [Your first swarm](/tutorials/swarm/first-swarm/) | Launch Dev & Watcher and watch a Claude Code agent build a tip calculator while its tests go green. |
 | 2 | [TDD Swarm kata](/tutorials/swarm/tdd-swarm-kata/) | Build a password-strength checker test-first, driving a tester, an implementer and a reviewer one pane at a time. |
+| 3 | [Full-Stack Pair: bookmarks app](/tutorials/swarm/full-stack-pair/) | Have two agents build a bookmarks app's API and React UI side by side, then open it in your browser. |
+| 4 | [Build and save a custom swarm](/tutorials/swarm/custom-swarm/) | Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart. |
+| 5 | [Bug Hunt](/tutorials/swarm/bug-hunt/) | Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn. |
 | 9 | [Polyglot Trio](/tutorials/swarm/polyglot-trio/) | Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus. |
 <!-- tutorials:end -->

@@ -50,6 +50,14 @@ pub async fn get_terminal_output(
     pty_manager.get_output(&terminal_id)
 }
 
+/// Saves what every running terminal shows, for a shutdown that skips Quay's exit event,
+/// such as an update's installer closing it.
+#[tauri::command]
+pub async fn save_terminal_screens(pty_manager: State<'_, PtyManager>) -> Result<(), String> {
+    pty_manager.save_all_screens();
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn write_pty(
     terminal_id: String,
