@@ -362,7 +362,7 @@ Its name says which rule is still broken. Press `Ctrl+Shift+B 3` to put `blue-te
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 8: Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/)
 
-The next tutorial in series order, Swarm 7: JS to TypeScript migration, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order. Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict.
 :::
