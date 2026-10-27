@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 8: Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/)
 
-The next tutorial in series order, Swarm 6: Red Team / Blue Team: notes app, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order. Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict.
 :::
