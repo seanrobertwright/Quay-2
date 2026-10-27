@@ -1,0 +1,4 @@
+[
+  { "add": { "sku": "mug", "name": "Mug", "priceCents": 2000, "quantity": 3 } },
+  { "coupon": { "kind": "percent", "value": 10 } }
+]

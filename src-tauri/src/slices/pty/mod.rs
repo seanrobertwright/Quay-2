@@ -4,6 +4,7 @@ pub mod models;
 pub mod opencode_watch;
 pub mod osc7501;
 pub mod plugin_watch;
+pub mod screen;
 pub mod session;
 
 pub use commands::*;

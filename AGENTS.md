@@ -11,3 +11,10 @@ update it, copy `AGENTS.md`, `README.md`, `SOURCES.md`, `CONTRIBUTING.md`,
 `.gitattributes`, and `practices/` from a newer checkout over
 `.agents/core-values/`. It is a plain copy, not a git submodule, so it works
 in every worktree without a submodule init.
+
+## Running and debugging Tauri apps
+
+Use the `agent-tauri` skill to run, attach to, inspect, or debug Quay or any
+other Tauri app. Load it before you launch the app, take a screenshot, click
+through the UI, call an IPC command, or read the app's logs. Do not write an
+ad hoc Playwright or CDP script for a task the skill covers.
