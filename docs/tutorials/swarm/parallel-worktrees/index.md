@@ -9,9 +9,9 @@ Not sure which of two designs is better? Try both at once. You give each idea it
 - **Level** Advanced
 :::
 
-**You'll learn:** how to make git worktrees from Quay (`Ctrl+B W`), launch a swarm into a worktree, flip between experiments in the rail, read each agent's edits in the Diff Inspector (`Ctrl+B D`), and merge one branch while removing every worktree.
+**You'll learn:** how to make git worktrees from Quay (`Ctrl+Shift+B W`), launch a swarm into a worktree, flip between experiments in the rail, read each agent's edits in the Diff Inspector (`Ctrl+Shift+B D`), and merge one branch while removing every worktree.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. Each prompt the page gives you goes into the pane it names: click inside that pane, paste the prompt, and press Enter to run it or, in a Claude Code pane, to send it.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. Each prompt the page gives you goes into the pane it names: click inside that pane, paste the prompt, and press Enter to run it or, in a Claude Code pane, to send it.
 
 A **git worktree** is a second folder checked out on its own branch of the same repository, so two agents can each change "the same" file without touching the other's copy. Quay puts each worktree in `.worktrees/<branch>` inside your project and lists it in the rail under the project's **Worktrees** list. The stage shows the terminals of one folder at a time: the project's, or one worktree's. This tutorial explains worktrees, not git, so it assumes you know what a branch and a merge are.
 
@@ -34,8 +34,8 @@ The experiment is rigged so that one design wins, which lets this page name the 
 
 ::: do
 1. Download [`parallel-worktrees.zip`](/starters/parallel-worktrees.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -73,7 +73,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. Rename the PowerShell pane, so it can't be mixed up with the swarms' panes later: in the rail, double-click `pwsh` under the project, type `main-shell` and press Enter.
-2. Press `Ctrl+B W`. The **New Git Worktree** dialog opens.
+2. Press `Ctrl+Shift+B W`. The **New Git Worktree** dialog opens.
 3. Type `try-scan` as the **Branch Name**. Leave **Create as new branch** ticked, with `main` in the **from** box beside it.
 4. Untick **Launch Claude Code terminal immediately**. You'll launch a whole swarm there instead.
 5. Click **Create Worktree**.
@@ -118,10 +118,10 @@ The project's first branch isn't called `main`. Paste `git branch -m main` into 
 
 ::: do
 1. Click `try-scan` under **Worktrees** in the rail. The stage empties: this worktree has no terminals yet.
-2. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** selected. Check that it says **Target: try-scan**.
+2. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected. Check that it says **Target: try-scan**.
 3. Click **Launch Swarm Now**. Dev & Watcher opens two panes side by side in `try-scan`: `lead-dev`, a Claude Code agent, on the left, and `build-watcher`, a PowerShell pane for running the tests, on the right.
 4. Wait until `lead-dev` has confirmed its role. Quay tells each agent it launches what its job is, and the agent answers with one line starting `Role: Lead Developer`, then waits for your task.
-5. Press `Ctrl+B O` to move focus to `build-watcher`. Its border lights up.
+5. Press `Ctrl+Shift+B O` to move focus to `build-watcher`. Its border lights up.
 :::
 
 ::: paste `build-watcher`
@@ -146,7 +146,7 @@ npm ci; npm test
 :::
 
 ::: ifnot the launcher's Target isn't try-scan
-The launcher launches into the folder selected in the rail. Press `Esc` to close it, click `try-scan` under **Worktrees** in the rail, and press `Ctrl+B S` again.
+The launcher launches into the folder selected in the rail. Press `Esc` to close it, click `try-scan` under **Worktrees** in the rail, and press `Ctrl+Shift+B S` again.
 :::
 
 ::: ifnot lead-dev asks you to accept Bypass Permissions mode
@@ -164,7 +164,7 @@ That line, across the top of `lead-dev`'s pane, means Quay isn't hearing from th
 ## 4. Brief the first experiment
 
 ::: do
-1. Press `Ctrl+B O` to move focus back to `lead-dev`.
+1. Press `Ctrl+Shift+B O` to move focus back to `lead-dev`.
 :::
 
 ::: paste `lead-dev`
@@ -194,9 +194,9 @@ Implement findDuplicates in src/dedupe.ts so every test in test/dedupe.test.ts p
 
 ::: do
 1. Click `try-index` under **Worktrees** in the rail. The stage empties again. `try-scan`'s swarm keeps working out of sight: in the rail, its `lead-dev` row still shows a spinner.
-2. Press `Ctrl+B S`. Check that the launcher says **Target: try-index**, with **Dev & Watcher** selected.
+2. Press `Ctrl+Shift+B S`. Check that the launcher says **Target: try-index**, with **Dev & Watcher** selected.
 3. Click **Launch Swarm Now**, and wait until this `lead-dev` has confirmed its role in one line.
-4. Press `Ctrl+B O` to move focus to `build-watcher`.
+4. Press `Ctrl+Shift+B O` to move focus to `build-watcher`.
 :::
 
 ::: paste `build-watcher`
@@ -220,7 +220,7 @@ npm ci; npm test
 :::
 
 ::: ifnot the launcher's Target isn't try-index
-Press `Esc` to close it, click `try-index` under **Worktrees** in the rail, and press `Ctrl+B S` again.
+Press `Esc` to close it, click `try-index` under **Worktrees** in the rail, and press `Ctrl+Shift+B S` again.
 :::
 
 :::
@@ -230,7 +230,7 @@ Press `Esc` to close it, click `try-index` under **Worktrees** in the rail, and 
 ## 6. Brief the second experiment
 
 ::: do
-1. Press `Ctrl+B O` to move focus back to `lead-dev`.
+1. Press `Ctrl+Shift+B O` to move focus back to `lead-dev`.
 :::
 
 ::: paste `lead-dev`
@@ -292,7 +292,7 @@ It still works; the lesson is just quieter. When it finishes, paste `Thanks. Fro
 ## 8. Read each experiment's edits
 
 ::: do
-1. Press `Ctrl+B D`. The **Visual Diff & File Changes** drawer opens, listing every edit both agents made.
+1. Press `Ctrl+Shift+B D`. The **Visual Diff & File Changes** drawer opens, listing every edit both agents made.
 2. Type `try-scan` in **Filter files...**, click an entry and read the change. On an entry marked `Edit`, switch between **Unified** and **Side-by-Side**.
 3. Change the filter to `try-index` and read that experiment's changes.
 4. Press `Esc` to close the drawer.
