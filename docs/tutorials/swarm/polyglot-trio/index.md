@@ -79,7 +79,7 @@ The four panes this step opens are four different programs: Claude Code, Antigra
 1. Press `Ctrl+Shift+B S` to open the Swarm Launcher.
 2. Select the **Polyglot Agent Trio** card. The `agy-planner` row is marked **No launch prompt**: Antigravity can't take a first message on its command line, so it starts without its role. You give it one in step 4.
 3. Click **Launch Swarm Now**.
-4. If a pane asks whether you trust this folder, click into that pane and choose to trust it. Antigravity and Codex may each ask, the first time they open a folder.
+4. If a pane asks whether you trust this folder, click into that pane, move the selection to trust the folder (such as with the arrow keys) and press Enter. If Codex asks about hooks, choose **Trust all and continue**. Antigravity and Codex may each ask, the first time they open a folder.
 5. Wait until the headers of `claude-dev`, `agy-planner` and `codex-reviewer` all read `Ready`, which is how Quay shows an agent waiting for its next task.
 :::
 
