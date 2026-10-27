@@ -396,7 +396,7 @@ npm test; npm run typecheck; git status --short
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/)
 
-The next tutorial in series order, Swarm 3: Full-Stack Pair: bookmarks app, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart.
 :::
