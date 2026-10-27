@@ -11,6 +11,15 @@ use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
+use super::screen::{self, ScreenKeeper};
+
+/// How often a running terminal checks whether its output has paused long enough to save
+/// its screen (see `screen::SAVE_AFTER_IDLE`).
+const SCREEN_SAVE_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// How long after a process ends its screen is saved, so the reader can take the output
+/// still in flight.
+const EXIT_DRAIN: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// What a PTY reader runs with each OSC 7501 sequence the process prints, in order.
 pub type Osc7501Hook = Box<dyn FnMut(Osc7501) + Send>;
@@ -39,6 +48,7 @@ pub struct PtySession {
     output_buffer: Arc<Mutex<(String, u64)>>,
     current_size: Arc<Mutex<(u16, u16)>>,
     is_alive: Arc<AtomicBool>,
+    screen: Arc<ScreenKeeper>,
 }
 
 /// The value Claude Code's `--mcp-config` receives: the Quay MCP server as one line
@@ -759,29 +769,24 @@ impl PtySession {
         let log_dir = super::manager::get_sessions_dir();
         let log_path = log_dir.join(format!("{}.log", terminal_id));
 
-        // Read existing scrollback if relaunching an existing terminal
-        let initial_data = if log_path.exists() {
-            std::fs::read(&log_path).ok().and_then(|bytes| {
-                let max_len = 256 * 1024;
-                let slice = if bytes.len() > max_len {
-                    let start = bytes.len() - max_len;
-                    let mut cut = start;
-                    while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
-                        cut += 1;
-                    }
-                    &bytes[cut..]
-                } else {
-                    &bytes[..]
-                };
-                String::from_utf8(slice.to_vec()).ok()
-            }).unwrap_or_default()
-        } else {
-            String::new()
+        // A relaunched terminal starts from what it showed before: its saved screen, or the
+        // raw log when an older Quay saved none
+        let earlier = match screen::load_screen(&log_dir, &terminal_id) {
+            Some(saved) => saved.data,
+            None => super::manager::read_log_tail(&log_path),
         };
+        let initial_data = if earlier.is_empty() { String::new() } else { format!("{}\r\n", earlier) };
 
         let output_buffer = Arc::new(Mutex::new((initial_data, start_seq)));
         let current_size = Arc::new(Mutex::new((rows, cols)));
         let is_alive = Arc::new(AtomicBool::new(true));
+        let screen = Arc::new(ScreenKeeper::new(
+            &log_dir,
+            &terminal_id,
+            rows,
+            cols,
+            (!earlier.is_empty()).then_some(earlier.as_str()),
+        ));
 
         // Background thread for reading PTY output
         {
@@ -790,6 +795,7 @@ impl PtySession {
             let is_alive = is_alive.clone();
             let output_buffer = output_buffer.clone();
             let log_path_clone = log_path.clone();
+            let screen = screen.clone();
 
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
@@ -815,6 +821,7 @@ impl PtySession {
                                 use std::io::Write;
                                 let _ = file.write_all(text.as_bytes());
                             }
+                            screen.feed(&text, std::time::Instant::now());
 
                             if let Some(hook) = on_first_output.take() {
                                 hook();
@@ -846,6 +853,20 @@ impl PtySession {
                     }
                 }
                 is_alive.store(false, Ordering::SeqCst);
+                // The reader is done with every chunk it read
+                screen.save_now();
+            });
+        }
+
+        // Saves the screen whenever output pauses, so a crash loses at most the last burst
+        {
+            let is_alive = is_alive.clone();
+            let screen = screen.clone();
+            std::thread::spawn(move || {
+                while is_alive.load(Ordering::SeqCst) {
+                    std::thread::sleep(SCREEN_SAVE_POLL);
+                    screen.save_if_idle(std::time::Instant::now());
+                }
             });
         }
 
@@ -855,6 +876,7 @@ impl PtySession {
             let terminal_id = terminal_id.clone();
             let is_alive = is_alive.clone();
             let log_path_exit = log_path.clone();
+            let screen = screen.clone();
 
             std::thread::spawn(move || {
                 let exit_status = child.wait();
@@ -864,15 +886,7 @@ impl PtySession {
                 if let Ok(metadata) = std::fs::metadata(&log_path_exit) {
                     if metadata.len() > 2 * 1024 * 1024 {
                         if let Ok(bytes) = std::fs::read(&log_path_exit) {
-                            let max_len = 256 * 1024;
-                            if bytes.len() > max_len {
-                                let start = bytes.len() - max_len;
-                                let mut cut = start;
-                                while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
-                                    cut += 1;
-                                }
-                                let _ = std::fs::write(&log_path_exit, &bytes[cut..]);
-                            }
+                            let _ = std::fs::write(&log_path_exit, super::manager::log_tail(&bytes));
                         }
                     }
                 }
@@ -897,6 +911,12 @@ impl PtySession {
                         exit_code,
                     },
                 );
+
+                // ConPTY can keep the reader blocked after the process ends, until the
+                // session is dropped, so the reader's own save may be a long way off. Give
+                // it a moment to take the last output, then save what it has.
+                std::thread::sleep(EXIT_DRAIN);
+                screen.save_now();
             });
         }
 
@@ -932,7 +952,24 @@ impl PtySession {
             output_buffer,
             current_size,
             is_alive,
+            screen,
         })
+    }
+
+    /// Saves what the terminal shows now, for Quay shutting down with it still running.
+    pub fn save_screen(&self) {
+        self.screen.save_now();
+    }
+
+    /// Stops this session saving its screen, for a terminal being closed or relaunched.
+    pub fn discard_screen(&self) {
+        self.screen.discard();
+    }
+
+    /// The keeper of this session's screen, for discarding it once the session itself has
+    /// moved somewhere it can't be reached.
+    pub fn screen_keeper(&self) -> Arc<ScreenKeeper> {
+        self.screen.clone()
     }
 
     pub fn write(&self, data: &str) -> Result<(), String> {
@@ -956,6 +993,7 @@ impl PtySession {
             }
             *size = (rows, cols);
         }
+        self.screen.resize(rows, cols);
         self.master
             .resize(PtySize {
                 rows,
