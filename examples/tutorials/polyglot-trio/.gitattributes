@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Every fixture keeps its bytes as written, so a checkout never changes the line endings a test is about.
+*.csv -text

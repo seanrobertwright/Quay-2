@@ -1,8 +1,20 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
 // definitions and shows a graph on the canvas, with its validation problems, where it can
-// be edited and saved. Closing only hides it, so each project's session, drafts included,
-// survives until Quay quits. Quitting with unsaved drafts asks first.
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC, type Ref } from "react";
+// be edited, undone and saved. Closing only hides it, so each project's session, drafts and
+// undo histories included, survives until Quay quits. Quitting with unsaved drafts asks first.
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type FC,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -12,26 +24,38 @@ import {
   FolderOpen,
   FolderPlus,
   PanelLeftClose,
+  Keyboard,
   PanelLeftOpen,
+  Redo2,
   RefreshCw,
   Save,
   TriangleAlert,
+  Undo2,
   Workflow,
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
 import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
-import { GraphView, UndrawnGraphProblems } from "./GraphView.tsx";
+import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
 import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
-import { editDraft, type GraphEdit } from "./editor.ts";
+import { editDraft, nodeIdsOf, stepFor, type GraphEdit } from "./editor.ts";
+import { canRedo, canUndo } from "./history.ts";
+import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderCommand } from "./keymap.ts";
+import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
+import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
   applyDiskRead,
+  changeGraph,
   definitionKey,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
+  endGraphMerge,
+  forgetHistories,
+  redoGraph,
   sessionFor,
+  undoGraph,
   updateSession,
   type DirtyDraft,
   type Sessions,
@@ -43,6 +67,22 @@ export interface BuilderProject {
   name: string;
 }
 
+/** What Quay can ask of the builder from outside. */
+export interface PraxisBuilderHandle {
+  /** Drops the undo histories of these projects, as when they are removed from Quay. */
+  forgetProjects: (projectPaths: readonly string[]) => void;
+}
+
+/** The selected nodes of one shown graph, keyed by project and definition. */
+interface Selection {
+  key: string;
+  ids: ReadonlySet<string>;
+  /** Counts the times nodes were chosen, so the inspector starts afresh for each. */
+  chosen: number;
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
 interface PraxisBuilderModalProps {
   isOpen: boolean;
   /** The active project, or null when no registered project (or its worktree) is active. */
@@ -51,6 +91,7 @@ interface PraxisBuilderModalProps {
   onAddProject: () => void;
   /** Called with the normalized paths of the projects that have unsaved drafts, whenever they change. */
   onUnsavedProjectsChange?: (projectKeys: string[]) => void;
+  ref?: Ref<PraxisBuilderHandle>;
 }
 
 type KindListing = { list: DefinitionList; error?: undefined } | { list?: undefined; error: string };
@@ -104,11 +145,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   onClose,
   onAddProject,
   onUnsavedProjectsChange,
+  ref,
 }) => {
   const titleId = useId();
   const listId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const conflictRef = useRef<HTMLDivElement | null>(null);
+  const helpRef = useRef<HTMLDivElement | null>(null);
   const [sessions, setSessions] = useState<Sessions>(new Map());
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -124,15 +167,28 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [saveMessage, setSaveMessage] = useState<{ tone: "error" | "warning"; text: string } | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
+  const [helpShown, setHelpShown] = useState(false);
+  const [selection, setSelection] = useState<Selection>({ key: "", ids: NO_IDS, chosen: 0 });
+  // Mod+S asks for a save here, so it runs after the render that applies a field it committed.
+  const [saveRequest, setSaveRequest] = useState(0);
+  const handledSaveRequest = useRef(0);
 
-  // Saves and the quit check read the latest sessions without waiting for a render.
+  // The latest sessions, ahead of any render. Every change goes through `changeSessions`,
+  // which applies it here at once, so saves, the quit check and undo's selection never see
+  // a session older than the last change.
   const sessionsRef = useRef(sessions);
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
-  // Reads the shown canvas's viewport at save time. Keyed by project and definition, so a
-  // canvas that is no longer shown is never asked.
-  const viewportReader = useRef<{ key: string; read: () => Viewport } | null>(null);
+  const changeSessions = useCallback((update: (s: Sessions) => Sessions) => {
+    const next = update(sessionsRef.current);
+    if (next === sessionsRef.current) return;
+    sessionsRef.current = next;
+    setSessions(next);
+  }, []);
+  // The shown canvas, for its viewport at save time and for the canvas keys. Keyed by project
+  // and definition, so a canvas that is no longer shown is never asked.
+  const shownCanvas = useRef<{ key: string; canvas: BuilderCanvas } | null>(null);
+  const canvasFor = (key: string) => (shownCanvas.current?.key === key ? shownCanvas.current.canvas : null);
+
+  useImperativeHandle(ref, () => ({ forgetProjects: (paths) => changeSessions((s) => forgetHistories(s, paths)) }), [changeSessions]);
 
   const projectPath = project?.path ?? null;
   const projectKey = projectPath ? normalizePath(projectPath) : "";
@@ -142,6 +198,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const openId = open?.id;
   const openKey = open ? definitionKey(open) : "";
   const openDraft = session && openKey ? session.drafts[openKey] : undefined;
+  const openHistory = session && openKey ? session.histories[openKey] : undefined;
+  const viewKey = `${projectKey}|${openKey}`;
+  const openContent = openDraft?.content;
+  const openNodeIds = useMemo(() => (openContent ? nodeIdsOf(openContent) : []), [openContent]);
+  // Only nodes the graph still has, since an undo or a rename can take a selected node away.
+  const selected = useMemo(() => {
+    if (selection.key !== viewKey || selection.ids.size === 0) return NO_IDS;
+    return new Set(openNodeIds.filter((id) => selection.ids.has(id)));
+  }, [selection, viewKey, openNodeIds]);
 
   const unsavedKey = useMemo(() => dirtyProjectKeys(sessions).join("\n"), [sessions]);
   useEffect(() => {
@@ -185,7 +250,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         if (stale) return;
         setLoaded({ projectKey: key, defKey, file });
         if (ref.kind === "graphs") {
-          setSessions((s) => updateSession(s, projectPath, (cur) => applyDiskRead(cur, ref, file)));
+          changeSessions((s) => updateSession(s, projectPath, (cur) => applyDiskRead(cur, ref, file)));
         }
       },
       (e) => {
@@ -195,7 +260,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     return () => {
       stale = true;
     };
-  }, [isOpen, projectPath, openKind, openId, refreshCount]);
+  }, [isOpen, projectPath, openKind, openId, refreshCount, changeSessions]);
 
   // Focus moves into the builder when it opens and back to where it was when it hides.
   useEffect(() => {
@@ -230,8 +295,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const current = sessionFor(sessionsRef.current, path);
     const draft = current.drafts[key];
     if (!draft) throw new Error(`${definitionPath(ref)} has nothing to save.`);
-    const reader = viewportReader.current;
-    const viewport = reader && reader.key === `${normalizePath(path)}|${key}` ? reader.read() : current.viewports[key];
+    const shown = shownCanvas.current;
+    const viewport =
+      shown && shown.key === `${normalizePath(path)}|${key}` ? shown.canvas.readViewport() : current.viewports[key];
     const layout = layoutForSave(draft, viewport);
     const outcome = await invoke<SaveOutcome>("praxis_save", {
       projectPath: path,
@@ -242,7 +308,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       expectedHash: draft.baseHash,
       force,
     });
-    setSessions((s) =>
+    changeSessions((s) =>
       updateSession(s, path, (cur) => {
         const d = cur.drafts[key];
         if (!d) return cur;
@@ -262,7 +328,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     // Re-list, so the saved file and any badge show.
     if (outcome.status === "saved") setRefreshCount((n) => n + 1);
     return outcome;
-  }, []);
+  }, [changeSessions]);
 
   /** Saves one draft from the builder, asking about a conflict instead of overwriting. */
   const saveFromBuilder = useCallback(
@@ -293,38 +359,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     void saveFromBuilder(projectPath, open, false);
   }, [projectPath, open, openDraft, saving, saveFromBuilder]);
 
+  useEffect(() => {
+    if (saveRequest === handledSaveRequest.current) return;
+    handledSaveRequest.current = saveRequest;
+    saveOpen();
+  }, [saveRequest, saveOpen]);
+
   /** Drops the conflicting draft and reads the file again, which makes a fresh one. */
   const reloadConflict = (c: Conflict) => {
     setConflict(null);
-    setSessions((s) => updateSession(s, c.projectPath, (cur) => dropDraft(cur, c.ref)));
+    changeSessions((s) => updateSession(s, c.projectPath, (cur) => dropDraft(cur, c.ref)));
     setRefreshCount((n) => n + 1);
   };
-
-  // Keys pressed inside the builder: Ctrl/Cmd+S saves the open definition. Escape closes
-  // the conflict prompt when it is shown and otherwise hides the builder. Tab cycles
-  // through the prompt's or the builder's controls instead of leaving for the app behind
-  // it. Keys from elsewhere, such as the command palette or another modal open over it,
-  // are left alone.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      const dialog = dialogRef.current;
-      if (e.defaultPrevented || !dialog || !(e.target instanceof Node) || !dialog.contains(e.target)) return;
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        if (!conflict) saveOpen();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        if (conflict) setConflict(null);
-        else onClose();
-      } else if (e.key === "Tab") {
-        const root = conflict ? conflictRef.current : dialog;
-        if (root) trapTab(root, e);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose, conflict, saveOpen]);
 
   // Closing Quay with unsaved drafts asks first (#221). The listener stays for the
   // builder's lifetime, which is Quay's, since closing the builder only hides it.
@@ -373,48 +419,76 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const openDefinition = (ref: DefinitionRef) => {
     if (!project) return;
     setSaveMessage(null);
-    setSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
+    changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
+
+  const selectNodes = useCallback(
+    (ids: readonly string[], keepInspector = false) =>
+      setSelection((s) => ({ key: viewKey, ids: new Set(ids), chosen: keepInspector ? s.chosen : s.chosen + 1 })),
+    [viewKey]
+  );
 
   const saveViewport = useCallback(
     (viewport: Viewport) => {
       if (!projectPath || !openKey) return;
-      setSessions((s) =>
+      changeSessions((s) =>
         updateSession(s, projectPath, (cur) => ({ ...cur, viewports: { ...cur.viewports, [openKey]: viewport } }))
       );
     },
-    [projectPath, openKey]
+    [projectPath, openKey, changeSessions]
   );
 
+  // Every change to the open graph goes through its history, one step per gesture (#248).
   const moveOpenNodes = useCallback(
     (moved: [string, XYPosition][]) => {
-      if (!projectPath || !openKey) return;
-      setSessions((s) =>
-        updateSession(s, projectPath, (cur) => {
-          const d = cur.drafts[openKey];
-          if (!d) return cur;
-          const next = moveNodes(d, moved);
-          return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [openKey]: next } };
-        })
-      );
+      if (!projectPath || !open) return;
+      const label = moved.length === 1 ? `Move ${moved[0][0]}` : `Move ${moved.length} nodes`;
+      const now = Date.now();
+      changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => moveNodes(d, moved), { label }, now)));
     },
-    [projectPath, openKey]
+    [projectPath, open, changeSessions]
   );
 
   const editOpen = useCallback(
     (edit: GraphEdit) => {
-      if (!projectPath || !openKey) return;
-      setSessions((s) =>
-        updateSession(s, projectPath, (cur) => {
-          const d = cur.drafts[openKey];
-          if (!d) return cur;
-          const next = editDraft(d, edit);
-          return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [openKey]: next } };
-        })
-      );
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => editDraft(d, edit), stepFor(edit), now)));
     },
-    [projectPath, openKey]
+    [projectPath, open, changeSessions]
   );
+
+  /** Ends any typing step of the open graph, so the next keystroke starts a new one. */
+  const endTyping = useCallback(() => {
+    if (!projectPath || !open) return;
+    changeSessions((s) => updateSession(s, projectPath, (cur) => endGraphMerge(cur, open)));
+  }, [projectPath, open, changeSessions]);
+
+  /** Deletes the selected nodes of the open graph as one step. */
+  const deleteSelected = () => {
+    if (!projectPath || !open || selected.size === 0) return;
+    const ids = [...selected];
+    const label = ids.length === 1 ? `Delete ${ids[0]}` : `Delete ${ids.length} nodes`;
+    const now = Date.now();
+    const remove = (d: GraphDraft) => ids.reduce((acc, id) => editDraft(acc, { type: "delete-node", id }), d);
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, remove, { label }, now)));
+    selectNodes([]);
+    // The focused card may be gone; focus stays in the canvas, so its keys still work.
+    canvasFor(viewKey)?.focus();
+  };
+
+  /** Undoes or redoes a step of the open graph, and selects the nodes it changed. */
+  const moveInHistory = (direction: "undo" | "redo") => {
+    if (!projectPath || !open) return;
+    const moved = (direction === "undo" ? undoGraph : redoGraph)(sessionFor(sessionsRef.current, projectPath), open);
+    if (!moved) return;
+    changeSessions((s) => updateSession(s, projectPath, () => moved.session));
+    selectNodes(moved.changed);
+    // The step may take away the focused card; focus stays in the builder, so its keys still work.
+    requestAnimationFrame(() => {
+      if (!dialogRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? dialogRef.current)?.focus();
+    });
+  };
 
   const recordValidity = useCallback(
     (verdict: string | null) => {
@@ -427,11 +501,103 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
 
   const canvasReady = useCallback(
-    (read: () => Viewport) => {
-      viewportReader.current = { key: `${projectKey}|${openKey}`, read };
+    (canvas: BuilderCanvas) => {
+      shownCanvas.current = { key: viewKey, canvas };
     },
-    [projectKey, openKey]
+    [viewKey]
   );
+
+  /** Escape (#221): the first of help, a prompt, a dragged connection, a focused field, the selection, then the builder. */
+  const escape = (target: EventTarget | null) => {
+    if (helpShown) return setHelpShown(false);
+    if (conflict) return setConflict(null);
+    const canvas = canvasFor(viewKey);
+    if (canvas?.cancelConnection()) return;
+    if (isTextField(target) && target instanceof HTMLElement) {
+      target.blur();
+      if (canvas) canvas.focus();
+      else dialogRef.current?.focus();
+      return;
+    }
+    if (selected.size > 0) return selectNodes([]);
+    onClose();
+  };
+
+  const runCommand = (command: BuilderCommand, target: EventTarget | null) => {
+    const canvas = canvasFor(viewKey);
+    switch (command) {
+      case "save":
+        // Blur and refocus the field, so a field that applies on blur applies before the save.
+        if (isTextField(target) && target instanceof HTMLElement) {
+          target.blur();
+          target.focus();
+        }
+        if (!conflict) setSaveRequest((n) => n + 1);
+        return;
+      case "escape":
+        return escape(target);
+      case "undo":
+      case "redo":
+        return moveInHistory(command);
+      case "delete":
+        return deleteSelected();
+      case "select-all":
+        return selectNodes(openNodeIds);
+      case "fit-view":
+        return canvas?.fitView();
+      case "zoom-in":
+        return canvas?.zoomIn();
+      case "zoom-out":
+        return canvas?.zoomOut();
+      case "zoom-reset":
+        return canvas?.zoomReset();
+      case "help":
+        return setHelpShown(true);
+    }
+  };
+
+  // The builder's keys, on its root in the bubble phase (#248): Quay's capture-phase keys
+  // have been seen already, and a control that handles a key itself, such as a field putting
+  // its text back on Escape, prevents its default to keep it. While a prompt or the help is
+  // shown only Escape and Mod+S apply, and Tab cycles inside it.
+  const handleKey = (e: KeyboardEvent, target: EventTarget | null) => {
+    const dialog = dialogRef.current;
+    if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
+    const overlay = helpShown ? helpRef.current : conflict ? conflictRef.current : null;
+    if (e.key === "Tab") {
+      trapTab(overlay ?? dialog, e);
+      return;
+    }
+    const region = focusRegion(target, canvasFor(viewKey));
+    if (region === "text" && e.key === "Enter") endTyping();
+    const command = commandFor(e, region);
+    if (!command || (overlay && command !== "escape" && command !== "save")) return;
+    e.preventDefault();
+    runCommand(command, target);
+  };
+  const onDialogKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => handleKey(e.nativeEvent, e.target);
+
+  // A key that lands on the page itself, because the element that had focus went away, is
+  // the builder's while it is shown: focus comes back to it and the key is handled there.
+  // Keys aimed anywhere else, such as a modal open over the builder, are left alone.
+  const strayKeyRef = useRef(handleKey);
+  strayKeyRef.current = handleKey;
+  useEffect(() => {
+    if (!isOpen || quitPrompt) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || (e.target !== document.body && e.target !== document.documentElement)) return;
+      dialog.focus();
+      strayKeyRef.current(e, dialog);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, quitPrompt]);
+
+  // A text field losing focus ends its typing step.
+  const onDialogBlur = (e: ReactFocusEvent<HTMLDivElement>) => {
+    if (isTextField(e.target)) endTyping();
+  };
 
   const reveal = async (ref: DefinitionRef) => {
     if (!projectPath) return;
@@ -449,15 +615,27 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     currentListing !== null &&
     RECORD_KINDS.every(({ kind }) => currentListing.byKind[kind].list?.entries.length === 0);
   const openDirty = openDraft ? isDirty(openDraft) : false;
+  const undoable = openHistory ? canUndo(openHistory) : false;
+  const redoable = openHistory ? canRedo(openHistory) : false;
 
   return (
-    <div className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}>
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the backdrop only keeps focus in the builder; it does nothing a user acts on
+    <div
+      className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}
+      // A press on the backdrop would drop focus to the page, out of reach of the builder's keys.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault();
+      }}
+    >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- a modal dialog owns its keyboard shortcuts (#248); every control inside it is native */}
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+        onBlur={onDialogBlur}
         className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
       >
         <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">
@@ -491,14 +669,41 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             {project && (
               <>
                 {openDraft && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => moveInHistory("undo")}
+                      // Not `disabled`, which would drop focus; with nothing to undo it does nothing.
+                      aria-disabled={!undoable}
+                      aria-label="Undo"
+                      aria-keyshortcuts={ariaKeyShortcuts("undo")}
+                      title={`Undo (${shortcutLabel("undo")})`}
+                      className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+                    >
+                      <Undo2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveInHistory("redo")}
+                      aria-disabled={!redoable}
+                      aria-label="Redo"
+                      aria-keyshortcuts={ariaKeyShortcuts("redo")}
+                      title={`Redo (${shortcutLabel("redo")})`}
+                      className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
+                    >
+                      <Redo2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+                {openDraft && (
                   <button
                     type="button"
                     onClick={saveOpen}
                     // Not `disabled`: that would blur the focused button and send keys to
                     // the app behind the builder. `saveOpen` ignores presses while saving.
                     aria-disabled={saving}
-                    aria-keyshortcuts="Control+S Meta+S"
-                    title="Save (Ctrl+S)"
+                    aria-keyshortcuts={ariaKeyShortcuts("save")}
+                    title={`Save (${shortcutLabel("save")})`}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#238636] hover:bg-[#2ea043] aria-disabled:opacity-50 text-white text-xs font-semibold"
                   >
                     <Save className="w-3.5 h-3.5" aria-hidden="true" />
@@ -519,6 +724,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   ) : (
                     <PanelLeftOpen className="w-4 h-4" aria-hidden="true" />
                   )}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Keyboard shortcuts"
+                  title={`Keyboard shortcuts (${shortcutLabel("help")} in the canvas)`}
+                  onClick={() => setHelpShown(true)}
+                  className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
+                >
+                  <Keyboard className="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -650,6 +864,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   onViewportChange={saveViewport}
                   onMoveNodes={moveOpenNodes}
                   onEdit={editOpen}
+                  selected={selected}
+                  selectionKey={selection.chosen}
+                  onSelect={selectNodes}
                   onReady={canvasReady}
                   onValidated={recordValidity}
                   problemsShown={problemsShown}
@@ -685,6 +902,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </main>
           </div>
         )}
+
+        {helpShown && <ShortcutsHelp rootRef={helpRef} onClose={() => setHelpShown(false)} />}
 
         {conflict && (
           <ConflictPrompt
@@ -840,7 +1059,10 @@ const GraphDraftView: FC<{
   onViewportChange: (viewport: Viewport) => void;
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   onEdit: (edit: GraphEdit) => void;
-  onReady: (read: () => Viewport) => void;
+  selected: ReadonlySet<string>;
+  selectionKey: number;
+  onSelect: (ids: readonly string[], keepInspector?: boolean) => void;
+  onReady: (canvas: BuilderCanvas) => void;
   onValidated: (verdict: string | null) => void;
   problemsShown: boolean;
   onToggleProblems: () => void;
@@ -851,6 +1073,9 @@ const GraphDraftView: FC<{
   onViewportChange,
   onMoveNodes,
   onEdit,
+  selected,
+  selectionKey,
+  onSelect,
   onReady,
   onValidated,
   problemsShown,
@@ -885,6 +1110,9 @@ const GraphDraftView: FC<{
         onViewportChange={onViewportChange}
         onMoveNodes={onMoveNodes}
         onEdit={onEdit}
+        selected={selected}
+        selectionKey={selectionKey}
+        onSelect={onSelect}
         onReady={onReady}
         onValidated={onValidated}
         problemsShown={problemsShown}

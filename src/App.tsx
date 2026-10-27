@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
@@ -27,7 +27,7 @@ import { TokenSpendModal } from "./slices/metrics/TokenSpendModal";
 import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
-import { BuilderProject, PraxisBuilderModal } from "./slices/praxis-builder/PraxisBuilderModal";
+import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
@@ -218,6 +218,7 @@ export function App() {
   // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
   const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
+  const praxisBuilder = useRef<PraxisBuilderHandle | null>(null);
 
   // 1-Click: Execute real Archon Workflow Run for an issue
   const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
@@ -445,7 +446,13 @@ export function App() {
         }}
         onSelectProject={(path) => setActiveProject(path)}
         onAddProject={() => setIsAddProjectOpen(true)}
-        onRemoveProject={(path) => removeProject(path)}
+        onRemoveProject={(path) => {
+          const worktrees = projectWorktrees[path]?.map((w) => w.path) ?? [];
+          void removeProject(path).then((removed) => {
+            // Removing a project drops the builder's undo histories for it and its worktrees (#248).
+            if (removed) praxisBuilder.current?.forgetProjects([path, ...worktrees]);
+          });
+        }}
         onRenameTerminal={renameTerminal}
         onOpenA2APanel={() => setIsA2AOpen(true)}
         onOpenSettings={(proj) => openWorkspaceSettings(proj)}
@@ -733,6 +740,7 @@ export function App() {
 
       {/* Praxis Builder (Ctrl+Shift+B p): hidden, never unmounted, when closed */}
       <PraxisBuilderModal
+        ref={praxisBuilder}
         isOpen={isPraxisBuilderOpen}
         project={builderProject}
         onClose={closePraxisBuilder}

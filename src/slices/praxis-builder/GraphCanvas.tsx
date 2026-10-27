@@ -1,9 +1,10 @@
 // The canvas for one Praxis graph: #226's variant A cards, laid out top to bottom, each
 // with a badge counting its validation issues. Nodes can be dragged and clicked to select
-// them, and dragging from one card's handle to another card connects them. It must
+// them, and dragging from one card's handle to another card connects them; Escape calls
+// that drag off (#248). It must
 // sit inside a ReactFlowProvider, which the caller supplies so a sibling (the Problems
 // list) can move the viewport.
-import { useMemo, useState, type FC } from "react";
+import { useMemo, useRef, useState, type FC } from "react";
 import {
   applyNodeChanges,
   Background,
@@ -15,6 +16,7 @@ import {
   type NodeChange,
   type NodeProps,
   type Viewport,
+  useStoreApi,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { PraxisGraph, XYPosition } from "./model.ts";
@@ -117,16 +119,24 @@ interface GraphCanvasProps {
   onViewportChange: (viewport: Viewport) => void;
   /** Each node's validation issues, keyed by node id. */
   issues: ReadonlyMap<string, NodeIssues>;
-  /** The node shown as selected, if any. */
-  selectedId: string | null;
+  /** The nodes shown as selected. */
+  selected: ReadonlySet<string>;
   onSelectNode: (nodeId: string) => void;
   onPaneClick: () => void;
   /** Called with the edit a new connection makes: a dependency, or a DECISION branch. */
   onEdit: (edit: GraphEdit) => void;
   /** Called once per drag, on drop, with the final position of each node dragged. */
   onMoveNodes: (moved: [string, XYPosition][]) => void;
-  /** Hands over a way to read the viewport now, which a save writes to the layout file. */
-  onReady?: (getViewport: () => Viewport) => void;
+  /** Hands over the canvas's own controls once it is ready. */
+  onReady?: (controls: CanvasControls) => void;
+}
+
+/** What the canvas lets the builder do to it from outside. */
+export interface CanvasControls {
+  /** The viewport now, which a save writes to the layout file. */
+  readViewport: () => Viewport;
+  /** Calls off a connection being dragged. Returns false when none is. */
+  cancelConnection: () => boolean;
 }
 
 export const GraphCanvas: FC<GraphCanvasProps> = ({
@@ -135,7 +145,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   viewport,
   onViewportChange,
   issues,
-  selectedId,
+  selected,
   onSelectNode,
   onPaneClick,
   onEdit,
@@ -147,11 +157,11 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     () => flow.nodes.map((n) => ({ ...n, data: { ...n.data, issues: issues.get(n.id) } })),
     [flow.nodes, issues]
   );
-  // Only the selected node gets a new object, so a change of selection re-renders the two
-  // cards it touches rather than every card.
+  // Only selected nodes get a new object, so a change of selection re-renders the cards it
+  // touches rather than every card.
   const shown = useMemo(
-    () => withIssues.map((n) => (n.id === selectedId ? { ...n, selected: true } : n)),
-    [withIssues, selectedId]
+    () => withIssues.map((n) => (selected.has(n.id) ? { ...n, selected: true } : n)),
+    [withIssues, selected]
   );
   // The canvas moves nodes in its own state while a drag runs, and reports only the drop.
   // New nodes from the draft (a drop, a reload, a save) or new issues replace that state.
@@ -162,13 +172,31 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     setNodes(shown);
   }
   const onNodesChange = (changes: NodeChange<PraxisFlowNode>[]) => setNodes((ns) => applyNodeChanges(changes, ns));
+  const store = useStoreApi<PraxisFlowNode>();
+  // Set only while Escape ends a connection drag, so the drop it fakes connects nothing.
+  const connectionCancelled = useRef(false);
+  const cancelConnection = () => {
+    if (!store.getState().connection.inProgress) return false;
+    // React Flow ends a connection drag on the document's mouseup, and there is no other way
+    // to stop the drag from outside. The event runs its handlers, onConnect included, before
+    // dispatchEvent returns.
+    connectionCancelled.current = true;
+    try {
+      document.dispatchEvent(new MouseEvent("mouseup"));
+    } finally {
+      connectionCancelled.current = false;
+    }
+    return true;
+  };
   // A DECISION's then and else handles set that branch; every other handle adds a dependency.
-  const onConnect = ({ source, target, sourceHandle }: Connection) =>
+  const onConnect = ({ source, target, sourceHandle }: Connection) => {
+    if (connectionCancelled.current) return;
     onEdit(
       sourceHandle === "then" || sourceHandle === "else"
         ? { type: "set-branch", decision: source, branch: sourceHandle, target }
         : { type: "connect", source, target }
     );
+  };
   return (
     <ReactFlow
       nodes={nodes}
@@ -179,7 +207,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       onNodeClick={(_, node) => onSelectNode(node.id)}
       onConnect={onConnect}
       isValidConnection={(c) => c.source !== c.target}
-      onInit={(instance) => onReady?.(() => instance.getViewport())}
+      onInit={(instance) => onReady?.({ readViewport: () => instance.getViewport(), cancelConnection })}
       // Selection and deletion go through the builder, so React Flow keeps neither.
       elementsSelectable={false}
       deleteKeyCode={null}

@@ -152,7 +152,7 @@ function LoopForm({ node, issues, onEdit }: ConfigFormProps) {
         className={`${inputClass} w-24 font-mono`}
         // The SDK stores a decimal string; a hand-edited number is shown, and saved as text.
         value={typeof raw === "string" || typeof raw === "number" ? String(raw) : ""}
-        onChange={(e) => onEdit({ type: "set-config", id: node.id, key: "maxIterations", value: e.target.value })}
+        onChange={(e) => onEdit({ type: "set-config", id: node.id, key: "maxIterations", value: e.target.value, live: true })}
         {...described(messagesId, slot, hintId)}
       />
       <p id={hintId} className={hintClass}>
@@ -180,7 +180,7 @@ function DecisionForm({ node, graph, issues, onEdit }: ConfigFormProps) {
           spellCheck={false}
           className={`${inputClass} font-mono`}
           value={typeof field === "string" ? field : ""}
-          onChange={(e) => onEdit({ type: "set-config", id: node.id, key: "field", value: e.target.value })}
+          onChange={(e) => onEdit({ type: "set-config", id: node.id, key: "field", value: e.target.value, live: true })}
           {...described(fieldMessagesId, fieldSlot)}
         />
         <FieldMessages id={fieldMessagesId} issues={fieldSlot} />

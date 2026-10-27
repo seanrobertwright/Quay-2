@@ -280,7 +280,7 @@ Press `Ctrl+Shift+B 2` and paste `A test in check/cli.check.test.ts fails. Read 
 :::
 
 ::: next
-[Swarm 10: Parallel experiments with worktrees](/tutorials/swarm/parallel-worktrees/)
+[Swarm 9: Polyglot Trio](/tutorials/swarm/polyglot-trio/)
 
-The next published tutorial in series order. Try two designs at once in two git worktrees, measure them, merge the winner and throw the loser away.
+The next tutorial in series order. Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus.
 :::

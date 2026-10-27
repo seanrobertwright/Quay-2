@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# The sample keeps its CRLF line endings, byte for byte: SPEC.md rule 2 is about them.
+*.csv -text
