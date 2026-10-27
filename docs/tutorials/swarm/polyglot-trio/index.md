@@ -11,7 +11,7 @@ Three agents from three vendors build one small tool. Antigravity plans a CSV-to
 
 **You'll learn:** how to launch the Polyglot Agent Trio preset; what a full peer and a responder are, and how Mission Control shows them; how to give an agent its role by hand when its CLI takes no launch prompt; how to ask a responder a short question and get its reply; how a plan and a review travel as files while the A2A bus carries only the short messages; and how a non-Claude agent sends a message.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half. The letter after `Ctrl+B` is the plain key, with no `Shift`. `Ctrl+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, right-click in the pane and choose **Paste**, then press `Enter` to send it.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The letter after `Ctrl+Shift+B` is the plain key, with no `Shift`. `Ctrl+Shift+B` followed by a digit moves focus to that terminal, counting down the rail from 1. To paste a step's line into a pane, copy it with the button beside it, right-click in the pane and choose **Paste**, then press `Enter` to send it.
 
 Every agent on the A2A bus is a **peer**, and Quay can type a message into any of them. A **full peer** can also send messages with the `quay_*` tools and answer a sender who waits for it. A **responder** can answer a sender who waits, but it has no `quay_*` tools, so it never starts a conversation. In this tutorial Claude Code and Codex are full peers and Antigravity is a responder.
 
@@ -36,8 +36,8 @@ The starter is a CSV-to-JSON converter with nothing inside it yet. `SPEC.md` is 
 
 ::: do
 1. Download [`polyglot-trio.zip`](/starters/polyglot-trio.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -76,7 +76,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 The four panes this step opens are four different programs: Claude Code, Antigravity, Codex and PowerShell. The launcher starts all three agents in Skip mode, so each runs its tools without asking you first.
 
 ::: do
-1. Press `Ctrl+B S` to open the Swarm Launcher.
+1. Press `Ctrl+Shift+B S` to open the Swarm Launcher.
 2. Select the **Polyglot Agent Trio** card. The `agy-planner` row is marked **No launch prompt**: Antigravity can't take a first message on its command line, so it starts without its role. You give it one in step 4.
 3. Click **Launch Swarm Now**.
 4. If a pane asks whether you trust this folder, click into that pane and choose to trust it. Antigravity and Codex may each ask, the first time they open a folder.
@@ -105,7 +105,7 @@ Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls B
 :::
 
 ::: ifnot the codex-reviewer pane printed Updating Codex CLI and then exited
-Codex tried to update itself and the download failed. Press `Ctrl+B 5` to move focus to `test-runner`, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then close the four swarm terminals and do this step again: in the rail, point at each of `claude-dev`, `agy-planner`, `codex-reviewer` and `test-runner` and click the **×** (**Close terminal**) that appears on its row. Relaunching only `codex-reviewer` wouldn't give it its role, because Quay sends a launch prompt only when the whole swarm launches.
+Codex tried to update itself and the download failed. Press `Ctrl+Shift+B 5` to move focus to `test-runner`, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then close the four swarm terminals and do this step again: in the rail, point at each of `claude-dev`, `agy-planner`, `codex-reviewer` and `test-runner` and click the **×** (**Close terminal**) that appears on its row. Relaunching only `codex-reviewer` wouldn't give it its role, because Quay sends a launch prompt only when the whole swarm launches.
 :::
 
 ::: ifnot agy-planner asks you to sign in
@@ -113,7 +113,7 @@ Antigravity isn't signed in on this account. Sign in as [Antigravity CLI](/guide
 :::
 
 ::: ifnot claude-dev shows the plugin hint
-The plugin hint is an amber strip under `claude-dev`'s header that starts `No events from the event-bridge plugin.` It means Quay isn't hearing from the plugin. If Claude Code is showing a prompt in the pane, answer it. Otherwise click **Copy** on the strip, press `Ctrl+B 5`, paste the line into `test-runner` and press `Enter`. When it finishes, press `Ctrl+B 2` and run `/reload-plugins` in `claude-dev`. The hint goes away as soon as Quay hears from the plugin.
+The plugin hint is an amber strip under `claude-dev`'s header that starts `No events from the event-bridge plugin.` It means Quay isn't hearing from the plugin. If Claude Code is showing a prompt in the pane, answer it. Otherwise click **Copy** on the strip, press `Ctrl+Shift+B 5`, paste the line into `test-runner` and press `Enter`. When it finishes, press `Ctrl+Shift+B 2` and run `/reload-plugins` in `claude-dev`. The hint goes away as soon as Quay hears from the plugin.
 :::
 
 :::
@@ -125,7 +125,7 @@ The plugin hint is an amber strip under `claude-dev`'s header that starts `No ev
 All three agents are on the A2A bus, but not on the same terms. Mission Control's agent list shows each one's level.
 
 ::: do
-1. Press `Ctrl+B M` to open **Mission Control**.
+1. Press `Ctrl+Shift+B M` to open **Mission Control**.
 2. Read the **Agents** list. `claude-dev` and `codex-reviewer` carry no tag: they are full peers. `agy-planner` is tagged **Responder**. `test-runner` and the PowerShell pane from step 1 aren't listed, because a shell isn't a peer.
 3. Press `Esc` to close Mission Control.
 :::
@@ -147,7 +147,7 @@ Quay isn't hearing from `claude-dev`'s event-bridge plugin yet, and until it doe
 Antigravity got no launch prompt, so `agy-planner` doesn't know who it is yet. Its role arrives as your first message, with the job.
 
 ::: do
-1. Press `Ctrl+B 3` to move focus to `agy-planner`.
+1. Press `Ctrl+Shift+B 3` to move focus to `agy-planner`.
 :::
 
 ::: paste `agy-planner`
@@ -187,7 +187,7 @@ Paste `Undo every change except PLAN.md, and from now on edit only PLAN.md.` int
 A responder can't send a message, but it can answer one. `claude-dev` asks `agy-planner` a short question and waits, and Quay hands Antigravity's answer back to `claude-dev` as its **reply**. A reply carries at most 199 characters of Antigravity's answer, and only an answer ready within 60 seconds of the question, so the question asks for one short line. That's why the plan itself stays in `PLAN.md`: a plan is too long for a reply.
 
 ::: do
-1. Press `Ctrl+B 2` to move focus to `claude-dev`.
+1. Press `Ctrl+Shift+B 2` to move focus to `claude-dev`.
 :::
 
 ::: paste `claude-dev`
@@ -211,11 +211,11 @@ Use quay_send_message to ask agy-planner this, with wait_for_reply set to true: 
 :::
 
 ::: ifnot the reply starts blocked (permission)
-Antigravity stopped to ask you something. Press `Ctrl+B 3`, answer it in `agy-planner`'s pane, wait until its header reads `Ready`, then press `Ctrl+B 2` and paste the line into `claude-dev` again.
+Antigravity stopped to ask you something. Press `Ctrl+Shift+B 3`, answer it in `agy-planner`'s pane, wait until its header reads `Ready`, then press `Ctrl+Shift+B 2` and paste the line into `claude-dev` again.
 :::
 
 ::: ifnot the reply starts PLAN NOT READY
-Press `Ctrl+B 3` and paste `Finish PLAN.md so every rule in SPEC.md has a test case, then end with the line PLAN.md written.` into `agy-planner`. When it ends with `PLAN.md written`, press `Ctrl+B 2` and paste the line into `claude-dev` again.
+Press `Ctrl+Shift+B 3` and paste `Finish PLAN.md so every rule in SPEC.md has a test case, then end with the line PLAN.md written.` into `agy-planner`. When it ends with `PLAN.md written`, press `Ctrl+Shift+B 2` and paste the line into `claude-dev` again.
 :::
 
 ::: ifnot claude-dev says agy-planner received the task but is still working
@@ -229,8 +229,8 @@ Antigravity took longer than 60 seconds, so the wait ended before its answer. Wa
 ## 6. Build the plan
 
 ::: do
-1. With focus still on `claude-dev`, press `Ctrl+B Z` to zoom it to the whole stage, then paste the line below into it.
-2. When `claude-dev` ends with `BUILD DONE`, press `Ctrl+B Z` again to put the grid back.
+1. With focus still on `claude-dev`, press `Ctrl+Shift+B Z` to zoom it to the whole stage, then paste the line below into it.
+2. When `claude-dev` ends with `BUILD DONE`, press `Ctrl+Shift+B Z` again to put the grid back.
 :::
 
 ::: paste `claude-dev`
@@ -265,7 +265,7 @@ Paste `Undo your changes outside src/ and test/ with git checkout, and finish in
 This time the message goes the other way, and Codex starts it. Codex is a full peer, so it can do what Antigravity can't: start a conversation. The review is long, so it travels as `review.md`, and the message only tells `claude-dev` to read it. Nobody waits for a reply.
 
 ::: do
-1. Press `Ctrl+B 4` to move focus to `codex-reviewer`.
+1. Press `Ctrl+Shift+B 4` to move focus to `codex-reviewer`.
 :::
 
 ::: paste `codex-reviewer`
@@ -303,8 +303,8 @@ Codex waited for a reply after all. The message still reached `claude-dev`, so c
 ## 8. Watch the fixes land
 
 ::: do
-1. Press `Ctrl+B 2` to move focus to `claude-dev`, and wait until it ends with `FIXES DONE`.
-2. Press `Ctrl+B M` to open Mission Control, scroll to **Live A2A Message Trail** at the bottom of the panel, and read its entries, newest first: `codex-reviewer → claude-dev`, then `claude-dev → agy-planner`.
+1. Press `Ctrl+Shift+B 2` to move focus to `claude-dev`, and wait until it ends with `FIXES DONE`.
+2. Press `Ctrl+Shift+B M` to open Mission Control, scroll to **Live A2A Message Trail** at the bottom of the panel, and read its entries, newest first: `codex-reviewer → claude-dev`, then `claude-dev → agy-planner`.
 3. Press `Esc` to close Mission Control.
 :::
 
@@ -332,7 +332,7 @@ The check suite is a set of tests none of the agents saw. Each runs the finished
 
 ::: do
 1. Download [`polyglot-trio-check.zip`](/starters/polyglot-trio-check.zip). Unzip it into the project folder itself, not into a new folder inside it, so that `check` sits beside `src`.
-2. Press `Ctrl+B 5` to move focus to `test-runner`.
+2. Press `Ctrl+Shift+B 5` to move focus to `test-runner`.
 :::
 
 ::: paste `test-runner`
@@ -358,7 +358,7 @@ npx vitest run check; node src/cli.ts samples/orders.csv; Get-Content review.md 
 :::
 
 ::: ifnot some check tests fail
-A rule slipped past the plan, the build and the review, and each failing test's name starts with the rule it checks. Press `Ctrl+B 4` and paste `A check test for a SPEC.md rule fails. Run npx vitest run check, re-review src/ for each rule that fails, add a finding to review.md for it, and send claude-dev the same message as before.` into `codex-reviewer`. Wait for `FIXES DONE` in `claude-dev`, then press `Ctrl+B 5` and paste the line into `test-runner` again.
+A rule slipped past the plan, the build and the review, and each failing test's name starts with the rule it checks. Press `Ctrl+Shift+B 4` and paste `A check test for a SPEC.md rule fails. Run npx vitest run check, re-review src/ for each rule that fails, add a finding to review.md for it, and send claude-dev the same message as before.` into `codex-reviewer`. Wait for `FIXES DONE` in `claude-dev`, then press `Ctrl+Shift+B 5` and paste the line into `test-runner` again.
 :::
 
 ::: done
