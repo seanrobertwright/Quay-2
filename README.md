@@ -212,6 +212,12 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | 8 | [Tri-Agent Council: plan, build, verify](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/tri-agent-council/) | Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict. |
 | 9 | [Polyglot Trio](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/polyglot-trio/) | Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus. |
 | 10 | [Parallel experiments with worktrees](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/parallel-worktrees/) | Try two designs at once in two git worktrees, measure them, merge the winner and throw the loser away. |
+
+### A2A
+
+| # | Tutorial | What you'll do |
+| --- | --- | --- |
+| 1 | [Hello, A2A](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
 <!-- tutorials:end -->
 
 ---
