@@ -11,9 +11,9 @@ Two Claude Code agents play attacker and defender on a small notes app you own. 
 
 **You'll learn:** how to launch the Red/Blue Team preset, give two agents opposed goals and separate folders so they don't undo each other's work, read a test run as a scoreboard, and use the Pre-PR Audit Gate (`Ctrl+Shift+B A`): what it scans, what it doesn't, and how to fix a blocker with one click.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status, and the pane that has focus has a lit border. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. Each Paste box names the pane its line goes into: with that pane focused, press `Ctrl+V` to paste the line, then press Enter to run it, or to send it to the agent.
 
-The notes app is yours and runs on your machine. Its three holes are textbook ones, and every "exploit" in this tutorial is a Vitest test that calls the app in-process: nothing is sent anywhere. Each round tells `red-team` where to look, so it finds the same holes on every run; a real red team's search is open-ended.
+The notes app is yours and runs on your machine. Its holes are textbook ones, and every "exploit" in this tutorial is a Vitest test that calls the app in-process: nothing is sent anywhere. Each round tells `red-team` where to look, so it finds the same holes on every run; a real red team's search is open-ended.
 
 ::: before
 ## Before you start
@@ -45,7 +45,7 @@ git init -b main; git add -A; git commit -m Starter; npm install; Copy-Item .env
 :::
 
 ::: see
-![The shell pane in the project folder: git makes the Starter commit, npm install finishes with no vulnerabilities, and Vitest reports the eight tests passing.](./01-starter-installed.webp)
+![The shell pane in the project folder: the last files of the Starter commit, npm install adding 40 packages with 0 vulnerabilities and a notice about a newer npm, then Vitest reporting 8 tests passed.](./01-starter-installed.webp)
 :::
 
 ::: must
@@ -56,6 +56,7 @@ git init -b main; git add -A; git commit -m Starter; npm install; Copy-Item .env
 
 ::: may
 - The commit id, the package counts and timings `npm install` prints, and how long the tests take.
+- An `npm notice` about a newer version of npm after `found 0 vulnerabilities`.
 :::
 
 ::: ifnot node or npm is not recognised
@@ -74,25 +75,29 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
-2. Click the **Red/Blue Team** card.
+2. Scroll the catalog down to the **Red/Blue Team** card, on the left of its third row, and click it. Its Team Roster lists Red Team (`red-team`) and Blue Team (`blue-team`).
 3. Click **Launch Swarm Now**.
 
 `shell` keeps running. The rail lists it as the project's first terminal, then `red-team` and `blue-team`. `Ctrl+Shift+B 1`, `Ctrl+Shift+B 2` and `Ctrl+Shift+B 3` pick them by that order: one already in a pane gets focus, and one that isn't takes the place of the pane that has focus.
 :::
 
 ::: see
-![The launcher closes and two panes open side by side: red-team on the left and blue-team on the right, each confirming its role in one line and waiting.](./02-team-launched.webp)
+![Two panes side by side, red-team on the left with a lit border and blue-team on the right, each confirming its role in one line and waiting, while the rail shows Role: Red Team and Role: Blue Team under their names.](./02-team-launched.webp)
 :::
 
 ::: must
-- Two panes side by side: `red-team` on the left and `blue-team` on the right.
-- The rail lists `shell`, `red-team` and `blue-team` under the project.
-- `red-team`'s first line reads `Role: Red Team` and `blue-team`'s reads `Role: Blue Team`, and each confirms its role and waits for your task.
+- Two panes side by side: `red-team` on the left, with a lit border, and `blue-team` on the right.
+- The rail lists `shell`, `red-team` and `blue-team` under the project, with `Role: Red Team` under `red-team` and `Role: Blue Team` under `blue-team`.
+- Each agent confirms its role in one line and waits for your task.
 :::
 
 ::: may
 - The wording of each agent's one-line reply.
 - The port number in the rail header.
+:::
+
+::: ifnot a pane asks whether you trust this folder
+Claude Code asks "Quick safety check: Is this a project you created or one you trust?" once for each new folder, in both panes, with **No, exit** selected. Click into each pane, press Down to select **Yes, I trust this folder**, then press Enter. It then confirms its role.
 :::
 
 ::: ifnot an agent asks you to accept Bypass Permissions mode
@@ -110,7 +115,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 ## 3. Round one: red-team attacks the API
 
 ::: do
-1. Focus is on `red-team`, the left pane. Press `Ctrl+Shift+B Z` to zoom it to the whole stage.
+1. Click inside `red-team`, the left pane, so it has focus, then press `Ctrl+Shift+B Z` to zoom it to the whole stage.
 :::
 
 ::: paste `red-team`
@@ -120,17 +125,18 @@ Read AGENTS.md, then attack the JSON API under /api in server/app.ts as the red 
 :::
 
 ::: see
-![red-team fills the stage: its npm test run shows two new tests under test/exploits/ failing while the rest pass, then it names each failing test and what it proves.](./03-red-round-one.webp)
+![red-team fills the stage with its round-one report: a failing test in test/exploits/delete-another-users-note.test.ts that proves alice can delete bob's private note, one in test/exploits/search-sql-injection.test.ts that proves a quote-injected search returns bob's notes, and the API gaps it chose not to write as exploits.](./03-red-round-one.webp)
 :::
 
 ::: must
-- `red-team`'s `npm test` run shows at least 2 failed tests, every one of them under `test/exploits/`, and `red-team` says `test/notes.test.ts` still passes.
+- `red-team` names at least 2 failing tests, every one of them under `test/exploits/`, and says it didn't change `server/` or `test/notes.test.ts`.
 - One failing test is about search returning another user's note, and one is about deleting another user's note.
-- Every file `red-team` created is under `test/exploits/`.
 :::
 
 ::: may
-- File and test names, and the attacks it chose.
+- File and test names, the attacks it chose, and the rule numbers it cites.
+- Whether its reply prints the test counts. Claude Code collapses long test output, so the counts may not show; step 9's check run counts every test.
+- A list of things it looked at and didn't write as exploits, such as `POST /api/notes` always filing a note under the logged-in user.
 - An extra test that already passes, if it tried a third angle on the API. There isn't a third hole there.
 :::
 
@@ -155,17 +161,18 @@ Read AGENTS.md, then run npm test. The red team has added failing tests under te
 :::
 
 ::: see
-![Both panes: red-team's header shows a green dot and Ready beside its round-one report, and blue-team's header shows a spinner while it edits server/app.ts.](./04-blue-round-one.webp)
+![Both panes: red-team's header shows a green dot and Ready beside its round-one report, and blue-team's header shows a spinner and Working while it reads AGENTS.md and runs npm test.](./04-blue-round-one.webp)
 :::
 
 ::: must
-- While `blue-team` works, its pane header shows a spinner, and `red-team`'s shows a green dot and `Ready`.
-- When `blue-team` finishes, it reports `npm test` fully passing, and every file it says it changed is under `server/`.
+- While `blue-team` works, its pane header shows a spinner and `Working`, and `red-team`'s shows a green dot and `Ready`.
+- When `blue-team` finishes, it says every test passes, and every file it says it changed is under `server/`.
 :::
 
 ::: may
-- The tool `blue-team`'s pane header names beside the spinner, and how long it takes.
+- How long it takes.
 - How it fixes search, for example a parameterised `LIKE` or an `instr` call. Both pass.
+- Remarks on what it left alone, such as `%` and `_` still acting as wildcards in a search.
 :::
 
 ::: ifnot blue-team says a test is wrong
@@ -189,16 +196,17 @@ Round two. Blue has fixed the API; now attack the HTML pages in server/app.ts an
 :::
 
 ::: see
-![red-team fills the stage: its npm test run shows round one's exploit tests passing now, and a new test under test/exploits/ failing on a script tag in a note.](./05-red-round-two.webp)
+![red-team fills the stage with its round-two report: new failing tests for a shared note's body on the home page and for its title inside the page's title tag on its own page, each breaking rule 3, and a note that a script tag would get through the same way.](./05-red-round-two.webp)
 :::
 
 ::: must
-- Round one's exploit tests pass now.
-- At least one new failing test, under `test/exploits/`, posts a note holding a `<script>` tag as one user and reads `GET /` as the other.
+- `red-team` says round one's exploit tests pass now.
+- At least one new failing test, under `test/exploits/`, posts a note holding HTML markup as one user and reads `GET /` as the other.
 :::
 
 ::: may
-- Whether it also tests `/notes/:id`, how many new tests it writes, the attacks it chose and the test names.
+- The markup it chose, such as a `<script>` tag or a harmless `<i>` tag, how many new tests it writes and the test names.
+- Whether it also tests `/notes/:id`, where the title goes into the page's `<title>` as well as the card.
 :::
 
 :::
@@ -218,17 +226,17 @@ Round two. Run npm test and fix server/ until the red team's new tests under tes
 :::
 
 ::: see
-![blue-team fills the stage: its last npm test run shows every test passing, and its summary names an escaping function in server/pages.ts.](./06-all-green.webp)
+![blue-team fills the stage with its round-two summary: a table matching each exploit test to the function it changed in server/pages.ts, layout for the title tag and noteCard for the card's title and body, each now escaped.](./06-all-green.webp)
 :::
 
 ::: must
-- `blue-team`'s last `npm test` run shows no failed tests, and more than 8 tests in all.
+- `blue-team` says every test passes.
 - Every file `blue-team` says it changed is under `server/`.
 :::
 
 ::: may
-- The total test count, which is 8 plus however many tests `red-team` wrote.
-- The escaping function's name, and where it lives in `server/`.
+- How it lays out its summary, and the escaping function's name and where it lives in `server/`.
+- Whether it escapes `'`. Note text only lands in element text and double-quoted attributes, so leaving `'` alone is safe here, and `blue-team` may say so.
 :::
 
 ::: ifnot blue-team's fix removes tags instead of escaping them
@@ -249,7 +257,7 @@ The gate is the last check before code leaves your machine. It reads `git status
 :::
 
 ::: see
-![The Pre-PR Audit Gate dialog over the split: an AUDIT BLOCKED badge, one blocker and no warnings, and a single finding for .env, a sensitive environment file in the working tree.](./07-audit-blocked.webp)
+![The Pre-PR Audit Gate dialog over the split: an AUDIT BLOCKED badge, one blocker and no warnings, and a single finding for .env, a sensitive environment file in the working tree, matched by the git status line ?? .env.](./07-audit-blocked.webp)
 :::
 
 ::: must
@@ -310,8 +318,8 @@ The button sends its prompt to the pane that has focus, which is why step 7 kept
 
 ::: do
 1. Press `Esc` to close the gate.
-2. Download [`red-team-blue-team-check.zip`](/starters/red-team-blue-team-check.zip). It holds one folder, `check`. Unzip it into the project folder itself, not into a new folder inside it, so `check` sits beside `server`.
-3. Press `Ctrl+Shift+B 1` to put `shell` in the pane that has focus.
+2. Download [`red-team-blue-team-check.zip`](/starters/red-team-blue-team-check.zip). It holds one folder, `check`. In File Explorer, right-click it, choose **Extract All...**, set the destination to the project folder itself, the folder that holds `server`, and click **Extract**. A `check` folder appears beside `server`.
+3. Press `Ctrl+Shift+B 1` to put `shell` in the pane that has focus, `blue-team`'s, then press `Ctrl+Shift+B Z` to zoom it, so the output below fits without wrapping.
 
 The check suite is six tests the agents never saw, two for each hole. They are chosen so that a blacklist fails: stripping quotes, stripping `<script>`, or checking whether a note is shared instead of who owns it each leaves a test red.
 :::
@@ -323,7 +331,7 @@ npm run check; npm test; git status --short
 :::
 
 ::: see
-![The shell pane: the check suite reports six tests passing, npm test reports every test passing, and git status lists .gitignore and server files as changed, with the new test files and the check folder untracked and no .env.](./09-check-passed.webp)
+![shell fills the stage: the check suite reports 6 tests passed, npm test reports 13 tests passed in 6 files, and git status lists .gitignore, server/app.ts and server/pages.ts as modified, with check/ and five test files under test/exploits/ untracked and no .env.](./09-check-passed.webp)
 :::
 
 ::: must
@@ -334,6 +342,10 @@ npm run check; npm test; git status --short
 
 ::: may
 - The number of tests `npm test` reports, which `server/` files changed, and the names of `red-team`'s test files.
+:::
+
+::: ifnot npm run check says No test files found
+The `check` folder isn't beside `server`. Extract All puts a zip in a new folder named after it unless you change the destination. Move the `check` folder out of `red-team-blue-team-check` and into the project folder, so it sits beside `server`, then paste the line again.
 :::
 
 ::: ifnot a check test fails
