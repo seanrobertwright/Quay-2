@@ -52,9 +52,11 @@ export interface XYPosition {
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
 
-const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+/** Whether `o` has `k` as its own property, not one inherited from its prototype. */
+export const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
-const isObject = (v: unknown): v is JsonObject =>
+/** Whether `v` is a JSON object: not null and not an array. */
+export const isObject = (v: unknown): v is JsonObject =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
