@@ -31,7 +31,7 @@ The starter project is a cart library that works in whole cents, with a command 
 ## 1. Get the starter project
 
 ::: do
-1. Download [`bug-hunt.zip`](/starters/bug-hunt.zip) and unzip it into a new, empty folder.
+1. Download [`bug-hunt.zip`](/starters/bug-hunt.zip) and unzip it into a new, empty folder. The zip has no folder of its own inside, so `src`, `test` and `BUG-REPORT.md` land straight in the folder you chose, and that folder is the project.
 2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
 3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
@@ -292,7 +292,7 @@ The `check` folder isn't beside `src`. Extract All puts a zip in a new folder na
 :::
 
 ::: ifnot a check test fails
-The patch fixed the reproducer's tests but not all the behaviour behind them. Press `Ctrl+Shift+B O` until `patcher`'s border lights up, then paste `The check suite in check/ now exists and has failures. Run npx vitest run check, fix src/cart.ts until it passes without changing any test, and end with PATCHED.` into `patcher`. Then press `Ctrl+Shift+B O` until the PowerShell pane's border lights up and paste the line above again.
+The patch fixed the reproducer's tests but not all the behaviour behind them. Press `Ctrl+Shift+B O` until `patcher`'s border lights up, then paste `The check suite in check/ now exists and has failures. Run npx vitest run check, fix src/cart.ts until it passes without changing any test, and end with PATCHED.` into `patcher`. Then press `Ctrl+Shift+B O` until the PowerShell pane's border lights up and paste this step's PowerShell line, the one starting `npx vitest run check`, again.
 :::
 
 ::: ifnot Ctrl+Shift+B 1 shows a different terminal
