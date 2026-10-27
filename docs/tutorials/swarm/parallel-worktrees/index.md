@@ -45,7 +45,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 :::
 
 ::: see
-![The PowerShell pane in the project folder: git makes the Starter commit, then npm install finishes with no vulnerabilities.](./01-starter-installed.webp)
+![The pwsh pane in the project folder: git makes the Starter commit of 14 files, then npm install adds its packages and reports found 0 vulnerabilities.](./01-starter-installed.webp)
 :::
 
 ::: must
@@ -55,6 +55,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 
 ::: may
 - The commit id, and the package counts and timings `npm install` prints.
+- An `npm notice` about a newer version of npm after `found 0 vulnerabilities`.
 :::
 
 ::: ifnot node or npm is not recognised
@@ -72,7 +73,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Make two worktrees
 
 ::: do
-1. Rename the PowerShell pane, so it can't be mixed up with the swarms' panes later: in the rail, double-click `pwsh` under the project, type `main-shell` and press Enter.
+1. Rename the PowerShell pane, so it can't be mixed up with the swarms' panes later: in the rail, hover over `pwsh` under the project and click the pencil icon that appears beside its name (**Rename session**). Type `main-shell` and press Enter.
 2. Press `Ctrl+Shift+B W`. The **New Git Worktree** dialog opens.
 3. Type `try-scan` as the **Branch Name**. Leave **Create as new branch** ticked, with `main` in the **from** box beside it.
 4. Untick **Launch Claude Code terminal immediately**. You'll launch a whole swarm there instead.
@@ -88,7 +89,7 @@ git worktree list
 :::
 
 ::: see
-![The rail shows Worktrees (2) open under the project, listing try-scan and try-index, and main-shell lists the three worktrees: the project folder on main and one folder under .worktrees for each branch.](./02-worktrees-created.webp)
+![The rail shows main-shell and, below it, Worktrees (2) open with try-index and try-scan. In main-shell, git worktree list prints the project folder on main and one folder under .worktrees for each branch, all at the same commit.](./02-worktrees-created.webp)
 :::
 
 ::: must
@@ -117,10 +118,10 @@ The project's first branch isn't called `main`. Paste `git branch -m main` into 
 ## 3. Launch the first experiment
 
 ::: do
-1. Click `try-scan` under **Worktrees** in the rail. The stage empties: this worktree has no terminals yet.
+1. Click `try-scan` under **Worktrees** in the rail. The stage empties and says **No Terminal in this Project**: this worktree has no terminals yet.
 2. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected. Check that it says **Target: try-scan**.
 3. Click **Launch Swarm Now**. Dev & Watcher opens two panes side by side in `try-scan`: `lead-dev`, a Claude Code agent, on the left, and `build-watcher`, a PowerShell pane for running the tests, on the right.
-4. Wait until `lead-dev` has confirmed its role. Quay tells each agent it launches what its job is, and the agent answers with one line starting `Role: Lead Developer`, then waits for your task.
+4. Wait until `lead-dev` has confirmed its role. Quay tells each agent it launches what its job is, and the agent answers in one line, then waits for your task. In the rail, the line under `lead-dev` changes to `Role: Lead Developer`.
 5. Press `Ctrl+Shift+B O` to move focus to `build-watcher`. Its border lights up.
 :::
 
@@ -131,12 +132,12 @@ npm ci; npm test
 :::
 
 ::: see
-![try-scan's swarm: lead-dev on the left has confirmed its role, and build-watcher on the right shows all six tests failing in red, then waits for file changes. In the rail, both terminals sit under try-scan.](./03-scan-red.webp)
+![try-scan's swarm: lead-dev on the left has answered in one line that it makes the code changes and build-watcher runs the tests, and build-watcher on the right shows 6 failed (6) and is watching for file changes. In the rail, lead-dev and build-watcher sit under try-scan, with Role: Lead Developer under lead-dev.](./03-scan-red.webp)
 :::
 
 ::: must
-- `lead-dev`'s first line reads `Role: Lead Developer`.
-- `build-watcher` shows `Tests  6 failed (6)`, with a `Waiting for file changes...` line under it.
+- In the rail, the line under `lead-dev` reads `Role: Lead Developer`, and its pane header shows a green dot and `Ready`.
+- `build-watcher` shows `Tests  6 failed (6)`, with `Tests failed. Watching for file changes...` under it.
 - The rail lists `lead-dev` and `build-watcher` under `try-scan`, not under the project beside `main-shell`.
 :::
 
@@ -147,6 +148,10 @@ npm ci; npm test
 
 ::: ifnot the launcher's Target isn't try-scan
 The launcher launches into the folder selected in the rail. Press `Esc` to close it, click `try-scan` under **Worktrees** in the rail, and press `Ctrl+Shift+B S` again.
+:::
+
+::: ifnot lead-dev asks Is this a project you created or one you trust?
+Claude Code asks once for each new folder, and a worktree is a new folder. **No, exit** is selected first: click into `lead-dev`, press the Down arrow to select **Yes, I trust this folder** and press Enter. It then confirms its role.
 :::
 
 ::: ifnot lead-dev asks you to accept Bypass Permissions mode
@@ -174,7 +179,7 @@ Implement findDuplicates in src/dedupe.ts so every test in test/dedupe.test.ts p
 :::
 
 ::: see
-![lead-dev is working on src/dedupe.ts: its pane header shows a spinner and the tool it is using.](./04-scan-working.webp)
+![try-scan's lead-dev has started on the task: its pane header shows a spinner beside Bash, and its row in the rail names the command it is running. build-watcher still shows the six failures.](./04-scan-working.webp)
 :::
 
 ::: must
@@ -193,7 +198,7 @@ Implement findDuplicates in src/dedupe.ts so every test in test/dedupe.test.ts p
 ## 5. Launch the second experiment
 
 ::: do
-1. Click `try-index` under **Worktrees** in the rail. The stage empties again. `try-scan`'s swarm keeps working out of sight: in the rail, its `lead-dev` row still shows a spinner.
+1. Click `try-index` under **Worktrees** in the rail. The stage empties again and says **No Terminal in this Project**. `try-scan`'s swarm keeps working out of sight: in the rail, its `lead-dev` row shows a spinner and `Working...` until it finishes.
 2. Press `Ctrl+Shift+B S`. Check that the launcher says **Target: try-index**, with **Dev & Watcher** selected.
 3. Click **Launch Swarm Now**, and wait until this `lead-dev` has confirmed its role in one line.
 4. Press `Ctrl+Shift+B O` to move focus to `build-watcher`.
@@ -206,7 +211,7 @@ npm ci; npm test
 :::
 
 ::: see
-![try-index's swarm: lead-dev has confirmed its role and build-watcher shows all six tests failing. The rail lists a lead-dev and a build-watcher under each worktree.](./05-index-red.webp)
+![try-index's swarm: lead-dev has confirmed its role and build-watcher shows 6 failed (6). The rail lists a lead-dev and a build-watcher under try-index and another pair under try-scan, where lead-dev shows a green dot and the task it was given.](./05-index-red.webp)
 :::
 
 ::: must
@@ -240,7 +245,7 @@ Implement findDuplicates in src/dedupe.ts so every test in test/dedupe.test.ts p
 :::
 
 ::: see
-![try-index's lead-dev is working, its pane header showing a spinner, while the rail shows how try-scan's lead-dev is getting on.](./06-index-working.webp)
+![try-index's lead-dev is working, its pane header showing a spinner beside Bash and its rail row naming the command, while try-scan's lead-dev in the rail shows a green dot.](./06-index-working.webp)
 :::
 
 ::: must
@@ -263,7 +268,7 @@ Implement findDuplicates in src/dedupe.ts so every test in test/dedupe.test.ts p
 :::
 
 ::: see
-![try-scan's swarm on the stage after a flip: lead-dev says it believes the tests pass, and build-watcher shows all six passing in green.](./07-flip-experiments.webp)
+![try-scan's swarm on the stage after a flip: lead-dev shows Ready and has summed up its change to src/dedupe.ts, and build-watcher shows all six tests passing and waits for file changes.](./07-flip-experiments.webp)
 :::
 
 ::: must
@@ -293,13 +298,13 @@ It still works; the lesson is just quieter. When it finishes, paste `Thanks. Fro
 
 ::: do
 1. Press `Ctrl+Shift+B D`. The **Visual Diff & File Changes** drawer opens, listing every edit both agents made.
-2. Type `try-scan` in **Filter files...**, click an entry and read the change. On an entry marked `Edit`, switch between **Unified** and **Side-by-Side**.
+2. Type `try-scan` in **Filter files...**, click an entry and read the change. An entry marked `Write` shows the whole file the agent wrote. On an entry marked `Edit`, you can switch between **Unified** and **Side-by-Side**.
 3. Change the filter to `try-index` and read that experiment's changes.
 4. Press `Esc` to close the drawer.
 :::
 
 ::: see
-![The Visual Diff & File Changes drawer filtered to try-index: dedupe.ts entries from lead-dev, one of them open.](./08-diff-inspector.webp)
+![The Visual Diff & File Changes drawer filtered to try-index: one dedupe.ts entry from lead-dev, marked Write, open on the right with the union-find and the Maps of normalized email and phone.](./08-diff-inspector.webp)
 :::
 
 ::: must
@@ -331,7 +336,7 @@ npm run compare -- try-scan try-index
 :::
 
 ::: see
-![main-shell: the compare table has one row per experiment. Both pass all six tests, but only try-index handles 50,000 contacts in under 500 ms.](./09-compare.webp)
+![main-shell: the compare table has one row per experiment. Both pass 6/6, but try-scan takes over 5 s on 50,000 contacts and fails the 500 ms bar, while try-index takes 76 ms, finds 2500 groups and passes.](./09-compare.webp)
 :::
 
 ::: must
@@ -370,7 +375,7 @@ git -C .worktrees/try-index commit -am "Find duplicates by index"; git merge try
 :::
 
 ::: see
-![main-shell: git commits try-index's change, then merges it into main as a fast-forward that changes src/dedupe.ts.](./10-merged.webp)
+![main-shell: git commits try-index's change as Find duplicates by index, 1 file changed, then merges it into main as a Fast-forward that changes src/dedupe.ts.](./10-merged.webp)
 :::
 
 ::: must
