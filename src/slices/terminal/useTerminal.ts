@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { terminalKeyAction } from "./terminalKeys";
-import { isTerminalReport } from "./terminalReports";
+import { isTerminalReport, splitPendingQueries } from "./terminalReports";
 import { isOverlayOpen } from "../overlay/useOverlay";
 
 /**
@@ -336,10 +336,15 @@ export function useTerminal(
         if (res && res.data) {
           // xterm parses the write later. Its callback runs once this chunk is parsed and before
           // any live chunk queued after it, whose queries the live program is waiting on.
+          // A cursor position query at the very end of the snapshot is still waiting too, such as
+          // ConPTY's ESC[6n before a new shell starts, so it is written after the callback and
+          // answered.
+          const { replayed, pending } = splitPendingQueries(res.data);
           replaying = true;
-          term.write(res.data, () => {
+          term.write(replayed, () => {
             replaying = false;
           });
+          if (pending) term.write(pending);
           highestSeq = res.last_seq;
         }
         initialLoaded = true;
