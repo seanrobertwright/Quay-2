@@ -46,8 +46,11 @@ describe('render', () => {
     );
   });
 
-  it('renders a link with any other scheme as its text alone', () => {
-    const html = render(page([{ kind: 'paragraph', content: [{ kind: 'link', text: 'click <me>', href: 'javascript:alert' }] }]), '{{content}}');
-    expect(squash(html)).toBe('<p>click &lt;me&gt;</p>');
+  it('renders a link with any other scheme, in any case, or starting // as its text alone', () => {
+    const link = (href: string) => render(page([{ kind: 'paragraph', content: [{ kind: 'link', text: 'click <me>', href }] }]), '{{content}}');
+    for (const href of ['javascript:alert', 'JavaScript:alert', 'data:text/html,hi', '//example.com/x']) {
+      expect(squash(link(href)), href).toBe('<p>click &lt;me&gt;</p>');
+    }
+    expect(squash(link('HTTPS://x.test'))).toBe('<p><a href="HTTPS://x.test">click &lt;me&gt;</a></p>');
   });
 });

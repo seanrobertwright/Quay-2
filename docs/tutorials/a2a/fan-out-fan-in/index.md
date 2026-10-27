@@ -13,7 +13,7 @@ One `lead` agent splits a tiny static-site generator three ways and hands each p
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
-Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in **Mission Control**, Quay's view of all the traffic on the bus.
+Agents in a swarm can message each other over Quay's **A2A bus** with the `quay_send_message` tool. Quay types each message into the receiving agent's pane as a new prompt that starts `[Peer agent (<sender>)]:`, shows an **Incoming A2A Task** banner at the top of that pane, and pops a card in the window's top-right corner for a few seconds. It holds a message until the receiving agent has finished its current turn, so two messages never land in one prompt. A sender can wait up to a minute for the reply, or set `wait_for_reply` to false and carry on. Every message shows up in **Mission Control**, Quay's view of all the traffic on the bus. [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/) walks through the bus one message at a time.
 
 The starter project is `ssg`, a static-site generator that isn't written yet. `src/types.ts` is the finished contract: it says what each part must do. The parser, the renderer and the command line are stubs, each in its own folder with its own red test file, and `src/site.ts`, which joins them, is a stub too. `AGENTS.md` says which agent owns which folder and how the workers report back. You build the four agents yourself in the swarm builder, the way [Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/) does.
 
@@ -131,19 +131,19 @@ You are the lead. You hand out work over the A2A bus and integrate the results. 
 Row 2, `parser-dev`:
 
 ```text
-You are a worker. You own src/parser/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your tests pass, report to lead exactly as AGENTS.md says and stop.
+You are a worker. You own src/parser/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your test script and npm run typecheck both pass, report to lead exactly as AGENTS.md says and stop.
 ```
 
 Row 3, `render-dev`:
 
 ```text
-You are a worker. You own src/render/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your tests pass, report to lead exactly as AGENTS.md says and stop.
+You are a worker. You own src/render/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your test script and npm run typecheck both pass, report to lead exactly as AGENTS.md says and stop.
 ```
 
 Row 4, `cli-dev`:
 
 ```text
-You are a worker. You own src/cli/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your tests pass, report to lead exactly as AGENTS.md says and stop.
+You are a worker. You own src/cli/ and nothing else. Read AGENTS.md, then wait for a job from lead. When your test script and npm run typecheck both pass, report to lead exactly as AGENTS.md says and stop.
 ```
 
 The `shell` terminal keeps running behind the grid, and the rail still lists it. You bring it back in step 8.
@@ -192,7 +192,7 @@ A swarm named Fan-out Crew was already saved, perhaps from an earlier try. Click
 
 ::: paste `lead`
 ```text
-Fan out the three parts. With quay_send_message and wait_for_reply false, send parser-dev exactly: Build src/parser/ until npm run test:parser passes, then report DONE parser to lead. Send render-dev exactly: Build src/render/ until npm run test:render passes, then report DONE render to lead. Send cli-dev exactly: Build src/cli/ until npm run test:cli passes, then report DONE cli to lead. Then end your turn with the line OUTSTANDING: parser, render, cli. Each time a DONE message arrives, end your turn with one line, OUTSTANDING: and the parts not yet done. When none are left, write src/site.ts and run npm run e2e. If an e2e test fails, find which part is wrong, send its owner one line starting FIX and naming the failing page and what differs, without waiting, and wait for its DONE again. Never edit a worker's folder. When npm run e2e and npm run typecheck both pass, end with the line FAN-IN COMPLETE.
+Fan out the three parts. With quay_send_message and wait_for_reply false, send parser-dev exactly: Build src/parser/ until npm run test:parser and npm run typecheck pass, then report DONE parser to lead. Send render-dev exactly: Build src/render/ until npm run test:render and npm run typecheck pass, then report DONE render to lead. Send cli-dev exactly: Build src/cli/ until npm run test:cli and npm run typecheck pass, then report DONE cli to lead. Then end your turn with the line OUTSTANDING: parser, render, cli. Each time a DONE message arrives while other parts are still outstanding, end your turn with one line, OUTSTANDING: and the parts not yet done. When the last part is done, write src/site.ts and run npm run e2e and npm run typecheck. If either fails because of a worker's part, send its owner one line starting FIX and naming what fails, without waiting, then end your turn; when that owner's DONE arrives, run both again. Never edit a worker's folder. When npm run e2e and npm run typecheck both pass, end with the line FAN-IN COMPLETE.
 ```
 :::
 
@@ -205,7 +205,7 @@ Fan out the three parts. With quay_send_message and wait_for_reply false, send p
 ::: must
 - `lead` reads `Called quay 3 times`, and its last line is `OUTSTANDING: parser, render, cli`.
 - All three workers are working at once: each pane header shows a spinner and the tool it is using, such as `Bash`.
-- In the rail, each worker's status line starts `[Peer agent (lead)]: Build src/`.
+- In the rail, each worker's status line starts `[Peer agent (lead)]: Build src/`, the start of its job.
 :::
 
 ::: may
@@ -284,7 +284,7 @@ If an end-to-end test fails, `lead` doesn't fix the part. It sends `FIX` and the
 :::
 
 ::: ifnot lead sent a FIX message
-This is the fan-in loop working. The owner fixes its part and reports `DONE` again, and `lead` runs the end-to-end test again.
+This is the fan-in loop working. The owner fixes its part and reports `DONE` again, and `lead` runs `npm run e2e` and `npm run typecheck` again.
 :::
 
 :::
@@ -295,7 +295,7 @@ This is the fan-in loop working. The owner fixes its part and reports `DONE` aga
 
 ::: do
 1. Press `Ctrl+Shift+B Z` to put the grid back.
-2. Click **Mission Control**, the network icon second from the right in the toolbar at the bottom of the rail.
+2. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
 3. Scroll down to **Live A2A Message Trail**. It lists the newest message first and has its own scroll bar: scroll inside it to read every entry.
 :::
 
@@ -339,12 +339,12 @@ npm test; npm run build; Select-String -Path dist\hello.html -Pattern '&lt;b&gt;
 - Vitest ends with `Test Files  4 passed (4)` and `Tests  21 passed (21)`. Scroll up in the pane, or press `Ctrl+Shift+B Z` to zoom it, to see them.
 - `npm run build` prints `Built 3 pages to dist`.
 - `Select-String` prints the line of `dist\hello.html` that holds `<code>&lt;b&gt;</code>`.
-- `git status --short` lists ` M src/cli/run.ts`, ` M src/parser/parse.ts`, ` M src/render/render.ts` and ` M src/site.ts`, and nothing outside those four paths.
+- `git status --short` lists ` M src/cli/run.ts`, ` M src/parser/parse.ts`, ` M src/render/render.ts` and ` M src/site.ts`, and nothing outside `src/site.ts`, `src/parser/`, `src/render/` and `src/cli/`.
 :::
 
 ::: may
 - The timings, and the line number `Select-String` prints.
-- Files a worker added inside its own folder, which `git status` lists with `??`.
+- Files a worker added inside its own folder, which `git status` lists with `??`. They belong to that worker's part.
 :::
 
 ::: ifnot Ctrl+Shift+B 1 shows a different terminal

@@ -48,9 +48,10 @@ export type Parse = (markdown: string) => Doc;
  *   per item.
  * - Text, code and the title have `&`, `<`, `>` and `"` escaped as `&amp;`, `&lt;`, `&gt;` and
  *   `&quot;`. A code inline becomes `<code>` around its escaped text.
- * - A link becomes `<a href="...">text</a>`, both escaped, when its href is relative or starts
- *   with `http:`, `https:` or `mailto:`. A link with any other scheme, such as `javascript:`,
- *   becomes its escaped text alone.
+ * - A link becomes `<a href="...">text</a>`, both escaped, when its href is relative or its
+ *   scheme is `http`, `https` or `mailto`. Schemes match whatever their case. A relative href has
+ *   no scheme (no `:` before its first `/`, `?` or `#`) and doesn't start with `//`. Any other
+ *   link, such as `javascript:alert` or `//example.com`, becomes its escaped text alone.
  */
 export type Render = (doc: Doc, template: string) => string;
 

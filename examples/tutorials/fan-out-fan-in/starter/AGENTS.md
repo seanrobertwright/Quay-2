@@ -15,15 +15,17 @@ seems wrong, tell `lead`.
 | Agent | Owns | Runs |
 | --- | --- | --- |
 | `lead` | `src/site.ts` | `npm run e2e`, `npm run typecheck` |
-| `parser-dev` | `src/parser/` | `npm run test:parser` |
-| `render-dev` | `src/render/` | `npm run test:render` |
-| `cli-dev` | `src/cli/` | `npm run test:cli` |
+| `parser-dev` | `src/parser/` | `npm run test:parser`, `npm run typecheck` |
+| `render-dev` | `src/render/` | `npm run test:render`, `npm run typecheck` |
+| `cli-dev` | `src/cli/` | `npm run test:cli`, `npm run typecheck` |
 
 - Nobody edits `src/types.ts`, `test/`, `bin/`, `site/` or another agent's folder.
 - Each worker may add files inside its own folder, but `src/parser/parse.ts`,
   `src/render/render.ts` and `src/cli/run.ts` keep their exports.
 - Never run plain `npm test`: the other parts stay red until their owners finish, so it would
-  mislead you. Run only the scripts in your row.
+  mislead you. Run only the scripts in your row. A part is done when both pass: Vitest runs
+  TypeScript without checking its types, so only `npm run typecheck` catches a type error.
+  The type check covers the whole project: an error in another agent's folder is theirs to fix.
 
 ## On the A2A bus
 
