@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 6: Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/)
 
-The next tutorial in series order, Swarm 6: Red Team / Blue Team: notes app, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed.
 :::

@@ -14,7 +14,7 @@ import {
   type GraphSnapshot,
 } from "./drafts.ts";
 import { createHistory, endMerge, record, redo, undo, type History, type Step } from "./history.ts";
-import { parseLayoutViewport } from "./model.ts";
+import { hasOwn, parseLayoutViewport } from "./model.ts";
 import type { DefinitionFile, DefinitionRef } from "./types.ts";
 
 export interface Viewport {
@@ -119,13 +119,13 @@ export function applyDiskRead(session: BuilderSession, ref: DefinitionRef, file:
 /** The session without `ref`'s draft and history, as when the user discards it or reloads it from disk. */
 export function dropDraft(session: BuilderSession, ref: DefinitionRef): BuilderSession {
   const key = definitionKey(ref);
-  if (!Object.prototype.hasOwnProperty.call(session.drafts, key)) return session;
+  if (!hasOwn(session.drafts, key)) return session;
   const { [key]: _dropped, ...others } = session.drafts;
   return { ...session, drafts: others, histories: withoutKey(session.histories, key) };
 }
 
 function withoutKey<T>(record: Readonly<Record<string, T>>, key: string): Readonly<Record<string, T>> {
-  if (!Object.prototype.hasOwnProperty.call(record, key)) return record;
+  if (!hasOwn(record, key)) return record;
   const { [key]: _dropped, ...others } = record;
   return others;
 }

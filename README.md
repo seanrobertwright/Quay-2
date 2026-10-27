@@ -86,7 +86,7 @@ flowchart LR
 ### 🧭 Praxis Builder
 - Opens with `Ctrl+Shift+B P` or **Praxis Builder...** in the command palette.
 - Lists the active project's Praxis definitions in `.praxis/` (graphs, contracts, grants and triggers) and shows a graph on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
-- Edit a graph on the canvas: drag a kind from the palette strip to add a node, drag from one card's handle to another to add a dependency, and drag from a decision's green `then` or red `else` handle to set that branch. The inspector beside the canvas edits the selected node's id, its kind's config and its `dependsOn`, shows the problems found in each field, and deletes the node. Renaming or deleting a node updates every `dependsOn`, decision branch and layout entry that names it.
+- Edit a graph on the canvas: drag a kind from the palette strip to add a node, drag from one card's handle to another to add a dependency, and drag from a decision's green `then` or red `else` handle to set that branch. The inspector beside the canvas edits the selected node's id, its kind's config, its `dependsOn`, and its `inputSchema` and `outputSchema` (as a table of field name, type and required, or as raw JSON for a schema the table can't show), shows the problems found in each field, and deletes the node. Renaming or deleting a node updates every `dependsOn`, decision branch and layout entry that names it.
 - Drag a graph's nodes and press **Save** (`Ctrl+S`) to write the graph and its layout. Files are written in one canonical form, so a save that changes nothing makes no diff, and graphs get a content-digest `revision`. Unsaved drafts show `*` in the list and a dot on the project in the rail, and Quay asks before it quits with any unsaved. An invalid graph still saves, and the list marks it with an error badge.
 - Files that aren't valid JSON are listed with an error badge, and opening one shows the line and column of the error.
 - Validates each graph offline with the AI-WS-SDK's own Rust crate, vendored in `src-tauri/vendor/aiws`. Each node shows a problem count, and a Problems list under the canvas gives every issue's node, field, message and code. Choosing an issue selects its node and zooms to it.
@@ -207,6 +207,8 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | 3 | [Full-Stack Pair: bookmarks app](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/full-stack-pair/) | Have two agents build a bookmarks app's API and React UI side by side, then open it in your browser. |
 | 4 | [Build and save a custom swarm](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/custom-swarm/) | Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart. |
 | 5 | [Bug Hunt](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/bug-hunt/) | Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn. |
+| 6 | [Red Team / Blue Team: notes app](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/red-team-blue-team/) | Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed. |
+| 8 | [Tri-Agent Council: plan, build, verify](https://seanrobertwright.github.io/Quay-2/tutorials/swarm/tri-agent-council/) | Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict. |
 <!-- tutorials:end -->
 
 ---
