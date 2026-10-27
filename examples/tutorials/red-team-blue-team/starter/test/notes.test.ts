@@ -69,7 +69,7 @@ describe("the pages", () => {
     const page = await res.text();
     expect(page).toContain("Groceries");
     expect(page).toContain("Team lunch");
-    expect(page).not.toContain("Bob's secret");
+    expect(page).not.toContain("the safe code is 4242");
   });
 
   test("GET /notes/3 as alice returns 404", async () => {

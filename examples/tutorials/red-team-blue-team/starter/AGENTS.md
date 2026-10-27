@@ -5,8 +5,8 @@ route.
 
 ## The rules of the app
 
-1. A user sees their own notes and every note marked shared, and nothing else, through every
-   route.
+1. No route shows a user anything but their own notes and notes marked shared. The pages show
+   both; the API's list, `GET /api/notes`, shows only your own.
 2. Only a note's owner can delete it. A note you can't delete is a 404, not a 403.
 3. A note's title and body are shown exactly as typed, as text. They never run and never change
    the page around them.
