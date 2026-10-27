@@ -341,7 +341,7 @@ The server kept its bookmarks somewhere else. Click inside `backend-agent` in th
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/)
 
-The next tutorial in series order, Swarm 4: Build and save a custom swarm, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart.
 :::
