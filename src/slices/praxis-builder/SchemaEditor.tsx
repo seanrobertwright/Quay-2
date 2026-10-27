@@ -6,7 +6,7 @@ import { Plus, X } from "lucide-react";
 import { FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { GraphEdit, SchemaSlot } from "./editor.ts";
 import type { JsonObject, PraxisNode } from "./model.ts";
-import { FIELD_TYPES, fieldsProblem, parseSchema, schemaFields, withFields, type SchemaField } from "./schemas.ts";
+import { FIELD_TYPES, fieldsProblem, isFieldType, parseSchema, schemaFields, withFields, type SchemaField } from "./schemas.ts";
 import type { Diagnostic } from "./types.ts";
 
 const hintClass = "mt-1 text-[10px] text-[#6e7681]";
@@ -268,7 +268,10 @@ const FieldTable: FC<{
                       aria-label={`${label} ${field} type`}
                       className={inputClass}
                       value={r.type}
-                      onChange={(e) => setRow(r.key, { type: e.target.value })}
+                      onChange={(e) => {
+                        const type = e.target.value;
+                        if (isFieldType(type)) setRow(r.key, { type });
+                      }}
                     >
                       {FIELD_TYPES.map((t) => (
                         <option key={t} value={t}>

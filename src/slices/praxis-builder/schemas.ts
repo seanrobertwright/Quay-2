@@ -1,12 +1,12 @@
 // A node's `inputSchema` and `outputSchema` as the inspector's field table shows them
 // (#226, #260): one row per property of a flat object schema, with its name, type and
 // whether it is required.
-import type { Json, JsonObject, ParseResult } from "./model.ts";
+import { hasOwn, isObject, type Json, type JsonObject, type ParseResult } from "./model.ts";
 
 /** One row of the field table. */
 export interface SchemaField {
   name: string;
-  type: string;
+  type: FieldType;
   required: boolean;
   /** The property's schema as it is, so writing the row back keeps the keywords the table doesn't show. */
   keywords: JsonObject;
@@ -14,6 +14,8 @@ export interface SchemaField {
 
 /** The JSON Schema types a row can have. */
 export const FIELD_TYPES = ["string", "integer", "number", "boolean", "array", "object", "null"] as const;
+
+export type FieldType = (typeof FIELD_TYPES)[number];
 
 /**
  * The top-level keywords a schema the table shows may have. The table edits `properties` and
@@ -52,9 +54,8 @@ const NESTED_KEYWORDS = [
   "dependentSchemas",
 ];
 
-const isObject = (v: unknown): v is JsonObject => typeof v === "object" && v !== null && !Array.isArray(v);
-const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
-const isFieldType = (t: unknown) => typeof t === "string" && (FIELD_TYPES as readonly string[]).includes(t);
+/** Whether `t` is one of `FIELD_TYPES`. */
+export const isFieldType = (t: unknown): t is FieldType => typeof t === "string" && (FIELD_TYPES as readonly string[]).includes(t);
 
 /**
  * The schema's rows, or null when the table can't show it and it must be edited as JSON.
@@ -70,7 +71,7 @@ export function schemaFields(schema: JsonObject): SchemaField[] | null {
   for (const [name, property] of Object.entries(properties)) {
     if (!isObject(property) || !isFieldType(property.type)) return null;
     if (NESTED_KEYWORDS.some((k) => hasOwn(property, k))) return null;
-    fields.push({ name, type: property.type as string, required: required.includes(name), keywords: property });
+    fields.push({ name, type: property.type, required: required.includes(name), keywords: property });
   }
   const names = new Set(fields.map((f) => f.name));
   if (new Set(required).size !== required.length || required.some((r) => typeof r !== "string" || !names.has(r))) {

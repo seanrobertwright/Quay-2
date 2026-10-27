@@ -2,7 +2,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { JsonObject } from "./model.ts";
-import { fieldsProblem, parseSchema, schemaFields, withFields } from "./schemas.ts";
+import { fieldsProblem, parseSchema, schemaFields, withFields, type SchemaField } from "./schemas.ts";
 
 describe("schemaFields", () => {
   test("reads a flat object schema as one row per property, in order", () => {
@@ -77,7 +77,7 @@ describe("withFields", () => {
   });
 
   test("changing a row's type keeps that property's other keywords", () => {
-    const next = rows().map((f) => (f.name === "score" ? { ...f, type: "integer" } : f));
+    const next = rows().map((f): SchemaField => (f.name === "score" ? { ...f, type: "integer" } : f));
     assert.deepEqual(withFields(schema, next).properties, {
       summary: { description: "One line.", type: "string", minLength: 1, maxLength: 120 },
       score: { type: "integer", minimum: 0, maximum: 1 },
@@ -124,7 +124,7 @@ describe("withFields", () => {
 });
 
 describe("fieldsProblem", () => {
-  const field = (name: string) => ({ name, type: "string", required: false, keywords: {} });
+  const field = (name: string): SchemaField => ({ name, type: "string", required: false, keywords: {} });
 
   test("finds nothing wrong with distinct names", () => {
     assert.equal(fieldsProblem([field("a"), field("b")]), null);
