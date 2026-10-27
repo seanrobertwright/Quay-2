@@ -1,7 +1,7 @@
 // The docked inspector beside the canvas (#226): the selected node's kind and a delete button,
 // its id, its kind's config form, its `dependsOn`, its input and output schemas, and the graph's
-// read-only revision. Each
-// control shows the validation messages about it; the node's other messages head the panel.
+// read-only revision. Each control shows the validation messages about it; the node's other
+// messages head the panel.
 import { useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { Trash2, X } from "lucide-react";
 import { CONFIG_FORMS, described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
