@@ -17,4 +17,10 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 6 | [Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/) | Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed. |
 | 7 | [JS to TypeScript migration](/tutorials/swarm/js-to-typescript/) | Have three agents convert a JavaScript project to TypeScript, one folder each, while `tsc --watch` counts the errors down to zero. |
 | 8 | [Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/) | Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict. |
+
+## A2A
+
+| # | Tutorial | What you'll do |
+| --- | --- | --- |
+| 1 | [Hello, A2A](/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
 <!-- tutorials:end -->
