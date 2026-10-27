@@ -156,6 +156,61 @@ fn remove_saved_output(terminal_id: &str) {
     let _ = std::fs::remove_file(super::screen::screen_path(&dir, terminal_id));
 }
 
+/// How `info` is saved in `sessions.json`, stamped `now`.
+fn persisted_session(info: &TerminalInfo, now: u64) -> PersistedTerminalSession {
+    PersistedTerminalSession {
+        id: info.id.clone(),
+        name: info.name.clone(),
+        project_path: info.project_path.clone(),
+        run_kind: info.run_kind,
+        permission_mode: info.permission_mode,
+        task_title: info.task_title.clone(),
+        custom_name: info.custom_name,
+        auto_approved_count: info.auto_approved_count,
+        command_text: info.command_text.clone(),
+        custom_flags: info.custom_flags.clone(),
+        claude_session_id: info.claude_session_id.clone(),
+        last_updated: now,
+        created_at: info.created_at,
+    }
+}
+
+/// The exited terminal a saved session comes back as, created at `created_at`.
+fn restored_terminal(item: PersistedTerminalSession, created_at: u64) -> TerminalInfo {
+    // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
+    let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
+    TerminalInfo {
+        id: item.id,
+        name: item.name,
+        project_path: item.project_path,
+        run_kind: item.run_kind,
+        permission_mode,
+        live_mode: permission_mode,
+        claude_status: ClaudeStatus::Exited,
+        auto_approved_count: item.auto_approved_count,
+        exit_code: Some(0),
+        task_title: item.task_title,
+        current_tool: None,
+        custom_name: item.custom_name,
+        custom_flags: item.custom_flags,
+        command_text: item.command_text,
+        claude_session_id: item.claude_session_id,
+        created_at,
+        plugin_hint: false,
+    }
+}
+
+/// The flags a relaunch starts the terminal with: its own custom flags, then `--resume`
+/// with its recorded Claude Code session, if it has one. Last, so the recorded session
+/// wins over a `--resume` Session History put in the custom flags.
+fn relaunch_flags(info: &TerminalInfo) -> Option<String> {
+    let resume = info.claude_session_id.as_ref().map(|id| format!("--resume {}", id));
+    match (info.custom_flags.clone(), resume) {
+        (Some(flags), Some(resume)) => Some(format!("{} {}", flags, resume)),
+        (flags, resume) => flags.or(resume),
+    }
+}
+
 /// The spawn request that restarts a terminal from its stored info. It carries no launch
 /// prompt: that was the first turn of the terminal's first run, and is never resent.
 fn relaunch_request(
@@ -174,7 +229,7 @@ fn relaunch_request(
         rows,
         cols,
         env_vars,
-        custom_flags: info.custom_flags.clone(),
+        custom_flags: relaunch_flags(info),
         initial_prompt: None,
     }
 }
@@ -257,27 +312,7 @@ impl PtyManager {
                 }
             }
 
-            // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
-            let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
-            let info = TerminalInfo {
-                id: item.id.clone(),
-                name: item.name,
-                project_path: item.project_path,
-                run_kind: item.run_kind,
-                permission_mode,
-                live_mode: permission_mode,
-                claude_status: ClaudeStatus::Exited,
-                auto_approved_count: item.auto_approved_count,
-                exit_code: Some(0),
-                task_title: item.task_title,
-                current_tool: None,
-                custom_name: item.custom_name,
-                custom_flags: item.custom_flags,
-                command_text: item.command_text,
-                created_at,
-                plugin_hint: false,
-            };
-            info_map.insert(item.id, info);
+            info_map.insert(item.id.clone(), restored_terminal(item, created_at));
         }
     }
 
@@ -288,23 +323,8 @@ impl PtyManager {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let mut list: Vec<PersistedTerminalSession> = info_map
-            .values()
-            .map(|info| PersistedTerminalSession {
-                id: info.id.clone(),
-                name: info.name.clone(),
-                project_path: info.project_path.clone(),
-                run_kind: info.run_kind,
-                permission_mode: info.permission_mode,
-                task_title: info.task_title.clone(),
-                custom_name: info.custom_name,
-                auto_approved_count: info.auto_approved_count,
-                command_text: info.command_text.clone(),
-                custom_flags: info.custom_flags.clone(),
-                last_updated: now,
-                created_at: info.created_at,
-            })
-            .collect();
+        let mut list: Vec<PersistedTerminalSession> =
+            info_map.values().map(|info| persisted_session(info, now)).collect();
 
         list.sort_by_key(|s| s.created_at);
 
@@ -366,6 +386,7 @@ impl PtyManager {
             custom_name: request.name.is_some(),
             custom_flags: request.custom_flags.clone(),
             command_text: request.command_text.clone(),
+            claude_session_id: None,
             created_at,
             plugin_hint: false,
         };
@@ -1044,6 +1065,28 @@ impl PtyManager {
         }
     }
 
+    /// Records `session_id`, which the event-bridge plugin reported, as the Claude Code
+    /// session a Claude terminal resumes on relaunch. The latest one wins, since `/clear`
+    /// starts a new session. An id that is not a UUID is ignored, since it goes on the
+    /// command line.
+    pub fn record_claude_session(&self, terminal_id: &str, session_id: &str) {
+        let Ok(session_id) = Uuid::parse_str(session_id) else {
+            return;
+        };
+        let session_id = session_id.to_string();
+        let mut info_map = self.terminals_info.lock();
+        if let Some(info) = info_map.get_mut(terminal_id) {
+            if info.run_kind != RunKind::Claude
+                || info.claude_session_id.as_deref() == Some(session_id.as_str())
+            {
+                return;
+            }
+            info.claude_session_id = Some(session_id);
+            drop(info_map);
+            self.save_sessions_to_disk();
+        }
+    }
+
     pub fn update_current_tool(&self, terminal_id: &str, tool: Option<String>) {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {
@@ -1067,7 +1110,7 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind};
+    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind, ALL_RUN_KINDS};
 
     fn temp_sessions_file() -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("quay2-sessions-{}", Uuid::new_v4()));
@@ -1097,6 +1140,7 @@ mod tests {
             auto_approved_count: 0,
             command_text: None,
             custom_flags: None,
+            claude_session_id: None,
             last_updated: 1,
             created_at: 1,
         }
@@ -1196,6 +1240,7 @@ mod tests {
             custom_name: false,
             custom_flags: None,
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -1247,6 +1292,7 @@ mod tests {
             custom_name: true,
             custom_flags: Some("--model gpt-5".to_string()),
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -1263,6 +1309,108 @@ mod tests {
         );
         // Then Codex's bus overrides, ending with `notify`, and no prompt after them
         assert!(args.last().unwrap().starts_with("notify=["), "{:?}", args);
+    }
+
+    const SESSION_A: &str = "0b9f3c1e-6a2d-4c8e-9f1a-2d3e4f5a6b7c";
+    const SESSION_B: &str = "7c6b5a4f-3e2d-4a1f-8e9c-1e3c9f0b2d4a";
+
+    /// A bridge event as the event-bridge plugin posts it, from `session_id`.
+    fn bridge_event(terminal_id: &str, session_id: &str) -> crate::slices::bridge::models::Envelope {
+        serde_json::from_value(serde_json::json!({
+            "v": 1, "boot": "boot-1", "seq": 1, "ts": 1, "sessionId": session_id,
+            "tag": terminal_id, "type": "turn.started", "data": {},
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_claude_terminal_keeps_the_latest_session_its_bridge_events_report() {
+        let manager = PtyManager::new();
+        let id = unique_id("session");
+        launched(&manager, &id, RunKind::Claude);
+
+        manager.record_claude_session(&id, &bridge_event(&id, SESSION_A).session_id);
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_A));
+
+        // `/clear` starts a new session
+        manager.record_claude_session(&id, &bridge_event(&id, SESSION_B).session_id);
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_B));
+
+        manager.record_claude_session(&id, "not a session id");
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_B));
+    }
+
+    #[test]
+    fn only_a_claude_terminal_records_a_session() {
+        let manager = PtyManager::new();
+        for run_kind in ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Claude) {
+            let id = unique_id("no-session");
+            launched(&manager, &id, run_kind);
+            manager.record_claude_session(&id, SESSION_A);
+            assert_eq!(manager.get_info(&id).unwrap().claude_session_id, None, "{:?}", run_kind);
+        }
+    }
+
+    #[test]
+    fn a_recorded_session_survives_the_session_list_and_is_resumed_on_relaunch() {
+        let (_dir, path) = temp_sessions_file();
+        let mut info = test_terminal("term-resume", RunKind::Claude, ClaudeStatus::Idle);
+        info.custom_flags = Some("--model opus".to_string());
+        info.claude_session_id = Some(SESSION_A.to_string());
+
+        write_session_list(&path, &[persisted_session(&info, 1)]).unwrap();
+        let mut list = read_session_list(&path);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        assert_eq!(restored.claude_session_id.as_deref(), Some(SESSION_A));
+        assert_eq!(restored.custom_flags.as_deref(), Some("--model opus"));
+        let request = relaunch_request(&restored, None, None, None);
+        assert_eq!(
+            request.custom_flags.as_deref(),
+            Some(format!("--model opus --resume {}", SESSION_A).as_str())
+        );
+        let cmd = crate::slices::pty::session::build_command(&request, &restored.id, 1234, "tok", None);
+        let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
+    }
+
+    #[test]
+    fn a_session_list_saved_before_session_ids_loads_and_relaunches_fresh() {
+        let (_dir, path) = temp_sessions_file();
+        std::fs::write(
+            &path,
+            r#"[{"id":"term-old","name":"old","project_path":"E:\\Projects\\Test",
+                "run_kind":"claude","permission_mode":"normal","custom_flags":"--model opus"}]"#,
+        )
+        .unwrap();
+        let mut list = read_session_list(&path);
+        assert_eq!(list.len(), 1);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        assert_eq!(restored.claude_session_id, None);
+        assert_eq!(
+            relaunch_request(&restored, None, None, None).custom_flags.as_deref(),
+            Some("--model opus")
+        );
+    }
+
+    #[test]
+    fn a_claude_terminal_without_a_session_relaunches_with_its_own_flags_only() {
+        let mut info = test_terminal("term-fresh", RunKind::Claude, ClaudeStatus::Exited);
+        assert_eq!(relaunch_request(&info, None, None, None).custom_flags, None);
+
+        info.custom_flags = Some("--model opus".to_string());
+        assert_eq!(
+            relaunch_request(&info, None, None, None).custom_flags.as_deref(),
+            Some("--model opus")
+        );
+
+        info.claude_session_id = Some(SESSION_B.to_string());
+        info.custom_flags = None;
+        assert_eq!(
+            relaunch_request(&info, None, None, None).custom_flags,
+            Some(format!("--resume {}", SESSION_B))
+        );
     }
 
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
@@ -1283,6 +1431,7 @@ mod tests {
             custom_name: false,
             custom_flags: None,
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -2080,6 +2229,7 @@ mod tests {
                 custom_name: false,
                 custom_flags: None,
                 command_text: None,
+                claude_session_id: None,
                 created_at,
                 plugin_hint: false,
             };
