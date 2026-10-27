@@ -109,23 +109,105 @@ fn write_session_list(path: &Path, list: &[PersistedTerminalSession]) -> Result<
         .map_err(|e| format!("cannot write {}: {}", path.display(), e))
 }
 
-fn read_saved_scrollback(terminal_id: &str) -> (String, u64) {
-    let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
-    if let Ok(bytes) = std::fs::read(&log_path) {
-        let max_len = 256 * 1024;
-        let slice = if bytes.len() > max_len {
-            let start = bytes.len() - max_len;
-            let mut cut = start;
-            while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
-                cut += 1;
-            }
-            &bytes[cut..]
-        } else {
-            &bytes[..]
-        };
-        (String::from_utf8_lossy(slice).to_string(), 0)
-    } else {
-        (String::new(), 0)
+/// What a terminal with no running process shows, and the seq its output reached.
+#[derive(Clone)]
+struct DormantOutput {
+    data: String,
+    seq: u64,
+}
+
+/// A dormant terminal's output from disk: its saved screen, or the raw log when an older
+/// Quay saved none. Both are empty when the terminal has neither. A saved screen is text
+/// and line breaks with no cursor movement, so a pane of any size lays it out again; its
+/// size isn't passed on, since the pane would take it for a live PTY's.
+fn read_dormant_output(terminal_id: &str) -> DormantOutput {
+    let dir = get_sessions_dir();
+    if let Some(snapshot) = super::screen::load_screen(&dir, terminal_id) {
+        return DormantOutput { data: snapshot.data, seq: 0 };
+    }
+    DormantOutput { data: read_log_tail(&dir.join(format!("{}.log", terminal_id))), seq: 0 }
+}
+
+/// How much of a raw log is replayed or kept.
+pub(crate) const LOG_TAIL_BYTES: usize = 256 * 1024;
+
+/// The last `LOG_TAIL_BYTES` of `bytes`, starting on a UTF-8 character boundary.
+pub(crate) fn log_tail(bytes: &[u8]) -> &[u8] {
+    if bytes.len() <= LOG_TAIL_BYTES {
+        return bytes;
+    }
+    let mut cut = bytes.len() - LOG_TAIL_BYTES;
+    while cut < bytes.len() && (bytes[cut] & 0xC0) == 0x80 {
+        cut += 1;
+    }
+    &bytes[cut..]
+}
+
+/// The tail of the raw log at `path` as text, with any invalid bytes replaced; empty when
+/// there is no log.
+pub(crate) fn read_log_tail(path: &Path) -> String {
+    std::fs::read(path).map(|bytes| String::from_utf8_lossy(log_tail(&bytes)).into_owned()).unwrap_or_default()
+}
+
+/// Deletes a terminal's raw log and saved screen.
+fn remove_saved_output(terminal_id: &str) {
+    let dir = get_sessions_dir();
+    let _ = std::fs::remove_file(dir.join(format!("{}.log", terminal_id)));
+    let _ = std::fs::remove_file(super::screen::screen_path(&dir, terminal_id));
+}
+
+/// How `info` is saved in `sessions.json`, stamped `now`.
+fn persisted_session(info: &TerminalInfo, now: u64) -> PersistedTerminalSession {
+    PersistedTerminalSession {
+        id: info.id.clone(),
+        name: info.name.clone(),
+        project_path: info.project_path.clone(),
+        run_kind: info.run_kind,
+        permission_mode: info.permission_mode,
+        task_title: info.task_title.clone(),
+        custom_name: info.custom_name,
+        auto_approved_count: info.auto_approved_count,
+        command_text: info.command_text.clone(),
+        custom_flags: info.custom_flags.clone(),
+        claude_session_id: info.claude_session_id.clone(),
+        last_updated: now,
+        created_at: info.created_at,
+    }
+}
+
+/// The exited terminal a saved session comes back as, created at `created_at`.
+fn restored_terminal(item: PersistedTerminalSession, created_at: u64) -> TerminalInfo {
+    // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
+    let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
+    TerminalInfo {
+        id: item.id,
+        name: item.name,
+        project_path: item.project_path,
+        run_kind: item.run_kind,
+        permission_mode,
+        live_mode: permission_mode,
+        claude_status: ClaudeStatus::Exited,
+        auto_approved_count: item.auto_approved_count,
+        exit_code: Some(0),
+        task_title: item.task_title,
+        current_tool: None,
+        custom_name: item.custom_name,
+        custom_flags: item.custom_flags,
+        command_text: item.command_text,
+        claude_session_id: item.claude_session_id,
+        created_at,
+        plugin_hint: false,
+    }
+}
+
+/// The flags a relaunch starts the terminal with: its own custom flags, then `--resume`
+/// with its recorded Claude Code session, if it has one. Last, so the recorded session
+/// wins over a `--resume` Session History put in the custom flags.
+fn relaunch_flags(info: &TerminalInfo) -> Option<String> {
+    let resume = info.claude_session_id.as_ref().map(|id| format!("--resume {}", id));
+    match (info.custom_flags.clone(), resume) {
+        (Some(flags), Some(resume)) => Some(format!("{} {}", flags, resume)),
+        (flags, resume) => flags.or(resume),
     }
 }
 
@@ -147,7 +229,7 @@ fn relaunch_request(
         rows,
         cols,
         env_vars,
-        custom_flags: info.custom_flags.clone(),
+        custom_flags: relaunch_flags(info),
         initial_prompt: None,
     }
 }
@@ -176,7 +258,7 @@ fn status_payload(info: &TerminalInfo) -> TerminalStatusPayload {
 pub struct PtyManager {
     sessions: Arc<Mutex<HashMap<String, PtySession>>>,
     terminals_info: Arc<Mutex<HashMap<String, TerminalInfo>>>,
-    dormant_buffers: Arc<Mutex<HashMap<String, (String, u64)>>>,
+    dormant_buffers: Arc<Mutex<HashMap<String, DormantOutput>>>,
     /// Each running terminal's current launch. Lock before `terminals_info` when taking both.
     plugin_watches: Arc<Mutex<HashMap<String, PluginWatch>>>,
     /// One lock per terminal, held from a prompt's text to its Enter, so two prompts never interleave.
@@ -213,8 +295,7 @@ impl PtyManager {
         let mut dormant_map = self.dormant_buffers.lock();
 
         for (idx, item) in list.into_iter().enumerate() {
-            let (scrollback, seq) = read_saved_scrollback(&item.id);
-            dormant_map.insert(item.id.clone(), (scrollback, seq));
+            dormant_map.insert(item.id.clone(), read_dormant_output(&item.id));
 
             let created_at = if item.created_at > 0 {
                 item.created_at
@@ -231,27 +312,7 @@ impl PtyManager {
                 }
             }
 
-            // A Pi session an older Quay saved as Ask comes back as Skip, since Pi never asks
-            let permission_mode = item.run_kind.permission_mode(Some(item.permission_mode));
-            let info = TerminalInfo {
-                id: item.id.clone(),
-                name: item.name,
-                project_path: item.project_path,
-                run_kind: item.run_kind,
-                permission_mode,
-                live_mode: permission_mode,
-                claude_status: ClaudeStatus::Exited,
-                auto_approved_count: item.auto_approved_count,
-                exit_code: Some(0),
-                task_title: item.task_title,
-                current_tool: None,
-                custom_name: item.custom_name,
-                custom_flags: item.custom_flags,
-                command_text: item.command_text,
-                created_at,
-                plugin_hint: false,
-            };
-            info_map.insert(item.id, info);
+            info_map.insert(item.id.clone(), restored_terminal(item, created_at));
         }
     }
 
@@ -262,23 +323,8 @@ impl PtyManager {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let mut list: Vec<PersistedTerminalSession> = info_map
-            .values()
-            .map(|info| PersistedTerminalSession {
-                id: info.id.clone(),
-                name: info.name.clone(),
-                project_path: info.project_path.clone(),
-                run_kind: info.run_kind,
-                permission_mode: info.permission_mode,
-                task_title: info.task_title.clone(),
-                custom_name: info.custom_name,
-                auto_approved_count: info.auto_approved_count,
-                command_text: info.command_text.clone(),
-                custom_flags: info.custom_flags.clone(),
-                last_updated: now,
-                created_at: info.created_at,
-            })
-            .collect();
+        let mut list: Vec<PersistedTerminalSession> =
+            info_map.values().map(|info| persisted_session(info, now)).collect();
 
         list.sort_by_key(|s| s.created_at);
 
@@ -340,6 +386,7 @@ impl PtyManager {
             custom_name: request.name.is_some(),
             custom_flags: request.custom_flags.clone(),
             command_text: request.command_text.clone(),
+            claude_session_id: None,
             created_at,
             plugin_hint: false,
         };
@@ -378,10 +425,12 @@ impl PtyManager {
         // dropping its session causes, finds its launch over and leaves the terminal alone
         let launch_ref = self.begin_launch(terminal_id, info.run_kind);
 
-        // If an active session is running, terminate it before relaunching
-        {
-            let mut sessions = self.sessions.lock();
-            sessions.remove(terminal_id);
+        // If an active session is running, terminate it before relaunching. Its screen is
+        // saved first and it saves nothing after, so the new session starts from it.
+        let old_session = self.sessions.lock().remove(terminal_id);
+        if let Some(old_session) = old_session {
+            old_session.save_screen();
+            old_session.discard_screen();
         }
 
         let request = relaunch_request(&info, rows, cols, env_vars);
@@ -410,6 +459,7 @@ impl PtyManager {
         updated_info.exit_code = None;
         updated_info.plugin_hint = false;
 
+        let new_screen = session.screen_keeper();
         let sessions = self.sessions.clone();
         let id = terminal_id.to_string();
         let attach = move || {
@@ -419,11 +469,11 @@ impl PtyManager {
             Ok(info) => info,
             Err(unattached) => {
                 // Dropping the session ends its process. Its reader may have written a
-                // new log after the close deleted the old one.
+                // new log, or saved a screen, after the close deleted the old ones.
+                new_screen.discard();
                 drop(unattached);
                 if self.get_info(terminal_id).is_none() {
-                    let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
-                    let _ = std::fs::remove_file(log_path);
+                    remove_saved_output(terminal_id);
                 }
                 return Err(format!(
                     "Terminal {} was closed or relaunched again while it relaunched",
@@ -489,7 +539,7 @@ impl PtyManager {
         self.dormant_buffers
             .lock()
             .get(terminal_id)
-            .map(|(_, seq)| *seq)
+            .map(|dormant| dormant.seq)
             .unwrap_or(0)
     }
 
@@ -502,34 +552,26 @@ impl PtyManager {
             }
         }
 
-        // 2. Check dormant buffer
-        {
-            let dormant = self.dormant_buffers.lock();
-            if let Some((data, last_seq)) = dormant.get(terminal_id) {
-                return Ok(TerminalOutputPayload {
-                    terminal_id: terminal_id.to_string(),
-                    data: data.clone(),
-                    last_seq: *last_seq,
-                    rows: None,
-                    cols: None,
-                });
+        // 2. Check the dormant buffer, then the disk
+        let cached = self.dormant_buffers.lock().get(terminal_id).cloned();
+        let dormant = match cached {
+            Some(dormant) => dormant,
+            None => {
+                let dormant = read_dormant_output(terminal_id);
+                if dormant.data.is_empty() {
+                    return Err(format!("Terminal {} not found", terminal_id));
+                }
+                self.dormant_buffers.lock().insert(terminal_id.to_string(), dormant.clone());
+                dormant
             }
-        }
-
-        // 3. Fallback: try reading saved scrollback from disk
-        let (data, seq) = read_saved_scrollback(terminal_id);
-        if !data.is_empty() {
-            self.dormant_buffers.lock().insert(terminal_id.to_string(), (data.clone(), seq));
-            return Ok(TerminalOutputPayload {
-                terminal_id: terminal_id.to_string(),
-                data,
-                last_seq: seq,
-                rows: None,
-                cols: None,
-            });
-        }
-
-        Err(format!("Terminal {} not found", terminal_id))
+        };
+        Ok(TerminalOutputPayload {
+            terminal_id: terminal_id.to_string(),
+            data: dormant.data,
+            last_seq: dormant.seq,
+            rows: None,
+            cols: None,
+        })
     }
 
     pub fn kill(&self, terminal_id: &str) -> Result<(), String> {
@@ -538,10 +580,11 @@ impl PtyManager {
         self.plugin_watches.lock().remove(terminal_id);
         self.submit_locks.lock().remove(terminal_id);
 
-        // 2. Terminate running session process if active
-        {
-            let mut sessions = self.sessions.lock();
-            sessions.remove(terminal_id);
+        // 2. Terminate running session process if active. It saves no screen from here on,
+        //    so its reader finishing can't bring back the file step 4 deletes.
+        let session = self.sessions.lock().remove(terminal_id);
+        if let Some(session) = session {
+            session.discard_screen();
         }
 
         // 3. Remove from terminals_info and dormant_buffers
@@ -552,8 +595,7 @@ impl PtyManager {
         self.dormant_buffers.lock().remove(terminal_id);
 
         // 4. Clean up disk files
-        let log_path = get_sessions_dir().join(format!("{}.log", terminal_id));
-        let _ = std::fs::remove_file(log_path);
+        remove_saved_output(terminal_id);
         self.save_sessions_to_disk();
 
         if removed {
@@ -561,6 +603,15 @@ impl PtyManager {
             Ok(())
         } else {
             Err(format!("Terminal {} not found", terminal_id))
+        }
+    }
+
+    /// Saves the screen of every running terminal, for Quay shutting down with them open.
+    pub fn save_all_screens(&self) {
+        // Collected first, so writing the files never holds up the sessions lock
+        let keepers: Vec<_> = self.sessions.lock().values().map(|session| session.screen_keeper()).collect();
+        for keeper in keepers {
+            keeper.save_now();
         }
     }
 
@@ -1014,6 +1065,28 @@ impl PtyManager {
         }
     }
 
+    /// Records `session_id`, which the event-bridge plugin reported, as the Claude Code
+    /// session a Claude terminal resumes on relaunch. The latest one wins, since `/clear`
+    /// starts a new session. An id that is not a UUID is ignored, since it goes on the
+    /// command line.
+    pub fn record_claude_session(&self, terminal_id: &str, session_id: &str) {
+        let Ok(session_id) = Uuid::parse_str(session_id) else {
+            return;
+        };
+        let session_id = session_id.to_string();
+        let mut info_map = self.terminals_info.lock();
+        if let Some(info) = info_map.get_mut(terminal_id) {
+            if info.run_kind != RunKind::Claude
+                || info.claude_session_id.as_deref() == Some(session_id.as_str())
+            {
+                return;
+            }
+            info.claude_session_id = Some(session_id);
+            drop(info_map);
+            self.save_sessions_to_disk();
+        }
+    }
+
     pub fn update_current_tool(&self, terminal_id: &str, tool: Option<String>) {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {
@@ -1037,7 +1110,7 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind};
+    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind, ALL_RUN_KINDS};
 
     fn temp_sessions_file() -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("quay2-sessions-{}", Uuid::new_v4()));
@@ -1067,6 +1140,7 @@ mod tests {
             auto_approved_count: 0,
             command_text: None,
             custom_flags: None,
+            claude_session_id: None,
             last_updated: 1,
             created_at: 1,
         }
@@ -1126,7 +1200,7 @@ mod tests {
         manager
             .dormant_buffers
             .lock()
-            .insert("term-dormant".to_string(), ("restored".to_string(), 7));
+            .insert("term-dormant".to_string(), DormantOutput { data: "restored".to_string(), seq: 7 });
 
         assert_eq!(manager.last_seq("term-dormant"), 7);
         assert_eq!(manager.last_seq("term-unknown"), 0);
@@ -1166,6 +1240,7 @@ mod tests {
             custom_name: false,
             custom_flags: None,
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -1217,6 +1292,7 @@ mod tests {
             custom_name: true,
             custom_flags: Some("--model gpt-5".to_string()),
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -1233,6 +1309,108 @@ mod tests {
         );
         // Then Codex's bus overrides, ending with `notify`, and no prompt after them
         assert!(args.last().unwrap().starts_with("notify=["), "{:?}", args);
+    }
+
+    const SESSION_A: &str = "0b9f3c1e-6a2d-4c8e-9f1a-2d3e4f5a6b7c";
+    const SESSION_B: &str = "7c6b5a4f-3e2d-4a1f-8e9c-1e3c9f0b2d4a";
+
+    /// A bridge event as the event-bridge plugin posts it, from `session_id`.
+    fn bridge_event(terminal_id: &str, session_id: &str) -> crate::slices::bridge::models::Envelope {
+        serde_json::from_value(serde_json::json!({
+            "v": 1, "boot": "boot-1", "seq": 1, "ts": 1, "sessionId": session_id,
+            "tag": terminal_id, "type": "turn.started", "data": {},
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_claude_terminal_keeps_the_latest_session_its_bridge_events_report() {
+        let manager = PtyManager::new();
+        let id = unique_id("session");
+        launched(&manager, &id, RunKind::Claude);
+
+        manager.record_claude_session(&id, &bridge_event(&id, SESSION_A).session_id);
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_A));
+
+        // `/clear` starts a new session
+        manager.record_claude_session(&id, &bridge_event(&id, SESSION_B).session_id);
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_B));
+
+        manager.record_claude_session(&id, "not a session id");
+        assert_eq!(manager.get_info(&id).unwrap().claude_session_id.as_deref(), Some(SESSION_B));
+    }
+
+    #[test]
+    fn only_a_claude_terminal_records_a_session() {
+        let manager = PtyManager::new();
+        for run_kind in ALL_RUN_KINDS.into_iter().filter(|kind| *kind != RunKind::Claude) {
+            let id = unique_id("no-session");
+            launched(&manager, &id, run_kind);
+            manager.record_claude_session(&id, SESSION_A);
+            assert_eq!(manager.get_info(&id).unwrap().claude_session_id, None, "{:?}", run_kind);
+        }
+    }
+
+    #[test]
+    fn a_recorded_session_survives_the_session_list_and_is_resumed_on_relaunch() {
+        let (_dir, path) = temp_sessions_file();
+        let mut info = test_terminal("term-resume", RunKind::Claude, ClaudeStatus::Idle);
+        info.custom_flags = Some("--model opus".to_string());
+        info.claude_session_id = Some(SESSION_A.to_string());
+
+        write_session_list(&path, &[persisted_session(&info, 1)]).unwrap();
+        let mut list = read_session_list(&path);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        assert_eq!(restored.claude_session_id.as_deref(), Some(SESSION_A));
+        assert_eq!(restored.custom_flags.as_deref(), Some("--model opus"));
+        let request = relaunch_request(&restored, None, None, None);
+        assert_eq!(
+            request.custom_flags.as_deref(),
+            Some(format!("--model opus --resume {}", SESSION_A).as_str())
+        );
+        let cmd = crate::slices::pty::session::build_command(&request, &restored.id, 1234, "tok", None);
+        let args: Vec<String> = cmd.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
+    }
+
+    #[test]
+    fn a_session_list_saved_before_session_ids_loads_and_relaunches_fresh() {
+        let (_dir, path) = temp_sessions_file();
+        std::fs::write(
+            &path,
+            r#"[{"id":"term-old","name":"old","project_path":"E:\\Projects\\Test",
+                "run_kind":"claude","permission_mode":"normal","custom_flags":"--model opus"}]"#,
+        )
+        .unwrap();
+        let mut list = read_session_list(&path);
+        assert_eq!(list.len(), 1);
+        let restored = restored_terminal(list.remove(0), 1);
+
+        assert_eq!(restored.claude_session_id, None);
+        assert_eq!(
+            relaunch_request(&restored, None, None, None).custom_flags.as_deref(),
+            Some("--model opus")
+        );
+    }
+
+    #[test]
+    fn a_claude_terminal_without_a_session_relaunches_with_its_own_flags_only() {
+        let mut info = test_terminal("term-fresh", RunKind::Claude, ClaudeStatus::Exited);
+        assert_eq!(relaunch_request(&info, None, None, None).custom_flags, None);
+
+        info.custom_flags = Some("--model opus".to_string());
+        assert_eq!(
+            relaunch_request(&info, None, None, None).custom_flags.as_deref(),
+            Some("--model opus")
+        );
+
+        info.claude_session_id = Some(SESSION_B.to_string());
+        info.custom_flags = None;
+        assert_eq!(
+            relaunch_request(&info, None, None, None).custom_flags,
+            Some(format!("--resume {}", SESSION_B))
+        );
     }
 
     /// Puts a running terminal of `run_kind` under `id` and starts its first launch,
@@ -1253,6 +1431,7 @@ mod tests {
             custom_name: false,
             custom_flags: None,
             command_text: None,
+            claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
         };
@@ -2050,6 +2229,7 @@ mod tests {
                 custom_name: false,
                 custom_flags: None,
                 command_text: None,
+                claude_session_id: None,
                 created_at,
                 plugin_hint: false,
             };
@@ -2062,5 +2242,48 @@ mod tests {
             listed_ids,
             vec!["term-first", "term-second", "term-third", "term-fourth"]
         );
+    }
+
+    fn unique_id(tag: &str) -> String {
+        format!("term-{}-{}", tag, Uuid::new_v4().simple())
+    }
+
+    #[test]
+    fn a_dormant_terminal_shows_its_saved_screen_not_its_raw_log() {
+        let id = unique_id("screen");
+        let dir = get_sessions_dir();
+        std::fs::write(dir.join(format!("{}.log", id)), "raw bytes that would garble").unwrap();
+        let snapshot = super::super::screen::ScreenSnapshot { rows: 30, cols: 100, data: "the last screen".to_string() };
+        super::super::screen::save_screen(&dir, &id, &snapshot).unwrap();
+
+        let output = PtyManager::new().get_output(&id).unwrap();
+        assert_eq!(output.data, "the last screen");
+        // The pane would take a size for a live PTY's; the screen's text wraps at any width
+        assert_eq!((output.rows, output.cols), (None, None));
+    }
+
+    #[test]
+    fn a_dormant_terminal_an_older_quay_saved_falls_back_to_its_raw_log() {
+        let id = unique_id("log");
+        std::fs::write(get_sessions_dir().join(format!("{}.log", id)), "old raw output").unwrap();
+
+        let output = PtyManager::new().get_output(&id).unwrap();
+        assert_eq!(output.data, "old raw output");
+        assert_eq!((output.rows, output.cols), (None, None));
+    }
+
+    #[test]
+    fn closing_a_terminal_deletes_its_saved_screen_with_its_log() {
+        let id = unique_id("close");
+        let dir = get_sessions_dir();
+        std::fs::write(dir.join(format!("{}.log", id)), "x").unwrap();
+        let snapshot = super::super::screen::ScreenSnapshot { rows: 1, cols: 1, data: "x".to_string() };
+        super::super::screen::save_screen(&dir, &id, &snapshot).unwrap();
+        let manager = PtyManager::new();
+        manager.insert_test_terminal(test_terminal(&id, RunKind::PowerShell, ClaudeStatus::Exited));
+
+        manager.kill(&id).unwrap();
+        assert!(!super::super::screen::screen_path(&dir, &id).exists());
+        assert!(!dir.join(format!("{}.log", id)).exists());
     }
 }

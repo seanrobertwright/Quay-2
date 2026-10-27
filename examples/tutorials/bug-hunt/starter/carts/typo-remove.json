@@ -1,0 +1,5 @@
+[
+  { "add": { "sku": "mug", "name": "Mug", "priceCents": 2000, "quantity": 1 } },
+  { "add": { "sku": "tote", "name": "Tote bag", "priceCents": 1500, "quantity": 1 } },
+  { "remove": "toet" }
+]

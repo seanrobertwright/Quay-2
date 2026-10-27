@@ -1,13 +1,12 @@
 ---
 layout: home
 
-hero:
+factoryHero:
   name: "Quay 2"
   text: "Native Windows Autonomous Multi-Agent Cockpit"
   tagline: "The high-performance orchestrator for Claude Code, Antigravity CLI, OpenAI Codex, Archon SDD, and multi-agent swarms on Windows ConPTY."
-  image:
-    src: /logo.svg
-    alt: Quay 2 Logo
+  video: /media/android-factory-original.mp4
+  poster: /media/android-factory-poster.webp
   actions:
     - theme: brand
       text: Get Started
