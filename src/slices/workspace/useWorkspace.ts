@@ -728,6 +728,8 @@ export function useWorkspace() {
       return result;
     } catch (err) {
       console.error("Failed to remove worktree:", err);
+      // A failed removal can still have closed terminals or unregistered the worktree
+      await refreshWorktrees(repoPath);
       throw err;
     }
   };
