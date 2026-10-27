@@ -13,9 +13,9 @@ Two Claude Code agents build one web app at the same time: `backend-agent` write
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to launch the Full-Stack Pair preset, give two agents parallel tasks that can't collide, move focus (`Ctrl+B O`) and zoom (`Ctrl+B Z`) while both work, and bring a hidden terminal back into a pane (`Ctrl+B 1`).
+**You'll learn:** how to launch the Full-Stack Pair preset, give two agents parallel tasks that can't collide, move focus (`Ctrl+Shift+B O`) and zoom (`Ctrl+Shift+B Z`) while both work, and bring a hidden terminal back into a pane (`Ctrl+Shift+B 1`).
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. The pane with **focus** has a lit border, and what you type or paste goes into it. When a step gives you a line to paste into a pane, click into that pane, paste the line and press Enter to run or send it. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. The pane with **focus** has a lit border, and what you type or paste goes into it. When a step gives you a line to paste into a pane, click into that pane, paste the line and press Enter to run or send it. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
 
 ::: before
 ## Before you start
@@ -36,8 +36,8 @@ Quay's window has two parts: the **rail**, the panel down the left that lists yo
 
 ::: do
 1. Download [`full-stack-pair.zip`](/starters/full-stack-pair.zip) and unzip it into a new, empty folder. The project's files, such as `API.md` and `package.json`, land straight in that folder, with no folder of their own around them.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console**, type `app` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console**, type `app` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste `app`
@@ -77,7 +77,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 The starter splits the app so two agents can't collide. `API.md` is the contract both halves build to, and `shared/api.ts` holds its types. `backend-agent` owns `server/` and `frontend-agent` owns `web/`. Nobody edits `shared/`, `API.md` or `server/api.test.ts`, the contract tests that tell the backend when it's done. The starter's `AGENTS.md` says so, and both agents read it.
 
 ::: do
-1. Press `Ctrl+B S` to open the Swarm Launcher.
+1. Press `Ctrl+Shift+B S` to open the Swarm Launcher.
 2. Click the **Full-Stack Pair** card.
 3. Click **Launch Swarm Now**.
 :::
@@ -144,7 +144,7 @@ Build the bookmarks API described in API.md, inside server/ only. Implement ever
 Don't wait for `backend-agent` to finish. The two halves meet only at the contract, so `frontend-agent` can start now.
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `frontend-agent`, the right pane. Its border lights up.
+1. Press `Ctrl+Shift+B O` to move focus to `frontend-agent`, the right pane. Its border lights up.
 :::
 
 ::: paste `frontend-agent`
@@ -174,8 +174,8 @@ Build the bookmarks UI described in API.md, inside web/ only. In web/src/App.tsx
 ## 5. Watch them finish
 
 ::: do
-1. Press `Ctrl+B Z` to zoom the focused pane to the whole stage while you read it, and `Ctrl+B Z` again to put the split back.
-2. Press `Ctrl+B O` to move focus to the other pane, and zoom it the same way.
+1. Press `Ctrl+Shift+B Z` to zoom the focused pane to the whole stage while you read it, and `Ctrl+Shift+B Z` again to put the split back.
+2. Press `Ctrl+Shift+B O` to move focus to the other pane, and zoom it the same way.
 3. Wait until both pane headers show a green dot and `Ready`, and each agent says it's done.
 :::
 
@@ -202,8 +202,8 @@ Click inside `backend-agent` and paste `Run npm test, read the failing assertion
 Click inside that agent and paste `Undo your changes outside your own folder with git checkout, then finish inside your own folder only.`
 :::
 
-::: ifnot Ctrl+B Z did nothing
-The `Ctrl+B` prefix lasts a second and a half. Press `Ctrl+B`, let go, then press `Z` straight after.
+::: ifnot Ctrl+Shift+B Z did nothing
+The `Ctrl+Shift+B` prefix lasts a second and a half. Press `Ctrl+Shift+B`, let go, then press `Z` straight after.
 :::
 
 :::
@@ -212,11 +212,11 @@ The `Ctrl+B` prefix lasts a second and a half. Press `Ctrl+B`, let go, then pres
 
 ## 6. Start the app
 
-The `app` terminal from step 1 is still running, just not on the stage. `Ctrl+B 1` to `Ctrl+B 9` pick a terminal by its place under the project in the rail: `app` is first, `backend-agent` second and `frontend-agent` third. Picking one that isn't on the stage puts it into the focused pane.
+The `app` terminal from step 1 is still running, just not on the stage. `Ctrl+Shift+B 1` to `Ctrl+Shift+B 9` pick a terminal by its place under the project in the rail: `app` is first, `backend-agent` second and `frontend-agent` third. Picking one that isn't on the stage puts it into the focused pane.
 
 ::: do
-1. Press `Ctrl+B O` until the right pane has focus.
-2. Press `Ctrl+B 1`. `app` takes the right pane's place, and `frontend-agent` keeps running behind it.
+1. Press `Ctrl+Shift+B O` until the right pane has focus.
+2. Press `Ctrl+Shift+B 1`. `app` takes the right pane's place, and `frontend-agent` keeps running behind it.
 :::
 
 ::: paste `app`
@@ -245,7 +245,7 @@ An agent edited a file it doesn't own. Press `Ctrl+C` in `app` to stop the serve
 :::
 
 ::: ifnot npm start fails in the Vite build
-Press `Ctrl+B 3` to bring `frontend-agent` back into the right pane, and paste `npm start fails in the Vite build. Run npm run typecheck and fix what it reports, in web/ only.` When its header shows `Ready`, press `Ctrl+B 1` and paste `npm start` into `app`.
+Press `Ctrl+Shift+B 3` to bring `frontend-agent` back into the right pane, and paste `npm start fails in the Vite build. Run npm run typecheck and fix what it reports, in web/ only.` When its header shows `Ready`, press `Ctrl+Shift+B 1` and paste `npm start` into `app`.
 :::
 
 ::: ifnot npm start fails with EADDRINUSE
@@ -289,7 +289,7 @@ The build in step 6 didn't produce the page. Look at the build output above `Lis
 :::
 
 ::: ifnot a request in the log has a 4xx or 5xx status
-The UI and the API disagree about the contract. Press `Ctrl+C` in `app` to stop the server, press `Ctrl+B 3`, and paste `npm start logged a failed request. Compare web/src/App.tsx with API.md and fix web/ only.` into `frontend-agent`. Then press `Ctrl+B 1` and paste `npm start` into `app` again.
+The UI and the API disagree about the contract. Press `Ctrl+C` in `app` to stop the server, press `Ctrl+Shift+B 3`, and paste `npm start logged a failed request. Compare web/src/App.tsx with API.md and fix web/ only.` into `frontend-agent`. Then press `Ctrl+Shift+B 1` and paste `npm start` into `app` again.
 :::
 
 :::
