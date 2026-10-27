@@ -281,7 +281,7 @@ Paste `Fix those in README.md yourself, run npm test, and end your reply with AP
 2. Start Quay again from the Start menu.
 :::
 
-Quay brings back your project, your saved swarm and every terminal you had open, but none of them is running. The rail lists each one as `exited 0` with a **Relaunch** button, and the stage comes back as you left it: `writer` and `editor` side by side, each showing its old output under a **Session Inactive** ribbon with a **Relaunch Agent** button. Don't relaunch `writer` or `editor`: a relaunched terminal gets no launch prompt, so the agent would start without its role or its team briefing. The next step launches them fresh from the saved swarm instead.
+Quay brings back your project, your saved swarm and every terminal you had open, but none of them is running. The rail lists each one as `exited 0` with a **Relaunch** button, and the stage comes back as you left it: `writer` and `editor` side by side, each showing its old output under a **Session Inactive** ribbon with a **Relaunch Agent** button. Don't relaunch `writer` or `editor`. **Relaunch Agent** picks up an agent's earlier Claude Code session when Quay recorded one, and otherwise starts the agent with no launch prompt, so without its role or its team briefing. The next step launches them fresh from the saved swarm instead, which is what this tutorial shows.
 
 ::: see
 ![Quay after the restart: the project in the rail with writer and editor listed as exited, and the stage split as before, writer on the left and editor on the right, each under a Session Inactive ribbon.](./08-restarted.webp)
