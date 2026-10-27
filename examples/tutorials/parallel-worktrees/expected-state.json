@@ -1,0 +1,6 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "fail", "failed": 6, "total": 6 },
+  "scripts": [{ "name": "compare", "expect": "pass", "outputIncludes": ["under 500 ms", "0/6", "FAIL"] }],
+  "files": { "present": [".gitignore", ".gitattributes", "vitest.config.ts"] }
+}

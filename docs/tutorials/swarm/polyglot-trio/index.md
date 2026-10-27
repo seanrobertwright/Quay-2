@@ -371,7 +371,7 @@ A rule slipped past the plan, the build and the review, and each failing test's 
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 10: Parallel experiments with worktrees](/tutorials/swarm/parallel-worktrees/)
 
-The next tutorial in series order, Swarm 10: Parallel experiments with worktrees, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Try two designs at once in two git worktrees, measure them, merge the winner and throw the loser away.
 :::
