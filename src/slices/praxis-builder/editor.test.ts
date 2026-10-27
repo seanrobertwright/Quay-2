@@ -221,6 +221,29 @@ describe("set-config", () => {
   });
 });
 
+describe("set-schema", () => {
+  const schema: JsonObject = { type: "object", properties: { ok: { type: "boolean" } } };
+
+  test("sets a node's input or output schema and keeps the rest of the node", () => {
+    const d = decisionGraph();
+    const next = editDraft(d, { type: "set-schema", id: "ok", which: "outputSchema", schema });
+    assert.deepEqual(find(next, "ok"), { id: "ok", kind: "TASK", dependsOn: [], config: { executionKind: "AGENT" }, outputSchema: schema });
+    assert.equal(find(next, "fail"), find(d, "fail"));
+  });
+
+  test("removes the schema when it is null", () => {
+    const d = draftOf([{ ...node("ok", "TASK"), inputSchema: schema }]);
+    const next = editDraft(d, { type: "set-schema", id: "ok", which: "inputSchema", schema: null });
+    assert.deepEqual(find(next, "ok"), node("ok", "TASK"));
+  });
+
+  test("setting the schema it already has, or removing one it lacks, changes nothing", () => {
+    const d = draftOf([{ ...node("ok", "TASK"), inputSchema: schema }]);
+    assert.equal(editDraft(d, { type: "set-schema", id: "ok", which: "inputSchema", schema: { ...schema } }), d);
+    assert.equal(editDraft(d, { type: "set-schema", id: "ok", which: "outputSchema", schema: null }), d);
+  });
+});
+
 test("an edit that puts everything back leaves the draft clean", () => {
   const d = decisionGraph();
   const there = editDraft(d, { type: "connect", source: "ok", target: "fail" });
