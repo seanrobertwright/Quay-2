@@ -1,0 +1,5 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "todo": 1 },
+  "checkSuite": { "vitest": ["run", "--config", "check/vitest.config.ts"], "expect": "fail", "failed": 18, "total": 18 }
+}

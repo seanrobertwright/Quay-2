@@ -25,4 +25,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Hello, A2A](/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
+| 3 | [Hands-off TDD relay](/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
 <!-- tutorials:end -->

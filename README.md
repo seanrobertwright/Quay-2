@@ -218,6 +218,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Hello, A2A](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
+| 3 | [Hands-off TDD relay](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
 <!-- tutorials:end -->
 
 ---
