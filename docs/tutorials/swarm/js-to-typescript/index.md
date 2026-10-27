@@ -441,7 +441,7 @@ An import still names a file by its old `.js` name. The error names the file hol
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 8: Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/)
 
-The next tutorial in series order, Swarm 8: Tri-Agent Council: plan, build, verify, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict.
 :::

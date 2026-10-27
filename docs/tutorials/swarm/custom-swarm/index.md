@@ -187,6 +187,10 @@ Save keeps Docs Squad in Quay's settings on this computer, for your Windows user
 - The wording of each agent's one-line reply.
 :::
 
+::: ifnot a pane asks whether you trust this folder
+Claude Code asks once for each new folder: `Quick safety check: Is this a project you created or one you trust?` It lists **No, exit** first, with the cursor on it. Click into each pane that asks, press the Down arrow to move to **Yes, I trust this folder**, and press Enter. That agent then confirms its role.
+:::
+
 ::: ifnot an agent asks you to accept Bypass Permissions mode
 Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls Bypass Permissions mode, and Claude Code asks once before its first session in that mode. Click into the pane, choose **Yes, I accept** and press Enter. The agent then confirms its role.
 :::
@@ -229,6 +233,7 @@ Write README.md for this project from scratch, replacing the stub. Read AGENTS.m
 - The tools `writer`'s pane header names while it works, beside a spinner.
 - Which files it reads first, how many tool calls it makes, and how long it takes.
 - The wording of its reply.
+- `writer` messages `editor` that the draft is ready, and `editor` reviews it on its own and replies with a numbered list ending in `APPROVED` before you brief it. Carry on with the next step anyway: its brief has `editor` check the README again and end with `APPROVED`.
 :::
 
 ::: ifnot writer says a README test still fails

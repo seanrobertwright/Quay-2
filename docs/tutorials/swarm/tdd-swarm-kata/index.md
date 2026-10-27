@@ -93,6 +93,10 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 - Which pane the red banner names, and whether it shows at all while `test-runner` has focus.
 :::
 
+::: ifnot a Claude Code pane asks whether you trust this folder
+Claude Code asks once for each new folder: `Quick safety check: Is this a project you created or one you trust?` It lists **No, exit** first, with the cursor on it. Click into each pane that asks, press the Down arrow to move to **Yes, I trust this folder**, and press Enter. That agent then confirms its role.
+:::
+
 ::: ifnot a Claude Code pane asks you to accept Bypass Permissions mode
 Quay starts a swarm's Claude Code agents in Skip mode, which Claude Code calls Bypass Permissions mode, and Claude Code asks once before its first session in that mode. Click into the pane that asks, choose **Yes, I accept** and press Enter. It then confirms its role. Do the same in any other pane that asks.
 :::

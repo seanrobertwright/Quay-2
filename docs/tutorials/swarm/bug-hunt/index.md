@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Swarm 7: JS to TypeScript migration](/tutorials/swarm/js-to-typescript/)
+[Swarm 6: Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/)
 
-The next tutorial in series order. Have three agents convert a JavaScript project to TypeScript, one folder each, while `tsc --watch` counts the errors down to zero.
+The next tutorial in series order. Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed.
 :::
