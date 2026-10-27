@@ -41,4 +41,6 @@ exactly as given. That includes the empty string, a repeated unit (`1m2m`), unit
 - Use npm, never yarn or pnpm. Add no dependencies.
 - Write TypeScript that Node can run as it is: no `enum`, no `namespace`, no parameter
   properties.
+- Imports name the `.ts` file, as `test/duration.test.ts` does with `../src/duration.ts`.
+  `npm run typecheck` rejects an import without the extension.
 - Keep the exported signature in `src/duration.ts` unchanged.

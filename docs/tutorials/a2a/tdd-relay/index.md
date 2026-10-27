@@ -54,6 +54,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 
 ::: may
 - The commit id, and the package counts and timings `npm install` prints.
+- `npm notice` lines after `found 0 vulnerabilities`, such as one saying a newer npm is available.
 :::
 
 ::: ifnot node or npm is not recognised
@@ -71,19 +72,21 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Launch the TDD Swarm
 
 ::: do
-1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
-2. Click the **TDD Swarm** card.
-3. Click **Launch Swarm Now**.
-4. Wait until each of the three Claude Code panes has confirmed its role in one line.
+1. In the rail, point at the `pwsh` terminal under your project and click the **×** at the right end of its row (**Close terminal**). The terminal closes at once. The TDD Swarm brings its own PowerShell pane, so this one isn't needed.
+2. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
+3. Click the **TDD Swarm** card.
+4. Click **Launch Swarm Now**.
+5. Wait until each of the three Claude Code panes has confirmed its role in one line.
 :::
 
 ::: see
-![Four panes in a 2x2 grid: test-architect top left, feature-impl top right, test-runner bottom left at a PowerShell prompt, and reviewer bottom right. Each Claude Code pane has confirmed its role in one line.](./02-swarm-launched.webp)
+![Four panes in a 2x2 grid: test-architect top left, feature-impl top right, test-runner bottom left at a PowerShell prompt, and reviewer bottom right. Each Claude Code pane has confirmed its role in one line, and its header says Ready.](./02-swarm-launched.webp)
 :::
 
 ::: must
 - Four panes in a 2x2 grid: `test-architect` top left, `feature-impl` top right, `test-runner` bottom left and `reviewer` bottom right.
-- `test-architect`, `feature-impl` and `reviewer` each confirm their role in one line, then wait.
+- The rail lists the same four under the project.
+- `test-architect`, `feature-impl` and `reviewer` each confirm their role in one line, then wait. Each one's header says **Ready**.
 - `test-runner` sits at a PowerShell prompt.
 - While a Claude Code pane has focus, a red **DANGEROUSLY SKIPPING PERMISSIONS** banner runs across the top of the stage and names that pane. That is expected: swarm agents run in Skip mode.
 :::
@@ -117,8 +120,7 @@ Your Claude Code sign-in can't use `claude-sonnet-5-5`, the model the TDD Swarm 
 ## 3. Start the test watcher
 
 ::: do
-1. Close the PowerShell pane from step 1, which you don't need again: in the rail, hover over `pwsh` under the project and click the **×** that appears, **Close terminal**.
-2. Click inside `test-runner`, the bottom-left pane. Its border lights up.
+1. Click inside `test-runner`, the bottom-left pane. Its border lights up.
 :::
 
 ::: paste `test-runner`
@@ -162,24 +164,25 @@ Read AGENTS.md. Replace the todo in test/duration.test.ts with failing Vitest te
 :::
 
 ::: see
-![test-runner shows every new test failing. A toast at the top right reads test-architect to feature-impl, DISPATCHED, with the hand-off message under TASK DELEGATION. feature-impl's header says Working and test-architect's says Idle.](./04-handoff.webp)
+![test-architect says it sent feature-impl the hand-off without waiting and is now waiting for GREEN; its header says Ready. feature-impl is at work, with a blue Incoming A2A Task from test-architect banner across the top of its pane. test-runner shows every test failing.](./04-handoff.webp)
 :::
 
 ::: must
 - `test-runner` re-ran on its own when `test-architect` saved the tests, and every test fails: the `Tests` line shows only a `failed` count.
-- A toast names `test-architect` → `feature-impl`, marked **DISPATCHED**, with the hand-off message under **TASK DELEGATION:**.
-- `feature-impl`'s pane shows the hand-off typed in, starting `[Peer agent (test-architect)]:`, and it starts working.
-- `test-architect` names `test/duration.test.ts` as the file it changed, and nothing under `src/`.
+- `test-architect` says it sent the hand-off without waiting, and its header goes back to **Ready**.
+- A blue banner across the top of `feature-impl`'s pane reads **Incoming A2A Task from test-architect:** and the start of the hand-off message, and `feature-impl` starts working.
 :::
 
 ::: may
 - How many tests `test-architect` writes, and their names.
 - Whether `test-architect` calls `quay_list_agents` first to find `feature-impl`.
 - How long it takes, and the agents' wording.
-- The toast leaves on its own after a few seconds, so it may be gone by the time you look.
+- A toast at the top right of the window, `test-architect` → `feature-impl` with the message under **TASK DELEGATION:**, shows for a few seconds as the hand-off is delivered. It may be gone before you look.
+- While an agent works, its header shows what it is doing, such as **Working** or **Bash**, instead of **Ready**.
+- Grey text in a Claude Code pane's input box, such as `commit this`, is a suggestion Claude Code offers. Leave it alone.
 :::
 
-::: ifnot test-architect stopped without sending, and no toast appeared
+::: ifnot test-architect stopped without sending, and no banner appeared in feature-impl
 Paste `Now send feature-impl the message from my last prompt with quay_send_message, wait_for_reply false.` into `test-architect`.
 :::
 
@@ -199,17 +202,18 @@ It set `wait_for_reply` true. The message was delivered anyway, so the relay car
 :::
 
 ::: see
-![test-runner has turned green as feature-impl saved src/duration.ts: every test passes and none fails.](./05-watcher-green.webp)
+![test-runner has turned green: every test passes and none fails. feature-impl has finished and is waiting for its next task, and test-architect's pane already shows the Incoming A2A Task from feature-impl: GREEN banner.](./05-watcher-green.webp)
 :::
 
 ::: must
 - `test-runner` shows every test passing: the `Tests` line shows only a `passed` count.
-- `feature-impl` names `src/duration.ts` as the file it changed, and nothing under `test/`.
+- `feature-impl` says it changed `src/duration.ts`, and nothing under `test/`.
 :::
 
 ::: may
 - How `feature-impl` writes the code, and how many times `test-runner` re-runs on the way.
-- How long it takes: a few minutes is normal.
+- How long it takes: from one to a few minutes.
+- Whether step 6 has already begun in `test-architect` by the time you look.
 :::
 
 ::: ifnot feature-impl edited test/
@@ -223,26 +227,26 @@ Paste `Run git checkout -- test to undo your changes there, then make the tests 
 ## 6. The report comes back
 
 ::: do
-1. Keep watching. A second toast arrives, and `test-architect` wakes up.
+1. Keep watching `test-architect`. `feature-impl`'s `GREEN` message arrives in it, and it runs the tests once more.
 :::
 
 ::: see
-![A toast reads feature-impl to test-architect with the message GREEN. test-architect's pane shows the typed message from feature-impl, one more test run, and RELAY DONE as its last line.](./06-relay-done.webp)
+![test-architect's reply reads All 22 tests pass, then RELAY DONE as its last line. All three Claude Code panes say Ready, and test-runner is still green.](./06-relay-done.webp)
 :::
 
 ::: must
-- A toast names `feature-impl` → `test-architect`, with `GREEN` under **TASK DELEGATION:**.
-- `test-architect` receives a message starting `[Peer agent (feature-impl)]: GREEN`.
+- A blue banner across the top of `test-architect`'s pane reads **Incoming A2A Task from feature-impl:** `GREEN`, then `test-architect` starts working.
 - The last line of `test-architect`'s reply is `RELAY DONE`.
-- `test-architect`, `feature-impl` and `reviewer` all end Idle.
+- `test-architect`, `feature-impl` and `reviewer` all end **Ready**.
 :::
 
 ::: may
-- Anything `test-architect` says before its last line.
-- Anything `feature-impl` says after sending `GREEN`.
+- Anything `test-architect` says before its last line, and the number of tests it reports.
+- Anything `feature-impl` says after sending `GREEN`, such as a note on an edge case it left alone.
+- A toast at the top right, `feature-impl` → `test-architect` with `GREEN`, for a few seconds.
 :::
 
-::: ifnot feature-impl went Idle, no second toast arrived, and test-architect is still waiting
+::: ifnot feature-impl says Ready, no banner arrived, and test-architect is still waiting
 Paste `Send test-architect the message GREEN with quay_send_message, target_terminal_id test-architect, wait_for_reply false.` into `feature-impl`.
 :::
 
@@ -263,12 +267,12 @@ Paste `Send feature-impl the names of the failing tests with quay_send_message, 
 :::
 
 ::: see
-![Mission Control's Live A2A Message Trail, cropped: feature-impl to test-architect with the message GREEN and an Answer ending RELAY DONE, and below it test-architect to feature-impl with the hand-off message and feature-impl's Answer. Both show Completed.](./07-trail.webp)
+![Mission Control, scrolled down to the Live A2A Message Trail with two entries: feature-impl to test-architect with the message GREEN and an Answer ending RELAY DONE, and below it test-architect to feature-impl with the hand-off message. Both show Completed.](./07-trail.webp)
 :::
 
 ::: must
 - An entry `feature-impl → test-architect` whose message is `GREEN`, **Completed**, with an **Answer:** ending `RELAY DONE`.
-- Below it, an entry `test-architect → feature-impl` with the hand-off message, **Completed**, with an **Answer:** from `feature-impl`.
+- Below it, an entry `test-architect → feature-impl` with the hand-off message, **Completed**. Scroll the trail to read its **Answer:**, `feature-impl`'s report.
 :::
 
 ::: may
@@ -292,7 +296,8 @@ That agent waited for a reply instead of sending and moving on. The message stil
 
 ::: do
 1. Click inside `test-runner` and press `q` to stop the watcher.
-2. Download [`tdd-relay-check.zip`](/starters/tdd-relay-check.zip), the check suite: tests the agents never saw. In File Explorer, right-click it, choose **Extract All...**, set the destination to the project folder itself, the folder that holds `src`, and click **Extract**. A `check` folder appears beside `src`.
+2. Press `Ctrl+Shift+B Z` to zoom `test-runner` to the whole stage, so the output below fits.
+3. Download [`tdd-relay-check.zip`](/starters/tdd-relay-check.zip), the check suite: tests the agents never saw. In File Explorer, right-click it, choose **Extract All...**, set the destination to the project folder itself, the folder that holds `src`, and click **Extract**. A `check` folder appears beside `src`.
 :::
 
 ::: paste `test-runner`
@@ -302,12 +307,11 @@ npm test; npm run typecheck; npx vitest run --config check/vitest.config.ts; git
 :::
 
 ::: see
-![test-runner: npm test passes every test, the type check prints no errors, the check suite passes every test, and git status lists src/duration.ts and test/duration.test.ts as modified and check as new.](./08-check.webp)
+![test-runner zoomed to the whole stage: the check suite lists its valid and invalid durations, all ticked, with Tests 18 passed (18), and git status lists src/duration.ts and test/duration.test.ts as modified and check as new.](./08-check.webp)
 :::
 
 ::: must
-- `npm test` shows every test passing: the `Tests` line shows only a `passed` count.
-- `npm run typecheck` prints no error after its `> tsc --noEmit` line.
+- Scrolled up: `npm test` shows every test passing, and `npm run typecheck` prints no error after its `> tsc --noEmit` line.
 - The check run shows `Tests  18 passed (18)`.
 - `git status --short` prints three lines: ` M src/duration.ts`, ` M test/duration.test.ts` and `?? check/`.
 :::
@@ -317,8 +321,12 @@ npm test; npm run typecheck; npx vitest run --config check/vitest.config.ts; git
 - The folder in the PowerShell prompt, which is wherever you unzipped the starter.
 :::
 
+::: ifnot npm run typecheck says relative import paths need explicit file extensions
+`test-architect` imported `../src/duration` without the `.ts` that `AGENTS.md` asks for. Press `Ctrl+Shift+B Z` to put the grid back, then paste `npm run typecheck fails on an import without .ts. Fix the imports in test/ so it passes. Do not touch src/.` into `test-architect`. When it has finished, click inside `test-runner`, press `Ctrl+Shift+B Z` to zoom it again, and paste this step's line into it again.
+:::
+
 ::: ifnot some check tests fail
-The relay built what its own tests asked for, not everything `AGENTS.md` says. Paste `These check tests fail: <paste the failing names>. Add tests for them to test/duration.test.ts, then hand off to feature-impl exactly as before.` into `test-architect`, with the failing names in place of the angle brackets. Paste `npm run test:watch` into `test-runner`, and follow steps 5 to 8 again.
+The relay built what its own tests asked for, not everything `AGENTS.md` says. Press `Ctrl+Shift+B Z` to put the grid back, then paste `These check tests fail: <paste the failing names>. Add tests for them to test/duration.test.ts, then hand off to feature-impl exactly as before.` into `test-architect`, with the failing names in place of the angle brackets. Paste `npm run test:watch` into `test-runner`, and follow steps 5 to 8 again.
 :::
 
 ::: done
