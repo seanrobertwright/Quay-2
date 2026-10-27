@@ -17,8 +17,10 @@ interface InspectorProps {
   /** Changes each time a node is chosen, so the node's form starts afresh. */
   selectionKey: number;
   graph: PraxisGraph;
-  /** The selected node, or null when none is. */
+  /** The selected node, or null when none, or more than one, is. */
   node: PraxisNode | null;
+  /** How many nodes are selected. */
+  selectionCount: number;
   /** The graph's validation issues, or none while it is being checked. */
   diagnostics: readonly Diagnostic[];
   onEdit: (edit: GraphEdit) => void;
@@ -36,6 +38,7 @@ export const Inspector: FC<InspectorProps> = ({
   selectionKey,
   graph,
   node,
+  selectionCount,
   diagnostics,
   onEdit,
   onRenamed,
@@ -57,6 +60,11 @@ export const Inspector: FC<InspectorProps> = ({
         onRenamed={onRenamed}
         onDeleted={onDeleted}
       />
+    ) : selectionCount > 1 ? (
+      <div className="px-4 py-3 space-y-2 text-xs text-[#8b949e]">
+        <p className="text-[#c9d1d9] font-medium">{selectionCount} nodes selected</p>
+        <p>Select one node to edit it.</p>
+      </div>
     ) : (
       <div className="px-4 py-3 space-y-2 text-xs text-[#8b949e]">
         <p className="text-[#c9d1d9] font-medium">No node selected</p>
@@ -75,7 +83,7 @@ const Revision: FC<{ revision: string }> = ({ revision }) => (
   </dl>
 );
 
-const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"> & { node: PraxisNode }> = ({
+const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node" | "selectionCount"> & { node: PraxisNode }> = ({
   graph,
   node,
   diagnostics,

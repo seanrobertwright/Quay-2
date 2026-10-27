@@ -54,12 +54,13 @@ export const SchemaEditor: FC<{
     if (fields === null) setRaw(true);
   }
 
-  const apply = (next: JsonObject | null) => {
+  /** Applies `next`. `live` marks a keystroke in the table, which merges into the undo step before it. */
+  const apply = (next: JsonObject | null, live = false) => {
     // Recorded first, so the edit coming back isn't taken for a change from outside.
     const nextText = next === null ? "" : asText(next);
     setSynced(nextText);
     setText(nextText);
-    onEdit({ type: "set-schema", id: node.id, which, schema: next });
+    onEdit({ type: "set-schema", id: node.id, which, schema: next, ...(live && { live }) });
   };
 
   const parsed = raw && text !== applied ? parseSchema(text) : null;
@@ -144,9 +145,9 @@ export const SchemaEditor: FC<{
         <FieldTable
           label={label}
           table={table}
-          onChange={(next) => {
+          onChange={(next, live) => {
             setTable(next);
-            if (fieldsProblem(next.rows) === null) apply(withFields(schema, next.rows.map(({ key: _, ...f }) => f)));
+            if (fieldsProblem(next.rows) === null) apply(withFields(schema, next.rows.map(({ key: _, ...f }) => f)), live);
           }}
         />
       )}
@@ -210,15 +211,16 @@ const RawSchema: FC<{
 const FieldTable: FC<{
   label: string;
   table: Rows;
-  onChange: (next: Rows) => void;
+  /** `live` is set for a keystroke in a field's name. */
+  onChange: (next: Rows, live?: boolean) => void;
 }> = ({ label, table, onChange }) => {
   const problemId = useId();
   const bodyRef = useRef<HTMLTableSectionElement | null>(null);
   const { rows, nextKey } = table;
   const problem = fieldsProblem(rows);
   const name = label.toLowerCase();
-  const setRow = (key: number, change: Partial<SchemaField>) =>
-    onChange({ rows: rows.map((r) => (r.key === key ? { ...r, ...change } : r)), nextKey });
+  const setRow = (key: number, change: Partial<SchemaField>, live = false) =>
+    onChange({ rows: rows.map((r) => (r.key === key ? { ...r, ...change } : r)), nextKey }, live);
   const add = () => {
     onChange({ rows: [...rows, { key: nextKey, name: "", type: "string", required: false, keywords: {} }], nextKey: nextKey + 1 });
     requestAnimationFrame(() => bodyRef.current?.querySelector<HTMLInputElement>("tr:last-child input[type=text]")?.focus());
@@ -259,7 +261,7 @@ const FieldTable: FC<{
                       aria-label={`${label} field ${i + 1} name`}
                       className={`${inputClass} font-mono`}
                       value={r.name}
-                      onChange={(e) => setRow(r.key, { name: e.target.value })}
+                      onChange={(e) => setRow(r.key, { name: e.target.value }, true)}
                       aria-invalid={problem !== null && (r.name === "" || rows.some((o) => o !== r && o.name === r.name)) ? true : undefined}
                     />
                   </td>

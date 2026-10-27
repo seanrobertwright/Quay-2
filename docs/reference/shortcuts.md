@@ -65,7 +65,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+Shift+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
 | `Ctrl+Shift+B F` | **Machina** | Opens native AI Software Factory cockpit |
-| `Ctrl+Shift+B P` | **Praxis Builder** | Toggles the Praxis Builder, which lists the project's `.praxis/` definitions and shows a graph you can edit on the canvas and in the inspector, and save with `Ctrl+S` |
+| `Ctrl+Shift+B P` | **Praxis Builder** | Toggles the Praxis Builder, which lists the project's `.praxis/` definitions and shows a graph you can edit on the canvas and in the inspector, undo with `Ctrl+Z`, redo with `Ctrl+Shift+Z` or `Ctrl+Y`, and save with `Ctrl+S` (`Cmd` on macOS). Press `?` in the canvas for the rest of its keys |
 | `Ctrl+Shift+B M` | **Mission Control** | Opens Mission Control, where you send messages to agents on the A2A bus and read its message trail |
 | `Ctrl+Shift+P` | **Command Palette** | Opens global command launcher and searchable palette. `Ctrl+K` also opens it outside a terminal |
 | `Esc` | **Dismiss / Close** | Closes any open modal, dialog, or drawer |
