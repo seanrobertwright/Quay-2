@@ -167,6 +167,7 @@ pub fn apply_event(ctx: &AppContext, envelope: Envelope) {
     let mut status = None;
     let own_terminal = if is_subagent_turn(&envelope) { None } else { tag.as_ref() };
     if let Some(terminal_id) = own_terminal {
+        ctx.pty_manager.record_claude_session(terminal_id, &envelope.session_id);
         status = if envelope.event_type == "attention.notification" {
             ctx.pty_manager.apply_notification(terminal_id, notification_type(&envelope))
         } else {
