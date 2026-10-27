@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Swarm 8: Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/)
+[Swarm 6: Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/)
 
-The next published tutorial in series order. Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict.
+The next tutorial in series order. Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed.
 :::
