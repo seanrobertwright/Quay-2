@@ -396,7 +396,7 @@ npm test; npm run typecheck; git status --short
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 3: Full-Stack Pair: bookmarks app](/tutorials/swarm/full-stack-pair/)
 
-The next tutorial in series order, Swarm 3: Full-Stack Pair: bookmarks app, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Have two agents build a bookmarks app's API and React UI side by side, then open it in your browser.
 :::
