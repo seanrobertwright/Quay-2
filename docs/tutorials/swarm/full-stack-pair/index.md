@@ -341,7 +341,7 @@ The server kept its bookmarks somewhere else. Click inside `backend-agent` in th
 :::
 
 ::: next
-[Swarm 5: Bug Hunt](/tutorials/swarm/bug-hunt/)
+[Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/)
 
-The next published tutorial in series order: Swarm 4, Build and save a custom swarm, isn't published yet. Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn.
+The next tutorial in series order. Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart.
 :::

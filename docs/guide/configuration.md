@@ -13,7 +13,8 @@ On Windows, Quay keeps its state under `%LOCALAPPDATA%\Quay2`. Without `LOCALAPP
 | `%LOCALAPPDATA%\Quay2\workspaces.json` | Registered projects: each one's terminals, last viewed terminal, environment variables and default CLI flags |
 | `%LOCALAPPDATA%\Quay2\swarms.json` | Your saved swarms from the Swarm Launcher |
 | `%LOCALAPPDATA%\Quay2\sessions\sessions.json` | The terminals Quay restores at startup |
-| `%LOCALAPPDATA%\Quay2\sessions\<terminal id>.log` | Each terminal's scrollback |
+| `%LOCALAPPDATA%\Quay2\sessions\<terminal id>.log` | Each terminal's raw output |
+| `%LOCALAPPDATA%\Quay2\sessions\<terminal id>.screen` | What each terminal last showed, its screen and up to 1,000 rows of scrollback, which a terminal shows again after Quay restarts. Saved when its output pauses for 2 seconds, at least every 30 seconds while output keeps coming, when its process ends, when Quay closes and before an update installs. While a full-screen app is open, the last save from before it stays |
 | `%LOCALAPPDATA%\Quay2\token-ledger.json` | Quay's token ledger, behind the daily totals in Token Spend |
 | `%LOCALAPPDATA%\Quay2\machina\` | Machina state (`state.json`) and its holdback vault (`vault\`) |
 | `~/.claude/projects/` | Claude Code session transcripts, scanned for token spend. `CLAUDE_CONFIG_DIR` replaces `~/.claude` when set |
