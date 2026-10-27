@@ -152,6 +152,48 @@ Then run `claude` once in a terminal and sign in. Quay's Claude terminals use th
 
 Install the [event-bridge plugin](#event-bridge-plugin) next. Without it Quay can't see a Claude terminal's status or replies.
 
+### Codex CLI
+
+Install Codex with npm, in PowerShell:
+
+```powershell
+npm install -g @openai/codex
+```
+
+Codex tries to update itself when it starts, and if that download fails, its terminal closes at once. Update it before you open a Codex terminal:
+
+```powershell
+npm install -g @openai/codex@latest
+```
+
+Quay needs Codex 0.154.0 or later. Check the version:
+
+```powershell
+codex --version
+```
+
+Then sign in once. Quay's Codex terminals use that sign-in:
+
+```powershell
+codex login
+```
+
+### Antigravity CLI
+
+Install the Antigravity CLI, `agy`, with Google's installer, in PowerShell:
+
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+```
+
+It installs `agy` in `%LOCALAPPDATA%\agy\bin`. Close and reopen Quay so its terminals see it. Quay needs Antigravity CLI 1.4.2 or later. Check the version:
+
+```powershell
+agy --version
+```
+
+Then run `agy` once in a PowerShell window and follow its first-run setup. It opens your browser to sign in with your Google account, and asks how its terminal should look. Quay's Antigravity terminals use that sign-in. Google's [Antigravity CLI docs](https://antigravity.google/docs/install?tab=cli) cover the other ways to sign in.
+
 ### Other CLIs
 
 Install the other CLIs you plan to supervise with their own instructions. For example:

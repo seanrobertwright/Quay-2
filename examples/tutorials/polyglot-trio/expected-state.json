@@ -1,0 +1,6 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 1, "todo": 8 },
+  "checkSuite": { "vitest": ["run", "check"], "expect": "fail", "failed": 6, "total": 6 },
+  "files": { "present": ["SPEC.md", "AGENTS.md", "CLAUDE.md", "samples/orders.csv"], "absent": ["PLAN.md", "review.md"] }
+}

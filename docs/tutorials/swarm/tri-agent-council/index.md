@@ -280,7 +280,7 @@ Press `Ctrl+Shift+B 2` and paste `A test in check/cli.check.test.ts fails. Read 
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 9: Polyglot Trio](/tutorials/swarm/polyglot-trio/)
 
-The next tutorial in series order, Swarm 9: Polyglot Trio, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus.
 :::

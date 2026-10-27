@@ -17,4 +17,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 6 | [Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/) | Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed. |
 | 7 | [JS to TypeScript migration](/tutorials/swarm/js-to-typescript/) | Have three agents convert a JavaScript project to TypeScript, one folder each, while `tsc --watch` counts the errors down to zero. |
 | 8 | [Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/) | Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict. |
+| 9 | [Polyglot Trio](/tutorials/swarm/polyglot-trio/) | Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus. |
 <!-- tutorials:end -->
