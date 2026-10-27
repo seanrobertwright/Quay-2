@@ -11,7 +11,7 @@ Open two Claude Code agents, `asker` and `answerer`, side by side. First you sen
 
 **You'll learn:** how to check the event-bridge plugin with `/plugin`, open two Claude Code terminals side by side, send a peer a message from Mission Control with **Dispatch as User**, have one agent use the four `quay_*` tools (`quay_list_agents`, `quay_send_message` with a wait for the reply, `quay_get_agent_status` and `quay_broadcast`), and read Mission Control's trail and toasts.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference to a letter. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then press Enter to send it, unless the step says which button to click.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. Along the bottom of the stage, the **status strip** shows the status of the terminal that has focus. When the stage is split, each pane also has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and `Ctrl+Shift+B O` is the letter o, never the digit zero. Holding Shift on that second key makes no difference to a letter. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then press Enter to send it, unless the step says which button to click.
 
 This tutorial is about agents messaging each other over Quay's A2A bus. A **peer** is an agent terminal on the bus: here, `asker` and `answerer`. A PowerShell terminal is not a peer, so no message reaches it. **Mission Control** is the panel where you send a peer a message yourself and read the **trail**, the list of every message on the bus, newest first. The starter project is a small, finished package, `hello-a2a`, which is only there to give `answerer` something real to read. Nothing in it gets built or changed.
 
@@ -71,7 +71,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. Press `Ctrl+Shift+B N`. Under **Autonomous AI Agents**, click **Claude**. Leave **Permission Mode** on **Skip Permissions (Default)** and **Model** on **Default (your Claude Code /model setting)**. Type `asker` in **Terminal Label (Optional)** and click **Start Terminal (Enter)**. `asker` takes the stage, and the PowerShell terminal keeps running behind it.
-2. Wait until `asker`'s pane header shows a green dot and `Ready`. Claude Code may ask first whether you trust this folder, and to accept Bypass Permissions mode; the If nots below show how to answer.
+2. Wait until the status strip at the bottom of the stage shows a green tick and `Ready for next prompt`. Claude Code may ask first whether you trust this folder, and to accept Bypass Permissions mode; the If nots below show how to answer.
 3. Paste the line below into `asker`. Claude Code opens its plugin screen.
 4. Find `event-bridge` on that screen, then press `Esc` to close it.
 :::
@@ -88,7 +88,7 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: must
 - Claude Code's plugin screen lists `event-bridge` as installed and enabled.
-- After `Esc`, `asker`'s pane header shows a green dot and `Ready`, and its pane shows no plugin hint.
+- After `Esc`, the status strip shows a green tick and begins `Ready`, and `asker`'s pane shows no plugin hint.
 :::
 
 ::: may
