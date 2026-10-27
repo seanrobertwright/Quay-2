@@ -729,7 +729,14 @@ export function useWorkspace() {
     } catch (err) {
       console.error("Failed to remove worktree:", err);
       // A failed removal can still have closed terminals or unregistered the worktree
-      await refreshWorktrees(repoPath);
+      const remaining = await refreshWorktrees(repoPath);
+      const stillListed = remaining.some((w) => isSamePath(w.path, worktreePath));
+      if (!stillListed && isSamePath(activeProject, worktreePath)) {
+        enterProject(
+          repoPath,
+          terminals.filter((t) => !isSamePath(t.project_path, worktreePath))
+        );
+      }
       throw err;
     }
   };

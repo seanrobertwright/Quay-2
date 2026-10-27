@@ -204,10 +204,10 @@ pub async fn create_git_worktree(
         let list_stdout = String::from_utf8_lossy(&list_output.stdout);
         let parsed = parse_worktree_porcelain(&list_stdout);
 
-        let normalized_target = target_str.replace('\\', "/").to_lowercase();
+        let normalized_target = comparable_path(&target_str);
         if let Some(created) = parsed
             .into_iter()
-            .find(|w| w.path.to_lowercase() == normalized_target || w.branch == branch_name)
+            .find(|w| comparable_path(&w.path) == normalized_target || w.branch == branch_name)
         {
             Ok(created)
         } else {
@@ -274,8 +274,8 @@ pub async fn check_git_worktree_clean(worktree_path: String) -> Result<Option<St
         .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Whether git lists `worktree_path` among `repo_path`'s worktrees. Paths compare
-/// with either slash and, as on Windows, in any case.
+/// Whether git lists `worktree_path` among `repo_path`'s worktrees, comparing paths as
+/// `comparable_path` does.
 fn is_registered_worktree(repo_path: &str, worktree_path: &str) -> Result<bool, String> {
     let output = create_git_command(repo_path)
         .args(["worktree", "list", "--porcelain"])
@@ -291,8 +291,24 @@ fn is_registered_worktree(repo_path: &str, worktree_path: &str) -> Result<bool, 
         .any(|w| comparable_path(&w.path) == wanted))
 }
 
+/// A path in a form two spellings of the same folder share: resolved through links,
+/// short names and `..` when it exists, with forward slashes and no trailing slash, and
+/// in lower case where the file system ignores case (Windows and macOS).
 fn comparable_path(path: &str) -> String {
-    path.replace('\\', "/").trim_end_matches('/').to_lowercase()
+    let resolved = std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string());
+    let resolved = match resolved.strip_prefix(r"\\?\UNC\") {
+        Some(share) => format!(r"\\{}", share),
+        None => resolved.strip_prefix(r"\\?\").unwrap_or(&resolved).to_string(),
+    };
+    let slashed = resolved.replace('\\', "/");
+    let trimmed = slashed.trim_end_matches('/');
+    if cfg!(any(windows, target_os = "macos")) {
+        trimmed.to_lowercase()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[tauri::command]
@@ -306,42 +322,35 @@ pub async fn remove_git_worktree(
         .map_err(|e| format!("Task join error: {}", e))?
 }
 
-/// Waits between tries while a just-closed terminal's processes still hold files in the
-/// worktree, as they do on Windows for a moment after they are killed: about 6 s in all.
+/// Waits between tries while a just-closed terminal's processes still hold its worktree
+/// folder, as they do on Windows for a moment after they are killed: about 6 s in all.
 const LOCK_RETRY_DELAYS_MS: [u64; 6] = [100, 250, 500, 1000, 2000, 2000];
 
 /// Removes a worktree, then whatever git left of its folder.
 ///
-/// While the worktree is registered, `git worktree remove` is retried when it fails to
-/// delete a file; any other refusal, such as uncommitted changes without `force`, is
-/// returned at once. Once git has unregistered it, the rest of the folder is deleted,
-/// retrying the same way. A folder git doesn't list as a worktree of `repo_path` is
-/// only deleted when it is empty, which is what an interrupted remove leaves behind.
+/// `git worktree remove` runs once. If git still lists the worktree afterwards, its error
+/// is returned: uncommitted changes without `force`, for one. If git has unregistered it
+/// but could not delete the folder, because a closing process still holds it, the rest
+/// of the folder is deleted, retrying for about 6 s. A folder git didn't list as a
+/// worktree of `repo_path` to begin with is only deleted when it is empty, which is what
+/// an interrupted remove leaves behind.
 fn remove_worktree_blocking(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+    if !Path::new(worktree_path).is_absolute() {
+        return Err(format!("Worktree path must be absolute, got '{}'", worktree_path));
+    }
     let was_registered = is_registered_worktree(repo_path, worktree_path)?;
     if was_registered {
-        let mut delays = LOCK_RETRY_DELAYS_MS.iter();
-        loop {
-            let mut args = vec!["worktree", "remove", worktree_path];
-            if force {
-                args.push("--force");
-            }
-            let output = create_git_command(repo_path)
-                .args(args)
-                .output()
-                .map_err(|e| format!("Failed to remove git worktree: {}", e))?;
-            if output.status.success() {
-                break;
-            }
-            if !is_registered_worktree(repo_path, worktree_path)? {
-                break;
-            }
+        let mut args = vec!["worktree", "remove", worktree_path];
+        if force {
+            args.push("--force");
+        }
+        let output = create_git_command(repo_path)
+            .args(args)
+            .output()
+            .map_err(|e| format!("Failed to remove git worktree: {}", e))?;
+        if !output.status.success() && is_registered_worktree(repo_path, worktree_path)? {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let locked = stderr.contains("failed to delete") || stderr.contains("Permission denied");
-            match delays.next() {
-                Some(ms) if locked => std::thread::sleep(std::time::Duration::from_millis(*ms)),
-                _ => return Err(format!("Git worktree remove failed: {}", stderr.trim())),
-            }
+            return Err(format!("Git worktree remove failed: {}", stderr.trim()));
         }
     }
 
@@ -351,21 +360,23 @@ fn remove_worktree_blocking(repo_path: &str, worktree_path: &str, force: bool) -
     Ok(())
 }
 
-/// Deletes what is left of an unregistered worktree's folder. All of it when git had it
-/// registered at the start of this removal; otherwise only an empty folder.
+/// Deletes what is left of an unregistered worktree's folder: all of it when git listed
+/// the worktree at the start of this removal, otherwise only an empty folder.
 fn remove_leftover_folder(folder: &Path, was_registered: bool) -> Result<(), String> {
     if !folder.exists() {
         return Ok(());
     }
-    let is_empty = std::fs::read_dir(folder)
-        .map_err(|e| format!("Failed to read '{}': {}", folder.display(), e))?
-        .next()
-        .is_none();
-    if !was_registered && !is_empty {
-        return Err(format!(
-            "'{}' is not a worktree of this project and isn't empty, so Quay left it in place",
-            folder.display()
-        ));
+    if !was_registered {
+        let is_empty = std::fs::read_dir(folder)
+            .map_err(|e| format!("Failed to read '{}': {}", folder.display(), e))?
+            .next()
+            .is_none();
+        if !is_empty {
+            return Err(format!(
+                "'{}' is not a worktree of this project and isn't empty, so Quay left it in place",
+                folder.display()
+            ));
+        }
     }
     let mut delays = LOCK_RETRY_DELAYS_MS.iter();
     loop {
@@ -381,7 +392,7 @@ fn remove_leftover_folder(folder: &Path, was_registered: bool) -> Result<(), Str
                 Some(ms) => std::thread::sleep(std::time::Duration::from_millis(*ms)),
                 None => {
                     return Err(format!(
-                        "Git removed the worktree, but its folder '{}' could not be deleted: {}",
+                        "Git no longer lists the worktree, but its folder '{}' could not be deleted: {}",
                         folder.display(),
                         e
                     ))
@@ -577,6 +588,36 @@ mod tests {
 
         assert!(error.contains("is not a worktree of this project"), "{}", error);
         assert!(worktree.join("keep.txt").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn a_worktree_path_spelled_another_way_is_still_removed() {
+        let (root, repo, worktree) = repo_with_worktree();
+        let spelled = repo.join("..").join("wt");
+
+        remove_git_worktree(
+            repo.to_string_lossy().to_string(),
+            spelled.to_string_lossy().to_string(),
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert!(!worktree.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn a_relative_worktree_path_is_refused() {
+        let (root, repo, worktree) = repo_with_worktree();
+
+        let error = remove_git_worktree(repo.to_string_lossy().to_string(), "wt".to_string(), true)
+            .await
+            .expect_err("a relative path is refused");
+
+        assert!(error.contains("must be absolute"), "{}", error);
+        assert!(worktree.exists());
         let _ = std::fs::remove_dir_all(root);
     }
 
