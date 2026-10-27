@@ -445,7 +445,8 @@ export function useWorkspace() {
   };
 
   // Remove a project workspace
-  const removeProject = async (path: string) => {
+  /** Removes a project and closes its terminals. Resolves to whether the project was removed. */
+  const removeProject = async (path: string): Promise<boolean> => {
     try {
       // Clean up any terminals belonging to this project
       const projectTerms = terminals.filter((t) => isSamePath(t.project_path, path) || isSubpathOf(t.project_path, path));
@@ -465,8 +466,10 @@ export function useWorkspace() {
         const nextActive = updated[0]?.path || "";
         enterProject(nextActive, terminals.filter((t) => !projectTerms.includes(t)));
       }
+      return true;
     } catch (err) {
       console.error("Failed to remove project:", err);
+      return false;
     }
   };
 
