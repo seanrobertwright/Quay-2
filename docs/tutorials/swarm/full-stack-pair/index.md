@@ -341,7 +341,7 @@ The server kept its bookmarks somewhere else. Click inside `backend-agent` in th
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 5: Bug Hunt](/tutorials/swarm/bug-hunt/)
 
-The next tutorial in series order, Swarm 4: Build and save a custom swarm, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order: Swarm 4, Build and save a custom swarm, isn't published yet. Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn.
 :::

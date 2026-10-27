@@ -43,7 +43,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 :::
 
 ::: see
-![The PowerShell pane in the project folder: git makes the Starter commit, then npm install finishes with no vulnerabilities.](./01-starter-installed.webp)
+![The PowerShell pane in the project folder: git makes the Starter commit with the starter's 15 files, then npm install adds 38 packages and finds 0 vulnerabilities.](./01-starter-installed.webp)
 :::
 
 ::: must
@@ -53,6 +53,7 @@ git init -b main; git add -A; git commit -m Starter; npm install
 
 ::: may
 - The commit id, and the package counts and timings `npm install` prints.
+- An `npm notice` about a newer version of npm after `found 0 vulnerabilities`.
 :::
 
 ::: ifnot node or npm is not recognised
@@ -71,23 +72,28 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 
 ::: do
 1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** already selected.
-2. Click the **Bug Hunter** card. Its Team Roster lists Reproducer (`reproducer`), Tracer (`tracer`), Patcher (`patcher`) and Verifier (`verifier`).
+2. Click the **Bug Hunter** card, on the right of the catalog's second row. The catalog scrolls it into view, and its Team Roster lists Reproducer (`reproducer`), Tracer (`tracer`), Patcher (`patcher`) and Verifier (`verifier`).
 3. Click **Launch Swarm Now**.
 :::
 
 ::: see
-![The launcher closes and a 2x2 grid opens: reproducer top left, tracer top right, patcher bottom left and verifier bottom right, each confirming its role in one line and waiting.](./02-bug-hunter-launched.webp)
+![A 2x2 grid: reproducer top left, tracer top right, patcher bottom left and verifier bottom right, each confirming its role in one line, while the rail shows Role: Reproducer, Role: Tracer, Role: Patcher and Role: Verifier under their names.](./02-bug-hunter-launched.webp)
 :::
 
 ::: must
 - Four panes in a 2x2 grid: `reproducer` top left, `tracer` top right, `patcher` bottom left and `verifier` bottom right.
 - The rail lists all four under the project, beside the PowerShell pane from step 1.
-- Each pane's first line reads `Role: ` and its role: `Reproducer`, `Tracer`, `Patcher` or `Verifier`. Each agent then confirms its role and waits for your task.
+- In the rail, each agent's status line reads `Role: ` and its role: `Reproducer`, `Tracer`, `Patcher` or `Verifier`.
+- Each pane shows a one-line reply confirming its role, and the agent waits for your task.
 :::
 
 ::: may
 - The wording of each agent's one-line reply.
 - The port number in the rail header.
+:::
+
+::: ifnot a pane asks whether you trust this folder
+Claude Code asks once for each new folder: `Quick safety check: Is this a project you created or one you trust?` It lists **No, exit** first, with the cursor on it, and a grid cell may show only that option. Click into each pane that asks, press the Down arrow to move to **Yes, I trust this folder**, and press Enter. That agent then confirms its role.
 :::
 
 ::: ifnot a pane asks you to accept Bypass Permissions mode
@@ -116,17 +122,18 @@ Read AGENTS.md and BUG-REPORT.md. For each of the three complaints, write one Vi
 :::
 
 ::: see
-![reproducer fills the stage: it ran the tests, three of them fail and seven pass, and its reply ends with REPRODUCED 3.](./03-reproduced.webp)
+![reproducer fills the stage: its reply sets out the three complaints, each with its cart file, the receipt its test expects and the receipt the code prints now, and ends with REPRODUCED 3.](./03-reproduced.webp)
 :::
 
 ::: must
-- `reproducer` reports 3 tests failed and 7 passed. The seven are the starter's own tests, which passed on the buggy code all along.
+- `reproducer`'s reply covers all three complaints: the coupon, the mug added twice and the mistyped SKU.
+- It says its new `test/regressions.test.ts` is the only change it made.
 - Its reply ends with the line `REPRODUCED 3`.
-- The only file the pane shows `reproducer` writing or editing is `test/regressions.test.ts`.
 :::
 
 ::: may
 - The test names, and how each test sets up its cart.
+- Whether the reply sets the complaints out as a table, and whether it prints the test counts. Step 7 runs the tests itself.
 - How many times the agent printed a receipt before writing the tests.
 :::
 
@@ -152,13 +159,13 @@ Read BUG-REPORT.md and test/regressions.test.ts, then run npm test. For each fai
 :::
 
 ::: see
-![tracer in the top-right pane: it read the tests, ran them and wrote TRACE.md, and its reply ends with TRACED 3.](./04-traced.webp)
+![The grid, with focus on tracer in the top-right pane: it says it changed nothing under src/ or test/, and its reply ends with TRACED 3, beside reproducer's REPRODUCED 3.](./04-traced.webp)
 :::
 
 ::: must
-- `tracer` says it wrote `TRACE.md`, and its reply names `addItem`, `removeItem` and `discount`.
+- `tracer` says it wrote `TRACE.md`, and changed nothing under `src/` or `test/`.
 - Its reply ends with the line `TRACED 3`.
-- The only file the pane shows `tracer` writing or editing is `TRACE.md`.
+- `TRACE.md`, in the project folder, has one section per complaint, naming `discount`, `addItem` and `removeItem` as the functions responsible.
 :::
 
 ::: may
@@ -186,17 +193,17 @@ Read TRACE.md and AGENTS.md. Fix the three causes in src/cart.ts with the smalle
 :::
 
 ::: see
-![patcher in the bottom-left pane: its test run passes all ten tests, the type check is clean, and its reply ends with PATCHED.](./05-patched.webp)
+![The grid, with focus on patcher in the bottom-left pane: its reply says it changed no exported signature and nothing under test/, and ends with PATCHED.](./05-patched.webp)
 :::
 
 ::: must
-- `patcher` reports 10 tests passed, none failed, and a clean type check.
+- `patcher` says it changed no exported signature and nothing under `test/`.
 - Its reply ends with the line `PATCHED`.
-- The only file the pane shows `patcher` editing is `src/cart.ts`.
 :::
 
 ::: may
 - How each fix is written, and how many test runs it took.
+- Whether the reply prints the test counts. Steps 6 and 7 run the tests again.
 :::
 
 ::: ifnot patcher says a test still fails after several attempts
@@ -225,7 +232,7 @@ Run npm test and npm run typecheck yourself, then read git diff, BUG-REPORT.md a
 :::
 
 ::: see
-![verifier fills the stage: its own test run passes all ten tests, it reviews the diff, and its reply ends with VERIFIED.](./06-verified.webp)
+![verifier fills the stage: npm test passes all 10 tests and the type check reports no errors, only src/cart.ts changed, each complaint's receipt now matches the report, and its reply ends with VERIFIED.](./06-verified.webp)
 :::
 
 ::: must
@@ -235,6 +242,7 @@ Run npm test and npm run typecheck yourself, then read git diff, BUG-REPORT.md a
 
 ::: may
 - How `verifier` words its review, and how much of the diff it quotes.
+- Whether it sets the patch aside to see the new tests fail without it, as long as it puts the patch back.
 :::
 
 ::: ifnot the last line is REJECTED
@@ -264,11 +272,11 @@ npx vitest run check; npm test; npm run typecheck; git status --short
 :::
 
 ::: see
-![The PowerShell pane in the bottom-right cell: the check suite passes all six tests, npm test passes ten, the type check prints no errors, and git status lists the files the agents changed.](./07-check-passed.webp)
+![The PowerShell pane in the bottom-right cell, after the check line: the type check prints nothing after tsc --noEmit, and git status lists src/cart.ts as modified and TRACE.md, VERDICT.md, check/ and test/regressions.test.ts as new. The two test runs scrolled up out of the cell.](./07-check-passed.webp)
 :::
 
 ::: must
-- `npx vitest run check` shows `Tests  6 passed (6)`.
+- `npx vitest run check` shows `Tests  6 passed (6)`. Scroll up in the pane, or press `Ctrl+Shift+B Z` to zoom it, to see both test runs.
 - `npm test` shows `Tests  10 passed (10)`: the starter's seven tests and the reproducer's three, without the check suite.
 - `npm run typecheck` prints no error after `> tsc --noEmit`.
 - `git status --short` prints these five lines, in this order: ` M src/cart.ts`, `?? TRACE.md`, `?? VERDICT.md`, `?? check/` and `?? test/regressions.test.ts`.
@@ -288,7 +296,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: ifnot Ctrl+Shift+B 1 shows a different terminal
-`Ctrl+Shift+B 1` brings back the first terminal you opened in this project, so it is the PowerShell pane only when you opened nothing before it. Click the PowerShell pane in the rail instead; it takes the focused cell the same way.
+`Ctrl+Shift+B 1` brings back the first terminal you opened in this project, so it is the PowerShell pane only when you opened nothing before it. Click `pwsh`, the PowerShell pane, in the rail instead; it takes the focused cell the same way.
 :::
 
 ::: done
