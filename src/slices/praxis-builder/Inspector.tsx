@@ -1,11 +1,13 @@
 // The docked inspector beside the canvas (#226): the selected node's kind and a delete button,
-// its id, its kind's config form, its `dependsOn`, and the graph's read-only revision. Each
+// its id, its kind's config form, its `dependsOn`, its input and output schemas, and the graph's
+// read-only revision. Each
 // control shows the validation messages about it; the node's other messages head the panel.
 import { useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { Trash2, X } from "lucide-react";
 import { CONFIG_FORMS, described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import { renameProblem, type GraphEdit } from "./editor.ts";
 import { nodeIssuesBySlot } from "./issues.ts";
+import { SchemaEditor } from "./SchemaEditor.tsx";
 import { NODE_KINDS_REGISTRY, nodeKindMeta } from "./kinds.ts";
 import { isNodeKind, type PraxisGraph, type PraxisNode } from "./model.ts";
 import type { Diagnostic } from "./types.ts";
@@ -87,7 +89,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
   const known = entry !== null;
   const Form = isNodeKind(node.kind) ? CONFIG_FORMS[node.kind] : null;
   const slots = useMemo(
-    () => ["id", "dependsOn", ...(entry?.configKeys.map((k) => `config.${k}`) ?? [])],
+    () => ["id", "dependsOn", "inputSchema", "outputSchema", ...(entry?.configKeys.map((k) => `config.${k}`) ?? [])],
     [entry]
   );
   const issues = useMemo(() => nodeIssuesBySlot(diagnostics, node.id, slots), [diagnostics, node.id, slots]);
@@ -155,6 +157,11 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
       <div className={sectionClass}>
         <Dependencies node={node} graph={graph} issues={issues.get("dependsOn")} onEdit={onEdit} />
       </div>
+      <section aria-label="Schemas" className={`${sectionClass} !space-y-3`}>
+        <h3 className={headingClass}>Schemas</h3>
+        <SchemaEditor node={node} which="inputSchema" issues={issues.get("inputSchema")} onEdit={onEdit} />
+        <SchemaEditor node={node} which="outputSchema" issues={issues.get("outputSchema")} onEdit={onEdit} />
+      </section>
     </div>
   );
 };
