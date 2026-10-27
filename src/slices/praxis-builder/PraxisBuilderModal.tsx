@@ -38,6 +38,9 @@ import { normalizePath } from "../../utils/paths.ts";
 import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
+import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
+import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
+import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
 import { editDraft, nodeIdsOf, stepFor, type GraphEdit } from "./editor.ts";
 import { canRedo, canUndo } from "./history.ts";
@@ -440,9 +443,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
   // Every change to the open graph goes through its history, one step per gesture (#248).
   const moveOpenNodes = useCallback(
-    (moved: [string, XYPosition][]) => {
+    (moved: [string, XYPosition][], label = moved.length === 1 ? `Move ${moved[0][0]}` : `Move ${moved.length} nodes`) => {
       if (!projectPath || !open) return;
-      const label = moved.length === 1 ? `Move ${moved[0][0]}` : `Move ${moved.length} nodes`;
       const now = Date.now();
       changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => moveNodes(d, moved), { label }, now)));
     },
@@ -475,6 +477,26 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     selectNodes([]);
     // The focused card may be gone; focus stays in the canvas, so its keys still work.
     canvasFor(viewKey)?.focus();
+  };
+
+  /** Runs a layout command on the open graph as one step. Auto-arrange then fits the view. */
+  const arrangeOpen = (action: ArrangeAction) => {
+    if (!openDraft) return;
+    const graph = parseGraph(openDraft.content);
+    if (!graph.ok) return;
+    const canvas = canvasFor(viewKey);
+    const sizeOf = (id: string) => canvas?.nodeSize(id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+    const moved = arrangedPositions(action, graph.value, openDraft.positions, selected, sizeOf);
+    const changes = moved.some(([id, p]) => {
+      const was = openDraft.positions.get(id);
+      return !was || was.x !== Math.round(p.x) || was.y !== Math.round(p.y);
+    });
+    if (!changes) {
+      if (action.type === "auto") canvas?.fitView();
+      return;
+    }
+    if (action.type === "auto") canvas?.fitViewWhenMoved();
+    moveOpenNodes(moved, arrangeLabel(action));
   };
 
   /** Undoes or redoes a step of the open graph, and selects the nodes it changed. */
@@ -551,6 +573,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         return canvas?.zoomOut();
       case "zoom-reset":
         return canvas?.zoomReset();
+      case "auto-arrange":
+        return arrangeOpen({ type: "auto" });
       case "help":
         return setHelpShown(true);
     }
@@ -695,6 +719,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     </button>
                   </>
                 )}
+                {openDraft && <ArrangeMenuButton selectedCount={selected.size} onChoose={arrangeOpen} />}
                 {openDraft && (
                   <button
                     type="button"
@@ -864,6 +889,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   onViewportChange={saveViewport}
                   onMoveNodes={moveOpenNodes}
                   onEdit={editOpen}
+                  onArrange={arrangeOpen}
                   selected={selected}
                   selectionKey={selection.chosen}
                   onSelect={selectNodes}
@@ -1059,6 +1085,7 @@ const GraphDraftView: FC<{
   onViewportChange: (viewport: Viewport) => void;
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   onEdit: (edit: GraphEdit) => void;
+  onArrange: (action: ArrangeAction) => void;
   selected: ReadonlySet<string>;
   selectionKey: number;
   onSelect: (ids: readonly string[], keepInspector?: boolean) => void;
@@ -1073,6 +1100,7 @@ const GraphDraftView: FC<{
   onViewportChange,
   onMoveNodes,
   onEdit,
+  onArrange,
   selected,
   selectionKey,
   onSelect,
@@ -1110,6 +1138,7 @@ const GraphDraftView: FC<{
         onViewportChange={onViewportChange}
         onMoveNodes={onMoveNodes}
         onEdit={onEdit}
+        onArrange={onArrange}
         selected={selected}
         selectionKey={selectionKey}
         onSelect={onSelect}

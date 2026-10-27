@@ -1,9 +1,12 @@
 // One graph in the work area: the canvas with its palette strip, the Problems list under it,
 // and the inspector beside them. The graph's content is validated by the backend's
 // `praxis_validate`, never in the frontend (#220). The builder owns the selection, so undo
-// and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248).
-import { useCallback, useEffect, useMemo, useRef, type FC } from "react";
+// and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248). A
+// right-click on a card opens its context menu, with the align and distribute commands.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type RefObject } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
+import { ArrangeMenu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
+import type { ArrangeAction } from "./arrange.ts";
 import { GraphCanvas, type CanvasControls } from "./GraphCanvas.tsx";
 import { Inspector } from "./Inspector.tsx";
 import { Palette } from "./Palette.tsx";
@@ -25,6 +28,8 @@ interface GraphViewProps {
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   /** Applies an edit to the draft. */
   onEdit: (edit: GraphEdit) => void;
+  /** Runs a layout command: auto-arrange on every node, align and distribute on the selection. */
+  onArrange: (action: ArrangeAction) => void;
   /** The selected nodes, all of them in the graph. */
   selected: ReadonlySet<string>;
   /** Changes each time nodes are chosen, so the inspector starts afresh. */
@@ -76,6 +81,8 @@ export interface BuilderCanvas extends CanvasControls {
   /** Puts focus in the canvas region, as after deleting the focused node. */
   focus: () => void;
   fitView: () => void;
+  /** Fits the view once the canvas draws the next change of positions, as after auto-arrange. */
+  fitViewWhenMoved: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
@@ -100,6 +107,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   onViewportChange,
   onMoveNodes,
   onEdit,
+  onArrange,
   selected,
   selectionKey,
   onSelect,
@@ -117,6 +125,13 @@ const GraphViewInner: FC<GraphViewProps> = ({
     if (verdict !== undefined) onValidated?.(verdict);
   }, [verdict, onValidated]);
   const choose = useCallback((id: string | null) => onSelect(id === null ? [] : [id]), [onSelect]);
+  // Effects run child first, so by this one React Flow has taken the new positions.
+  const fitPending = useRef(false);
+  useEffect(() => {
+    if (!fitPending.current) return;
+    fitPending.current = false;
+    void flow.fitView({ duration: prefersReducedMotion() ? 0 : 200 });
+  }, [positions, flow]);
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : NO_DIAGNOSTICS;
   const issues = useMemo(() => issuesByNode(diagnostics), [diagnostics]);
@@ -131,6 +146,9 @@ const GraphViewInner: FC<GraphViewProps> = ({
         contains: (target) => canvasBox.current?.contains(target) ?? false,
         focus: () => canvasBox.current?.focus(),
         fitView: () => void flow.fitView({ duration: duration() }),
+        fitViewWhenMoved: () => {
+          fitPending.current = true;
+        },
         zoomIn: () => void flow.zoomIn({ duration: duration() }),
         zoomOut: () => void flow.zoomOut({ duration: duration() }),
         zoomReset: () => void flow.zoomTo(1, { duration: duration() }),
@@ -147,6 +165,29 @@ const GraphViewInner: FC<GraphViewProps> = ({
     [flow, choose]
   );
   const clearSelection = useCallback(() => choose(null), [choose]);
+
+  // A right-click on a card outside the selection selects that card alone, as file managers do.
+  // The menu sits at a point on screen, so it closes when the cards or the view move.
+  const [menu, setMenu] = useState<XYPosition | null>(null);
+  const [menuPositions, setMenuPositions] = useState(positions);
+  if (menuPositions !== positions) {
+    setMenuPositions(positions);
+    setMenu(null);
+  }
+  const openMenu = useCallback(
+    (nodeId: string, at: XYPosition) => {
+      const box = canvasBox.current?.getBoundingClientRect();
+      if (!box) return;
+      if (!selected.has(nodeId)) choose(nodeId);
+      setMenu({ x: at.x - box.left, y: at.y - box.top });
+    },
+    [selected, choose]
+  );
+  const dismissMenu = useCallback(() => setMenu(null), []);
+  const closeMenu = useCallback((refocus: boolean) => {
+    setMenu(null);
+    if (refocus) canvasBox.current?.focus();
+  }, []);
 
   /**
    * Adds a node of `kind` centred on a point on screen, if it is on the canvas, or in the
@@ -185,9 +226,14 @@ const GraphViewInner: FC<GraphViewProps> = ({
             onPaneClick={clearSelection}
             onEdit={onEdit}
             onMoveNodes={onMoveNodes}
+            onNodeContextMenu={openMenu}
+            onMoveStart={dismissMenu}
             onReady={canvasReady}
           />
           <Palette onAdd={addNode} full={graph.nodes.length >= MAX_NODES} />
+          {menu && (
+            <NodeMenu at={menu} count={selected.size} bounds={canvasBox} onChoose={onArrange} onClose={closeMenu} />
+          )}
         </div>
         <ProblemsPanel
           status={status}
@@ -212,6 +258,32 @@ const GraphViewInner: FC<GraphViewProps> = ({
           inspectorRef.current?.focus();
         }}
       />
+    </div>
+  );
+};
+
+/** A card's context menu at a point in the canvas box, moved in to stay inside it. */
+const NodeMenu: FC<{
+  at: XYPosition;
+  count: number;
+  bounds: RefObject<HTMLDivElement | null>;
+  onChoose: (action: ArrangeAction) => void;
+  onClose: (refocus: boolean) => void;
+}> = ({ at, count, bounds, onChoose, onClose }) => {
+  const wrapper = useRef<HTMLDivElement | null>(null);
+  const [place, setPlace] = useState(at);
+  useLayoutEffect(() => {
+    const box = bounds.current;
+    const menu = wrapper.current;
+    if (!box || !menu) return;
+    setPlace({
+      x: Math.max(0, Math.min(at.x, box.clientWidth - menu.offsetWidth)),
+      y: Math.max(0, Math.min(at.y, box.clientHeight - menu.offsetHeight)),
+    });
+  }, [at, bounds]);
+  return (
+    <div ref={wrapper} className="absolute" style={{ left: place.x, top: place.y }}>
+      <ArrangeMenu label="Node" actions={NODE_MENU_ACTIONS} selectedCount={count} onChoose={onChoose} onClose={onClose} />
     </div>
   );
 };

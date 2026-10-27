@@ -65,6 +65,7 @@ test("canvas keys need focus in the canvas", () => {
     [ctrl("-"), "zoom-out"],
     [ctrl("0"), "zoom-reset"],
     [key("?", { shiftKey: true }), "help"],
+    [key("A", { shiftKey: true }), "auto-arrange"],
   ];
   for (const [e, command] of canvasKeys) {
     assert.equal(route(e, "canvas"), command, `${e.key} in the canvas`);
@@ -88,6 +89,8 @@ test("extra modifiers don't match: AltGr, Ctrl with Cmd, and Shift where it isn'
   assert.equal(route(ctrl("s", { shiftKey: true }), "canvas"), null);
   assert.equal(route(key("Delete", { shiftKey: true }), "canvas"), null);
   assert.equal(route(key("1"), "canvas"), null, "a plain 1 isn't Shift+1");
+  assert.equal(route(key("a"), "canvas"), null, "a plain A isn't Shift+A");
+  assert.equal(route(key("A", { shiftKey: true, altKey: true }), "canvas"), null);
 });
 
 test("each command appears in the table once, with at least one chord", () => {
@@ -102,6 +105,7 @@ test("hints and aria-keyshortcuts come from the same table", () => {
   assert.equal(shortcutLabel("redo", false), "Ctrl+Shift+Z");
   assert.equal(shortcutLabel("fit-view", false), "Shift+1");
   assert.equal(shortcutLabel("help", false), "?");
+  assert.equal(shortcutLabel("auto-arrange", false), "Shift+A");
   assert.equal(ariaKeyShortcuts("redo", false), "Control+Shift+Z Control+Y");
   assert.equal(ariaKeyShortcuts("undo", true), "Meta+Z");
 });
