@@ -362,7 +362,7 @@ Its name says which rule is still broken. Press `Ctrl+Shift+B 3` to put `blue-te
 :::
 
 ::: next
-[Swarm 8: Tri-Agent Council: plan, build, verify](/tutorials/swarm/tri-agent-council/)
+[Swarm 7: JS to TypeScript migration](/tutorials/swarm/js-to-typescript/)
 
-The next published tutorial in series order. Have a planner, a builder and a verifier take a Markdown link checker from spec to verdict.
+The next tutorial in series order. Have three agents convert a JavaScript project to TypeScript, one folder each, while `tsc --watch` counts the errors down to zero.
 :::
