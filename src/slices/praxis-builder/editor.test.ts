@@ -2,7 +2,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createGraphDraft, isDirty, type GraphDraft } from "./drafts.ts";
-import { editDraft, nextNodeId, renameProblem } from "./editor.ts";
+import { editDraft, nextNodeId, renameProblem, stepFor } from "./editor.ts";
 import { MAX_NODES, type JsonObject } from "./model.ts";
 
 const ref = { kind: "graphs" as const, id: "ship" };
@@ -221,10 +221,62 @@ describe("set-config", () => {
   });
 });
 
+describe("set-schema", () => {
+  const schema: JsonObject = { type: "object", properties: { ok: { type: "boolean" } } };
+
+  test("sets a node's input or output schema and keeps the rest of the node", () => {
+    const d = decisionGraph();
+    const next = editDraft(d, { type: "set-schema", id: "ok", which: "outputSchema", schema });
+    assert.deepEqual(find(next, "ok"), { id: "ok", kind: "TASK", dependsOn: [], config: { executionKind: "AGENT" }, outputSchema: schema });
+    assert.equal(find(next, "fail"), find(d, "fail"));
+  });
+
+  test("removes the schema when it is null", () => {
+    const d = draftOf([{ ...node("ok", "TASK"), inputSchema: schema }]);
+    const next = editDraft(d, { type: "set-schema", id: "ok", which: "inputSchema", schema: null });
+    assert.deepEqual(find(next, "ok"), node("ok", "TASK"));
+  });
+
+  test("setting the schema it already has, or removing one it lacks, changes nothing", () => {
+    const d = draftOf([{ ...node("ok", "TASK"), inputSchema: schema }]);
+    assert.equal(editDraft(d, { type: "set-schema", id: "ok", which: "inputSchema", schema: { ...schema } }), d);
+    assert.equal(editDraft(d, { type: "set-schema", id: "ok", which: "outputSchema", schema: null }), d);
+  });
+});
+
 test("an edit that puts everything back leaves the draft clean", () => {
   const d = decisionGraph();
   const there = editDraft(d, { type: "connect", source: "ok", target: "fail" });
   const back = editDraft(there, { type: "disconnect", source: "ok", target: "fail" });
   assert.equal(isDirty(there), true);
   assert.equal(isDirty(back), false);
+});
+
+describe("stepFor", () => {
+  test("each discrete edit is a step of its own, labelled for announcements", () => {
+    assert.deepEqual(stepFor({ type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 0 } }), { label: "Add task-1" });
+    assert.deepEqual(stepFor({ type: "connect", source: "a", target: "b" }), { label: "Connect a to b" });
+    assert.deepEqual(stepFor({ type: "set-config", id: "t", key: "executionKind", value: "AGENT" }), { label: "Set executionKind of t" });
+  });
+
+  test("a live keystroke merges by node and field", () => {
+    const step = stepFor({ type: "set-config", id: "loop-1", key: "maxIterations", value: "4", live: true });
+    assert.deepEqual(step, { label: "Set maxIterations of loop-1", merge: { key: "loop-1|config.maxIterations" } });
+  });
+
+  test("a live keystroke in a schema's field table merges by node and schema", () => {
+    const schema = { type: "object", properties: { a: { type: "string" } } };
+    assert.deepEqual(stepFor({ type: "set-schema", id: "t", which: "inputSchema", schema, live: true }), {
+      label: "Set inputSchema of t",
+      merge: { key: "t|inputSchema" },
+    });
+    assert.deepEqual(stepFor({ type: "set-schema", id: "t", which: "outputSchema", schema: null }), { label: "Remove outputSchema of t" });
+  });
+
+  test("the live flag doesn't change what the edit does", () => {
+    const d = draftOf([node("loop-1", "LOOP", [], { maxIterations: "3" })]);
+    const plain = editDraft(d, { type: "set-config", id: "loop-1", key: "maxIterations", value: "4" });
+    const live = editDraft(d, { type: "set-config", id: "loop-1", key: "maxIterations", value: "4", live: true });
+    assert.deepEqual(live.content, plain.content);
+  });
 });

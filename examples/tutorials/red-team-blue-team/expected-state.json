@@ -1,0 +1,6 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 8 },
+  "checkSuite": { "script": "check", "expect": "fail", "failed": 6, "total": 6 },
+  "files": { "present": [".env.example"], "absent": [".env"], "linesAbsent": { ".gitignore": [".env"] } }
+}

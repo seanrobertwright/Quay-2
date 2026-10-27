@@ -150,9 +150,10 @@ const NON_TEXT_INPUT_TYPES = new Set([
 
 /**
  * Whether a keydown came from a field the user types into, such as a modal's branch-name input,
- * rather than from a terminal pane. Duck-typed so the handler runs without a DOM in tests.
+ * rather than from a terminal pane. Duck-typed so the handler runs without a DOM in tests. The
+ * Praxis Builder's key handler uses it too, so both agree on what a text field is.
  */
-function isTextField(target: EventTarget | null): boolean {
+export function isTextField(target: EventTarget | null): boolean {
   const el = target as Partial<
     Pick<HTMLElement, "tagName" | "isContentEditable" | "classList"> & Pick<HTMLInputElement, "type">
   > | null;

@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Swarm 9: Polyglot Trio](/tutorials/swarm/polyglot-trio/)
+[Swarm 6: Red Team / Blue Team: notes app](/tutorials/swarm/red-team-blue-team/)
 
-The next tutorial in series order. Have Antigravity plan, Claude Code build and Codex review a CSV-to-JSON converter, passing work over the A2A bus.
+The next tutorial in series order. Pit an attacking agent against a defending one on a notes app, then let the Pre-PR Audit Gate catch what both missed.
 :::

@@ -127,3 +127,36 @@ export function reconcileWithDisk(
   if (!same && !isDirty(draft)) return { action: "reload" };
   return { action: "keep", draft: draft.deletedOnDisk ? { ...draft, deletedOnDisk: false } : draft };
 }
+
+/** What one undo step of a graph workspace restores: the record and the node positions. */
+export interface GraphSnapshot {
+  content: JsonObject;
+  positions: ReadonlyMap<string, XYPosition>;
+}
+
+export const snapshotOf = (draft: GraphDraft): GraphSnapshot => ({ content: draft.content, positions: draft.positions });
+
+/** The draft with a snapshot's record and positions, dirty or clean by fingerprint. */
+export const restoreSnapshot = (draft: GraphDraft, snapshot: GraphSnapshot): GraphDraft =>
+  withChanges(draft, snapshot.content, snapshot.positions);
+
+const nodeList = (content: JsonObject): { id?: unknown }[] =>
+  Array.isArray(content.nodes) ? (content.nodes as { id?: unknown }[]) : [];
+
+/**
+ * The ids of the nodes in `after` that `before` lacks, or that differ from it in content or
+ * position, in `after`'s node order. Undo and redo select these.
+ */
+export function changedNodeIds(before: GraphSnapshot, after: GraphSnapshot): string[] {
+  const old = new Map(nodeList(before.content).map((n) => [n.id, n]));
+  const changed: string[] = [];
+  for (const n of nodeList(after.content)) {
+    if (typeof n.id !== "string") continue;
+    const was = old.get(n.id);
+    const p = after.positions.get(n.id);
+    const q = before.positions.get(n.id);
+    const moved = p?.x !== q?.x || p?.y !== q?.y;
+    if (!was || moved || (was !== n && JSON.stringify(was) !== JSON.stringify(n))) changed.push(n.id);
+  }
+  return changed;
+}

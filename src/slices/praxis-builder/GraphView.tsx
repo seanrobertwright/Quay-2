@@ -1,9 +1,10 @@
 // One graph in the work area: the canvas with its palette strip, the Problems list under it,
 // and the inspector beside them. The graph's content is validated by the backend's
-// `praxis_validate`, never in the frontend (#220).
-import { useCallback, useEffect, useMemo, useRef, useState, type FC } from "react";
+// `praxis_validate`, never in the frontend (#220). The builder owns the selection, so undo
+// and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248).
+import { useCallback, useEffect, useMemo, useRef, type FC } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
-import { GraphCanvas } from "./GraphCanvas.tsx";
+import { GraphCanvas, type CanvasControls } from "./GraphCanvas.tsx";
 import { Inspector } from "./Inspector.tsx";
 import { Palette } from "./Palette.tsx";
 import { ProblemsPanel } from "./ProblemsPanel.tsx";
@@ -24,8 +25,14 @@ interface GraphViewProps {
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   /** Applies an edit to the draft. */
   onEdit: (edit: GraphEdit) => void;
-  /** Hands over a way to read the canvas viewport now. */
-  onReady?: (getViewport: () => Viewport) => void;
+  /** The selected nodes, all of them in the graph. */
+  selected: ReadonlySet<string>;
+  /** Changes each time nodes are chosen, so the inspector starts afresh. */
+  selectionKey: number;
+  /** Selects these nodes. `keepInspector` keeps the inspector's place, as after a rename. */
+  onSelect: (ids: readonly string[], keepInspector?: boolean) => void;
+  /** Hands over the canvas, for the builder's keys, once it is ready. */
+  onReady?: (canvas: BuilderCanvas) => void;
   /** Called with the SDK's verdict each time the content is validated: null when it is valid. */
   onValidated?: (verdict: string | null) => void;
   problemsShown: boolean;
@@ -62,6 +69,18 @@ export const UndrawnGraphProblems: FC<{ content: unknown; problemsShown: boolean
   );
 };
 
+/** The canvas as the builder's keys see it. */
+export interface BuilderCanvas extends CanvasControls {
+  /** Whether a keydown's target is in the canvas region: the canvas and its palette. */
+  contains: (target: Node | null) => boolean;
+  /** Puts focus in the canvas region, as after deleting the focused node. */
+  focus: () => void;
+  fitView: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomReset: () => void;
+}
+
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const NO_DIAGNOSTICS: never[] = [];
@@ -81,6 +100,9 @@ const GraphViewInner: FC<GraphViewProps> = ({
   onViewportChange,
   onMoveNodes,
   onEdit,
+  selected,
+  selectionKey,
+  onSelect,
   onReady,
   onValidated,
   problemsShown,
@@ -94,16 +116,28 @@ const GraphViewInner: FC<GraphViewProps> = ({
   useEffect(() => {
     if (verdict !== undefined) onValidated?.(verdict);
   }, [verdict, onValidated]);
-  // `chosen` counts selections, so the inspector starts afresh for each node chosen but
-  // keeps its place when the selected node is renamed.
-  const [selection, setSelection] = useState<{ id: string | null; chosen: number }>({ id: null, chosen: 0 });
-  const choose = useCallback((id: string | null) => setSelection((s) => ({ id, chosen: s.chosen + 1 })), []);
+  const choose = useCallback((id: string | null) => onSelect(id === null ? [] : [id]), [onSelect]);
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : NO_DIAGNOSTICS;
   const issues = useMemo(() => issuesByNode(diagnostics), [diagnostics]);
   const nodeIds = useMemo(() => new Set(graph.nodes.map((n) => n.id)), [graph]);
-  const selectedNode = graph.nodes.find((n) => n.id === selection.id) ?? null;
-  const selectedId = selectedNode?.id ?? null;
+  const selectedNode = selected.size === 1 ? (graph.nodes.find((n) => selected.has(n.id)) ?? null) : null;
+
+  const canvasReady = useCallback(
+    (controls: CanvasControls) => {
+      const duration = () => (prefersReducedMotion() ? 0 : 200);
+      onReady?.({
+        ...controls,
+        contains: (target) => canvasBox.current?.contains(target) ?? false,
+        focus: () => canvasBox.current?.focus(),
+        fitView: () => void flow.fitView({ duration: duration() }),
+        zoomIn: () => void flow.zoomIn({ duration: duration() }),
+        zoomOut: () => void flow.zoomOut({ duration: duration() }),
+        zoomReset: () => void flow.zoomTo(1, { duration: duration() }),
+      });
+    },
+    [flow, onReady]
+  );
 
   const zoomTo = useCallback(
     (nodeId: string) => {
@@ -138,19 +172,20 @@ const GraphViewInner: FC<GraphViewProps> = ({
   return (
     <div className="flex-1 min-h-0 flex">
       <div className="flex-1 min-w-0 flex flex-col">
-        <div ref={canvasBox} className="flex-1 min-h-0 relative">
+        {/* Focusable, so a click on empty canvas puts focus in the canvas region for its keys. */}
+        <div ref={canvasBox} tabIndex={-1} className="flex-1 min-h-0 relative outline-none">
           <GraphCanvas
             graph={graph}
             positions={positions}
             viewport={viewport}
             onViewportChange={onViewportChange}
             issues={issues}
-            selectedId={selectedId}
+            selected={selected}
             onSelectNode={choose}
             onPaneClick={clearSelection}
             onEdit={onEdit}
             onMoveNodes={onMoveNodes}
-            onReady={onReady}
+            onReady={canvasReady}
           />
           <Palette onAdd={addNode} full={graph.nodes.length >= MAX_NODES} />
         </div>
@@ -164,12 +199,13 @@ const GraphViewInner: FC<GraphViewProps> = ({
       </div>
       <Inspector
         rootRef={inspectorRef}
-        selectionKey={selection.chosen}
+        selectionKey={selectionKey}
         graph={graph}
         node={selectedNode}
+        selectionCount={selected.size}
         diagnostics={diagnostics}
         onEdit={onEdit}
-        onRenamed={(id) => setSelection((s) => ({ ...s, id }))}
+        onRenamed={(id) => onSelect([id], true)}
         onDeleted={() => {
           choose(null);
           // The delete button is gone; focus stays in the builder, so its keys still work.

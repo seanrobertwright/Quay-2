@@ -1,0 +1,4 @@
+{
+  "typecheck": { "expect": "fail", "lineStartsWith": "Found 24 errors" },
+  "tests": { "expect": "pass", "passed": 12 }
+}

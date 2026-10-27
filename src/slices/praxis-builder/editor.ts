@@ -4,8 +4,9 @@
 // `dependsOn`. An edit works on the record's JSON as it is, so a node it doesn't touch
 // keeps whatever it holds, even when that is something the SDK refuses.
 import { withChanges, type GraphDraft } from "./drafts.ts";
+import type { Step } from "./history.ts";
 import { NODE_KINDS_REGISTRY } from "./kinds.ts";
-import { MAX_NODES, type Json, type JsonObject, type NodeKind, type XYPosition } from "./model.ts";
+import { hasOwn, isObject, MAX_NODES, type Json, type JsonObject, type NodeKind, type XYPosition } from "./model.ts";
 
 export type Branch = "then" | "else";
 
@@ -26,18 +27,28 @@ export type GraphEdit =
   | { type: "rename-node"; from: string; to: string }
   /** Removes a node, its position, and every `dependsOn` entry and branch that names it. */
   | { type: "delete-node"; id: string }
-  /** Sets one entry of a node's config. */
-  | { type: "set-config"; id: string; key: string; value: Json };
+  /**
+   * Sets one entry of a node's config. `live` marks a keystroke in a field that applies as it
+   * is typed, so it merges into the step before it (#248).
+   */
+  | { type: "set-config"; id: string; key: string; value: Json; live?: boolean }
+  /**
+   * Sets a node's `inputSchema` or `outputSchema`, or removes it when `schema` is null. `live`
+   * marks a keystroke, as for `set-config`.
+   */
+  | { type: "set-schema"; id: string; which: SchemaSlot; schema: JsonObject | null; live?: boolean };
+
+export type SchemaSlot = "inputSchema" | "outputSchema";
 
 /** The SDK's longest node id, in characters (code points, as JSON Schema counts them). */
 const MAX_ID_LENGTH = 256;
-
-const isObject = (v: unknown): v is JsonObject => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // A draft's record always has a `nodes` list of objects with unique string ids: parseGraph
 // refuses anything else, and no edit makes one.
 const nodesOf = (content: JsonObject): JsonObject[] =>
   Array.isArray(content.nodes) ? content.nodes.filter(isObject) : [];
+/** The ids of a draft record's nodes, in file order. */
+export const nodeIdsOf = (content: JsonObject): string[] => nodesOf(content).map((n) => n.id as string);
 const depsOf = (node: JsonObject): Json[] => (Array.isArray(node.dependsOn) ? node.dependsOn : []);
 const configOf = (node: JsonObject): JsonObject => (isObject(node.config) ? node.config : {});
 const isDecision = (node: JsonObject) => node.kind === "DECISION";
@@ -63,6 +74,35 @@ export function renameProblem(nodeIds: readonly string[], from: string, to: stri
   if ([...to].length > MAX_ID_LENGTH) return `An id can be at most ${MAX_ID_LENGTH} characters long.`;
   if (to !== from && nodeIds.includes(to)) return `Another node already has the id "${to}".`;
   return null;
+}
+
+/**
+ * The undo step an edit makes: one step each, except that live keystrokes in one field of
+ * one node merge until the field's blur, Enter or another edit ends the merge (#248).
+ */
+export function stepFor(edit: GraphEdit): Step {
+  switch (edit.type) {
+    case "add-node":
+      return { label: `Add ${edit.id}` };
+    case "connect":
+      return { label: `Connect ${edit.source} to ${edit.target}` };
+    case "disconnect":
+      return { label: `Disconnect ${edit.source} from ${edit.target}` };
+    case "set-branch":
+      return { label: edit.target ? `Point ${edit.branch} of ${edit.decision} at ${edit.target}` : `Clear ${edit.branch} of ${edit.decision}` };
+    case "rename-node":
+      return { label: `Rename ${edit.from} to ${edit.to}` };
+    case "delete-node":
+      return { label: `Delete ${edit.id}` };
+    case "set-config": {
+      const label = `Set ${edit.key} of ${edit.id}`;
+      return edit.live ? { label, merge: { key: `${edit.id}|config.${edit.key}` } } : { label };
+    }
+    case "set-schema": {
+      const label = `${edit.schema === null ? "Remove" : "Set"} ${edit.which} of ${edit.id}`;
+      return edit.live ? { label, merge: { key: `${edit.id}|${edit.which}` } } : { label };
+    }
+  }
 }
 
 /** The draft after `edit`, or the same draft when the edit changes nothing or doesn't apply. */
@@ -165,8 +205,23 @@ function apply(nodes: JsonObject[], positions: ReadonlyMap<string, XYPosition>, 
       return mapped((n) => {
         if (n.id !== id) return n;
         const config = configOf(n);
-        const same = Object.prototype.hasOwnProperty.call(config, key) && JSON.stringify(config[key]) === JSON.stringify(value);
+        const same = hasOwn(config, key) && JSON.stringify(config[key]) === JSON.stringify(value);
         return same ? n : { ...n, config: { ...config, [key]: value } };
+      });
+    }
+
+    case "set-schema": {
+      const { id, which, schema } = edit;
+      return mapped((n) => {
+        if (n.id !== id) return n;
+        const had = hasOwn(n, which);
+        if (schema === null) {
+          if (!had) return n;
+          const next = { ...n };
+          delete next[which];
+          return next;
+        }
+        return had && JSON.stringify(n[which]) === JSON.stringify(schema) ? n : { ...n, [which]: schema };
       });
     }
   }
