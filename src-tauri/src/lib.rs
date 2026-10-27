@@ -39,7 +39,7 @@ use slices::orchestrator::{
 use slices::praxis::{praxis_list, praxis_read, praxis_reveal, praxis_save, praxis_validate};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
-    rename_terminal, resize_pty, spawn_terminal, write_pty, PtyManager,
+    rename_terminal, resize_pty, save_terminal_screens, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
@@ -59,6 +59,7 @@ pub fn run() {
     let machina_manager = MachinaManager::new();
 
     let pty_manager_clone = pty_manager.clone();
+    let exiting_terminals = pty_manager.clone();
     let machina_pty = pty_manager.clone();
     let bridge_state_clone = bridge_state.clone();
     let a2a_router_clone = a2a_router.clone();
@@ -145,6 +146,7 @@ pub fn run() {
             list_terminals,
             rename_terminal,
             relaunch_terminal,
+            save_terminal_screens,
             dismiss_plugin_hint,
             get_pig_tested_version,
             list_projects,
@@ -212,6 +214,12 @@ pub fn run() {
             praxis_save,
             praxis_validate,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| {
+            // Terminals still running when Quay closes come back showing their last screen
+            if let tauri::RunEvent::Exit = event {
+                exiting_terminals.save_all_screens();
+            }
+        });
 }

@@ -280,6 +280,10 @@ pub struct TerminalInfo {
     /// Command line for `Command` terminals; reused on relaunch.
     #[serde(default)]
     pub command_text: Option<String>,
+    /// The Claude Code session a Claude terminal last reported through the event-bridge
+    /// plugin; relaunch resumes it.
+    #[serde(default)]
+    pub claude_session_id: Option<String>,
     #[serde(default)]
     pub created_at: u64,
     /// Whether the pane shows the plugin hint: this launch's silence clock ran out
@@ -382,6 +386,8 @@ pub struct PersistedTerminalSession {
     #[serde(default)]
     pub custom_flags: Option<String>,
     #[serde(default)]
+    pub claude_session_id: Option<String>,
+    #[serde(default)]
     pub last_updated: u64,
     #[serde(default)]
     pub created_at: u64,
@@ -405,6 +411,7 @@ pub fn test_terminal(id: &str, run_kind: RunKind, claude_status: ClaudeStatus) -
         custom_name: false,
         custom_flags: None,
         command_text: None,
+        claude_session_id: None,
         created_at: 0,
         plugin_hint: false,
     }

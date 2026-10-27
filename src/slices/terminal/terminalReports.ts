@@ -34,3 +34,23 @@ const TERMINAL_REPORTS: RegExp[] = [
 export function isTerminalReport(data: string): boolean {
   return TERMINAL_REPORTS.some((re) => re.test(data));
 }
+
+/**
+ * A cursor position query (ESC[6n, or DECXCPR's ESC[?6n) as the last thing in a snapshot. ConPTY
+ * sends one as a new terminal's first output and starts the shell only once it is answered.
+ * Other queries, such as the XTVERSION query Claude Code sends while it sits idle, are left to
+ * the replay: the program goes on without their reply, so a remount answering them again would
+ * only type that reply into it.
+ */
+const TRAILING_CURSOR_QUERY = /\x1b\[\??6n$/;
+
+/**
+ * Splits a replay of a terminal's saved output into the part whose queries are old and a cursor
+ * position query at its very end. With no output after it, the program is still waiting on that
+ * query, so its reply must reach the program. Any earlier query was answered when it first arrived.
+ */
+export function splitPendingQueries(data: string): { replayed: string; pending: string } {
+  const match = TRAILING_CURSOR_QUERY.exec(data);
+  if (match === null) return { replayed: data, pending: "" };
+  return { replayed: data.slice(0, match.index), pending: match[0] };
+}
