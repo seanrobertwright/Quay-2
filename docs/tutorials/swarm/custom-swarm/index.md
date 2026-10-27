@@ -376,7 +376,7 @@ npm test; git status --short
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 5: Bug Hunt](/tutorials/swarm/bug-hunt/)
 
-The next tutorial in series order, Swarm 5: Bug Hunt, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Hand a bug report to four agents that reproduce, trace, patch and verify each bug in turn.
 :::
