@@ -9,9 +9,9 @@ Three Claude Code agents convert one small JavaScript project to TypeScript at t
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to build a custom swarm for one job in the Swarm Launcher's builder, with a role prompt for each agent; how to give each agent one folder and a frozen test suite as its contract; how to use a shell pane as the swarm's shared gauge; and how to jump between terminals with `Ctrl+B 1` to `Ctrl+B 5`.
+**You'll learn:** how to build a custom swarm for one job in the Swarm Launcher's builder, with a role prompt for each agent; how to give each agent one folder and a frozen test suite as its contract; how to use a shell pane as the swarm's shared gauge; and how to jump between terminals with `Ctrl+Shift+B 1` to `Ctrl+Shift+B 5`.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
 
 Each **Paste** box below has a copy button at its top right. To paste into a pane, move focus to it, press `Ctrl+V`, then press Enter to run the command or send the prompt. A role prompt goes into a box in the Swarm Launcher instead: paste it there and don't press Enter.
 
@@ -34,8 +34,8 @@ The starter is `receipt`, a command-line tool in plain JavaScript that reads a s
 
 ::: do
 1. Download [`js-to-typescript.zip`](/starters/js-to-typescript.zip) and unzip it into a new, empty folder.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console** and click **Start Terminal (Enter)**.
 :::
 
 ::: paste PowerShell pane
@@ -78,7 +78,7 @@ The starter needs Node.js 24 or later. Check with `node --version`, install a ne
 No built-in preset gives each of three agents one folder and adds a shell pane, so you build this swarm yourself. You launch it without saving it; nothing reuses it.
 
 ::: do
-1. Press `Ctrl+B S` to open the Swarm Launcher, then click **Create Custom Swarm** in the bar under its title.
+1. Press `Ctrl+Shift+B S` to open the Swarm Launcher, then click **Create Custom Swarm** in the bar under its title.
 2. In **Swarm Name**, replace `Custom Swarm` with `JS to TS`.
 3. Under **Layout Arrangement**, click **2x2 Quad Grid**.
 4. Click **Add Agent** twice, so the **Agents Roster** has four rows. New rows start on **Claude Code**.
@@ -186,7 +186,7 @@ You are the CLI Migrator. You own src/cli/ and nothing else, including its impor
 1. Click **Launch Swarm Now**, the green button at the right of the launcher's footer, after **Cancel** and **Save**. Don't click **Save**: this swarm isn't kept.
 :::
 
-The launcher closes and the four panes open in a 2x2 grid, in roster order. The PowerShell pane from step 1 is still open: it is listed in the rail, just not on the stage. Terminals keep the order you opened them in, so `Ctrl+B 1` is the PowerShell pane from step 1, and `Ctrl+B 2` to `Ctrl+B 5` are `parse-agent`, `format-agent`, `cli-agent` and `tsc-watcher`.
+The launcher closes and the four panes open in a 2x2 grid, in roster order. The PowerShell pane from step 1 is still open: it is listed in the rail, just not on the stage. Terminals keep the order you opened them in, so `Ctrl+Shift+B 1` is the PowerShell pane from step 1, and `Ctrl+Shift+B 2` to `Ctrl+Shift+B 5` are `parse-agent`, `format-agent`, `cli-agent` and `tsc-watcher`.
 
 ::: see
 ![A 2x2 grid: parse-agent, format-agent and cli-agent each confirm their role and folder in one line and wait, and tsc-watcher at bottom right sits at a PowerShell prompt.](./05-swarm-launched.webp)
@@ -220,7 +220,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 The starter's `tsconfig.json` checks the JavaScript in `src/` as strictly as TypeScript, so it starts with 24 errors, 8 in each folder. Renaming a file to `.ts` doesn't remove an error; adding the right type does. The watcher re-checks on every save, so its count is the whole team's progress.
 
 ::: do
-1. Press `Ctrl+B 5` to move focus to `tsc-watcher`. Its border lights up.
+1. Press `Ctrl+Shift+B 5` to move focus to `tsc-watcher`. Its border lights up.
 :::
 
 ::: paste `tsc-watcher`
@@ -246,7 +246,7 @@ npm run typecheck:watch
 `npm install` didn't finish in step 1. Paste `npm install` into `tsc-watcher`, wait for it to finish, then paste `npm run typecheck:watch` again.
 :::
 
-::: ifnot Ctrl+B 5 focused a different pane
+::: ifnot Ctrl+Shift+B 5 focused a different pane
 The terminals are numbered in the order they were opened. If you opened another terminal in this project before step 1, the numbers shift by one: click `tsc-watcher`'s pane instead.
 :::
 
@@ -257,7 +257,7 @@ The terminals are numbered in the order they were opened. If you opened another 
 ## 7. Brief parse-agent
 
 ::: do
-1. Press `Ctrl+B 2` to move focus to `parse-agent`.
+1. Press `Ctrl+Shift+B 2` to move focus to `parse-agent`.
 :::
 
 ::: paste `parse-agent`
@@ -289,7 +289,7 @@ Convert src/parse/ from JavaScript to TypeScript now, as your role says: git mv 
 Don't wait for `parse-agent` to finish: the two folders don't share any code.
 
 ::: do
-1. Press `Ctrl+B 3` to move focus to `format-agent`.
+1. Press `Ctrl+Shift+B 3` to move focus to `format-agent`.
 :::
 
 ::: paste `format-agent`
@@ -320,7 +320,7 @@ Convert src/format/ from JavaScript to TypeScript now, as your role says: git mv
 `src/cli/` imports the other two folders through their `index` files, which `parse-agent` and `format-agent` are renaming right now. The type checker and the tests still find a renamed file by its old `.js` name, but Node doesn't, so `cli-agent` points its imports at the `.ts` names once they exist.
 
 ::: do
-1. Press `Ctrl+B 4` to move focus to `cli-agent`.
+1. Press `Ctrl+Shift+B 4` to move focus to `cli-agent`.
 :::
 
 ::: paste `cli-agent`
@@ -354,9 +354,9 @@ That's the seam working: it needs their types and their `.ts` file names. When `
 ## 10. Watch the count fall
 
 ::: do
-1. Press `Ctrl+B 5` to move focus to `tsc-watcher`, then press `Ctrl+B Z` to zoom it to the whole stage.
+1. Press `Ctrl+Shift+B 5` to move focus to `tsc-watcher`, then press `Ctrl+Shift+B Z` to zoom it to the whole stage.
 2. Watch the `Found N errors` line: every save by any agent re-runs the check and changes it.
-3. When it reads `Found 0 errors`, press `Ctrl+B Z` to put the grid back.
+3. When it reads `Found 0 errors`, press `Ctrl+Shift+B Z` to put the grid back.
 4. Wait until each Claude Code pane ends with its `DONE` line and its header shows a green dot and `Ready`.
 :::
 
@@ -396,7 +396,7 @@ Paste `Replace every any, @ts-ignore and @ts-expect-error in your folder with a 
 The check runs in the PowerShell pane from step 1, and the watcher keeps running.
 
 ::: do
-1. Press `Ctrl+B 1`. The PowerShell pane from step 1 takes the place of the pane that had focus, `tsc-watcher`, which keeps running in the rail.
+1. Press `Ctrl+Shift+B 1`. The PowerShell pane from step 1 takes the place of the pane that had focus, `tsc-watcher`, which keeps running in the rail.
 :::
 
 ::: paste PowerShell pane
