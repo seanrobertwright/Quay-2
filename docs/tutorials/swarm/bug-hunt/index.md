@@ -309,7 +309,7 @@ The patch fixed the reproducer's tests but not all the behaviour behind them. Pr
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 7: JS to TypeScript migration](/tutorials/swarm/js-to-typescript/)
 
-The next tutorial in series order, Swarm 6: Red Team / Blue Team: notes app, isn't published yet. The Tutorials page lists every tutorial that is.
+The next tutorial in series order. Have three agents convert a JavaScript project to TypeScript, one folder each, while `tsc --watch` counts the errors down to zero.
 :::

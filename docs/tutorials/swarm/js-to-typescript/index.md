@@ -194,7 +194,7 @@ The launcher closes and the four panes open in a 2x2 grid, in roster order. The 
 
 ::: must
 - Four panes in a 2x2 grid: `parse-agent` top left, `format-agent` top right, `cli-agent` bottom left and `tsc-watcher` bottom right.
-- The first line in each Claude Code pane reads `Role: Parse Migrator`, `Role: Format Migrator` or `Role: CLI Migrator`.
+- In the rail under each agent's name, its role is listed: `Role: Parse Migrator`, `Role: Format Migrator` or `Role: CLI Migrator`.
 - Each agent confirms its role and its folder, and waits for your task.
 :::
 
