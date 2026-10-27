@@ -231,7 +231,7 @@ Paste `Run git checkout -- test to undo your changes there, then make the tests 
 :::
 
 ::: see
-![test-architect's reply reads All 22 tests pass, then RELAY DONE as its last line. All three Claude Code panes say Ready, and test-runner is still green.](./06-relay-done.webp)
+![test-architect's reply reports every test passing, then RELAY DONE as its last line. All three Claude Code panes say Ready, and test-runner is still green.](./06-relay-done.webp)
 :::
 
 ::: must
@@ -326,7 +326,7 @@ npm test; npm run typecheck; npx vitest run --config check/vitest.config.ts; git
 :::
 
 ::: ifnot some check tests fail
-The relay built what its own tests asked for, not everything `AGENTS.md` says. Press `Ctrl+Shift+B Z` to put the grid back, then paste `These check tests fail: <paste the failing names>. Add tests for them to test/duration.test.ts, then hand off to feature-impl exactly as before.` into `test-architect`, with the failing names in place of the angle brackets. Paste `npm run test:watch` into `test-runner`, and follow steps 5 to 8 again.
+The relay built what its own tests asked for, not everything `AGENTS.md` says. Press `Ctrl+Shift+B Z` to put the grid back, then paste `These check tests fail: <paste the failing names>. Add tests for them to test/duration.test.ts, then hand off to feature-impl exactly as before.` into `test-architect`, with the failing names in place of the angle brackets. Paste `npm run test:watch` into `test-runner` and watch steps 5 and 6 again. When `test-architect` ends with `RELAY DONE`, click inside `test-runner`, press `q`, press `Ctrl+Shift+B Z`, and paste this step's line again. `check` is already in place, so don't download it a second time.
 :::
 
 ::: done

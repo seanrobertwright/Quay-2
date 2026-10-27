@@ -9,7 +9,7 @@ whole number of seconds.
 - Each part is a whole number, digits only and leading zeros allowed, followed at once by a
   lowercase unit: `h` (hours), `m` (minutes) or `s` (seconds).
 - Each unit appears at most once, and the units that appear come in the order `h`, `m`, `s`.
-- A number may be any size: `90m` is 5400 and `0s` is 0.
+- A number may go past its unit's usual range: `90m` is 5400 and `0s` is 0.
 
 ## Examples
 

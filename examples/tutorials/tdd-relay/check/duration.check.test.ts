@@ -22,7 +22,7 @@ describe("invalid durations", () => {
     "%j throws a RangeError naming the input",
     (text) => {
       expect(() => parseDuration(text)).toThrow(RangeError);
-      expect(() => parseDuration(text)).toThrow(`invalid duration: ${text}`);
+      expect(() => parseDuration(text)).toThrow(new RangeError(`invalid duration: ${text}`));
     },
   );
 });
