@@ -26,9 +26,21 @@ pub struct ScreenSnapshot {
     pub data: String,
 }
 
+/// The DEC private modes that switch to the alternate screen: 1049, 1047 and 47.
+const ENTER_ALTERNATE: [&str; 3] = ["\x1b[?1049h", "\x1b[?1047h", "\x1b[?47h"];
+
 /// Parses a terminal's output at the PTY's size, following its resizes.
+///
+/// A full-screen program such as Claude Code draws on the alternate screen, which hides the
+/// normal screen and its scrollback, and the parser can't render the normal screen again
+/// until the program switches back. So the recorder renders the normal screen at the moment
+/// of the switch and keeps it while the program runs.
 pub struct ScreenRecorder {
     parser: vt100::Parser,
+    /// The normal screen's text from when a program switched to the alternate screen.
+    covered: Option<String>,
+    /// The end of the last output when it could be the start of a switch, fed with the next.
+    held: String,
 }
 
 /// A PTY dimension as the parser takes it. A PTY is never 0 rows or columns; 1 stands in.
@@ -38,11 +50,30 @@ fn dimension(n: u16) -> std::num::NonZeroU16 {
 
 impl ScreenRecorder {
     pub fn new(rows: u16, cols: u16) -> Self {
-        Self { parser: vt100::Parser::new(dimension(rows), dimension(cols), SNAPSHOT_SCROLLBACK_ROWS) }
+        Self {
+            parser: vt100::Parser::new(dimension(rows), dimension(cols), SNAPSHOT_SCROLLBACK_ROWS),
+            covered: None,
+            held: String::new(),
+        }
     }
 
     pub fn feed(&mut self, text: &str) {
-        self.parser.process(text.as_bytes());
+        let text = std::mem::take(&mut self.held) + text;
+        let mut rest = text.as_str();
+        while let Some((at, len)) = next_switch(rest) {
+            self.parser.process(&rest.as_bytes()[..at]);
+            if !self.on_alternate_screen() {
+                self.covered = Some(self.render());
+            }
+            self.parser.process(&rest.as_bytes()[at..at + len]);
+            rest = &rest[at + len..];
+        }
+        let keep = partial_switch_len(rest);
+        self.parser.process(&rest.as_bytes()[..rest.len() - keep]);
+        self.held = rest[rest.len() - keep..].to_string();
+        if !self.on_alternate_screen() {
+            self.covered = None;
+        }
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {
@@ -56,19 +87,45 @@ impl ScreenRecorder {
     }
 
     /// The scrollback and screen, with trailing blank lines and spaces dropped. A row that
-    /// wrapped onto the next is joined to it, so the text wraps again at any width.
+    /// wrapped onto the next is joined to it, so the text wraps again at any width. While a
+    /// program is on the alternate screen, its screen follows the normal screen it covers.
     pub fn snapshot(&self) -> ScreenSnapshot {
-        let screen = self.parser.screen();
-        let (rows, cols) = screen.size();
+        let (rows, cols) = self.parser.screen().size();
+        let shown = self.render();
+        let body = match self.covered.as_deref() {
+            Some(covered) if self.on_alternate_screen() && !covered.is_empty() && !shown.is_empty() => {
+                format!("{covered}\x1b[0m\r\n{shown}")
+            }
+            Some(covered) if self.on_alternate_screen() && shown.is_empty() => covered.to_string(),
+            _ => shown,
+        };
+        ScreenSnapshot { rows: rows.get(), cols: cols.get(), data: format!("\x1b[0m{body}\x1b[0m") }
+    }
+
+    /// The screen the parser shows, with its scrollback, as `snapshot` lays it out.
+    fn render(&self) -> String {
         let mut basic = String::new();
         let range = vt100::capture::BasicFormattedCaptureRange::Full(&mut Default::default());
         // Writing to a String can't fail
-        let _ = screen.write_contents_formatted_basic(&mut basic, range);
+        let _ = self.parser.screen().write_contents_formatted_basic(&mut basic, range);
         let lines: Vec<&str> = basic.split('\n').collect();
         let last = lines.iter().rposition(|line| !is_blank(line)).map_or(0, |i| i + 1);
-        let body = lines[..last].iter().map(|line| line.trim_end_matches(' ')).collect::<Vec<_>>().join("\r\n");
-        ScreenSnapshot { rows: rows.get(), cols: cols.get(), data: format!("\x1b[0m{body}\x1b[0m") }
+        lines[..last].iter().map(|line| line.trim_end_matches(' ')).collect::<Vec<_>>().join("\r\n")
     }
+}
+
+/// Where the first switch to the alternate screen in `text` starts, and its length.
+fn next_switch(text: &str) -> Option<(usize, usize)> {
+    ENTER_ALTERNATE.iter().filter_map(|seq| text.find(seq).map(|at| (at, seq.len()))).min()
+}
+
+/// How many bytes at the end of `text` could begin a switch to the alternate screen.
+fn partial_switch_len(text: &str) -> usize {
+    ENTER_ALTERNATE
+        .iter()
+        .flat_map(|seq| (1..seq.len()).filter(|&n| text.ends_with(&seq[..n])))
+        .max()
+        .unwrap_or(0)
 }
 
 /// Whether a captured line shows nothing: only spaces and SGR codes.
@@ -94,9 +151,6 @@ pub const SAVE_AT_LEAST_EVERY: Duration = Duration::from_secs(30);
 /// `SAVE_AFTER_IDLE` or has waited `SAVE_AT_LEAST_EVERY`, and on demand. Once discarded,
 /// because the terminal was closed or replaced, it never writes again, so a reader finishing
 /// late can't bring back a file the close deleted.
-///
-/// While a program is on the alternate screen (a full-screen app), nothing is saved: the
-/// last save of the normal screen, with the shell's history, stays the one restored.
 pub struct ScreenKeeper {
     dir: PathBuf,
     terminal_id: String,
@@ -165,13 +219,12 @@ impl ScreenKeeper {
         self.state.lock().discarded = true;
     }
 
-    /// Saves when `due` says so, unless the keeper was discarded or a program is on the
-    /// alternate screen. Returns whether it saved.
+    /// Saves when `due` says so, unless the keeper was discarded. Returns whether it saved.
     fn save_when(&self, due: impl FnOnce(Option<(Instant, Instant)>) -> bool) -> bool {
         let _writing = self.write_lock.lock();
         let snapshot = {
             let mut state = self.state.lock();
-            if state.discarded || state.recorder.on_alternate_screen() || !due(state.unsaved) {
+            if state.discarded || !due(state.unsaved) {
                 return false;
             }
             state.unsaved = None;
@@ -410,19 +463,34 @@ mod tests {
     }
 
     #[test]
-    fn a_full_screen_app_leaves_the_last_normal_screen_saved() {
+    fn a_full_screen_app_is_saved_below_the_normal_screen_it_covers() {
         let dir = temp_dir();
         let keeper = ScreenKeeper::new(&dir, "term-alt", 10, 30, None);
         keeper.feed("PS> history\r\n", Instant::now());
-        keeper.save_now();
         keeper.feed("\x1b[?1049h\x1b[Hfull-screen frame", Instant::now());
+        keeper.feed("\x1b[2J\x1b[Hlast frame\r\n> prompt", Instant::now());
         keeper.save_now();
-        assert_eq!(saved_lines(&dir, "term-alt").unwrap(), ["PS> history"]);
+        assert_eq!(saved_lines(&dir, "term-alt").unwrap(), ["PS> history", "last frame", "> prompt"]);
 
         keeper.feed("\x1b[?1049lPS> back", Instant::now());
         keeper.save_now();
         assert_eq!(saved_lines(&dir, "term-alt").unwrap(), ["PS> history", "PS> back"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn output_just_before_the_switch_in_the_same_chunk_is_kept() {
+        let mut recorder = ScreenRecorder::new(10, 30);
+        recorder.feed("trust this folder? yes\r\n\x1b[?1049h\x1b[Hagent at work");
+        assert_eq!(plain_lines(&recorder.snapshot()), ["trust this folder? yes", "agent at work"]);
+    }
+
+    #[test]
+    fn a_switch_split_across_chunks_still_keeps_the_normal_screen() {
+        let mut recorder = ScreenRecorder::new(10, 30);
+        recorder.feed("PS> claude\r\n\x1b[?10");
+        recorder.feed("49h\x1b[Hagent at work");
+        assert_eq!(plain_lines(&recorder.snapshot()), ["PS> claude", "agent at work"]);
     }
 
     #[test]
