@@ -8,6 +8,17 @@ export interface NodeIssues {
   severity: Severity;
 }
 
+/** A stable key per diagnostic from what it says, numbered when two say the same thing. */
+export function withKeys(diagnostics: readonly Diagnostic[]): [string, Diagnostic][] {
+  const seen = new Map<string, number>();
+  return diagnostics.map((d) => {
+    const base = `${d.code}|${d.path}|${d.message}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return [n === 0 ? base : `${base}|${n}`, d];
+  });
+}
+
 /** Each node's issue count, keyed by node id, in the order the nodes first appear. */
 export function issuesByNode(diagnostics: readonly Diagnostic[]): Map<string, NodeIssues> {
   const byNode = new Map<string, NodeIssues>();
@@ -43,3 +54,26 @@ export function problemCounts(validation: Validation): { errors: number; info: n
     info: validation.diagnostics.length - errors + validation.omitted.info,
   };
 }
+
+/**
+ * One node's issues, grouped by the inspector control each is about: the first of `slots`
+ * that is the issue's field or a dotted prefix of it (`dependsOn` takes `dependsOn.1`).
+ * Issues on the whole node, or on a field with no control, are grouped under "".
+ */
+export function nodeIssuesBySlot(
+  diagnostics: readonly Diagnostic[],
+  nodeId: string,
+  slots: readonly string[]
+): Map<string, Diagnostic[]> {
+  const bySlot = new Map<string, Diagnostic[]>();
+  for (const d of diagnostics) {
+    if (d.nodeId !== nodeId) continue;
+    const field = d.field ?? "";
+    const slot = slots.find((s) => field === s || field.startsWith(`${s}.`)) ?? "";
+    const list = bySlot.get(slot);
+    if (list) list.push(d);
+    else bySlot.set(slot, [d]);
+  }
+  return bySlot;
+}
+

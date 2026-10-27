@@ -2,7 +2,7 @@
 // field, message and code. Choosing an issue on a node selects that node and zooms to it.
 import { useId, type FC } from "react";
 import { ChevronDown, ChevronRight, CircleAlert, Info, LoaderCircle } from "lucide-react";
-import { issueField, problemCounts } from "./issues.ts";
+import { issueField, problemCounts, withKeys } from "./issues.ts";
 import type { Diagnostic, Validation } from "./types.ts";
 
 export type ValidationStatus =
@@ -30,17 +30,6 @@ function summary(status: ValidationStatus): string {
   if (errors > 0) parts.push(plural(errors, "error", "errors"));
   if (info > 0) parts.push(`${info} info`);
   return parts.join(", ");
-}
-
-/** A stable key per diagnostic from what it says, numbered when two say the same thing. */
-function withKeys(diagnostics: readonly Diagnostic[]): [string, Diagnostic][] {
-  const seen = new Map<string, number>();
-  return diagnostics.map((d) => {
-    const base = `${d.code}|${d.path}|${d.message}`;
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
-    return [n === 0 ? base : `${base}|${n}`, d];
-  });
 }
 
 const rowGrid = "grid grid-cols-[minmax(6rem,1fr)_minmax(6rem,1fr)_minmax(12rem,4fr)_minmax(8rem,1fr)] gap-3";

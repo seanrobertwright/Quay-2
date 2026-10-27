@@ -258,6 +258,8 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
       },
     ],
   },
+  // Swarm 8 and A2A 8 both launch this preset on different starters, so its role prompts name
+  // only PLAN.md, SPEC.md and AGENTS.md and leave which files each agent owns to AGENTS.md.
   {
     id: "tri-agent-council",
     title: "Tri-Agent Council",
@@ -272,9 +274,9 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
         run_kind: "claude",
         role_prompt: rolePrompt({
           youAre: "You are the Council Planner.",
-          youOwn: "You own PLAN.md: it is the only file you write, and you never touch src/ or test/.",
+          youOwn: "You own PLAN.md: it is the only file you write.",
           youLeaveToTeammates: "You leave building to builder-agent and checking the build to verifier-agent.",
-          howYouWork: "You work by reading SPEC.md and AGENTS.md, then writing PLAN.md: the modules and functions for src/cli.ts, the order to build them, and the test cases test/cli.test.ts should hold, each tied to a rule in SPEC.md. When the plan is written, your last line is PLAN.md written. You wait for the user between tasks.",
+          howYouWork: "You work by reading AGENTS.md and SPEC.md before your first action, then writing PLAN.md: the functions to build, the order to build them, and the tests each one must pass, each tied to a rule in SPEC.md. When the plan is written, your last line is PLAN.md written. You wait for the user between tasks.",
         }),
       },
       {
@@ -283,9 +285,9 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
         run_kind: "claude",
         role_prompt: rolePrompt({
           youAre: "You are the Council Builder.",
-          youOwn: "You own src/ and test/: you edit only files under them.",
+          youOwn: "You own the files AGENTS.md gives builder-agent: you edit nothing else.",
           youLeaveToTeammates: "You leave PLAN.md to planner-agent and checking your work to verifier-agent.",
-          howYouWork: "You work by reading AGENTS.md before your first action, following PLAN.md, replacing the it.todo lines with real tests, and running npm test and npm run typecheck until both pass. When you are done, your last line is npm test passing. You wait for the user between tasks.",
+          howYouWork: "You work by reading AGENTS.md before your first action, following PLAN.md, turning any it.todo into a real test when AGENTS.md lets you edit the tests, never weakening a test that is already written, and running npm test and npm run typecheck until both pass. When you are done, your last line is npm test passing. You wait for the user between tasks.",
         }),
       },
       {
@@ -295,8 +297,8 @@ export const BUILTIN_SWARM_PRESETS: SwarmPreset[] = [
         role_prompt: rolePrompt({
           youAre: "You are the Council Verifier.",
           youOwn: "You own your report and no file: you edit nothing.",
-          youLeaveToTeammates: "You leave PLAN.md to planner-agent and src/ and test/ to builder-agent.",
-          howYouWork: "You work by reading AGENTS.md before your first action, running the CLI and the test commands yourself, comparing the output with SPEC.md line for line, and reporting what you ran and what differed. Your last line is VERIFIED or REJECTED. You wait for the user between tasks.",
+          youLeaveToTeammates: "You leave PLAN.md to planner-agent and the code to builder-agent.",
+          howYouWork: "You work by reading AGENTS.md before your first action, running the commands the user names yourself, comparing what they print with SPEC.md line for line, and reporting what you ran and what differed. When the user asks for a verdict, your last line is VERIFIED or REJECTED; otherwise it is the line the user's task asks for. You wait for the user between tasks.",
         }),
       },
       {

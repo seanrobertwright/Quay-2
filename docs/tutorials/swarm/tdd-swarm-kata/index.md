@@ -396,7 +396,7 @@ npm test; npm run typecheck; git status --short
 :::
 
 ::: next
-[Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/)
+[Swarm 3: Full-Stack Pair: bookmarks app](/tutorials/swarm/full-stack-pair/)
 
-The next tutorial in series order. Build a two-agent Docs Squad in the swarm builder, save it, and launch it again after a restart.
+The next tutorial in series order. Have two agents build a bookmarks app's API and React UI side by side, then open it in your browser.
 :::

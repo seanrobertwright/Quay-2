@@ -17,9 +17,8 @@ while ((Get-Date) -lt $end) {
     if (-not $known.ContainsKey($p.ProcessId)) {
       $known[$p.ProcessId] = $true
       $cl = if ($p.CommandLine) { $p.CommandLine.Substring(0, [Math]::Min(120, $p.CommandLine.Length)) } else { "" }
-      $log += "$(Get-Date -Format HH:mm:ss.fff) pid=$($p.ProcessId) $($p.Name) parent=$($p.ParentProcessId)/$($names[$p.ParentProcessId]) :: $cl"
+      "$(Get-Date -Format HH:mm:ss.fff) pid=$($p.ProcessId) $($p.Name) parent=$($p.ParentProcessId)/$($names[$p.ParentProcessId]) :: $cl"
     }
   }
   Start-Sleep -Milliseconds 300
 }
-$log

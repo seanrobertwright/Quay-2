@@ -1,7 +1,8 @@
 // The canvas for one Praxis graph: #226's variant A cards, laid out top to bottom, each
-// with a badge counting its validation issues. Nodes can be dragged; everything else about
-// the graph is read-only for now. It must sit inside a ReactFlowProvider, which the caller
-// supplies so a sibling (the Problems list) can move the viewport.
+// with a badge counting its validation issues. Nodes can be dragged and clicked to select
+// them, and dragging from one card's handle to another card connects them. It must
+// sit inside a ReactFlowProvider, which the caller supplies so a sibling (the Problems
+// list) can move the viewport.
 import { useMemo, useState, type FC } from "react";
 import {
   applyNodeChanges,
@@ -10,18 +11,20 @@ import {
   Handle,
   Position,
   ReactFlow,
+  type Connection,
   type NodeChange,
   type NodeProps,
   type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { configSummary, type PraxisGraph, type XYPosition } from "./model.ts";
-import { nodeKindMeta, UNKNOWN_KIND_META } from "./kinds.ts";
+import type { PraxisGraph, XYPosition } from "./model.ts";
+import { configSummary, nodeKindMeta, UNKNOWN_KIND_META } from "./kinds.ts";
+import type { GraphEdit } from "./editor.ts";
 import { EDGE_COLOR, graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
 import { NODE_WIDTH } from "./flow/layout.ts";
 import type { NodeIssues } from "./issues.ts";
 
-const handleClass = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117] !cursor-default";
+const handleClass = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117]";
 
 const IssueBadge: FC<{ issues: NodeIssues }> = ({ issues }) => (
   <span
@@ -49,7 +52,7 @@ const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
       style={{ width: NODE_WIDTH, borderTop: `3px solid ${meta.color}` }}
     >
       {issues && <IssueBadge issues={issues} />}
-      <Handle type="target" position={Position.Top} isConnectable={false} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
+      <Handle type="target" position={Position.Top} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
       <div
         className="flex items-center gap-1.5 px-2.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider"
         style={{ color: meta.color }}
@@ -79,9 +82,9 @@ const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
       </div>
       {node.kind === "DECISION" ? (
         <>
-          <Handle id="then" type="source" position={Position.Bottom} isConnectable={false} className={handleClass} style={{ left: "30%", background: EDGE_COLOR.then }} />
-          <Handle id="else" type="source" position={Position.Bottom} isConnectable={false} className={handleClass} style={{ left: "70%", background: EDGE_COLOR.else }} />
-          <Handle id="dep" type="source" position={Position.Right} isConnectable={false} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
+          <Handle id="then" type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ left: "30%", background: EDGE_COLOR.then }} />
+          <Handle id="else" type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ left: "70%", background: EDGE_COLOR.else }} />
+          <Handle id="dep" type="source" position={Position.Right} className={`${handleClass} !cursor-crosshair`} style={{ background: EDGE_COLOR.plain }} />
           <span className="absolute -bottom-4 text-[9px] font-semibold text-[#3fb950]" style={{ left: "30%", transform: "translateX(-50%)" }}>
             then
           </span>
@@ -90,7 +93,7 @@ const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
           </span>
         </>
       ) : (
-        <Handle type="source" position={Position.Bottom} isConnectable={false} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
+        <Handle type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ background: EDGE_COLOR.plain }} />
       )}
     </div>
   );
@@ -116,7 +119,10 @@ interface GraphCanvasProps {
   issues: ReadonlyMap<string, NodeIssues>;
   /** The node shown as selected, if any. */
   selectedId: string | null;
+  onSelectNode: (nodeId: string) => void;
   onPaneClick: () => void;
+  /** Called with the edit a new connection makes: a dependency, or a DECISION branch. */
+  onEdit: (edit: GraphEdit) => void;
   /** Called once per drag, on drop, with the final position of each node dragged. */
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   /** Hands over a way to read the viewport now, which a save writes to the layout file. */
@@ -130,7 +136,9 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   onViewportChange,
   issues,
   selectedId,
+  onSelectNode,
   onPaneClick,
+  onEdit,
   onMoveNodes,
   onReady,
 }) => {
@@ -154,6 +162,13 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     setNodes(shown);
   }
   const onNodesChange = (changes: NodeChange<PraxisFlowNode>[]) => setNodes((ns) => applyNodeChanges(changes, ns));
+  // A DECISION's then and else handles set that branch; every other handle adds a dependency.
+  const onConnect = ({ source, target, sourceHandle }: Connection) =>
+    onEdit(
+      sourceHandle === "then" || sourceHandle === "else"
+        ? { type: "set-branch", decision: source, branch: sourceHandle, target }
+        : { type: "connect", source, target }
+    );
   return (
     <ReactFlow
       nodes={nodes}
@@ -161,9 +176,13 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onNodeDragStop={(_, __, dragged) => onMoveNodes(dragged.map((n) => [n.id, n.position]))}
+      onNodeClick={(_, node) => onSelectNode(node.id)}
+      onConnect={onConnect}
+      isValidConnection={(c) => c.source !== c.target}
       onInit={(instance) => onReady?.(() => instance.getViewport())}
-      nodesConnectable={false}
+      // Selection and deletion go through the builder, so React Flow keeps neither.
       elementsSelectable={false}
+      deleteKeyCode={null}
       edgesFocusable={false}
       colorMode="dark"
       {...(viewport ? { defaultViewport: viewport } : { fitView: true })}
@@ -174,7 +193,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       aria-label={`Graph ${graph.id || "without an id"}`}
     >
       <Background gap={20} color="#21262d" />
-      <Controls showInteractive={false} />
+      {/* Bottom right, clear of the palette strip on the left. */}
+      <Controls position="bottom-right" showInteractive={false} />
     </ReactFlow>
   );
 };

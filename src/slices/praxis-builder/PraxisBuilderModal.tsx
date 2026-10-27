@@ -1,7 +1,7 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
-// definitions and shows a graph on the canvas, with its validation problems, where its
-// nodes can be dragged and saved. Closing only hides it, so each project's session, drafts included, survives until Quay
-// quits. Quitting with unsaved drafts asks first.
+// definitions and shows a graph on the canvas, with its validation problems, where it can
+// be edited and saved. Closing only hides it, so each project's session, drafts included,
+// survives until Quay quits. Quitting with unsaved drafts asks first.
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -24,6 +24,7 @@ import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS } from "./kinds.ts";
 import { GraphView, UndrawnGraphProblems } from "./GraphView.tsx";
 import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
+import { editDraft, type GraphEdit } from "./editor.ts";
 import {
   applyDiskRead,
   definitionKey,
@@ -247,7 +248,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         if (!d) return cur;
         const next =
           outcome.status === "saved"
-            ? markSaved(d, { content: outcome.content as JsonObject, contentHash: outcome.contentHash }, layout)
+            ? markSaved(
+                d,
+                { content: outcome.content as JsonObject, contentHash: outcome.contentHash },
+                { content: draft.content, layout }
+              )
             : outcome.reason === "deleted"
               ? markDeletedOnDisk(d)
               : d;
@@ -389,6 +394,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           const d = cur.drafts[openKey];
           if (!d) return cur;
           const next = moveNodes(d, moved);
+          return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [openKey]: next } };
+        })
+      );
+    },
+    [projectPath, openKey]
+  );
+
+  const editOpen = useCallback(
+    (edit: GraphEdit) => {
+      if (!projectPath || !openKey) return;
+      setSessions((s) =>
+        updateSession(s, projectPath, (cur) => {
+          const d = cur.drafts[openKey];
+          if (!d) return cur;
+          const next = editDraft(d, edit);
           return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [openKey]: next } };
         })
       );
@@ -629,6 +649,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   viewport={session?.viewports[openKey]}
                   onViewportChange={saveViewport}
                   onMoveNodes={moveOpenNodes}
+                  onEdit={editOpen}
                   onReady={canvasReady}
                   onValidated={recordValidity}
                   problemsShown={problemsShown}
@@ -818,6 +839,7 @@ const GraphDraftView: FC<{
   viewport: Viewport | undefined;
   onViewportChange: (viewport: Viewport) => void;
   onMoveNodes: (moved: [string, XYPosition][]) => void;
+  onEdit: (edit: GraphEdit) => void;
   onReady: (read: () => Viewport) => void;
   onValidated: (verdict: string | null) => void;
   problemsShown: boolean;
@@ -828,12 +850,14 @@ const GraphDraftView: FC<{
   viewport,
   onViewportChange,
   onMoveNodes,
+  onEdit,
   onReady,
   onValidated,
   problemsShown,
   onToggleProblems,
 }) => {
-  // Drafts are made only from graphs the canvas can draw, so this always parses.
+  // Drafts are made only from graphs the canvas can draw, and no edit makes one it can't,
+  // so this always parses.
   const graph = useMemo(() => parseGraph(draft.content), [draft.content]);
   if (!graph.ok) return null;
   const path = definitionPath(draft.ref);
@@ -860,6 +884,7 @@ const GraphDraftView: FC<{
         viewport={viewport}
         onViewportChange={onViewportChange}
         onMoveNodes={onMoveNodes}
+        onEdit={onEdit}
         onReady={onReady}
         onValidated={onValidated}
         problemsShown={problemsShown}

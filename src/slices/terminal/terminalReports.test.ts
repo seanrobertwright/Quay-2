@@ -1,9 +1,10 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isTerminalReport } from "./terminalReports.ts";
+import { isTerminalReport, splitPendingQueries } from "./terminalReports.ts";
 
 const ESC = "\x1b";
+const BEL = "\x07";
 
 test("cursor position and status reports are reports", () => {
   for (const data of [`${ESC}[1;1R`, `${ESC}[37;111R`, `${ESC}[?12;40R`, `${ESC}[0n`]) {
@@ -69,4 +70,33 @@ test("mouse reports, which come from the user's mouse, are not reports", () => {
   assert.equal(isTerminalReport(`${ESC}[<0;10;5M`), false);
   assert.equal(isTerminalReport(`${ESC}[<0;10;5m`), false);
   assert.equal(isTerminalReport(`${ESC}[M #!`), false);
+});
+
+test("a replay that ends in a cursor position query keeps it pending", () => {
+  // ConPTY's first output, before the shell has started: it waits for the reply.
+  assert.deepEqual(splitPendingQueries(`${ESC}[6n`), { replayed: "", pending: `${ESC}[6n` });
+  assert.deepEqual(splitPendingQueries(`banner\r\n${ESC}[6n`), { replayed: "banner\r\n", pending: `${ESC}[6n` });
+});
+
+test("an extended cursor position query at the end stays pending", () => {
+  assert.deepEqual(splitPendingQueries(`ok\r\n${ESC}[?6n`), { replayed: "ok\r\n", pending: `${ESC}[?6n` });
+});
+
+test("other queries at the end are left to the replay", () => {
+  // Claude Code sends XTVERSION while it sits idle and does not wait for the reply.
+  for (const data of [`prompt${ESC}[>0q`, `${ESC}[c`, `${ESC}[5n`, `${ESC}]11;?${BEL}`, `${ESC}[?2004$p`]) {
+    assert.deepEqual(splitPendingQueries(data), { replayed: data, pending: "" }, JSON.stringify(data));
+  }
+});
+
+test("queries followed by later output were already answered", () => {
+  for (const data of [`${ESC}[6nPS C:\\> `, `${ESC}[6n${ESC}[?25h`, `${ESC}[c\r\n`, "plain output", ""]) {
+    assert.deepEqual(splitPendingQueries(data), { replayed: data, pending: "" }, JSON.stringify(data));
+  }
+});
+
+test("output that only ends like a query is not pending", () => {
+  for (const data of [`${ESC}[2J`, `${ESC}[?25l`, `${ESC}[0m`, "6n", `${ESC}]0;title${BEL}`]) {
+    assert.deepEqual(splitPendingQueries(data), { replayed: data, pending: "" }, JSON.stringify(data));
+  }
 });

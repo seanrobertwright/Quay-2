@@ -1,4 +1,4 @@
-// A graph's draft (#221): the record as loaded or last saved, and every node's position.
+// A graph's draft (#221): the record as loaded, saved or edited, and every node's position.
 // Each definition touched in a session gets one. A draft is dirty when its content or
 // positions differ from what was last loaded or saved (#248), compared by fingerprint, so
 // moving a node back to where it was makes it clean again. The viewport isn't part of
@@ -10,7 +10,7 @@ import type { DefinitionFile, DefinitionRef, LayoutInput } from "./types.ts";
 
 export interface GraphDraft {
   ref: DefinitionRef;
-  /** The record as loaded or last saved. Moving nodes never changes it. */
+  /** The record as last edited. Moving nodes never changes it. */
   content: JsonObject;
   /** Every node's position in integers, keyed by node id, in node order. */
   positions: ReadonlyMap<string, XYPosition>;
@@ -71,7 +71,12 @@ export function moveNodes(draft: GraphDraft, moved: Iterable<[string, XYPosition
     positions.set(id, next);
   }
   if (!positions) return draft;
-  return { ...draft, positions, fingerprint: fingerprintOf(draft.content, positions) };
+  return withChanges(draft, draft.content, positions);
+}
+
+/** The draft with this content and these positions, and its fingerprint to match. */
+export function withChanges(draft: GraphDraft, content: JsonObject, positions: ReadonlyMap<string, XYPosition>): GraphDraft {
+  return { ...draft, content, positions, fingerprint: fingerprintOf(content, positions) };
 }
 
 /** The layout `praxis_save` writes beside the graph. */
@@ -84,20 +89,22 @@ export function layoutForSave(draft: GraphDraft, viewport: Viewport | undefined)
 
 /**
  * The draft after a save: the record as written, and the positions that were sent, are
- * its new base. Positions moved while the save was in flight keep it dirty.
+ * its new base. An edit or a move made while the save was in flight keeps the draft dirty,
+ * and an edit keeps its content in place of what was written.
  */
 export function markSaved(
   draft: GraphDraft,
   saved: { content: JsonObject; contentHash: string },
-  sent: LayoutInput
+  sent: { content: JsonObject; layout: LayoutInput }
 ): GraphDraft {
-  const sentPositions = new Map(sent.nodes.map(({ id, x, y }) => [id, { x, y }]));
+  const sentPositions = new Map(sent.layout.nodes.map(({ id, x, y }) => [id, { x, y }]));
+  const content = draft.content === sent.content ? saved.content : draft.content;
   return {
     ...draft,
-    content: saved.content,
+    content,
     baseHash: saved.contentHash,
     baseFingerprint: fingerprintOf(saved.content, sentPositions),
-    fingerprint: fingerprintOf(saved.content, draft.positions),
+    fingerprint: fingerprintOf(content, draft.positions),
     deletedOnDisk: false,
   };
 }
