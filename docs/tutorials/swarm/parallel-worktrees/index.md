@@ -150,8 +150,8 @@ npm ci; npm test
 The launcher launches into the folder selected in the rail. Press `Esc` to close it, click `try-scan` under **Worktrees** in the rail, and press `Ctrl+Shift+B S` again.
 :::
 
-::: ifnot lead-dev asks Is this a project you created or one you trust?
-Claude Code asks once for each new folder, and a worktree is a new folder. **No, exit** is selected first: click into `lead-dev`, press the Down arrow to select **Yes, I trust this folder** and press Enter. It then confirms its role.
+::: ifnot lead-dev asks whether you trust this folder
+Claude Code asks once for each new folder, and each worktree is a new folder: `Quick safety check: Is this a project you created or one you trust?` It lists **No, exit** first, with the cursor on it. Click into `lead-dev`, press the Down arrow to move to **Yes, I trust this folder**, and press Enter. It then confirms its role.
 :::
 
 ::: ifnot lead-dev asks you to accept Bypass Permissions mode
@@ -398,7 +398,7 @@ The commit didn't happen, so `try-index` holds nothing new. Read the commit's me
 ## 11. Clean up and check it worked
 
 ::: do
-1. In the rail, hover over `try-index` under **Worktrees** and click the trash icon that appears on its row. Its tooltip says **Remove worktree try-index**. Quay asks whether to remove the worktree and close its terminals: click **OK**. Its two terminals close and its row goes.
+1. In the rail, hover over `try-index` under **Worktrees** and click the trash icon that appears on its row. Its tooltip says **Remove worktree try-index**. Quay asks `Remove worktree "try-index"? Any active terminals in this worktree will be closed.`: click **OK**. Its two terminals close and its row goes.
 2. Do the same for `try-scan`: hover over its row, click its trash icon and click **OK**. This time Quay shows **Worktree not removed**, with git's error: `try-scan` still holds `lead-dev`'s uncommitted change to `src/dedupe.ts`, and nothing has been closed yet. Click **Remove anyway** to throw the experiment away. Its two terminals close and its row goes.
 :::
 
@@ -409,7 +409,7 @@ git branch -D try-scan; git branch -d try-index; git worktree list; npm run comp
 :::
 
 ::: see
-![main-shell: two Deleted branch lines, one worktree line ending in main, a compare row for main that passes, and two commits. The rail shows no worktrees under the project.](./11-cleaned-up.webp)
+![main-shell: Deleted branch lines for try-scan and try-index, one worktree line ending in [main], a compare row for main that reads 6/6, 2500 and PASS, and the two commits Find duplicates by index and Starter. The rail lists only main-shell under the project.](./11-cleaned-up.webp)
 :::
 
 ::: must
@@ -432,7 +432,7 @@ git branch -D try-scan; git branch -d try-index; git worktree list; npm run comp
 - ✅ The `main` row of `npm run compare` reads `6/6`, `2500` and `PASS`.
 - ✅ `git worktree list` shows only the project folder.
 - ✅ `git log --oneline` shows `Find duplicates by index` on top of `Starter`.
-- ✅ The rail lists no worktrees under the project.
+- ✅ The rail lists no worktrees under the project: only `main-shell` is left.
 :::
 
 :::

@@ -280,7 +280,7 @@ Press `Ctrl+Shift+B 2` and paste `A test in check/cli.check.test.ts fails. Read 
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[Swarm 10: Parallel experiments with worktrees](/tutorials/swarm/parallel-worktrees/)
 
-The next tutorial in series order, Swarm 9: Polyglot Trio, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order. Try two designs at once in two git worktrees, measure them, merge the winner and throw the loser away.
 :::
