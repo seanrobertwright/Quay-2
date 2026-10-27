@@ -9,9 +9,9 @@ Two Claude Code agents play attacker and defender on a small notes app you own. 
 - **Level** Intermediate
 :::
 
-**You'll learn:** how to launch the Red/Blue Team preset, give two agents opposed goals and separate folders so they don't undo each other's work, read a test run as a scoreboard, and use the Pre-PR Audit Gate (`Ctrl+B A`): what it scans, what it doesn't, and how to fix a blocker with one click.
+**You'll learn:** how to launch the Red/Blue Team preset, give two agents opposed goals and separate folders so they don't undo each other's work, read a test run as a scoreboard, and use the Pre-PR Audit Gate (`Ctrl+Shift+B A`): what it scans, what it doesn't, and how to fix a blocker with one click.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+B` shortcut is two key presses: press `Ctrl+B`, let go, then press the next key within a second and a half.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half.
 
 The notes app is yours and runs on your machine. Its three holes are textbook ones, and every "exploit" in this tutorial is a Vitest test that calls the app in-process: nothing is sent anywhere. Each round tells `red-team` where to look, so it finds the same holes on every run; a real red team's search is open-ended.
 
@@ -32,8 +32,8 @@ The notes app is yours and runs on your machine. Its three holes are textbook on
 
 ::: do
 1. Download [`red-team-blue-team.zip`](/starters/red-team-blue-team.zip) and unzip it into a new, empty folder. The project's files sit at the top of the zip, so they land straight in that folder, and that folder is the project.
-2. In Quay, click **Add** at the top of the rail, click **Browse...**, pick that folder and click **Add Project**.
-3. Press `Ctrl+B N`, choose **PowerShell Console**, type `shell` under **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
+2. In Quay, click **Add** at the top of the rail, find that folder in the Open Project dialog (or type its path; Tab completes it) and click **Open**.
+3. Press `Ctrl+Shift+B N`, choose **PowerShell Console**, type `shell` under **Terminal Label (Optional)** and click **Start Terminal (Enter)**.
 
 The line below makes the Starter commit, installs the packages, copies `.env.example` to `.env` and runs the tests. `server/` is the app, and `blue-team`'s folder. `test/exploits/` is empty, and `red-team`'s. `AGENTS.md` holds the four rules of the app that both agents argue over. `.env` holds the server's one setting, copied from the example the way a real project's README tells you to.
 :::
@@ -73,11 +73,11 @@ Git doesn't know your name and email yet. Set them as [Git](/guide/installation#
 ## 2. Launch the Red/Blue Team
 
 ::: do
-1. Press `Ctrl+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
+1. Press `Ctrl+Shift+B S`. The Swarm Launcher opens with **Dev & Watcher** selected.
 2. Click the **Red/Blue Team** card.
 3. Click **Launch Swarm Now**.
 
-`shell` keeps running. The rail lists it as the project's first terminal, then `red-team` and `blue-team`. `Ctrl+B 1`, `Ctrl+B 2` and `Ctrl+B 3` pick them by that order: one already in a pane gets focus, and one that isn't takes the place of the pane that has focus.
+`shell` keeps running. The rail lists it as the project's first terminal, then `red-team` and `blue-team`. `Ctrl+Shift+B 1`, `Ctrl+Shift+B 2` and `Ctrl+Shift+B 3` pick them by that order: one already in a pane gets focus, and one that isn't takes the place of the pane that has focus.
 :::
 
 ::: see
@@ -110,7 +110,7 @@ Quay isn't hearing from the event-bridge plugin. Install it as the hint says, th
 ## 3. Round one: red-team attacks the API
 
 ::: do
-1. Focus is on `red-team`, the left pane. Press `Ctrl+B Z` to zoom it to the whole stage.
+1. Focus is on `red-team`, the left pane. Press `Ctrl+Shift+B Z` to zoom it to the whole stage.
 :::
 
 ::: paste `red-team`
@@ -145,7 +145,7 @@ Paste `There is at least one more way to reach another user's note through the A
 ## 4. Round one: blue-team patches
 
 ::: do
-1. Press `Ctrl+B Z` to put the split back, then `Ctrl+B O` to move focus to `blue-team`.
+1. Press `Ctrl+Shift+B Z` to put the split back, then `Ctrl+Shift+B O` to move focus to `blue-team`.
 :::
 
 ::: paste `blue-team`
@@ -169,7 +169,7 @@ Read AGENTS.md, then run npm test. The red team has added failing tests under te
 :::
 
 ::: ifnot blue-team says a test is wrong
-`blue-team` stops instead of editing a test, as its role says. Press `Ctrl+B O` and paste this one line into `red-team`: `blue-team says one of your tests asserts something AGENTS.md doesn't require. Re-read the four rules, check each of your tests against them, fix or delete any test that asserts more than a rule says, then tell me what you changed.` When `red-team` answers, press `Ctrl+B O` and paste `Run npm test again and continue.` into `blue-team`.
+`blue-team` stops instead of editing a test, as its role says. Press `Ctrl+Shift+B O` and paste this one line into `red-team`: `blue-team says one of your tests asserts something AGENTS.md doesn't require. Re-read the four rules, check each of your tests against them, fix or delete any test that asserts more than a rule says, then tell me what you changed.` When `red-team` answers, press `Ctrl+Shift+B O` and paste `Run npm test again and continue.` into `blue-team`.
 :::
 
 :::
@@ -179,7 +179,7 @@ Read AGENTS.md, then run npm test. The red team has added failing tests under te
 ## 5. Round two: red-team attacks the pages
 
 ::: do
-1. Press `Ctrl+B O` to move focus to `red-team`, then `Ctrl+B Z` to zoom it.
+1. Press `Ctrl+Shift+B O` to move focus to `red-team`, then `Ctrl+Shift+B Z` to zoom it.
 :::
 
 ::: paste `red-team`
@@ -208,7 +208,7 @@ Round two. Blue has fixed the API; now attack the HTML pages in server/app.ts an
 ## 6. Round two: blue-team patches
 
 ::: do
-1. Press `Ctrl+B Z` to put the split back, `Ctrl+B O` to move focus to `blue-team`, then `Ctrl+B Z` to zoom it.
+1. Press `Ctrl+Shift+B Z` to put the split back, `Ctrl+Shift+B O` to move focus to `blue-team`, then `Ctrl+Shift+B Z` to zoom it.
 :::
 
 ::: paste `blue-team`
@@ -242,8 +242,8 @@ Round two. Run npm test and fix server/ until the red team's new tests under tes
 ## 7. Run the Pre-PR Audit Gate
 
 ::: do
-1. Press `Ctrl+B Z` to put the split back. Focus stays on `blue-team`.
-2. Press `Ctrl+B A`. The Pre-PR Audit Gate opens and scans the project straight away.
+1. Press `Ctrl+Shift+B Z` to put the split back. Focus stays on `blue-team`.
+2. Press `Ctrl+Shift+B A`. The Pre-PR Audit Gate opens and scans the project straight away.
 
 The gate is the last check before code leaves your machine. It reads `git status` for files that should never be in a pull request, such as `.env` files and private key files, and the lines `git diff` adds for personal paths, GitHub tokens, Anthropic API keys, private key headers and very long lines. It doesn't read your SQL or your HTML: that was `red-team`'s job. Here it finds the `.env` you made in step 1. `.gitignore` never mentions it, so one more `git add -A` would have committed it.
 :::
@@ -263,7 +263,7 @@ The gate is the last check before code leaves your machine. It reads `git status
 :::
 
 ::: ifnot the badge reads PASSED
-`.env` is missing: step 1's copy didn't run, or an agent deleted the file. Press `Esc`, press `Ctrl+B 1` to put `shell` in the pane, and paste `Copy-Item .env.example .env; git status --short` into it. Check that `?? .env` is listed, press `Ctrl+B 3` to put `blue-team` back, and do this step again.
+`.env` is missing: step 1's copy didn't run, or an agent deleted the file. Press `Esc`, press `Ctrl+Shift+B 1` to put `shell` in the pane, and paste `Copy-Item .env.example .env; git status --short` into it. Check that `?? .env` is listed, press `Ctrl+Shift+B 3` to put `blue-team` back, and do this step again.
 :::
 
 ::: ifnot the gate lists a second blocker
@@ -279,7 +279,7 @@ An agent wrote a personal path, or something that looks like a token, into the d
 ::: do
 1. Click **Fix Violations with Claude**. The gate closes, and Quay sends `blue-team` a prompt asking it to fix the gate's findings, with `.env` listed as a blocker.
 2. Wait until `blue-team`'s pane header shows a green dot and `Ready` again.
-3. Press `Ctrl+B A` to run the gate again.
+3. Press `Ctrl+Shift+B A` to run the gate again.
 
 The button sends its prompt to the pane that has focus, which is why step 7 kept focus on `blue-team`; with no pane focused, it opens a new Claude Code terminal named `audit-fixer` instead. `AGENTS.md` says the server needs `.env`, so the right fix is to ignore the file, not delete it.
 :::
@@ -299,7 +299,7 @@ The button sends its prompt to the pane that has focus, which is why step 7 kept
 :::
 
 ::: ifnot the gate still blocks on .env
-`blue-team` deleted the file, or edited the wrong one. Press `Esc` and paste `Keep .env; if you deleted it, run Copy-Item .env.example .env. Add the line .env to .gitignore and change nothing else.` into `blue-team`. When it's done, press `Ctrl+B A` again.
+`blue-team` deleted the file, or edited the wrong one. Press `Esc` and paste `Keep .env; if you deleted it, run Copy-Item .env.example .env. Add the line .env to .gitignore and change nothing else.` into `blue-team`. When it's done, press `Ctrl+Shift+B A` again.
 :::
 
 :::
@@ -311,7 +311,7 @@ The button sends its prompt to the pane that has focus, which is why step 7 kept
 ::: do
 1. Press `Esc` to close the gate.
 2. Download [`red-team-blue-team-check.zip`](/starters/red-team-blue-team-check.zip). It holds one folder, `check`. Unzip it into the project folder itself, not into a new folder inside it, so `check` sits beside `server`.
-3. Press `Ctrl+B 1` to put `shell` in the pane that has focus.
+3. Press `Ctrl+Shift+B 1` to put `shell` in the pane that has focus.
 
 The check suite is six tests the agents never saw, two for each hole. They are chosen so that a blacklist fails: stripping quotes, stripping `<script>`, or checking whether a note is shared instead of who owns it each leaves a test red.
 :::
@@ -337,7 +337,7 @@ npm run check; npm test; git status --short
 :::
 
 ::: ifnot a check test fails
-Its name says which rule is still broken. Press `Ctrl+B 3` to put `blue-team` back and paste `Run npm run check. One of those tests fails: read the failing assertion and fix server/ until it passes, without editing anything under test/ or check/.` into it. When it's done, press `Ctrl+B 1` and paste the line above into `shell` again.
+Its name says which rule is still broken. Press `Ctrl+Shift+B 3` to put `blue-team` back and paste `Run npm run check. One of those tests fails: read the failing assertion and fix server/ until it passes, without editing anything under test/ or check/.` into it. When it's done, press `Ctrl+Shift+B 1` and paste the line above into `shell` again.
 :::
 
 ::: done
