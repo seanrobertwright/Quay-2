@@ -11,7 +11,7 @@ Open two Claude Code agents, `asker` and `answerer`, side by side. First you sen
 
 **You'll learn:** how to check the event-bridge plugin with `/plugin`, open two Claude Code terminals side by side, send a peer a message from Mission Control with **Dispatch as User**, have one agent use the four `quay_*` tools (`quay_list_agents`, `quay_send_message` with a wait for the reply, `quay_get_agent_status` and `quay_broadcast`), and read Mission Control's trail and toasts.
 
-Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then press Enter to send it, unless the step says which button to click.
+Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. When the stage is split, each pane has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes that key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and holding Shift on that second key makes no difference to a letter. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane or the Quay field its line goes into: copy the line with the box's copy button, click into that pane or field, press `Ctrl+V` to paste it, then press Enter to send it, unless the step says which button to click.
 
 This tutorial is about agents messaging each other over Quay's A2A bus. A **peer** is an agent terminal on the bus: here, `asker` and `answerer`. A PowerShell terminal is not a peer, so no message reaches it. **Mission Control** is the panel where you send a peer a message yourself and read the **trail**, the list of every message on the bus, newest first. The starter project is a small, finished package, `hello-a2a`, which is only there to give `answerer` something real to read. Nothing in it gets built or changed.
 
@@ -110,7 +110,7 @@ The hint is one line at the top of the pane that begins `No events from the even
 :::
 
 ::: ifnot event-bridge is listed but disabled
-Enable it on the plugin screen, press `Esc`, then type `/reload-plugins` in `asker` and press Enter.
+Press `Esc` to close the plugin screen. Press `Ctrl+Shift+B 1` and paste `claude plugin enable event-bridge@event-bridge` into the PowerShell pane. Then press `Ctrl+Shift+B 2`, type `/reload-plugins` in `asker` and press Enter.
 :::
 
 ::: ifnot the event-bridge version is older than 0.1.0
@@ -124,7 +124,7 @@ Press `Ctrl+Shift+B 1` and paste `claude plugin update event-bridge@event-bridge
 ## 3. Open answerer beside it
 
 ::: do
-1. Press `Ctrl+Shift+B %` to split the stage. On most keyboards `%` is `Shift+5`. `asker` stays on the left, and the PowerShell terminal from step 1 comes back on the right.
+1. Press `Ctrl+Shift+B`, let go, then type a percent sign, `%`, which on most keyboards is `Shift+5`. The page writes this as `Ctrl+Shift+B %`. It must be the percent sign: a plain `5` doesn't split the stage. The stage splits in two: `asker` stays on the left, and the PowerShell terminal from step 1 comes back on the right.
 2. Press `Ctrl+Shift+B O` to move focus to the right pane. Its border lights up.
 3. Press `Ctrl+Shift+B N`. The dialog keeps your last choices, so **Claude** is still chosen and **Terminal Label (Optional)** still holds `asker`. Replace `asker` with `answerer` and click **Start Terminal (Enter)**. `answerer` takes the right pane, and the PowerShell terminal keeps running behind it. A new terminal always opens in the pane that has focus, which is why the split comes first.
 4. Wait until `answerer`'s pane header shows a green dot and `Ready`. Claude Code doesn't ask about this folder again, because you trusted it in step 2.
