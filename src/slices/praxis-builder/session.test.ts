@@ -262,9 +262,9 @@ function readInto(session: typeof EMPTY_SESSION, kind: "graphs" | "graph-binding
 /** A session with graph g and two of its bindings read from disk, and a binding of another graph. */
 function workspace() {
   let s = readInto(EMPTY_SESSION, "graphs", "g", workspaceGraph);
-  s = readInto(s, "graph-bindings", "g-1", newBindingContent("g-1", workspaceGraph, null));
-  s = readInto(s, "graph-bindings", "g-2", newBindingContent("g-2", workspaceGraph, null));
-  s = readInto(s, "graph-bindings", "h-1", { ...newBindingContent("h-1", workspaceGraph, null), graphId: "h" });
+  s = readInto(s, "graph-bindings", "g-1", newBindingContent("g-1", workspaceGraph));
+  s = readInto(s, "graph-bindings", "g-2", newBindingContent("g-2", workspaceGraph));
+  s = readInto(s, "graph-bindings", "h-1", { ...newBindingContent("h-1", workspaceGraph), graphId: "h" });
   return s;
 }
 
@@ -328,7 +328,7 @@ test("Retarget to current graph is one step of the graph's history", () => {
 test("a binding that reloads from disk clears its graph's history", () => {
   let s = editGraph(workspace(), G, { type: "rename-node", from: "end-1", to: "done" }, 0);
   assert.equal(s.histories["graphs/g"].past.length, 1);
-  s = readInto(s, "graph-bindings", "g-2", { ...newBindingContent("g-2", workspaceGraph, null), costUnit: "x" }, "h2");
+  s = readInto(s, "graph-bindings", "g-2", { ...newBindingContent("g-2", workspaceGraph), costUnit: "x" }, "h2");
   assert.equal(s.histories["graphs/g"], undefined);
 });
 

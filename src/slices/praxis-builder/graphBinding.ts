@@ -67,11 +67,10 @@ const entryFor = (node: { kind: string; executionKind?: string }): JsonObject =>
   blankEntry(node.kind === "TASK" ? (node.executionKind ?? "AGENT") : "AGENT");
 
 /**
- * A new binding of `graph` (#247): one blank entry per dispatchable node, pinned to `pin`, the
- * graph as saved on disk, when there is one. A graph never saved leaves the pins empty, and the
- * binding's first save after the graph's fills them.
+ * A new binding of `graph` (#247): one blank entry per dispatchable node, with empty pins.
+ * Saving the binding fills them from the graph as saved on disk.
  */
-export function newBindingContent(id: string, graph: JsonObject, pin: GraphPin | null): JsonObject {
+export function newBindingContent(id: string, graph: JsonObject): JsonObject {
   const nodes: JsonObject = {};
   for (const node of dispatchableNodes(graph)) nodes[node.id] = entryFor(node);
   return {
@@ -79,8 +78,8 @@ export function newBindingContent(id: string, graph: JsonObject, pin: GraphPin |
     graphBindingId: id,
     graphBindingRevision: 1,
     graphId: typeof graph.id === "string" ? graph.id : "",
-    graphRevision: pin?.revision ?? "",
-    graphDigest: pin?.revision !== undefined ? (pin?.digest ?? "") : "",
+    graphRevision: "",
+    graphDigest: "",
     costUnit: "",
     nodes,
   };
@@ -89,7 +88,7 @@ export function newBindingContent(id: string, graph: JsonObject, pin: GraphPin |
 /**
  * How a binding stands against its graph as saved on disk (#247): `current` when its pins
  * match `pin`, `stale` when the graph has changed since, `unpinned` when it has no pins yet
- * (it was never saved after its graph), and `graph-unsaved` when there is no graph on disk.
+ * (it was never saved), and `graph-unsaved` when there is no graph on disk.
  */
 export type BindingStatus = "current" | "stale" | "unpinned" | "graph-unsaved";
 

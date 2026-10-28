@@ -1037,7 +1037,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const graphId = open.id;
     const id = nextBindingId(graphId, takenIds("graph-bindings"));
     const ref = bindingRef(id);
-    const record = content ? { ...content, graphBindingId: id } : newBindingContent(id, openDraft.content, openPin ?? null);
+    const record = content ? { ...content, graphBindingId: id } : newBindingContent(id, openDraft.content);
     const created = createNewDraft(ref, record);
     if (!created.ok) return setNotice({ tone: "error", text: created.message });
     changeSessions((s) =>
