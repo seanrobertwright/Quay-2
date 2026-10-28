@@ -4,7 +4,10 @@
 // that drag off (#248). A single card dragged shows smart guides and snaps to them, unless
 // Alt is held; several cards dragged together move rigidly, without guides. It must
 // sit inside a ReactFlowProvider, which the caller supplies so a sibling (the Problems
-// list) can move the viewport.
+// list) can move the viewport. For keyboard use (#264), each card is a tab stop named for
+// a screen reader, with a ring while focused; edges take focus from the builder's Tab
+// handling, after the cards. React Flow's own keys are off, since the builder's keymap
+// handles every key.
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   applyNodeChanges,
@@ -18,6 +21,7 @@ import {
   type NodeProps,
   type Viewport,
   useStoreApi,
+  type AriaLabelConfig,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { PraxisGraph, XYPosition } from "./model.ts";
@@ -26,10 +30,19 @@ import type { GraphEdit } from "./editor.ts";
 import { EDGE_COLOR, graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import type { NodeIssues } from "./issues.ts";
+import { nodeAriaLabel } from "./keyboard.ts";
 import { computeGuides, type Rect } from "./smart-guides.ts";
 import { SmartGuides } from "./SmartGuides.tsx";
 
 const handleClass = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117]";
+
+/** What a focused edge tells a screen reader it can do: React Flow's default offers selecting, which the builder doesn't. */
+const ARIA_LABELS: Partial<AriaLabelConfig> = { "edge.a11yDescription.default": "Press Delete to remove this dependency." };
+
+/** The ring a card shows while it has keyboard focus. */
+const NODE_FOCUS_CLASS = "rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#f0f6fc]";
+/** A focused edge is drawn thicker and light, over the colour its own style sets. */
+const EDGE_FOCUS_CLASS = "[&:focus-visible_.react-flow__edge-path]:stroke-[#f0f6fc]! [&:focus-visible_.react-flow__edge-path]:[stroke-width:3]!";
 
 const IssueBadge: FC<{ issues: NodeIssues }> = ({ issues }) => (
   <span
@@ -163,6 +176,8 @@ export interface CanvasControls {
   cancelConnection: () => boolean;
   /** A card's size as drawn, which align and distribute work from. */
   nodeSize: (nodeId: string) => { width: number; height: number };
+  /** Where a card is drawn, or undefined for a node the canvas doesn't have. */
+  nodePosition: (nodeId: string) => XYPosition | undefined;
 }
 
 export const GraphCanvas: FC<GraphCanvasProps> = ({
@@ -183,8 +198,18 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
 }) => {
   const flow = useMemo(() => graphToFlow(graph, positions), [graph, positions]);
   const withIssues = useMemo(
-    () => flow.nodes.map((n) => ({ ...n, data: { ...n.data, issues: issues.get(n.id) } })),
+    () =>
+      flow.nodes.map((n) => {
+        const nodeIssues = issues.get(n.id);
+        return { ...n, ariaLabel: nodeAriaLabel(n.data.node, nodeIssues), className: NODE_FOCUS_CLASS, data: { ...n.data, issues: nodeIssues } };
+      }),
     [flow.nodes, issues]
+  );
+  // Out of the document's tab order, which puts edges before nodes; the builder's Tab
+  // handling reaches them after the last node.
+  const edges = useMemo(
+    () => flow.edges.map((e) => ({ ...e, className: EDGE_FOCUS_CLASS, domAttributes: { tabIndex: -1 } })),
+    [flow.edges]
   );
   // Only selected nodes get a new object, so a change of selection re-renders the cards it
   // touches rather than every card.
@@ -290,7 +315,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   return (
     <ReactFlow
       nodes={nodes}
-      edges={flow.edges}
+      edges={edges}
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onNodeDragStart={(e) => {
@@ -318,12 +343,15 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
           readViewport: () => instance.getViewport(),
           cancelConnection,
           nodeSize: (nodeId) => sizeOf(instance.getInternalNode(nodeId)),
+          nodePosition: (nodeId) => instance.getInternalNode(nodeId)?.internals.positionAbsolute,
         })
       }
       // Selection and deletion go through the builder, so React Flow keeps neither.
       elementsSelectable={false}
       deleteKeyCode={null}
-      edgesFocusable={false}
+      disableKeyboardA11y
+      edgesFocusable
+      ariaLabelConfig={ARIA_LABELS}
       colorMode="dark"
       {...(viewport ? { defaultViewport: viewport } : { fitView: true })}
       fitViewOptions={FIRST_FIT}

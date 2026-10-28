@@ -3,6 +3,8 @@
 // be edited, undone and saved. The list creates, renames and deletes definitions (#222).
 // Closing only hides it, so each project's session, drafts and undo histories included,
 // survives until Quay quits. Quitting with unsaved drafts asks first.
+// The canvas works from the keyboard alone (#264): Tab reaches the nodes, then the edges, and
+// a polite live region announces undo, redo, paste, delete and save.
 import {
   useCallback,
   useEffect,
@@ -40,10 +42,11 @@ import {
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
-import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
+import { MAX_NODES, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
 import { definitionIdProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
+import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
 import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
@@ -60,6 +63,7 @@ import { editDraft, nodeIdsOf, nodesOf, stepFor, type GraphEdit } from "./editor
 import { copySelection, duplicateSelection, getClipboard, pasteDelta, pasteIntoDraft, setClipboard } from "./clipboard.ts";
 import { canRedo, canUndo } from "./history.ts";
 import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderCommand } from "./keymap.ts";
+import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
@@ -160,11 +164,23 @@ type Pending =
 const IS_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 const TRASH_NAME = IS_WINDOWS ? "the Recycle Bin" : "the Trash";
 
+/** How the live region tells of a step that added or removed nodes. */
+const PAST: Record<"Paste" | "Duplicate" | "Delete" | "Cut", string> = {
+  Paste: "Pasted",
+  Duplicate: "Duplicated",
+  Delete: "Deleted",
+  Cut: "Cut",
+};
+
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex="0"]';
+
+/** The tab stops inside `root` that are shown, in document order. */
+const tabStops = (root: HTMLElement) =>
+  Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
 
 /** Keeps Tab and Shift+Tab cycling inside `root`. Returns true when it moved focus. */
 function trapTab(root: HTMLElement, e: { shiftKey: boolean; preventDefault: () => void }): boolean {
-  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+  const focusable = tabStops(root);
   if (focusable.length === 0) return false;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
@@ -195,6 +211,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const conflictRef = useRef<HTMLDivElement | null>(null);
   const helpRef = useRef<HTMLDivElement | null>(null);
+  const goToRef = useRef<HTMLDivElement | null>(null);
   const [sessions, setSessions] = useState<Sessions>(new Map());
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -212,6 +229,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
+  const [goToShown, setGoToShown] = useState(false);
+  // What the live region says. `n` counts announcements, so saying the same thing twice in a
+  // row still changes the region's text, and it is read again.
+  const [announcement, setAnnouncement] = useState({ text: "", n: 0 });
+  const announce = useCallback((text: string) => setAnnouncement((a) => ({ text, n: a.n + 1 })), []);
   const [selection, setSelection] = useState<Selection>({ key: "", ids: NO_IDS, chosen: 0 });
   const [naming, setNaming] = useState<Naming | null>(null);
   const [newMenuShown, setNewMenuShown] = useState(false);
@@ -323,7 +345,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // Focus moves into the builder when it opens and back to where it was when it hides.
   useEffect(() => {
     if (!isOpen) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = focusedElement();
     dialogRef.current?.focus();
     return () => previous?.focus();
   }, [isOpen]);
@@ -334,7 +356,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const hasConflict = conflict !== null;
   useEffect(() => {
     if (!hasConflict) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = focusedElement();
     const dialog = dialogRef.current;
     conflictRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => {
@@ -414,7 +436,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         }
         setConflict(null);
         if (outcome.layoutError) {
+          // The message is a status of its own, which is read out.
           setNotice({ tone: "warning", text: `Saved, but the layout file wasn't written: ${outcome.layoutError}` });
+        } else {
+          announce(`Saved ${definitionPath(ref)}`);
         }
       } catch (e) {
         setNotice({ tone: "error", text: String(e) });
@@ -422,7 +447,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         setSaving(false);
       }
     },
-    [saveDraft]
+    [saveDraft, announce]
   );
 
   const saveOpen = useCallback(() => {
@@ -558,6 +583,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const now = Date.now();
     changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, () => result.draft, { label }, now)));
     selectNodes(result.pastedIds);
+    announce(stepLabel(PAST[verb], result.pastedIds));
   };
 
   /**
@@ -566,12 +592,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
    */
   const pasteFromClipboard = (at?: XYPosition) => {
     const envelope = getClipboard();
-    if (!openDraft || !envelope) return;
+    if (!openDraft) return;
+    if (!envelope) return announce("Nothing to paste");
     const canvas = canvasFor(viewKey);
     const viewport = canvas?.readViewport() ?? session?.viewports[openKey] ?? { x: 0, y: 0, zoom: 1 };
     const box = canvas?.getCanvasRect() ?? { width: 1000, height: 800 };
     const delta = pasteDelta(envelope, openDraft, viewKey, viewport, box, at);
-    addFragment("Paste", pasteIntoDraft(openDraft, envelope, delta));
+    const pasted = pasteIntoDraft(openDraft, envelope, delta);
+    if (!pasted) return announce(`Not pasted: a graph holds at most ${MAX_NODES} nodes`);
+    addFragment("Paste", pasted);
   };
 
   /** Duplicates the selected nodes as one step without touching the clipboard. */
@@ -581,16 +610,51 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   };
 
   /** Deletes the selected nodes of the open graph as one step, named `verb` in the history. */
-  const removeSelected = (verb: "Delete" | "Cut") => {
-    if (!projectPath || !open || selected.size === 0) return;
-    const ids = [...selected];
+  const removeSelected = (verb: "Delete" | "Cut") => removeNodes([...selected], verb);
+
+  /** Deletes nodes of the open graph as one step, named `verb` in the history. */
+  const removeNodes = (ids: readonly string[], verb: "Delete" | "Cut") => {
+    if (!projectPath || !open || ids.length === 0) return;
     const label = stepLabel(verb, ids);
     const now = Date.now();
     const remove = (d: GraphDraft) => ids.reduce((acc, id) => editDraft(acc, { type: "delete-node", id }), d);
     changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, remove, { label }, now)));
     selectNodes([]);
+    announce(stepLabel(PAST[verb], ids));
     // The focused card may be gone; focus stays in the canvas, so its keys still work.
     canvasFor(viewKey)?.focus();
+  };
+
+  /**
+   * Delete (#248): the focused edge is disconnected, and a focused node outside the selection
+   * is deleted alone; otherwise the selected nodes go.
+   */
+  const deleteFocused = (target: EventTarget | null) => {
+    const canvas = canvasFor(viewKey);
+    const item = canvas?.itemAt(target) ?? null;
+    if (item?.type === "edge") {
+      editOpen({ type: "disconnect", source: item.source, target: item.target });
+      announce(`Disconnected ${item.source} from ${item.target}`);
+      canvas?.focus();
+      return;
+    }
+    if (item?.type === "node" && !selected.has(item.id)) return removeNodes([item.id], "Delete");
+    removeSelected("Delete");
+  };
+
+  /** Moves the selected nodes by an arrow key's step; quick nudges of one selection are one step. */
+  const nudgeSelected = (e: KeyboardEvent) => {
+    const offset = nudgeOffset(e.key, e.shiftKey);
+    if (!offset || !projectPath || !open || !openDraft || selected.size === 0) return;
+    const canvas = canvasFor(viewKey);
+    const ids = [...selected];
+    const moved: [string, XYPosition][] = [];
+    for (const id of ids) {
+      const at = openDraft.positions.get(id) ?? canvas?.nodePosition(id);
+      if (at) moved.push([id, { x: at.x + offset.x, y: at.y + offset.y }]);
+    }
+    const now = Date.now();
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => moveNodes(d, moved), nudgeStep(ids), now)));
   };
 
   /** Runs a layout command on the open graph as one step. Auto-arrange then fits the view. */
@@ -617,9 +681,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const moveInHistory = (direction: "undo" | "redo") => {
     if (!projectPath || !open) return;
     const moved = (direction === "undo" ? undoGraph : redoGraph)(sessionFor(sessionsRef.current, projectPath), open);
-    if (!moved) return;
+    if (!moved) return announce(direction === "undo" ? "Nothing to undo" : "Nothing to redo");
     changeSessions((s) => updateSession(s, projectPath, () => moved.session));
     selectNodes(moved.changed);
+    announce(`${direction === "undo" ? "Undid" : "Redid"} ${moved.label}`);
     // The step may take away the focused card; focus stays in the builder, so its keys still work.
     requestAnimationFrame(() => {
       if (!dialogRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? dialogRef.current)?.focus();
@@ -643,9 +708,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [viewKey]
   );
 
-  /** Escape (#221): the first of help, a prompt, a dragged connection, a focused field, the selection, then the builder. */
+  /**
+   * Escape (#221): the first of help, Go to node, a prompt, a dragged connection, a focused
+   * field, the selection, then the builder.
+   */
   const escape = (target: EventTarget | null) => {
     if (helpShown) return setHelpShown(false);
+    if (goToShown) return setGoToShown(false);
     if (conflict) return setConflict(null);
     if (pending) return lifecycleBusy ? undefined : setPending(null);
     if (newMenuShown) return setNewMenuShown(false);
@@ -661,8 +730,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     onClose();
   };
 
-  const runCommand = (command: BuilderCommand, target: EventTarget | null) => {
+  const runCommand = (command: BuilderCommand, e: KeyboardEvent, target: EventTarget | null) => {
     const canvas = canvasFor(viewKey);
+    const item = canvas?.itemAt(target) ?? null;
+    const focusedNode = item?.type === "node" ? item.id : null;
     switch (command) {
       case "save":
         // Blur and refocus the field, so a field that applies on blur applies before the save.
@@ -686,7 +757,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       case "duplicate":
         return duplicateSelected();
       case "delete":
-        return removeSelected("Delete");
+        return deleteFocused(target);
       case "select-all":
         return selectNodes(openNodeIds);
       case "fit-view":
@@ -701,7 +772,28 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         return arrangeOpen({ type: "auto" });
       case "help":
         return setHelpShown(true);
+      case "go-to-node":
+        // Only with the graph drawn: there are no cards to go to otherwise.
+        if (canvas) setGoToShown(true);
+        return;
+      case "nudge":
+        return nudgeSelected(e);
+      case "select":
+        if (focusedNode !== null) selectNodes([focusedNode]);
+        return;
+      case "add-to-selection":
+        if (focusedNode !== null && !selected.has(focusedNode)) selectNodes([...selected, focusedNode]);
+        return;
+      case "context-menu":
+        if (focusedNode !== null) canvas?.openNodeMenu(focusedNode);
+        return;
     }
+  };
+
+  /** Picks a node in Go to node: it is selected, zoomed to and focused. */
+  const goToNode = (nodeId: string) => {
+    setGoToShown(false);
+    canvasFor(viewKey)?.goToNode(nodeId);
   };
 
   // The builder's keys, on its root in the bubble phase (#248): Quay's capture-phase keys
@@ -711,8 +803,36 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const handleKey = (e: KeyboardEvent, target: EventTarget | null) => {
     const dialog = dialogRef.current;
     if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
-    const overlay = helpShown ? helpRef.current : conflict ? conflictRef.current : pending ? pendingRef.current : null;
+    const overlay = helpShown
+      ? helpRef.current
+      : goToShown
+        ? goToRef.current
+        : conflict
+          ? conflictRef.current
+          : pending
+            ? pendingRef.current
+            : null;
     if (e.key === "Tab") {
+      // The edges follow the last node in the tab order (#248), though the canvas puts them
+      // first. Only a Tab that may reach or leave an edge reads the tab stops.
+      const order = overlay ? null : canvasFor(viewKey)?.tabOrder();
+      const current = focusedElement();
+      const nearEdges =
+        order?.lastNode != null &&
+        current !== null &&
+        (order.edges.includes(current as SVGElement) ||
+          (!e.shiftKey && current === order.lastNode) ||
+          (e.shiftKey && (order.lastNode.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0));
+      const next =
+        nearEdges && order && current
+          ? tabTarget<HTMLElement | SVGElement>(tabStops(dialog), order.lastNode, order.edges, current, e.shiftKey)
+          : null;
+      if (next) {
+        e.preventDefault();
+        // The canvas pans to what takes focus; scrolling React Flow's wrapper would only fight it.
+        next.focus({ preventScroll: true });
+        return;
+      }
       trapTab(overlay ?? dialog, e);
       return;
     }
@@ -721,7 +841,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const command = commandFor(e, region);
     if (!command || (overlay && command !== "escape" && command !== "save")) return;
     e.preventDefault();
-    runCommand(command, target);
+    runCommand(command, e, target);
   };
   const onDialogKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => handleKey(e.nativeEvent, e.target);
 
@@ -1392,6 +1512,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           />
         )}
 
+        {goToShown && openContent && canvasFor(viewKey) && (
+          <GoToNode rootRef={goToRef} nodes={goToEntries(openContent)} onPick={goToNode} />
+        )}
+
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement.text}
+          {/* A no-break space every other time, so a repeated message is a change. */}
+          {announcement.n % 2 === 1 ? "\u00a0" : ""}
+        </div>
+
         {conflict && (
           <ConflictPrompt
             rootRef={conflictRef}
@@ -1419,6 +1549,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     </div>
   );
 };
+
+/** The open graph's nodes for Go to node, in file order. */
+const goToEntries = (content: JsonObject): GoToEntry[] =>
+  nodesOf(content).flatMap((n) => (typeof n.id === "string" ? [{ id: n.id, kind: typeof n.kind === "string" ? n.kind : "" }] : []));
 
 const draftLabel = (d: DirtyDraft) =>
   `${d.projectName || d.projectPath} · ${definitionPath(d.draft.ref)}`;
@@ -1881,7 +2015,7 @@ const QuitPrompt: FC<{
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = focusedElement();
     rootRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
     return () => previous?.focus();
   }, []);

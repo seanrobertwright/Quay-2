@@ -223,3 +223,18 @@ describe("DECISION branch edges", () => {
     );
   });
 });
+
+describe("edge names for screen readers", () => {
+  test("each edge says which node depends on which, and names a branch", () => {
+    const labels = new Map(graphToFlowEdges(branching()).map((e) => [e.id, e.ariaLabel]));
+    assert.equal(labels.get(edgeId("plan", "check")), "check depends on plan");
+    assert.equal(labels.get(edgeId("check", "ship")), "ship depends on check, the then branch of check");
+    assert.equal(labels.get(edgeId("check", "undo")), "undo depends on check, the else branch of check");
+  });
+
+  test("a branch missing from dependsOn says so", () => {
+    const g = graph(node("d", "DECISION", [], { then: "t", else: "" }), node("t", "TASK"));
+    const [edge] = graphToFlowEdges(g);
+    assert.equal(edge.ariaLabel, "The then branch of d points at t, which doesn't depend on d");
+  });
+});

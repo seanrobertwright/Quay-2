@@ -1,7 +1,8 @@
 // The docked inspector beside the canvas (#226): the selected node's kind and a delete button,
 // its id, its kind's config form, its `dependsOn`, its input and output schemas, and the graph's
 // read-only revision. Each control shows the validation messages about it; the node's other
-// messages head the panel.
+// messages head the panel. A dependency chip's name goes to that node, and the Add
+// dependency combobox filters the graph's other nodes by id or kind (#248).
 import { useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { Trash2, X } from "lucide-react";
 import { CONFIG_FORMS, described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
@@ -9,6 +10,7 @@ import { renameProblem, type GraphEdit } from "./editor.ts";
 import { nodeIssuesBySlot } from "./issues.ts";
 import { SchemaEditor } from "./SchemaEditor.tsx";
 import { NODE_KINDS_REGISTRY, nodeKindMeta } from "./kinds.ts";
+import { matchNodes } from "./keyboard.ts";
 import { isNodeKind, type PraxisGraph, type PraxisNode } from "./model.ts";
 import type { Diagnostic } from "./types.ts";
 
@@ -28,6 +30,8 @@ interface InspectorProps {
   onRenamed: (id: string) => void;
   /** Called after the node is deleted, once the inspector has moved focus off the button. */
   onDeleted: () => void;
+  /** Selects another node, zooms to it and focuses its card, from a dependency chip. */
+  onGoToNode: (nodeId: string) => void;
 }
 
 const sectionClass = "px-4 py-3 border-b border-[#21262d] space-y-2";
@@ -43,6 +47,7 @@ export const Inspector: FC<InspectorProps> = ({
   onEdit,
   onRenamed,
   onDeleted,
+  onGoToNode,
 }) => (
   <aside
     ref={rootRef}
@@ -59,6 +64,7 @@ export const Inspector: FC<InspectorProps> = ({
         onEdit={onEdit}
         onRenamed={onRenamed}
         onDeleted={onDeleted}
+        onGoToNode={onGoToNode}
       />
     ) : selectionCount > 1 ? (
       <div className="px-4 py-3 space-y-2 text-xs text-[#8b949e]">
@@ -90,6 +96,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
   onEdit,
   onRenamed,
   onDeleted,
+  onGoToNode,
 }) => {
   const generalId = useId();
   const meta = nodeKindMeta(node.kind);
@@ -163,7 +170,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
         )}
       </section>
       <div className={sectionClass}>
-        <Dependencies node={node} graph={graph} issues={issues.get("dependsOn")} onEdit={onEdit} />
+        <Dependencies node={node} graph={graph} issues={issues.get("dependsOn")} onEdit={onEdit} onGoToNode={onGoToNode} />
       </div>
       <section aria-label="Schemas" className={`${sectionClass} !space-y-3`}>
         <h3 className={headingClass}>Schemas</h3>
@@ -231,17 +238,21 @@ const IdField: FC<{
   );
 };
 
-/** The node's `dependsOn` as removable chips, and a picker to add one. */
+/**
+ * The node's `dependsOn` as chips, each naming a node to go to and with a button to remove
+ * it, and a combobox to add one. Any other node can be added, so a cycle can be made; the
+ * Problems list reports it.
+ */
 const Dependencies: FC<{
   node: PraxisNode;
   graph: PraxisGraph;
   issues: readonly Diagnostic[] | undefined;
   onEdit: (edit: GraphEdit) => void;
-}> = ({ node, graph, issues, onEdit }) => {
+  onGoToNode: (nodeId: string) => void;
+}> = ({ node, graph, issues, onEdit, onGoToNode }) => {
   const headingId = useId();
-  const addId = useId();
   const messagesId = useId();
-  const addRef = useRef<HTMLSelectElement | null>(null);
+  const addRef = useRef<HTMLInputElement | null>(null);
   const listed = new Set(node.dependsOn);
   const known = new Set(graph.nodes.map((n) => n.id));
   const options = graph.nodes.filter((n) => n.id !== node.id && !listed.has(n.id));
@@ -273,9 +284,20 @@ const Dependencies: FC<{
                 known.has(dep) ? "bg-[#21262d] border-[#30363d]" : "bg-[#da3633]/10 border-[#f85149]/60 text-[#ff7b72]"
               }`}
             >
-              <span className="truncate" title={known.has(dep) ? dep : `${dep} isn't a node in this graph`}>
-                {dep}
-              </span>
+              {known.has(dep) ? (
+                <button
+                  type="button"
+                  title={`Go to ${dep}`}
+                  className="truncate rounded hover:underline focus-visible:outline-1 focus-visible:outline-[#58a6ff]"
+                  onClick={() => onGoToNode(dep)}
+                >
+                  {dep}
+                </button>
+              ) : (
+                <span className="truncate" title={`${dep} isn't a node in this graph`}>
+                  {dep}
+                </span>
+              )}
               <button
                 type="button"
                 aria-label={`Remove the dependency on ${dep}`}
@@ -289,29 +311,132 @@ const Dependencies: FC<{
         </ul>
       )}
       {options.length > 0 && (
-        <>
-          <label htmlFor={addId} className="sr-only">
-            Add a dependency
-          </label>
-          <select
-            id={addId}
-            ref={addRef}
-            className={`${inputClass} mt-1.5`}
-            value=""
-            onChange={(e) => {
-              if (e.target.value) onEdit({ type: "connect", source: e.target.value, target: node.id });
-            }}
-          >
-            <option value="">Add a dependency…</option>
-            {options.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.id}
-              </option>
-            ))}
-          </select>
-        </>
+        <DependencyPicker
+          inputRef={addRef}
+          options={options}
+          onAdd={(dep) => onEdit({ type: "connect", source: dep, target: node.id })}
+        />
       )}
       <FieldMessages id={messagesId} issues={issues} />
+    </div>
+  );
+};
+
+/**
+ * The Add dependency combobox, following the WAI-ARIA combobox pattern with a list popup:
+ * a click or typing opens the list, typing filters the nodes by id or kind, the arrow keys
+ * move through them, Enter or a click adds one, and Escape closes the list. Nothing is added until a node is chosen, unlike a
+ * native select, which changes on an arrow key.
+ */
+const DependencyPicker: FC<{
+  inputRef: Ref<HTMLInputElement>;
+  options: readonly PraxisNode[];
+  onAdd: (nodeId: string) => void;
+}> = ({ inputRef, options, onAdd }) => {
+  const inputId = useId();
+  const listId = useId();
+  const optionId = useId();
+  const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const { matches, more } = matchNodes(options, text);
+  const expanded = open && matches.length > 0;
+  const current = expanded ? Math.min(active, matches.length - 1) : -1;
+  const choose = (nodeId: string) => {
+    onAdd(nodeId);
+    setText("");
+    setOpen(false);
+    setActive(0);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowUp": {
+        e.preventDefault();
+        if (!expanded) {
+          setOpen(true);
+          setActive(e.key === "ArrowDown" ? 0 : matches.length - 1);
+        } else {
+          setActive((current + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length);
+        }
+        return;
+      }
+      case "Enter":
+        if (current >= 0) {
+          e.preventDefault();
+          choose(matches[current].id);
+        }
+        return;
+      case "Escape":
+        // Handled here while the list is open, so the builder leaves the field alone.
+        if (open || text !== "") {
+          e.preventDefault();
+          setOpen(false);
+          setText("");
+        }
+        return;
+    }
+  };
+  return (
+    <div className="relative mt-1.5">
+      <label htmlFor={inputId} className="sr-only">
+        Add dependency
+      </label>
+      <input
+        id={inputId}
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        spellCheck={false}
+        autoComplete="off"
+        placeholder="Add dependency…"
+        className={inputClass}
+        value={text}
+        aria-autocomplete="list"
+        aria-expanded={expanded}
+        aria-controls={expanded ? listId : undefined}
+        aria-activedescendant={current >= 0 ? `${optionId}-${current}` : undefined}
+        onChange={(e) => {
+          setText(e.target.value);
+          setOpen(true);
+          setActive(0);
+        }}
+        onKeyDown={onKeyDown}
+        onClick={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      />
+      {expanded && (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Nodes to depend on"
+          className="absolute z-10 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-md border border-[#30363d] bg-[#161b22] py-1 shadow-lg text-[11px]"
+        >
+          {matches.map((n, i) => (
+            // The input keeps focus and its keys, as the combobox pattern has it.
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events
+            <li
+              key={n.id}
+              id={`${optionId}-${i}`}
+              role="option"
+              aria-selected={i === current}
+              // Keep focus in the input, so its blur doesn't close the list before the click lands.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(n.id)}
+              className={`px-2 py-1 flex gap-2 cursor-pointer ${i === current ? "bg-[#1f6feb]/30 text-white" : "text-[#c9d1d9] hover:bg-[#21262d]"}`}
+            >
+              <span className="font-mono truncate">{n.id}</span>
+              <span className="ml-auto text-[#6e7681] shrink-0">{n.kind}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {expanded && more && (
+        <p className="mt-1 text-[10px] text-[#6e7681]">Showing the first {matches.length} nodes. Type to narrow them.</p>
+      )}
+      {open && matches.length === 0 && (
+        <p className="mt-1 text-[10px] text-[#6e7681]">No other node matches &ldquo;{text.trim()}&rdquo;.</p>
+      )}
     </div>
   );
 };

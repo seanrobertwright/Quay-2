@@ -1,0 +1,5 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 8 },
+  "patch": { "file": "patches/late-change.patch", "failingTests": ["pads cents under ten with a zero"] }
+}

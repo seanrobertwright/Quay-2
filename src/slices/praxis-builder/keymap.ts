@@ -22,17 +22,23 @@ export type BuilderCommand =
   | "zoom-out"
   | "zoom-reset"
   | "auto-arrange"
-  | "help";
+  | "help"
+  | "go-to-node"
+  | "nudge"
+  | "select"
+  | "add-to-selection"
+  | "context-menu";
 
 /**
  * Where a key works. `modal`: anywhere in the builder, text fields included. `outside-text`:
  * anywhere but a text field, which keeps its own keys, native text undo included. `canvas`:
- * only with focus in the canvas.
+ * only with focus in the canvas, a node included. `node`: only with focus on a node, so a
+ * button in the canvas keeps its own Enter and Space.
  */
-export type KeyScope = "modal" | "outside-text" | "canvas";
+export type KeyScope = "modal" | "outside-text" | "canvas" | "node";
 
-/** Where focus is when a key is pressed. */
-export type FocusRegion = "text" | "canvas" | "other";
+/** Where focus is when a key is pressed: `node` is a card on the canvas, inside `canvas`. */
+export type FocusRegion = "text" | "node" | "canvas" | "other";
 
 export interface KeyChord {
   /** `KeyboardEvent.key`, compared without case. */
@@ -48,7 +54,7 @@ export interface KeyChord {
 export interface KeyEntry {
   command: BuilderCommand;
   label: string;
-  group: "General" | "Edit" | "Canvas";
+  group: "General" | "Edit" | "Canvas" | "Node";
   scope: KeyScope;
   /** The first chord is the one hints show. */
   chords: readonly [KeyChord, ...KeyChord[]];
@@ -56,9 +62,10 @@ export interface KeyEntry {
 
 export const KEY_ENTRIES: readonly KeyEntry[] = [
   { command: "save", label: "Save", group: "General", scope: "modal", chords: [{ key: "s", mod: true }] },
+  { command: "go-to-node", label: "Go to a node by id or kind", group: "General", scope: "modal", chords: [{ key: "f", mod: true }] },
   {
     command: "escape",
-    label: "Close the help, cancel a connection, leave a field, clear the selection, or hide the builder",
+    label: "Close the help or Go to node, cancel a connection, leave a field, clear the selection, or hide the builder",
     group: "General",
     scope: "modal",
     chords: [{ key: "Escape", shift: "any" }],
@@ -104,7 +111,7 @@ export const KEY_ENTRIES: readonly KeyEntry[] = [
   },
   {
     command: "delete",
-    label: "Delete the selected nodes",
+    label: "Delete the focused node or edge, or the selected nodes",
     group: "Canvas",
     scope: "canvas",
     chords: [{ key: "Delete" }, { key: "Backspace" }],
@@ -125,6 +132,39 @@ export const KEY_ENTRIES: readonly KeyEntry[] = [
   { command: "zoom-reset", label: "Zoom to 100%", group: "Canvas", scope: "canvas", chords: [{ key: "0", mod: true }] },
   { command: "auto-arrange", label: "Auto-arrange the graph", group: "Canvas", scope: "canvas", chords: [{ key: "a", shift: true }] },
   { command: "help", label: "Show these shortcuts", group: "Canvas", scope: "canvas", chords: [{ key: "?", shift: "any" }] },
+  {
+    command: "nudge",
+    label: "Move the selected nodes 8 px, or 40 px with Shift",
+    group: "Canvas",
+    scope: "canvas",
+    chords: [
+      { key: "ArrowLeft", shift: "any" },
+      { key: "ArrowRight", shift: "any" },
+      { key: "ArrowUp", shift: "any" },
+      { key: "ArrowDown", shift: "any" },
+    ],
+  },
+  {
+    command: "select",
+    label: "Select the focused node",
+    group: "Node",
+    scope: "node",
+    chords: [{ key: "Enter" }, { key: " " }],
+  },
+  {
+    command: "add-to-selection",
+    label: "Add the focused node to the selection",
+    group: "Node",
+    scope: "node",
+    chords: [{ key: " ", shift: true }],
+  },
+  {
+    command: "context-menu",
+    label: "Open the focused node's menu",
+    group: "Node",
+    scope: "node",
+    chords: [{ key: "F10", shift: true }, { key: "ContextMenu" }],
+  },
 ];
 
 /** The parts of a `KeyboardEvent` the router reads. */
@@ -152,7 +192,10 @@ function matches(chord: KeyChord, e: KeyLike, isMac: boolean): boolean {
 }
 
 const inScope = (scope: KeyScope, region: FocusRegion) =>
-  scope === "modal" || (scope === "outside-text" && region !== "text") || (scope === "canvas" && region === "canvas");
+  scope === "modal" ||
+  (scope === "outside-text" && region !== "text") ||
+  (scope === "canvas" && (region === "canvas" || region === "node")) ||
+  (scope === "node" && region === "node");
 
 /** The command a key runs with focus in `region`, or null when the key isn't the builder's there. */
 export function commandFor(e: KeyLike, region: FocusRegion, isMac: boolean = IS_MAC): BuilderCommand | null {
@@ -162,20 +205,41 @@ export function commandFor(e: KeyLike, region: FocusRegion, isMac: boolean = IS_
   return null;
 }
 
-/** Which region focus is in, from the keydown's target and the canvas region's element. */
-export function focusRegion(target: EventTarget | null, canvas: Pick<Node, "contains"> | null): FocusRegion {
-  if (isTextField(target)) return "text";
-  return canvas && canvas.contains(target as Node | null) ? "canvas" : "other";
+/** The canvas region as `focusRegion` sees it. */
+export interface CanvasRegion {
+  contains: (target: Node | null) => boolean;
+  /** Whether the target is a node's card. */
+  isNode: (target: Node | null) => boolean;
 }
 
-const KEY_NAMES: Record<string, string> = { Escape: "Esc", Delete: "Delete", Backspace: "Backspace" };
+/** Which region focus is in, from the keydown's target and the canvas region. */
+export function focusRegion(target: EventTarget | null, canvas: CanvasRegion | null): FocusRegion {
+  if (isTextField(target)) return "text";
+  if (!canvas || !canvas.contains(target as Node | null)) return "other";
+  return canvas.isNode(target as Node | null) ? "node" : "canvas";
+}
+
+const KEY_NAMES: Record<string, string> = {
+  Escape: "Esc",
+  Delete: "Delete",
+  Backspace: "Backspace",
+  Enter: "Enter",
+  " ": "Space",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ContextMenu: "Menu",
+};
+/** `aria-keyshortcuts` names keys by `KeyboardEvent.key`, except Space. */
+const ARIA_NAMES: Record<string, string> = { " ": "Space" };
 
 function chordParts(chord: KeyChord, isMac: boolean, aria: boolean): string[] {
   const parts: string[] = [];
   if (chord.mod) parts.push(aria ? (isMac ? "Meta" : "Control") : isMac ? "Cmd" : "Ctrl");
   if (chord.shift === true) parts.push("Shift");
   const k = chord.key;
-  parts.push(aria ? (k.length === 1 ? k.toUpperCase() : k) : (KEY_NAMES[k] ?? k.toUpperCase()));
+  parts.push(aria ? (ARIA_NAMES[k] ?? (k.length === 1 ? k.toUpperCase() : k)) : (KEY_NAMES[k] ?? k.toUpperCase()));
   return parts;
 }
 
