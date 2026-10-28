@@ -360,7 +360,7 @@ npm test; npm run build; Select-String -Path dist\hello.html -Pattern '&lt;b&gt;
 :::
 
 ::: next
-[A2A 10: Second opinion from Codex](/tutorials/a2a/second-opinion-codex/)
+[A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/)
 
-The next published tutorial in series order; A2A 6 to A2A 9 aren't published yet. Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down.
+Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file.
 :::
