@@ -26,4 +26,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | --- | --- | --- |
 | 1 | [Hello, A2A](/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
 | 3 | [Hands-off TDD relay](/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
+| 5 | [Fan-out / fan-in](/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
 <!-- tutorials:end -->

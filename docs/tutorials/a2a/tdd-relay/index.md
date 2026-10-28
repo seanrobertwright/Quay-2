@@ -340,7 +340,7 @@ The relay built what its own tests asked for, not everything `AGENTS.md` says. P
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 5: Fan-out / fan-in](/tutorials/a2a/fan-out-fan-in/)
 
-The next tutorial in series order, A2A 4: Review gate before commit, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order; A2A 4 isn't published yet. Have a lead agent split a static-site generator across three workers at once, then wire their parts together.
 :::
