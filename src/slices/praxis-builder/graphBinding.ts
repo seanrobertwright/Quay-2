@@ -206,7 +206,7 @@ export function applyBindingEdit(binding: JsonObject, edit: BindingEdit): JsonOb
     case "set-role":
       return changeEntry(binding, edit.node, (e) => {
         if (e.role === edit.role) return e;
-        const next = { ...e, role: edit.role };
+        const next: JsonObject = { ...e, role: edit.role };
         if (edit.role === "VALIDATION") return Array.isArray(e.criteria) ? next : { ...next, criteria: [] };
         delete next.criteria;
         return next;

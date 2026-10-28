@@ -1,6 +1,6 @@
 // A definition's draft (#221): the record as loaded, saved or edited, with every node's
 // position for a graph and the binding record for a contract (#223). Each graph, contract,
-// grant or trigger touched in a session gets one. A draft is dirty when any of these differ from what was
+// grant, trigger or graph binding touched in a session gets one. A draft is dirty when any of these differ from what was
 // last loaded or saved (#248), compared by fingerprint, so moving a node back to where it
 // was makes it clean again. The viewport isn't part of it, so pan and zoom never make a
 // draft dirty.
@@ -94,11 +94,20 @@ export function createTriggerDraft(ref: DefinitionRef, file: DefinitionFile): Pa
   return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
 }
 
-/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts, grants and triggers. */
-export const hasDrafts = (kind: DefinitionRef["kind"]) =>
-  kind === "graphs" || kind === "contracts" || kind === "grants" || kind === "triggers";
+/** A clean draft of a graph binding file (#273). Any JSON object opens, since the backend shape-checks it. */
+export function createGraphBindingDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
+  if (!isObject(file.content)) return { ok: false, message: "The graph binding isn't a JSON object." };
+  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
+}
 
-/** A clean draft of a file of a kind the builder edits, a graph, contract, grant or trigger; other kinds have none. */
+/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts, grants, triggers and graph bindings. */
+export const hasDrafts = (kind: DefinitionRef["kind"]) =>
+  kind === "graphs" || kind === "contracts" || kind === "grants" || kind === "triggers" || kind === "graph-bindings";
+
+/** The record field that holds a definition's id: a graph binding's is `graphBindingId` (#247). */
+export const idField = (kind: DefinitionRef["kind"]) => (kind === "graph-bindings" ? "graphBindingId" : "id");
+
+/** A clean draft of a file of a kind the builder edits; other kinds have none. */
 export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
   switch (ref.kind) {
     case "graphs":
@@ -109,6 +118,8 @@ export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResu
       return createGrantDraft(ref, file);
     case "triggers":
       return createTriggerDraft(ref, file);
+    case "graph-bindings":
+      return createGraphBindingDraft(ref, file);
     default:
       return { ok: false, message: `The builder can't edit ${ref.kind} yet.` };
   }
@@ -126,7 +137,7 @@ export function createNewDraft(ref: DefinitionRef, content: JsonObject): ParseRe
 
 /** The draft under another id, with that id inside its record. */
 export function withId(draft: Draft, ref: DefinitionRef): Draft {
-  return { ...withChanges(draft, { ...draft.content, id: ref.id }, draft.positions), ref };
+  return { ...withChanges(draft, { ...draft.content, [idField(ref.kind)]: ref.id }, draft.positions), ref };
 }
 
 export function isDirty(draft: Draft): boolean {
@@ -236,11 +247,16 @@ export function reconcileWithDisk(
   return { action: "keep", draft: draft.deletedOnDisk ? { ...draft, deletedOnDisk: false } : draft };
 }
 
-/** What one undo step restores: the record, a graph's node positions and a contract's bindings. */
+/**
+ * What one undo step restores: the record, a graph's node positions and a contract's bindings.
+ * A graph's step also holds the content of each of its graph bindings' drafts, keyed by
+ * `definitionKey`, since they share its history (#248).
+ */
 export interface DraftSnapshot {
   content: JsonObject;
   positions: ReadonlyMap<string, XYPosition>;
   bindings: Bindings | null;
+  graphBindings?: Readonly<Record<string, JsonObject>>;
 }
 
 export const snapshotOf = (draft: Draft): DraftSnapshot => ({

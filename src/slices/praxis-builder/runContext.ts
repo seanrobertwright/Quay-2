@@ -61,6 +61,9 @@ function mentions(c: ContractContext, ref: DefinitionRef): boolean {
       return c.grants.includes(ref.id);
     case "triggers":
       return c.triggers.includes(ref.id);
+    case "graph-bindings":
+      // A binding's checks against its contracts are #274's; no contract's result names one yet.
+      return false;
   }
 }
 

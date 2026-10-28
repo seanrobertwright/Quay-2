@@ -1,7 +1,9 @@
 // The builder's in-memory session for each project: which definition is open, the canvas
-// viewport of every definition shown so far, a draft of every graph and contract touched,
-// and each draft's undo history (#248). Sessions live only while Quay runs, and the
-// active project picks which one the builder shows.
+// viewport of every definition shown so far, a draft of every definition touched, and each
+// draft's undo history (#248). A graph and its graph bindings form one graph workspace with
+// one history, so a node rename that rewrites binding keys, or a retarget, undoes as one step
+// (#273). Sessions live only while Quay runs, and the active project picks which one the
+// builder shows.
 import { normalizePath } from "../../utils/paths.ts";
 import { renameInBindings } from "./contract.ts";
 import {
@@ -16,6 +18,8 @@ import {
   type Draft,
   type DraftSnapshot,
 } from "./drafts.ts";
+import { editDraft, stepFor, type GraphEdit } from "./editor.ts";
+import { renameNodeInBinding } from "./graphBinding.ts";
 import { createHistory, endMerge, record, redo, undo, type History, type Step } from "./history.ts";
 import { hasOwn, parseLayoutViewport, type JsonObject } from "./model.ts";
 import type { DefinitionFile, DefinitionRef, RenameOutcome } from "./types.ts";
@@ -39,12 +43,17 @@ export interface BuilderSession {
    * Selection, viewport and panel state are never in it.
    */
   histories: Readonly<Record<string, History<DraftSnapshot>>>;
+  /**
+   * The graph binding chosen in each graph's Binding picker, keyed by graph id (#247). Not in
+   * any history: picking a binding is a view choice.
+   */
+  bindingChoices: Readonly<Record<string, string>>;
 }
 
 /** Sessions keyed by normalized project path. */
 export type Sessions = ReadonlyMap<string, BuilderSession>;
 
-export const EMPTY_SESSION: BuilderSession = { name: "", open: null, viewports: {}, drafts: {}, histories: {} };
+export const EMPTY_SESSION: BuilderSession = { name: "", open: null, viewports: {}, drafts: {}, histories: {}, bindingChoices: {} };
 
 /** One key per definition. Ids are filename-safe, so they never hold a `/`. */
 export function definitionKey(ref: DefinitionRef): string {
@@ -114,9 +123,10 @@ export function applyDiskRead(session: BuilderSession, ref: DefinitionRef, file:
       return decision.draft === existing ? session : { ...session, drafts: { ...session.drafts, [key]: decision.draft } };
     }
   }
-  // A reload from disk replaces the draft, so the steps that led to the old one go too.
+  // A reload from disk replaces the draft, so the steps that led to the old one go too: the
+  // whole graph workspace's, when a graph binding reloads (#248).
   const { [key]: _dropped, ...others } = session.drafts;
-  const histories = withoutKey(session.histories, key);
+  const histories = withoutKey(session.histories, existing ? historyKeyOf(session, ref) : key);
   const created = file.missing ? null : createDraft(ref, file);
   if (!created?.ok) return existing ? { ...session, drafts: others, histories } : session;
   const viewport = session.viewports[key] ?? parseLayoutViewport(file.layout);
@@ -133,7 +143,134 @@ export function dropDraft(session: BuilderSession, ref: DefinitionRef): BuilderS
   const key = definitionKey(ref);
   if (!hasOwn(session.drafts, key)) return session;
   const { [key]: _dropped, ...others } = session.drafts;
-  return { ...session, drafts: others, histories: withoutKey(session.histories, key) };
+  return { ...session, drafts: others, histories: withoutKey(session.histories, historyKeyOf(session, ref)) };
+}
+
+/** The drafts of the graph bindings whose `graphId` is `graphId`, in id order (#273). */
+export function graphBindingDrafts(session: BuilderSession, graphId: string): Draft[] {
+  return Object.values(session.drafts)
+    .filter((d) => d.ref.kind === "graph-bindings" && d.content.graphId === graphId)
+    .sort((a, b) => (a.ref.id < b.ref.id ? -1 : a.ref.id > b.ref.id ? 1 : 0));
+}
+
+/**
+ * The key of the history a draft's steps go to (#248): a graph binding's graph's, when the
+ * session has a draft of that graph, and otherwise the draft's own.
+ */
+export function historyKeyOf(session: BuilderSession, ref: DefinitionRef): string {
+  if (ref.kind !== "graph-bindings") return definitionKey(ref);
+  const graphId = session.drafts[definitionKey(ref)]?.content.graphId;
+  const graphKey = typeof graphId === "string" ? definitionKey({ kind: "graphs", id: graphId }) : "";
+  return graphKey && hasOwn(session.drafts, graphKey) ? graphKey : definitionKey(ref);
+}
+
+/** A graph and the drafts of its graph bindings, keyed by `definitionKey`. */
+export interface Workspace {
+  graph: Draft;
+  bindings: Readonly<Record<string, Draft>>;
+}
+
+function workspaceOf(session: BuilderSession, graph: Draft): Workspace {
+  return {
+    graph,
+    bindings: Object.fromEntries(graphBindingDrafts(session, graph.ref.id).map((d) => [definitionKey(d.ref), d])),
+  };
+}
+
+/** What an undo step of a graph workspace restores: the graph's snapshot and its bindings' content. */
+function workspaceSnapshot(session: BuilderSession, graph: Draft): DraftSnapshot {
+  const graphBindings = Object.fromEntries(graphBindingDrafts(session, graph.ref.id).map((d) => [definitionKey(d.ref), d.content]));
+  return { ...snapshotOf(graph), graphBindings };
+}
+
+/** The drafts after restoring `snapshot` to the draft `key` and the bindings it holds; bindings it doesn't hold stay. */
+function restoreWorkspace(drafts: Readonly<Record<string, Draft>>, key: string, snapshot: DraftSnapshot): Record<string, Draft> {
+  const next: Record<string, Draft> = { ...drafts, [key]: restoreSnapshot(drafts[key], snapshot) };
+  for (const [bindingKey, content] of Object.entries(snapshot.graphBindings ?? {})) {
+    const draft = drafts[bindingKey];
+    if (draft) next[bindingKey] = withChanges(draft, content, draft.positions);
+  }
+  return next;
+}
+
+/**
+ * The session after `change` to the graph `graphRef` and its bindings, recorded in the graph's
+ * history as `step` at `now` (#248). A change that returns the same drafts records nothing.
+ */
+export function changeWorkspace(
+  session: BuilderSession,
+  graphRef: DefinitionRef,
+  change: (workspace: Workspace) => Workspace,
+  step: Step,
+  now: number
+): BuilderSession {
+  const key = definitionKey(graphRef);
+  const graph = session.drafts[key];
+  if (!graph) return session;
+  const before = workspaceOf(session, graph);
+  const after = change(before);
+  const changedBindings = Object.entries(after.bindings).filter(([k, d]) => before.bindings[k] !== d);
+  if (after.graph === graph && changedBindings.length === 0) return session;
+  const history = record(session.histories[key] ?? createHistory<DraftSnapshot>(), step, workspaceSnapshot(session, graph), now);
+  return {
+    ...session,
+    drafts: { ...session.drafts, ...Object.fromEntries(changedBindings), [key]: after.graph },
+    histories: { ...session.histories, [key]: history },
+  };
+}
+
+/**
+ * The session after `edit` to the graph `graphRef`, as one step of its history. A node rename
+ * also rewrites the node's key in every binding of the graph, stale ones included (#247); a
+ * node delete leaves the bindings' entries for a retarget to drop.
+ */
+export function editGraph(session: BuilderSession, graphRef: DefinitionRef, edit: GraphEdit, now: number): BuilderSession {
+  return changeWorkspace(
+    session,
+    graphRef,
+    (ws) => {
+      const graph = editDraft(ws.graph, edit);
+      if (edit.type !== "rename-node" || graph === ws.graph) return { ...ws, graph };
+      const bindings = Object.fromEntries(
+        Object.entries(ws.bindings).map(([k, d]) => {
+          const content = renameNodeInBinding(d.content, edit.from, edit.to);
+          return [k, content === d.content ? d : withChanges(d, content, d.positions)];
+        })
+      );
+      return { graph, bindings };
+    },
+    stepFor(edit),
+    now
+  );
+}
+
+/** The binding chosen in the graph `graphId`'s Binding picker, or null for None. */
+export function chosenBinding(session: BuilderSession, graphId: string): string | null {
+  return hasOwn(session.bindingChoices, graphId) ? session.bindingChoices[graphId] : null;
+}
+
+/**
+ * The binding choices after a rename of `from` to `toId` (a graph's choice moves with it, and a
+ * chosen binding keeps being chosen under its new id), or after its delete, when `toId` is null.
+ */
+function choicesAfter(choices: Readonly<Record<string, string>>, from: DefinitionRef, toId: string | null): Readonly<Record<string, string>> {
+  if (from.kind === "graphs") {
+    if (!hasOwn(choices, from.id)) return choices;
+    return toId === null ? withoutKey(choices, from.id) : moveKey(choices, from.id, toId);
+  }
+  if (from.kind !== "graph-bindings" || !Object.values(choices).includes(from.id)) return choices;
+  return Object.fromEntries(
+    Object.entries(choices).flatMap(([graphId, bindingId]) =>
+      bindingId !== from.id ? [[graphId, bindingId]] : toId === null ? [] : [[graphId, toId]]
+    )
+  );
+}
+
+/** The session with `bindingId` chosen for the graph `graphId`, or None when it is null. */
+export function chooseBinding(session: BuilderSession, graphId: string, bindingId: string | null): BuilderSession {
+  if (chosenBinding(session, graphId) === bindingId) return session;
+  const choices = withoutKey(session.bindingChoices, graphId);
+  return { ...session, bindingChoices: bindingId === null ? choices : { ...choices, [graphId]: bindingId } };
 }
 
 function withoutKey<T>(record: Readonly<Record<string, T>>, key: string): Readonly<Record<string, T>> {
@@ -157,6 +294,17 @@ export function changeDraft(
   const key = definitionKey(ref);
   const draft = session.drafts[key];
   if (!draft) return session;
+  const historyKey = historyKeyOf(session, ref);
+  if (ref.kind === "graphs" || historyKey !== key) {
+    // A graph, or a binding of a graph with a draft: one step of the graph workspace's history.
+    return changeWorkspace(
+      session,
+      session.drafts[historyKey].ref,
+      (ws) => (key === historyKey ? { ...ws, graph: change(ws.graph) } : { ...ws, bindings: { ...ws.bindings, [key]: change(draft) } }),
+      step,
+      now
+    );
+  }
   const next = change(draft);
   if (next === draft) return session;
   const history = record(session.histories[key] ?? createHistory<DraftSnapshot>(), step, snapshotOf(draft), now);
@@ -180,17 +328,17 @@ export interface HistoryMove {
 }
 
 function moveInHistory(session: BuilderSession, ref: DefinitionRef, direction: typeof undo): HistoryMove | null {
-  const key = definitionKey(ref);
+  const key = historyKeyOf(session, ref);
   const draft = session.drafts[key];
   const history = session.histories[key];
   if (!draft || !history) return null;
-  const current = snapshotOf(draft);
+  const current = draft.ref.kind === "graphs" ? workspaceSnapshot(session, draft) : snapshotOf(draft);
   const moved = direction(history, current);
   if (!moved) return null;
   return {
     session: {
       ...session,
-      drafts: { ...session.drafts, [key]: restoreSnapshot(draft, moved.snapshot) },
+      drafts: restoreWorkspace(session.drafts, key, moved.snapshot),
       histories: { ...session.histories, [key]: moved.history },
     },
     label: moved.label,
@@ -252,6 +400,7 @@ export function renameUnsavedDraft(session: BuilderSession, from: DefinitionRef,
     drafts: { ...others, [definitionKey(to)]: withId(draft, to) },
     histories: withoutKey(session.histories, fromKey),
     viewports: moveKey(session.viewports, fromKey, definitionKey(to)),
+    bindingChoices: choicesAfter(session.bindingChoices, from, toId),
   };
 }
 
@@ -303,6 +452,7 @@ export function applyRename(
     drafts,
     histories,
     viewports: moveKey(session.viewports, fromKey, definitionKey(to)),
+    bindingChoices: choicesAfter(session.bindingChoices, from, toId),
   };
 }
 
@@ -316,5 +466,6 @@ export function removeDefinition(session: BuilderSession, ref: DefinitionRef): B
     drafts,
     histories: withoutKey(session.histories, key),
     viewports: withoutKey(session.viewports, key),
+    bindingChoices: choicesAfter(session.bindingChoices, ref, null),
   };
 }
