@@ -9,10 +9,14 @@ pub enum PraxisKind {
     Contracts,
     Grants,
     Triggers,
+    /// Workflow templates (#224): coding plans without identities, which `praxis run <name>`
+    /// starts. A template file is the host's bare template, so it holds no `id`.
+    Templates,
 }
 
 impl PraxisKind {
-    pub const ALL: [PraxisKind; 4] = [PraxisKind::Graphs, PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::Triggers];
+    pub const ALL: [PraxisKind; 5] =
+        [PraxisKind::Graphs, PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::Triggers, PraxisKind::Templates];
 
     /// The kind whose files `folder` holds, or `None` for a folder that holds no kind's
     /// definitions, such as `layout`.
@@ -27,7 +31,14 @@ impl PraxisKind {
             PraxisKind::Contracts => "contracts",
             PraxisKind::Grants => "grants",
             PraxisKind::Triggers => "triggers",
+            PraxisKind::Templates => "templates",
         }
+    }
+
+    /// Whether this kind's records carry their own `id`, which must match the file name. A
+    /// template's name is its file name alone.
+    pub fn holds_id(self) -> bool {
+        self != PraxisKind::Templates
     }
 }
 

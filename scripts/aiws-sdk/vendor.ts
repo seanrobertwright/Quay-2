@@ -4,8 +4,21 @@
 // dependency, and the SOURCE digests catch a hand edit to the copy.
 import { createHash } from 'node:crypto';
 
-/** The paths copied from the SDK, as upstream names them. Their layout is kept under VENDOR_DIR. */
-export const VENDORED_PATHS = ['crates/aiws', 'spec/fixtures.json'] as const;
+/**
+ * The paths copied from the SDK, as upstream names them. Their layout is kept under VENDOR_DIR.
+ * The crate's paths are the ones its Cargo.toml `include` packages, so its agent docs stay out.
+ * The coding-plan schema and its vectors check workflow templates (#224).
+ */
+export const VENDORED_PATHS = [
+  'crates/aiws/Cargo.toml',
+  'crates/aiws/README.md',
+  'crates/aiws/src',
+  'crates/aiws/tests',
+  'crates/aiws/examples',
+  'spec/fixtures.json',
+  'spec/engine-v1/coding-plan.schema.json',
+  'spec/engine-v1/coding-plan.fixtures.json',
+] as const;
 
 /** The vendored copy, relative to the repository root. */
 export const VENDOR_DIR = 'src-tauri/vendor/aiws';

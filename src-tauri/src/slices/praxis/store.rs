@@ -262,6 +262,7 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
             };
             match parsed {
                 Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None },
+                Ok(_) if !kind.holds_id() => DefinitionEntry { id, problem: None, id_mismatch: None },
                 Ok(record) => {
                     let found = record.get("id").and_then(Value::as_str);
                     let id_mismatch =
@@ -818,6 +819,15 @@ mod tests {
         assert_eq!(by_id("d"), None);
         assert_eq!(by_id("e"), Some(IdMismatch { found: None }));
         assert_eq!(by_id("f"), None, "a file that doesn't parse has a problem instead");
+    }
+
+    #[test]
+    fn a_template_is_named_by_its_file_alone() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/fix-bug.json", r#"{"description": "d"}"#);
+        let list = list_definitions(&repo, PraxisKind::Templates).unwrap();
+        assert_eq!(ids(&list), vec!["fix-bug"]);
+        assert_eq!(list.entries[0].id_mismatch, None);
     }
 
     #[test]

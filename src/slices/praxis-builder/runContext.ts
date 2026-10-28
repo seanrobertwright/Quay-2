@@ -61,6 +61,9 @@ function mentions(c: ContractContext, ref: DefinitionRef): boolean {
       return c.grants.includes(ref.id);
     case "triggers":
       return c.triggers.includes(ref.id);
+    // A template refers to no other record, and nothing refers to it (#224).
+    case "templates":
+      return false;
   }
 }
 

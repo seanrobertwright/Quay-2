@@ -1,12 +1,13 @@
 // A definition's draft (#221): the record as loaded, saved or edited, with every node's
 // position for a graph and the binding record for a contract (#223). Each graph, contract,
-// grant or trigger touched in a session gets one. A draft is dirty when any of these differ from what was
+// grant, trigger or workflow template touched in a session gets one. A draft is dirty when any of these differ from what was
 // last loaded or saved (#248), compared by fingerprint, so moving a node back to where it
 // was makes it clean again. The viewport isn't part of it, so pan and zoom never make a
 // draft dirty.
 import { applyContractEdit, EMPTY_BINDINGS, parseBindings, type Bindings, type ContractEdit } from "./contract.ts";
 import { graphToFlow } from "./flow/to-flow.ts";
 import { applyGrantEdit, type GrantEdit } from "./grant.ts";
+import { applyTemplateEdit, type TemplateEdit } from "./template.ts";
 import { applyTriggerEdit, type TriggerEdit } from "./trigger.ts";
 import { isObject, parseGraph, parseLayoutPositions, type JsonObject, type ParseResult, type XYPosition } from "./model.ts";
 import type { Viewport } from "./session.ts";
@@ -94,11 +95,17 @@ export function createTriggerDraft(ref: DefinitionRef, file: DefinitionFile): Pa
   return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
 }
 
-/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts, grants and triggers. */
-export const hasDrafts = (kind: DefinitionRef["kind"]) =>
-  kind === "graphs" || kind === "contracts" || kind === "grants" || kind === "triggers";
+/** A clean draft of a workflow template file (#224). Any JSON object opens, since the form shows what the schema refuses. */
+export function createTemplateDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
+  if (!isObject(file.content)) return { ok: false, message: "The workflow template isn't a JSON object." };
+  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
+}
 
-/** A clean draft of a file of a kind the builder edits, a graph, contract, grant or trigger; other kinds have none. */
+/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts, grants, triggers and templates. */
+export const hasDrafts = (kind: DefinitionRef["kind"]) =>
+  kind === "graphs" || kind === "contracts" || kind === "grants" || kind === "triggers" || kind === "templates";
+
+/** A clean draft of a file of a kind the builder edits, a graph, contract, grant, trigger or template; other kinds have none. */
 export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
   switch (ref.kind) {
     case "graphs":
@@ -109,6 +116,8 @@ export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResu
       return createGrantDraft(ref, file);
     case "triggers":
       return createTriggerDraft(ref, file);
+    case "templates":
+      return createTemplateDraft(ref, file);
     default:
       return { ok: false, message: `The builder can't edit ${ref.kind} yet.` };
   }
@@ -124,8 +133,9 @@ export function createNewDraft(ref: DefinitionRef, content: JsonObject): ParseRe
   return { ok: true, value: { ...created.value, baseHash: null, baseFingerprint: "" } };
 }
 
-/** The draft under another id, with that id inside its record. */
+/** The draft under another id, with that id inside its record. A template holds no id: its file name is its name. */
 export function withId(draft: Draft, ref: DefinitionRef): Draft {
+  if (ref.kind === "templates") return { ...draft, ref };
   return { ...withChanges(draft, { ...draft.content, id: ref.id }, draft.positions), ref };
 }
 
@@ -174,6 +184,12 @@ export function editGrantDraft(draft: Draft, edit: GrantEdit): Draft {
 /** A trigger's draft after `edit`, or the same draft when the edit changes nothing. */
 export function editTriggerDraft(draft: Draft, edit: TriggerEdit): Draft {
   const content = applyTriggerEdit(draft.content, edit);
+  return content === draft.content ? draft : withChanges(draft, content, draft.positions);
+}
+
+/** A template's draft after `edit`, or the same draft when the edit changes nothing. */
+export function editTemplateDraft(draft: Draft, edit: TemplateEdit): Draft {
+  const content = applyTemplateEdit(draft.content, edit);
   return content === draft.content ? draft : withChanges(draft, content, draft.positions);
 }
 

@@ -185,6 +185,9 @@
         },
         "candidate": {
           "$ref": "#/$defs/Definition"
+        },
+        "successor": {
+          "$ref": "#/$defs/Agent"
         }
       },
       "required": [

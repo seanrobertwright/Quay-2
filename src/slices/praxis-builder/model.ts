@@ -55,6 +55,19 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; message: stri
 /** Whether `o` has `k` as its own property, not one inherited from its prototype. */
 export const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
+/**
+ * The record with `key` set to `value`, or removed when `value` is undefined. The same
+ * object comes back when nothing changes, so an edit that changes nothing records no step.
+ */
+export function withField(content: JsonObject, key: string, value: Json | undefined): JsonObject {
+  if (value === undefined) {
+    if (!hasOwn(content, key)) return content;
+    const { [key]: _removed, ...rest } = content;
+    return rest;
+  }
+  return hasOwn(content, key) && JSON.stringify(content[key]) === JSON.stringify(value) ? content : { ...content, [key]: value };
+}
+
 /** Whether `v` is a JSON object: not null and not an array. */
 export const isObject = (v: unknown): v is JsonObject =>
   typeof v === "object" && v !== null && !Array.isArray(v);

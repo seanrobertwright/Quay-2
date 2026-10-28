@@ -10,9 +10,11 @@ use serde_json::{Map, Value};
 
 use super::models::PraxisKind;
 use super::revision::content_revision;
+use super::template;
 use crate::slices::machina::vault::sha256_hex;
 
-// Property orders from the SDK's `spec/schema.json` `$defs`.
+// Property orders from the SDK's `spec/schema.json` `$defs`. A template's comes from the
+// coding-plan schema, in `template.rs`.
 const GRAPH_KEYS: &[&str] = &["id", "revision", "nodes"];
 const NODE_KEYS: &[&str] = &["id", "kind", "dependsOn", "config", "inputSchema", "outputSchema"];
 const TRIGGER_KEYS: &[&str] = &[
@@ -112,6 +114,7 @@ fn order_record(kind: PraxisKind, record: Map<String, Value>) -> Map<String, Val
         }
         PraxisKind::Contracts => ordered(record, CONTRACT_KEYS),
         PraxisKind::Grants => ordered(record, GRANT_KEYS),
+        PraxisKind::Templates => ordered(record, template::template_keys()),
     }
 }
 
@@ -249,6 +252,15 @@ mod tests {
         assert!(!contract.contains_key("revision"));
         let grant = canonical_record(PraxisKind::Grants, object(json!({"id": "g", "revision": "kept"})));
         assert_eq!(grant["revision"], "kept");
+    }
+
+    #[test]
+    fn a_template_follows_the_coding_plan_schema_order_and_gets_no_id_or_revision() {
+        let template = canonical_record(
+            PraxisKind::Templates,
+            object(json!({"agent": "a", "extra": 1, "maxAttempts": 2, "description": "d"})),
+        );
+        assert_eq!(template.keys().collect::<Vec<_>>(), ["description", "maxAttempts", "agent", "extra"]);
     }
 
     #[test]

@@ -54,6 +54,8 @@ pub struct Proposal {
     pub proposed_by: ProposalProposedby,
     pub reason: String,
     pub candidate: Definition,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub successor: Option<Agent>,
 }
 
 #[derive(Debug,Clone,Serialize,Deserialize)]
