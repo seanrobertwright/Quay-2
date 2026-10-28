@@ -163,7 +163,7 @@ test("a contract opens as a clean draft with its bindings, even one the SDK refu
   assert.equal(createContractDraft(cref, contractFile({ content: undefined })).ok, false);
 });
 
-test("a contract with no bindings file opens with none, and only graphs and contracts get drafts", () => {
+test("a contract with no bindings file opens with none, and a grant gets no draft", () => {
   const d = contractDraft({ bindings: undefined, bindingsHash: undefined });
   assert.deepEqual(d.bindings, EMPTY_BINDINGS);
   assert.equal(d.baseBindingsHash, null);

@@ -52,9 +52,12 @@ import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.t
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
+import { TriggerForm } from "./TriggerForm.tsx";
+import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
   createNewDraft,
   editContractDraft,
+  editTriggerDraft,
   hasDrafts,
   isDirty,
   layoutForSave,
@@ -597,6 +600,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       const now = Date.now();
       changeSessions((s) =>
         updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editContractDraft(d, edit), contractStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
+  // A trigger form's changes go through the same history (#223).
+  const editOpenTrigger = useCallback(
+    (edit: TriggerEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editTriggerDraft(d, edit), triggerStepFor(edit), now))
       );
     },
     [projectPath, open, changeSessions]
@@ -1508,6 +1523,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
                     triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
                     onEdit={editOpenContract}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
+                  />
+                </>
+              ) : openDraft && open.kind === "triggers" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <TriggerForm
+                    key={`${projectKey}|${openKey}`}
+                    draft={openDraft}
+                    contracts={[...new Set(takenIds("contracts"))]}
+                    onEdit={editOpenTrigger}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                   />

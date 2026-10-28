@@ -1,11 +1,12 @@
 // A definition's draft (#221): the record as loaded, saved or edited, with every node's
-// position for a graph and the binding record for a contract (#223). Each graph or contract
-// touched in a session gets one. A draft is dirty when any of these differ from what was
+// position for a graph and the binding record for a contract (#223). Each graph, contract or
+// trigger touched in a session gets one. A draft is dirty when any of these differ from what was
 // last loaded or saved (#248), compared by fingerprint, so moving a node back to where it
 // was makes it clean again. The viewport isn't part of it, so pan and zoom never make a
 // draft dirty.
 import { applyContractEdit, EMPTY_BINDINGS, parseBindings, type Bindings, type ContractEdit } from "./contract.ts";
 import { graphToFlow } from "./flow/to-flow.ts";
+import { applyTriggerEdit, type TriggerEdit } from "./trigger.ts";
 import { isObject, parseGraph, parseLayoutPositions, type JsonObject, type ParseResult, type XYPosition } from "./model.ts";
 import type { Viewport } from "./session.ts";
 import type { DefinitionFile, DefinitionRef, LayoutInput } from "./types.ts";
@@ -80,16 +81,24 @@ export function createContractDraft(ref: DefinitionRef, file: DefinitionFile): P
   return { ok: true, value: cleanDraft(ref, file.content, new Map(), bindings, file) };
 }
 
-/** Whether the builder edits definitions of `kind` through drafts: graphs and contracts so far. */
-export const hasDrafts = (kind: DefinitionRef["kind"]) => kind === "graphs" || kind === "contracts";
+/** A clean draft of a trigger file (#223). Any JSON object opens, since the form shows what the SDK refuses. */
+export function createTriggerDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
+  if (!isObject(file.content)) return { ok: false, message: "The trigger isn't a JSON object." };
+  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
+}
 
-/** A clean draft of a file of a kind the builder edits, a graph or a contract; other kinds have none. */
+/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts and triggers so far. */
+export const hasDrafts = (kind: DefinitionRef["kind"]) => kind === "graphs" || kind === "contracts" || kind === "triggers";
+
+/** A clean draft of a file of a kind the builder edits, a graph, contract or trigger; other kinds have none. */
 export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
   switch (ref.kind) {
     case "graphs":
       return createGraphDraft(ref, file);
     case "contracts":
       return createContractDraft(ref, file);
+    case "triggers":
+      return createTriggerDraft(ref, file);
     default:
       return { ok: false, message: `The builder can't edit ${ref.kind} yet.` };
   }
@@ -144,6 +153,12 @@ export function editContractDraft(draft: Draft, edit: ContractEdit): Draft {
   const next = applyContractEdit(draft.content, bindings, edit);
   if (next.content === draft.content && next.bindings === bindings) return draft;
   return withChanges(draft, next.content, draft.positions, next.bindings);
+}
+
+/** A trigger's draft after `edit`, or the same draft when the edit changes nothing. */
+export function editTriggerDraft(draft: Draft, edit: TriggerEdit): Draft {
+  const content = applyTriggerEdit(draft.content, edit);
+  return content === draft.content ? draft : withChanges(draft, content, draft.positions);
 }
 
 /** The layout `praxis_save` writes beside the graph. */
