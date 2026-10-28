@@ -14,7 +14,7 @@ import {
   localTimeZoneName,
   wallClockPartsOf,
 } from "../../lib/dates.ts";
-import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
+import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import {
   bindingIdProblem,
   CONTRACT_FEATURES,
@@ -227,7 +227,7 @@ const ReadOnly: FC<{ label: string; value: string; hint?: string; issues?: reado
       <label htmlFor={id} className={labelClass}>
         {label}
       </label>
-      <input id={id} readOnly value={value} className={`${inputClass} font-mono text-[#8b949e]`} {...described(messagesId, issues, hint ? hintId : undefined)} />
+      <input id={id} readOnly value={value} className={`${inputBaseClass} w-full font-mono text-[#8b949e]`} {...described(messagesId, issues, hint ? hintId : undefined)} />
       {hint && (
         <p id={hintId} className={hintClass}>
           {hint}
@@ -333,7 +333,7 @@ const IntegerInput: FC<{
           setText(next);
           if (integerProblem(next, min) === null) onChange(next.trim());
         }}
-        className={`${inputClass} w-48 font-mono`}
+        className={`${inputBaseClass} w-48 text-[#c9d1d9] font-mono`}
         {...described(messagesId, shown, hintId)}
       />
       <p id={hintId} className={hintClass}>
@@ -403,7 +403,7 @@ const DurationInput: FC<{
             setText(e.target.value);
             apply(e.target.value, unit);
           }}
-          className={`${inputClass} w-32 font-mono`}
+          className={`${inputBaseClass} w-32 text-[#c9d1d9] font-mono`}
           {...described(messagesId, shown, hintId)}
         />
         <label htmlFor={unitId} className="sr-only">
@@ -417,7 +417,7 @@ const DurationInput: FC<{
             setUnit(u);
             apply(text, u);
           }}
-          className={`${inputClass} w-36`}
+          className={`${inputBaseClass} w-36 text-[#c9d1d9]`}
         >
           {DURATION_UNITS.map((u) => (
             <option key={u.unit} value={u.unit}>
@@ -477,7 +477,7 @@ const DateTimeInput: FC<{
           setProblem(null);
           onChange(String(picked));
         }}
-        className={`${inputClass} w-64`}
+        className={`${inputBaseClass} w-64 text-[#c9d1d9]`}
         {...described(messagesId, shown, hintId)}
       />
       <p id={hintId} className={hintClass}>

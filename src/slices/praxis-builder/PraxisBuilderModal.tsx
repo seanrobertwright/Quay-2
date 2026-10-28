@@ -74,6 +74,7 @@ import {
   addNewDraft,
   applyDiskRead,
   applyRename,
+  bindingsPath,
   changeDraft,
   definitionKey,
   definitionPath,
@@ -1909,7 +1910,11 @@ const ConflictPrompt: FC<{
   onCancel: () => void;
 }> = ({ rootRef, conflict, busy, onOverwrite, onReload, onCancel }) => {
   const titleId = useId();
-  const path = definitionPath(conflict.ref);
+  // A contract's save also expects its bindings file unchanged, so either may be the one.
+  const path =
+    conflict.ref.kind === "contracts" && conflict.reason === "changed"
+      ? `${definitionPath(conflict.ref)} or ${bindingsPath(conflict.ref.id)}`
+      : definitionPath(conflict.ref);
   const changed = conflict.reason === "changed";
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-6">
