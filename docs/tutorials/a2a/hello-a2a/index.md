@@ -374,7 +374,7 @@ An agent changed a file it was told to leave alone. Paste `git checkout -- .` in
 :::
 
 ::: next
-[A2A 3: Hands-off TDD relay](/tutorials/a2a/tdd-relay/)
+[A2A 2: Contract-first handoff](/tutorials/a2a/contract-first-handoff/)
 
-The next published tutorial in series order; A2A 2 isn't published yet. Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass.
+Have two agents agree a notes app's API over the A2A bus before either builds its half.
 :::
