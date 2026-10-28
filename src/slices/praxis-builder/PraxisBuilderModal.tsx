@@ -313,7 +313,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
   const [goToShown, setGoToShown] = useState(false);
-  // The contracts and grants changed since the last commit (#223), for the list's badge, and
+  // The contracts, grants and graph bindings changed since the last commit (#223), for the list's badge, and
   // the one whose diff is shown.
   const [changes, setChanges] = useState<
     { projectKey: string; byKey: ReadonlyMap<string, ChangeStatus> } | { projectKey: string; error: string } | null
@@ -2350,7 +2350,7 @@ const ListRow: FC<{
 };
 
 /**
- * The "changed since last commit" badge (#223) on a contract or grant whose file differs from
+ * The "changed since last commit" badge (#223) on a contract, grant or graph binding whose file differs from
  * the last commit, which opens its diff. It says nothing about approval: a grant file is
  * never approved by being committed or not.
  */
