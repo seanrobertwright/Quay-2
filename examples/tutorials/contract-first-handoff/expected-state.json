@@ -1,0 +1,4 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 1 }
+}

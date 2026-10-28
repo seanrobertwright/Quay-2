@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "lib": ["dom", "dom.iterable", "es2024"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["server", "shared", "web"]
+}
