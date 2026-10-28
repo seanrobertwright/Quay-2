@@ -50,6 +50,8 @@ interface GraphViewProps {
   onValidated?: (verdict: string | null) => void;
   problemsShown: boolean;
   onToggleProblems: () => void;
+  /** The graph's Run context panel, shown beside the Problems list (#223). */
+  runContext?: ReactNode;
 }
 
 export const GraphView: FC<GraphViewProps> = (props) => (
@@ -156,6 +158,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   onValidated,
   problemsShown,
   onToggleProblems,
+  runContext,
 }) => {
   const flow = useReactFlow();
   const canvasBox = useRef<HTMLDivElement | null>(null);
@@ -431,6 +434,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
           onToggle={onToggleProblems}
           nodeIds={nodeIds}
           onSelectNode={zoomTo}
+          beside={runContext}
         />
       </div>
       <Inspector

@@ -294,3 +294,52 @@ pub struct GrantCheck {
     pub contracts: Vec<BoundContract>,
     pub unchecked: Vec<String>,
 }
+
+/// One cross-record issue (#223, #269): a record a contract's scratch mission refuses, or a
+/// reference that names no record. `kind` and `id` name the record the issue is on, and
+/// `contract` the contract whose mission found it. A binding entry that names no record is on
+/// the contract, with the path `/bindings/<graphs|grants>/<index>` into its bindings file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordIssue {
+    pub kind: PraxisKind,
+    pub id: String,
+    pub contract: String,
+    #[serde(flatten)]
+    pub diagnostic: super::validate::Diagnostic,
+}
+
+/// One contract checked across records: what its bindings file binds, the triggers that name
+/// it, and what its scratch mission refused. `missing` is true when there is no contract file
+/// (a trigger may still name it), and `problem` says why the file couldn't be read; in either
+/// case no mission was opened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractContext {
+    pub id: String,
+    pub missing: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+    pub graphs: Vec<String>,
+    pub grants: Vec<String>,
+    pub triggers: Vec<String>,
+    pub issues: Vec<RecordIssue>,
+    /// How many more issues were found than `issues` holds.
+    pub omitted: usize,
+}
+
+/// The cross-record check of some contracts, in id order. `unchecked` names the bindings and
+/// trigger files that couldn't be read or weren't searched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextCheck {
+    pub contracts: Vec<ContractContext>,
+    pub unchecked: Vec<String>,
+}
+
+/// Names one definition, as the builder sends it to the cross-record check.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RecordRef {
+    pub kind: PraxisKind,
+    pub id: String,
+}

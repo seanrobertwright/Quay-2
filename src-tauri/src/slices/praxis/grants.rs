@@ -18,7 +18,7 @@ pub const MAX_CHAIN: usize = 1000;
 
 /// `.praxis/<folder>/<id>.json` as one JSON object: `Ok(None)` when there is no such file,
 /// and `Err` with the reason when it can't be read or isn't an object.
-fn read_record(repo: &Path, folder: &str, id: &str) -> Result<Option<Value>, String> {
+pub(super) fn read_record(repo: &Path, folder: &str, id: &str) -> Result<Option<Value>, String> {
     validate_id(id)?;
     let Some(dir) = confined_dir(repo, folder)? else { return Ok(None) };
     let Some(path) = confined_file(repo, &dir, id)? else { return Ok(None) };

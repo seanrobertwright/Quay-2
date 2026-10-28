@@ -4,7 +4,7 @@
 // writes the contract and its bindings file together. The SDK's issues show on the field
 // they are about; the integer, duration and time inputs refuse what can't be stored as the
 // user types (#231 settles how `budget` reads).
-import { useEffect, useId, useState, type FC } from "react";
+import { useEffect, useId, useState, type FC, type ReactNode } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import {
@@ -47,13 +47,15 @@ interface ContractFormProps {
   /** The ids of the graphs and grants in the project, listed or drafted, for the pickers. */
   known: Bindings;
   triggers: TriggersStatus;
+  /** The record's cross-record checks (#269), shown under the verdict. */
+  crossRecord: ReactNode;
   onEdit: (edit: ContractEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
 }
 
 
-export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, known, triggers, onEdit, onOpen, onValidated }) => {
+export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, known, triggers, crossRecord, onEdit, onOpen, onValidated }) => {
   const status = useValidation("contracts", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -69,6 +71,7 @@ export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, kn
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Contract ${draft.ref.id}`}>
         <Summary noun="contract" status={status} recordIssues={issues.get("")} />
+        {crossRecord}
         {bindingsProblem && (
           <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#e3b341]">
             <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />

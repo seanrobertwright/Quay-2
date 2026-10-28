@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use super::context;
 use super::grants;
 use super::lifecycle;
 use super::models::{
-    BindingsInput, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, GrantCheck, LayoutInput,
-    PraxisKind, RenameOutcome, SaveOutcome,
+    BindingsInput, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, GrantCheck, LayoutInput,
+    PraxisKind, RecordRef, RenameOutcome, SaveOutcome,
 };
 use super::store;
 use super::validate::{self, Validation};
@@ -138,6 +139,20 @@ pub async fn praxis_check_grant(
         grants::check_grant(&project_root(&workspace, &project_path)?, &id, &content)
     })
     .await
+}
+
+/// Checks contracts across records (#223, #269): a scratch mission per contract, from the saved
+/// contract, its bound grants and graphs and the triggers that name it. With `record` it checks
+/// only the contracts that record affects, plus those in `also`; without, every contract.
+#[tauri::command]
+pub async fn praxis_check_context(
+    project_path: String,
+    record: Option<RecordRef>,
+    also: Vec<String>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<ContextCheck, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || context::check_context(&project_root(&workspace, &project_path)?, record.as_ref(), &also)).await
 }
 
 /// Renames a definition to `newId`, moving the files that belong to it and rewriting the

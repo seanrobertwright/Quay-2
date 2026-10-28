@@ -55,6 +55,17 @@ import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
+import { CrossRecordSection, RunContextPanel, RunsUnder } from "./RunContextPanel.tsx";
+import {
+  contractsToRecheck,
+  graphRunContext,
+  issuesOn,
+  mergeContexts,
+  NO_CONTEXTS,
+  recordsWithErrors,
+  type GraphRunContext,
+  type RunContexts,
+} from "./runContext.ts";
 import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
   createNewDraft,
@@ -100,6 +111,7 @@ import {
 } from "./session.ts";
 import type {
   BindingsInput,
+  ContextCheck,
   ContractTriggers,
   DefinitionEntry,
   DefinitionFile,
@@ -157,6 +169,21 @@ interface Loaded {
   defKey: string;
   file?: DefinitionFile;
   error?: string;
+}
+
+/** One project's cross-record checks (#269), and why the last one failed, if it did. */
+interface ProjectContexts {
+  contexts: RunContexts;
+  error: string | null;
+}
+
+const NO_PROJECT_CONTEXTS: ProjectContexts = { contexts: NO_CONTEXTS, error: null };
+
+/** A graph waiting to be added to a contract's Graphs once the contract's draft is read. */
+interface QueuedBinding {
+  projectKey: string;
+  contractId: string;
+  graphId: string;
 }
 
 /** A save that found the file changed or deleted under its draft, waiting for the user. */
@@ -230,6 +257,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [contractTriggers, setContractTriggers] = useState<{ key: string; status: TriggersStatus } | null>(null);
   const [listShown, setListShown] = useState(true);
+  // The cross-record checks (#269), by project. A full check runs when the builder is shown and
+  // on a reload, rename or delete; opening or saving a record re-checks the contracts it affects.
+  const [runContexts, setRunContexts] = useState<ReadonlyMap<string, ProjectContexts>>(new Map());
+  const runContextsRef = useRef(runContexts);
+  useEffect(() => {
+    runContextsRef.current = runContexts;
+  }, [runContexts]);
+  const contextSeq = useRef(0);
+  const [contextCheckCount, setContextCheckCount] = useState(0);
+  const [runContextShown, setRunContextShown] = useState(true);
+  const toggleRunContext = useCallback(() => setRunContextShown((v) => !v), []);
+  const [queuedBinding, setQueuedBinding] = useState<QueuedBinding | null>(null);
   const [problemsShown, setProblemsShown] = useState(true);
   const toggleProblems = useCallback(() => setProblemsShown((v) => !v), []);
   // Whether each graph validated so far is invalid, keyed by project and definition, for
@@ -376,6 +415,32 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
 
+  /**
+   * Checks contracts across records with `praxis_check_context` (#269): every contract when
+   * `record` is null, or those the record affects, along with the contracts the last results
+   * say it was in, so a contract it has left is checked again.
+   */
+  const checkContext = useCallback((path: string, record: DefinitionRef | null) => {
+    const key = normalizePath(path);
+    const seq = ++contextSeq.current;
+    const known = runContextsRef.current.get(key)?.contexts ?? NO_CONTEXTS;
+    const also = record ? contractsToRecheck(known, record) : [];
+    const settle = (change: (cur: ProjectContexts) => ProjectContexts) =>
+      setRunContexts((m) => new Map(m).set(key, change(m.get(key) ?? NO_PROJECT_CONTEXTS)));
+    invoke<ContextCheck>("praxis_check_context", { projectPath: path, record, also }).then(
+      (result) => settle((cur) => ({ contexts: mergeContexts(cur.contexts, result, { seq, full: record === null }), error: null })),
+      (e) => settle((cur) => ({ ...cur, error: String(e) }))
+    );
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && projectPath) checkContext(projectPath, null);
+  }, [isOpen, projectPath, contextCheckCount, checkContext]);
+
+  useEffect(() => {
+    if (isOpen && projectPath && openKind && openId !== undefined) checkContext(projectPath, { kind: openKind, id: openId });
+  }, [isOpen, projectPath, openKind, openId, checkContext]);
+
   // Focus moves into the builder when it opens and back to where it was when it hides.
   useEffect(() => {
     if (!isOpen) return;
@@ -456,10 +521,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         return next === d ? cur : { ...cur, drafts: { ...cur.drafts, [key]: next } };
       })
     );
-    // Re-list, so the saved file and any badge show.
-    if (outcome.status === "saved") setRefreshCount((n) => n + 1);
+    // Re-list, so the saved file and any badge show, and re-check the contracts it affects.
+    if (outcome.status === "saved") {
+      setRefreshCount((n) => n + 1);
+      checkContext(path, ref);
+    }
     return outcome;
-  }, [changeSessions]);
+  }, [changeSessions, checkContext]);
 
   /** Saves one draft from the builder, asking about a conflict instead of overwriting. */
   const saveFromBuilder = useCallback(
@@ -560,6 +628,44 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNotice(null);
     changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
+
+  /** Adds a graph to a contract's Graphs in the contract's draft, as one step of its history. */
+  const bindGraph = useCallback(
+    (path: string, contractId: string, graphId: string) => {
+      const ref: DefinitionRef = { kind: "contracts", id: contractId };
+      const edit: ContractEdit = { type: "add-binding", list: "graphs", id: graphId };
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, path, (cur) => changeDraft(cur, ref, (d) => editContractDraft(d, edit), contractStepFor(edit), now))
+      );
+      setNotice({ tone: "info", text: `Bound graph ${graphId} to contract ${contractId}. Save the contract to keep it.` });
+    },
+    [changeSessions]
+  );
+
+  /**
+   * The Run context's shortcut for a graph no contract binds (#223): opens the contract with the
+   * graph added to its Graphs, at once when its draft is already read, or once it is.
+   */
+  const addGraphToContract = (graphId: string, contractId: string) => {
+    if (!project) return;
+    const ref: DefinitionRef = { kind: "contracts", id: contractId };
+    const hasDraft = sessionFor(sessionsRef.current, project.path).drafts[definitionKey(ref)] !== undefined;
+    openDefinition(ref);
+    if (hasDraft) bindGraph(project.path, contractId, graphId);
+    else setQueuedBinding({ projectKey: normalizePath(project.path), contractId, graphId });
+  };
+
+  // A queued binding waits for its contract's draft, and is dropped if another definition opens first.
+  useEffect(() => {
+    if (!queuedBinding || !projectPath) return;
+    if (queuedBinding.projectKey !== projectKey || openKind !== "contracts" || openId !== queuedBinding.contractId) {
+      setQueuedBinding(null);
+    } else if (openDraft) {
+      bindGraph(projectPath, queuedBinding.contractId, queuedBinding.graphId);
+      setQueuedBinding(null);
+    }
+  }, [queuedBinding, projectPath, projectKey, openKind, openId, openDraft, bindGraph]);
 
   const selectNodes = useCallback(
     (ids: readonly string[], keepInspector = false) =>
@@ -974,6 +1080,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .filter((d) => d.ref.kind === kind)
       .map((d) => d.ref.id),
   ];
+  const projectContexts = runContexts.get(projectKey) ?? NO_PROJECT_CONTEXTS;
+  const contexts = projectContexts.contexts;
+  const crossErrors = useMemo(() => recordsWithErrors(contexts), [contexts]);
+  const openRun = graphRunContext(contexts, open?.kind === "graphs" ? open.id : "");
+  const crossRecord = open && open.kind !== "graphs" && (
+    <CrossRecordSection issues={issuesOn(contexts, open)} checked={contexts.checked} error={projectContexts.error} onOpen={openDefinition} />
+  );
   const namingProblem =
     naming === null
       ? null
@@ -1152,6 +1265,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       setPending(null);
       setLifecycleBusy(false);
       setRefreshCount((n) => n + 1);
+      setContextCheckCount((n) => n + 1);
     }
   };
 
@@ -1179,6 +1293,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     } finally {
       setLifecycleBusy(false);
       setRefreshCount((n) => n + 1);
+      setContextCheckCount((n) => n + 1);
     }
   };
 
@@ -1311,7 +1426,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   type="button"
                   aria-label="Reload from disk"
                   title="Reload from disk"
-                  onClick={() => setRefreshCount((n) => n + 1)}
+                  onClick={() => {
+                    setRefreshCount((n) => n + 1);
+                    setContextCheckCount((n) => n + 1);
+                  }}
                   className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
                 >
                   <RefreshCw className="w-4 h-4" aria-hidden="true" />
@@ -1463,6 +1581,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                   problem={def.problem}
                                   idMismatch={def.idMismatch}
                                   invalid={invalid.get(`${projectKey}|${key}`) === true}
+                                  crossIssues={crossErrors.has(key)}
                                   draft={draft}
                                   current={isOpenDef}
                                   onOpen={() => openDefinition(ref)}
@@ -1541,6 +1660,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     bindingsProblem={current?.file?.bindingsProblem}
                     known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
                     triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
+                    crossRecord={crossRecord}
                     onEdit={editOpenContract}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
@@ -1556,6 +1676,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     known={[...new Set(takenIds("grants"))]}
                     saved={listedEntries("grants").map((e) => e.id)}
                     refresh={refreshCount}
+                    crossRecord={crossRecord}
                     onEdit={editOpenGrant}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
@@ -1568,6 +1689,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     key={`${projectKey}|${openKey}`}
                     draft={openDraft}
                     contracts={[...new Set(takenIds("contracts"))]}
+                    crossRecord={crossRecord}
                     onEdit={editOpenTrigger}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
@@ -1592,6 +1714,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   onValidated={recordValidity}
                   problemsShown={problemsShown}
                   onToggleProblems={toggleProblems}
+                  run={openRun}
+                  runContext={
+                    <RunContextPanel
+                      graphId={open.id}
+                      run={openRun}
+                      checked={contexts.checked}
+                      error={projectContexts.error}
+                      unchecked={contexts.unchecked}
+                      contracts={listedEntries("contracts").map((e) => e.id)}
+                      expanded={runContextShown}
+                      onToggle={toggleRunContext}
+                      onOpen={openDefinition}
+                      onAddToContract={(contractId) => addGraphToContract(open.id, contractId)}
+                    />
+                  }
+                  onOpen={openDefinition}
                 />
               ) : !current ? (
                 <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>
@@ -1687,10 +1825,12 @@ const ListRow: FC<{
   idMismatch: DefinitionEntry["idMismatch"];
   /** The definition was validated and the SDK refuses it. */
   invalid: boolean;
+  /** A contract's scratch mission refuses the saved definition, or a reference in it names nothing (#269). */
+  crossIssues: boolean;
   draft: Draft | undefined;
   current: boolean;
   onOpen: () => void;
-}> = ({ id, problem, idMismatch, invalid, draft, current, onOpen }) => {
+}> = ({ id, problem, idMismatch, invalid, crossIssues, draft, current, onOpen }) => {
   const dirty = draft ? isDirty(draft) : false;
   const deleted = draft?.deletedOnDisk ?? false;
   const unsaved = draft?.baseHash === null;
@@ -1700,6 +1840,7 @@ const ListRow: FC<{
     problem && problem.message,
     !problem && invalid && "invalid, see Problems",
     mismatchNote,
+    crossIssues && "issues across records",
     deleted && "deleted on disk",
     unsaved ? "never saved" : dirty && "unsaved changes",
   ].filter(Boolean);
@@ -1727,10 +1868,12 @@ const ListRow: FC<{
           <span className="sr-only">{problem ? "(can't be opened)" : "(invalid)"}</span>
         </span>
       ) : (
-        mismatchNote && (
+        (mismatchNote || crossIssues) && (
           <span className="ml-auto inline-flex items-center text-[#e3b341] shrink-0">
             <TriangleAlert className="w-3.5 h-3.5" aria-hidden="true" />
-            <span className="sr-only">(its id doesn't match its file name)</span>
+            <span className="sr-only">
+              {[mismatchNote && "(its id doesn't match its file name)", crossIssues && "(issues across records)"].filter(Boolean).join(" ")}
+            </span>
           </span>
         )
       )}
@@ -1904,6 +2047,9 @@ const GraphDraftView: FC<{
   onValidated: (verdict: string | null) => void;
   problemsShown: boolean;
   onToggleProblems: () => void;
+  run: GraphRunContext;
+  runContext: ReactNode;
+  onOpen: (ref: DefinitionRef) => void;
 }> = ({
   draft,
   layoutProblem,
@@ -1920,6 +2066,9 @@ const GraphDraftView: FC<{
   onValidated,
   problemsShown,
   onToggleProblems,
+  run,
+  runContext,
+  onOpen,
 }) => {
   // Drafts are made only from graphs the canvas can draw, and no edit makes one it can't,
   // so this always parses.
@@ -1928,6 +2077,7 @@ const GraphDraftView: FC<{
   return (
     <>
       {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
+      <RunsUnder run={run} onOpen={onOpen} />
       {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
@@ -1953,6 +2103,7 @@ const GraphDraftView: FC<{
         onValidated={onValidated}
         problemsShown={problemsShown}
         onToggleProblems={onToggleProblems}
+        runContext={runContext}
       />
     </>
   );

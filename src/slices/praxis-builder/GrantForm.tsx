@@ -3,7 +3,7 @@
 // chain from the root grant down to itself. `limit` is checked inline against the parent's
 // limit and the budget of every contract that binds the grant, and the backend checks the
 // grant with `reduce` on a scratch mission under each of those contracts.
-import { useEffect, useId, type FC } from "react";
+import { useEffect, useId, type FC, type ReactNode } from "react";
 import { ArrowDown, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
@@ -40,6 +40,8 @@ interface GrantFormProps {
   saved: readonly string[];
   /** Counts up when the builder rereads the project, so the saved records are read again. */
   refresh: number;
+  /** The record's cross-record checks (#269), shown under the verdict. */
+  crossRecord: ReactNode;
   onEdit: (edit: GrantEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -47,7 +49,7 @@ interface GrantFormProps {
 
 const NO_CHECK: GrantCheck = { chain: [], contracts: [], unchecked: [] };
 
-export const GrantForm: FC<GrantFormProps> = ({ projectPath, draft, known, saved, refresh, onEdit, onOpen, onValidated }) => {
+export const GrantForm: FC<GrantFormProps> = ({ projectPath, draft, known, saved, refresh, crossRecord, onEdit, onOpen, onValidated }) => {
   const status = useValidation("grants", draft.content);
   const checkStatus = useGrantCheck(projectPath, draft.ref.id, draft.content, refresh);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
@@ -69,6 +71,7 @@ export const GrantForm: FC<GrantFormProps> = ({ projectPath, draft, known, saved
           A grant is a proposal; it takes effect only when a human approves it in Praxis.
         </p>
         <Summary noun="grant" status={status} recordIssues={issues.get("")} />
+        {crossRecord}
 
         <Section title="Grant">
           <ReadOnly label="Id" value={id} hint="Rename the grant from the list." />
