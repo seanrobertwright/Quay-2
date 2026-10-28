@@ -360,7 +360,7 @@ npm test; npm run build; Select-String -Path dist\hello.html -Pattern '&lt;b&gt;
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 8: Mission Control operator run](/tutorials/a2a/mission-control/)
 
-The next tutorial in series order, A2A 6: Long jobs: fire, then poll, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order; A2A 6 and A2A 7 aren't published yet. Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI.
 :::
