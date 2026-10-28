@@ -50,14 +50,18 @@ import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
 import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
+import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
+import { contractStepFor, type ContractEdit } from "./contract.ts";
 import {
-  createNewGraphDraft,
+  createNewDraft,
+  editContractDraft,
+  hasDrafts,
   isDirty,
   layoutForSave,
   markDeletedOnDisk,
   markSaved,
   moveNodes,
-  type GraphDraft,
+  type Draft,
 } from "./drafts.ts";
 import { editDraft, nodeIdsOf, nodesOf, stepFor, type GraphEdit } from "./editor.ts";
 import { copySelection, duplicateSelection, getClipboard, pasteDelta, pasteIntoDraft, setClipboard } from "./clipboard.ts";
@@ -70,24 +74,26 @@ import {
   addNewDraft,
   applyDiskRead,
   applyRename,
-  changeGraph,
+  changeDraft,
   definitionKey,
   definitionPath,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
-  endGraphMerge,
+  endDraftMerge,
   forgetHistories,
-  redoGraph,
+  redoDraft,
   removeDefinition,
   renameUnsavedDraft,
   sessionFor,
-  undoGraph,
+  undoDraft,
   updateSession,
   type DirtyDraft,
   type Sessions,
 } from "./session.ts";
 import type {
+  BindingsInput,
+  ContractTriggers,
   DefinitionEntry,
   DefinitionFile,
   DefinitionList,
@@ -215,6 +221,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [sessions, setSessions] = useState<Sessions>(new Map());
   const [listing, setListing] = useState<Listing | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [contractTriggers, setContractTriggers] = useState<{ key: string; status: TriggersStatus } | null>(null);
   const [listShown, setListShown] = useState(true);
   const [problemsShown, setProblemsShown] = useState(true);
   const toggleProblems = useCallback(() => setProblemsShown((v) => !v), []);
@@ -316,8 +323,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     };
   }, [isOpen, projectPath, refreshCount]);
 
-  // Read the open definition each time it, or the builder, is shown. A graph's draft is
-  // then kept, reloaded or marked deleted on disk, as `applyDiskRead` decides.
+  // Read the open definition each time it, or the builder, is shown. A graph's or a
+  // contract's draft is then kept, reloaded or marked deleted on disk, as `applyDiskRead`
+  // decides.
   useEffect(() => {
     if (!isOpen || !projectPath || !openKind || openId === undefined) return;
     let stale = false;
@@ -329,7 +337,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       (file) => {
         if (stale) return;
         setLoaded({ projectKey: key, defKey, file });
-        if (ref.kind === "graphs") {
+        if (hasDrafts(ref.kind)) {
           changeSessions((s) => updateSession(s, projectPath, (cur) => applyDiskRead(cur, ref, file)));
         }
       },
@@ -341,6 +349,25 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       stale = true;
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount, changeSessions]);
+
+  // The triggers that name the open contract, read with it, so a trigger saved meanwhile shows.
+  useEffect(() => {
+    if (!isOpen || !projectPath || openKind !== "contracts" || openId === undefined) return;
+    let stale = false;
+    const key = `${normalizePath(projectPath)}|contracts/${openId}`;
+    setContractTriggers({ key, status: { state: "loading" } });
+    invoke<ContractTriggers>("praxis_contract_triggers", { projectPath, contractId: openId }).then(
+      (found) => {
+        if (!stale) setContractTriggers({ key, status: { state: "done", found } });
+      },
+      (e) => {
+        if (!stale) setContractTriggers({ key, status: { state: "failed", error: String(e) } });
+      }
+    );
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, openKind, openId, refreshCount]);
 
   // Focus moves into the builder when it opens and back to where it was when it hides.
   useEffect(() => {
@@ -379,9 +406,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   }, [hasPending]);
 
   /**
-   * Saves one draft through `praxis_save`, expecting the file to still have the hash the
-   * draft loaded unless `force` is set. The draft records the result: a save makes the
-   * written content its new base, and a deleted file marks it.
+   * Saves one draft through `praxis_save`, with a graph's layout or a contract's bindings,
+   * expecting the file (and a contract's bindings file) to still have the hash the draft
+   * loaded unless `force` is set. The draft records the result: a save makes the written
+   * content its new base, and a deleted file marks it.
    */
   const saveDraft = useCallback(async (path: string, ref: DefinitionRef, force: boolean): Promise<SaveOutcome> => {
     const key = definitionKey(ref);
@@ -391,14 +419,17 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const shown = shownCanvas.current;
     const viewport =
       shown && shown.key === `${normalizePath(path)}|${key}` ? shown.canvas.readViewport() : current.viewports[key];
-    const layout = layoutForSave(draft, viewport);
+    const layout = ref.kind === "graphs" ? layoutForSave(draft, viewport) : null;
+    const bindings: BindingsInput | null = draft.bindings;
     const outcome = await invoke<SaveOutcome>("praxis_save", {
       projectPath: path,
       kind: ref.kind,
       id: ref.id,
       content: draft.content,
       layout,
+      bindings,
       expectedHash: draft.baseHash,
+      expectedBindingsHash: draft.baseBindingsHash,
       force,
     });
     changeSessions((s) =>
@@ -409,8 +440,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           outcome.status === "saved"
             ? markSaved(
                 d,
-                { content: outcome.content as JsonObject, contentHash: outcome.contentHash },
-                { content: draft.content, layout }
+                { content: outcome.content as JsonObject, contentHash: outcome.contentHash, bindingsHash: outcome.bindingsHash },
+                { content: draft.content, layout, bindings }
               )
             : outcome.reason === "deleted"
               ? markDeletedOnDisk(d)
@@ -438,6 +469,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         if (outcome.layoutError) {
           // The message is a status of its own, which is read out.
           setNotice({ tone: "warning", text: `Saved, but the layout file wasn't written: ${outcome.layoutError}` });
+        } else if (outcome.bindingsError) {
+          setNotice({
+            tone: "warning",
+            text: `Saved the contract, but its bindings file wasn't written, so it stays unsaved: ${outcome.bindingsError}`,
+          });
         } else {
           announce(`Saved ${definitionPath(ref)}`);
         }
@@ -539,7 +575,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     (moved: [string, XYPosition][], label = moved.length === 1 ? `Move ${moved[0][0]}` : `Move ${moved.length} nodes`) => {
       if (!projectPath || !open) return;
       const now = Date.now();
-      changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => moveNodes(d, moved), { label }, now)));
+      changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => moveNodes(d, moved), { label }, now)));
     },
     [projectPath, open, changeSessions]
   );
@@ -548,15 +584,27 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     (edit: GraphEdit) => {
       if (!projectPath || !open) return;
       const now = Date.now();
-      changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => editDraft(d, edit), stepFor(edit), now)));
+      changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editDraft(d, edit), stepFor(edit), now)));
     },
     [projectPath, open, changeSessions]
   );
 
-  /** Ends any typing step of the open graph, so the next keystroke starts a new one. */
+  // A contract form's changes go through the same history (#223).
+  const editOpenContract = useCallback(
+    (edit: ContractEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editContractDraft(d, edit), contractStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
+  /** Ends any typing step of the open draft, so the next keystroke starts a new one. */
   const endTyping = useCallback(() => {
     if (!projectPath || !open) return;
-    changeSessions((s) => updateSession(s, projectPath, (cur) => endGraphMerge(cur, open)));
+    changeSessions((s) => updateSession(s, projectPath, (cur) => endDraftMerge(cur, open)));
   }, [projectPath, open, changeSessions]);
 
   /** A step's history label: `verb` and the one node's id, or how many nodes. */
@@ -577,11 +625,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   };
 
   /** Records nodes a paste or duplicate added to the open graph as one step, and selects them. */
-  const addFragment = (verb: "Paste" | "Duplicate", result: { draft: GraphDraft; pastedIds: string[] } | null) => {
+  const addFragment = (verb: "Paste" | "Duplicate", result: { draft: Draft; pastedIds: string[] } | null) => {
     if (!projectPath || !open || !result) return;
     const label = stepLabel(verb, result.pastedIds);
     const now = Date.now();
-    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, () => result.draft, { label }, now)));
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, () => result.draft, { label }, now)));
     selectNodes(result.pastedIds);
     announce(stepLabel(PAST[verb], result.pastedIds));
   };
@@ -617,8 +665,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (!projectPath || !open || ids.length === 0) return;
     const label = stepLabel(verb, ids);
     const now = Date.now();
-    const remove = (d: GraphDraft) => ids.reduce((acc, id) => editDraft(acc, { type: "delete-node", id }), d);
-    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, remove, { label }, now)));
+    const remove = (d: Draft) => ids.reduce((acc, id) => editDraft(acc, { type: "delete-node", id }), d);
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, remove, { label }, now)));
     selectNodes([]);
     announce(stepLabel(PAST[verb], ids));
     // The focused card may be gone; focus stays in the canvas, so its keys still work.
@@ -654,7 +702,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       if (at) moved.push([id, { x: at.x + offset.x, y: at.y + offset.y }]);
     }
     const now = Date.now();
-    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, (d) => moveNodes(d, moved), nudgeStep(ids), now)));
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => moveNodes(d, moved), nudgeStep(ids), now)));
   };
 
   /** Runs a layout command on the open graph as one step. Auto-arrange then fits the view. */
@@ -680,7 +728,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   /** Undoes or redoes a step of the open graph, and selects the nodes it changed. */
   const moveInHistory = (direction: "undo" | "redo") => {
     if (!projectPath || !open) return;
-    const moved = (direction === "undo" ? undoGraph : redoGraph)(sessionFor(sessionsRef.current, projectPath), open);
+    const moved = (direction === "undo" ? undoDraft : redoDraft)(sessionFor(sessionsRef.current, projectPath), open);
     if (!moved) return announce(direction === "undo" ? "Nothing to undo" : "Nothing to redo");
     changeSessions((s) => updateSession(s, projectPath, () => moved.session));
     selectNodes(moved.changed);
@@ -940,7 +988,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (naming.mode === "new") {
       const ref = { kind: naming.kind, id: naming.value };
       const newRecord = RECORD_KINDS.find((k) => k.kind === ref.kind)?.newRecord;
-      const created = newRecord ? createNewGraphDraft(ref, newRecord(ref.id)) : null;
+      const created = newRecord ? createNewDraft(ref, newRecord(ref.id)) : null;
       if (!created?.ok) return;
       setNaming(null);
       setNotice(null);
@@ -1184,7 +1232,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     </button>
                   </>
                 )}
-                {openDraft && <ArrangeMenuButton selectedCount={selected.size} onChoose={arrangeOpen} />}
+                {openDraft && open?.kind === "graphs" && <ArrangeMenuButton selectedCount={selected.size} onChoose={arrangeOpen} />}
                 {openDraft && (
                   <button
                     type="button"
@@ -1449,6 +1497,20 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     <p>Choose a definition from the list.</p>
                   )}
                 </div>
+              ) : openDraft && open.kind === "contracts" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <ContractForm
+                    key={`${projectKey}|${openKey}`}
+                    draft={openDraft}
+                    bindingsProblem={current?.file?.bindingsProblem}
+                    known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
+                    triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
+                    onEdit={editOpenContract}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
+                  />
+                </>
               ) : openDraft ? (
                 <GraphDraftView
                   // Remount per definition, so the canvas fits or restores its viewport.
@@ -1563,7 +1625,7 @@ const ListRow: FC<{
   idMismatch: DefinitionEntry["idMismatch"];
   /** The definition was validated and the SDK refuses it. */
   invalid: boolean;
-  draft: GraphDraft | undefined;
+  draft: Draft | undefined;
   current: boolean;
   onOpen: () => void;
 }> = ({ id, problem, idMismatch, invalid, draft, current, onOpen }) => {
@@ -1757,8 +1819,15 @@ const DefinitionView: FC<{
   return <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>;
 };
 
+const DeletedOnDiskNotice: FC<{ path: string }> = ({ path }) => (
+  <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#ff7b72] border-b border-[#30363d] bg-[#161b22]">
+    <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+    <span className="break-words">{path} was deleted on disk. Saving writes this draft back.</span>
+  </p>
+);
+
 const GraphDraftView: FC<{
-  draft: GraphDraft;
+  draft: Draft;
   layoutProblem: FileProblem | undefined;
   viewport: Viewport | undefined;
   onViewportChange: (viewport: Viewport) => void;
@@ -1794,15 +1863,9 @@ const GraphDraftView: FC<{
   // so this always parses.
   const graph = useMemo(() => parseGraph(draft.content), [draft.content]);
   if (!graph.ok) return null;
-  const path = definitionPath(draft.ref);
   return (
     <>
-      {draft.deletedOnDisk && (
-        <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#ff7b72] border-b border-[#30363d] bg-[#161b22]">
-          <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span className="break-words">{path} was deleted on disk. Saving writes this draft back.</span>
-        </p>
-      )}
+      {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
       {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />

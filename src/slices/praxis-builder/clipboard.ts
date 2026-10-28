@@ -15,7 +15,7 @@
  * remap, and computes positions: a cascading offset when the originals are in view, at a
  * click point for the canvas's context-menu Paste, and centred in the viewport otherwise.
  */
-import { withChanges, type GraphDraft } from "./drafts.ts";
+import { withChanges, type Draft } from "./drafts.ts";
 import { MAX_ID_LENGTH, nodesOf } from "./editor.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { isObject, MAX_NODES, type JsonObject, type XYPosition } from "./model.ts";
@@ -166,10 +166,10 @@ export const pasteFits = (nodeCount: number, envelope: ClipboardEnvelope): boole
  * the ids of the pasted nodes. Refuses if adding the nodes would exceed `MAX_NODES`.
  */
 export function pasteIntoDraft(
-  draft: GraphDraft,
+  draft: Draft,
   envelope: ClipboardEnvelope,
   delta: XYPosition
-): { draft: GraphDraft; pastedIds: string[] } | null {
+): { draft: Draft; pastedIds: string[] } | null {
   const existingIds = new Set(nodesOf(draft.content).map((n) => n.id as string));
   if (!pasteFits(existingIds.size, envelope)) return null;
   const { nodes: newNodes, positions: newPositions, remappedIds } = pasteEnvelope(envelope, existingIds, delta);
@@ -186,9 +186,9 @@ export function pasteIntoDraft(
  * when the selection is empty or the graph has no room.
  */
 export function duplicateSelection(
-  draft: GraphDraft,
+  draft: Draft,
   selection: ReadonlySet<string>
-): { draft: GraphDraft; pastedIds: string[] } | null {
+): { draft: Draft; pastedIds: string[] } | null {
   const envelope = copySelection(nodesOf(draft.content), selection, draft.positions);
   if (!envelope) return null;
   return pasteIntoDraft(draft, envelope, cascadeDelta(envelope, draft.positions));
@@ -285,7 +285,7 @@ export function cascadeDelta(envelope: ClipboardEnvelope, positions: ReadonlyMap
  */
 export function pasteDelta(
   envelope: ClipboardEnvelope,
-  draft: GraphDraft,
+  draft: Draft,
   graphKey: string,
   viewport: Viewport,
   box: Box,

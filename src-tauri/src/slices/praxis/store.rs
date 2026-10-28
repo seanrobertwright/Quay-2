@@ -11,8 +11,8 @@ use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{
-    ConflictReason, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem, IdMismatch, LayoutInput,
-    PraxisKind, SaveOutcome,
+    BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
+    IdMismatch, LayoutInput, PraxisKind, SaveOutcome,
 };
 use crate::atomic_file::write_atomic;
 
@@ -30,6 +30,16 @@ pub const LAYOUT_VERSION: u64 = 1;
 
 pub(super) const PRAXIS_DIR: &str = ".praxis";
 pub(super) const LAYOUT_DIR: &str = "layout";
+pub(super) const BINDINGS_DIR: &str = "bindings";
+
+/// The `version` a contract's bindings file is written with.
+pub const BINDINGS_VERSION: u64 = 1;
+
+/// The most ids each list of a bindings file holds, as the SDK caps its id lists.
+pub const MAX_BINDINGS: usize = 1000;
+
+/// The most trigger files `contract_triggers` reads.
+pub const MAX_TRIGGERS_SCANNED: usize = 10_000;
 
 /// Serializes saves, renames and deletes, so two of them from Quay can't interleave their
 /// checks and writes.
@@ -277,6 +287,9 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
             problem: None,
             layout: None,
             layout_problem: None,
+            bindings: None,
+            bindings_problem: None,
+            bindings_hash: None,
         });
     };
     let (content, problem, content_hash) = match read_capped(&path) {
@@ -300,6 +313,22 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
     } else {
         (None, None)
     };
+    // Bindings that can't be read are reported, and the contract opens with none.
+    let (bindings, bindings_problem, bindings_hash) = if kind == PraxisKind::Contracts {
+        match companion_file(repo, BINDINGS_DIR, id) {
+            Err(why) => (None, Some(FileProblem::new(why)), None),
+            Ok(None) => (None, None, None),
+            Ok(Some(file)) => match read_capped(&file) {
+                Err(problem) => (None, Some(problem), None),
+                Ok(bytes) => {
+                    let (value, problem) = split(parse_object(&bytes));
+                    (value, problem, Some(super::canonical::content_hash(&bytes)))
+                }
+            },
+        }
+    } else {
+        (None, None, None)
+    };
     Ok(DefinitionFile {
         id: id.to_string(),
         kind,
@@ -309,7 +338,85 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
         problem,
         layout,
         layout_problem,
+        bindings,
+        bindings_problem,
+        bindings_hash,
     })
+}
+
+/// `.praxis/<folder>/<id>.json`, a file that belongs to a definition, when it exists and
+/// resolves inside the repository.
+fn companion_file(repo: &Path, folder: &str, id: &str) -> Result<Option<PathBuf>, String> {
+    match confined_dir(repo, folder)? {
+        None => Ok(None),
+        Some(dir) => confined_file(repo, &dir, id),
+    }
+}
+
+/// The hash of a contract's bindings file as it is now, or `None` when there is none.
+fn bindings_hash_now(repo: &Path, id: &str) -> Result<Option<String>, String> {
+    match companion_file(repo, BINDINGS_DIR, id)? {
+        None => Ok(None),
+        Some(path) => std::fs::read(&path)
+            .map(|bytes| Some(content_hash(&bytes)))
+            .map_err(|e| format!("{}/{}/{}.json can't be read: {}", PRAXIS_DIR, BINDINGS_DIR, id, e)),
+    }
+}
+
+/// The bindings file's JSON: each list with its ids in the order given and repeats
+/// dropped. Refuses an id that isn't filename-safe, since no definition could have it, and
+/// a list longer than `MAX_BINDINGS`.
+fn bindings_value(bindings: &BindingsInput) -> Result<Value, String> {
+    let list = |name: &str, ids: &[String]| -> Result<Value, String> {
+        let mut kept: Vec<&str> = Vec::new();
+        for id in ids {
+            validate_id(id).map_err(|why| format!("The bound {} id '{}' isn't valid. {}", name, id, why))?;
+            if !kept.contains(&id.as_str()) {
+                kept.push(id);
+            }
+        }
+        if kept.len() > MAX_BINDINGS {
+            return Err(format!("A contract binds at most {} {}.", MAX_BINDINGS, name));
+        }
+        Ok(json!(kept))
+    };
+    let mut out = Map::new();
+    out.insert("version".to_string(), json!(BINDINGS_VERSION));
+    out.insert("graphs".to_string(), list("graphs", &bindings.graphs)?);
+    out.insert("grants".to_string(), list("grants", &bindings.grants)?);
+    Ok(Value::Object(out))
+}
+
+/// The ids of the triggers whose `contractId` is `contract_id` (#223), in id order. Files
+/// that can't be read, and those past `MAX_TRIGGERS_SCANNED`, are reported as unchecked.
+pub fn contract_triggers(repo: &Path, contract_id: &str) -> Result<ContractTriggers, String> {
+    validate_id(contract_id)?;
+    let folder = PraxisKind::Triggers.folder();
+    let mut out = ContractTriggers { ids: Vec::new(), unchecked: Vec::new() };
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(out) };
+    let ids = json_ids(&dir, folder)?;
+    if ids.len() > MAX_TRIGGERS_SCANNED {
+        out.unchecked.push(format!(
+            "{}/{}/: the {} files after the first {} weren't searched.",
+            PRAXIS_DIR,
+            folder,
+            ids.len() - MAX_TRIGGERS_SCANNED,
+            MAX_TRIGGERS_SCANNED
+        ));
+    }
+    for id in ids.into_iter().take(MAX_TRIGGERS_SCANNED) {
+        let record = match confined_file(repo, &dir, &id) {
+            Ok(Some(path)) => parse_object_file(&path).map_err(|p| p.message),
+            Ok(None) => Err("The file disappeared.".to_string()),
+            Err(why) => Err(why),
+        };
+        match record {
+            Ok(record) if record.get("contractId").and_then(Value::as_str) == Some(contract_id) => out.ids.push(id),
+            Ok(_) => {}
+            Err(why) => out.unchecked.push(format!("{}/{}/{}.json: {}", PRAXIS_DIR, folder, id, why)),
+        }
+    }
+    Ok(out)
 }
 
 fn split<T, E>(result: Result<T, E>) -> (Option<T>, Option<E>) {
@@ -399,13 +506,20 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// filename-safe. An invalid definition is still written: whatever later runs it refuses
 /// it. The definition is written first, so a layout that fails to write afterwards is
 /// reported in the outcome and the definition stays saved.
+///
+/// A contract's `bindings` are written to its bindings file the same way (#223). For a
+/// contract saved before, `expected_bindings_hash` is the hash of the bindings file the
+/// draft loaded, `None` for no file, and a bindings file changed since is a conflict too.
+#[allow(clippy::too_many_arguments)]
 pub fn save_definition(
     repo: &Path,
     kind: PraxisKind,
     id: &str,
     content: Value,
     layout: Option<&LayoutInput>,
+    bindings: Option<&BindingsInput>,
     expected_hash: Option<&str>,
+    expected_bindings_hash: Option<&str>,
     force: bool,
 ) -> Result<SaveOutcome, String> {
     validate_id(id)?;
@@ -415,6 +529,10 @@ pub fn save_definition(
     let record = canonical_record(kind, record);
     let layout = match layout {
         Some(layout) if kind == PraxisKind::Graphs => Some(layout_value(layout, &record)?),
+        _ => None,
+    };
+    let bindings = match bindings {
+        Some(bindings) if kind == PraxisKind::Contracts => Some(bindings_value(bindings)?),
         _ => None,
     };
 
@@ -435,6 +553,13 @@ pub fn save_definition(
         }
         _ => {}
     }
+    if bindings.is_some()
+        && expected_hash.is_some()
+        && !force
+        && bindings_hash_now(repo, id)?.as_deref() != expected_bindings_hash
+    {
+        return Ok(SaveOutcome::Conflict { reason: ConflictReason::Changed });
+    }
 
     let value = Value::Object(record);
     let text = to_canonical_text(&value);
@@ -450,7 +575,27 @@ pub fn save_definition(
         };
         write().err()
     });
-    Ok(SaveOutcome::Saved { content: value, content_hash: content_hash(text.as_bytes()), layout_error })
+    let (bindings_hash, bindings_error) = match bindings {
+        None => (None, None),
+        Some(bindings) => {
+            let write = || -> Result<String, String> {
+                let dir = ensure_confined_dir(repo, BINDINGS_DIR)?;
+                confined_file(repo, &dir, id)?;
+                let text = to_canonical_text(&bindings);
+                write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
+                    .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, BINDINGS_DIR, id, e))?;
+                Ok(content_hash(text.as_bytes()))
+            };
+            split(write())
+        }
+    };
+    Ok(SaveOutcome::Saved {
+        content: value,
+        content_hash: content_hash(text.as_bytes()),
+        layout_error,
+        bindings_hash,
+        bindings_error,
+    })
 }
 
 #[cfg(test)]
@@ -829,7 +974,7 @@ mod tests {
 
     fn saved(outcome: SaveOutcome) -> (Value, String, Option<String>) {
         match outcome {
-            SaveOutcome::Saved { content, content_hash, layout_error } => (content, content_hash, layout_error),
+            SaveOutcome::Saved { content, content_hash, layout_error, .. } => (content, content_hash, layout_error),
             other => panic!("expected a save, got {other:?}"),
         }
     }
@@ -848,7 +993,7 @@ mod tests {
     fn saving_a_new_graph_writes_the_canonical_file_with_a_revision() {
         let repo = temp_repo();
         let (content, hash, layout_error) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, None, None, false).unwrap());
         assert!(layout_error.is_none());
         let text = read(&repo, ".praxis/graphs/g.json");
         assert!(text.starts_with("{\n  \"id\": \"g\",\n  \"revision\": \"sha256:"), "{text}");
@@ -863,10 +1008,10 @@ mod tests {
     fn saving_unchanged_content_again_leaves_the_bytes_alone() {
         let repo = temp_repo();
         let (content, hash, _) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, None, None, false).unwrap());
         let before = read(&repo, ".praxis/graphs/g.json");
         let (_, again, _) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, None, Some(&hash), None, false).unwrap());
         assert_eq!(read(&repo, ".praxis/graphs/g.json"), before);
         assert_eq!(again, hash);
     }
@@ -875,14 +1020,14 @@ mod tests {
     fn a_file_changed_since_it_was_loaded_is_a_conflict_until_forced() {
         let repo = temp_repo();
         let (content, hash, _) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, None, None, false).unwrap());
         write(&repo, ".praxis/graphs/g.json", "{\"id\": \"g\", \"edited\": true}");
-        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, Some(&hash), false).unwrap();
+        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, None, Some(&hash), None, false).unwrap();
         assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Changed });
         assert!(read(&repo, ".praxis/graphs/g.json").contains("edited"), "a conflict writes nothing");
 
         let (_, forced, _) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), true).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, None, Some(&hash), None, true).unwrap());
         assert_eq!(forced, hash);
         assert!(!read(&repo, ".praxis/graphs/g.json").contains("edited"));
     }
@@ -891,12 +1036,12 @@ mod tests {
     fn a_deleted_file_is_a_conflict_until_forced() {
         let repo = temp_repo();
         let (content, hash, _) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, None, None, false).unwrap());
         std::fs::remove_file(repo.join(".praxis/graphs/g.json")).unwrap();
-        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, Some(&hash), false).unwrap();
+        let outcome = save_definition(&repo, PraxisKind::Graphs, "g", content.clone(), None, None, Some(&hash), None, false).unwrap();
         assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Deleted });
         assert!(!repo.join(".praxis/graphs/g.json").exists());
-        saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, Some(&hash), true).unwrap());
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", content, None, None, Some(&hash), None, true).unwrap());
         assert!(repo.join(".praxis/graphs/g.json").exists());
     }
 
@@ -904,14 +1049,14 @@ mod tests {
     fn saving_refuses_an_id_that_is_taken_or_not_filename_safe() {
         let repo = temp_repo();
         write(&repo, ".praxis/graphs/Taken.json", "{}");
-        assert!(save_definition(&repo, PraxisKind::Graphs, "Taken", graph(), None, None, false).is_err());
-        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, false).is_err());
-        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, true).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "Taken", graph(), None, None, None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "taken", graph(), None, None, None, None, true).is_err());
         assert_eq!(read(&repo, ".praxis/graphs/Taken.json"), "{}");
         for bad in ["../g", "a b", "nul", ".g"] {
-            assert!(save_definition(&repo, PraxisKind::Graphs, bad, graph(), None, None, false).is_err(), "{bad}");
+            assert!(save_definition(&repo, PraxisKind::Graphs, bad, graph(), None, None, None, None, false).is_err(), "{bad}");
         }
-        assert!(save_definition(&repo, PraxisKind::Graphs, "g", json!([1]), None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", json!([1]), None, None, None, None, false).is_err());
     }
 
     #[test]
@@ -919,7 +1064,7 @@ mod tests {
         let repo = temp_repo();
         // No nodes, an unknown kind and a dangling dependency: the schema refuses all three.
         let invalid = json!({"id": "g", "nodes": [{"id": "a", "kind": "NOPE", "dependsOn": ["ghost"]}]});
-        saved(save_definition(&repo, PraxisKind::Graphs, "g", invalid, None, None, false).unwrap());
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", invalid, None, None, None, None, false).unwrap());
         assert!(read(&repo, ".praxis/graphs/g.json").contains("NOPE"));
     }
 
@@ -930,7 +1075,7 @@ mod tests {
             &[("end-1", 10.4, -3.6), ("gone", 1.0, 1.0), ("task-1", 0.5, 99.0)],
             Some((-12.7, 40.2, 0.81234)),
         );
-        saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).unwrap());
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, None, None, false).unwrap());
         assert_eq!(
             read(&repo, ".praxis/layout/g.json"),
             "{\n  \"version\": 1,\n  \"nodes\": {\n    \"task-1\": {\n      \"x\": 1,\n      \"y\": 99\n    },\n    \"end-1\": {\n      \"x\": 10,\n      \"y\": -4\n    }\n  },\n  \"viewport\": {\n    \"x\": -13,\n    \"y\": 40,\n    \"zoom\": 0.812\n  }\n}\n"
@@ -941,9 +1086,9 @@ mod tests {
     fn saving_refuses_positions_that_are_not_finite_and_writes_nothing() {
         let repo = temp_repo();
         let sent = layout(&[("task-1", f64::NAN, 0.0)], None);
-        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, None, None, false).is_err());
         let sent = layout(&[], Some((0.0, 0.0, 0.0)));
-        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, None, None, false).is_err());
         assert!(!repo.join(".praxis").exists());
     }
 
@@ -951,7 +1096,7 @@ mod tests {
     fn only_graphs_write_a_layout() {
         let repo = temp_repo();
         let sent = layout(&[], None);
-        saved(save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), Some(&sent), None, false).unwrap());
+        saved(save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), Some(&sent), None, None, None, false).unwrap());
         assert!(!repo.join(".praxis/layout").exists());
     }
 
@@ -960,7 +1105,7 @@ mod tests {
         let repo = temp_repo();
         let outside = temp_repo();
         link_dir(&outside, &repo.join(".praxis"));
-        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, false).is_err());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, None, None, None, false).is_err());
         assert!(!outside.join("graphs").exists(), "nothing is created through the link");
     }
 
@@ -971,9 +1116,128 @@ mod tests {
         link_dir(&outside, &repo.join(".praxis/layout"));
         let sent = layout(&[("task-1", 0.0, 0.0)], None);
         let (_, _, layout_error) =
-            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, false).unwrap());
+            saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), Some(&sent), None, None, None, false).unwrap());
         assert!(layout_error.unwrap().contains("outside"));
         assert!(repo.join(".praxis/graphs/g.json").exists());
         assert!(!outside.join("g.json").exists());
+    }
+
+    // --- contract bindings -------------------------------------------------------------
+
+    fn bindings(graphs: &[&str], grants: &[&str]) -> BindingsInput {
+        BindingsInput {
+            graphs: graphs.iter().map(|s| s.to_string()).collect(),
+            grants: grants.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn saved_bindings(outcome: SaveOutcome) -> (String, Option<String>, Option<String>) {
+        match outcome {
+            SaveOutcome::Saved { content_hash, bindings_hash, bindings_error, .. } => (content_hash, bindings_hash, bindings_error),
+            other => panic!("expected a save, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn saving_a_contract_writes_its_bindings_without_repeats() {
+        let repo = temp_repo();
+        let sent = bindings(&["g1", "g2", "g1"], &["a"]);
+        let (_, hash, error) = saved_bindings(
+            save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, Some(&sent), None, None, false)
+                .unwrap(),
+        );
+        assert_eq!(error, None);
+        let text = read(&repo, ".praxis/bindings/c.json");
+        assert_eq!(text, "{\n  \"version\": 1,\n  \"graphs\": [\n    \"g1\",\n    \"g2\"\n  ],\n  \"grants\": [\n    \"a\"\n  ]\n}\n");
+        assert_eq!(hash, Some(content_hash(text.as_bytes())));
+
+        let file = read_definition(&repo, PraxisKind::Contracts, "c").unwrap();
+        assert_eq!(file.bindings, Some(json!({"version": 1, "graphs": ["g1", "g2"], "grants": ["a"]})));
+        assert_eq!(file.bindings_hash, hash);
+    }
+
+    #[test]
+    fn only_contracts_write_bindings() {
+        let repo = temp_repo();
+        let sent = bindings(&["g"], &[]);
+        saved(save_definition(&repo, PraxisKind::Graphs, "g", graph(), None, Some(&sent), None, None, false).unwrap());
+        assert!(!repo.join(".praxis/bindings").exists());
+    }
+
+    #[test]
+    fn bindings_refuse_an_id_that_isnt_filename_safe() {
+        let repo = temp_repo();
+        let sent = bindings(&["a/b"], &[]);
+        assert!(save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, Some(&sent), None, None, false)
+            .is_err());
+        assert!(!repo.join(".praxis").exists(), "nothing is written");
+    }
+
+    #[test]
+    fn a_bindings_file_changed_since_the_draft_loaded_it_is_a_conflict() {
+        let repo = temp_repo();
+        let sent = bindings(&["g"], &[]);
+        let (hash, bindings_hash, _) = saved_bindings(
+            save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, Some(&sent), None, None, false)
+                .unwrap(),
+        );
+        write(&repo, ".praxis/bindings/c.json", "{\"version\": 1, \"graphs\": [], \"grants\": []}\n");
+        let outcome = save_definition(
+            &repo,
+            PraxisKind::Contracts,
+            "c",
+            json!({"id": "c"}),
+            None,
+            Some(&sent),
+            Some(&hash),
+            bindings_hash.as_deref(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Changed });
+        // A bindings file that appeared where the draft loaded none conflicts too.
+        std::fs::remove_file(repo.join(".praxis/bindings/c.json")).unwrap();
+        let (hash, _, _) = saved_bindings(
+            save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, None, Some(&hash), None, true)
+                .unwrap(),
+        );
+        write(&repo, ".praxis/bindings/c.json", "{}\n");
+        let outcome =
+            save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, Some(&sent), Some(&hash), None, false)
+                .unwrap();
+        assert_eq!(outcome, SaveOutcome::Conflict { reason: ConflictReason::Changed });
+        // Forcing overwrites it.
+        saved_bindings(
+            save_definition(&repo, PraxisKind::Contracts, "c", json!({"id": "c"}), None, Some(&sent), Some(&hash), None, true)
+                .unwrap(),
+        );
+        assert!(read(&repo, ".praxis/bindings/c.json").contains("\"g\""));
+    }
+
+    #[test]
+    fn a_bindings_file_that_doesnt_parse_is_reported_and_the_contract_opens() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/contracts/c.json", "{\"id\": \"c\"}\n");
+        write(&repo, ".praxis/bindings/c.json", "{nope");
+        let file = read_definition(&repo, PraxisKind::Contracts, "c").unwrap();
+        assert!(file.content.is_some());
+        assert_eq!(file.bindings, None);
+        assert!(file.bindings_problem.is_some());
+        assert!(file.bindings_hash.is_some());
+    }
+
+    #[test]
+    fn contract_triggers_lists_the_triggers_that_name_the_contract() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/triggers/b.json", "{\"id\": \"b\", \"contractId\": \"c\"}\n");
+        write(&repo, ".praxis/triggers/a.json", "{\"id\": \"a\", \"contractId\": \"c\"}\n");
+        write(&repo, ".praxis/triggers/other.json", "{\"id\": \"other\", \"contractId\": \"d\"}\n");
+        write(&repo, ".praxis/triggers/broken.json", "{");
+        let found = contract_triggers(&repo, "c").unwrap();
+        assert_eq!(found.ids, vec!["a", "b"]);
+        assert_eq!(found.unchecked.len(), 1);
+        assert!(found.unchecked[0].starts_with(".praxis/triggers/broken.json"));
+        assert!(contract_triggers(&repo, "../c").is_err());
+        assert!(contract_triggers(&temp_repo(), "c").unwrap().ids.is_empty());
     }
 }

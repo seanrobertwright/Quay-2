@@ -11,8 +11,8 @@ use serde_json::{Map, Value};
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{DeleteOutcome, DraftContent, FileChange, HashChange, PraxisKind, RenameOutcome};
 use super::store::{
-    confined_dir, confined_file, json_ids, parse_object, read_capped, validate_id, LAYOUT_DIR,
-    PRAXIS_DIR, SAVE_LOCK,
+    confined_dir, confined_file, json_ids, parse_object, read_capped, validate_id, BINDINGS_DIR,
+    LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK,
 };
 use crate::atomic_file::write_atomic;
 
@@ -49,8 +49,44 @@ pub const GRAPH_HOOK: ReferenceHook = ReferenceHook {
     rewrite: refers_to_nothing,
 };
 
+/// The list in a contract's bindings file that holds definitions of `kind`, if any.
+fn binding_list(kind: PraxisKind) -> Option<&'static str> {
+    match kind {
+        PraxisKind::Graphs => Some("graphs"),
+        PraxisKind::Grants => Some("grants"),
+        _ => None,
+    }
+}
+
+/// Rewrites a bindings file's entries for the graph or grant named `old` (#223). Entries
+/// that aren't strings are left alone.
+fn rewrite_bindings(folder: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
+    let Some(list) = binding_list(target).filter(|_| folder == BINDINGS_DIR) else {
+        return false;
+    };
+    let Some(Value::Array(ids)) = record.get_mut(list) else {
+        return false;
+    };
+    let mut found = false;
+    for id in ids.iter_mut().filter(|id| id.as_str() == Some(old)) {
+        found = true;
+        if let Some(new) = new {
+            *id = Value::String(new.to_string());
+        }
+    }
+    found
+}
+
+/// A contract owns its bindings file, which lists the graphs and grants bound to it, so a
+/// rename of either rewrites the entries and a delete names the files that hold them.
+pub const CONTRACT_HOOK: ReferenceHook = ReferenceHook {
+    companions: &[(PraxisKind::Contracts, BINDINGS_DIR)],
+    scans: &[BINDINGS_DIR],
+    rewrite: rewrite_bindings,
+};
+
 /// Every kind's hook. A kind that owns files or holds references adds its hook here.
-pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK];
+pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK];
 
 /// A file's path relative to the repository, as reports show it.
 fn shown(folder: &str, id: &str) -> String {
@@ -285,9 +321,8 @@ pub fn rename_definition(
         for mut r in referrers {
             rewrite_all(hooks, r.folder, &mut r.record, kind, id, Some(new_id));
             let text = file_text(r.folder, r.record);
-            let hashes = PraxisKind::from_folder(r.folder)
-                .map(|_| HashChange { previous: content_hash(&r.bytes), next: content_hash(text.as_bytes()) });
-            changes.push(FileChange { path: r.shown.clone(), new_path: None, hashes });
+            let hashes = HashChange { previous: content_hash(&r.bytes), next: content_hash(text.as_bytes()) };
+            changes.push(FileChange { path: r.shown.clone(), new_path: None, hashes: Some(hashes) });
             writes.push(Step::Write { path: r.path, bytes: text.into_bytes(), line: format!("Rewrote {}", r.shown) });
         }
 
@@ -417,8 +452,7 @@ mod tests {
         repo
     }
 
-    /// A stand-in for a later kind's hook: triggers refer to contracts by `contractId`,
-    /// and a contract owns `.praxis/bindings/<id>.json`.
+    /// A stand-in for the trigger form's hook: triggers refer to contracts by `contractId`.
     fn contract_id(_: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
         if target != PraxisKind::Contracts || record.get("contractId").and_then(Value::as_str) != Some(old) {
             return false;
@@ -428,12 +462,8 @@ mod tests {
         }
         true
     }
-    const CONTRACT_HOOK: ReferenceHook = ReferenceHook {
-        companions: &[(PraxisKind::Contracts, "bindings")],
-        scans: &["triggers"],
-        rewrite: contract_id,
-    };
-    const TEST_HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK];
+    const CONTRACT_ID_HOOK: ReferenceHook = ReferenceHook { companions: &[], scans: &["triggers"], rewrite: contract_id };
+    const TEST_HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, CONTRACT_ID_HOOK];
 
     fn contract_repo() -> PathBuf {
         let repo = temp_repo();
@@ -647,6 +677,56 @@ mod tests {
         assert_eq!(outcome.changes.len(), 1);
         assert_eq!(read(&repo, ".praxis/triggers/t1.json")["contractId"], "c1");
         assert_eq!(names(&repo, ".praxis/bindings"), vec!["c1.json"]);
+    }
+
+    fn bound_repo() -> PathBuf {
+        let repo = graph_repo();
+        write(&repo, ".praxis/grants/a.json", r#"{"id": "a"}"#);
+        write(&repo, ".praxis/bindings/c1.json", r#"{"version": 1, "graphs": ["g", "other"], "grants": ["a"]}"#);
+        write(&repo, ".praxis/bindings/c2.json", r#"{"version": 1, "graphs": ["other"], "grants": ["g"]}"#);
+        repo
+    }
+
+    #[test]
+    fn renaming_a_bound_graph_rewrites_the_bindings_that_list_it() {
+        let repo = bound_repo();
+        let outcome = rename_definition(&repo, PraxisKind::Graphs, "g", "h", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["graphs"], json!(["h", "other"]));
+        // A grant with the same id is a different definition.
+        assert_eq!(read(&repo, ".praxis/bindings/c2.json")["grants"], json!(["g"]));
+        let change = outcome.changes.iter().find(|c| c.path == ".praxis/bindings/c1.json").unwrap();
+        let hashes = change.hashes.as_ref().unwrap();
+        assert_eq!(hashes.next, content_hash(&std::fs::read(repo.join(".praxis/bindings/c1.json")).unwrap()));
+        assert!(!outcome.changes.iter().any(|c| c.path == ".praxis/bindings/c2.json"));
+    }
+
+    #[test]
+    fn renaming_a_bound_grant_rewrites_the_bindings_that_list_it() {
+        let repo = bound_repo();
+        let outcome = rename_definition(&repo, PraxisKind::Grants, "a", "b", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["grants"], json!(["b"]));
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["graphs"], json!(["g", "other"]));
+    }
+
+    #[test]
+    fn renaming_a_contract_moves_its_bindings_file() {
+        let repo = bound_repo();
+        write(&repo, ".praxis/contracts/c1.json", r#"{"id": "c1"}"#);
+        let outcome = rename_definition(&repo, PraxisKind::Contracts, "c1", "c9", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/bindings"), vec!["c2.json", "c9.json"]);
+        assert_eq!(read(&repo, ".praxis/bindings/c9.json")["graphs"], json!(["g", "other"]));
+    }
+
+    #[test]
+    fn deleting_a_bound_graph_names_the_bindings_and_leaves_them() {
+        let repo = bound_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::Graphs, "g", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.referrers, vec![".praxis/bindings/c1.json"]);
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["graphs"], json!(["g", "other"]));
     }
 
     // --- deleting ----------------------------------------------------------------------

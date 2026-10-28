@@ -22,6 +22,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { newContractContent } from "./contract.ts";
 import { newGraphContent } from "./lifecycle.ts";
 import { isNodeKind, type JsonObject, type NodeKind, type PraxisNode } from "./model.ts";
 import type { PraxisKind } from "./types.ts";
@@ -186,7 +187,7 @@ export interface RecordKindEntry {
 /** The left list's groups, in order. */
 export const RECORD_KINDS: RecordKindEntry[] = [
   { kind: "graphs", label: "Graphs", singular: "graph", icon: Workflow, newRecord: newGraphContent },
-  { kind: "contracts", label: "Contracts", singular: "contract", icon: FileText },
+  { kind: "contracts", label: "Contracts", singular: "contract", icon: FileText, newRecord: newContractContent },
   { kind: "grants", label: "Grants", singular: "grant", icon: KeyRound },
   { kind: "triggers", label: "Triggers", singular: "trigger", icon: Timer },
 ];

@@ -37,6 +37,11 @@ export interface DefinitionFile {
   /** A graph's `.praxis/layout/<id>.json`, when it exists and parses. */
   layout?: Record<string, unknown>;
   layoutProblem?: FileProblem;
+  /** A contract's `.praxis/bindings/<id>.json`, when it exists and parses. */
+  bindings?: Record<string, unknown>;
+  bindingsProblem?: FileProblem;
+  /** The hash of the bindings file's bytes, when it exists and can be read. */
+  bindingsHash?: string;
 }
 
 /** Names one definition, the way every backend command takes it. */
@@ -51,13 +56,34 @@ export interface LayoutInput {
   viewport: { x: number; y: number; zoom: number } | null;
 }
 
+/** A contract's binding record as `praxis_save` takes it. */
+export interface BindingsInput {
+  graphs: readonly string[];
+  grants: readonly string[];
+}
+
 /**
  * What `praxis_save` did: wrote the record (as returned, with the hash of the written
- * bytes), or found the file changed or deleted since the draft loaded it.
+ * bytes), or found the file, or a contract's bindings file, changed or deleted since the
+ * draft loaded it. `bindingsHash` is the hash of the bindings file written, when it was.
  */
 export type SaveOutcome =
-  | { status: "saved"; content: Record<string, unknown>; contentHash: string; layoutError?: string }
+  | {
+      status: "saved";
+      content: Record<string, unknown>;
+      contentHash: string;
+      layoutError?: string;
+      bindingsHash?: string;
+      bindingsError?: string;
+    }
   | { status: "conflict"; reason: "changed" | "deleted" };
+
+/** `praxis_contract_triggers`: the triggers whose `contractId` names a contract. */
+export interface ContractTriggers {
+  ids: string[];
+  /** Trigger files that couldn't be read or weren't searched. */
+  unchecked: string[];
+}
 
 /** How serious an issue is: `error` when the SDK refuses the record, `info` otherwise. */
 export type Severity = "error" | "info";
@@ -95,7 +121,8 @@ export interface DraftContent {
 
 /**
  * One file a rename writes: rewritten at `path`, or moved to `newPath`. `hashes` is set for
- * a definition whose content it writes, so a draft that expected `previous` can expect `next`.
+ * a file whose content it writes, a definition or a contract's bindings file, so a draft that
+ * expected `previous` can expect `next`.
  */
 export interface FileChange {
   path: string;
