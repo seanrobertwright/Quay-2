@@ -249,7 +249,7 @@ test("id suggestions are the distinct non-empty values used across the project's
   assert.deepEqual(idSuggestions([a, c], "agentId"), ["claude-code", "codex"]);
 });
 
-test("suggestions add the ids saved in the project's other bindings to those in the drafts", () => {
+test("suggestions add the ids saved in the project's bindings and templates to those in the drafts", () => {
   const draft = applyBindingEdit(newBindingContent("a", graph), { type: "set-entry-field", node: "build", key: "agentId", value: "codex" });
   assert.deepEqual(idSuggestions([draft], "agentId", ["opencode", "codex"]), ["codex", "opencode"]);
 });

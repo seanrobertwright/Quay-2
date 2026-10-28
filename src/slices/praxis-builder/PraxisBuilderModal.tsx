@@ -1111,8 +1111,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     });
   })();
 
-  // Suggestions for the Runs as id fields: the ids used in the project's saved bindings and in
-  // the binding drafts, which may hold ids not saved yet.
+  // Suggestions for the Runs as id fields: the ids used in the project's saved bindings, the
+  // agents of its saved workflow templates, and the ids in the binding drafts, which may hold
+  // ids not saved yet.
   const bindingContents = useMemo(
     () => Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-bindings").map((d) => d.content),
     [session?.drafts]
