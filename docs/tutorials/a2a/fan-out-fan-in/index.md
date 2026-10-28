@@ -360,7 +360,7 @@ npm test; npm run build; Select-String -Path dist\hello.html -Pattern '&lt;b&gt;
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 10: Second opinion from Codex](/tutorials/a2a/second-opinion-codex/)
 
-The next tutorial in series order, A2A 6: Long jobs: fire, then poll, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order; A2A 6 to A2A 9 aren't published yet. Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down.
 :::
