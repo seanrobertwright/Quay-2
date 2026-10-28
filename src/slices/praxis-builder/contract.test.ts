@@ -16,7 +16,7 @@ import {
   timeMs,
   type Bindings,
 } from "./contract.ts";
-import { createContractDraft, createDraft, createNewDraft, isDirty, markSaved, reconcileWithDisk, restoreSnapshot, snapshotOf } from "./drafts.ts";
+import { createContractDraft, createNewDraft, isDirty, markSaved, reconcileWithDisk, restoreSnapshot, snapshotOf } from "./drafts.ts";
 import { applyRename, changeDraft, EMPTY_SESSION, undoDraft, type BuilderSession } from "./session.ts";
 import type { DefinitionFile, RenameOutcome } from "./types.ts";
 
@@ -163,11 +163,10 @@ test("a contract opens as a clean draft with its bindings, even one the SDK refu
   assert.equal(createContractDraft(cref, contractFile({ content: undefined })).ok, false);
 });
 
-test("a contract with no bindings file opens with none, and triggers get no drafts yet", () => {
+test("a contract with no bindings file opens with none", () => {
   const d = contractDraft({ bindings: undefined, bindingsHash: undefined });
   assert.deepEqual(d.bindings, EMPTY_BINDINGS);
   assert.equal(d.baseBindingsHash, null);
-  assert.equal(createDraft({ kind: "triggers", id: "a" }, { id: "a", kind: "triggers", missing: false, content: {} }).ok, false);
 });
 
 test("a new contract's draft is dirty until it is saved", () => {

@@ -54,10 +54,13 @@ import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
+import { TriggerForm } from "./TriggerForm.tsx";
+import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
   createNewDraft,
   editContractDraft,
   editGrantDraft,
+  editTriggerDraft,
   hasDrafts,
   isDirty,
   layoutForSave,
@@ -617,6 +620,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [projectPath, open, changeSessions]
   );
 
+  // And a trigger form's (#223).
+  const editOpenTrigger = useCallback(
+    (edit: TriggerEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editTriggerDraft(d, edit), triggerStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
   /** Ends any typing step of the open draft, so the next keystroke starts a new one. */
   const endTyping = useCallback(() => {
     if (!projectPath || !open) return;
@@ -979,10 +994,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNaming({ mode: "rename", ref, value: ref.id });
   };
 
-  /** The content of `path`'s drafts other than `except`, for a rename to rewrite. */
+  /**
+   * The content of `path`'s unsaved drafts other than `except`, for a rename to rewrite. A
+   * clean draft is left out: the rename rewrites its file, and `applyRename` drops the draft
+   * so it reads the file again.
+   */
   const draftContents = (path: string, except: DefinitionRef): DraftContent[] =>
     Object.values(sessionFor(sessionsRef.current, path).drafts)
-      .filter((d) => definitionKey(d.ref) !== definitionKey(except))
+      .filter((d) => definitionKey(d.ref) !== definitionKey(except) && isDirty(d))
       .map((d) => ({ kind: d.ref.kind, id: d.ref.id, content: d.content }));
 
   /** Why `ref` can't be renamed now: its draft has changes a rename would have to carry. */
@@ -1538,6 +1557,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     saved={listedEntries("grants").map((e) => e.id)}
                     refresh={refreshCount}
                     onEdit={editOpenGrant}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
+                  />
+                </>
+              ) : openDraft && open.kind === "triggers" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <TriggerForm
+                    key={`${projectKey}|${openKey}`}
+                    draft={openDraft}
+                    contracts={[...new Set(takenIds("contracts"))]}
+                    onEdit={editOpenTrigger}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                   />

@@ -4,19 +4,15 @@
 // writes the contract and its bindings file together. The SDK's issues show on the field
 // they are about; the integer, duration and time inputs refuse what can't be stored as the
 // user types (#231 settles how `budget` reads).
-import { useEffect, useId, useState, type FC, type KeyboardEvent } from "react";
+import { useEffect, useId, useState, type FC } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
-import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
+import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import {
   bindingIdProblem,
   CONTRACT_FEATURES,
-  DURATION_UNITS,
-  durationMs,
-  durationParts,
   type BindingList,
   type Bindings,
   type ContractEdit,
-  type DurationUnit,
 } from "./contract.ts";
 import type { Draft } from "./drafts.ts";
 import type { Json } from "./model.ts";
@@ -27,6 +23,7 @@ import {
   COST_HINT,
   COST_UNIT_LABEL,
   DateTimeInput,
+  DurationInput,
   hintClass,
   inline,
   IntegerInput,
@@ -158,96 +155,6 @@ export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, kn
   );
 };
 
-/** A duration: an amount and a unit, stored as milliseconds. */
-const DurationInput: FC<{
-  label: string;
-  value: Json | undefined;
-  hint: string;
-  issues: readonly Diagnostic[] | undefined;
-  onChange: (ms: string) => void;
-}> = ({ label, value, hint, issues, onChange }) => {
-  const id = useId();
-  const unitId = useId();
-  const messagesId = useId();
-  const hintId = useId();
-  const storedMs = typeof value === "string" ? value : "";
-  const stored = durationParts(storedMs);
-  const [text, setText] = useState(stored?.amount ?? "");
-  const [unit, setUnit] = useState<DurationUnit>(stored?.unit ?? "min");
-  const result = durationMs(text, unit);
-  // A change from outside (an undo, a reload) replaces what is typed. The value the typing
-  // stored doesn't: 60 minutes stays 60 minutes rather than turning into 1 hour mid-word.
-  const [synced, setSynced] = useState(storedMs);
-  if (synced !== storedMs) {
-    setSynced(storedMs);
-    if (!(result.ok && result.ms === storedMs)) {
-      setText(stored?.amount ?? "");
-      setUnit(stored?.unit ?? "min");
-    }
-  }
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape" && !(result.ok && result.ms === storedMs)) {
-      // Handled here, so the builder doesn't close.
-      e.preventDefault();
-      setText(stored?.amount ?? "");
-      setUnit(stored?.unit ?? "min");
-    }
-  };
-  // Text as stored is the stored value's to judge, so only the SDK's issues show for it.
-  const problem = text === (stored?.amount ?? "") || result.ok ? null : result.problem;
-  const shown = problem ? inline(problem) : issues;
-  const apply = (amount: string, u: DurationUnit) => {
-    const r = durationMs(amount, u);
-    if (r.ok) onChange(r.ms);
-  };
-  return (
-    <div>
-      <label htmlFor={id} className={labelClass}>
-        {label}
-      </label>
-      <div className="flex gap-2">
-        <input
-          id={id}
-          type="text"
-          inputMode="numeric"
-          spellCheck={false}
-          value={text}
-          onKeyDown={onKeyDown}
-          onChange={(e) => {
-            setText(e.target.value);
-            apply(e.target.value, unit);
-          }}
-          className={`${inputBaseClass} w-32 text-[#c9d1d9] font-mono`}
-          {...described(messagesId, shown, hintId)}
-        />
-        <label htmlFor={unitId} className="sr-only">
-          {label} unit
-        </label>
-        <select
-          id={unitId}
-          value={unit}
-          onChange={(e) => {
-            const u = e.target.value as DurationUnit;
-            setUnit(u);
-            apply(text, u);
-          }}
-          className={`${inputBaseClass} w-36 text-[#c9d1d9]`}
-        >
-          {DURATION_UNITS.map((u) => (
-            <option key={u.unit} value={u.unit}>
-              {u.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <p id={hintId} className={hintClass}>
-        {hint}
-        {stored && ` Stored as ${typeof value === "string" ? value : ""} ms.`}
-      </p>
-      <FieldMessages id={messagesId} issues={shown} />
-    </div>
-  );
-};
 
 const Features: FC<{ value: readonly string[]; issues: readonly Diagnostic[] | undefined; onChange: (value: string[]) => void }> = ({
   value,

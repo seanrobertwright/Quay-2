@@ -1,4 +1,4 @@
-// The fields the record forms share (#223): the contract and grant forms lay these out in
+// The fields the record forms share (#223): the contract, grant and trigger forms lay these out in
 // sections. Integer and time inputs refuse what can't be stored as the user types; the
 // SDK's issues, and any inline check a form adds, show under the field they are about.
 import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";
@@ -12,7 +12,7 @@ import {
   wallClockPartsOf,
 } from "../../lib/dates.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
-import { integerProblem, timeMs } from "./contract.ts";
+import { DURATION_UNITS, durationMs, durationParts, integerProblem, timeMs, type DurationUnit } from "./contract.ts";
 import type { Json } from "./model.ts";
 import type { ValidationStatus } from "./ProblemsPanel.tsx";
 import type { Diagnostic } from "./types.ts";
@@ -28,15 +28,21 @@ export const sectionHeading = "text-[11px] font-semibold uppercase tracking-wide
 /** The field a diagnostic is about: the first segment of its pointer, or "" for the record. */
 const fieldOf = (d: Diagnostic) => d.path.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") ?? "";
 
-export function issuesByField(status: ValidationStatus): Map<string, Diagnostic[]> {
+function groupIssues(status: ValidationStatus, keyOf: (d: Diagnostic) => string): Map<string, Diagnostic[]> {
   const out = new Map<string, Diagnostic[]>();
   if (status.state !== "done") return out;
   for (const d of status.validation.diagnostics) {
-    const field = fieldOf(d);
-    out.set(field, [...(out.get(field) ?? []), d]);
+    const key = keyOf(d);
+    out.set(key, [...(out.get(key) ?? []), d]);
   }
   return out;
 }
+
+/** The issues by the top-level field they are about, "" for the record as a whole. */
+export const issuesByField = (status: ValidationStatus) => groupIssues(status, fieldOf);
+
+/** The issues by their JSON Pointer, for a form that shows fields inside objects. */
+export const issuesByPath = (status: ValidationStatus) => groupIssues(status, (d) => d.path);
 
 export const asString = (v: Json | undefined) => (typeof v === "string" ? v : "");
 export const asStrings = (v: Json | undefined) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -221,6 +227,97 @@ export const IntegerInput: FC<{
  * UTC equivalent. The picker's digits become epoch milliseconds through the date helper,
  * so no string is parsed.
  */
+/** A duration: an amount and a unit, stored as milliseconds. */
+export const DurationInput: FC<{
+  label: string;
+  value: Json | undefined;
+  hint: string;
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (ms: string) => void;
+}> = ({ label, value, hint, issues, onChange }) => {
+  const id = useId();
+  const unitId = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  const storedMs = typeof value === "string" ? value : "";
+  const stored = durationParts(storedMs);
+  const [text, setText] = useState(stored?.amount ?? "");
+  const [unit, setUnit] = useState<DurationUnit>(stored?.unit ?? "min");
+  const result = durationMs(text, unit);
+  // A change from outside (an undo, a reload) replaces what is typed. The value the typing
+  // stored doesn't: 60 minutes stays 60 minutes rather than turning into 1 hour mid-word.
+  const [synced, setSynced] = useState(storedMs);
+  if (synced !== storedMs) {
+    setSynced(storedMs);
+    if (!(result.ok && result.ms === storedMs)) {
+      setText(stored?.amount ?? "");
+      setUnit(stored?.unit ?? "min");
+    }
+  }
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape" && !(result.ok && result.ms === storedMs)) {
+      // Handled here, so the builder doesn't close.
+      e.preventDefault();
+      setText(stored?.amount ?? "");
+      setUnit(stored?.unit ?? "min");
+    }
+  };
+  // Text as stored is the stored value's to judge, so only the SDK's issues show for it.
+  const problem = text === (stored?.amount ?? "") || result.ok ? null : result.problem;
+  const shown = problem ? inline(problem) : issues;
+  const apply = (amount: string, u: DurationUnit) => {
+    const r = durationMs(amount, u);
+    if (r.ok) onChange(r.ms);
+  };
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          spellCheck={false}
+          value={text}
+          onKeyDown={onKeyDown}
+          onChange={(e) => {
+            setText(e.target.value);
+            apply(e.target.value, unit);
+          }}
+          className={`${inputBaseClass} w-32 text-[#c9d1d9] font-mono`}
+          {...described(messagesId, shown, hintId)}
+        />
+        <label htmlFor={unitId} className="sr-only">
+          {label} unit
+        </label>
+        <select
+          id={unitId}
+          value={unit}
+          onChange={(e) => {
+            const u = e.target.value as DurationUnit;
+            setUnit(u);
+            apply(text, u);
+          }}
+          className={`${inputBaseClass} w-36 text-[#c9d1d9]`}
+        >
+          {DURATION_UNITS.map((u) => (
+            <option key={u.unit} value={u.unit}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p id={hintId} className={hintClass}>
+        {hint}
+        {stored && ` Stored as ${typeof value === "string" ? value : ""} ms.`}
+      </p>
+      <FieldMessages id={messagesId} issues={shown} />
+    </div>
+  );
+};
+
 export const DateTimeInput: FC<{
   label: string;
   value: Json | undefined;
