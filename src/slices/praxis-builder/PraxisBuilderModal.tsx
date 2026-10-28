@@ -57,16 +57,8 @@ import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
 import { CrossRecordSection, RunContextPanel, RunsUnder } from "./RunContextPanel.tsx";
-import {
-  contractsToRecheck,
-  graphRunContext,
-  issuesOn,
-  mergeContexts,
-  NO_CONTEXTS,
-  recordsWithErrors,
-  type GraphRunContext,
-  type RunContexts,
-} from "./runContext.ts";
+import { graphRunContext, issuesOn, recordsWithErrors, type GraphRunContext } from "./runContext.ts";
+import { useRunContexts } from "./useRunContexts.ts";
 import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
   createNewDraft,
@@ -116,7 +108,6 @@ import type {
   BindingsInput,
   ChangedFiles,
   ChangeStatus,
-  ContextCheck,
   ContractTriggers,
   DefinitionEntry,
   DefinitionFile,
@@ -175,14 +166,6 @@ interface Loaded {
   file?: DefinitionFile;
   error?: string;
 }
-
-/** One project's cross-record checks (#269), and why the last one failed, if it did. */
-interface ProjectContexts {
-  contexts: RunContexts;
-  error: string | null;
-}
-
-const NO_PROJECT_CONTEXTS: ProjectContexts = { contexts: NO_CONTEXTS, error: null };
 
 /** A graph waiting to be added to a contract's Graphs once the contract's draft is read. */
 interface QueuedBinding {
@@ -262,15 +245,6 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [contractTriggers, setContractTriggers] = useState<{ key: string; status: TriggersStatus } | null>(null);
   const [listShown, setListShown] = useState(true);
-  // The cross-record checks (#269), by project. A full check runs when the builder is shown and
-  // on a reload, rename or delete; opening or saving a record re-checks the contracts it affects.
-  const [runContexts, setRunContexts] = useState<ReadonlyMap<string, ProjectContexts>>(new Map());
-  const runContextsRef = useRef(runContexts);
-  useEffect(() => {
-    runContextsRef.current = runContexts;
-  }, [runContexts]);
-  const contextSeq = useRef(0);
-  const [contextCheckCount, setContextCheckCount] = useState(0);
   const [runContextShown, setRunContextShown] = useState(true);
   const toggleRunContext = useCallback(() => setRunContextShown((v) => !v), []);
   const [queuedBinding, setQueuedBinding] = useState<QueuedBinding | null>(null);
@@ -338,6 +312,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const openHistory = session && openKey ? session.histories[openKey] : undefined;
   const viewKey = `${projectKey}|${openKey}`;
   const openContent = openDraft?.content;
+  // The cross-record checks (#269): a full check when the builder is shown and on a reload, rename
+  // or delete; opening or saving a record re-checks the contracts it affects.
+  const runChecks = useRunContexts(isOpen, projectPath, openKind, openId);
+  const checkContext = runChecks.check;
   const openNodeIds = useMemo(() => (openContent ? nodeIdsOf(openContent) : []), [openContent]);
   // Only nodes the graph still has, since an undo or a rename can take a selected node away.
   const selected = useMemo(() => {
@@ -446,32 +424,6 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       stale = true;
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
-
-  /**
-   * Checks contracts across records with `praxis_check_context` (#269): every contract when
-   * `record` is null, or those the record affects, along with the contracts the last results
-   * say it was in, so a contract it has left is checked again.
-   */
-  const checkContext = useCallback((path: string, record: DefinitionRef | null) => {
-    const key = normalizePath(path);
-    const seq = ++contextSeq.current;
-    const known = runContextsRef.current.get(key)?.contexts ?? NO_CONTEXTS;
-    const also = record ? contractsToRecheck(known, record) : [];
-    const settle = (change: (cur: ProjectContexts) => ProjectContexts) =>
-      setRunContexts((m) => new Map(m).set(key, change(m.get(key) ?? NO_PROJECT_CONTEXTS)));
-    invoke<ContextCheck>("praxis_check_context", { projectPath: path, record, also }).then(
-      (result) => settle((cur) => ({ contexts: mergeContexts(cur.contexts, result, { seq, full: record === null }), error: null })),
-      (e) => settle((cur) => ({ ...cur, error: String(e) }))
-    );
-  }, []);
-
-  useEffect(() => {
-    if (isOpen && projectPath) checkContext(projectPath, null);
-  }, [isOpen, projectPath, contextCheckCount, checkContext]);
-
-  useEffect(() => {
-    if (isOpen && projectPath && openKind && openId !== undefined) checkContext(projectPath, { kind: openKind, id: openId });
-  }, [isOpen, projectPath, openKind, openId, checkContext]);
 
   // Focus moves into the builder when it opens and back to where it was when it hides.
   useEffect(() => {
@@ -1118,7 +1070,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .filter((d) => d.ref.kind === kind)
       .map((d) => d.ref.id),
   ];
-  const projectContexts = runContexts.get(projectKey) ?? NO_PROJECT_CONTEXTS;
+  const projectContexts = runChecks.forProject(projectKey);
   const contexts = projectContexts.contexts;
   const crossErrors = useMemo(() => recordsWithErrors(contexts), [contexts]);
   const openRun = graphRunContext(contexts, open?.kind === "graphs" ? open.id : "");
@@ -1303,7 +1255,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       setPending(null);
       setLifecycleBusy(false);
       setRefreshCount((n) => n + 1);
-      setContextCheckCount((n) => n + 1);
+      runChecks.recheckAll();
     }
   };
 
@@ -1331,7 +1283,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     } finally {
       setLifecycleBusy(false);
       setRefreshCount((n) => n + 1);
-      setContextCheckCount((n) => n + 1);
+      runChecks.recheckAll();
     }
   };
 
@@ -1466,7 +1418,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   title="Reload from disk"
                   onClick={() => {
                     setRefreshCount((n) => n + 1);
-                    setContextCheckCount((n) => n + 1);
+                    runChecks.recheckAll();
                   }}
                   className="p-1.5 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md"
                 >
