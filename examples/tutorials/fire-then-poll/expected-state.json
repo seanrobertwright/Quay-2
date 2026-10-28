@@ -1,0 +1,6 @@
+{
+  "env": { "BENCH_TIME_MS": "500" },
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 6 },
+  "scripts": [{ "name": "bench", "expect": "pass" }]
+}
