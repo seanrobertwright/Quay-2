@@ -7,7 +7,8 @@
 // list) can move the viewport. For keyboard use (#264), each card is a tab stop named for
 // a screen reader, with a ring while focused; edges take focus from the builder's Tab
 // handling, after the cards. React Flow's own keys are off, since the builder's keymap
-// handles every key.
+// handles every key. With a graph binding chosen (#273), each TASK, LOOP and COMPENSATION card
+// shows whether the binding has its entry, and a Validation entry's card says so.
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   applyNodeChanges,
@@ -30,6 +31,7 @@ import type { GraphEdit } from "./editor.ts";
 import { EDGE_COLOR, graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import type { NodeIssues } from "./issues.ts";
+import type { BindingMark } from "./graphBinding.ts";
 import { nodeAriaLabel } from "./keyboard.ts";
 import { computeGuides, type Rect } from "./smart-guides.ts";
 import { SmartGuides } from "./SmartGuides.tsx";
@@ -57,8 +59,19 @@ const IssueBadge: FC<{ issues: NodeIssues }> = ({ issues }) => (
   </span>
 );
 
+/** Whether the chosen binding has the node's entry, and whether that entry validates. */
+const BindingBadge: FC<{ mark: BindingMark }> = ({ mark }) => (
+  <span
+    className={`absolute -bottom-2 right-2 px-1.5 h-4 rounded-full flex items-center gap-1 text-[9px] font-semibold border border-[#0d1117] ${
+      mark.bound ? "bg-[#238636] text-white" : "bg-[#30363d] text-[#e3b341]"
+    }`}
+  >
+    {mark.bound ? (mark.validation ? "bound · validation" : "bound") : "unbound"}
+  </span>
+);
+
 const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
-  const { node, issues } = data;
+  const { node, issues, binding } = data;
   const meta = nodeKindMeta(node.kind);
   const summary = configSummary(node);
   const label = meta === UNKNOWN_KIND_META ? node.kind || "No kind" : meta.label;
@@ -70,6 +83,7 @@ const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
       style={{ width: NODE_WIDTH, borderTop: `3px solid ${meta.color}` }}
     >
       {issues && <IssueBadge issues={issues} />}
+      {binding && <BindingBadge mark={binding} />}
       <Handle type="target" position={Position.Top} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
       <div
         className="flex items-center gap-1.5 px-2.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider"
@@ -150,6 +164,8 @@ interface GraphCanvasProps {
   onViewportChange: (viewport: Viewport) => void;
   /** Each node's validation issues, keyed by node id. */
   issues: ReadonlyMap<string, NodeIssues>;
+  /** Each dispatchable node's mark from the binding chosen, or none when no binding is. */
+  bindingMarks?: ReadonlyMap<string, BindingMark>;
   /** The nodes shown as selected. */
   selected: ReadonlySet<string>;
   onSelectNode: (nodeId: string) => void;
@@ -186,6 +202,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   viewport,
   onViewportChange,
   issues,
+  bindingMarks,
   selected,
   onSelectNode,
   onPaneClick,
@@ -201,9 +218,16 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     () =>
       flow.nodes.map((n) => {
         const nodeIssues = issues.get(n.id);
-        return { ...n, ariaLabel: nodeAriaLabel(n.data.node, nodeIssues), className: NODE_FOCUS_CLASS, data: { ...n.data, issues: nodeIssues } };
+        const binding = bindingMarks?.get(n.id);
+        const bound = binding ? `, ${binding.bound ? (binding.validation ? "bound, validation" : "bound") : "unbound"}` : "";
+        return {
+          ...n,
+          ariaLabel: nodeAriaLabel(n.data.node, nodeIssues) + bound,
+          className: NODE_FOCUS_CLASS,
+          data: { ...n.data, issues: nodeIssues, binding },
+        };
       }),
-    [flow.nodes, issues]
+    [flow.nodes, issues, bindingMarks]
   );
   // Out of the document's tab order, which puts edges before nodes; the builder's Tab
   // handling reaches them after the last node.

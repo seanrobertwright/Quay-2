@@ -1,4 +1,5 @@
 // What the canvas and the Problems list show from a definition's validation diagnostics.
+import type { ValidationStatus } from "./ProblemsPanel.tsx";
 import type { Diagnostic, Severity, Validation } from "./types.ts";
 
 /** A node's issues as its card badge shows them. */
@@ -77,3 +78,33 @@ export function nodeIssuesBySlot(
   return bySlot;
 }
 
+
+/**
+ * The graph's validation with the chosen graph binding's issues after its own (#273), each
+ * named after the binding, so the canvas's Problems list and badges show both. The graph's
+ * verdict stays the verdict. Without a binding it is the graph's own status.
+ */
+export function withBindingIssues(
+  graph: ValidationStatus,
+  bindingId: string,
+  binding: ValidationStatus | null
+): ValidationStatus {
+  if (binding === null) return graph;
+  if (graph.state !== "done") return graph;
+  if (binding.state !== "done") return binding;
+  const { validation } = binding;
+  return {
+    state: "done",
+    validation: {
+      verdict: graph.validation.verdict,
+      diagnostics: [
+        ...graph.validation.diagnostics,
+        ...validation.diagnostics.map((d) => ({ ...d, message: `Binding ${bindingId}: ${d.message}` })),
+      ],
+      omitted: {
+        errors: graph.validation.omitted.errors + validation.omitted.errors,
+        info: graph.validation.omitted.info + validation.omitted.info,
+      },
+    },
+  };
+}

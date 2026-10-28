@@ -15,6 +15,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { branchOf, type PraxisGraph, type PraxisNode, type XYPosition } from "../model.ts";
 import { NODE_HEIGHT, NODE_WIDTH, placeNodes } from "./layout.ts";
 import type { NodeIssues } from "../issues.ts";
+import type { BindingMark } from "../graphBinding.ts";
 
 /** The xyflow `nodeTypes` key every Praxis node renders under. */
 export const PRAXIS_NODE_TYPE = "praxisNode";
@@ -26,6 +27,8 @@ export interface PraxisNodeData {
   node: PraxisNode;
   /** The node's validation issues, set by the canvas for the card's badge. */
   issues?: NodeIssues;
+  /** The chosen graph binding's mark for the node, set by the canvas for a dispatchable card. */
+  binding?: BindingMark;
   /** Required by React Flow's Node<T> constraint — do not rely on this for typed access. */
   [key: string]: unknown;
 }

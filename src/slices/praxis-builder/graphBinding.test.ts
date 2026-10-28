@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyBindingEdit,
+  bindingMarks,
   bindingStatus,
   bindingStepFor,
   entriesForNodes,
@@ -245,4 +246,27 @@ test("id suggestions are the distinct non-empty values used across the project's
   const b = applyBindingEdit(newBindingContent("b", graph, pin), { type: "set-entry-field", node: "fix", key: "agentId", value: "claude-code" });
   const c = applyBindingEdit(b, { type: "set-entry-field", node: "undo", key: "agentId", value: "codex" });
   assert.deepEqual(idSuggestions([a, c], "agentId"), ["claude-code", "codex"]);
+});
+
+// --- card markers -----------------------------------------------------------------------------
+
+test("each dispatchable card is marked bound or unbound, and Validation entries say so", () => {
+  let binding = newBindingContent("release-1", graph, pin);
+  binding = applyBindingEdit(binding, { type: "set-role", node: "build", role: "VALIDATION" });
+  const { publish: _gone, ...rest } = binding.nodes as JsonObject;
+  binding = { ...binding, nodes: rest };
+  const marks = bindingMarks(binding, graph);
+  assert.deepEqual(marks.get("build"), { bound: true, validation: true });
+  assert.deepEqual(marks.get("publish"), { bound: false, validation: false });
+  assert.deepEqual(marks.get("fix"), { bound: true, validation: false });
+  assert.equal(marks.has("check"), false);
+  assert.equal(marks.has("end"), false);
+});
+
+test("an entry can be added for an unbound node, and not over an existing one", () => {
+  const { publish: _gone, ...rest } = newBindingContent("release-1", graph, pin).nodes as JsonObject;
+  const binding = { ...newBindingContent("release-1", graph, pin), nodes: rest };
+  const added = applyBindingEdit(binding, { type: "add-entry", node: "publish", executionKind: "TOOL" });
+  assert.equal(((added.nodes as JsonObject).publish as JsonObject).protocolBindingId, "");
+  assert.equal(applyBindingEdit(added, { type: "add-entry", node: "publish", executionKind: "AGENT" }), added);
 });

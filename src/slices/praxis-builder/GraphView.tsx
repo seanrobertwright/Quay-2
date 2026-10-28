@@ -5,7 +5,9 @@
 // right-click on a card, or Shift+F10 on a focused one, opens its context menu, with the align
 // and distribute commands, and one on empty canvas opens a menu with Paste, which puts the
 // clipboard's nodes there. Pressing a palette button with one node selected adds the new
-// node below it, depending on it (#248).
+// node below it, depending on it (#248). With a graph binding chosen (#273), the binding is
+// validated against the graph draft, its problems join the graph's, its marks show on the
+// cards, and the inspector edits it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
 import { ArrangeMenu, Menu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
@@ -17,11 +19,13 @@ import { ProblemsPanel } from "./ProblemsPanel.tsx";
 import { getClipboard, pasteFits } from "./clipboard.ts";
 import { nextNodeId, type GraphEdit } from "./editor.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
-import { issuesByNode } from "./issues.ts";
+import { issuesByNode, withBindingIssues } from "./issues.ts";
+import { bindingMarks } from "./graphBinding.ts";
+import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
-import { useValidation } from "./useValidation.ts";
-import { MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
+import { useBindingValidation, useValidation } from "./useValidation.ts";
+import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
 interface GraphViewProps {
   graph: PraxisGraph;
@@ -52,6 +56,8 @@ interface GraphViewProps {
   onToggleProblems: () => void;
   /** The graph's Run context panel, shown beside the Problems list (#223). */
   runContext?: ReactNode;
+  /** The graph binding chosen in the Binding picker, without its issues, which this view finds; null for None. */
+  binding?: Omit<ShownBinding, "diagnostics"> | null;
 }
 
 export const GraphView: FC<GraphViewProps> = (props) => (
@@ -159,6 +165,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   problemsShown,
   onToggleProblems,
   runContext,
+  binding = null,
 }) => {
   const flow = useReactFlow();
   const canvasBox = useRef<HTMLDivElement | null>(null);
@@ -192,8 +199,25 @@ const GraphViewInner: FC<GraphViewProps> = ({
     requestAnimationFrame(attempt);
   }, []);
   const inspectorRef = useRef<HTMLElement | null>(null);
-  const status = useValidation("graphs", content);
-  const verdict = status.state === "done" ? status.validation.verdict : undefined;
+  const graphStatus = useValidation("graphs", content);
+  const verdict = graphStatus.state === "done" ? graphStatus.validation.verdict : undefined;
+  const bindingStatus = useBindingValidation(binding?.content ?? null, content);
+  const status = useMemo(
+    () => withBindingIssues(graphStatus, binding?.id ?? "", bindingStatus),
+    [graphStatus, binding?.id, bindingStatus]
+  );
+  const shownBinding: ShownBinding | null = useMemo(
+    () =>
+      binding && {
+        ...binding,
+        diagnostics: bindingStatus?.state === "done" ? bindingStatus.validation.diagnostics : NO_DIAGNOSTICS,
+      },
+    [binding, bindingStatus]
+  );
+  const marks = useMemo(
+    () => (binding && isObject(content) ? bindingMarks(binding.content, content) : undefined),
+    [binding, content]
+  );
   useEffect(() => {
     if (verdict !== undefined) onValidated?.(verdict);
   }, [verdict, onValidated]);
@@ -208,6 +232,8 @@ const GraphViewInner: FC<GraphViewProps> = ({
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : NO_DIAGNOSTICS;
   const issues = useMemo(() => issuesByNode(diagnostics), [diagnostics]);
+  // The inspector's node sections show the graph's issues; Runs as shows the binding's.
+  const graphDiagnostics = graphStatus.state === "done" ? graphStatus.validation.diagnostics : NO_DIAGNOSTICS;
   const nodeIds = useMemo(() => new Set(graph.nodes.map((n) => n.id)), [graph]);
   const selectedNode = selected.size === 1 ? (graph.nodes.find((n) => selected.has(n.id)) ?? null) : null;
 
@@ -387,6 +413,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
             viewport={viewport}
             onViewportChange={onViewportChange}
             issues={issues}
+            bindingMarks={marks}
             selected={selected}
             onSelectNode={choose}
             onPaneClick={clearSelection}
@@ -443,10 +470,11 @@ const GraphViewInner: FC<GraphViewProps> = ({
         graph={graph}
         node={selectedNode}
         selectionCount={selected.size}
-        diagnostics={diagnostics}
+        diagnostics={graphDiagnostics}
         onEdit={onEdit}
         onRenamed={(id) => onSelect([id], true)}
         onGoToNode={goToNode}
+        binding={shownBinding}
         onDeleted={() => {
           choose(null);
           // The delete button is gone; focus stays in the builder, so its keys still work.

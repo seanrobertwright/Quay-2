@@ -1,7 +1,8 @@
 // The docked inspector beside the canvas (#226): the selected node's kind and a delete button,
 // its id, its kind's config form, its `dependsOn`, its input and output schemas, and the graph's
-// read-only revision. Each control shows the validation messages about it; the node's other
-// messages head the panel. A dependency chip's name goes to that node, and the Add
+// read-only revision. With a graph binding chosen (#273), a TASK, LOOP or COMPENSATION node
+// gets a Runs as section, and the canvas background a Binding section. Each control shows the
+// validation messages about it; the node's other messages head the panel. A dependency chip's name goes to that node, and the Add
 // dependency combobox filters the graph's other nodes by id or kind (#248).
 import { useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { Trash2, X } from "lucide-react";
@@ -12,6 +13,8 @@ import { SchemaEditor } from "./SchemaEditor.tsx";
 import { NODE_KINDS_REGISTRY, nodeKindMeta } from "./kinds.ts";
 import { matchNodes } from "./keyboard.ts";
 import { isNodeKind, type PraxisGraph, type PraxisNode } from "./model.ts";
+import { isDispatchable } from "./graphBinding.ts";
+import { BindingSection, RunsAsSection, type ShownBinding } from "./RunsAsForm.tsx";
 import type { Diagnostic } from "./types.ts";
 
 interface InspectorProps {
@@ -32,6 +35,8 @@ interface InspectorProps {
   onDeleted: () => void;
   /** Selects another node, zooms to it and focuses its card, from a dependency chip. */
   onGoToNode: (nodeId: string) => void;
+  /** The graph binding chosen in the Binding picker, or null for None. */
+  binding: ShownBinding | null;
 }
 
 const sectionClass = "px-4 py-3 border-b border-[#21262d] space-y-2";
@@ -48,6 +53,7 @@ export const Inspector: FC<InspectorProps> = ({
   onRenamed,
   onDeleted,
   onGoToNode,
+  binding,
 }) => (
   <aside
     ref={rootRef}
@@ -65,6 +71,7 @@ export const Inspector: FC<InspectorProps> = ({
         onRenamed={onRenamed}
         onDeleted={onDeleted}
         onGoToNode={onGoToNode}
+        binding={binding}
       />
     ) : selectionCount > 1 ? (
       <div className="px-4 py-3 space-y-2 text-xs text-[#8b949e]">
@@ -77,6 +84,7 @@ export const Inspector: FC<InspectorProps> = ({
         <p>Select a node to edit it, or add one from the palette on the canvas.</p>
       </div>
     )}
+    {!node && selectionCount === 0 && binding && <BindingSection binding={binding} />}
     <Revision revision={graph.revision} />
   </aside>
 );
@@ -97,6 +105,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
   onRenamed,
   onDeleted,
   onGoToNode,
+  binding,
 }) => {
   const generalId = useId();
   const meta = nodeKindMeta(node.kind);
@@ -169,6 +178,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
           </p>
         )}
       </section>
+      {isDispatchable(node.kind) && <RunsAsSection node={node} binding={binding} />}
       <div className={sectionClass}>
         <Dependencies node={node} graph={graph} issues={issues.get("dependsOn")} onEdit={onEdit} onGoToNode={onGoToNode} />
       </div>
@@ -231,7 +241,7 @@ const IdField: FC<{
         aria-invalid={problem !== null || issues?.some((d) => d.severity === "error") || undefined}
       />
       <p id={hintId} className={`mt-1 text-[10px] ${problem ? "text-[#ff7b72]" : "text-[#6e7681]"}`}>
-        {problem ?? "Renaming also updates dependsOn, decision targets and the layout."}
+        {problem ?? "Renaming also updates dependsOn, decision targets, the layout and the graph's bindings."}
       </p>
       <FieldMessages id={messagesId} issues={issues} />
     </div>

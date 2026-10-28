@@ -173,6 +173,8 @@ export type BindingEdit =
   | { type: "set-execution-kind"; node: string; executionKind: string }
   /** Sets a graph-level field of the binding, or removes it when `value` is undefined. */
   | { type: "set-field"; key: string; value: Json | undefined; live?: boolean }
+  /** A blank entry of `executionKind` for a node that has none. */
+  | { type: "add-entry"; node: string; executionKind: string }
   /** Retarget to current graph: the whole binding as `retargetBinding` makes it. */
   | { type: "replace"; content: JsonObject; label: string };
 
@@ -221,6 +223,10 @@ export function applyBindingEdit(binding: JsonObject, edit: BindingEdit): JsonOb
       });
     case "set-field":
       return withKey(binding, edit.key, edit.value);
+    case "add-entry": {
+      const nodes = nodesOfBinding(binding);
+      return hasOwn(nodes, edit.node) ? binding : withNodes(binding, { ...nodes, [edit.node]: blankEntry(edit.executionKind) });
+    }
     case "replace":
       return same(binding, edit.content) ? binding : edit.content;
   }
@@ -245,6 +251,8 @@ export function bindingStepFor(bindingId: string, edit: BindingEdit): Step {
       const label = `Set ${edit.key} of ${bindingId}`;
       return edit.live ? { label, merge: merge("", edit.key) } : { label };
     }
+    case "add-entry":
+      return { label: `Add an entry for ${edit.node} to ${bindingId}` };
     case "replace":
       return { label: edit.label };
   }
@@ -288,4 +296,22 @@ export function idSuggestions(bindings: Iterable<JsonObject>, field: SuggestedFi
     }
   }
   return [...found].sort();
+}
+
+/** How a dispatchable node's card shows the binding chosen (#247). */
+export interface BindingMark {
+  bound: boolean;
+  /** The entry's role is Validation. */
+  validation: boolean;
+}
+
+/** A mark for each of the graph's dispatchable nodes: bound when the binding has its entry. */
+export function bindingMarks(binding: JsonObject, graph: JsonObject): Map<string, BindingMark> {
+  const entries = entriesOf(binding);
+  return new Map(
+    dispatchableNodes(graph).map((n) => {
+      const entry = hasOwn(entries, n.id) ? entries[n.id] : undefined;
+      return [n.id, { bound: entry !== undefined, validation: entry?.role === "VALIDATION" }];
+    })
+  );
 }

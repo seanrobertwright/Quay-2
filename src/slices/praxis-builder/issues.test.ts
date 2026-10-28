@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { issueField, issuesByNode, nodeIssuesBySlot, problemCounts, withKeys } from "./issues.ts";
+import { withBindingIssues, issueField, issuesByNode, nodeIssuesBySlot, problemCounts, withKeys } from "./issues.ts";
+import type { ValidationStatus } from "./ProblemsPanel.tsx";
 import type { Diagnostic } from "./types.ts";
 
 const error = (path: string, nodeId?: string, field?: string): Diagnostic => ({
@@ -119,4 +120,22 @@ describe("withKeys", () => {
     assert.equal(new Set(keys).size, 3);
     assert.deepEqual(withKeys(d).map(([, diagnostic]) => diagnostic), d);
   });
+});
+
+describe("withBindingIssues", () => {
+  it("joins a binding's issues to the graph's, named after the binding, and keeps the graph's verdict", () => {
+  const graphIssue: Diagnostic = { code: "NO_END_PATH", severity: "error", message: "No end.", path: "/nodes/0", nodeId: "a" };
+  const bindingIssue: Diagnostic = { code: "BINDING_INCOMPLETE", severity: "error", message: "Node b has no entry.", path: "/nodes", nodeId: "b" };
+  const graph: ValidationStatus = { state: "done", validation: { verdict: "NO_END_PATH", diagnostics: [graphIssue], omitted: { errors: 1, info: 0 } } };
+  const binding: ValidationStatus = { state: "done", validation: { verdict: "BINDING_INCOMPLETE", diagnostics: [bindingIssue], omitted: { errors: 0, info: 2 } } };
+  const both = withBindingIssues(graph, "g-1", binding);
+  assert.equal(both.state, "done");
+  if (both.state !== "done") return;
+  assert.equal(both.validation.verdict, "NO_END_PATH");
+  assert.deepEqual(both.validation.diagnostics, [graphIssue, { ...bindingIssue, message: "Binding g-1: Node b has no entry." }]);
+  assert.deepEqual(both.validation.omitted, { errors: 1, info: 2 });
+  // Until both are checked, the list says it is checking; without a binding it is the graph's own.
+  assert.deepEqual(withBindingIssues(graph, "g-1", { state: "checking" }), { state: "checking" });
+  assert.equal(withBindingIssues(graph, "g-1", null), graph);
+});
 });

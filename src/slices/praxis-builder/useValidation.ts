@@ -30,3 +30,31 @@ export function useValidation(kind: PraxisKind, content: unknown): ValidationSta
   if (!checked || checked.content !== content) return { state: "checking" };
   return "error" in checked ? { state: "failed", error: checked.error } : { state: "done", validation: checked.validation };
 }
+
+/**
+ * The validation of a graph binding's `content` against `graph`, its graph's draft (#273), rerun
+ * whenever either changes; null when no binding is shown.
+ */
+export function useBindingValidation(content: unknown | null, graph: unknown): ValidationStatus | null {
+  const [checked, setChecked] = useState<(Checked & { graph: unknown }) | null>(null);
+
+  useEffect(() => {
+    if (content === null) return;
+    let stale = false;
+    invoke<Validation>("praxis_validate", { kind: "graph-bindings", content, graph }).then(
+      (validation) => {
+        if (!stale) setChecked({ content, graph, validation });
+      },
+      (e) => {
+        if (!stale) setChecked({ content, graph, error: String(e) });
+      }
+    );
+    return () => {
+      stale = true;
+    };
+  }, [content, graph]);
+
+  if (content === null) return null;
+  if (!checked || checked.content !== content || checked.graph !== graph) return { state: "checking" };
+  return "error" in checked ? { state: "failed", error: checked.error } : { state: "done", validation: checked.validation };
+}
