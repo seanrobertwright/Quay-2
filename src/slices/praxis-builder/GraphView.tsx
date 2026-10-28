@@ -2,18 +2,21 @@
 // and the inspector beside them. The graph's content is validated by the backend's
 // `praxis_validate`, never in the frontend (#220). The builder owns the selection, so undo
 // and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248). A
-// right-click on a card opens its context menu, with the align and distribute commands.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type RefObject } from "react";
+// right-click on a card opens its context menu, with the align and distribute commands, and
+// one on empty canvas opens a menu with Paste, which puts the clipboard's nodes there.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
-import { ArrangeMenu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
+import { ArrangeMenu, Menu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
 import type { ArrangeAction } from "./arrange.ts";
 import { GraphCanvas, type CanvasControls } from "./GraphCanvas.tsx";
 import { Inspector } from "./Inspector.tsx";
 import { Palette } from "./Palette.tsx";
 import { ProblemsPanel } from "./ProblemsPanel.tsx";
+import { getClipboard, pasteFits } from "./clipboard.ts";
 import { nextNodeId, type GraphEdit } from "./editor.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { issuesByNode } from "./issues.ts";
+import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
 import { useValidation } from "./useValidation.ts";
 import { MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
@@ -30,6 +33,8 @@ interface GraphViewProps {
   onEdit: (edit: GraphEdit) => void;
   /** Runs a layout command: auto-arrange on every node, align and distribute on the selection. */
   onArrange: (action: ArrangeAction) => void;
+  /** Pastes the clipboard's nodes with their top-left corner at this point on the canvas. */
+  onPaste: (at: XYPosition) => void;
   /** The selected nodes, all of them in the graph. */
   selected: ReadonlySet<string>;
   /** Changes each time nodes are chosen, so the inspector starts afresh. */
@@ -86,6 +91,8 @@ export interface BuilderCanvas extends CanvasControls {
   zoomIn: () => void;
   zoomOut: () => void;
   zoomReset: () => void;
+  /** The canvas's size on screen, or null before it is drawn. */
+  getCanvasRect: () => { width: number; height: number } | null;
 }
 
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -108,6 +115,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   onMoveNodes,
   onEdit,
   onArrange,
+  onPaste,
   selected,
   selectionKey,
   onSelect,
@@ -152,6 +160,10 @@ const GraphViewInner: FC<GraphViewProps> = ({
         zoomIn: () => void flow.zoomIn({ duration: duration() }),
         zoomOut: () => void flow.zoomOut({ duration: duration() }),
         zoomReset: () => void flow.zoomTo(1, { duration: duration() }),
+        getCanvasRect: () => {
+          const r = canvasBox.current?.getBoundingClientRect();
+          return r ? { width: r.width, height: r.height } : null;
+        },
       });
     },
     [flow, onReady]
@@ -167,8 +179,13 @@ const GraphViewInner: FC<GraphViewProps> = ({
   const clearSelection = useCallback(() => choose(null), [choose]);
 
   // A right-click on a card outside the selection selects that card alone, as file managers do.
-  // The menu sits at a point on screen, so it closes when the cards or the view move.
-  const [menu, setMenu] = useState<XYPosition | null>(null);
+  // The menu sits at a point on screen, so it closes when the cards or the view move. `at` is
+  // in the canvas box; a pane menu also keeps the point on the canvas a paste goes to, and
+  // why Paste is unavailable, if it is.
+  const [menu, setMenu] = useState<
+    { kind: "node"; at: XYPosition } | { kind: "pane"; at: XYPosition; pasteAt: XYPosition; pasteBlocked: string | null } | null
+  >(null);
+  const nodeCount = graph.nodes.length;
   const [menuPositions, setMenuPositions] = useState(positions);
   if (menuPositions !== positions) {
     setMenuPositions(positions);
@@ -179,9 +196,23 @@ const GraphViewInner: FC<GraphViewProps> = ({
       const box = canvasBox.current?.getBoundingClientRect();
       if (!box) return;
       if (!selected.has(nodeId)) choose(nodeId);
-      setMenu({ x: at.x - box.left, y: at.y - box.top });
+      setMenu({ kind: "node", at: { x: at.x - box.left, y: at.y - box.top } });
     },
     [selected, choose]
+  );
+  const openPaneMenu = useCallback(
+    (at: XYPosition) => {
+      const box = canvasBox.current?.getBoundingClientRect();
+      if (!box) return;
+      const envelope = getClipboard();
+      setMenu({
+        kind: "pane",
+        at: { x: at.x - box.left, y: at.y - box.top },
+        pasteAt: flow.screenToFlowPosition(at),
+        pasteBlocked: envelope === null ? "Nothing copied" : pasteFits(nodeCount, envelope) ? null : "Graph full",
+      });
+    },
+    [flow, nodeCount]
   );
   const dismissMenu = useCallback(() => setMenu(null), []);
   const closeMenu = useCallback((refocus: boolean) => {
@@ -227,12 +258,39 @@ const GraphViewInner: FC<GraphViewProps> = ({
             onEdit={onEdit}
             onMoveNodes={onMoveNodes}
             onNodeContextMenu={openMenu}
+            onPaneContextMenu={openPaneMenu}
             onMoveStart={dismissMenu}
             onReady={canvasReady}
           />
           <Palette onAdd={addNode} full={graph.nodes.length >= MAX_NODES} />
-          {menu && (
-            <NodeMenu at={menu} count={selected.size} bounds={canvasBox} onChoose={onArrange} onClose={closeMenu} />
+          {menu?.kind === "node" && (
+            <PlacedMenu at={menu.at} bounds={canvasBox}>
+              <ArrangeMenu
+                label="Node"
+                actions={NODE_MENU_ACTIONS}
+                selectedCount={selected.size}
+                onChoose={onArrange}
+                onClose={closeMenu}
+              />
+            </PlacedMenu>
+          )}
+          {menu?.kind === "pane" && (
+            <PlacedMenu at={menu.at} bounds={canvasBox}>
+              <Menu
+                label="Canvas"
+                items={[
+                  {
+                    name: "Paste",
+                    enabled: menu.pasteBlocked === null,
+                    group: "clipboard",
+                    hint: menu.pasteBlocked ?? shortcutLabel("paste"),
+                    ariaKeyShortcuts: ariaKeyShortcuts("paste"),
+                    onChoose: () => onPaste(menu.pasteAt),
+                  },
+                ]}
+                onClose={closeMenu}
+              />
+            </PlacedMenu>
           )}
         </div>
         <ProblemsPanel
@@ -262,14 +320,12 @@ const GraphViewInner: FC<GraphViewProps> = ({
   );
 };
 
-/** A card's context menu at a point in the canvas box, moved in to stay inside it. */
-const NodeMenu: FC<{
+/** A context menu at a point in the canvas box, moved in to stay inside it. */
+const PlacedMenu: FC<{
   at: XYPosition;
-  count: number;
   bounds: RefObject<HTMLDivElement | null>;
-  onChoose: (action: ArrangeAction) => void;
-  onClose: (refocus: boolean) => void;
-}> = ({ at, count, bounds, onChoose, onClose }) => {
+  children: ReactNode;
+}> = ({ at, bounds, children }) => {
   const wrapper = useRef<HTMLDivElement | null>(null);
   const [place, setPlace] = useState(at);
   useLayoutEffect(() => {
@@ -283,7 +339,7 @@ const NodeMenu: FC<{
   }, [at, bounds]);
   return (
     <div ref={wrapper} className="absolute" style={{ left: place.x, top: place.y }}>
-      <ArrangeMenu label="Node" actions={NODE_MENU_ACTIONS} selectedCount={count} onChoose={onChoose} onClose={onClose} />
+      {children}
     </div>
   );
 };

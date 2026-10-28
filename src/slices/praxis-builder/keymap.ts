@@ -11,6 +11,10 @@ export type BuilderCommand =
   | "escape"
   | "undo"
   | "redo"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "duplicate"
   | "delete"
   | "select-all"
   | "fit-view"
@@ -69,6 +73,34 @@ export const KEY_ENTRIES: readonly KeyEntry[] = [
       { key: "z", mod: true, shift: true },
       { key: "y", mod: true },
     ],
+  },
+  {
+    command: "copy",
+    label: "Copy the selected nodes",
+    group: "Canvas",
+    scope: "canvas",
+    chords: [{ key: "c", mod: true }],
+  },
+  {
+    command: "cut",
+    label: "Cut the selected nodes",
+    group: "Canvas",
+    scope: "canvas",
+    chords: [{ key: "x", mod: true }],
+  },
+  {
+    command: "paste",
+    label: "Paste nodes from the clipboard",
+    group: "Canvas",
+    scope: "canvas",
+    chords: [{ key: "v", mod: true }],
+  },
+  {
+    command: "duplicate",
+    label: "Duplicate the selected nodes",
+    group: "Canvas",
+    scope: "canvas",
+    chords: [{ key: "d", mod: true }],
   },
   {
     command: "delete",
