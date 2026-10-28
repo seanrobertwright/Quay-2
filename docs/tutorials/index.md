@@ -27,6 +27,7 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 1 | [Hello, A2A](/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
 | 2 | [Contract-first handoff](/tutorials/a2a/contract-first-handoff/) | Have two agents agree a notes app's API over the A2A bus before either builds its half. |
 | 3 | [Hands-off TDD relay](/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
+| 4 | [Review gate before commit](/tutorials/a2a/review-gate/) | Have a reviewer agent check every change to a rate limiter until its reply ends in `APPROVED`. |
 | 5 | [Fan-out / fan-in](/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
 | 6 | [Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 <!-- tutorials:end -->
