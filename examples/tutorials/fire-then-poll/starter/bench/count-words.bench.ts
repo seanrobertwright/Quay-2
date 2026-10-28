@@ -2,6 +2,8 @@ import { test } from "vitest";
 import { countWordsMap, countWordsNaive } from "../src/count-words.ts";
 import { buildCorpus } from "../src/corpus.ts";
 
+const MAX_BENCH_TIME_MS = 600_000;
+
 /** How long each task runs, in milliseconds. CI sets it low to run the bench quickly. */
 function benchTimeMs(): number {
   const raw = process.env.BENCH_TIME_MS;
@@ -9,7 +11,11 @@ function benchTimeMs(): number {
   if (!/^[1-9][0-9]*$/.test(raw)) {
     throw new Error(`BENCH_TIME_MS must be a positive whole number of milliseconds, got "${raw}"`);
   }
-  return Number(raw);
+  const ms = Number(raw);
+  if (ms > MAX_BENCH_TIME_MS) {
+    throw new Error(`BENCH_TIME_MS must be at most ${MAX_BENCH_TIME_MS} (ten minutes), got ${ms}`);
+  }
+  return ms;
 }
 
 const time = benchTimeMs();

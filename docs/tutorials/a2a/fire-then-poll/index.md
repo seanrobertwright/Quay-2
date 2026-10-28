@@ -212,7 +212,7 @@ Either the benchmark has finished, or `bench-runner` started it in the backgroun
 
 ::: paste `lead`
 ```text
-Poll bench-runner with quay_get_agent_status about every 15 seconds until its status is idle. Then read bench.md. If the file is missing or its last line doesn't start with WINNER:, say so. Otherwise tell me its last line and which implementation to keep.
+Poll bench-runner with quay_get_agent_status about every 15 seconds until its status is idle, for at most ten minutes. If its status is waiting or exited, or ten minutes pass, stop and tell me. Then read bench.md. If the file is missing or its last line isn't exactly WINNER: naive or WINNER: map, say so. Otherwise tell me its last line and which implementation to keep.
 ```
 :::
 
@@ -231,6 +231,10 @@ Idle only means `bench-runner`'s turn ended, not that the job is done. A file ma
 - How many times `lead` checks: once, if the job ended while you were on step 5, or several times, waiting between checks.
 - The speed figures, and both agents' wording.
 - A greyed suggestion in `lead`'s input, such as `commit bench.md`. Leave it: nothing gets committed in this tutorial.
+:::
+
+::: ifnot lead says bench-runner is waiting or exited
+`bench-runner` stopped before finishing: it may be asking a question. Click into `bench-runner` and answer it, or paste `Run npm run bench in the foreground and wait for it, then write bench.md as asked.` Then paste this step's line into `lead` again.
 :::
 
 ::: ifnot lead says it can't wait between checks
@@ -296,14 +300,15 @@ npm test; Get-Content bench.md -Tail 1; git status --short
 
 ::: may
 - The timings Vitest prints.
+- A ` M package-lock.json` line, if your npm rewrote the lock file in step 1.
 :::
 
-::: ifnot git status lists files under src or test
-`bench-runner` changed more than the job asked for. Paste `git checkout -- src test` into `shell` to put them back, then paste this step's line again. The fire-then-poll still worked.
+::: ifnot git status lists a file with M in front of it
+`bench-runner` changed more than the job asked for. Paste `git checkout -- .` into `shell` to put the starter's files back, then paste this step's line again. It leaves `bench.md`, which is new, in place. The fire-then-poll still worked.
 :::
 
 ::: ifnot Ctrl+Shift+B 1 shows a different terminal
-`Ctrl+Shift+B 1` brings back the first terminal you opened in this project, so it is `shell` only when you opened nothing before it. Click `shell` in the rail instead; it takes the focused pane the same way.
+`Ctrl+Shift+B 1` brings back the first terminal in the rail's list for this project, so it is `shell` only when `shell` is listed first. Click `shell` in the rail instead; it takes the focused pane the same way.
 :::
 
 ::: done
