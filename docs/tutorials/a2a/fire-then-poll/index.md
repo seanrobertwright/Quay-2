@@ -321,7 +321,7 @@ npm test; Get-Content bench.md -Tail 1; git status --short
 :::
 
 ::: next
-[A2A 10: Second opinion from Codex](/tutorials/a2a/second-opinion-codex/)
+[A2A 8: Mission Control operator run](/tutorials/a2a/mission-control/)
 
-The next published tutorial in series order; A2A 7 to A2A 9 aren't published yet. Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down.
+The next published tutorial in series order; A2A 7 isn't published yet. Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI.
 :::
