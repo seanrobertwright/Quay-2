@@ -979,10 +979,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNaming({ mode: "rename", ref, value: ref.id });
   };
 
-  /** The content of `path`'s drafts other than `except`, for a rename to rewrite. */
+  /**
+   * The content of `path`'s unsaved drafts other than `except`, for a rename to rewrite. A
+   * clean draft is left out: the rename rewrites its file, and `applyRename` drops the draft
+   * so it reads the file again.
+   */
   const draftContents = (path: string, except: DefinitionRef): DraftContent[] =>
     Object.values(sessionFor(sessionsRef.current, path).drafts)
-      .filter((d) => definitionKey(d.ref) !== definitionKey(except))
+      .filter((d) => definitionKey(d.ref) !== definitionKey(except) && isDirty(d))
       .map((d) => ({ kind: d.ref.kind, id: d.ref.id, content: d.content }));
 
   /** Why `ref` can't be renamed now: its draft has changes a rename would have to carry. */
