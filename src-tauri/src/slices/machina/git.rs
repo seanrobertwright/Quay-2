@@ -1,5 +1,6 @@
 //! Thin wrappers over the `git` CLI for the factory. Every call runs without a console
-//! window, without a terminal prompt, and with paths printed unquoted.
+//! window, without a terminal prompt, with paths printed unquoted, and without the optional
+//! index lock that `status` and `diff` take, so a read never blocks an agent's git.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,7 @@ fn git_cmd(dir: &Path) -> Command {
     cmd.current_dir(dir)
         .args(["-c", "core.quotepath=false"])
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(Stdio::null());
     cmd
 }
@@ -50,8 +52,14 @@ pub fn run(dir: &Path, args: &[&str]) -> Result<GitOut, String> {
 
 /// Runs git and returns stdout, or an error naming the command and git's message.
 pub fn run_ok(dir: &Path, args: &[&str]) -> Result<String, String> {
+    run_ok_with(dir, args, &[0])
+}
+
+/// `run_ok` for a command whose success is any of the exit codes `ok`, such as
+/// `diff --no-index`, which exits 1 when the files differ.
+pub fn run_ok_with(dir: &Path, args: &[&str], ok: &[i32]) -> Result<String, String> {
     let out = run(dir, args)?;
-    if out.ok() {
+    if out.code.is_some_and(|c| ok.contains(&c)) {
         Ok(out.stdout)
     } else {
         Err(format!("git {} failed: {}", args.join(" "), out.message()))

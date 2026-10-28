@@ -4,38 +4,20 @@
 //! project, never one around it, so a project that isn't a repository shows no changes.
 
 use std::path::Path;
-use std::process::{Output, Stdio};
 
 use super::models::{ChangeStatus, ChangedFile, ChangedFiles, FileDiff, PraxisKind};
 use super::store::{confined_dir, confined_file, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
+use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
 /// the diff by joining this list.
 pub const SHOWS_CHANGES: [PraxisKind; 2] = [PraxisKind::Contracts, PraxisKind::Grants];
 
-/// Runs git in `repo` without a console window or a prompt, with paths printed unquoted and
-/// without taking the index lock, so an agent's git in the same repository isn't blocked.
-fn git(repo: &Path, args: &[&str]) -> Result<Output, String> {
-    crate::spawn::hidden_command("git")
-        .current_dir(repo)
-        .args(["-c", "core.quotepath=false"])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| format!("Quay can't run git: {}", e))
-}
-
-fn failed(args: &[&str], out: &Output) -> String {
-    format!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim())
-}
-
 /// Whether `repo` is the root of a git repository or worktree. A folder inside some other
 /// repository isn't, since that repository isn't the project's.
 fn is_repository(repo: &Path) -> Result<bool, String> {
-    let out = git(repo, &["rev-parse", "--show-prefix"])?;
-    Ok(out.status.success() && String::from_utf8_lossy(&out.stdout).trim().is_empty())
+    let out = git::run(repo, &["rev-parse", "--show-prefix"])?;
+    Ok(out.ok() && out.stdout.trim().is_empty())
 }
 
 /// The definition `.praxis/<folder>/<id>.json` names, when its kind shows changes.
@@ -89,11 +71,7 @@ pub fn changed_files(repo: &Path) -> Result<ChangedFiles, String> {
 fn status(repo: &Path, pathspecs: &[String]) -> Result<Vec<ChangedFile>, String> {
     let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--"];
     args.extend(pathspecs.iter().map(String::as_str));
-    let out = git(repo, &args)?;
-    if !out.status.success() {
-        return Err(failed(&args, &out));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout)
+    Ok(git::run_ok(repo, &args)?
         .split('\0')
         .filter(|entry| entry.len() > 3)
         .filter_map(|entry| {
@@ -127,19 +105,15 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
     }
     let status = status(repo, std::slice::from_ref(&path))?.into_iter().next().map(|f| f.status);
     let base = ["diff", "--no-color", "--no-ext-diff", "--no-textconv"];
-    let args: Vec<&str> = match status {
+    let mut diff = match status {
         None => return Ok(FileDiff { path, status, diff: String::new(), truncated: false }),
         // The last commit doesn't have it, or there is no commit yet: all of it is new.
-        Some(ChangeStatus::Added) => [&base[..], &["--no-index", "--", "/dev/null", &path]].concat(),
-        Some(_) => [&base[..], &["HEAD", "--", &path]].concat(),
+        // `--no-index` exits 1 when the files differ, as they always do here.
+        Some(ChangeStatus::Added) => {
+            git::run_ok_with(repo, &[&base[..], &["--no-index", "--", "/dev/null", &path]].concat(), &[0, 1])?
+        }
+        Some(_) => git::run_ok(repo, &[&base[..], &["HEAD", "--", &path]].concat())?,
     };
-    let out = git(repo, &args)?;
-    // `--no-index` exits 1 when the files differ, as they always do here.
-    let ok = out.status.success() || (status == Some(ChangeStatus::Added) && out.status.code() == Some(1));
-    if !ok {
-        return Err(failed(&args, &out));
-    }
-    let mut diff = String::from_utf8_lossy(&out.stdout).into_owned();
     let truncated = diff.len() > MAX_DIFF_BYTES;
     if truncated {
         let mut end = MAX_DIFF_BYTES;
@@ -165,8 +139,7 @@ mod tests {
     }
 
     fn git(repo: &Path, args: &[&str]) {
-        let out = crate::spawn::hidden_command("git").current_dir(repo).args(args).output().unwrap();
-        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+        git::run_ok(repo, args).unwrap();
     }
 
     fn write(repo: &Path, rel: &str, body: &str) {
