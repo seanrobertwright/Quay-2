@@ -227,7 +227,7 @@ fn with_verdict(verdict: Option<String>, found: Found, describe: fn(&str) -> &'s
     Validation { verdict, diagnostics, omitted }
 }
 
-fn describe(code: &str) -> &'static str {
+pub(super) fn describe(code: &str) -> &'static str {
     match code {
         "INVALID_RECORD" => "The graph doesn't match the Praxis graph schema.",
         "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
@@ -730,7 +730,7 @@ fn locate_contract(contract: &Value) -> Found {
     out
 }
 
-fn describe_grant(code: &str) -> &'static str {
+pub(super) fn describe_grant(code: &str) -> &'static str {
     match code {
         "INVALID_RECORD" => "The grant doesn't match the Praxis grant schema.",
         "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
@@ -801,6 +801,17 @@ pub fn validate_grant_on_mission(grant: &Value, contract: &Value, ancestors: &[V
     with_verdict(verdict, found, describe_grant)
 }
 
+/// The rules of `reduce`'s `grant` command that `grant` breaks on `mission`, each with a path
+/// to the grant's field. The cross-record check (#269) grants a contract's bound grants one
+/// after another on one mission, and explains each refusal with these.
+pub(super) fn grant_issues_on_mission(grant: &Value, mission: &Value) -> Vec<Diagnostic> {
+    let mut found = Found::default();
+    if aiws_sdk::Grant::from_value(grant.clone()).is_ok() {
+        locate_grant_on_mission(grant, mission, &mut found);
+    }
+    found.kept
+}
+
 /// The rules of `reduce`'s `grant` command, each broken rule with a path to the grant's
 /// field: the profile and times, the contract's actions, resources, budget and deadline, and
 /// the parent grant's, which must be on the mission and contain this one.
@@ -864,7 +875,7 @@ fn locate_grant_on_mission(g: &Value, mission: &Value, out: &mut Found) {
     }
 }
 
-fn describe_trigger(code: &str) -> &'static str {
+pub(super) fn describe_trigger(code: &str) -> &'static str {
     match code {
         "INVALID_RECORD" => "The trigger doesn't match the Praxis trigger schema.",
         "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",

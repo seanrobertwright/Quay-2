@@ -45,6 +45,8 @@ interface TriggerFormProps {
   draft: Draft;
   /** The ids of the contracts in the project, listed or drafted, for the contract picker. */
   contracts: readonly string[];
+  /** The record's cross-record checks (#269), shown under the verdict. */
+  crossRecord: ReactNode;
   onEdit: (edit: TriggerEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -59,7 +61,7 @@ const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
   ALL: "fire for each slot it missed, up to the most to catch up",
 };
 
-export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, onEdit, onOpen, onValidated }) => {
+export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecord, onEdit, onOpen, onValidated }) => {
   const status = useValidation("triggers", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -240,6 +242,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, onEdit, on
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Trigger ${draft.ref.id}`}>
         <Summary noun="trigger" status={status} recordIssues={untaken} />
+        {crossRecord}
         {fields}
       </form>
     </div>

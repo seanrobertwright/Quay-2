@@ -201,3 +201,38 @@ export interface DeleteOutcome {
   done: string[];
   error?: string;
 }
+
+/**
+ * One cross-record issue (#223, #269): what a contract's scratch mission refused of a record,
+ * or a reference that names no record. `kind` and `id` name the record it is on, and
+ * `contract` the contract whose mission found it. A binding entry that names no record is on
+ * the contract, at `/bindings/<graphs|grants>/<index>`.
+ */
+export interface RecordIssue extends Diagnostic {
+  kind: PraxisKind;
+  id: string;
+  contract: string;
+}
+
+/** One contract checked across records, with what it binds and what its mission refused. */
+export interface ContractContext {
+  id: string;
+  /** No contract file has this id, though a trigger or a bindings file names it. */
+  missing: boolean;
+  /** Why the contract file couldn't be read, so no mission was opened. */
+  problem?: string;
+  graphs: string[];
+  grants: string[];
+  /** The saved triggers whose `contractId` names this contract. */
+  triggers: string[];
+  issues: RecordIssue[];
+  /** How many more issues were found than `issues` holds. */
+  omitted: number;
+}
+
+/** `praxis_check_context`: some contracts checked across records, in id order. */
+export interface ContextCheck {
+  contracts: ContractContext[];
+  /** Bindings and trigger files that couldn't be read or weren't searched. */
+  unchecked: string[];
+}
