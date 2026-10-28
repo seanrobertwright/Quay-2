@@ -22,6 +22,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { newGraphContent } from "./lifecycle.ts";
 import { isNodeKind, type JsonObject, type NodeKind, type PraxisNode } from "./model.ts";
 import type { PraxisKind } from "./types.ts";
 
@@ -172,10 +173,20 @@ export function configSummary(node: PraxisNode): string {
   return isNodeKind(node.kind) ? NODE_KINDS_REGISTRY[node.kind].summary(node.config) : "";
 }
 
+export interface RecordKindEntry {
+  kind: PraxisKind;
+  label: string;
+  /** One definition of the kind, in lower case, which also starts a new one's id (`graph-1`). */
+  singular: string;
+  icon: LucideIcon;
+  /** A new definition's record, for the kinds the builder can create. */
+  newRecord?: (id: string) => JsonObject;
+}
+
 /** The left list's groups, in order. */
-export const RECORD_KINDS: { kind: PraxisKind; label: string; icon: LucideIcon }[] = [
-  { kind: "graphs", label: "Graphs", icon: Workflow },
-  { kind: "contracts", label: "Contracts", icon: FileText },
-  { kind: "grants", label: "Grants", icon: KeyRound },
-  { kind: "triggers", label: "Triggers", icon: Timer },
+export const RECORD_KINDS: RecordKindEntry[] = [
+  { kind: "graphs", label: "Graphs", singular: "graph", icon: Workflow, newRecord: newGraphContent },
+  { kind: "contracts", label: "Contracts", singular: "contract", icon: FileText },
+  { kind: "grants", label: "Grants", singular: "grant", icon: KeyRound },
+  { kind: "triggers", label: "Triggers", singular: "trigger", icon: Timer },
 ];

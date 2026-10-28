@@ -11,8 +11,8 @@ use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{
-    ConflictReason, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem, LayoutInput, PraxisKind,
-    SaveOutcome,
+    ConflictReason, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem, IdMismatch, LayoutInput,
+    PraxisKind, SaveOutcome,
 };
 use crate::atomic_file::write_atomic;
 
@@ -28,11 +28,12 @@ pub const MAX_ID_LEN: usize = 128;
 /// The `version` a layout file is written with.
 pub const LAYOUT_VERSION: u64 = 1;
 
-const PRAXIS_DIR: &str = ".praxis";
-const LAYOUT_DIR: &str = "layout";
+pub(super) const PRAXIS_DIR: &str = ".praxis";
+pub(super) const LAYOUT_DIR: &str = "layout";
 
-/// Serializes saves, so two saves from Quay can't interleave their check and write.
-static SAVE_LOCK: Mutex<()> = Mutex::new(());
+/// Serializes saves, renames and deletes, so two of them from Quay can't interleave their
+/// checks and writes.
+pub(super) static SAVE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Checks an id against the filename-safe rule: 1 to 128 of `[A-Za-z0-9._-]`, no leading
 /// dot, and not a Windows reserved device name (`CON`, `NUL`, `COM1` and the rest),
@@ -109,7 +110,7 @@ fn main_checkout_of(dir: &Path) -> Option<PathBuf> {
 
 /// The canonical `<repo>/.praxis/<folder>`, or `None` when it doesn't exist. Refused when
 /// it resolves outside the repository.
-fn confined_dir(repo: &Path, folder: &str) -> Result<Option<PathBuf>, String> {
+pub(super) fn confined_dir(repo: &Path, folder: &str) -> Result<Option<PathBuf>, String> {
     let dir = repo.join(PRAXIS_DIR).join(folder);
     if std::fs::symlink_metadata(&dir).is_err() {
         return Ok(None);
@@ -130,7 +131,7 @@ fn confined_dir(repo: &Path, folder: &str) -> Result<Option<PathBuf>, String> {
 
 /// The canonical path of `<dir>/<id>.json`, or `None` when there is no such file.
 /// Refused when it resolves outside the repository.
-fn confined_file(repo: &Path, dir: &Path, id: &str) -> Result<Option<PathBuf>, String> {
+pub(super) fn confined_file(repo: &Path, dir: &Path, id: &str) -> Result<Option<PathBuf>, String> {
     let path = dir.join(format!("{}.json", id));
     if std::fs::symlink_metadata(&path).is_err() {
         return Ok(None);
@@ -149,7 +150,7 @@ fn confined_file(repo: &Path, dir: &Path, id: &str) -> Result<Option<PathBuf>, S
 /// The `<repo>/.praxis/<folder>` folder, created when it is missing, and canonicalized.
 /// `.praxis/` is checked before the folder is made inside it, so a link that leads out
 /// of the repository is refused before anything is created through it.
-fn ensure_confined_dir(repo: &Path, folder: &str) -> Result<PathBuf, String> {
+pub(super) fn ensure_confined_dir(repo: &Path, folder: &str) -> Result<PathBuf, String> {
     let mut canonical = repo.to_path_buf();
     for (dir, name) in [
         (repo.join(PRAXIS_DIR), PRAXIS_DIR.to_string()),
@@ -174,7 +175,7 @@ fn ensure_confined_dir(repo: &Path, folder: &str) -> Result<PathBuf, String> {
 }
 
 /// A file's bytes, refused when it is larger than `MAX_FILE_BYTES`.
-fn read_capped(path: &Path) -> Result<Vec<u8>, FileProblem> {
+pub(super) fn read_capped(path: &Path) -> Result<Vec<u8>, FileProblem> {
     let size = std::fs::metadata(path)
         .map_err(|e| FileProblem::new(format!("Can't read the file: {}", e)))?
         .len();
@@ -194,7 +195,7 @@ fn parse_object_file(path: &Path) -> Result<Value, FileProblem> {
 
 /// Parses bytes that must hold one JSON object, describing anything that stops them
 /// being one. A leading UTF-8 byte order mark is ignored.
-fn parse_object(bytes: &[u8]) -> Result<Value, FileProblem> {
+pub(super) fn parse_object(bytes: &[u8]) -> Result<Value, FileProblem> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| FileProblem::new(format!("Can't read the file as UTF-8: {}", e)))?;
     let body = text.strip_prefix('\u{feff}').unwrap_or(text);
@@ -209,14 +210,10 @@ fn parse_object(bytes: &[u8]) -> Result<Value, FileProblem> {
     Ok(value)
 }
 
-/// Lists a kind's definitions in id order, at most `MAX_LISTED` of them. Only `*.json`
-/// files directly in the kind's folder are listed. A missing folder is an empty list.
-pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
-    let Some(dir) = confined_dir(repo, kind.folder())? else {
-        return Ok(DefinitionList { entries: Vec::new(), truncated: false });
-    };
-    let read = std::fs::read_dir(&dir)
-        .map_err(|e| format!("{}/{} can't be listed: {}", PRAXIS_DIR, kind.folder(), e))?;
+/// The names, without `.json`, of the `*.json` files directly in `dir`, which is
+/// `.praxis/<folder>`, in id order: ignoring case, then by case.
+pub(super) fn json_ids(dir: &Path, folder: &str) -> Result<Vec<String>, String> {
+    let read = std::fs::read_dir(dir).map_err(|e| format!("{}/{} can't be listed: {}", PRAXIS_DIR, folder, e))?;
     let mut ids: Vec<String> = Vec::new();
     for entry in read.flatten() {
         let Ok(name) = entry.file_name().into_string() else { continue };
@@ -228,24 +225,40 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
         ids.push(id.to_string());
     }
     ids.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()).then(a.cmp(b)));
+    Ok(ids)
+}
+
+/// Lists a kind's definitions in id order, at most `MAX_LISTED` of them. Only `*.json`
+/// files directly in the kind's folder are listed. A missing folder is an empty list. Each
+/// file is parsed, so one that can't be opened, or whose `id` isn't its name, is flagged.
+pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
+    let Some(dir) = confined_dir(repo, kind.folder())? else {
+        return Ok(DefinitionList { entries: Vec::new(), truncated: false });
+    };
+    let mut ids = json_ids(&dir, kind.folder())?;
     let truncated = ids.len() > MAX_LISTED;
     ids.truncate(MAX_LISTED);
 
     let entries = ids
         .into_iter()
         .map(|id| {
-            let problem = match validate_id(&id) {
-                Err(why) => Some(FileProblem::new(format!(
-                    "The file name isn't a valid id. {}",
-                    why
-                ))),
+            let parsed = match validate_id(&id) {
+                Err(why) => Err(FileProblem::new(format!("The file name isn't a valid id. {}", why))),
                 Ok(()) => match confined_file(repo, &dir, &id) {
-                    Err(why) => Some(FileProblem::new(why)),
-                    Ok(None) => Some(FileProblem::new("The file disappeared while listing.")),
-                    Ok(Some(path)) => parse_object_file(&path).err(),
+                    Err(why) => Err(FileProblem::new(why)),
+                    Ok(None) => Err(FileProblem::new("The file disappeared while listing.")),
+                    Ok(Some(path)) => parse_object_file(&path),
                 },
             };
-            DefinitionEntry { id, problem }
+            match parsed {
+                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None },
+                Ok(record) => {
+                    let found = record.get("id").and_then(Value::as_str);
+                    let id_mismatch =
+                        (found != Some(id.as_str())).then(|| IdMismatch { found: found.map(str::to_string) });
+                    DefinitionEntry { id, problem: None, id_mismatch }
+                }
+            }
         })
         .collect();
     Ok(DefinitionList { entries, truncated })
@@ -643,6 +656,23 @@ mod tests {
         let list = list_definitions(&repo, PraxisKind::Graphs).unwrap();
         assert_eq!(ids(&list), vec!["has space"]);
         assert!(list.entries[0].problem.is_some());
+    }
+
+    #[test]
+    fn flags_a_file_whose_id_differs_from_its_name() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graphs/a.json", r#"{"id": "b"}"#);
+        write(&repo, ".praxis/graphs/c.json", r#"{"nodes": []}"#);
+        write(&repo, ".praxis/graphs/d.json", r#"{"id": "d"}"#);
+        write(&repo, ".praxis/graphs/e.json", r#"{"id": 5}"#);
+        write(&repo, ".praxis/graphs/f.json", "{nope");
+        let list = list_definitions(&repo, PraxisKind::Graphs).unwrap();
+        let by_id = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().id_mismatch.clone();
+        assert_eq!(by_id("a"), Some(IdMismatch { found: Some("b".to_string()) }));
+        assert_eq!(by_id("c"), Some(IdMismatch { found: None }));
+        assert_eq!(by_id("d"), None);
+        assert_eq!(by_id("e"), Some(IdMismatch { found: None }));
+        assert_eq!(by_id("f"), None, "a file that doesn't parse has a problem instead");
     }
 
     #[test]

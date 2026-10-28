@@ -1,7 +1,8 @@
 // The Praxis Builder (#221): a modal of its own that lists the active project's `.praxis/`
 // definitions and shows a graph on the canvas, with its validation problems, where it can
-// be edited, undone and saved. Closing only hides it, so each project's session, drafts and
-// undo histories included, survives until Quay quits. Quitting with unsaved drafts asks first.
+// be edited, undone and saved. The list creates, renames and deletes definitions (#222).
+// Closing only hides it, so each project's session, drafts and undo histories included,
+// survives until Quay quits. Quitting with unsaved drafts asks first.
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import {
   type FC,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
@@ -26,9 +28,12 @@ import {
   PanelLeftClose,
   Keyboard,
   PanelLeftOpen,
+  Pencil,
+  Plus,
   Redo2,
   RefreshCw,
   Save,
+  Trash2,
   TriangleAlert,
   Undo2,
   Workflow,
@@ -36,12 +41,21 @@ import {
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
 import { parseGraph, type JsonObject, type XYPosition } from "./model.ts";
-import { RECORD_KINDS } from "./kinds.ts";
+import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
+import { definitionIdProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
 import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
-import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
+import {
+  createNewGraphDraft,
+  isDirty,
+  layoutForSave,
+  markDeletedOnDisk,
+  markSaved,
+  moveNodes,
+  type GraphDraft,
+} from "./drafts.ts";
 import { editDraft, nodeIdsOf, nodesOf, stepFor, type GraphEdit } from "./editor.ts";
 import { copySelection, duplicateSelection, getClipboard, pasteDelta, pasteIntoDraft, setClipboard } from "./clipboard.ts";
 import { canRedo, canUndo } from "./history.ts";
@@ -49,22 +63,38 @@ import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderC
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
+  addNewDraft,
   applyDiskRead,
+  applyRename,
   changeGraph,
   definitionKey,
+  definitionPath,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
   endGraphMerge,
   forgetHistories,
   redoGraph,
+  removeDefinition,
+  renameUnsavedDraft,
   sessionFor,
   undoGraph,
   updateSession,
   type DirtyDraft,
   type Sessions,
 } from "./session.ts";
-import type { DefinitionFile, DefinitionList, DefinitionRef, FileProblem, PraxisKind, SaveOutcome } from "./types.ts";
+import type {
+  DefinitionEntry,
+  DefinitionFile,
+  DefinitionList,
+  DefinitionRef,
+  DeleteOutcome,
+  DraftContent,
+  FileProblem,
+  PraxisKind,
+  RenameOutcome,
+  SaveOutcome,
+} from "./types.ts";
 
 export interface BuilderProject {
   path: string;
@@ -119,7 +149,16 @@ interface Conflict {
   reason: "changed" | "deleted";
 }
 
-const definitionPath = (ref: DefinitionRef) => `.praxis/${ref.kind}/${ref.id}.json`;
+/** The inline name field in the list: naming a new definition, or renaming one. */
+type Naming = { mode: "new"; kind: PraxisKind; value: string } | { mode: "rename"; ref: DefinitionRef; value: string };
+
+/** A rename or delete the backend has planned, waiting for the user to confirm it. */
+type Pending =
+  | { type: "rename"; projectPath: string; ref: DefinitionRef; newId: string; plan: RenameOutcome }
+  | { type: "delete"; projectPath: string; ref: DefinitionRef; plan: DeleteOutcome | null };
+
+const IS_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+const TRASH_NAME = IS_WINDOWS ? "the Recycle Bin" : "the Trash";
 
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex="0"]';
 
@@ -168,11 +207,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [revealError, setRevealError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{ tone: "error" | "warning"; text: string } | null>(null);
+  // A line under the header: a save's error or warning, or what a rename or delete did.
+  const [notice, setNotice] = useState<{ tone: "error" | "warning" | "info"; text: string } | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
   const [selection, setSelection] = useState<Selection>({ key: "", ids: NO_IDS, chosen: 0 });
+  const [naming, setNaming] = useState<Naming | null>(null);
+  const [newMenuShown, setNewMenuShown] = useState(false);
+  const newMenuId = useId();
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const pendingRef = useRef<HTMLDivElement | null>(null);
   // Mod+S asks for a save here, so it runs after the render that applies a field it committed.
   const [saveRequest, setSaveRequest] = useState(0);
   const handledSaveRequest = useRef(0);
@@ -211,6 +257,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (selection.key !== viewKey || selection.ids.size === 0) return NO_IDS;
     return new Set(openNodeIds.filter((id) => selection.ids.has(id)));
   }, [selection, viewKey, openNodeIds]);
+
+  // A name being typed and a prompt waiting belong to the project shown, so they go when
+  // another project becomes active.
+  useEffect(() => {
+    setNaming(null);
+    setPending(null);
+    setNewMenuShown(false);
+  }, [projectKey]);
 
   const unsavedKey = useMemo(() => dirtyProjectKeys(sessions).join("\n"), [sessions]);
   useEffect(() => {
@@ -289,6 +343,19 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     };
   }, [hasConflict]);
 
+  // The rename and delete prompt takes focus the same way.
+  const hasPending = pending !== null;
+  useEffect(() => {
+    if (!hasPending) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    pendingRef.current?.querySelector<HTMLElement>("[data-cancel]")?.focus();
+    return () => {
+      if (previous?.isConnected) previous.focus();
+      else dialog?.focus();
+    };
+  }, [hasPending]);
+
   /**
    * Saves one draft through `praxis_save`, expecting the file to still have the hash the
    * draft loaded unless `force` is set. The draft records the result: a save makes the
@@ -338,7 +405,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const saveFromBuilder = useCallback(
     async (path: string, ref: DefinitionRef, force: boolean) => {
       setSaving(true);
-      setSaveMessage(null);
+      setNotice(null);
       try {
         const outcome = await saveDraft(path, ref, force);
         if (outcome.status === "conflict") {
@@ -347,10 +414,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         }
         setConflict(null);
         if (outcome.layoutError) {
-          setSaveMessage({ tone: "warning", text: `Saved, but the layout file wasn't written: ${outcome.layoutError}` });
+          setNotice({ tone: "warning", text: `Saved, but the layout file wasn't written: ${outcome.layoutError}` });
         }
       } catch (e) {
-        setSaveMessage({ tone: "error", text: String(e) });
+        setNotice({ tone: "error", text: String(e) });
       } finally {
         setSaving(false);
       }
@@ -422,7 +489,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
   const openDefinition = (ref: DefinitionRef) => {
     if (!project) return;
-    setSaveMessage(null);
+    setNotice(null);
     changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
   };
 
@@ -580,6 +647,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const escape = (target: EventTarget | null) => {
     if (helpShown) return setHelpShown(false);
     if (conflict) return setConflict(null);
+    if (pending) return lifecycleBusy ? undefined : setPending(null);
+    if (newMenuShown) return setNewMenuShown(false);
     const canvas = canvasFor(viewKey);
     if (canvas?.cancelConnection()) return;
     if (isTextField(target) && target instanceof HTMLElement) {
@@ -601,7 +670,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           target.blur();
           target.focus();
         }
-        if (!conflict) setSaveRequest((n) => n + 1);
+        if (!conflict && !pending) setSaveRequest((n) => n + 1);
         return;
       case "escape":
         return escape(target);
@@ -642,7 +711,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const handleKey = (e: KeyboardEvent, target: EventTarget | null) => {
     const dialog = dialogRef.current;
     if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
-    const overlay = helpShown ? helpRef.current : conflict ? conflictRef.current : null;
+    const overlay = helpShown ? helpRef.current : conflict ? conflictRef.current : pending ? pendingRef.current : null;
     if (e.key === "Tab") {
       trapTab(overlay ?? dialog, e);
       return;
@@ -696,6 +765,227 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const openDirty = openDraft ? isDirty(openDraft) : false;
   const undoable = openHistory ? canUndo(openHistory) : false;
   const redoable = openHistory ? canRedo(openHistory) : false;
+
+  const listedEntries = (kind: PraxisKind): DefinitionEntry[] => currentListing?.byKind[kind].list?.entries ?? [];
+  const openEntry = open ? listedEntries(open.kind).find((e) => e.id === open.id) : undefined;
+  /** The ids a new or renamed definition of `kind` can't take: the listed ones and the drafts'. */
+  const takenIds = (kind: PraxisKind): string[] => [
+    ...listedEntries(kind).map((e) => e.id),
+    ...Object.values(session?.drafts ?? {})
+      .filter((d) => d.ref.kind === kind)
+      .map((d) => d.ref.id),
+  ];
+  const namingProblem =
+    naming === null
+      ? null
+      : naming.mode === "new"
+        ? definitionIdProblem(naming.value, takenIds(naming.kind))
+        : definitionIdProblem(naming.value, takenIds(naming.ref.kind), naming.ref.id);
+
+  /** "+ New" and the empty project's New graph (#222): an inline name field in the kind's list. */
+  const startNew = (entry: RecordKindEntry) => {
+    setNewMenuShown(false);
+    setListShown(true);
+    setNotice(null);
+    setNaming({ mode: "new", kind: entry.kind, value: nextDefinitionId(entry.singular, takenIds(entry.kind)) });
+  };
+
+  const startRename = (ref: DefinitionRef) => {
+    setNotice(null);
+    setNaming({ mode: "rename", ref, value: ref.id });
+  };
+
+  /** The content of `path`'s drafts other than `except`, for a rename to rewrite. */
+  const draftContents = (path: string, except: DefinitionRef): DraftContent[] =>
+    Object.values(sessionFor(sessionsRef.current, path).drafts)
+      .filter((d) => definitionKey(d.ref) !== definitionKey(except))
+      .map((d) => ({ kind: d.ref.kind, id: d.ref.id, content: d.content }));
+
+  /** Why `ref` can't be renamed now: its draft has changes a rename would have to carry. */
+  const unsavedChangesProblem = (path: string, ref: DefinitionRef) => {
+    const draft = sessionFor(sessionsRef.current, path).drafts[definitionKey(ref)];
+    return draft && draft.baseHash !== null && isDirty(draft)
+      ? `Save or undo the changes to ${definitionPath(ref)} first.`
+      : null;
+  };
+
+  /**
+   * Enter in the name field. A new name makes an unsaved draft, and so does renaming one,
+   * since neither has a file. Renaming a saved definition asks the backend for its plan,
+   * which the user confirms.
+   */
+  const submitName = async () => {
+    if (!project || !naming || namingProblem || lifecycleBusy) return;
+    const path = project.path;
+    if (naming.mode === "new") {
+      const ref = { kind: naming.kind, id: naming.value };
+      const newRecord = RECORD_KINDS.find((k) => k.kind === ref.kind)?.newRecord;
+      const created = newRecord ? createNewGraphDraft(ref, newRecord(ref.id)) : null;
+      if (!created?.ok) return;
+      setNaming(null);
+      setNotice(null);
+      changeSessions((s) => updateSession(s, path, (cur) => addNewDraft({ ...cur, name: project.name }, ref, created.value)));
+      return;
+    }
+    const { ref, value: newId } = naming;
+    if (newId === ref.id) return setNaming(null);
+    if (session?.drafts[definitionKey(ref)]?.baseHash === null) {
+      setNaming(null);
+      changeSessions((s) => updateSession(s, path, (cur) => renameUnsavedDraft(cur, ref, newId)));
+      return;
+    }
+    const problem = unsavedChangesProblem(path, ref);
+    if (problem) return setNotice({ tone: "error", text: `${definitionPath(ref)} can't be renamed yet. ${problem}` });
+    setLifecycleBusy(true);
+    try {
+      const plan = await invoke<RenameOutcome>("praxis_rename", {
+        projectPath: path,
+        kind: ref.kind,
+        id: ref.id,
+        newId,
+        drafts: draftContents(path, ref),
+        dryRun: true,
+      });
+      setNaming(null);
+      setPending({ type: "rename", projectPath: path, ref, newId, plan });
+    } catch (e) {
+      setNotice({ tone: "error", text: String(e) });
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  /**
+   * Asks to delete `ref`. A draft with no file listed, because it was never saved or its
+   * file was deleted on disk, has nothing to trash, so its prompt only discards it.
+   */
+  const startDelete = async (ref: DefinitionRef) => {
+    if (!project || lifecycleBusy) return;
+    const path = project.path;
+    setNotice(null);
+    setNaming(null);
+    const listed = listedEntries(ref.kind).some((e) => e.id === ref.id);
+    if (!listed && session?.drafts[definitionKey(ref)]) {
+      setPending({ type: "delete", projectPath: path, ref, plan: null });
+      return;
+    }
+    setLifecycleBusy(true);
+    try {
+      const plan = await invoke<DeleteOutcome>("praxis_delete", { projectPath: path, kind: ref.kind, id: ref.id, dryRun: true });
+      setPending({ type: "delete", projectPath: path, ref, plan });
+    } catch (e) {
+      setNotice({ tone: "error", text: String(e) });
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  /** What a rename or delete did, as the notice says it. */
+  const report = (verb: string, outcome: { done: string[]; error?: string }) =>
+    outcome.error === undefined
+      ? { tone: "info" as const, text: `${verb}. ${outcome.done.join(". ")}.` }
+      : {
+          tone: "error" as const,
+          text: `${outcome.error}. ${
+            outcome.done.length > 0 ? `Done before it stopped: ${outcome.done.join(". ")}.` : "Nothing was changed."
+          }`,
+        };
+
+  /** Drops the list's invalid badge for a definition that was renamed or deleted, so its old id starts afresh. */
+  const forgetValidity = (p: Pending) => {
+    const key = `${normalizePath(p.projectPath)}|${definitionKey(p.ref)}`;
+    setInvalid((m) => {
+      if (!m.has(key)) return m;
+      const next = new Map(m);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  /**
+   * Runs the confirmed rename or delete. Both sit outside undo: a rename clears the
+   * histories it touches, and a delete drops the definition's draft. The session follows
+   * only once the backend has written the new file or trashed the old one.
+   */
+  const runPending = async (p: Pending) => {
+    setLifecycleBusy(true);
+    try {
+      if (p.type === "rename") {
+        const problem = unsavedChangesProblem(p.projectPath, p.ref);
+        if (problem) throw new Error(`${definitionPath(p.ref)} changed while the rename waited. ${problem}`);
+        const outcome = await invoke<RenameOutcome>("praxis_rename", {
+          projectPath: p.projectPath,
+          kind: p.ref.kind,
+          id: p.ref.id,
+          newId: p.newId,
+          drafts: draftContents(p.projectPath, p.ref),
+          dryRun: false,
+        });
+        if (outcome.done.length > 0) {
+          changeSessions((s) => updateSession(s, p.projectPath, (cur) => applyRename(cur, p.ref, p.newId, outcome)));
+          forgetValidity(p);
+        }
+        setNotice(report(`Renamed ${definitionPath(p.ref)} to ${p.newId}`, outcome));
+      } else if (p.plan === null) {
+        changeSessions((s) => updateSession(s, p.projectPath, (cur) => removeDefinition(cur, p.ref)));
+        forgetValidity(p);
+        setNotice({ tone: "info", text: `Discarded the draft of ${definitionPath(p.ref)}.` });
+      } else {
+        const outcome = await invoke<DeleteOutcome>("praxis_delete", {
+          projectPath: p.projectPath,
+          kind: p.ref.kind,
+          id: p.ref.id,
+          dryRun: false,
+        });
+        if (outcome.done.length > 0) {
+          changeSessions((s) => updateSession(s, p.projectPath, (cur) => removeDefinition(cur, p.ref)));
+          forgetValidity(p);
+        }
+        setNotice(report(`Deleted ${definitionPath(p.ref)}`, outcome));
+      }
+    } catch (e) {
+      setNotice({ tone: "error", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setPending(null);
+      setLifecycleBusy(false);
+      setRefreshCount((n) => n + 1);
+    }
+  };
+
+  /** The fix for a file whose id isn't its name: write it with its name as the id inside. */
+  const fixId = async (ref: DefinitionRef) => {
+    if (!project || lifecycleBusy) return;
+    const path = project.path;
+    const problem = unsavedChangesProblem(path, ref);
+    if (problem) return setNotice({ tone: "error", text: problem });
+    setLifecycleBusy(true);
+    try {
+      const outcome = await invoke<RenameOutcome>("praxis_rename", {
+        projectPath: path,
+        kind: ref.kind,
+        id: ref.id,
+        newId: ref.id,
+        drafts: [],
+        dryRun: false,
+      });
+      // Any draft was clean, so reading the file again makes a fresh one with the new id.
+      if (outcome.done.length > 0) changeSessions((s) => updateSession(s, path, (cur) => dropDraft(cur, ref)));
+      setNotice(report(`Set the id inside ${definitionPath(ref)} to ${ref.id}`, outcome));
+    } catch (e) {
+      setNotice({ tone: "error", text: String(e) });
+    } finally {
+      setLifecycleBusy(false);
+      setRefreshCount((n) => n + 1);
+    }
+  };
+
+  const creatableKinds = RECORD_KINDS.filter((k) => k.newRecord);
+  const graphsEntry = RECORD_KINDS.find((k) => k.kind === "graphs")!;
+  // Where a new graph is saved, written the way the project's path is.
+  const separator = project?.path.includes("\\") ? "\\" : "/";
+  const graphsFolder = project
+    ? [project.path.replace(/[\\/]+$/, ""), ".praxis", "graphs", ""].join(separator)
+    : "";
 
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the backdrop only keeps focus in the builder; it does nothing a user acts on
@@ -836,14 +1126,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           </div>
         </header>
 
-        {saveMessage && (
+        {notice && (
           <p
-            role={saveMessage.tone === "error" ? "alert" : "status"}
+            role={notice.tone === "error" ? "alert" : "status"}
             className={`shrink-0 px-4 py-1.5 text-[11px] break-words border-b border-[#30363d] bg-[#161b22] ${
-              saveMessage.tone === "error" ? "text-[#ff7b72]" : "text-[#e3b341]"
+              notice.tone === "error" ? "text-[#ff7b72]" : notice.tone === "warning" ? "text-[#e3b341]" : "text-[#8b949e]"
             }`}
           >
-            {saveMessage.text}
+            {notice.text}
           </p>
         )}
 
@@ -867,19 +1157,57 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
               hidden={!listShown}
               className="w-56 shrink-0 border-r border-[#30363d] overflow-y-auto py-2"
             >
+              <div
+                className="relative px-1.5 pb-2"
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setNewMenuShown(false);
+                }}
+              >
+                <button
+                  type="button"
+                  aria-expanded={newMenuShown}
+                  aria-controls={newMenuId}
+                  onClick={() => setNewMenuShown((v) => !v)}
+                  className="w-full inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs font-semibold"
+                >
+                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                  New
+                </button>
+                <div
+                  id={newMenuId}
+                  role="group"
+                  aria-label="Kind of definition to create"
+                  hidden={!newMenuShown}
+                  className="absolute left-1.5 right-1.5 top-full -mt-1 z-10 rounded-md border border-[#30363d] bg-[#161b22] p-1 shadow-xl"
+                >
+                  {creatableKinds.map((k) => (
+                    <button
+                      key={k.kind}
+                      type="button"
+                      onClick={() => startNew(k)}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-left text-xs hover:bg-[#21262d]"
+                    >
+                      <k.icon className="w-3.5 h-3.5" aria-hidden="true" />
+                      New {k.singular}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {!currentListing && <p className="px-3 py-1 text-xs text-[#6e7681]">Loading…</p>}
               {currentListing &&
-                RECORD_KINDS.map(({ kind, label, icon: Icon }) => {
+                RECORD_KINDS.map(({ kind, label, singular, icon: Icon }) => {
                   const entry = currentListing.byKind[kind];
                   const listed = new Set(entry.list?.entries.map((e) => e.id));
-                  // Drafts whose file is gone stay in the list, so their changes can be saved.
+                  // Drafts whose file is gone, or that were never saved, stay in the list, so
+                  // their changes can be saved.
                   const orphans = Object.values(session?.drafts ?? {}).filter(
                     (d) => d.ref.kind === kind && !listed.has(d.ref.id)
                   );
-                  const rows = [
-                    ...(entry.list?.entries ?? []).map((def) => ({ id: def.id, problem: def.problem })),
-                    ...orphans.map((d) => ({ id: d.ref.id, problem: undefined })),
+                  const rows: { id: string; problem?: FileProblem; idMismatch?: DefinitionEntry["idMismatch"] }[] = [
+                    ...(entry.list?.entries ?? []),
+                    ...orphans.map((d) => ({ id: d.ref.id })),
                   ];
+                  const namingNew = naming?.mode === "new" && naming.kind === kind;
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
                       <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
@@ -890,23 +1218,58 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           {entry.error}
                         </p>
                       )}
-                      {rows.length > 0 && (
+                      {(rows.length > 0 || namingNew) && (
                         <ul>
+                          {namingNew && (
+                            <li>
+                              <NameField
+                                label={`Name of the new ${singular}`}
+                                value={naming.value}
+                                problem={namingProblem}
+                                busy={lifecycleBusy}
+                                onChange={(value) => setNaming({ ...naming, value })}
+                                onSubmit={() => void submitName()}
+                                onCancel={() => setNaming(null)}
+                              />
+                            </li>
+                          )}
                           {rows.map((def) => {
                             const ref = { kind, id: def.id };
                             const key = definitionKey(ref);
                             const isOpenDef = openKey === key;
                             const draft = session?.drafts[key];
+                            if (naming?.mode === "rename" && definitionKey(naming.ref) === key) {
+                              return (
+                                <li key={def.id}>
+                                  <NameField
+                                    label={`New id for ${def.id}`}
+                                    value={naming.value}
+                                    problem={namingProblem}
+                                    busy={lifecycleBusy}
+                                    onChange={(value) => setNaming({ ...naming, value })}
+                                    onSubmit={() => void submitName()}
+                                    onCancel={() => setNaming(null)}
+                                  />
+                                </li>
+                              );
+                            }
                             return (
-                              <li key={def.id}>
+                              <li key={def.id} className="group flex items-center pr-1.5">
                                 <ListRow
                                   id={def.id}
                                   problem={def.problem}
+                                  idMismatch={def.idMismatch}
                                   invalid={invalid.get(`${projectKey}|${key}`) === true}
                                   draft={draft}
                                   current={isOpenDef}
                                   onOpen={() => openDefinition(ref)}
                                 />
+                                <RowAction label={`Rename ${def.id}`} shown={isOpenDef} onClick={() => startRename(ref)}>
+                                  <Pencil className="w-3 h-3" aria-hidden="true" />
+                                </RowAction>
+                                <RowAction label={`Delete ${def.id}`} shown={isOpenDef} onClick={() => void startDelete(ref)}>
+                                  <Trash2 className="w-3 h-3" aria-hidden="true" />
+                                </RowAction>
                               </li>
                             );
                           })}
@@ -923,13 +1286,45 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </nav>
 
             <main className="flex-1 min-w-0 relative flex flex-col">
+              {open && openEntry?.idMismatch && (
+                <div
+                  role="status"
+                  className="shrink-0 px-4 py-1.5 flex items-center gap-2 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]"
+                >
+                  <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span className="break-words min-w-0">
+                    {openEntry.idMismatch.found !== undefined
+                      ? `The id inside ${definitionPath(open)} is '${openEntry.idMismatch.found}', not its file name.`
+                      : `${definitionPath(open)} has no id inside to match its file name.`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void fixId(open)}
+                    aria-disabled={lifecycleBusy}
+                    className="ml-auto shrink-0 px-2 py-0.5 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#c9d1d9] font-semibold aria-disabled:opacity-50"
+                  >
+                    Set the id to {open.id}
+                  </button>
+                </div>
+              )}
               {!open ? (
                 <div className="flex-1 flex items-center justify-center p-6 text-center text-sm text-[#8b949e]">
                   {isEmpty ? (
-                    <p>
-                      This project has no Praxis definitions yet. They live in{" "}
-                      <span className="font-mono text-[#c9d1d9]">.praxis/</span> at the repository root.
-                    </p>
+                    <div className="space-y-3">
+                      <p>
+                        This project has no Praxis definitions yet. A new graph is saved to{" "}
+                        <span className="font-mono text-[#c9d1d9] break-all">{graphsFolder}</span> the first time you
+                        save it.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => startNew(graphsEntry)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold"
+                      >
+                        <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                        New graph
+                      </button>
+                    </div>
                   ) : (
                     <p>Choose a definition from the list.</p>
                   )}
@@ -987,6 +1382,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
         {helpShown && <ShortcutsHelp rootRef={helpRef} onClose={() => setHelpShown(false)} />}
 
+        {pending && (
+          <PendingPrompt
+            rootRef={pendingRef}
+            pending={pending}
+            busy={lifecycleBusy}
+            onConfirm={() => void runPending(pending)}
+            onCancel={() => setPending(null)}
+          />
+        )}
+
         {conflict && (
           <ConflictPrompt
             rootRef={conflictRef}
@@ -1021,19 +1426,24 @@ const draftLabel = (d: DirtyDraft) =>
 const ListRow: FC<{
   id: string;
   problem: FileProblem | undefined;
+  idMismatch: DefinitionEntry["idMismatch"];
   /** The definition was validated and the SDK refuses it. */
   invalid: boolean;
   draft: GraphDraft | undefined;
   current: boolean;
   onOpen: () => void;
-}> = ({ id, problem, invalid, draft, current, onOpen }) => {
+}> = ({ id, problem, idMismatch, invalid, draft, current, onOpen }) => {
   const dirty = draft ? isDirty(draft) : false;
   const deleted = draft?.deletedOnDisk ?? false;
+  const unsaved = draft?.baseHash === null;
+  const mismatchNote =
+    idMismatch && (idMismatch.found !== undefined ? `the id inside is '${idMismatch.found}'` : "no id inside");
   const notes = [
     problem && problem.message,
     !problem && invalid && "invalid, see Problems",
+    mismatchNote,
     deleted && "deleted on disk",
-    dirty && "unsaved changes",
+    unsaved ? "never saved" : dirty && "unsaved changes",
   ].filter(Boolean);
   return (
     <button
@@ -1041,7 +1451,7 @@ const ListRow: FC<{
       aria-current={current ? "page" : undefined}
       onClick={onOpen}
       title={notes.length > 0 ? `${id}: ${notes.join("; ")}` : id}
-      className={`w-[calc(100%-0.75rem)] mx-1.5 px-2 py-1 rounded-md flex items-center gap-1.5 text-left text-xs font-mono ${
+      className={`flex-1 min-w-0 ml-1.5 px-2 py-1 rounded-md flex items-center gap-1.5 text-left text-xs font-mono ${
         current ? "bg-[#1f6feb]/25 text-white" : "text-[#c9d1d9] hover:bg-[#21262d]"
       }`}
     >
@@ -1053,13 +1463,92 @@ const ListRow: FC<{
         </span>
       )}
       {deleted && <span className="sr-only">(deleted on disk)</span>}
-      {(problem || invalid) && (
+      {problem || invalid ? (
         <span className="ml-auto inline-flex items-center text-[#ff7b72] shrink-0">
           <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" />
           <span className="sr-only">{problem ? "(can't be opened)" : "(invalid)"}</span>
         </span>
+      ) : (
+        mismatchNote && (
+          <span className="ml-auto inline-flex items-center text-[#e3b341] shrink-0">
+            <TriangleAlert className="w-3.5 h-3.5" aria-hidden="true" />
+            <span className="sr-only">(its id doesn't match its file name)</span>
+          </span>
+        )
       )}
     </button>
+  );
+};
+
+/** A small action beside a list row, shown for the open definition, on hover and on focus. */
+const RowAction: FC<{ label: string; shown: boolean; onClick: () => void; children: ReactNode }> = ({
+  label,
+  shown,
+  onClick,
+  children,
+}) => (
+  <button
+    type="button"
+    aria-label={label}
+    title={label}
+    onClick={onClick}
+    className={`p-1 shrink-0 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d] focus:opacity-100 group-hover:opacity-100 ${
+      shown ? "" : "opacity-0"
+    }`}
+  >
+    {children}
+  </button>
+);
+
+/**
+ * The inline field that names a new definition or renames one, checked as the user types
+ * (#222). Enter confirms when the name is acceptable, and Escape cancels.
+ */
+const NameField: FC<{
+  label: string;
+  value: string;
+  problem: string | null;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}> = ({ label, value, problem, busy, onChange, onSubmit, onCancel }) => {
+  const hintId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  return (
+    <div className="mx-1.5 px-1 py-1">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        aria-label={label}
+        aria-invalid={problem !== null}
+        aria-describedby={hintId}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          // Handled here, so the builder's own Enter and Escape don't run too.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (!busy && problem === null) onSubmit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        className={`w-full px-1.5 py-0.5 rounded bg-[#0d1117] border text-xs font-mono text-white outline-none ${
+          problem ? "border-[#da3633]" : "border-[#1f6feb]"
+        }`}
+      />
+      <p id={hintId} aria-live="polite" className={`mt-0.5 text-[10px] break-words ${problem ? "text-[#ff7b72]" : "text-[#6e7681]"}`}>
+        {problem ?? (busy ? "Checking…" : "Enter to confirm, Esc to cancel.")}
+      </p>
+    </div>
   );
 };
 
@@ -1259,6 +1748,116 @@ const ConflictPrompt: FC<{
           <button
             type="button"
             data-cancel
+            onClick={onCancel}
+            className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** A titled list of paths in a prompt, left out when there are none. */
+const PathList: FC<{ title: string; paths: string[] }> = ({ title, paths }) =>
+  paths.length === 0 ? null : (
+    <div className="space-y-1">
+      <p className="text-xs text-[#c9d1d9]">{title}</p>
+      <ul className="max-h-32 overflow-y-auto text-[11px] font-mono text-[#8b949e] space-y-0.5">
+        {paths.map((path) => (
+          <li key={path} className="break-words">
+            {path}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+/**
+ * Confirms a rename or delete the backend has planned (#222), listing every file it
+ * touches. Neither can be undone in the builder; a deleted file can be restored from the
+ * OS trash.
+ */
+const PendingPrompt: FC<{
+  rootRef: Ref<HTMLDivElement>;
+  pending: Pending;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ rootRef, pending, busy, onConfirm, onCancel }) => {
+  const titleId = useId();
+  const path = definitionPath(pending.ref);
+  let title: string;
+  let body: ReactNode;
+  let action: string;
+  if (pending.type === "rename") {
+    const { plan } = pending;
+    title = `Rename ${path} to ${pending.newId}?`;
+    action = "Rename";
+    body = (
+      <>
+        <PathList
+          title="These files change:"
+          paths={plan.changes.map((c) => (c.newPath ? `${c.path} → ${c.newPath}` : `${c.path} (references rewritten)`))}
+        />
+        <PathList
+          title="These unsaved drafts refer to it, and are rewritten too:"
+          paths={plan.drafts.map((d) => definitionPath(d))}
+        />
+        <PathList title="These files couldn't be read, so any reference in them stays as it is:" paths={plan.unchecked} />
+        <p className="text-xs text-[#8b949e]">
+          New files are written before the old ones are removed. A rename can't be undone, and it clears the undo
+          history of every draft it changes.
+        </p>
+      </>
+    );
+  } else if (pending.plan === null) {
+    title = `Discard the draft of ${path}?`;
+    action = "Discard";
+    body = <p className="text-xs text-[#c9d1d9]">It has no file on disk, so its draft is all there is of it.</p>;
+  } else {
+    const { plan } = pending;
+    title = `Delete ${path}?`;
+    action = "Delete";
+    body = (
+      <>
+        <PathList title={`These files move to ${TRASH_NAME}:`} paths={plan.files} />
+        <PathList
+          title="These definitions refer to it, and will refer to a missing one afterwards:"
+          paths={plan.referrers}
+        />
+        <PathList title="These files couldn't be read to look for references:" paths={plan.unchecked} />
+        <p className="text-xs text-[#8b949e]">Its draft and undo history are dropped.</p>
+      </>
+    );
+  }
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-6">
+      <div
+        ref={rootRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="max-w-lg w-full rounded-lg border border-[#30363d] bg-[#161b22] p-4 space-y-3 shadow-2xl"
+      >
+        <h3 id={titleId} className="text-sm font-semibold text-white break-words">
+          {title}
+        </h3>
+        {body}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className={`${promptButton} bg-[#da3633] hover:bg-[#f85149] text-white`}
+          >
+            {busy ? `${action}…` : action}
+          </button>
+          <button
+            type="button"
+            data-cancel
+            disabled={busy}
             onClick={onCancel}
             className={`${promptButton} bg-[#21262d] hover:bg-[#30363d]`}
           >

@@ -14,7 +14,7 @@ export interface GraphDraft {
   content: JsonObject;
   /** Every node's position in integers, keyed by node id, in node order. */
   positions: ReadonlyMap<string, XYPosition>;
-  /** The hash of the file as loaded or last saved, which a save expects to find. */
+  /** The hash of the file as loaded or last saved, which a save expects to find; null for a definition never saved. */
   baseHash: string | null;
   /** The fingerprint of the content and positions as loaded or last saved. */
   baseFingerprint: string;
@@ -54,6 +54,21 @@ export function createGraphDraft(ref: DefinitionRef, file: DefinitionFile): Pars
       deletedOnDisk: false,
     },
   };
+}
+
+/**
+ * The draft of a definition created in the builder and not yet saved (#222). It is dirty
+ * until its first save, which writes the file and its folder.
+ */
+export function createNewGraphDraft(ref: DefinitionRef, content: JsonObject): ParseResult<GraphDraft> {
+  const created = createGraphDraft(ref, { id: ref.id, kind: ref.kind, missing: false, content });
+  if (!created.ok) return created;
+  return { ok: true, value: { ...created.value, baseHash: null, baseFingerprint: "" } };
+}
+
+/** The draft under another id, with that id inside its record. */
+export function withId(draft: GraphDraft, ref: DefinitionRef): GraphDraft {
+  return { ...withChanges(draft, { ...draft.content, id: ref.id }, draft.positions), ref };
 }
 
 export function isDirty(draft: GraphDraft): boolean {
@@ -116,13 +131,14 @@ export function markDeletedOnDisk(draft: GraphDraft): GraphDraft {
 /**
  * What to do with a draft when its file is read again (#221). A file with the hash the
  * draft loaded keeps it. A changed file reloads a clean draft quietly, and keeps a dirty
- * one, whose save then finds the conflict. A deleted file marks the draft deleted on disk.
+ * one, whose save then finds the conflict. A deleted file marks the draft deleted on disk,
+ * unless the draft was never saved, so has no file yet.
  */
 export function reconcileWithDisk(
   draft: GraphDraft,
   file: DefinitionFile
 ): { action: "keep"; draft: GraphDraft } | { action: "reload" } {
-  if (file.missing) return { action: "keep", draft: markDeletedOnDisk(draft) };
+  if (file.missing) return { action: "keep", draft: draft.baseHash === null ? draft : markDeletedOnDisk(draft) };
   const same = file.contentHash !== undefined && file.contentHash === draft.baseHash;
   if (!same && !isDirty(draft)) return { action: "reload" };
   return { action: "keep", draft: draft.deletedOnDisk ? { ...draft, deletedOnDisk: false } : draft };
