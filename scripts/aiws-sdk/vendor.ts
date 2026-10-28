@@ -4,8 +4,17 @@
 // dependency, and the SOURCE digests catch a hand edit to the copy.
 import { createHash } from 'node:crypto';
 
-/** The paths copied from the SDK, as upstream names them. Their layout is kept under VENDOR_DIR. */
-export const VENDORED_PATHS = ['crates/aiws', 'spec/fixtures.json'] as const;
+/**
+ * The paths copied from the SDK, as upstream names them. Their layout is kept under VENDOR_DIR.
+ * The graph binding schema and its fixtures are PROVISIONAL (AI-WS-SDK #289): the builder
+ * shape-checks binding documents against them in Rust (#273).
+ */
+export const VENDORED_PATHS = [
+  'crates/aiws',
+  'spec/fixtures.json',
+  'spec/engine-v1/graph-binding.schema.json',
+  'spec/engine-v1/graph-binding.fixtures.json',
+] as const;
 
 /** The vendored copy, relative to the repository root. */
 export const VENDOR_DIR = 'src-tauri/vendor/aiws';

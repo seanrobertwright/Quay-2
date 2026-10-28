@@ -1,0 +1,11 @@
+# 16 Assessment and conformance reporting
+
+**T-01 — Requirement matrix.** The assessor SHALL enumerate every requirement applicable to the claimed role, including feature-specific conditions. Each SHALL have an evidence reference and PASS, FAIL, or NOT_APPLICABLE verdict. NOT_APPLICABLE SHALL include a rationale linked to an explicitly excluded feature or role; mandatory core behavior SHALL NOT be waived through this label.
+
+**T-02 — Scenario execution.** A core execution assessment SHALL execute all applicable Annex A scenarios, including negative and crash cases, in a controlled environment. Definition-only assessments SHALL inspect the required records and logical consistency. Binding, export, and migration assessments SHALL include their corresponding scenarios. A claimed unsupported feature SHALL be tested for rejection rather than merely omitted.
+
+**T-03 — Report content.** The conformance report SHALL identify implementation and configuration, deployment boundary, features and limits, test versions, inputs, injected failures, observable records, results, and unresolved defects. A failed mandatory requirement SHALL invalidate the corresponding claim until corrected and reassessed. Assessment results SHALL distinguish a test pass, a self-declaration, and independent assessment; this draft creates no certification body.
+
+**T-04 — Interoperability evidence.** A cross-runtime interoperability claim SHALL include at least two independently implemented runtimes or adapters appropriate to the claim, the same declared contract, and observable evidence that required semantics are preserved. Results SHALL be assessed against allowed behavior and invariants, not identical generated text or task order. Shared code paths and test limitations SHALL be disclosed.
+
+**T-05 — Separate assessment tracks.** Reports SHALL separate control conformance, domain outcome quality, adversarial robustness, and interoperability results. Where a numbered requirement contains multiple mandatory assertions, the assessor SHALL enumerate and evaluate each assertion before assigning PASS to the requirement. Passing semantic fixtures SHALL NOT establish resilience of the actual storage, identity, network, or credential boundary; applicable deployment failure-injection tests remain required.
