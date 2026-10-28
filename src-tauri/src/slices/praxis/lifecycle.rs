@@ -85,8 +85,24 @@ pub const CONTRACT_HOOK: ReferenceHook = ReferenceHook {
     rewrite: rewrite_bindings,
 };
 
+/// Rewrites a grant's `parentId` when it names the grant `old` (#223).
+fn rewrite_parent(folder: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
+    let grants = PraxisKind::Grants.folder();
+    if target != PraxisKind::Grants || folder != grants || record.get("parentId").and_then(Value::as_str) != Some(old) {
+        return false;
+    }
+    if let Some(new) = new {
+        record.insert("parentId".to_string(), Value::String(new.to_string()));
+    }
+    true
+}
+
+/// A grant names its parent grant in `parentId`, so a rename of the parent rewrites it and a
+/// delete names the grants that hold it.
+pub const GRANT_HOOK: ReferenceHook = ReferenceHook { companions: &[], scans: &["grants"], rewrite: rewrite_parent };
+
 /// Every kind's hook. A kind that owns files or holds references adds its hook here.
-pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK];
+pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK];
 
 /// A file's path relative to the repository, as reports show it.
 fn shown(folder: &str, id: &str) -> String {
@@ -727,6 +743,44 @@ mod tests {
         let outcome = delete_definition(&repo, PraxisKind::Graphs, "g", false, HOOKS, &trash).unwrap();
         assert_eq!(outcome.referrers, vec![".praxis/bindings/c1.json"]);
         assert_eq!(read(&repo, ".praxis/bindings/c1.json")["graphs"], json!(["g", "other"]));
+    }
+
+    #[test]
+    fn renaming_a_parent_grant_rewrites_its_children_and_their_drafts() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/grants/p.json", r#"{"id": "p"}"#);
+        write(&repo, ".praxis/grants/child.json", r#"{"id": "child", "parentId": "p"}"#);
+        write(&repo, ".praxis/grants/other.json", r#"{"id": "other", "parentId": "x"}"#);
+        write(&repo, ".praxis/bindings/c1.json", r#"{"version": 1, "graphs": [], "grants": ["p"]}"#);
+        let drafts = vec![DraftContent { kind: PraxisKind::Grants, id: "new".into(), content: json!({"id": "new", "parentId": "p"}) }];
+        let outcome = rename_definition(&repo, PraxisKind::Grants, "p", "q", &drafts, false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/grants/child.json")["parentId"], "q");
+        assert_eq!(read(&repo, ".praxis/grants/other.json")["parentId"], "x");
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["grants"], json!(["q"]));
+        assert_eq!(outcome.drafts[0].content["parentId"], "q");
+        let child = outcome.changes.iter().find(|c| c.path == ".praxis/grants/child.json").unwrap();
+        assert!(child.hashes.is_some());
+    }
+
+    #[test]
+    fn deleting_a_parent_grant_names_its_children_and_leaves_them() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/grants/p.json", r#"{"id": "p"}"#);
+        write(&repo, ".praxis/grants/child.json", r#"{"id": "child", "parentId": "p"}"#);
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::Grants, "p", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.referrers, vec![".praxis/grants/child.json"]);
+        assert_eq!(read(&repo, ".praxis/grants/child.json")["parentId"], "p");
+    }
+
+    #[test]
+    fn a_graph_or_contract_named_like_a_grant_s_parent_is_another_definition() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graphs/p.json", GRAPH);
+        write(&repo, ".praxis/grants/child.json", r#"{"id": "child", "parentId": "p"}"#);
+        rename_definition(&repo, PraxisKind::Graphs, "p", "q", &[], false, HOOKS).unwrap();
+        assert_eq!(read(&repo, ".praxis/grants/child.json")["parentId"], "p");
     }
 
     // --- deleting ----------------------------------------------------------------------

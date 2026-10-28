@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use super::grants;
 use super::lifecycle;
 use super::models::{
-    BindingsInput, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, LayoutInput, PraxisKind,
-    RenameOutcome, SaveOutcome,
+    BindingsInput, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, GrantCheck, LayoutInput,
+    PraxisKind, RenameOutcome, SaveOutcome,
 };
 use super::store;
 use super::validate::{self, Validation};
@@ -119,6 +120,24 @@ pub async fn praxis_contract_triggers(
 ) -> Result<ContractTriggers, String> {
     let workspace = workspace.inner().clone();
     blocking(move || store::contract_triggers(&project_root(&workspace, &project_path)?, &contract_id)).await
+}
+
+/// Checks the grant `id`, with `content` as its record so an unsaved draft is checked, against
+/// the saved records around it: its delegation chain, and a scratch mission under each
+/// contract whose bindings list it (#223, #231).
+#[tauri::command]
+pub async fn praxis_check_grant(
+    project_path: String,
+    id: String,
+    content: serde_json::Value,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<GrantCheck, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        validate::check_size(&content)?;
+        grants::check_grant(&project_root(&workspace, &project_path)?, &id, &content)
+    })
+    .await
 }
 
 /// Renames a definition to `newId`, moving the files that belong to it and rewriting the

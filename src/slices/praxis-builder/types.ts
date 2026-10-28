@@ -85,6 +85,35 @@ export interface ContractTriggers {
   unchecked: string[];
 }
 
+/** A saved grant in a delegation chain, with its `limit` when that is a string. */
+export interface ChainLink {
+  id: string;
+  limit?: string;
+}
+
+/** A contract whose bindings list a grant, and how the grant fares on its scratch mission. */
+export interface BoundContract {
+  id: string;
+  /** The contract's `budget`, when it is a string. */
+  budget?: string;
+  /** Why the contract couldn't be read, so the grant wasn't checked against it. */
+  problem?: string;
+  /** `reduce`'s verdict on the grant, with each issue located on the grant's fields. */
+  validation?: Validation;
+}
+
+/** `praxis_check_grant`: a grant checked against the saved records around it (#223, #231). */
+export interface GrantCheck {
+  /** The saved ancestors from the root grant down to the parent; empty for a root grant. */
+  chain: ChainLink[];
+  /** The grant above `chain` that stopped the walk: missing, unreadable, or a cycle. */
+  chainBreak?: { id: string; message: string };
+  /** The contracts whose bindings list the grant, in id order. */
+  contracts: BoundContract[];
+  /** Bindings files that couldn't be read or weren't searched. */
+  unchecked: string[];
+}
+
 /** How serious an issue is: `error` when the SDK refuses the record, `info` otherwise. */
 export type Severity = "error" | "info";
 

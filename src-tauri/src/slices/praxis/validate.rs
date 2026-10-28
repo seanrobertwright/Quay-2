@@ -9,6 +9,11 @@
 //! Contracts are checked the same way (#223): the verdict is what `Contract::from_value`
 //! and then `create_mission` say, and the locator repeats the schema and both of
 //! `create_mission`'s rules with a path to each field.
+//!
+//! A grant is checked twice. As a record, the verdict is `Grant::from_value`'s. On a scratch
+//! mission under each contract that binds it (#220, #223), the verdict is what `reduce` says
+//! of the `grant` command, and the locator repeats that command's rules against the contract
+//! and the parent grant.
 
 use std::collections::HashMap;
 
@@ -27,18 +32,24 @@ const MAX_NODES: usize = 1000;
 /// broken file of thousands of nodes can't flood the webview.
 pub const MAX_DIAGNOSTICS: usize = 500;
 
-/// Validates a definition's content. Graphs and contracts can be validated so far.
+/// Validates a definition's content. Graphs, contracts and grants can be validated so far.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
-    if !fits_in(content, MAX_FILE_BYTES) {
-        return Err(format!(
-            "The definition is larger than the {} bytes Quay validates.",
-            MAX_FILE_BYTES
-        ));
-    }
+    check_size(content)?;
     match kind {
         PraxisKind::Graphs => Ok(validate_graph(content)),
         PraxisKind::Contracts => Ok(validate_contract(content)),
+        PraxisKind::Grants => Ok(validate_grant(content)),
         other => Err(format!("Quay can't validate {} yet.", other.folder())),
+    }
+}
+
+/// Refuses content that serializes to more than a definition file may hold, so a check
+/// never works through a payload larger than any file it could read.
+pub fn check_size(content: &Value) -> Result<(), String> {
+    if fits_in(content, MAX_FILE_BYTES) {
+        Ok(())
+    } else {
+        Err(format!("The definition is larger than the {} bytes Quay validates.", MAX_FILE_BYTES))
     }
 }
 
@@ -579,7 +590,7 @@ fn record_schema(name: &str) -> &'static jsonschema::Validator {
     let validators = VALIDATORS.get_or_init(|| {
         let base: Value = serde_json::from_str(include_str!("../../../vendor/aiws/crates/aiws/src/schema.json"))
             .expect("the vendored schema is JSON");
-        ["Graph", "Contract"]
+        ["Graph", "Contract", "Grant"]
             .into_iter()
             .map(|n| {
                 let mut schema = base.clone();
@@ -604,18 +615,28 @@ fn describe_contract(code: &str) -> &'static str {
 /// The contract fields the SDK stores as decimal integer strings.
 const CONTRACT_INTEGERS: &[&str] = &["budget", "deadline", "maxAttempts", "maxAuthorizationAgeMs"];
 
+/// The grant fields the SDK stores as decimal integer strings, and those of them that are times.
+const GRANT_INTEGERS: &[&str] = &["notBefore", "expiresAt", "limit", "depth"];
+const GRANT_TIMES: &[&str] = &["notBefore", "expiresAt"];
+
+/// A plainer message than the schema's for a field the SDK stores as a decimal integer string.
+fn integer_message(field: &str, value: &Value, times: &[&str]) -> String {
+    match value.as_str() {
+        Some("") if field == "deadline" => "The deadline isn't set.".to_string(),
+        Some("") if times.contains(&field) => "This time isn't set.".to_string(),
+        Some("") => "This is empty.".to_string(),
+        Some(s) if s.len() > 100 => "This is longer than the 100 digits Praxis allows.".to_string(),
+        Some(_) => "This isn't a whole number of 0 or more written in digits, with no leading zero.".to_string(),
+        None => format!("{} isn't a whole number written as a string, such as \"0\".", value),
+    }
+}
+
 /// A plainer message than the schema's for a contract field, when there is one.
 fn contract_message(contract: &Value, path: &str) -> Option<String> {
     let field = path.strip_prefix('/')?;
     let value = contract.get(field)?;
     if CONTRACT_INTEGERS.contains(&field) {
-        return Some(match value.as_str() {
-            Some("") if field == "deadline" => "The deadline isn't set.".to_string(),
-            Some("") => "This is empty.".to_string(),
-            Some(s) if s.len() > 100 => "This is longer than the 100 digits Praxis allows.".to_string(),
-            Some(_) => "This isn't a whole number of 0 or more written in digits, with no leading zero.".to_string(),
-            None => format!("{} isn't a whole number written as a string, such as \"0\".", value),
-        });
+        return Some(integer_message(field, value, &["deadline"]));
     }
     match field {
         "aiwsEdition" => Some("The edition must be \"0.4\".".to_string()),
@@ -624,36 +645,188 @@ fn contract_message(contract: &Value, path: &str) -> Option<String> {
     }
 }
 
-/// Every issue in a contract, each with its location: the schema's, the numbers and
-/// nesting canonical JSON refuses, and the rules of `create_mission`.
-fn locate_contract(contract: &Value) -> Found {
+/// A plainer message than the schema's for a grant field, when there is one.
+fn grant_message(grant: &Value, path: &str) -> Option<String> {
+    let field = path.strip_prefix('/')?;
+    let value = grant.get(field)?;
+    if GRANT_INTEGERS.contains(&field) {
+        return Some(integer_message(field, value, GRANT_TIMES));
+    }
+    match (field, value.as_str()) {
+        ("subject", Some("")) => Some("The subject isn't set.".to_string()),
+        ("parentId", Some("")) => Some("The parent id is empty. Leave it out for a root grant.".to_string()),
+        _ => None,
+    }
+}
+
+/// An error at `path` of a record that isn't a graph, so is on no node.
+fn field_issue(path: &str, code: &str, message: String) -> Diagnostic {
+    Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None }
+}
+
+/// The schema issues of the `$defs` record `name`, with `message`'s plainer wording where it
+/// has one, and the numbers and nesting canonical JSON refuses.
+fn locate_record(name: &str, record: &Value, message: fn(&Value, &str) -> Option<String>) -> Found {
     let mut out = Found::default();
-    let issue = |path: &str, code: &str, message: String| Diagnostic {
-        code: code.to_string(),
-        severity: Severity::Error,
-        message,
-        path: path.to_string(),
-        node_id: None,
-        field: None,
-    };
     // A field can break more than one schema rule, such as a pattern and a length, which
     // the plainer message covers at once.
     let mut seen = std::collections::HashSet::new();
-    for error in record_schema("Contract").iter_errors(contract) {
+    for error in record_schema(name).iter_errors(record) {
         let path = error.instance_path.as_str().to_string();
-        let message = contract_message(contract, &path).unwrap_or_else(|| error.to_string());
+        let message = message(record, &path).unwrap_or_else(|| error.to_string());
         if seen.insert((path.clone(), message.clone())) {
-            out.push(issue(&path, "INVALID_RECORD", message));
+            out.push(field_issue(&path, "INVALID_RECORD", message));
         }
     }
-    check_canonical(contract, "", 0, &mut |code, path, message| out.push(issue(path, code, message)));
+    check_canonical(record, "", 0, &mut |code, path, message| out.push(field_issue(path, code, message)));
+    out
+}
+
+/// Every issue in a contract, each with its location: the schema's, the numbers and
+/// nesting canonical JSON refuses, and the rules of `create_mission`.
+fn locate_contract(contract: &Value) -> Found {
+    let mut out = locate_record("Contract", contract, contract_message);
     if contract.get("criteria").and_then(Value::as_array).is_some_and(Vec::is_empty) {
-        out.push(issue("/criteria", "INVALID_CONTRACT", "A contract needs at least one acceptance criterion.".to_string()));
+        out.push(field_issue("/criteria", "INVALID_CONTRACT", "A contract needs at least one acceptance criterion.".to_string()));
     }
     if contract.get("maxAttempts").and_then(Value::as_str) == Some("0") {
-        out.push(issue("/maxAttempts", "INVALID_CONTRACT", "A contract must allow at least one attempt.".to_string()));
+        out.push(field_issue("/maxAttempts", "INVALID_CONTRACT", "A contract must allow at least one attempt.".to_string()));
     }
     out
+}
+
+fn describe_grant(code: &str) -> &'static str {
+    match code {
+        "INVALID_RECORD" => "The grant doesn't match the Praxis grant schema.",
+        "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
+        "INPUT_LIMIT" => "The grant is nested more deeply than Praxis allows.",
+        "AUTHORITY_INDETERMINATE" => "Praxis can't tell what this grant allows.",
+        "AUTHORITY_DENIED" => "The grant reaches beyond its contract or its parent grant.",
+        "NOT_FOUND" => "The parent grant isn't on the mission.",
+        "DUPLICATE_ID" => "A grant with this id is already on the mission.",
+        _ => "Praxis refuses this grant.",
+    }
+}
+
+/// Validates a grant as a record. The verdict is `Grant::from_value`'s. The rules that need
+/// a contract and the parent grant are `validate_grant_on_mission`'s.
+pub fn validate_grant(grant: &Value) -> Validation {
+    let verdict = aiws_sdk::Grant::from_value(grant.clone()).err().map(|e| e.code);
+    with_verdict(verdict, locate_record("Grant", grant, grant_message), describe_grant)
+}
+
+/// How two canonical decimal strings compare by value. The callers pass only values the
+/// SDK's schema has accepted, which have no leading zeros.
+fn cmp_decimal(a: &Value, b: &Value) -> std::cmp::Ordering {
+    let (a, b) = (a.as_str().unwrap_or(""), b.as_str().unwrap_or(""));
+    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
+}
+
+/// Checks a grant on a scratch mission (#220, #223): the mission is opened under `contract`
+/// with `create_mission`, the grant's saved `ancestors` that the contract binds (`bound`) are
+/// granted root first, and then the grant itself, at time 0, which the `grant` command doesn't read. The verdict is what
+/// `reduce` says of the grant. A contract or an ancestor the SDK refuses is reported as info,
+/// since the fault isn't in this grant; an ancestor refused leaves the grants below it off the
+/// mission, so the grant's parent is then reported missing. So is an ancestor the contract
+/// doesn't bind, which Praxis would never have granted under it.
+pub fn validate_grant_on_mission(grant: &Value, contract: &Value, ancestors: &[Value], bound: &[&str]) -> Validation {
+    let info = |path: &str, code: &str, message: String| Diagnostic { severity: Severity::Info, ..field_issue(path, code, message) };
+    let mut found = Found::default();
+    let opened = aiws_sdk::Contract::from_value(contract.clone()).and_then(|c| aiws_sdk::create_mission(&c));
+    let mut mission = match opened {
+        Ok(mission) => mission,
+        Err(e) => {
+            let message = format!("Praxis refuses the contract ({}), so the grant can't be checked on its mission.", e.code);
+            found.push(info("", &e.code, message));
+            return with_verdict(None, found, describe_grant);
+        }
+    };
+    let grant_command = |g: &Value| aiws_sdk::Command::from_value(json!({"type": "grant", "grant": g}));
+    for ancestor in ancestors {
+        let id = ancestor.get("id").and_then(Value::as_str).unwrap_or("?");
+        if !bound.contains(&id) {
+            let message = format!("This contract doesn't bind grant {}, so it isn't on the mission.", id);
+            found.push(info("/parentId", "NOT_BOUND", message));
+            continue;
+        }
+        match grant_command(ancestor).and_then(|c| aiws_sdk::reduce(&mission, &c, "0")) {
+            Ok(next) => mission = next,
+            Err(e) => {
+                let message =
+                    format!("Praxis refuses grant {} on this mission ({}), so the grants below it aren't granted.", id, e.code);
+                found.push(info("/parentId", &e.code, message));
+                break;
+            }
+        }
+    }
+    let verdict = grant_command(grant).and_then(|c| aiws_sdk::reduce(&mission, &c, "0")).err().map(|e| e.code);
+    if aiws_sdk::Grant::from_value(grant.clone()).is_ok() {
+        locate_grant_on_mission(grant, mission.as_value(), &mut found);
+    }
+    with_verdict(verdict, found, describe_grant)
+}
+
+/// The rules of `reduce`'s `grant` command, each broken rule with a path to the grant's
+/// field: the profile and times, the contract's actions, resources, budget and deadline, and
+/// the parent grant's, which must be on the mission and contain this one.
+fn locate_grant_on_mission(g: &Value, mission: &Value, out: &mut Found) {
+    use std::cmp::Ordering::{Greater, Less};
+    let c = &mission["contract"];
+    let cid = c["id"].as_str().unwrap_or("?");
+    if g["profile"] != "finite-v1" {
+        out.push(field_issue("/profile", "AUTHORITY_INDETERMINATE", "Praxis checks only grants of the finite-v1 profile.".to_string()));
+    }
+    if cmp_decimal(&g["notBefore"], &g["expiresAt"]) != Less {
+        out.push(field_issue("/expiresAt", "AUTHORITY_INDETERMINATE", "The grant must expire after it starts.".to_string()));
+    }
+    let outside = |out: &mut Found, key: &str, within: &Value, owner: &str| {
+        let allowed = within.as_array().map(Vec::as_slice).unwrap_or(&[]);
+        for (i, item) in g[key].as_array().into_iter().flatten().enumerate() {
+            if !allowed.contains(item) {
+                let message = format!("{} isn't one of {}'s {}.", item, owner, key);
+                out.push(field_issue(&format!("/{}/{}", key, i), "AUTHORITY_DENIED", message));
+            }
+        }
+    };
+    let contract_name = format!("contract {}", cid);
+    outside(out, "actions", &c["actions"], &contract_name);
+    outside(out, "resources", &c["resources"], &contract_name);
+    if cmp_decimal(&g["limit"], &c["budget"]) == Greater {
+        let message = format!("The limit is more than contract {}'s budget of {}.", cid, c["budget"].as_str().unwrap_or("?"));
+        out.push(field_issue("/limit", "AUTHORITY_DENIED", message));
+    }
+    if cmp_decimal(&g["expiresAt"], &c["deadline"]) == Greater {
+        out.push(field_issue("/expiresAt", "AUTHORITY_DENIED", format!("The grant expires after contract {}'s deadline.", cid)));
+    }
+    let Some(pid) = g["parentId"].as_str() else { return };
+    let Some(p) = mission["grants"].get(pid) else {
+        out.push(field_issue("/parentId", "NOT_FOUND", format!("Grant {} isn't on this mission.", pid)));
+        return;
+    };
+    let denied = |out: &mut Found, path: &str, message: String| out.push(field_issue(path, "AUTHORITY_DENIED", message));
+    if p["profile"] != "finite-v1" {
+        denied(out, "/parentId", format!("Grant {} isn't of the finite-v1 profile, so it can't delegate.", pid));
+    }
+    if p["canDelegate"] != true {
+        denied(out, "/parentId", format!("Grant {} doesn't allow delegation.", pid));
+    }
+    if cmp_decimal(&g["depth"], &p["depth"]) != Less {
+        let message = format!("The depth must be less than grant {}'s depth of {}.", pid, p["depth"].as_str().unwrap_or("?"));
+        denied(out, "/depth", message);
+    }
+    let parent_name = format!("grant {}", pid);
+    outside(out, "actions", &p["actions"], &parent_name);
+    outside(out, "resources", &p["resources"], &parent_name);
+    if cmp_decimal(&g["notBefore"], &p["notBefore"]) == Less {
+        denied(out, "/notBefore", format!("The grant starts before grant {} does.", pid));
+    }
+    if cmp_decimal(&g["expiresAt"], &p["expiresAt"]) == Greater {
+        denied(out, "/expiresAt", format!("The grant expires after grant {} does.", pid));
+    }
+    if cmp_decimal(&g["limit"], &p["limit"]) == Greater {
+        let message = format!("The limit is more than grant {}'s limit of {}.", pid, p["limit"].as_str().unwrap_or("?"));
+        denied(out, "/limit", message);
+    }
 }
 
 #[cfg(test)]
@@ -929,8 +1102,8 @@ mod tests {
     }
 
     #[test]
-    fn only_graphs_and_contracts_can_be_validated() {
-        assert!(validate_definition(PraxisKind::Grants, &json!({})).is_err());
+    fn grants_can_be_validated_and_triggers_cannot_yet() {
+        assert!(validate_definition(PraxisKind::Grants, &json!({})).is_ok());
         assert!(validate_definition(PraxisKind::Triggers, &json!({})).is_err());
     }
 
@@ -1023,5 +1196,142 @@ mod tests {
         assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
         assert!(v.diagnostics.iter().any(|d| d.path == "/aiwsEdition" && d.message.contains("0.4")));
         assert!(v.diagnostics.iter().any(|d| d.path.is_empty()));
+    }
+
+    // --- grants ------------------------------------------------------------------------
+
+    fn grant(id: &str) -> Value {
+        json!({
+            "id": id, "subject": "agent", "profile": "finite-v1",
+            "actions": ["read"], "resources": ["repo"],
+            "notBefore": "0", "expiresAt": "1000", "limit": "10",
+            "canDelegate": true, "depth": "2"
+        })
+    }
+
+    fn mission_contract() -> Value {
+        let mut c = contract();
+        c["actions"] = json!(["read", "write"]);
+        c["resources"] = json!(["repo"]);
+        c["budget"] = json!("100");
+        c["deadline"] = json!("5000");
+        c
+    }
+
+    #[test]
+    fn a_grant_record_the_sdk_accepts_has_no_issues() {
+        let v = validate_definition(PraxisKind::Grants, &grant("a")).unwrap();
+        assert_eq!(v, Validation { verdict: None, diagnostics: vec![], omitted: Omitted::default() });
+    }
+
+    #[test]
+    fn a_new_grant_s_unset_fields_are_flagged_plainly() {
+        let mut g = grant("a");
+        g["subject"] = json!("");
+        g["notBefore"] = json!("");
+        g["limit"] = json!("01");
+        let v = validate_grant(&g);
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
+        let messages: Vec<(&str, &str)> = v.diagnostics.iter().map(|d| (d.path.as_str(), d.message.as_str())).collect();
+        assert_eq!(
+            messages,
+            vec![
+                ("/subject", "The subject isn't set."),
+                ("/notBefore", "This time isn't set."),
+                ("/limit", "This isn't a whole number of 0 or more written in digits, with no leading zero."),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_grant_within_its_contract_and_parent_is_accepted_on_the_mission() {
+        let mut child = grant("b");
+        child["parentId"] = json!("a");
+        child["depth"] = json!("1");
+        let v = validate_grant_on_mission(&child, &mission_contract(), &[grant("a")], &["a"]);
+        assert_eq!(v, Validation { verdict: None, diagnostics: vec![], omitted: Omitted::default() });
+    }
+
+    #[test]
+    fn a_grant_beyond_its_contract_is_located_on_each_field() {
+        let mut g = grant("a");
+        g["actions"] = json!(["read", "deploy"]);
+        g["limit"] = json!("101");
+        g["expiresAt"] = json!("6000");
+        let v = validate_grant_on_mission(&g, &mission_contract(), &[], &[]);
+        assert_eq!(v.verdict.as_deref(), Some("AUTHORITY_DENIED"));
+        assert_eq!(
+            codes_at(&v),
+            pairs(&[("AUTHORITY_DENIED", "/actions/1"), ("AUTHORITY_DENIED", "/limit"), ("AUTHORITY_DENIED", "/expiresAt")])
+        );
+        assert_eq!(v.diagnostics[1].message, "The limit is more than contract c's budget of 100.");
+    }
+
+    #[test]
+    fn a_grant_that_expires_before_it_starts_is_indeterminate() {
+        let mut g = grant("a");
+        g["notBefore"] = json!("1000");
+        let v = validate_grant_on_mission(&g, &mission_contract(), &[], &[]);
+        assert_eq!(v.verdict.as_deref(), Some("AUTHORITY_INDETERMINATE"));
+        assert_eq!(codes_at(&v), pairs(&[("AUTHORITY_INDETERMINATE", "/expiresAt")]));
+    }
+
+    #[test]
+    fn a_grant_beyond_its_parent_is_located_on_each_field() {
+        let mut parent = grant("a");
+        parent["canDelegate"] = json!(false);
+        parent["limit"] = json!("5");
+        let mut child = grant("b");
+        child["parentId"] = json!("a");
+        let v = validate_grant_on_mission(&child, &mission_contract(), &[parent], &["a"]);
+        assert_eq!(v.verdict.as_deref(), Some("AUTHORITY_DENIED"));
+        assert_eq!(
+            codes_at(&v),
+            pairs(&[("AUTHORITY_DENIED", "/parentId"), ("AUTHORITY_DENIED", "/depth"), ("AUTHORITY_DENIED", "/limit")])
+        );
+        assert_eq!(v.diagnostics[2].message, "The limit is more than grant a's limit of 5.");
+    }
+
+    #[test]
+    fn a_parent_that_isn_t_on_the_mission_is_not_found() {
+        let mut child = grant("b");
+        child["parentId"] = json!("ghost");
+        let v = validate_grant_on_mission(&child, &mission_contract(), &[], &[]);
+        assert_eq!(v.verdict.as_deref(), Some("NOT_FOUND"));
+        assert_eq!(codes_at(&v), pairs(&[("NOT_FOUND", "/parentId")]));
+    }
+
+    #[test]
+    fn a_refused_ancestor_is_info_and_leaves_the_parent_off_the_mission() {
+        let mut parent = grant("a");
+        parent["limit"] = json!("1000");
+        let mut child = grant("b");
+        child["parentId"] = json!("a");
+        child["depth"] = json!("1");
+        let v = validate_grant_on_mission(&child, &mission_contract(), &[parent], &["a"]);
+        assert_eq!(v.verdict.as_deref(), Some("NOT_FOUND"));
+        assert_eq!(codes_at(&v), pairs(&[("NOT_FOUND", "/parentId"), ("AUTHORITY_DENIED", "/parentId")]));
+        assert_eq!(v.diagnostics[1].severity, Severity::Info);
+    }
+
+    #[test]
+    fn a_refused_contract_is_info_and_no_verdict_on_the_grant() {
+        let mut c = mission_contract();
+        c["criteria"] = json!([]);
+        let v = validate_grant_on_mission(&grant("a"), &c, &[], &[]);
+        assert_eq!(v.verdict, None);
+        assert_eq!(codes_at(&v), pairs(&[("INVALID_CONTRACT", "")]));
+        assert_eq!(v.diagnostics[0].severity, Severity::Info);
+    }
+
+    #[test]
+    fn an_ancestor_the_contract_doesn_t_bind_is_left_off_the_mission() {
+        let mut child = grant("b");
+        child["parentId"] = json!("a");
+        child["depth"] = json!("1");
+        let v = validate_grant_on_mission(&child, &mission_contract(), &[grant("a")], &["b"]);
+        assert_eq!(v.verdict.as_deref(), Some("NOT_FOUND"));
+        assert_eq!(codes_at(&v), pairs(&[("NOT_FOUND", "/parentId"), ("NOT_BOUND", "/parentId")]));
+        assert_eq!(v.diagnostics[1].severity, Severity::Info);
     }
 }
