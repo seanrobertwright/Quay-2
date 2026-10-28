@@ -28,6 +28,9 @@ pub const MAX_SUGGESTIONS: usize = 500;
 /// The entry fields `binding_suggestions` collects, in `BindingSuggestions` field order.
 const SUGGESTED_FIELDS: [&str; 4] = ["agentId", "protocolBindingId", "action", "resource"];
 
+/// The position of `agentId` in `SUGGESTED_FIELDS`, where template agents go.
+const AGENT_ID: usize = 0;
+
 /// How many hex digits of the content's SHA-256 make `graphBindingRevision`: 52 bits, so the
 /// integer stays within the schema's 2^53 - 1.
 const REVISION_HEX_DIGITS: usize = 13;
@@ -84,7 +87,7 @@ pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
         }
     }
     for record in saved_records(repo, PraxisKind::Templates, MAX_TEMPLATES_SCANNED)? {
-        insert_non_blank(&mut found[0], record.get("agent"));
+        insert_non_blank(&mut found[AGENT_ID], record.get("agent"));
     }
     let [agent_id, protocol_binding_id, action, resource] =
         found.map(|values| values.into_iter().take(MAX_SUGGESTIONS).collect());
@@ -92,7 +95,7 @@ pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
 }
 
 /// The content of the first `cap` files of `kind`, in id order, leaving out any that can't be
-/// read or parsed. None when the kind's folder doesn't exist.
+/// read or parsed. Empty when the kind's folder doesn't exist.
 fn saved_records(repo: &Path, kind: PraxisKind, cap: usize) -> Result<Vec<Value>, String> {
     let folder = kind.folder();
     let Some(dir) = confined_dir(repo, folder)? else { return Ok(Vec::new()) };
