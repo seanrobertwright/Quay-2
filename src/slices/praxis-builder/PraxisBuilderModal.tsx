@@ -55,6 +55,8 @@ import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
+import { TemplateForm } from "./TemplateForm.tsx";
+import { templateStepFor, type TemplateEdit } from "./template.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
 import { CrossRecordSection, RunContextPanel, RunsUnder } from "./RunContextPanel.tsx";
 import { graphRunContext, issuesOn, recordsWithErrors, type GraphRunContext } from "./runContext.ts";
@@ -64,6 +66,7 @@ import {
   createNewDraft,
   editContractDraft,
   editGrantDraft,
+  editTemplateDraft,
   editTriggerDraft,
   hasDrafts,
   isDirty,
@@ -262,7 +265,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
   const [goToShown, setGoToShown] = useState(false);
-  // The contracts and grants changed since the last commit (#223), for the list's badge, and
+  // The contracts, grants and templates changed since the last commit (#223, #224), for the list's badge, and
   // the one whose diff is shown.
   const [changes, setChanges] = useState<
     { projectKey: string; byKey: ReadonlyMap<string, ChangeStatus> } | { projectKey: string; error: string } | null
@@ -717,6 +720,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       const now = Date.now();
       changeSessions((s) =>
         updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editTriggerDraft(d, edit), triggerStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
+  // And a workflow template form's (#224).
+  const editOpenTemplate = useCallback(
+    (edit: TemplateEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editTemplateDraft(d, edit), templateStepFor(edit), now))
       );
     },
     [projectPath, open, changeSessions]
@@ -1707,6 +1722,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onValidated={recordValidity}
                   />
                 </>
+              ) : openDraft && open.kind === "templates" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <TemplateForm key={`${projectKey}|${openKey}`} draft={openDraft} onEdit={editOpenTemplate} onValidated={recordValidity} />
+                </>
               ) : openDraft ? (
                 <GraphDraftView
                   // Remount per definition, so the canvas fits or restores its viewport.
@@ -1898,7 +1918,7 @@ const ListRow: FC<{
 };
 
 /**
- * The "changed since last commit" badge (#223) on a contract or grant whose file differs from
+ * The "changed since last commit" badge (#223) on a contract, grant or template whose file differs from
  * the last commit, which opens its diff. It says nothing about approval: a grant file is
  * never approved by being committed or not.
  */

@@ -11,7 +11,7 @@ use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
 /// the diff by joining this list.
-pub const SHOWS_CHANGES: [PraxisKind; 2] = [PraxisKind::Contracts, PraxisKind::Grants];
+pub const SHOWS_CHANGES: [PraxisKind; 3] = [PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::Templates];
 
 /// Whether `repo` is the root of a git repository or worktree. A folder inside some other
 /// repository isn't, since that repository isn't the project's.

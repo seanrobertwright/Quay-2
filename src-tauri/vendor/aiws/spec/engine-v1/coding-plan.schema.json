@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.dev/engine/coding-plan/0.1.0",
+  "x-aiws-stability": "PROVISIONAL",
+  "title": "Praxis coding plan",
+  "description": "PROVISIONAL shape-only check of a coding plan as authorCodingPlan accepts it: fields, types and ranges, with the refused fields marked UNSUPPORTED_FEATURE. The host's POST /engine/authoring-preview/v1 is the only authority on validity, readiness and binding; see CODING-PLAN.md for the rules this schema cannot express. $defs.Plan is a plan; $defs.Template is the same shape without workOrderId and runId.",
+  "$ref": "#/$defs/Plan",
+  "$defs": {
+    "Plan": {
+      "description": "A coding plan, as submitted for authoring preview or run creation.",
+      "type": "object",
+      "properties": {
+        "workOrderId": {
+          "$ref": "#/$defs/Text"
+        },
+        "runId": {
+          "$ref": "#/$defs/Text"
+        },
+        "description": {
+          "$ref": "#/$defs/Text"
+        },
+        "implementation": {
+          "$ref": "#/$defs/Command"
+        },
+        "validation": {
+          "$ref": "#/$defs/Command"
+        },
+        "correction": {
+          "$ref": "#/$defs/Command"
+        },
+        "outputPaths": {
+          "$ref": "#/$defs/OutputPaths"
+        },
+        "criteriaRef": {
+          "$ref": "#/$defs/Text"
+        },
+        "maxCorrections": {
+          "$ref": "#/$defs/MaxCorrections"
+        },
+        "reapproveCorrections": {
+          "type": "boolean"
+        },
+        "maxAttempts": {
+          "$ref": "#/$defs/MaxAttempts"
+        },
+        "maxTaskMs": {
+          "$ref": "#/$defs/MaxTaskMs"
+        },
+        "maxTotalActiveMs": {
+          "$ref": "#/$defs/MaxTotalActiveMs"
+        },
+        "exposure": {
+          "$ref": "#/$defs/Exposure"
+        },
+        "maxTotalCost": {
+          "$ref": "#/$defs/LedgerAmount"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentId"
+        },
+        "branches": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "parallel": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "nodes": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "edges": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "steps": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "triggers": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "approval": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "readiness": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        }
+      },
+      "required": [
+        "workOrderId",
+        "runId",
+        "description",
+        "implementation",
+        "validation",
+        "correction",
+        "outputPaths",
+        "criteriaRef",
+        "maxCorrections",
+        "reapproveCorrections",
+        "maxAttempts",
+        "maxTaskMs",
+        "maxTotalActiveMs"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/CostBoundRule"
+        }
+      ]
+    },
+    "Template": {
+      "description": "A workflow template: the plan shape without workOrderId and runId, which a run supplies. A template that carries either is refused.",
+      "type": "object",
+      "properties": {
+        "description": {
+          "$ref": "#/$defs/Text"
+        },
+        "implementation": {
+          "$ref": "#/$defs/Command"
+        },
+        "validation": {
+          "$ref": "#/$defs/Command"
+        },
+        "correction": {
+          "$ref": "#/$defs/Command"
+        },
+        "outputPaths": {
+          "$ref": "#/$defs/OutputPaths"
+        },
+        "criteriaRef": {
+          "$ref": "#/$defs/Text"
+        },
+        "maxCorrections": {
+          "$ref": "#/$defs/MaxCorrections"
+        },
+        "reapproveCorrections": {
+          "type": "boolean"
+        },
+        "maxAttempts": {
+          "$ref": "#/$defs/MaxAttempts"
+        },
+        "maxTaskMs": {
+          "$ref": "#/$defs/MaxTaskMs"
+        },
+        "maxTotalActiveMs": {
+          "$ref": "#/$defs/MaxTotalActiveMs"
+        },
+        "exposure": {
+          "$ref": "#/$defs/Exposure"
+        },
+        "maxTotalCost": {
+          "$ref": "#/$defs/LedgerAmount"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentId"
+        },
+        "branches": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "parallel": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "nodes": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "edges": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "steps": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "triggers": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "approval": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        },
+        "readiness": {
+          "$ref": "#/$defs/UnsupportedFeature"
+        }
+      },
+      "required": [
+        "description",
+        "implementation",
+        "validation",
+        "correction",
+        "outputPaths",
+        "criteriaRef",
+        "maxCorrections",
+        "reapproveCorrections",
+        "maxAttempts",
+        "maxTaskMs",
+        "maxTotalActiveMs"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/CostBoundRule"
+        }
+      ]
+    },
+    "UnsupportedFeature": {
+      "x-aiws-diagnostic": "UNSUPPORTED_FEATURE",
+      "description": "Refused whatever its value: a coding plan has the fixed coding profile, and work that needs branches, parallel tasks, a graph, triggers, embedded approvals or stated readiness is a finite-v1 graph. Report it as UNSUPPORTED_FEATURE; any other field outside the plan is UNKNOWN_FIELD.",
+      "not": {}
+    },
+    "Text": {
+      "description": "Text of at most 4096 characters with at least one character that is not ECMAScript white space. The host counts UTF-16 code units.",
+      "type": "string",
+      "maxLength": 4096,
+      "pattern": "[^\\t\\n\\u000b\\f\\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+    },
+    "Argument": {
+      "type": "string",
+      "maxLength": 65536,
+      "not": {
+        "pattern": "\\u0000"
+      }
+    },
+    "Command": {
+      "description": "An argument array of 1 to 256 arguments with a nonempty executable first and no NUL characters. A shell command string is not an argument array.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/Argument",
+          "minLength": 1
+        }
+      ],
+      "items": {
+        "$ref": "#/$defs/Argument"
+      }
+    },
+    "OutputPaths": {
+      "description": "1 to 256 unique relative file paths with forward slashes; absolute paths, drive letters, '.' and '..' segments, empty segments and backslashes are refused. The pattern spells out each segment, so it does not depend on how an engine anchors '$' before a final newline.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 4096,
+        "pattern": "^([^/\\\\:\\u0000.][^/\\\\:\\u0000]*|\\.[^/\\\\:\\u0000.][^/\\\\:\\u0000]*|\\.\\.[^/\\\\:\\u0000]+)(/([^/\\\\:\\u0000.][^/\\\\:\\u0000]*|\\.[^/\\\\:\\u0000.][^/\\\\:\\u0000]*|\\.\\.[^/\\\\:\\u0000]+))*$"
+      }
+    },
+    "MaxCorrections": {
+      "description": "Correction cycles; zero disables corrections. The correction command is still required.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "MaxAttempts": {
+      "description": "Total command attempts, implementation and validation included. The authoring rule is at least 2, so a plan that cannot finish implementation plus validation is refused when it is written; the engine's contract accepts 1, for plans already stored.",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 9007199254740991
+    },
+    "MaxTaskMs": {
+      "description": "The longest one command may run, in milliseconds, within the local Node timer range.",
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 2147423647
+    },
+    "MaxTotalActiveMs": {
+      "description": "Accumulated active time for the run, in milliseconds.",
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 9007199254740991
+    },
+    "LedgerAmount": {
+      "description": "An amount in the ledger cost unit: a canonical unsigned decimal integer of at most 30 digits, as a string.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,29})$"
+    },
+    "PositiveLedgerAmount": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,29}$"
+    },
+    "Exposure": {
+      "description": "The node's exposure declaration (AGENT-BINDING.md section 6). The host also requires stopThreshold to be no greater than allowance.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "BOUNDED"
+            },
+            "allowance": {
+              "$ref": "#/$defs/PositiveLedgerAmount"
+            },
+            "stopThreshold": {
+              "$ref": "#/$defs/PositiveLedgerAmount"
+            }
+          },
+          "required": [
+            "kind",
+            "allowance",
+            "stopThreshold"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "NOT_APPLICABLE"
+            },
+            "justification": {
+              "$ref": "#/$defs/Text"
+            }
+          },
+          "required": [
+            "kind",
+            "justification"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "CostBoundRule": {
+      "description": "maxTotalCost is declared exactly when the exposure is BOUNDED. The host also requires it to be at least the allowance.",
+      "if": {
+        "properties": {
+          "exposure": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "BOUNDED"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        "required": [
+          "exposure"
+        ]
+      },
+      "then": {
+        "properties": {
+          "maxTotalCost": true
+        },
+        "required": [
+          "maxTotalCost"
+        ]
+      },
+      "else": {
+        "properties": {
+          "maxTotalCost": false
+        }
+      }
+    },
+    "AgentId": {
+      "description": "A catalog agent id: at most 256 characters, with no C0 control character or DEL and no ECMAScript white space at either end. Absent selects the built-in local agent.",
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[^\\t\\n\\u000b\\f\\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\\u0000-\\u001f\\u007f]([^\\u0000-\\u001f\\u007f]*[^\\t\\n\\u000b\\f\\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\\u0000-\\u001f\\u007f])?$"
+    }
+  }
+}

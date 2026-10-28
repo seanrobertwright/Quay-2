@@ -6,7 +6,7 @@
 // the SDK; these rules only shape what the form shows.
 import type { Step } from "./history.ts";
 import { idProblem } from "./lifecycle.ts";
-import { isObject, type Json, type JsonObject } from "./model.ts";
+import { isObject, withField, type Json, type JsonObject } from "./model.ts";
 
 export const TRIGGER_KINDS = [
   "MANUAL",
@@ -71,17 +71,6 @@ export type TriggerEdit =
   | { type: "set-nested"; key: NestedKey; field: string; value: Json; live?: boolean }
   | { type: "set-kind"; kind: TriggerKind }
   | { type: "set-action"; action: TriggerAction };
-
-const same = (a: Json | undefined, b: Json | undefined) => JSON.stringify(a) === JSON.stringify(b);
-
-function withField(content: JsonObject, key: string, value: Json | undefined): JsonObject {
-  if (value === undefined) {
-    if (!(key in content)) return content;
-    const { [key]: _removed, ...rest } = content;
-    return rest;
-  }
-  return key in content && same(content[key], value) ? content : { ...content, [key]: value };
-}
 
 /** The record after `edit`, or the same object when it changes nothing. */
 export function applyTriggerEdit(content: JsonObject, edit: TriggerEdit): JsonObject {
