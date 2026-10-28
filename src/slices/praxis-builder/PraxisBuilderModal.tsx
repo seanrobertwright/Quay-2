@@ -42,7 +42,8 @@ import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
 import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { isDirty, layoutForSave, markDeletedOnDisk, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
-import { editDraft, nodeIdsOf, stepFor, type GraphEdit } from "./editor.ts";
+import { editDraft, nodeIdsOf, nodesOf, stepFor, type GraphEdit } from "./editor.ts";
+import { copySelection, duplicateSelection, getClipboard, pasteDelta, pasteIntoDraft, setClipboard } from "./clipboard.ts";
 import { canRedo, canUndo } from "./history.ts";
 import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderCommand } from "./keymap.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
@@ -466,11 +467,57 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     changeSessions((s) => updateSession(s, projectPath, (cur) => endGraphMerge(cur, open)));
   }, [projectPath, open, changeSessions]);
 
-  /** Deletes the selected nodes of the open graph as one step. */
-  const deleteSelected = () => {
+  /** A step's history label: `verb` and the one node's id, or how many nodes. */
+  const stepLabel = (verb: string, ids: readonly string[]) =>
+    ids.length === 1 ? `${verb} ${ids[0]}` : `${verb} ${ids.length} nodes`;
+
+  /** Copies the selected nodes of the open graph to the in-memory clipboard. */
+  const copySelected = () => {
+    if (!openDraft || selected.size === 0) return;
+    const envelope = copySelection(nodesOf(openDraft.content), selected, openDraft.positions, viewKey);
+    if (envelope) setClipboard(envelope);
+  };
+
+  /** Cuts the selected nodes: copies them, then deletes them as one step. */
+  const cutSelected = () => {
+    copySelected();
+    removeSelected("Cut");
+  };
+
+  /** Records nodes a paste or duplicate added to the open graph as one step, and selects them. */
+  const addFragment = (verb: "Paste" | "Duplicate", result: { draft: GraphDraft; pastedIds: string[] } | null) => {
+    if (!projectPath || !open || !result) return;
+    const label = stepLabel(verb, result.pastedIds);
+    const now = Date.now();
+    changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, () => result.draft, { label }, now)));
+    selectNodes(result.pastedIds);
+  };
+
+  /**
+   * Pastes the in-memory clipboard's nodes into the open graph: at `at`, a point on the
+   * canvas, when given, or where `pasteDelta` puts them.
+   */
+  const pasteFromClipboard = (at?: XYPosition) => {
+    const envelope = getClipboard();
+    if (!openDraft || !envelope) return;
+    const canvas = canvasFor(viewKey);
+    const viewport = canvas?.readViewport() ?? session?.viewports[openKey] ?? { x: 0, y: 0, zoom: 1 };
+    const box = canvas?.getCanvasRect() ?? { width: 1000, height: 800 };
+    const delta = pasteDelta(envelope, openDraft, viewKey, viewport, box, at);
+    addFragment("Paste", pasteIntoDraft(openDraft, envelope, delta));
+  };
+
+  /** Duplicates the selected nodes as one step without touching the clipboard. */
+  const duplicateSelected = () => {
+    if (!openDraft || selected.size === 0) return;
+    addFragment("Duplicate", duplicateSelection(openDraft, selected));
+  };
+
+  /** Deletes the selected nodes of the open graph as one step, named `verb` in the history. */
+  const removeSelected = (verb: "Delete" | "Cut") => {
     if (!projectPath || !open || selected.size === 0) return;
     const ids = [...selected];
-    const label = ids.length === 1 ? `Delete ${ids[0]}` : `Delete ${ids.length} nodes`;
+    const label = stepLabel(verb, ids);
     const now = Date.now();
     const remove = (d: GraphDraft) => ids.reduce((acc, id) => editDraft(acc, { type: "delete-node", id }), d);
     changeSessions((s) => updateSession(s, projectPath, (cur) => changeGraph(cur, open, remove, { label }, now)));
@@ -561,8 +608,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       case "undo":
       case "redo":
         return moveInHistory(command);
+      case "copy":
+        return copySelected();
+      case "cut":
+        return cutSelected();
+      case "paste":
+        return pasteFromClipboard();
+      case "duplicate":
+        return duplicateSelected();
       case "delete":
-        return deleteSelected();
+        return removeSelected("Delete");
       case "select-all":
         return selectNodes(openNodeIds);
       case "fit-view":
@@ -890,6 +945,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   onMoveNodes={moveOpenNodes}
                   onEdit={editOpen}
                   onArrange={arrangeOpen}
+                  onPaste={pasteFromClipboard}
                   selected={selected}
                   selectionKey={selection.chosen}
                   onSelect={selectNodes}
@@ -1086,6 +1142,7 @@ const GraphDraftView: FC<{
   onMoveNodes: (moved: [string, XYPosition][]) => void;
   onEdit: (edit: GraphEdit) => void;
   onArrange: (action: ArrangeAction) => void;
+  onPaste: (at: XYPosition) => void;
   selected: ReadonlySet<string>;
   selectionKey: number;
   onSelect: (ids: readonly string[], keepInspector?: boolean) => void;
@@ -1101,6 +1158,7 @@ const GraphDraftView: FC<{
   onMoveNodes,
   onEdit,
   onArrange,
+  onPaste,
   selected,
   selectionKey,
   onSelect,
@@ -1139,6 +1197,7 @@ const GraphDraftView: FC<{
         onMoveNodes={onMoveNodes}
         onEdit={onEdit}
         onArrange={onArrange}
+        onPaste={onPaste}
         selected={selected}
         selectionKey={selectionKey}
         onSelect={onSelect}

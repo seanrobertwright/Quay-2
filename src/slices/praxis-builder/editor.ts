@@ -41,11 +41,11 @@ export type GraphEdit =
 export type SchemaSlot = "inputSchema" | "outputSchema";
 
 /** The SDK's longest node id, in characters (code points, as JSON Schema counts them). */
-const MAX_ID_LENGTH = 256;
+export const MAX_ID_LENGTH = 256;
 
 // A draft's record always has a `nodes` list of objects with unique string ids: parseGraph
 // refuses anything else, and no edit makes one.
-const nodesOf = (content: JsonObject): JsonObject[] =>
+export const nodesOf = (content: JsonObject): JsonObject[] =>
   Array.isArray(content.nodes) ? content.nodes.filter(isObject) : [];
 /** The ids of a draft record's nodes, in file order. */
 export const nodeIdsOf = (content: JsonObject): string[] => nodesOf(content).map((n) => n.id as string);

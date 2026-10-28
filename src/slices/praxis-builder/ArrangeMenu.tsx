@@ -1,5 +1,6 @@
 // The layout commands as a menu (#248): the toolbar's Arrange button opens it with every
-// action, and a node's context menu opens it with the aligns and distributes. Items that
+// action, and a node's context menu opens it with the aligns and distributes. The empty
+// canvas's context menu uses the same menu for Paste. Items that
 // need more nodes selected stay in the list, marked unavailable, so the menu keeps its
 // shape. It follows the WAI-ARIA menu pattern: focus starts on the first item, the arrow
 // keys, Home and End move it, and Escape or Tab closes the menu.
@@ -11,13 +12,23 @@ import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
 /** The actions a node's context menu offers: all but auto-arrange. */
 export const NODE_MENU_ACTIONS = ARRANGE_ACTIONS.filter((a) => a.type !== "auto");
 
-interface ArrangeMenuProps {
+/** One entry of a menu. */
+export interface MenuItem {
+  name: string;
+  enabled: boolean;
+  /** Items of one group sit together, with a separator between groups. */
+  group: string;
+  /** Shown at the item's right edge: a shortcut, or why it is unavailable. */
+  hint?: string;
+  ariaKeyShortcuts?: string;
+  onChoose: () => void;
+}
+
+interface MenuProps {
   /** The menu's accessible name. */
   label: string;
   id?: string;
-  actions: readonly ArrangeAction[];
-  selectedCount: number;
-  onChoose: (action: ArrangeAction) => void;
+  items: readonly MenuItem[];
   /** Called when the menu should go away; `refocus` is false when focus has moved on already. */
   onClose: (refocus: boolean) => void;
   /** The button that opened the menu, whose own presses toggle it rather than close it. */
@@ -26,11 +37,12 @@ interface ArrangeMenuProps {
   style?: CSSProperties;
 }
 
-export const ArrangeMenu: FC<ArrangeMenuProps> = ({ label, id, actions, selectedCount, onChoose, onClose, anchorRef, className, style }) => {
+/** A list of items following the WAI-ARIA menu pattern described at the top of this file. */
+export const Menu: FC<MenuProps> = ({ label, id, items, onClose, anchorRef, className, style }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const items = () => [...(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  const buttons = () => [...(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
   useEffect(() => {
-    items()[0]?.focus();
+    buttons()[0]?.focus();
   }, []);
   // A press anywhere outside closes the menu, leaving focus where the press puts it.
   useEffect(() => {
@@ -43,7 +55,7 @@ export const ArrangeMenu: FC<ArrangeMenuProps> = ({ label, id, actions, selected
   }, [onClose, anchorRef]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const list = items();
+    const list = buttons();
     const at = list.indexOf(document.activeElement as HTMLElement);
     const move = (to: number) => list[(to + list.length) % list.length]?.focus();
     switch (e.key) {
@@ -84,30 +96,26 @@ export const ArrangeMenu: FC<ArrangeMenuProps> = ({ label, id, actions, selected
       className={`z-30 min-w-56 py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs ${className ?? ""}`}
       style={style}
     >
-      {actions.map((action, i) => {
-        const enabled = canArrange(action, selectedCount);
-        const name = arrangeLabel(action);
-        const groupStarts = i > 0 && actions[i - 1].type !== action.type;
+      {items.map((item, i) => {
+        const groupStarts = i > 0 && items[i - 1].group !== item.group;
         return (
-          <div key={name}>
+          <div key={item.name}>
             {groupStarts && <div role="separator" className="my-1 border-t border-[#30363d]" />}
             <button
               type="button"
               role="menuitem"
               tabIndex={-1}
-              aria-disabled={!enabled}
-              aria-keyshortcuts={action.type === "auto" ? ariaKeyShortcuts("auto-arrange") : undefined}
+              aria-disabled={!item.enabled}
+              aria-keyshortcuts={item.ariaKeyShortcuts}
               onClick={() => {
-                if (!enabled) return;
+                if (!item.enabled) return;
                 onClose(true);
-                onChoose(action);
+                item.onChoose();
               }}
               className="w-full flex items-center gap-4 px-3 py-1.5 text-left text-[#c9d1d9] hover:bg-[#21262d] focus:bg-[#21262d] focus:outline-none aria-disabled:text-[#484f58] aria-disabled:hover:bg-transparent"
             >
-              <span>{name}</span>
-              <span className="ml-auto text-[10px] text-[#6e7681]">
-                {action.type === "auto" ? shortcutLabel("auto-arrange") : !enabled && `${action.type === "align" ? 2 : 3}+ nodes`}
-              </span>
+              <span>{item.name}</span>
+              <span className="ml-auto text-[10px] text-[#6e7681]">{item.hint}</span>
             </button>
           </div>
         );
@@ -115,6 +123,30 @@ export const ArrangeMenu: FC<ArrangeMenuProps> = ({ label, id, actions, selected
     </div>
   );
 };
+
+interface ArrangeMenuProps extends Omit<MenuProps, "items"> {
+  actions: readonly ArrangeAction[];
+  selectedCount: number;
+  onChoose: (action: ArrangeAction) => void;
+}
+
+export const ArrangeMenu: FC<ArrangeMenuProps> = ({ actions, selectedCount, onChoose, ...menu }) => (
+  <Menu
+    {...menu}
+    items={actions.map((action) => {
+      const enabled = canArrange(action, selectedCount);
+      const auto = action.type === "auto";
+      return {
+        name: arrangeLabel(action),
+        enabled,
+        group: action.type,
+        hint: auto ? shortcutLabel("auto-arrange") : enabled ? undefined : `${action.type === "align" ? 2 : 3}+ nodes`,
+        ariaKeyShortcuts: auto ? ariaKeyShortcuts("auto-arrange") : undefined,
+        onChoose: () => onChoose(action),
+      };
+    })}
+  />
+);
 
 /** The toolbar's Arrange button and the menu it opens under it. */
 export const ArrangeMenuButton: FC<{ selectedCount: number; onChoose: (action: ArrangeAction) => void }> = ({
