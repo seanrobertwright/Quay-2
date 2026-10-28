@@ -114,6 +114,23 @@ export interface GrantCheck {
   unchecked: string[];
 }
 
+/** How a definition file differs from the last commit. */
+export type ChangeStatus = "modified" | "added" | "deleted";
+
+/** `praxis_changes`: the contracts and grants changed since the last commit, empty outside git. */
+export interface ChangedFiles {
+  files: { kind: PraxisKind; id: string; status: ChangeStatus }[];
+}
+
+/** `praxis_diff`: one file's unified diff against the last commit; `status` is null when unchanged. */
+export interface FileDiff {
+  path: string;
+  status: ChangeStatus | null;
+  diff: string;
+  /** The diff was cut at the backend's cap. */
+  truncated: boolean;
+}
+
 /** How serious an issue is: `error` when the SDK refuses the record, `info` otherwise. */
 export type Severity = "error" | "info";
 

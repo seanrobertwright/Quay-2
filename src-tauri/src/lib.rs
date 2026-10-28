@@ -37,7 +37,8 @@ use slices::orchestrator::{
     SwarmStore,
 };
 use slices::praxis::{
-    praxis_check_context, praxis_check_grant, praxis_contract_triggers, praxis_delete, praxis_list, praxis_read, praxis_rename, praxis_reveal, praxis_save, praxis_validate,
+    praxis_changes, praxis_check_context, praxis_check_grant, praxis_contract_triggers, praxis_delete, praxis_diff,
+    praxis_list, praxis_read, praxis_rename, praxis_reveal, praxis_save, praxis_validate,
 };
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
@@ -210,10 +211,12 @@ pub fn run() {
             machina_get_project_info,
             machina_save_project_config,
             machina_approve_project_config,
+            praxis_changes,
             praxis_check_context,
             praxis_check_grant,
             praxis_contract_triggers,
             praxis_delete,
+            praxis_diff,
             praxis_list,
             praxis_read,
             praxis_rename,

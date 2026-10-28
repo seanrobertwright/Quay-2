@@ -1,4 +1,5 @@
 pub mod canonical;
+pub mod changes;
 pub mod commands;
 pub mod context;
 pub mod grants;

@@ -27,6 +27,7 @@ import {
   CircleAlert,
   FolderOpen,
   FolderPlus,
+  GitCompareArrows,
   PanelLeftClose,
   Keyboard,
   PanelLeftOpen,
@@ -86,6 +87,8 @@ import { canRedo, canUndo } from "./history.ts";
 import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderCommand } from "./keymap.ts";
 import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
+import { DiffView } from "./DiffView.tsx";
+import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
   addNewDraft,
@@ -111,6 +114,8 @@ import {
 } from "./session.ts";
 import type {
   BindingsInput,
+  ChangedFiles,
+  ChangeStatus,
   ContextCheck,
   ContractTriggers,
   DefinitionEntry,
@@ -283,6 +288,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
   const [goToShown, setGoToShown] = useState(false);
+  // The contracts and grants changed since the last commit (#223), for the list's badge, and
+  // the one whose diff is shown.
+  const [changes, setChanges] = useState<
+    { projectKey: string; byKey: ReadonlyMap<string, ChangeStatus> } | { projectKey: string; error: string } | null
+  >(null);
+  const [diffShown, setDiffShown] = useState<DefinitionRef | null>(null);
+  const diffRef = useRef<HTMLDivElement | null>(null);
   // What the live region says. `n` counts announcements, so saying the same thing twice in a
   // row still changes the region's text, and it is read again.
   const [announcement, setAnnouncement] = useState({ text: "", n: 0 });
@@ -339,6 +351,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNaming(null);
     setPending(null);
     setNewMenuShown(false);
+    setDiffShown(null);
   }, [projectKey]);
 
   const unsavedKey = useMemo(() => dirtyProjectKeys(sessions).join("\n"), [sessions]);
@@ -364,6 +377,25 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       });
       setListing({ projectKey: key, byKind });
     });
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, refreshCount]);
+
+  // What has changed since the last commit, read with the list, so a save or an agent's edit
+  // shows. A project that isn't a git repository has no changes, and no error.
+  useEffect(() => {
+    if (!isOpen || !projectPath) return;
+    let stale = false;
+    const key = normalizePath(projectPath);
+    invoke<ChangedFiles>("praxis_changes", { projectPath }).then(
+      ({ files }) => {
+        if (!stale) setChanges({ projectKey: key, byKey: new Map(files.map((f) => [definitionKey(f), f.status])) });
+      },
+      (e) => {
+        if (!stale) setChanges({ projectKey: key, error: String(e) });
+      }
+    );
     return () => {
       stale = true;
     };
@@ -894,11 +926,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
 
   /**
-   * Escape (#221): the first of help, Go to node, a prompt, a dragged connection, a focused
-   * field, the selection, then the builder.
+   * Escape (#221): the first of help, a diff, Go to node, a prompt, a dragged connection, a
+   * focused field, the selection, then the builder.
    */
   const escape = (target: EventTarget | null) => {
     if (helpShown) return setHelpShown(false);
+    if (diffShown) return setDiffShown(null);
     if (goToShown) return setGoToShown(false);
     if (conflict) return setConflict(null);
     if (pending) return lifecycleBusy ? undefined : setPending(null);
@@ -990,7 +1023,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (e.defaultPrevented || !dialog || !(target instanceof Node) || !dialog.contains(target)) return;
     const overlay = helpShown
       ? helpRef.current
-      : goToShown
+      : diffShown
+        ? diffRef.current
+        : goToShown
         ? goToRef.current
         : conflict
           ? conflictRef.current
@@ -1063,6 +1098,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   };
 
   const currentListing = listing && listing.projectKey === projectKey ? listing : null;
+  const shownChanges = changes && changes.projectKey === projectKey ? changes : null;
+  const currentChanges = shownChanges && "byKey" in shownChanges ? shownChanges : null;
+  const changesError = shownChanges && "error" in shownChanges ? shownChanges.error : null;
   const current = loaded && loaded.projectKey === projectKey && loaded.defKey === openKey ? loaded : null;
   const isEmpty =
     currentListing !== null &&
@@ -1528,6 +1566,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     ...(entry.list?.entries ?? []),
                     ...orphans.map((d) => ({ id: d.ref.id })),
                   ];
+                  // Files deleted since the last commit have no file to list, but keep a row so
+                  // their badge still opens the diff.
+                  const deleted = currentChanges
+                    ? deletedSinceCommit(currentChanges.byKey, kind, new Set(rows.map((r) => r.id)))
+                    : [];
                   const namingNew = naming?.mode === "new" && naming.kind === kind;
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
@@ -1539,7 +1582,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           {entry.error}
                         </p>
                       )}
-                      {(rows.length > 0 || namingNew) && (
+                      {(rows.length > 0 || deleted.length > 0 || namingNew) && (
                         <ul>
                           {namingNew && (
                             <li>
@@ -1559,6 +1602,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                             const key = definitionKey(ref);
                             const isOpenDef = openKey === key;
                             const draft = session?.drafts[key];
+                            const changed = currentChanges?.byKey.get(key);
                             if (naming?.mode === "rename" && definitionKey(naming.ref) === key) {
                               return (
                                 <li key={def.id}>
@@ -1586,6 +1630,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                   current={isOpenDef}
                                   onOpen={() => openDefinition(ref)}
                                 />
+                                {changed && (
+                                  <ChangedBadge id={def.id} status={changed} onClick={() => setDiffShown(ref)} />
+                                )}
                                 <RowAction label={`Rename ${def.id}`} shown={isOpenDef} onClick={() => startRename(ref)}>
                                   <Pencil className="w-3 h-3" aria-hidden="true" />
                                 </RowAction>
@@ -1595,6 +1642,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                               </li>
                             );
                           })}
+                          {deleted.map((id) => (
+                            <li key={`deleted:${id}`} className="group flex items-center pr-1.5">
+                              <span className="flex-1 min-w-0 ml-1.5 px-2 py-1 text-xs font-mono text-[#8b949e] line-through truncate">
+                                {id}
+                              </span>
+                              <ChangedBadge id={id} status="deleted" onClick={() => setDiffShown({ kind, id })} />
+                            </li>
+                          ))}
                         </ul>
                       )}
                       {entry.list?.truncated && (
@@ -1605,6 +1660,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     </section>
                   );
                 })}
+              {changesError !== null && (
+                <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
+                  Changes since the last commit can't be shown: {changesError}
+                </p>
+              )}
             </nav>
 
             <main className="flex-1 min-w-0 relative flex flex-col">
@@ -1764,6 +1824,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
         {helpShown && <ShortcutsHelp rootRef={helpRef} onClose={() => setHelpShown(false)} />}
 
+        {diffShown && projectPath && (
+          <DiffView rootRef={diffRef} projectPath={projectPath} target={diffShown} onClose={() => setDiffShown(null)} />
+        )}
+
         {pending && (
           <PendingPrompt
             rootRef={pendingRef}
@@ -1877,6 +1941,26 @@ const ListRow: FC<{
           </span>
         )
       )}
+    </button>
+  );
+};
+
+/**
+ * The "changed since last commit" badge (#223) on a contract or grant whose file differs from
+ * the last commit, which opens its diff. It says nothing about approval: a grant file is
+ * never approved by being committed or not.
+ */
+const ChangedBadge: FC<{ id: string; status: ChangeStatus; onClick: () => void }> = ({ id, status, onClick }) => {
+  const label = `${id}: ${status === "added" ? "new" : status === "deleted" ? "deleted" : "changed"} since last commit. Show the diff`;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="p-1 shrink-0 rounded text-[#d29922] hover:text-white hover:bg-[#21262d]"
+    >
+      <GitCompareArrows className="w-3.5 h-3.5" aria-hidden="true" />
     </button>
   );
 };

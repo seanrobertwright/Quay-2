@@ -7,7 +7,7 @@ import { useEffect, useId, type FC, type ReactNode } from "react";
 import { ArrowDown, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
-import { delegationChain, limitIssues, parentIdProblem, type GrantEdit } from "./grant.ts";
+import { delegationChain, GRANT_PROPOSAL_NOTE, limitIssues, parentIdProblem, type GrantEdit } from "./grant.ts";
 import type { Json } from "./model.ts";
 import {
   asString,
@@ -68,7 +68,7 @@ export const GrantForm: FC<GrantFormProps> = ({ projectPath, draft, known, saved
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Grant ${id}`}>
         <p className="flex items-start gap-1.5 px-3 py-2 rounded-md border border-[#30363d] bg-[#161b22] text-xs text-[#c9d1d9]">
           <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0 text-[#e3b341]" aria-hidden="true" />
-          A grant is a proposal; it takes effect only when a human approves it in Praxis.
+          {GRANT_PROPOSAL_NOTE}
         </p>
         <Summary noun="grant" status={status} recordIssues={issues.get("")} />
         {crossRecord}
