@@ -77,6 +77,22 @@ pub async fn praxis_reveal(
     .await
 }
 
+/// The absolute path of an existing definition file, for "Install on host…" to show and copy.
+#[tauri::command]
+pub async fn praxis_path(
+    project_path: String,
+    kind: PraxisKind,
+    id: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<String, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        let path = store::definition_path(&project_root(&workspace, &project_path)?, kind, &id)?;
+        store::display_path(&path)
+    })
+    .await
+}
+
 /// Saves one definition in its canonical form, and a graph's layout or a contract's
 /// bindings. Nothing is written when the file no longer has `expectedHash` (the hash the
 /// draft loaded), or a contract's bindings file no longer has `expectedBindingsHash`, unless
@@ -156,7 +172,7 @@ pub async fn praxis_check_context(
     blocking(move || context::check_context(&project_root(&workspace, &project_path)?, record.as_ref(), &also)).await
 }
 
-/// The contracts and grants whose files have changed since the last commit (#223), for the
+/// The contracts, grants and templates whose files have changed since the last commit (#223), for the
 /// list's badge. Empty for a project that isn't a git repository.
 #[tauri::command]
 pub async fn praxis_changes(project_path: String, workspace: State<'_, WorkspaceManager>) -> Result<ChangedFiles, String> {
@@ -164,7 +180,7 @@ pub async fn praxis_changes(project_path: String, workspace: State<'_, Workspace
     blocking(move || changes::changed_files(&project_root(&workspace, &project_path)?)).await
 }
 
-/// The diff of one contract or grant file against the last commit, for the badge's diff view.
+/// The diff of one contract, grant or template file against the last commit, for the badge's diff view.
 #[tauri::command]
 pub async fn praxis_diff(
     project_path: String,

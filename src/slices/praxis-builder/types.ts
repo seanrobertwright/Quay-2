@@ -117,7 +117,7 @@ export interface GrantCheck {
 /** How a definition file differs from the last commit. */
 export type ChangeStatus = "modified" | "added" | "deleted";
 
-/** `praxis_changes`: the contracts and grants changed since the last commit, empty outside git. */
+/** `praxis_changes`: the contracts, grants and templates changed since the last commit, empty outside git. */
 export interface ChangedFiles {
   files: { kind: PraxisKind; id: string; status: ChangeStatus }[];
 }
