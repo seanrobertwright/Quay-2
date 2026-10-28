@@ -321,7 +321,7 @@ npm test; Get-Content bench.md -Tail 1; git status --short
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 9: Docs that can't lie](/tutorials/a2a/docs-that-cant-lie/)
 
-The next tutorial in series order, A2A 7: Broadcast coordination, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order; A2A 7 and A2A 8 aren't published yet. Have three agents rewrite a broken README until every code sample in it runs as written.
 :::

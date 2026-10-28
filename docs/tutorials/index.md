@@ -29,4 +29,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 3 | [Hands-off TDD relay](/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
 | 5 | [Fan-out / fan-in](/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
 | 6 | [Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
+| 9 | [Docs that can't lie](/tutorials/a2a/docs-that-cant-lie/) | Have three agents rewrite a broken README until every code sample in it runs as written. |
 <!-- tutorials:end -->
