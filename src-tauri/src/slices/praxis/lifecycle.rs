@@ -291,7 +291,7 @@ fn taken_by_another(dir: &Path, folder: &str, id: &str, new_id: &str) -> Result<
 }
 
 /// Renames the definition `kind`/`id` to `new_id` (#222): writes it under the new name
-/// with the new `id` inside, moves the files that belong to it, and rewrites the
+/// with the new `id` inside (a template holds none), moves the files that belong to it, and rewrites the
 /// references the hooks find in other files and in `drafts`. Every new file is written
 /// before any old one is removed. A rename to the same id writes the definition with that
 /// id inside and nothing else, which is how a file whose name and id differ is fixed.
@@ -333,7 +333,9 @@ pub fn rename_definition(
     else {
         unreachable!("parse_object returns only objects");
     };
-    record.insert(kind.id_field().to_string(), Value::String(new_id.to_string()));
+    if let Some(field) = kind.id_field() {
+        record.insert(field.to_string(), Value::String(new_id.to_string()));
+    }
     if !same_id {
         rewrite_all(hooks, folder, &mut record, kind, id, Some(new_id));
     }
@@ -603,6 +605,16 @@ mod tests {
         assert_eq!(names(&repo, ".praxis/graphs"), vec!["G.json"]);
         assert_eq!(names(&repo, ".praxis/layout"), vec!["G.json"]);
         assert_eq!(read(&repo, ".praxis/graphs/G.json")["id"], "G");
+    }
+
+    #[test]
+    fn renaming_a_template_moves_its_file_and_adds_no_id() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/a.json", r#"{"description": "d", "maxAttempts": 2}"#);
+        let outcome = rename_definition(&repo, PraxisKind::Templates, "a", "b", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/templates"), vec!["b.json"]);
+        assert_eq!(read(&repo, ".praxis/templates/b.json"), json!({"description": "d", "maxAttempts": 2}));
     }
 
     #[test]

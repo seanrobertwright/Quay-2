@@ -1,4 +1,4 @@
-// The fields the record forms share (#223): the contract, grant and trigger forms lay these out in
+// The fields the record forms share (#223): the contract, grant, trigger and template forms lay these out in
 // sections. Integer and time inputs refuse what can't be stored as the user types; the
 // SDK's issues, and any inline check a form adds, show under the field they are about.
 import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";
@@ -25,7 +25,7 @@ export const hintClass = "mt-1 text-[11px] text-[#6e7681]";
 export const sectionHeading = "text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]";
 
 /** The field a diagnostic is about: the first segment of its pointer, or "" for the record. */
-const fieldOf = (d: Diagnostic) => d.path.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") ?? "";
+export const fieldOf = (d: Diagnostic) => d.path.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") ?? "";
 
 function groupIssues(status: ValidationStatus, keyOf: (d: Diagnostic) => string): Map<string, Diagnostic[]> {
   const out = new Map<string, Diagnostic[]>();
@@ -58,12 +58,17 @@ export const Section: FC<{ title: string; children: ReactNode }> = ({ title, chi
   );
 };
 
-/** The SDK's verdict, and the issues about the record as a whole. */
-export const Summary: FC<{ noun: string; status: ValidationStatus; recordIssues: readonly Diagnostic[] | undefined }> = ({
-  noun,
-  status,
-  recordIssues,
-}) => {
+/**
+ * The SDK's verdict, and the issues about the record as a whole. `accepts` and `refuses`
+ * replace the wording for a check that claims less than Praxis's verdict, such as a shape check.
+ */
+export const Summary: FC<{
+  noun: string;
+  status: ValidationStatus;
+  recordIssues: readonly Diagnostic[] | undefined;
+  accepts?: string;
+  refuses?: string;
+}> = ({ noun, status, recordIssues, accepts, refuses }) => {
   const id = useId();
   if (status.state === "checking") {
     return (
@@ -87,8 +92,8 @@ export const Summary: FC<{ noun: string; status: ValidationStatus; recordIssues:
       <p role="status" className={`flex items-center gap-1.5 text-[11px] ${errors > 0 ? "text-[#ff7b72]" : "text-[#3fb950]"}`}>
         {errors > 0 ? <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" /> : <Info className="w-3.5 h-3.5" aria-hidden="true" />}
         {errors > 0
-          ? `Praxis refuses this ${noun}: ${errors} ${errors === 1 ? "problem" : "problems"}, shown on the fields below. It still saves.`
-          : `Praxis accepts this ${noun}.`}
+          ? `${refuses ?? `Praxis refuses this ${noun}`}: ${errors} ${errors === 1 ? "problem" : "problems"}, shown on the fields below. It still saves.`
+          : (accepts ?? `Praxis accepts this ${noun}.`)}
       </p>
       <FieldMessages id={id} issues={recordIssues} />
     </div>
@@ -395,14 +400,18 @@ export const Checkbox: FC<{
 const MAX_ITEM = 256;
 const MAX_ITEMS = 1000;
 
-/** A list of distinct strings, each removable, with a field that adds one on Enter. */
+/** A list of distinct strings, each removable, with a field that adds one on Enter. The limits default to the SDK's record lists'. */
 export const StringList: FC<{
   label: string;
   addLabel: string;
   items: readonly string[];
   issues: readonly Diagnostic[] | undefined;
   onChange: (items: string[]) => void;
-}> = ({ label, addLabel, items, issues, onChange }) => {
+  hint?: string;
+  maxLength?: number;
+  maxItems?: number;
+}> = ({ label, addLabel, items, issues, onChange, hint, maxLength = MAX_ITEM, maxItems = MAX_ITEMS }) => {
+  const hintId = useId();
   const id = useId();
   const messagesId = useId();
   const [text, setText] = useState("");
@@ -410,12 +419,12 @@ export const StringList: FC<{
   const problem =
     value === ""
       ? null
-      : value.length > MAX_ITEM
-        ? `Use at most ${MAX_ITEM} characters.`
+      : value.length > maxLength
+        ? `Use at most ${maxLength} characters.`
         : items.includes(value)
           ? "That is already listed."
-          : items.length >= MAX_ITEMS
-            ? `A list holds at most ${MAX_ITEMS} items.`
+          : items.length >= maxItems
+            ? `A list holds at most ${maxItems} items.`
             : null;
   const add = () => {
     if (value === "" || problem) return;
@@ -459,7 +468,7 @@ export const StringList: FC<{
             }
           }}
           className={inputClass}
-          {...described(messagesId, shown)}
+          {...described(messagesId, shown, hint ? hintId : undefined)}
         />
         <button
           type="button"
@@ -471,6 +480,11 @@ export const StringList: FC<{
           Add
         </button>
       </div>
+      {hint && (
+        <p id={hintId} className={hintClass}>
+          {hint}
+        </p>
+      )}
       <FieldMessages id={messagesId} issues={shown} />
     </div>
   );

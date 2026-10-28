@@ -6,12 +6,20 @@ import { createHash } from 'node:crypto';
 
 /**
  * The paths copied from the SDK, as upstream names them. Their layout is kept under VENDOR_DIR.
- * The graph binding schema and its fixtures are PROVISIONAL (AI-WS-SDK #289): the builder
- * shape-checks binding documents against them in Rust (#273).
+ * The crate's paths are the ones its Cargo.toml `include` packages, so its agent docs stay out.
+ * The coding-plan schema and its vectors check workflow templates (#224). The graph binding
+ * schema and its fixtures are PROVISIONAL (AI-WS-SDK #289): the builder shape-checks binding
+ * documents against them in Rust (#273).
  */
 export const VENDORED_PATHS = [
-  'crates/aiws',
+  'crates/aiws/Cargo.toml',
+  'crates/aiws/README.md',
+  'crates/aiws/src',
+  'crates/aiws/tests',
+  'crates/aiws/examples',
   'spec/fixtures.json',
+  'spec/engine-v1/coding-plan.schema.json',
+  'spec/engine-v1/coding-plan.fixtures.json',
   'spec/engine-v1/graph-binding.schema.json',
   'spec/engine-v1/graph-binding.fixtures.json',
 ] as const;

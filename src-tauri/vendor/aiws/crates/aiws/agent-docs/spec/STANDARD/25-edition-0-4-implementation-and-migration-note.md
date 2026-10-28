@@ -1,9 +1,0 @@
-# Edition 0.4 implementation and migration note
-
-Edition 0.4 adds O-05–O-09 and AT-53–AT-58 without replacing the trigger/node requirements. The finite-v1 SDK release 0.3.0 provides event envelopes, coordinator-supplied actor/policy attribution, persisted rejection diagnostics, allowlisted OTLP/HTTP JSON event spans, operational summaries, metric payloads, threshold evaluation and a leased SQLite export outbox in all three languages.
-
-These libraries provide alert evaluation, not an operated notification service. Identity authentication, versioned policy governance, evaluator scheduling, escalation, retention/capacity monitoring, collector operation and external effect truth remain deployment responsibilities. The SDK's deterministic telemetry is not a complete OpenTelemetry instrumentation SDK or automatic model-provider instrumentation. O-01–O-09 conformance therefore requires deployment evidence in addition to library tests.
-
-The edition 0.4 wire schema and enriched event hashes are incompatible with edition 0.3 journals. Preserve old journals and use the corresponding old SDK for historical replay. Migrate only at reviewed, reconciled boundaries into explicitly linked new missions/contracts. Do not relabel an old contract or recompute its historical journal as a substitute for migration. The new Python SDK uses the same edition 0.4 wire records, canonical hashes and SQLite schema as SDK 0.3.0 in the other languages.
-
-Observability references reviewed 2026-09-08: [OTLP specification 1.11.0](https://opentelemetry.io/docs/specs/otlp/) and [OpenTelemetry Collector security configuration](https://opentelemetry.io/docs/security/config-best-practices/). These inform the binding and deployment guidance; AIWS-specific fields and alert defaults are design choices of this proposal.

@@ -37,8 +37,8 @@ const MAX_NODES: usize = 1000;
 /// broken file of thousands of nodes can't flood the webview.
 pub const MAX_DIAGNOSTICS: usize = 500;
 
-/// Validates a definition's content: a graph, contract, grant, trigger or graph binding (a binding without its
-/// graph, so only its shape). Content over the size limit is refused.
+/// Validates a definition's content: a graph, contract, grant, trigger, graph binding (a binding without its
+/// graph, so only its shape) or workflow template. Content over the size limit is refused.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
     check_size(content)?;
     match kind {
@@ -47,6 +47,7 @@ pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validati
         PraxisKind::Grants => Ok(validate_grant(content)),
         PraxisKind::Triggers => Ok(validate_trigger(content)),
         PraxisKind::GraphBindings => Ok(super::graph_bindings::validate_graph_binding(content, None)),
+        PraxisKind::Templates => Ok(super::template::validate_template(content)),
     }
 }
 

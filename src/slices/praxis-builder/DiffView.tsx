@@ -1,4 +1,4 @@
-// The diff a "changed since last commit" badge opens (#223): one contract, grant or graph binding file
+// The diff a "changed since last commit" badge opens (#223): one contract, grant, graph binding or template file
 // against the last commit, read with `praxis_diff`, so an agent's edits are visible before
 // anyone submits them. Escape closes it, through the builder's cascade.
 import { useEffect, useId, useRef, useState, type FC, type Ref } from "react";

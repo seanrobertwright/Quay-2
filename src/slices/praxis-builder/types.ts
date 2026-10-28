@@ -1,7 +1,7 @@
 // The shapes the `praxis_*` backend commands return (src-tauri/src/slices/praxis/models.rs).
 
 /** A record kind, named by its folder under `.praxis/`. */
-export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "graph-bindings";
+export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "graph-bindings" | "templates";
 
 /** Why a definition file can't be opened. `line` and `column` are set for invalid JSON. */
 export interface FileProblem {

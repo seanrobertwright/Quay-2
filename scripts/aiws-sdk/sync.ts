@@ -1,4 +1,4 @@
-// Vendors the AI-WS-SDK Rust crate and its shared fixtures into src-tauri/vendor/aiws at one
+// Vendors the AI-WS-SDK Rust crate, its shared fixtures, the coding-plan schema and the graph binding schema into src-tauri/vendor/aiws at one
 // commit, reading from git objects so uncommitted changes in the checkout never leak in.
 // With --check, writes nothing and fails when the copy no longer matches its SOURCE record.
 //

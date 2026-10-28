@@ -1,0 +1,3674 @@
+{
+  "profile": "aiws-coding-plan-fixtures/0.1",
+  "schema": "https://aiws.dev/engine/coding-plan/0.1.0",
+  "status": "PROVISIONAL",
+  "scope": "SHAPE_ONLY",
+  "description": "Each case names the schema definition it checks (Plan or Template), whether the schema accepts it, and the diagnostics a client reports for the schema's errors as 'CODE field'. 'host' gives authorCodingPlan's error diagnostics where they differ, with the reason; a Template is checked by the host as the plan it becomes with 'identities' added.",
+  "identities": {
+    "workOrderId": "wo-template",
+    "runId": "run-template"
+  },
+  "cases": [
+    {
+      "name": "Plan minimal",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan at the authoring minimum of attempts",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 0,
+        "reapproveCorrections": true,
+        "maxAttempts": 2,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with every bound at its minimum",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 0,
+        "reapproveCorrections": true,
+        "maxAttempts": 2,
+        "maxTaskMs": 1000,
+        "maxTotalActiveMs": 1000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with every bound at its maximum",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 9007199254740991,
+        "reapproveCorrections": true,
+        "maxAttempts": 9007199254740991,
+        "maxTaskMs": 2147423647,
+        "maxTotalActiveMs": 9007199254740991
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with a bounded exposure and cost bound",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with the cost bound equal to the allowance",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        },
+        "maxTotalCost": "5000000"
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with exposure not applicable",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "NOT_APPLICABLE",
+          "justification": "The agent uses no model."
+        }
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan selecting a catalog agent",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": "cc-sub-team-a"
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with nested output paths and dotted names",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js",
+          "docs/.keep",
+          "a/b..c/d"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with empty later arguments",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          ""
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with branches",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "branches": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE branches"
+      ]
+    },
+    {
+      "name": "Plan with parallel",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "parallel": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE parallel"
+      ]
+    },
+    {
+      "name": "Plan with nodes",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "nodes": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE nodes"
+      ]
+    },
+    {
+      "name": "Plan with edges",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "edges": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE edges"
+      ]
+    },
+    {
+      "name": "Plan with dependencies",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "dependencies": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE dependencies"
+      ]
+    },
+    {
+      "name": "Plan with steps",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "steps": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE steps"
+      ]
+    },
+    {
+      "name": "Plan with triggers",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "triggers": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE triggers"
+      ]
+    },
+    {
+      "name": "Plan with approval",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "approval": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE approval"
+      ]
+    },
+    {
+      "name": "Plan with readiness",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "readiness": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE readiness"
+      ]
+    },
+    {
+      "name": "Plan with an unknown field",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "unexpected": true
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNKNOWN_FIELD unexpected"
+      ]
+    },
+    {
+      "name": "Plan that is an array",
+      "kind": "Plan",
+      "document": [],
+      "valid": false,
+      "diagnostics": [
+        "INVALID_DOCUMENT $"
+      ]
+    },
+    {
+      "name": "Plan that is null",
+      "kind": "Plan",
+      "document": null,
+      "valid": false,
+      "diagnostics": [
+        "INVALID_DOCUMENT $"
+      ]
+    },
+    {
+      "name": "Plan missing workOrderId",
+      "kind": "Plan",
+      "document": {
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD workOrderId"
+      ]
+    },
+    {
+      "name": "Plan missing runId",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD runId"
+      ]
+    },
+    {
+      "name": "Plan missing description",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD description"
+      ]
+    },
+    {
+      "name": "Plan missing criteriaRef",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD criteriaRef"
+      ]
+    },
+    {
+      "name": "Plan missing implementation",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD implementation"
+      ]
+    },
+    {
+      "name": "Plan missing validation",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD validation"
+      ]
+    },
+    {
+      "name": "Plan missing correction",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD correction"
+      ]
+    },
+    {
+      "name": "Plan missing outputPaths",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan missing maxCorrections",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxCorrections"
+      ]
+    },
+    {
+      "name": "Plan missing reapproveCorrections",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD reapproveCorrections"
+      ]
+    },
+    {
+      "name": "Plan missing maxAttempts",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxAttempts"
+      ]
+    },
+    {
+      "name": "Plan missing maxTaskMs",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTaskMs"
+      ]
+    },
+    {
+      "name": "Plan missing maxTotalActiveMs",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalActiveMs"
+      ]
+    },
+    {
+      "name": "Plan with blank description",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": " \t\n",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD description"
+      ]
+    },
+    {
+      "name": "Plan with overlong description",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD description"
+      ]
+    },
+    {
+      "name": "Plan with a shell command string",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": "node build.js",
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD implementation"
+      ]
+    },
+    {
+      "name": "Plan with an empty command",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD validation"
+      ]
+    },
+    {
+      "name": "Plan with an empty executable",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD correction"
+      ]
+    },
+    {
+      "name": "Plan with a NUL argument",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "a\u0000b"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD implementation"
+      ]
+    },
+    {
+      "name": "Plan with too many arguments",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x",
+          "x"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD implementation"
+      ]
+    },
+    {
+      "name": "Plan with a non-string argument",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          1
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD implementation"
+      ]
+    },
+    {
+      "name": "Plan with no output paths",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with duplicate output paths",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "a",
+          "a"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with traversal",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "../escape"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with an absolute path",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "/etc/passwd"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with a drive letter",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "C:/x"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with a backslash",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "a\\b"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with an empty segment",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "a//b"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with a dot segment",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "a/./b"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with an output path with a trailing slash",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "a/"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Plan with negative corrections",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": -1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxCorrections"
+      ]
+    },
+    {
+      "name": "Plan with fractional attempts",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 2.5,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxAttempts"
+      ],
+      "host": [
+        "INVALID_DOCUMENT $"
+      ],
+      "hostReason": "The host's JSON reader refuses a number that is not a safe integer before it reads any field."
+    },
+    {
+      "name": "Plan with one attempt, below the authoring rule",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 1,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxAttempts"
+      ]
+    },
+    {
+      "name": "Plan with a task shorter than one second",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 999,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTaskMs"
+      ]
+    },
+    {
+      "name": "Plan with a task beyond the Node timer range",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 2147423648,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTaskMs"
+      ]
+    },
+    {
+      "name": "Plan with total active time shorter than one second",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 999
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalActiveMs"
+      ]
+    },
+    {
+      "name": "Plan with attempts as a string",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": "4",
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxAttempts"
+      ]
+    },
+    {
+      "name": "Plan with correction approval as a string",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": "yes",
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD reapproveCorrections"
+      ]
+    },
+    {
+      "name": "Plan with a description of a file separator character",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "\u001c",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with a description of a next-line character",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "\u0085",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with a description of a byte order mark",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "\ufeff",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD description"
+      ]
+    },
+    {
+      "name": "Plan with an output path ending in a newline after dots",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "..\n"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with output paths of three dots and a hidden file",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "...",
+          ".hidden",
+          "a/..b"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with a fractional correction count",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 0.5,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxCorrections"
+      ],
+      "host": [
+        "INVALID_DOCUMENT $"
+      ],
+      "hostReason": "The host's JSON reader refuses a number that is not a safe integer before it reads any field."
+    },
+    {
+      "name": "Plan with an agent beginning with a next-line character",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": "\u0085cc"
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Plan with an agent ending in a no-break space",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": "cc\u00a0"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with a blank agent",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": ""
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with an agent with surrounding space",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": " cc-sub-team-a"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with an agent with a control character",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": "cc\u0007a"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with an overlong agent",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with an agent object",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "agent": {}
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD agent"
+      ]
+    },
+    {
+      "name": "Plan with an exposure of unknown kind",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "UNBOUNDED"
+        }
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a null exposure",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": null
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a zero allowance",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "0",
+          "stopThreshold": "1"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a zero stop threshold",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5",
+          "stopThreshold": "0"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a non-canonical allowance",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "05",
+          "stopThreshold": "1"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with an allowance as a number",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": 5,
+          "stopThreshold": "1"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with an extra exposure field",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000",
+          "extra": "1"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a blank justification",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "NOT_APPLICABLE",
+          "justification": " "
+        }
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD exposure"
+      ]
+    },
+    {
+      "name": "Plan with a bounded exposure and no cost bound",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        }
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Plan with a cost bound and no exposure",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "maxTotalCost": "20000000"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Plan with a cost bound and exposure not applicable",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "NOT_APPLICABLE",
+          "justification": "No model."
+        },
+        "maxTotalCost": "1"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Plan with a cost bound as a number",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        },
+        "maxTotalCost": 20000000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Plan with a stop threshold above the allowance",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5",
+          "stopThreshold": "6"
+        },
+        "maxTotalCost": "20000000"
+      },
+      "valid": true,
+      "diagnostics": [],
+      "host": [
+        "INVALID_FIELD exposure"
+      ],
+      "hostReason": "The schema cannot compare two decimal amounts; the host requires the stop threshold to be no greater than the allowance."
+    },
+    {
+      "name": "Plan with a cost bound below the allowance",
+      "kind": "Plan",
+      "document": {
+        "workOrderId": "wo-1",
+        "runId": "run-1",
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        },
+        "maxTotalCost": "4999999"
+      },
+      "valid": true,
+      "diagnostics": [],
+      "host": [
+        "INVALID_FIELD maxTotalCost"
+      ],
+      "hostReason": "The schema cannot compare two decimal amounts; the host requires the run cost bound to cover at least one allowance."
+    },
+    {
+      "name": "Template minimal",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Template with a bounded exposure and selected agent",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        },
+        "maxTotalCost": "20000000",
+        "agent": "cc-sub-team-a"
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Template carrying a work order identity",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "workOrderId": "wo-1"
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNKNOWN_FIELD workOrderId"
+      ],
+      "host": [],
+      "hostReason": "A template carries no run identities; the run supplies them."
+    },
+    {
+      "name": "Template carrying a run identity",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "runId": "run-1"
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNKNOWN_FIELD runId"
+      ],
+      "host": [],
+      "hostReason": "A template carries no run identities; the run supplies them."
+    },
+    {
+      "name": "Template with branches",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "branches": []
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE branches"
+      ]
+    },
+    {
+      "name": "Template with one attempt",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 1,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxAttempts"
+      ]
+    },
+    {
+      "name": "Template missing its validation command",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD validation"
+      ]
+    },
+    {
+      "name": "Template with a cost bound and no exposure",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "maxTotalCost": "1"
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Template that is an array",
+      "kind": "Template",
+      "document": [],
+      "valid": false,
+      "diagnostics": [
+        "INVALID_DOCUMENT $"
+      ]
+    },
+    {
+      "name": "Template with an output path with traversal",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "../x"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD outputPaths"
+      ]
+    },
+    {
+      "name": "Template with exposure not applicable",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "NOT_APPLICABLE",
+          "justification": "No model."
+        }
+      },
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "Template with a bounded exposure and no cost bound",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "exposure": {
+          "kind": "BOUNDED",
+          "allowance": "5000000",
+          "stopThreshold": "4000000"
+        }
+      },
+      "valid": false,
+      "diagnostics": [
+        "INVALID_FIELD maxTotalCost"
+      ]
+    },
+    {
+      "name": "Template with an unknown field",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "unexpected": 1
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNKNOWN_FIELD unexpected"
+      ]
+    },
+    {
+      "name": "Template with readiness",
+      "kind": "Template",
+      "document": {
+        "description": "Implement addition and validate it",
+        "implementation": [
+          "/usr/bin/node",
+          "build.js"
+        ],
+        "validation": [
+          "/usr/bin/node",
+          "test.js"
+        ],
+        "correction": [
+          "/usr/bin/node",
+          "fix.js"
+        ],
+        "outputPaths": [
+          "src/sum.js"
+        ],
+        "criteriaRef": "criteria/addition.md",
+        "maxCorrections": 1,
+        "reapproveCorrections": true,
+        "maxAttempts": 4,
+        "maxTaskMs": 10000,
+        "maxTotalActiveMs": 60000,
+        "readiness": {}
+      },
+      "valid": false,
+      "diagnostics": [
+        "UNSUPPORTED_FEATURE readiness"
+      ]
+    }
+  ]
+}

@@ -12,15 +12,19 @@ pub enum PraxisKind {
     /// `aiws-graph-binding/1` documents (#247): how each dispatchable node of one graph runs.
     #[serde(rename = "graph-bindings")]
     GraphBindings,
+    /// Workflow templates (#224): coding plans without identities, which `praxis run <name>`
+    /// starts. A template file is the host's bare template, so it holds no `id`.
+    Templates,
 }
 
 impl PraxisKind {
-    pub const ALL: [PraxisKind; 5] = [
+    pub const ALL: [PraxisKind; 6] = [
         PraxisKind::Graphs,
         PraxisKind::Contracts,
         PraxisKind::Grants,
         PraxisKind::Triggers,
         PraxisKind::GraphBindings,
+        PraxisKind::Templates,
     ];
 
     /// The kind whose files `folder` holds, or `None` for a folder that holds no kind's
@@ -37,15 +41,18 @@ impl PraxisKind {
             PraxisKind::Grants => "grants",
             PraxisKind::Triggers => "triggers",
             PraxisKind::GraphBindings => "graph-bindings",
+            PraxisKind::Templates => "templates",
         }
     }
 
-    /// The record field that holds a definition's id, which must equal its file name. A
-    /// graph binding names itself `graphBindingId`, apart from a protocol binding's `bindingId`.
-    pub fn id_field(self) -> &'static str {
+    /// The record field that holds a definition's id, which must equal its file name, or
+    /// `None` for a kind whose records hold no id: a template's name is its file name alone.
+    /// A graph binding names itself `graphBindingId`, apart from a protocol binding's `bindingId`.
+    pub fn id_field(self) -> Option<&'static str> {
         match self {
-            PraxisKind::GraphBindings => "graphBindingId",
-            _ => "id",
+            PraxisKind::GraphBindings => Some("graphBindingId"),
+            PraxisKind::Templates => None,
+            _ => Some("id"),
         }
     }
 }

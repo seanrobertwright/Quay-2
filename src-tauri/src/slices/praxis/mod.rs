@@ -8,6 +8,7 @@ pub mod lifecycle;
 pub mod models;
 pub mod revision;
 pub mod store;
+pub mod template;
 pub mod validate;
 
 pub use commands::*;

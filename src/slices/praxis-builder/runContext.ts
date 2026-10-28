@@ -64,6 +64,9 @@ function mentions(c: ContractContext, ref: DefinitionRef): boolean {
     case "graph-bindings":
       // A binding's checks against its contracts are #274's; no contract's result names one yet.
       return false;
+    // A template refers to no other record, and nothing refers to it (#224).
+    case "templates":
+      return false;
   }
 }
 
