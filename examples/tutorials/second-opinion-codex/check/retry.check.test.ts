@@ -24,7 +24,7 @@ it("rule 2: an error with retryable false is thrown after one call", async () =>
   expect(fn).toHaveBeenCalledTimes(1);
 });
 
-it("rule 4: no delay is waited after the last failed attempt", async () => {
+it("rules 3 and 4: retries wait 200 then 400 ms, and nothing after the last failure", async () => {
   vi.useFakeTimers();
   const fn = vi.fn(async () => {
     throw new Error("down");
@@ -34,8 +34,14 @@ it("rule 4: no delay is waited after the last failed attempt", async () => {
     settled = true;
     return error;
   });
-  // Two retries wait 200 ms and 400 ms; nothing may wait after the third call fails.
-  await vi.advanceTimersByTimeAsync(600);
+  await vi.advanceTimersByTimeAsync(199);
+  expect(fn).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(fn).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(399);
+  expect(fn).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(fn).toHaveBeenCalledTimes(3);
   expect(settled).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
   await result;

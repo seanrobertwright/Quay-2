@@ -20,4 +20,4 @@ each naming the line in `src/retry.ts`, what is wrong, and a one-line fix.
   properties.
 - Imports name the `.ts` file, as `test/retry.test.ts` does with `../src/retry.ts`.
   `npm run typecheck` rejects an import without the extension.
-- Keep the exported signature of `retry` unchanged.
+- Keep `retry`'s signature and its options as `SPEC.md` gives them.

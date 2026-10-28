@@ -11,7 +11,7 @@
 
 **You'll learn:** how to open a Codex terminal in Quay and what its Skip mode means, how an agent that isn't Claude joins the A2A bus as a full peer, how to send Codex a job with `wait_for_reply` false, how to ask for an answer in a file of an agreed shape, how to poll with `quay_get_agent_status` until a peer is idle, and how to check an agent's review against tests it never saw.
 
-This tutorial builds on [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/), which introduces the `quay_*` tools and Mission Control's trail, and reuses the fire, poll, then read the file pattern of A2A 6. You don't need to have done either.
+This tutorial builds on [A2A 1: Hello, A2A](/tutorials/a2a/hello-a2a/), which introduces the `quay_*` tools and Mission Control's trail, and reuses its moves for a job too long to wait for: send it without waiting, poll until the peer is idle, then read the file it wrote. You don't need to have done A2A 1.
 
 Quay's window has two parts: the **rail**, the panel down the left that lists your projects and their terminals, and the **stage** to its right, where the terminal panes open. Along the bottom of the stage, the **status strip** shows the status of the terminal that has focus. When the stage is split, each pane also has a **header** along its top with the terminal's name and, for an agent, its status. Every `Ctrl+Shift+B` shortcut is two key presses: press `Ctrl+Shift+B`, let go, then press the next key within a second and a half. The page writes a letter key as a capital, but it is the plain key: `Ctrl+Shift+B N` is `Ctrl+Shift+B`, then `n`, and `Ctrl+Shift+B O` is the letter o, never the digit zero. `Ctrl+Shift+B` and a number moves focus to the terminal at that place in the rail's list for your project, so `Ctrl+Shift+B 1` is the first one listed. Each Paste box names the pane its line goes into: copy the line with the box's copy button, click into that pane, press `Ctrl+V` to paste it, then press Enter to run it or send it to the agent.
 
@@ -100,7 +100,7 @@ Claude Code asks once for each new folder: `Quick safety check: Is this a projec
 :::
 
 ::: ifnot author asks you to accept Bypass Permissions mode
-Quay started `author` in Skip mode, which Claude Code calls Bypass Permissions mode, and Claude Code asks once before its first session in that mode. Click into `author`, choose **Yes, I accept** and press Enter.
+Quay started `author` in Skip mode, which Claude Code calls Bypass Permissions mode, and Claude Code asks once before its first session in that mode. It lists **No, exit** first, with the cursor on it. Click into `author`, press the Down arrow to move to **Yes, I accept**, and press Enter.
 :::
 
 ::: ifnot author shows the plugin hint
@@ -146,11 +146,11 @@ Codex asks before it runs hooks that are new or changed since you last trusted t
 :::
 
 ::: ifnot the codex pane printed Updating Codex CLI and then exited
-Codex tried to update itself and the download failed. Press `Ctrl+Shift+B 1` to bring back the PowerShell pane, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then point at `codex` in the rail, click the **×** at the right end of its row (**Close terminal**), and repeat this step from item 2.
+Codex tried to update itself and the download failed. Press `Ctrl+Shift+B 1` to bring back the PowerShell pane, paste `npm install -g @openai/codex@latest` and wait for it to finish. Then point at `codex` in the rail, click the **×** at the right end of its row (**Close terminal**). Click into the right pane, and repeat this step from item 3.
 :::
 
 ::: ifnot Codex asks you to sign in
-Codex isn't signed in on this account. Close the `codex` terminal from the rail, sign in as [Codex CLI](/guide/installation#codex-cli) shows, then repeat this step from item 2.
+Codex isn't signed in on this account. Close the `codex` terminal from the rail, sign in as [Codex CLI](/guide/installation#codex-cli) shows, then click into the right pane and repeat this step from item 3.
 :::
 
 ::: ifnot codex opened on the left, over author
@@ -318,19 +318,20 @@ npm test; npm run typecheck; npx vitest run --config check/vitest.config.ts; Get
 :::
 
 ::: see
-![The PowerShell pane zoomed to the whole stage: npm test ends with 7 passed, the type check prints no error, the check suite's rule 1, rule 2 and rule 4 tests all pass with Tests 3 passed (3), then VERDICT: CHANGES REQUESTED, then git status lists src/retry.ts and test/retry.test.ts as modified and check and review.md as new.](./08-check.webp)
+![The PowerShell pane zoomed to the whole stage: npm test ends with 7 passed, the type check prints no error, the check suite's three tests, for rule 1, rule 2, and rules 3 and 4, all pass with Tests 3 passed (3), then VERDICT: CHANGES REQUESTED, then git status lists src/retry.ts and test/retry.test.ts as modified and check and review.md as new.](./08-check.webp)
 :::
 
 ::: must
 - Scrolled up: `npm test` shows every test passing, and `npm run typecheck` prints no error after its `> tsc --noEmit` line.
 - The check run shows `Tests  3 passed (3)`.
 - `VERDICT: CHANGES REQUESTED`.
-- `git status --short` prints four lines: ` M src/retry.ts`, ` M test/retry.test.ts`, `?? check/` and `?? review.md`.
+- `git status --short` lists ` M src/retry.ts`, ` M test/retry.test.ts`, `?? check/` and `?? review.md`, and no other file under `src/`, `test/` or `check/`.
 :::
 
 ::: may
 - The number of tests in `npm test`, and the times beside them.
 - The folder in the PowerShell prompt, which is wherever you unzipped the starter.
+- A ` M package-lock.json` line, if your npm rewrote the lockfile during `npm install` in step 1.
 :::
 
 ::: ifnot some check tests fail
@@ -349,5 +350,5 @@ Codex missed a problem, or `author` fixed one wrongly. Each check test's name st
 ::: next
 [Tutorials](/tutorials/)
 
-You've run every pattern on the bus. Build a swarm of your own with Swarm 4, or take a preset to a real project.
+This is the last tutorial in the A2A series. Build a swarm of your own with [Swarm 4: Build and save a custom swarm](/tutorials/swarm/custom-swarm/), or take a preset to a real project.
 :::
