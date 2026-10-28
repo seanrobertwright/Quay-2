@@ -110,12 +110,28 @@ pub fn authenticate_mcp_caller(
 }
 
 /// The task title a turn's prompt gives its terminal: the first line, without the
-/// `[Peer agent (<name>)]: ` prefix a peer's message arrives with, cut to 32 characters.
-/// `None` when that leaves nothing.
+/// `[Peer agent (<name>)]: ` prefix a peer's message arrives with or the
+/// `<pasted_content id="…">` tag Claude Code wraps a pasted prompt in, cut to 32
+/// characters. `None` when that leaves nothing.
 fn task_title(prompt: &str) -> Option<String> {
-    let first_line = prompt.lines().next().unwrap_or("").trim_start();
-    let clean = strip_peer_prefix(first_line).trim();
+    let body = strip_peer_prefix(prompt.trim_start());
+    let body = strip_pasted_content_tag(body).trim_start();
+    let first_line = body.lines().next().unwrap_or("");
+    let clean = first_line
+        .strip_suffix("</pasted_content>")
+        .unwrap_or(first_line)
+        .trim();
     (!clean.is_empty()).then(|| clean.chars().take(32).collect())
+}
+
+/// `prompt` after a leading `<pasted_content …>` opening tag, or `prompt` itself when it
+/// does not start with one.
+fn strip_pasted_content_tag(prompt: &str) -> &str {
+    prompt
+        .strip_prefix("<pasted_content")
+        .filter(|rest| rest.starts_with([' ', '>']))
+        .and_then(|rest| rest.split_once('>'))
+        .map_or(prompt, |(_, content)| content)
 }
 
 /// Whether `envelope` is a subagent's turn event. The plugin reports a subagent's turns
@@ -493,6 +509,23 @@ mod tests {
         assert_eq!(task_title("Fix the login bug\nmore detail").as_deref(), Some("Fix the login bug"));
         assert_eq!(task_title("[Peer agent (asker)]:   "), None);
         assert_eq!(task_title(""), None);
+    }
+
+    #[test]
+    fn a_task_title_unwraps_a_pasted_prompt() {
+        assert_eq!(
+            task_title("<pasted_content id=\"62ae\">\nReview the diff\nand more\n</pasted_content>").as_deref(),
+            Some("Review the diff")
+        );
+        assert_eq!(
+            task_title("<pasted_content id=\"62ae\">Fix the build</pasted_content>").as_deref(),
+            Some("Fix the build")
+        );
+        assert_eq!(
+            task_title("[Peer agent (asker)]: <pasted_content id=\"62ae\">\n\nRun the tests\n</pasted_content>").as_deref(),
+            Some("Run the tests")
+        );
+        assert_eq!(task_title("<pasted_content id=\"62ae\">\n</pasted_content>"), None);
     }
 
     #[test]
