@@ -1,0 +1,14 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 15 },
+  "scripts": [
+    {
+      "name": "check:readme",
+      "expect": "fail",
+      "exitCode": 1,
+      "outputIncludes": ["FAIL sample 1", "Not covered: slugify, truncate, uniqueSlug", "0 of 1 samples ran as written"],
+      "producesFiles": [".readme-samples/report.md"]
+    }
+  ],
+  "files": { "present": ["AGENTS.md", "CLAUDE.md", "CHANGELOG.md", "README.md"] }
+}
