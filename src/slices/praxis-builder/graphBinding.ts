@@ -142,8 +142,9 @@ export function entriesOf(binding: JsonObject): Record<string, JsonObject> {
   return out;
 }
 
-/** The binding with `entries` as its `nodes`, or the same binding when they are its own. */
+/** A copy of the binding with `nodes` as its entries. */
 const withNodes = (binding: JsonObject, nodes: JsonObject): JsonObject => ({ ...binding, nodes });
+/** The binding's `nodes` object, or an empty one when it has none. */
 const nodesOfBinding = (binding: JsonObject): JsonObject => (isObject(binding.nodes) ? binding.nodes : {});
 
 /**

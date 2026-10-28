@@ -9,7 +9,7 @@ import { formatDuration } from "../../lib/dates.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import { integerProblem } from "./contract.ts";
 import { entriesOf, type BindingEdit, type BindingRole, type SuggestedField } from "./graphBinding.ts";
-import { isObject, type Json, type JsonObject, type PraxisNode } from "./model.ts";
+import { hasOwn, isObject, type Json, type JsonObject, type PraxisNode } from "./model.ts";
 import { COST_UNIT_LABEL, DurationInput, hintClass, inline, StringList, TextInput } from "./RecordFields.tsx";
 import type { Diagnostic } from "./types.ts";
 
@@ -446,7 +446,7 @@ export const RunsAsSection: FC<{ node: PraxisNode; binding: ShownBinding | null 
     );
   }
   const entries = entriesOf(binding.content);
-  const entry = Object.prototype.hasOwnProperty.call(entries, node.id) ? entries[node.id] : null;
+  const entry = hasOwn(entries, node.id) ? entries[node.id] : null;
   const base = `/nodes/${segment(node.id)}`;
   const at = (key: string) => issuesIn(binding.diagnostics, `${base}/${key}`);
   const nodeIssues = binding.diagnostics.filter((d) => d.path === base || (d.nodeId === node.id && d.path === "/nodes"));

@@ -48,7 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
-import { MAX_NODES, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
+import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
 import { definitionIdProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
@@ -803,7 +803,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       changeSessions((s) => updateSession(s, projectPath, (cur) => editGraph(cur, open, edit, now)));
       if (edit.type === "rename-node") {
         const rewritten = graphBindingDrafts(before, open.id)
-          .filter((d) => Object.prototype.hasOwnProperty.call(entriesOf(d.content), edit.from))
+          .filter((d) => hasOwn(entriesOf(d.content), edit.from))
           .map((d) => d.ref.id);
         if (rewritten.length > 0) {
           setNotice({
