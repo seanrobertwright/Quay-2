@@ -24,7 +24,7 @@ import { bindingMarks } from "./graphBinding.ts";
 import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
-import { useBindingValidation, useValidation } from "./useValidation.ts";
+import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
 interface GraphViewProps {
@@ -201,7 +201,8 @@ const GraphViewInner: FC<GraphViewProps> = ({
   const inspectorRef = useRef<HTMLElement | null>(null);
   const graphStatus = useValidation("graphs", content);
   const verdict = graphStatus.state === "done" ? graphStatus.validation.verdict : undefined;
-  const bindingStatus = useBindingValidation(binding?.content ?? null, content);
+  const bindingCheck = useValidation("graph-bindings", binding?.content ?? null, content);
+  const bindingStatus = binding ? bindingCheck : null;
   const status = useMemo(
     () => withBindingIssues(graphStatus, binding?.id ?? "", bindingStatus),
     [graphStatus, binding?.id, bindingStatus]

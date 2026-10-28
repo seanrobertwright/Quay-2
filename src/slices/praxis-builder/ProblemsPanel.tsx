@@ -3,12 +3,7 @@
 import { useId, type FC, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, CircleAlert, Info, LoaderCircle } from "lucide-react";
 import { issueField, problemCounts, withKeys } from "./issues.ts";
-import type { Diagnostic, Validation } from "./types.ts";
-
-export type ValidationStatus =
-  | { state: "checking" }
-  | { state: "failed"; error: string }
-  | { state: "done"; validation: Validation };
+import type { Diagnostic, ValidationStatus } from "./types.ts";
 
 interface ProblemsPanelProps {
   status: ValidationStatus;

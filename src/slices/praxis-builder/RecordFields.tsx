@@ -14,8 +14,7 @@ import {
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import { DURATION_UNITS, durationMs, durationParts, integerProblem, timeMs, type DurationUnit } from "./contract.ts";
 import type { Json } from "./model.ts";
-import type { ValidationStatus } from "./ProblemsPanel.tsx";
-import type { Diagnostic } from "./types.ts";
+import type { Diagnostic, ValidationStatus } from "./types.ts";
 
 /** How `Contract.budget` and `Grant.limit` are labelled and explained (#231). */
 export const COST_UNIT_LABEL = "in the installation's ledger cost unit";

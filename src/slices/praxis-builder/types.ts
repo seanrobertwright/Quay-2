@@ -160,6 +160,12 @@ export interface Validation {
   omitted: { errors: number; info: number };
 }
 
+/** Where a check of a definition stands: running, failed to run, or done with its result. */
+export type ValidationStatus =
+  | { state: "checking" }
+  | { state: "failed"; error: string }
+  | { state: "done"; validation: Validation };
+
 /** A draft's content as `praxis_rename` takes it, and returns it with references rewritten. */
 export interface DraftContent {
   kind: PraxisKind;

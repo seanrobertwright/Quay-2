@@ -1,8 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { withBindingIssues, issueField, issuesByNode, nodeIssuesBySlot, problemCounts, withKeys } from "./issues.ts";
-import type { ValidationStatus } from "./ProblemsPanel.tsx";
-import type { Diagnostic } from "./types.ts";
+import type { Diagnostic, ValidationStatus } from "./types.ts";
 
 const error = (path: string, nodeId?: string, field?: string): Diagnostic => ({
   code: "NODE_CONFIG",

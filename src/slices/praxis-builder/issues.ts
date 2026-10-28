@@ -1,6 +1,5 @@
 // What the canvas and the Problems list show from a definition's validation diagnostics.
-import type { ValidationStatus } from "./ProblemsPanel.tsx";
-import type { Diagnostic, Severity, Validation } from "./types.ts";
+import type { Diagnostic, Severity, Validation, ValidationStatus } from "./types.ts";
 
 /** A node's issues as its card badge shows them. */
 export interface NodeIssues {
@@ -77,7 +76,6 @@ export function nodeIssuesBySlot(
   }
   return bySlot;
 }
-
 
 /**
  * The graph's validation with the chosen graph binding's issues after its own (#273), each
