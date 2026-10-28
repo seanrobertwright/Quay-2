@@ -17,6 +17,13 @@ use super::session::{Osc7501Hook, PtySession};
 /// Pause between typing a prompt and pressing Enter, so the two arrive as separate reads
 const PROMPT_SUBMIT_DELAY: Duration = Duration::from_millis(250);
 
+/// The End key, which Quay presses after a prompt to a Codex terminal and before its Enter.
+/// Codex on Windows reads a fast stream of typed characters as a paste and takes an Enter
+/// within 120 ms of the last one it processed as a newline, and a long prompt takes it longer
+/// than `PROMPT_SUBMIT_DELAY` to process. A key that isn't text ends the paste and that window
+/// at once; End leaves the cursor where the prompt left it.
+const END_KEY: &str = "\x1b[F";
+
 /// What the status watcher runs, with the id of the terminal whose status moved.
 type StatusWatcher = Arc<dyn Fn(&str) + Send + Sync>;
 
@@ -505,8 +512,8 @@ impl PtyManager {
     /// Types `prompt` into an agent terminal and presses Enter, as one unit: another prompt
     /// to the same terminal waits until this one's Enter is in. Agent TUIs read text and
     /// Enter that arrive in one chunk as a paste and leave it unsent, so Enter is a separate
-    /// write `PROMPT_SUBMIT_DELAY` later, and the call blocks for that long. It fails when
-    /// either write fails.
+    /// write `PROMPT_SUBMIT_DELAY` later, and the call blocks for that long. A Codex terminal
+    /// also gets `END_KEY` straight after the prompt. It fails when any write fails.
     pub fn submit_prompt(&self, terminal_id: &str, prompt: &str) -> Result<(), String> {
         let unit = self
             .submit_locks
@@ -516,6 +523,10 @@ impl PtyManager {
             .clone();
         let _unit = unit.lock();
         self.write(terminal_id, prompt)?;
+        if self.get_info(terminal_id).is_some_and(|info| info.run_kind == RunKind::Codex) {
+            self.write(terminal_id, END_KEY)
+                .map_err(|e| format!("Typed the prompt but couldn't press End: {}", e))?;
+        }
         std::thread::sleep(PROMPT_SUBMIT_DELAY);
         self.write(terminal_id, "\r")
             .map_err(|e| format!("Typed the prompt but couldn't press Enter: {}", e))
@@ -2005,6 +2016,34 @@ mod tests {
         let mut prompts = [input[0].as_str(), input[2].as_str()];
         prompts.sort();
         assert_eq!(prompts, ["first", "second"]);
+    }
+
+    #[test]
+    fn a_prompt_to_a_codex_terminal_presses_end_before_enter() {
+        let manager = PtyManager::new();
+        manager.insert_test_terminal(crate::slices::pty::models::test_terminal(
+            "term-submit-codex",
+            RunKind::Codex,
+            ClaudeStatus::Idle,
+        ));
+
+        manager.submit_prompt("term-submit-codex", "review this").unwrap();
+
+        assert_eq!(manager.test_input("term-submit-codex"), ["review this", "\x1b[F", "\r"]);
+    }
+
+    #[test]
+    fn a_prompt_to_a_claude_terminal_is_its_text_then_enter() {
+        let manager = PtyManager::new();
+        manager.insert_test_terminal(crate::slices::pty::models::test_terminal(
+            "term-submit-claude",
+            RunKind::Claude,
+            ClaudeStatus::Idle,
+        ));
+
+        manager.submit_prompt("term-submit-claude", "review this").unwrap();
+
+        assert_eq!(manager.test_input("term-submit-claude"), ["review this", "\r"]);
     }
 
     #[test]

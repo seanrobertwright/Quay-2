@@ -2124,9 +2124,9 @@ mod tests {
                     .await
             })
         };
-        // Past the submit delay, so the message and its Enter are both typed in
+        // Past the submit delay, so the message, End and its Enter are all typed in
         tokio::time::sleep(Duration::from_millis(500)).await;
-        assert_eq!(pty.test_input("term-cx-codex").len(), 2);
+        assert_eq!(pty.test_input("term-cx-codex")[1..], ["\x1b[F", "\r"]);
         assert_eq!(pty.get_info("term-cx-codex").unwrap().claude_status, ClaudeStatus::Working);
 
         // Codex's helper reports only the turn end, with the prompt that started the turn
@@ -2154,7 +2154,7 @@ mod tests {
         assert!(codex_turn(&router, &pty, "term-cx-busy", &["an older prompt"], "older").is_none());
         end_turn(&router, &pty, "term-cx-busy");
         assert_eq!(status_of(&router, &msg.id), A2AMessageStatus::Dispatched);
-        assert_eq!(pty.test_input("term-cx-busy").len(), 2);
+        assert_eq!(pty.test_input("term-cx-busy")[1..], ["\x1b[F", "\r"]);
 
         let typed = pty.test_input("term-cx-busy")[0].clone();
         let completed = codex_turn(&router, &pty, "term-cx-busy", &[&typed], "4").unwrap();
