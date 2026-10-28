@@ -147,7 +147,7 @@ export const RunContextPanel: FC<{
   return (
     <section
       aria-label="Run context"
-      className={`${expanded ? "w-80" : ""} shrink-0 min-h-0 flex flex-col border-l border-[#30363d] bg-[#0d1117]`}
+      className={`${expanded ? "w-[30%] min-w-56 max-w-80" : ""} shrink-0 min-h-0 flex flex-col border-l border-[#30363d] bg-[#0d1117]`}
     >
       <div className="shrink-0 h-7 flex items-center text-[11px]">
         <h3 className="h-full">
