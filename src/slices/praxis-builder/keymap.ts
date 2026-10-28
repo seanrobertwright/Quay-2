@@ -17,6 +17,7 @@ export type BuilderCommand =
   | "zoom-in"
   | "zoom-out"
   | "zoom-reset"
+  | "auto-arrange"
   | "help";
 
 /**
@@ -90,6 +91,7 @@ export const KEY_ENTRIES: readonly KeyEntry[] = [
   },
   { command: "zoom-out", label: "Zoom out", group: "Canvas", scope: "canvas", chords: [{ key: "-", mod: true }] },
   { command: "zoom-reset", label: "Zoom to 100%", group: "Canvas", scope: "canvas", chords: [{ key: "0", mod: true }] },
+  { command: "auto-arrange", label: "Auto-arrange the graph", group: "Canvas", scope: "canvas", chords: [{ key: "a", shift: true }] },
   { command: "help", label: "Show these shortcuts", group: "Canvas", scope: "canvas", chords: [{ key: "?", shift: "any" }] },
 ];
 

@@ -1,10 +1,11 @@
 // The canvas for one Praxis graph: #226's variant A cards, laid out top to bottom, each
 // with a badge counting its validation issues. Nodes can be dragged and clicked to select
 // them, and dragging from one card's handle to another card connects them; Escape calls
-// that drag off (#248). It must
+// that drag off (#248). A single card dragged shows smart guides and snaps to them, unless
+// Alt is held; several cards dragged together move rigidly, without guides. It must
 // sit inside a ReactFlowProvider, which the caller supplies so a sibling (the Problems
 // list) can move the viewport.
-import { useMemo, useRef, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   applyNodeChanges,
   Background,
@@ -23,8 +24,10 @@ import type { PraxisGraph, XYPosition } from "./model.ts";
 import { configSummary, nodeKindMeta, UNKNOWN_KIND_META } from "./kinds.ts";
 import type { GraphEdit } from "./editor.ts";
 import { EDGE_COLOR, graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
-import { NODE_WIDTH } from "./flow/layout.ts";
+import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import type { NodeIssues } from "./issues.ts";
+import { computeGuides, type Rect } from "./smart-guides.ts";
+import { SmartGuides } from "./SmartGuides.tsx";
 
 const handleClass = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117]";
 
@@ -103,6 +106,21 @@ const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
 
 const nodeTypes = { [PRAXIS_NODE_TYPE]: PraxisCard };
 
+/** A card's size as drawn, or the layout's size before it has been measured. */
+const sizeOf = (node: Pick<PraxisFlowNode, "measured"> | undefined) => ({
+  width: node?.measured?.width ?? NODE_WIDTH,
+  height: node?.measured?.height ?? NODE_HEIGHT,
+});
+
+const rectOf = (node: PraxisFlowNode): Rect => ({ id: node.id, ...node.position, ...sizeOf(node) });
+
+interface Guides {
+  vertical: number[];
+  horizontal: number[];
+}
+
+const NO_GUIDES: Guides = { vertical: [], horizontal: [] };
+
 /**
  * The first fit stops at 60% so a deep graph's cards stay readable (#226). It must keep one
  * identity: React Flow copies a changed `fitViewOptions` prop over the options of a pending
@@ -127,6 +145,10 @@ interface GraphCanvasProps {
   onEdit: (edit: GraphEdit) => void;
   /** Called once per drag, on drop, with the final position of each node dragged. */
   onMoveNodes: (moved: [string, XYPosition][]) => void;
+  /** Called when a pan or zoom starts. */
+  onMoveStart?: () => void;
+  /** Called on a right-click on a card, with the pointer's position on screen. */
+  onNodeContextMenu?: (nodeId: string, at: XYPosition) => void;
   /** Hands over the canvas's own controls once it is ready. */
   onReady?: (controls: CanvasControls) => void;
 }
@@ -137,6 +159,8 @@ export interface CanvasControls {
   readViewport: () => Viewport;
   /** Calls off a connection being dragged. Returns false when none is. */
   cancelConnection: () => boolean;
+  /** A card's size as drawn, which align and distribute work from. */
+  nodeSize: (nodeId: string) => { width: number; height: number };
 }
 
 export const GraphCanvas: FC<GraphCanvasProps> = ({
@@ -150,6 +174,8 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   onPaneClick,
   onEdit,
   onMoveNodes,
+  onMoveStart,
+  onNodeContextMenu,
   onReady,
 }) => {
   const flow = useMemo(() => graphToFlow(graph, positions), [graph, positions]);
@@ -171,7 +197,68 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
     setSynced(shown);
     setNodes(shown);
   }
-  const onNodesChange = (changes: NodeChange<PraxisFlowNode>[]) => setNodes((ns) => applyNodeChanges(changes, ns));
+  // The other cards' places, which a dragged card snaps to.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  // Smart guides (#248). Alt is read from the drag's own events and from the keyboard, so
+  // pressing or letting go of it mid-drag takes effect at the next move.
+  const [guides, setGuides] = useState<Guides>(NO_GUIDES);
+  const altHeld = useRef(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      altHeld.current = e.altKey;
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+    };
+  }, []);
+  /**
+   * Where the one card being dragged was last put, snapped or not. React Flow's last change of
+   * a drag, and the drop, carry the pointer's position; this replaces it, so what is drawn,
+   * and what the draft records, is where the card was shown.
+   */
+  const lastPlaced = useRef<{ id: string; position: XYPosition } | null>(null);
+  /** One card being dragged snaps to the guides it is near; several move as they are. */
+  const snapped = (changes: NodeChange<PraxisFlowNode>[]): { changes: NodeChange<PraxisFlowNode>[]; guides: Guides } => {
+    const [change] = changes;
+    if (changes.length !== 1 || change.type !== "position" || !change.position) {
+      lastPlaced.current = null;
+      return { changes, guides: NO_GUIDES };
+    }
+    if (!change.dragging) {
+      const placed = lastPlaced.current;
+      return { changes: placed?.id === change.id ? [{ ...change, position: placed.position }] : changes, guides: NO_GUIDES };
+    }
+    if (altHeld.current) {
+      lastPlaced.current = { id: change.id, position: change.position };
+      return { changes, guides: NO_GUIDES };
+    }
+    const node = nodesRef.current.find((n) => n.id === change.id);
+    const others = nodesRef.current.filter((n) => n.id !== change.id).map(rectOf);
+    const found = computeGuides({ id: change.id, ...change.position, ...sizeOf(node) }, others);
+    lastPlaced.current = { id: change.id, position: found.snap };
+    const none = found.vertical.length === 0 && found.horizontal.length === 0;
+    return {
+      changes: [{ ...change, position: found.snap }],
+      guides: none ? NO_GUIDES : { vertical: found.vertical, horizontal: found.horizontal },
+    };
+  };
+  const onNodesChange = (changes: NodeChange<PraxisFlowNode>[]) => {
+    const result = snapped(changes);
+    // Keep the same object while there are no guides, so moves without them don't re-render.
+    setGuides((g) => (g === NO_GUIDES && result.guides === NO_GUIDES ? g : result.guides));
+    setNodes((ns) => applyNodeChanges(result.changes, ns));
+  };
+  const onDragStop = (dragged: PraxisFlowNode[]) => {
+    setGuides(NO_GUIDES);
+    const placed = lastPlaced.current;
+    lastPlaced.current = null;
+    onMoveNodes(dragged.map((n) => [n.id, placed?.id === n.id && dragged.length === 1 ? placed.position : n.position]));
+  };
   const store = useStoreApi<PraxisFlowNode>();
   // Set only while Escape ends a connection drag, so the drop it fakes connects nothing.
   const connectionCancelled = useRef(false);
@@ -203,11 +290,28 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       edges={flow.edges}
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
-      onNodeDragStop={(_, __, dragged) => onMoveNodes(dragged.map((n) => [n.id, n.position]))}
+      onNodeDragStart={(e) => {
+        altHeld.current = e.altKey;
+      }}
+      onNodeDrag={(e) => {
+        altHeld.current = e.altKey;
+      }}
+      onNodeDragStop={(_, __, dragged) => onDragStop(dragged)}
+      onNodeContextMenu={(e, node) => {
+        if (!onNodeContextMenu) return;
+        e.preventDefault();
+        onNodeContextMenu(node.id, { x: e.clientX, y: e.clientY });
+      }}
       onNodeClick={(_, node) => onSelectNode(node.id)}
       onConnect={onConnect}
       isValidConnection={(c) => c.source !== c.target}
-      onInit={(instance) => onReady?.({ readViewport: () => instance.getViewport(), cancelConnection })}
+      onInit={(instance) =>
+        onReady?.({
+          readViewport: () => instance.getViewport(),
+          cancelConnection,
+          nodeSize: (nodeId) => sizeOf(instance.getInternalNode(nodeId)),
+        })
+      }
       // Selection and deletion go through the builder, so React Flow keeps neither.
       elementsSelectable={false}
       deleteKeyCode={null}
@@ -216,11 +320,13 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
       {...(viewport ? { defaultViewport: viewport } : { fitView: true })}
       fitViewOptions={FIRST_FIT}
       minZoom={0.2}
+      onMoveStart={onMoveStart}
       onMoveEnd={(_, vp) => onViewportChange(vp)}
       onPaneClick={onPaneClick}
       aria-label={`Graph ${graph.id || "without an id"}`}
     >
       <Background gap={20} color="#21262d" />
+      <SmartGuides vertical={guides.vertical} horizontal={guides.horizontal} />
       {/* Bottom right, clear of the palette strip on the left. */}
       <Controls position="bottom-right" showInteractive={false} />
     </ReactFlow>
