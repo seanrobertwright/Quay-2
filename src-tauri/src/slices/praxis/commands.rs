@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use super::models::{DefinitionFile, DefinitionList, LayoutInput, PraxisKind, SaveOutcome};
+use super::lifecycle;
+use super::models::{
+    DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, LayoutInput, PraxisKind, RenameOutcome, SaveOutcome,
+};
 use super::store;
 use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
@@ -89,6 +92,46 @@ pub async fn praxis_save(
     blocking(move || {
         let repo = project_root(&workspace, &project_path)?;
         store::save_definition(&repo, kind, &id, content, layout.as_ref(), expected_hash.as_deref(), force)
+    })
+    .await
+}
+
+/// Renames a definition to `newId`, moving the files that belong to it and rewriting the
+/// references other files and `drafts` hold, through the registered hooks. With `dryRun`
+/// it only reports what it would do, for the confirmation.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn praxis_rename(
+    project_path: String,
+    kind: PraxisKind,
+    id: String,
+    new_id: String,
+    drafts: Vec<DraftContent>,
+    dry_run: bool,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<RenameOutcome, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        let repo = project_root(&workspace, &project_path)?;
+        lifecycle::rename_definition(&repo, kind, &id, &new_id, &drafts, dry_run, lifecycle::HOOKS)
+    })
+    .await
+}
+
+/// Moves a definition, and the files that belong to it, to the Recycle Bin or Trash. With
+/// `dryRun` it only reports what it would move and what refers to it, for the confirmation.
+#[tauri::command]
+pub async fn praxis_delete(
+    project_path: String,
+    kind: PraxisKind,
+    id: String,
+    dry_run: bool,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<DeleteOutcome, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        let repo = project_root(&workspace, &project_path)?;
+        lifecycle::delete_definition(&repo, kind, &id, dry_run, lifecycle::HOOKS, &lifecycle::move_to_trash)
     })
     .await
 }

@@ -10,12 +10,14 @@ import {
   reconcileWithDisk,
   restoreSnapshot,
   snapshotOf,
+  withChanges,
+  withId,
   type GraphDraft,
   type GraphSnapshot,
 } from "./drafts.ts";
 import { createHistory, endMerge, record, redo, undo, type History, type Step } from "./history.ts";
-import { hasOwn, parseLayoutViewport } from "./model.ts";
-import type { DefinitionFile, DefinitionRef } from "./types.ts";
+import { hasOwn, parseLayoutViewport, type JsonObject } from "./model.ts";
+import type { DefinitionFile, DefinitionRef, RenameOutcome } from "./types.ts";
 
 export interface Viewport {
   x: number;
@@ -47,6 +49,11 @@ export const EMPTY_SESSION: BuilderSession = { name: "", open: null, viewports: 
 export function definitionKey(ref: DefinitionRef): string {
   return `${ref.kind}/${ref.id}`;
 }
+
+/** A definition's file, relative to the repository, as the backend reports paths. */
+export const definitionPath = (ref: DefinitionRef) => `.praxis/${ref.kind}/${ref.id}.json`;
+
+const sameRef = (a: DefinitionRef | null, b: DefinitionRef) => a !== null && a.kind === b.kind && a.id === b.id;
 
 export function sessionFor(sessions: Sessions, projectPath: string): BuilderSession {
   return sessions.get(normalizePath(projectPath)) ?? EMPTY_SESSION;
@@ -203,4 +210,97 @@ export function forgetHistories(sessions: Sessions, projectPaths: readonly strin
     next.set(key, { ...session, histories: {} });
   }
   return next ?? sessions;
+}
+
+/** `record` with `from`'s value, if it has one, under `to` instead. */
+function moveKey<T>(record: Readonly<Record<string, T>>, from: string, to: string): Readonly<Record<string, T>> {
+  if (!hasOwn(record, from)) return record;
+  const { [from]: value, ...others } = record;
+  return { ...others, [to]: value };
+}
+
+/** The session with `draft`, a definition not yet saved, added under `ref` and opened (#222). */
+export function addNewDraft(session: BuilderSession, ref: DefinitionRef, draft: GraphDraft): BuilderSession {
+  const key = definitionKey(ref);
+  return {
+    ...session,
+    open: ref,
+    drafts: { ...session.drafts, [key]: draft },
+    histories: withoutKey(session.histories, key),
+  };
+}
+
+/**
+ * The session after renaming `from`, a draft never saved, to `toId`. It has no file, so
+ * the rename happens only here: the draft moves to the new id with that id inside. Like
+ * every rename, it sits outside undo and clears the draft's history.
+ */
+export function renameUnsavedDraft(session: BuilderSession, from: DefinitionRef, toId: string): BuilderSession {
+  const to = { kind: from.kind, id: toId };
+  const fromKey = definitionKey(from);
+  const draft = session.drafts[fromKey];
+  if (!draft) return session;
+  const { [fromKey]: _dropped, ...others } = session.drafts;
+  return {
+    ...session,
+    open: sameRef(session.open, from) ? to : session.open,
+    drafts: { ...others, [definitionKey(to)]: withId(draft, to) },
+    histories: withoutKey(session.histories, fromKey),
+    viewports: moveKey(session.viewports, fromKey, definitionKey(to)),
+  };
+}
+
+/**
+ * The session after the backend renamed `from` to `toId` (#222). The renamed definition's
+ * draft, which was clean, is dropped, so the builder reads the moved file afresh; its
+ * viewport and its place as the open definition move to the new id. Every other draft the
+ * rename touched loses its history. A clean one is dropped, so it reads its rewritten file.
+ * A dirty one takes the rewritten references and, when its file is one the rename
+ * rewrote from the bytes the draft loaded, expects the new bytes on its next save.
+ */
+export function applyRename(
+  session: BuilderSession,
+  from: DefinitionRef,
+  toId: string,
+  outcome: RenameOutcome
+): BuilderSession {
+  const to = { kind: from.kind, id: toId };
+  const fromKey = definitionKey(from);
+  const hashesByPath = new Map(outcome.changes.flatMap((c) => (c.hashes ? [[c.path, c.hashes] as const] : [])));
+  const rewritten = new Map(outcome.drafts.map((d) => [definitionKey(d), d.content as JsonObject]));
+  const drafts: Record<string, GraphDraft> = {};
+  let histories = withoutKey(session.histories, fromKey);
+  for (const [key, draft] of Object.entries(session.drafts)) {
+    if (key === fromKey) continue;
+    const hashes = hashesByPath.get(definitionPath(draft.ref));
+    const content = rewritten.get(key);
+    if (!hashes && !content) {
+      drafts[key] = draft;
+      continue;
+    }
+    histories = withoutKey(histories, key);
+    if (!isDirty(draft) && hashes) continue;
+    const next = withChanges(draft, content ?? draft.content, draft.positions);
+    drafts[key] = hashes && draft.baseHash === hashes.previous ? { ...next, baseHash: hashes.next } : next;
+  }
+  return {
+    ...session,
+    open: sameRef(session.open, from) ? to : session.open,
+    drafts,
+    histories,
+    viewports: moveKey(session.viewports, fromKey, definitionKey(to)),
+  };
+}
+
+/** The session after `ref` was deleted (#222): its draft, history and viewport are dropped, and it closes. */
+export function removeDefinition(session: BuilderSession, ref: DefinitionRef): BuilderSession {
+  const key = definitionKey(ref);
+  const { [key]: _dropped, ...drafts } = session.drafts;
+  return {
+    ...session,
+    open: sameRef(session.open, ref) ? null : session.open,
+    drafts,
+    histories: withoutKey(session.histories, key),
+    viewports: withoutKey(session.viewports, key),
+  };
 }

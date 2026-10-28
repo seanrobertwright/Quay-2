@@ -13,6 +13,8 @@ export interface FileProblem {
 export interface DefinitionEntry {
   id: string;
   problem?: FileProblem;
+  /** Set when the file parses but its `id` isn't its name: `found` is the id inside, if it has a string one. */
+  idMismatch?: { found?: string };
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
@@ -82,4 +84,47 @@ export interface Validation {
   diagnostics: Diagnostic[];
   /** The issues found beyond `diagnostics`, by severity. */
   omitted: { errors: number; info: number };
+}
+
+/** A draft's content as `praxis_rename` takes it, and returns it with references rewritten. */
+export interface DraftContent {
+  kind: PraxisKind;
+  id: string;
+  content: Record<string, unknown>;
+}
+
+/**
+ * One file a rename writes: rewritten at `path`, or moved to `newPath`. `hashes` is set for
+ * a definition whose content it writes, so a draft that expected `previous` can expect `next`.
+ */
+export interface FileChange {
+  path: string;
+  newPath?: string;
+  hashes?: { previous: string; next: string };
+}
+
+/**
+ * What `praxis_rename` does, or did. A dry run fills only `changes`, `unchecked` and
+ * `drafts`. A rename that stopped part-way says why in `error`, after the steps in `done`.
+ */
+export interface RenameOutcome {
+  changes: FileChange[];
+  /** Files searched for references that couldn't be read. */
+  unchecked: string[];
+  /** The drafts sent whose references the rename rewrites, with their content after it. */
+  drafts: DraftContent[];
+  done: string[];
+  error?: string;
+}
+
+/**
+ * What `praxis_delete` does, or did: the files that go to the trash, definition first, and
+ * the files that refer to it. A delete that stopped part-way says why in `error`.
+ */
+export interface DeleteOutcome {
+  files: string[];
+  referrers: string[];
+  unchecked: string[];
+  done: string[];
+  error?: string;
 }

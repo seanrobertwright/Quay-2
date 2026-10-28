@@ -41,6 +41,8 @@ aiws-sdk = { path = "vendor/aiws/crates/aiws" }
 # The same jsonschema the SDK uses, for the instance paths its validator doesn't report.
 jsonschema = { version = "0.33", default-features = false }
 vt100 = "0.18.1"
+# Moves a deleted Praxis definition to the Recycle Bin or Trash, so it can be recovered.
+trash = "5.2.9"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
