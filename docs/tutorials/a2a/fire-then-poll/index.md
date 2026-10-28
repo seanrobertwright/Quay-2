@@ -321,7 +321,7 @@ npm test; Get-Content bench.md -Tail 1; git status --short
 :::
 
 ::: next
-[A2A 8: Mission Control operator run](/tutorials/a2a/mission-control/)
+[A2A 7: Broadcast coordination](/tutorials/a2a/broadcast/)
 
-The next published tutorial in series order; A2A 7 isn't published yet. Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI.
+Have a release captain broadcast a code freeze, hold it through a failed release and lift it when the release passes.
 :::

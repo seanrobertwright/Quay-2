@@ -1,0 +1,12 @@
+diff --git a/src/price.ts b/src/price.ts
+index 43a87f1..f52dca8 100644
+--- a/src/price.ts
++++ b/src/price.ts
+@@ -8,6 +8,6 @@ export function formatPrice(cents: number, currency: Currency): string {
+   const sign = cents < 0 ? "-" : "";
+   const amount = Math.abs(cents);
+   const whole = Math.floor(amount / 100);
+-  const part = String(amount % 100).padStart(2, "0");
++  const part = String(amount % 100);
+   return currency === "USD" ? `${sign}$${whole}.${part}` : `${sign}${whole},${part} €`;
+ }
