@@ -37,7 +37,7 @@ const A2A = [
   ['tdd-relay', 'Hands-off TDD relay', 'Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass.'],
   ['review-gate', 'Review gate before commit', 'Have a reviewer agent check every change to a rate limiter until its reply ends in `APPROVED`.'],
   ['fan-out-fan-in', 'Fan-out / fan-in', 'Have a lead agent split a static-site generator across three workers at once, then wire their parts together.'],
-  ['fire-then-poll', 'Long jobs: fire, then poll', 'Hand a 90-second benchmark to another agent without waiting, check on it, and collect the result from a file.'],
+  ['fire-then-poll', 'Long jobs: fire, then poll', 'Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file.'],
   ['broadcast', 'Broadcast coordination', 'Have a release captain broadcast a code freeze, hold it through a failed release and lift it when the release passes.'],
   ['mission-control', 'Mission Control operator run', 'Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI.'],
   ['docs-that-cant-lie', "Docs that can't lie", 'Have three agents rewrite a broken README until every code sample in it runs as written.'],
