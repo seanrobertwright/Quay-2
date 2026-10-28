@@ -236,3 +236,11 @@ export interface ContextCheck {
   /** Bindings and trigger files that couldn't be read or weren't searched. */
   unchecked: string[];
 }
+
+/** `praxis_graph_pin`: what a graph binding pins, read from the graph as saved on disk (#247). */
+export interface GraphPin {
+  /** The graph's `revision`, when it has a string one. */
+  revision?: string;
+  /** The SDK digest of the graph record exactly as the file holds it. */
+  digest: string;
+}
