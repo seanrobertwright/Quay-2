@@ -5,8 +5,8 @@ follow the Release protocol below while it does.
 
 ## Commands
 
-- `npm test` runs the eight tests: five price tests and three release tests that check
-  `package.json` against `CHANGELOG.md`.
+- `npm test` runs the price tests and the release tests, which check `package.json` against
+  `CHANGELOG.md`.
 - `npm run typecheck` checks the types.
 - `node src/cli.ts --version` prints the version in `package.json`.
 

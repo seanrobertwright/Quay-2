@@ -226,14 +226,13 @@ The captain's first move is the `FREEZE` broadcast. Quay types it into `feature-
 :::
 
 ::: must
-- A toast reading `Swarm Broadcast from release-captain` and `FREEZE v1.3.0: release in progress. Do not edit files until RELEASE PASS.`
-- In `feature-dev` and `docs-writer`, a `Swarm Broadcast from release-captain` banner and the line `[Broadcast Notice]: FREEZE v1.3.0: ...`. Each answers it with `FROZEN` as its last line.
-- No banner and no notice in `shell` or in `release-captain`.
+- In `feature-dev` and `docs-writer`, the line `[Broadcast Notice]: FREEZE v1.3.0: release in progress. Do not edit files until RELEASE PASS.` typed in as a prompt.
+- No notice in `shell` or in `release-captain`.
 :::
 
 ::: may
-- Whether the toast and banners have gone by the time you look: the toast lasts seven seconds and the banners ten.
-- Whether you see the `FROZEN` answers before the next notice arrives. The first release often takes under a minute, so the verdict can follow within seconds. Step 8 shows every answer.
+- Whether you saw the toast, `Swarm Broadcast from release-captain`, and the banner of the same name on each receiver's pane: the toast lasts seven seconds and the banners ten.
+- Whether you see each receiver answer with `FROZEN` before the next notice arrives. The first release often takes under a minute, so the verdict can follow within seconds. Step 8's trail keeps both `FROZEN` answers.
 - The receivers' wording above `FROZEN`.
 :::
 
@@ -258,14 +257,14 @@ Every broadcast toast looks the same, a pass or a failure. `CRITICAL` means some
 :::
 
 ::: must
-- A toast with `RELEASE FAIL CRITICAL v1.3.0` and the failing test's name, `pads cents under ten with a zero`.
+- `release-captain` reports the release failed on `pads cents under ten with a zero`, and that it put back its three files and made no commit or tag.
 - `feature-dev` answers with a line starting `CAUSE:` that names `src/price.ts`.
 - `docs-writer` ends with `STILL FROZEN`.
 :::
 
 ::: may
 - The commit id in the `CAUSE:` line, and its wording.
-- The captain's one-line verdict, and whether the toast has gone by the time you look.
+- The captain's one-line verdict, and whether you saw the verdict's toast before it went.
 - A greyed suggestion in `release-captain`'s input, such as `Cut release v1.3.0 again now`, or a `recap:` paragraph Claude Code adds after a quiet minute. Leave both.
 :::
 
@@ -326,13 +325,14 @@ An entry that someone waited on shows the peer's response as its **Reply**. Nobo
 :::
 
 ::: must
-- The trail's heading counts `(4)`: two broadcasts, `FREEZE` and `RELEASE FAIL CRITICAL`, each with one entry for `release-captain → feature-dev` and one for `release-captain → docs-writer`, tagged **Broadcast**.
-- Every one of the four entries reads **Completed**, with an **Answer:**.
+- Two broadcasts, `FREEZE` and `RELEASE FAIL CRITICAL`, each with one entry for `release-captain → feature-dev` and one for `release-captain → docs-writer`, tagged **Broadcast**.
+- Every one of those four entries reads **Completed**, with an **Answer:**. The `FREEZE` answers end `FROZEN`.
 :::
 
 ::: may
 - The times, how long each entry `took`, and the answers' wording.
 - The order of the two entries for each broadcast.
+- Older entries below them, if you've done other A2A tutorials since Quay started. The heading counts every entry, so it reads `(4)` only when these are all.
 - No entry for your step 7 request: you typed it into `docs-writer` yourself, so it never went over the bus.
 :::
 
@@ -386,12 +386,12 @@ The late change is reverted. Run the release for v1.3.0 again from the FREEZE st
 :::
 
 ::: must
-- A second `FREEZE` notice, then `RELEASE PASS v1.3.0: all tests passed, tagged v1.3.0. Freeze lifted.`, reach `feature-dev` and `docs-writer`, each with a `Swarm Broadcast from release-captain` banner and toast.
+- A second `FREEZE` notice, then `RELEASE PASS v1.3.0: all tests passed, tagged v1.3.0. Freeze lifted.`, reach `feature-dev` and `docs-writer`, and `release-captain` reports the release committed and tagged `v1.3.0`.
 - `feature-dev` and `docs-writer` both end with `THAWED`.
 :::
 
 ::: may
-- Whether the toasts have gone by the time you look, and the receivers' wording above `THAWED`.
+- Whether you saw the toasts and banners before they went, and the receivers' wording above `THAWED`.
 - `docs-writer` making the README edit you asked for in step 7 before it answers `THAWED`: it said it would once the freeze lifted. Nothing commits it, and step 11 doesn't check it.
 - A greyed suggestion in a pane's input, such as `commit the README change`. Leave it.
 - How long the release takes, often two or three minutes.

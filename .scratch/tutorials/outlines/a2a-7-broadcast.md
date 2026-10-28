@@ -6,8 +6,7 @@ A rough take to react to, not the tutorial. It follows the step-card template fr
 
 Slug `broadcast`. Page `docs/tutorials/a2a/broadcast/index.md`. Starter `examples/tutorials/broadcast/starter/`.
 
-**Amended by #202's walk-through:** the page has eleven steps, not ten. A Paste slot holds one prompt, so
-step 9 became "Revert the late change" (`09-reverted.webp`) and "Release again" (`10-release-pass.webp`), and
+**Amended by #202's walk-through:** a Paste slot holds one prompt, so step 9 became "Revert the late change" (`09-reverted.webp`) and "Release again" (`10-release-pass.webp`), and
 the check is step 11. Step 1's PowerShell terminal is named `setup` and step 2 opens with `exit` in it. The
 first release takes under a minute, so the FAIL notice can follow the FREEZE answers within seconds. The
 published page is the current text.
