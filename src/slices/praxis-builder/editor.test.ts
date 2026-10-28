@@ -79,6 +79,21 @@ describe("add-node", () => {
     assert.equal(editDraft(full, { type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 0 } }), full);
   });
 
+  test("with `after`, the new node depends on that node, in the same step", () => {
+    const d = draftOf([node("task-1", "TASK")]);
+    const next = editDraft(d, { type: "add-node", id: "task-2", kind: "TASK", position: { x: 0, y: 100 }, after: "task-1" });
+    assert.deepEqual(find(next, "task-2")?.dependsOn, ["task-1"]);
+    assert.deepEqual(stepFor({ type: "add-node", id: "task-2", kind: "TASK", position: { x: 0, y: 0 }, after: "task-1" }), {
+      label: "Add task-2",
+    });
+  });
+
+  test("with an `after` the graph doesn't have, the new node depends on nothing", () => {
+    const d = draftOf([node("task-1", "TASK")]);
+    const next = editDraft(d, { type: "add-node", id: "task-2", kind: "TASK", position: { x: 0, y: 0 }, after: "gone" });
+    assert.deepEqual(find(next, "task-2")?.dependsOn, []);
+  });
+
   test("keeps the record's other fields", () => {
     const d = draftOf([node("end", "END")]);
     const next = editDraft(d, { type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 0 } });

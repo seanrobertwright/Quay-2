@@ -2,8 +2,8 @@
 // packages/web/src/experiments/console/builder/flow/to-flow.ts and flow/types.ts), MIT;
 // see ../NOTICE. Quay changes: retyped from Archon's `BuilderWorkflow` to the Praxis
 // graph, edge ids encoded as JSON, DECISION branch edges labelled and coloured in place
-// of dashed `when:` edges, and a dashed red edge for a branch whose target lacks the
-// `dependsOn`.
+// of dashed `when:` edges, a dashed red edge for a branch whose target lacks the
+// `dependsOn`, and an accessible name on every edge (#264).
 /**
  * Praxis graph → xyflow nodes/edges.
  *
@@ -65,6 +65,7 @@ export function graphToFlowEdges(graph: PraxisGraph): Edge[] {
         type: "smoothstep",
         sourceHandle: source.kind === "DECISION" ? (branch ?? "dep") : undefined,
         label: branch ?? undefined,
+        ariaLabel: `${target.id} depends on ${sourceId}${branch ? `, the ${branch} branch of ${sourceId}` : ""}`,
         labelStyle: { fill: color, fontSize: 10, fontWeight: 600 },
         labelBgStyle: { fill: "#0d1117" },
         style: { stroke: color, strokeWidth: 1.5 },
@@ -86,6 +87,7 @@ export function graphToFlowEdges(graph: PraxisGraph): Edge[] {
         type: "smoothstep",
         sourceHandle: branch,
         label: `${branch}, missing from dependsOn`,
+        ariaLabel: `The ${branch} branch of ${decision.id} points at ${targetId}, which doesn't depend on ${decision.id}`,
         labelStyle: { fill: EDGE_COLOR.else, fontSize: 10 },
         labelBgStyle: { fill: "#0d1117" },
         style: { stroke: EDGE_COLOR.else, strokeWidth: 1.5, strokeDasharray: "5 4" },

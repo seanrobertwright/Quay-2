@@ -11,8 +11,12 @@ import { hasOwn, isObject, MAX_NODES, type Json, type JsonObject, type NodeKind,
 export type Branch = "then" | "else";
 
 export type GraphEdit =
-  /** Adds a node of `kind` with its default config. `id` must be free; `nextNodeId` gives one. */
-  | { type: "add-node"; id: string; kind: NodeKind; position: XYPosition }
+  /**
+   * Adds a node of `kind` with its default config. `id` must be free; `nextNodeId` gives one.
+   * With `after`, the new node depends on that node, as a palette press below the selected
+   * node makes it (#248).
+   */
+  | { type: "add-node"; id: string; kind: NodeKind; position: XYPosition; after?: string }
   /** Adds `source` to `target`'s `dependsOn`. */
   | { type: "connect"; source: string; target: string }
   /** Removes `source` from `target`'s `dependsOn`, and clears a branch of `source` that names `target`. */
@@ -127,7 +131,8 @@ function apply(nodes: JsonObject[], positions: ReadonlyMap<string, XYPosition>, 
   switch (edit.type) {
     case "add-node": {
       if (nodes.length >= MAX_NODES || has(edit.id)) return null;
-      const node = { id: edit.id, kind: edit.kind, dependsOn: [], config: NODE_KINDS_REGISTRY[edit.kind].defaultConfig() };
+      const dependsOn = edit.after !== undefined && has(edit.after) ? [edit.after] : [];
+      const node = { id: edit.id, kind: edit.kind, dependsOn, config: NODE_KINDS_REGISTRY[edit.kind].defaultConfig() };
       return { nodes: [...nodes, node], positions: new Map(positions).set(edit.id, rounded(edit.position)) };
     }
 

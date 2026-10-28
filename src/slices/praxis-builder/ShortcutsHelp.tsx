@@ -3,13 +3,15 @@
 import { useEffect, useId, useRef, type FC, type Ref } from "react";
 import { X } from "lucide-react";
 import { chordLabel, KEY_ENTRIES, type KeyEntry, type KeyScope } from "./keymap.ts";
+import { focusedElement } from "./keyboard.ts";
 
-const GROUPS: KeyEntry["group"][] = ["General", "Edit", "Canvas"];
+const GROUPS: KeyEntry["group"][] = ["General", "Edit", "Canvas", "Node"];
 
 const SCOPE_NOTES: Record<KeyScope, string> = {
   modal: "",
   "outside-text": "Outside text fields",
   canvas: "With focus in the canvas",
+  node: "With focus on a node; Tab moves through the nodes, then the edges",
 };
 
 export const ShortcutsHelp: FC<{ rootRef: Ref<HTMLDivElement>; onClose: () => void }> = ({ rootRef, onClose }) => {
@@ -17,7 +19,7 @@ export const ShortcutsHelp: FC<{ rootRef: Ref<HTMLDivElement>; onClose: () => vo
   const closeRef = useRef<HTMLButtonElement | null>(null);
   // Focus goes to Close while it is shown and back to where it was when it closes.
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = focusedElement();
     closeRef.current?.focus();
     return () => {
       if (previous?.isConnected) previous.focus();
