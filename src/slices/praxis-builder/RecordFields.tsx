@@ -1,0 +1,381 @@
+// The fields the record forms share (#223): the contract and grant forms lay these out in
+// sections. Integer and time inputs refuse what can't be stored as the user types; the
+// SDK's issues, and any inline check a form adds, show under the field they are about.
+import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";
+import { CircleAlert, Info, LoaderCircle, Plus, X } from "lucide-react";
+import {
+  epochMsFromLocalParts,
+  formatDateTime,
+  formatLocalDateTimeInput,
+  formatUtcDateTime,
+  localTimeZoneName,
+  wallClockPartsOf,
+} from "../../lib/dates.ts";
+import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
+import { integerProblem, timeMs } from "./contract.ts";
+import type { Json } from "./model.ts";
+import type { ValidationStatus } from "./ProblemsPanel.tsx";
+import type { Diagnostic } from "./types.ts";
+
+/** How `Contract.budget` and `Grant.limit` are labelled and explained (#231). */
+export const COST_UNIT_LABEL = "in the installation's ledger cost unit";
+export const COST_HINT =
+  "A whole number. Praxis never converts between units. Seeds Praxis's cost bound when a run is attached. After approval it changes only by a human adjustment in Praxis, and editing this file affects later runs only.";
+
+export const hintClass = "mt-1 text-[11px] text-[#6e7681]";
+export const sectionHeading = "text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]";
+
+/** The field a diagnostic is about: the first segment of its pointer, or "" for the record. */
+const fieldOf = (d: Diagnostic) => d.path.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") ?? "";
+
+export function issuesByField(status: ValidationStatus): Map<string, Diagnostic[]> {
+  const out = new Map<string, Diagnostic[]>();
+  if (status.state !== "done") return out;
+  for (const d of status.validation.diagnostics) {
+    const field = fieldOf(d);
+    out.set(field, [...(out.get(field) ?? []), d]);
+  }
+  return out;
+}
+
+export const asString = (v: Json | undefined) => (typeof v === "string" ? v : "");
+export const asStrings = (v: Json | undefined) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+export const Section: FC<{ title: string; children: ReactNode }> = ({ title, children }) => {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="space-y-3">
+      <h3 id={id} className={sectionHeading}>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+};
+
+/** The SDK's verdict, and the issues about the record as a whole. */
+export const Summary: FC<{ noun: string; status: ValidationStatus; recordIssues: readonly Diagnostic[] | undefined }> = ({
+  noun,
+  status,
+  recordIssues,
+}) => {
+  const id = useId();
+  if (status.state === "checking") {
+    return (
+      <p role="status" className="flex items-center gap-1.5 text-[11px] text-[#8b949e]">
+        <LoaderCircle className="w-3 h-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        Checking…
+      </p>
+    );
+  }
+  if (status.state === "failed") {
+    return (
+      <p role="alert" className="text-[11px] text-[#ff7b72] break-words">
+        Couldn&apos;t check this {noun}: {status.error}
+      </p>
+    );
+  }
+  const { diagnostics, omitted } = status.validation;
+  const errors = diagnostics.filter((d) => d.severity === "error").length + omitted.errors;
+  return (
+    <div>
+      <p role="status" className={`flex items-center gap-1.5 text-[11px] ${errors > 0 ? "text-[#ff7b72]" : "text-[#3fb950]"}`}>
+        {errors > 0 ? <CircleAlert className="w-3.5 h-3.5" aria-hidden="true" /> : <Info className="w-3.5 h-3.5" aria-hidden="true" />}
+        {errors > 0
+          ? `Praxis refuses this ${noun}: ${errors} ${errors === 1 ? "problem" : "problems"}, shown on the fields below. It still saves.`
+          : `Praxis accepts this ${noun}.`}
+      </p>
+      <FieldMessages id={id} issues={recordIssues} />
+    </div>
+  );
+};
+
+export const ReadOnly: FC<{ label: string; value: string; hint?: string; issues?: readonly Diagnostic[] }> = ({ label, value, hint, issues }) => {
+  const id = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <input id={id} readOnly value={value} className={`${inputBaseClass} w-full font-mono text-[#8b949e]`} {...described(messagesId, issues, hint ? hintId : undefined)} />
+      {hint && (
+        <p id={hintId} className={hintClass}>
+          {hint}
+        </p>
+      )}
+      <FieldMessages id={messagesId} issues={issues} />
+    </div>
+  );
+};
+
+export const TextInput: FC<{
+  label: string;
+  value: string;
+  hint?: string;
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (value: string) => void;
+}> = ({ label, value, hint, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type="text"
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClass} font-mono`}
+        {...described(messagesId, issues, hint ? hintId : undefined)}
+      />
+      {hint && (
+        <p id={hintId} className={hintClass}>
+          {hint}
+        </p>
+      )}
+      <FieldMessages id={messagesId} issues={issues} />
+    </div>
+  );
+};
+
+/** An inline problem as a diagnostic, so it shows like the SDK's issues. */
+export const inline = (message: string | null): Diagnostic[] =>
+  message ? [{ code: "INPUT", severity: "error", message, path: "" }] : [];
+
+/**
+ * Text that edits a stored value only when it is valid. A change from outside (an undo, a
+ * reload) replaces what is typed; Escape puts back the stored value.
+ */
+export function useSyncedText(applied: string) {
+  const [text, setText] = useState(applied);
+  const [synced, setSynced] = useState(applied);
+  if (synced !== applied) {
+    setSynced(applied);
+    setText(applied);
+  }
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape" && text !== applied) {
+      // Handled here, so the builder doesn't close.
+      e.preventDefault();
+      setText(applied);
+    }
+  };
+  return { text, setText, onKeyDown };
+}
+
+/** A count or amount: a whole number stored as the SDK's decimal string, refused inline when it isn't one. */
+export const IntegerInput: FC<{
+  label: string;
+  labelNote?: string;
+  value: Json | undefined;
+  min?: bigint;
+  hint: string;
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (value: string) => void;
+}> = ({ label, labelNote, value, min = 0n, hint, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  const applied = typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value);
+  const { text, setText, onKeyDown } = useSyncedText(applied);
+  const problem = text === applied ? null : integerProblem(text, min);
+  // While the text is refused, the stored value's issues would be about something else.
+  const shown = problem ? inline(problem) : issues;
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+        {labelNote && <span className="font-normal"> {labelNote}</span>}
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        spellCheck={false}
+        value={text}
+        onKeyDown={onKeyDown}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          if (integerProblem(next, min) === null) onChange(next.trim());
+        }}
+        className={`${inputBaseClass} w-48 text-[#c9d1d9] font-mono`}
+        {...described(messagesId, shown, hintId)}
+      />
+      <p id={hintId} className={hintClass}>
+        {hint}
+      </p>
+      <FieldMessages id={messagesId} issues={shown} />
+    </div>
+  );
+};
+
+/**
+ * An absolute time, picked in this machine's zone, which the field names along with the
+ * UTC equivalent. The picker's digits become epoch milliseconds through the date helper,
+ * so no string is parsed.
+ */
+export const DateTimeInput: FC<{
+  label: string;
+  value: Json | undefined;
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (ms: string) => void;
+}> = ({ label, value, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  const [problem, setProblem] = useState<string | null>(null);
+  const ms = timeMs(value);
+  const zone = localTimeZoneName();
+  const shown = problem ? inline(problem) : issues;
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label} <span className="font-normal">({zone})</span>
+      </label>
+      <input
+        id={id}
+        type="datetime-local"
+        value={ms === null ? "" : formatLocalDateTimeInput(ms)}
+        onChange={(e) => {
+          const input = e.currentTarget;
+          if (input.value === "") {
+            setProblem(null);
+            onChange("");
+            return;
+          }
+          // The picker counts its digits as if they were UTC; only the digits are used.
+          const parts = wallClockPartsOf(input.valueAsNumber);
+          const picked = Number.isFinite(input.valueAsNumber) ? epochMsFromLocalParts(parts) : null;
+          if (picked === null) return setProblem(`That time doesn't exist in ${zone}, as when the clocks change.`);
+          if (picked < 0) return setProblem("Pick a time after 1 January 1970 UTC.");
+          setProblem(null);
+          onChange(String(picked));
+        }}
+        className={`${inputBaseClass} w-64 text-[#c9d1d9]`}
+        {...described(messagesId, shown, hintId)}
+      />
+      <p id={hintId} className={hintClass}>
+        {ms === null ? "Not set." : `${formatDateTime(ms)} in ${zone}, which is ${formatUtcDateTime(ms)}.`}
+      </p>
+      <FieldMessages id={messagesId} issues={shown} />
+    </div>
+  );
+};
+
+export const Checkbox: FC<{
+  label: string;
+  checked: boolean;
+  hint: string;
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (checked: boolean) => void;
+}> = ({ label, checked, hint, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} {...described(messagesId, issues, hintId)} />
+        <label htmlFor={id} className="text-xs text-[#c9d1d9]">
+          {label}
+        </label>
+      </div>
+      <p id={hintId} className={hintClass}>
+        {hint}
+      </p>
+      <FieldMessages id={messagesId} issues={issues} />
+    </div>
+  );
+};
+
+/** The SDK's limits on an item of a record's string lists. */
+const MAX_ITEM = 256;
+const MAX_ITEMS = 1000;
+
+/** A list of distinct strings, each removable, with a field that adds one on Enter. */
+export const StringList: FC<{
+  label: string;
+  addLabel: string;
+  items: readonly string[];
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (items: string[]) => void;
+}> = ({ label, addLabel, items, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const [text, setText] = useState("");
+  const value = text.trim();
+  const problem =
+    value === ""
+      ? null
+      : value.length > MAX_ITEM
+        ? `Use at most ${MAX_ITEM} characters.`
+        : items.includes(value)
+          ? "That is already listed."
+          : items.length >= MAX_ITEMS
+            ? `A list holds at most ${MAX_ITEMS} items.`
+            : null;
+  const add = () => {
+    if (value === "" || problem) return;
+    onChange([...items, value]);
+    setText("");
+  };
+  const shown = problem ? inline(problem) : issues;
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      {items.length > 0 && (
+        <ul className="mb-1.5 space-y-1">
+          {items.map((item) => (
+            <li key={item} className="flex items-center gap-1.5 text-xs text-[#c9d1d9]">
+              <span className="min-w-0 break-words">{item}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${item}`}
+                onClick={() => onChange(items.filter((x) => x !== item))}
+                className="p-0.5 text-[#8b949e] hover:text-white rounded"
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          id={id}
+          type="text"
+          value={text}
+          placeholder={addLabel}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          className={inputClass}
+          {...described(messagesId, shown)}
+        />
+        <button
+          type="button"
+          onClick={add}
+          aria-disabled={value === "" || problem !== null}
+          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs aria-disabled:opacity-50"
+        >
+          <Plus className="w-3 h-3" aria-hidden="true" />
+          Add
+        </button>
+      </div>
+      <FieldMessages id={messagesId} issues={shown} />
+    </div>
+  );
+};

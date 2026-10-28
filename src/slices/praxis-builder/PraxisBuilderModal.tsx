@@ -52,9 +52,12 @@ import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.t
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
+import { GrantForm } from "./GrantForm.tsx";
+import { grantStepFor, type GrantEdit } from "./grant.ts";
 import {
   createNewDraft,
   editContractDraft,
+  editGrantDraft,
   hasDrafts,
   isDirty,
   layoutForSave,
@@ -597,6 +600,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       const now = Date.now();
       changeSessions((s) =>
         updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editContractDraft(d, edit), contractStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
+  // So do a grant form's (#223).
+  const editOpenGrant = useCallback(
+    (edit: GrantEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editGrantDraft(d, edit), grantStepFor(edit), now))
       );
     },
     [projectPath, open, changeSessions]
@@ -1508,6 +1523,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
                     triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
                     onEdit={editOpenContract}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
+                  />
+                </>
+              ) : openDraft && projectPath && open.kind === "grants" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <GrantForm
+                    key={`${projectKey}|${openKey}`}
+                    projectPath={projectPath}
+                    draft={openDraft}
+                    known={[...new Set(takenIds("grants"))]}
+                    saved={listedEntries("grants").map((e) => e.id)}
+                    refresh={refreshCount}
+                    onEdit={editOpenGrant}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                   />
