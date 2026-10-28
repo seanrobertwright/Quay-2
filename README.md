@@ -226,6 +226,7 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | 6 | [Long jobs: fire, then poll](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 | 8 | [Mission Control operator run](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/mission-control/) | Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI. |
 | 9 | [Docs that can't lie](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/docs-that-cant-lie/) | Have three agents rewrite a broken README until every code sample in it runs as written. |
+| 10 | [Second opinion from Codex](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/second-opinion-codex/) | Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down. |
 <!-- tutorials:end -->
 
 ---

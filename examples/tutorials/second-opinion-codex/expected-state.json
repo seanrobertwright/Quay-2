@@ -1,0 +1,6 @@
+{
+  "typecheck": { "expect": "pass" },
+  "tests": { "expect": "pass", "passed": 4 },
+  "checkSuite": { "vitest": ["run", "--config", "check/vitest.config.ts"], "expect": "fail", "failed": 3, "total": 3 },
+  "files": { "present": ["SPEC.md", "AGENTS.md", "CLAUDE.md"], "absent": ["review.md"] }
+}

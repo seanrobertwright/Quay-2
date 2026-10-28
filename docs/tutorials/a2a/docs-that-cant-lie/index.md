@@ -326,7 +326,7 @@ The checker proves every sample in the README is true. It doesn't prove the READ
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 10: Second opinion from Codex](/tutorials/a2a/second-opinion-codex/)
 
-The next tutorial in series order, A2A 10: Second opinion from Codex, isn't published yet. The Tutorials page lists every tutorial that is.
+Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down.
 :::

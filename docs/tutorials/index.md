@@ -32,4 +32,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 6 | [Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 | 8 | [Mission Control operator run](/tutorials/a2a/mission-control/) | Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI. |
 | 9 | [Docs that can't lie](/tutorials/a2a/docs-that-cant-lie/) | Have three agents rewrite a broken README until every code sample in it runs as written. |
+| 10 | [Second opinion from Codex](/tutorials/a2a/second-opinion-codex/) | Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down. |
 <!-- tutorials:end -->
