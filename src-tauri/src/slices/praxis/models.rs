@@ -294,3 +294,42 @@ pub struct GrantCheck {
     pub contracts: Vec<BoundContract>,
     pub unchecked: Vec<String>,
 }
+
+/// How a definition file differs from the last commit: changed, new since it (untracked
+/// or only staged), or deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChangeStatus {
+    Modified,
+    Added,
+    Deleted,
+}
+
+/// A definition file with changes since the last commit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedFile {
+    pub kind: PraxisKind,
+    pub id: String,
+    pub status: ChangeStatus,
+}
+
+/// The definitions of the kinds that show changes whose files have changed since the last
+/// commit, in path order. Empty for a project that isn't a git repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedFiles {
+    pub files: Vec<ChangedFile>,
+}
+
+/// A definition file's diff against the last commit, as git's unified diff of `path`.
+/// `status` is `None`, and `diff` empty, when the file hasn't changed since the commit.
+/// `truncated` when the diff was cut at the cap.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDiff {
+    pub path: String,
+    pub status: Option<ChangeStatus>,
+    pub diff: String,
+    pub truncated: bool,
+}

@@ -7,6 +7,9 @@ import { idProblem } from "./lifecycle.ts";
 import type { Json, JsonObject } from "./model.ts";
 import type { ChainLink, Diagnostic, GrantCheck } from "./types.ts";
 
+/** The fixed note on a grant (#223): the builder never treats a grant file as approved. */
+export const GRANT_PROPOSAL_NOTE = "A grant is a proposal; it takes effect only when a human approves it in Praxis.";
+
 /**
  * A new grant's record (#223): a root grant of the finite-v1 profile, which Praxis requires,
  * with its counts at their smallest legal value. The subject and both times are left empty,

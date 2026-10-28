@@ -1832,15 +1832,17 @@ mod tests {
         fs::write(wt.join("src").join("a.txt"), "hello\n").unwrap();
 
         let marker = wt.join("gate-started.txt");
-        let started = std::time::Instant::now();
         mgr.start_gate("WO-1", None).unwrap();
-        for _ in 0..200 {
+        // The gate runs git before the check, which is slow while other tests run git too, so
+        // the kill is timed from when the check started, not from the gate.
+        for _ in 0..600 {
             if marker.exists() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(50));
         }
         assert!(marker.exists(), "the slow check never started");
+        let started = std::time::Instant::now();
         std::thread::sleep(Duration::from_millis(100));
         mgr.set_loop_mode(FactoryLoopMode::HALTED);
         assert_eq!(mgr.get("WO-1").unwrap().status, WorkOrderStatus::INTERRUPTED);

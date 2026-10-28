@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use super::changes;
 use super::grants;
 use super::lifecycle;
 use super::models::{
-    BindingsInput, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, GrantCheck, LayoutInput,
-    PraxisKind, RenameOutcome, SaveOutcome,
+    BindingsInput, ChangedFiles, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, FileDiff,
+    GrantCheck, LayoutInput, PraxisKind, RenameOutcome, SaveOutcome,
 };
 use super::store;
 use super::validate::{self, Validation};
@@ -138,6 +139,26 @@ pub async fn praxis_check_grant(
         grants::check_grant(&project_root(&workspace, &project_path)?, &id, &content)
     })
     .await
+}
+
+/// The contracts and grants whose files have changed since the last commit (#223), for the
+/// list's badge. Empty for a project that isn't a git repository.
+#[tauri::command]
+pub async fn praxis_changes(project_path: String, workspace: State<'_, WorkspaceManager>) -> Result<ChangedFiles, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || changes::changed_files(&project_root(&workspace, &project_path)?)).await
+}
+
+/// The diff of one contract or grant file against the last commit, for the badge's diff view.
+#[tauri::command]
+pub async fn praxis_diff(
+    project_path: String,
+    kind: PraxisKind,
+    id: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<FileDiff, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || changes::file_diff(&project_root(&workspace, &project_path)?, kind, &id)).await
 }
 
 /// Renames a definition to `newId`, moving the files that belong to it and rewriting the
