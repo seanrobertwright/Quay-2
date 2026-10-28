@@ -25,6 +25,7 @@ import {
 import { newContractContent } from "./contract.ts";
 import { newGrantContent } from "./grant.ts";
 import { newGraphContent } from "./lifecycle.ts";
+import { newTriggerContent } from "./trigger.ts";
 import { isNodeKind, type JsonObject, type NodeKind, type PraxisNode } from "./model.ts";
 import type { PraxisKind } from "./types.ts";
 
@@ -190,5 +191,5 @@ export const RECORD_KINDS: RecordKindEntry[] = [
   { kind: "graphs", label: "Graphs", singular: "graph", icon: Workflow, newRecord: newGraphContent },
   { kind: "contracts", label: "Contracts", singular: "contract", icon: FileText, newRecord: newContractContent },
   { kind: "grants", label: "Grants", singular: "grant", icon: KeyRound, newRecord: newGrantContent },
-  { kind: "triggers", label: "Triggers", singular: "trigger", icon: Timer },
+  { kind: "triggers", label: "Triggers", singular: "trigger", icon: Timer, newRecord: newTriggerContent },
 ];

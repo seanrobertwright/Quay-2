@@ -14,6 +14,11 @@
 //! mission under each contract that binds it (#220, #223), the verdict is what `reduce` says
 //! of the `grant` command, and the locator repeats that command's rules against the contract
 //! and the parent grant.
+//!
+//! A trigger is checked by `registerTrigger` on a scratch mission (#220): `create_mission`
+//! under a stand-in contract that names the trigger's contract, allows triggers and has the
+//! latest deadline the SDK can store, so only the trigger's own rules can refuse it. Whether
+//! the real contract allows the trigger is a cross-record check.
 
 use std::collections::HashMap;
 
@@ -32,14 +37,14 @@ const MAX_NODES: usize = 1000;
 /// broken file of thousands of nodes can't flood the webview.
 pub const MAX_DIAGNOSTICS: usize = 500;
 
-/// Validates a definition's content. Graphs, contracts and grants can be validated so far.
+/// Validates a definition's content: a graph, contract, grant or trigger. Content over the size limit is refused.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
     check_size(content)?;
     match kind {
         PraxisKind::Graphs => Ok(validate_graph(content)),
         PraxisKind::Contracts => Ok(validate_contract(content)),
         PraxisKind::Grants => Ok(validate_grant(content)),
-        other => Err(format!("Quay can't validate {} yet.", other.folder())),
+        PraxisKind::Triggers => Ok(validate_trigger(content)),
     }
 }
 
@@ -163,6 +168,34 @@ pub fn validate_contract(contract: &Value) -> Validation {
         .err()
         .map(|e| e.code);
     with_verdict(verdict, locate_contract(contract), describe_contract)
+}
+
+/// The stand-in contract a trigger is registered under: it names the trigger's contract,
+/// allows triggers and has the latest deadline the SDK can store, so it refuses nothing the
+/// trigger could fix.
+fn scratch_contract(trigger: &Value) -> Value {
+    let id = trigger.get("contractId").and_then(Value::as_str).filter(|id| !id.is_empty()).unwrap_or("scratch");
+    json!({
+        "id": id, "missionId": id, "aiwsEdition": "0.4", "profile": "finite-v1",
+        "budget": "0", "deadline": "9".repeat(100), "criteria": ["scratch"],
+        "actions": [], "resources": [], "requiresApproval": false,
+        "maxAttempts": "1", "maxAuthorizationAgeMs": "0", "features": ["graphs", "triggers"]
+    })
+}
+
+/// Validates a trigger. The verdict is the SDK's: the trigger must be a valid record that
+/// `registerTrigger` accepts on a scratch mission.
+pub fn validate_trigger(trigger: &Value) -> Validation {
+    let verdict = aiws_sdk::TriggerDefinition::from_value(trigger.clone())
+        .and_then(|_| aiws_sdk::Contract::from_value(scratch_contract(trigger)))
+        .and_then(|contract| aiws_sdk::create_mission(&contract))
+        .and_then(|mission| {
+            let command = aiws_sdk::Command::from_value(json!({"type": "registerTrigger", "trigger": trigger}))?;
+            aiws_sdk::reduce(&mission, &command, "0")
+        })
+        .err()
+        .map(|e| e.code);
+    with_verdict(verdict, locate_trigger(trigger), describe_trigger)
 }
 
 /// The validation for the SDK's `verdict` and what the locator `found`: the verdict's
@@ -343,23 +376,25 @@ fn locate_graph(graph: &Value) -> Found {
         }
     }
 
-    if let (Some(revision), Some(expected)) =
-        (graph.get("revision").and_then(Value::as_str), content_revision(graph))
-        && revision != expected
-    {
-        out.push(Diagnostic {
-            code: "REVISION_MISMATCH".to_string(),
-            severity: Severity::Info,
-            message: format!(
-                "The revision doesn't match the graph's content ({}). Saving sets it again.",
-                expected
-            ),
-            path: "/revision".to_string(),
-            node_id: None,
-            field: None,
-        });
+    if let Some(d) = revision_issue(graph, "graph") {
+        out.push(d);
     }
     out
+}
+
+/// An info issue when the record's `revision` isn't the digest of its content (#222), which
+/// the next save corrects.
+fn revision_issue(record: &Value, noun: &str) -> Option<Diagnostic> {
+    let revision = record.get("revision").and_then(Value::as_str)?;
+    let expected = content_revision(record)?;
+    (revision != expected).then(|| Diagnostic {
+        code: "REVISION_MISMATCH".to_string(),
+        severity: Severity::Info,
+        message: format!("The revision doesn't match the {}'s content ({}). Saving sets it again.", noun, expected),
+        path: "/revision".to_string(),
+        node_id: None,
+        field: None,
+    })
 }
 
 /// The node config rules of `aiws_sdk::workflow::validate_graph`, each broken rule as a
@@ -590,7 +625,7 @@ fn record_schema(name: &str) -> &'static jsonschema::Validator {
     let validators = VALIDATORS.get_or_init(|| {
         let base: Value = serde_json::from_str(include_str!("../../../vendor/aiws/crates/aiws/src/schema.json"))
             .expect("the vendored schema is JSON");
-        ["Graph", "Contract", "Grant"]
+        ["Graph", "Contract", "Grant", "Trigger"]
             .into_iter()
             .map(|n| {
                 let mut schema = base.clone();
@@ -827,6 +862,137 @@ fn locate_grant_on_mission(g: &Value, mission: &Value, out: &mut Found) {
         let message = format!("The limit is more than grant {}'s limit of {}.", pid, p["limit"].as_str().unwrap_or("?"));
         denied(out, "/limit", message);
     }
+}
+
+fn describe_trigger(code: &str) -> &'static str {
+    match code {
+        "INVALID_RECORD" => "The trigger doesn't match the Praxis trigger schema.",
+        "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
+        "INPUT_LIMIT" => "The trigger is nested more deeply than Praxis allows.",
+        "TRIGGER_CONTRACT" => "The trigger must expire after it starts.",
+        "TRIGGER_LIMIT" => "The concurrency, rate limit and rate window must each be at least 1.",
+        "TRIGGER_TARGET" => "A RESUME_WAIT trigger needs a wait id, and no other action has one.",
+        "TRIGGER_CONDITION" => "A CONDITION trigger needs a filter and a condition mode.",
+        "SCHEDULE_CONFIG" => "Only a SCHEDULED trigger has a schedule, and its interval and catch-up must be at least 1.",
+        _ => "Praxis refuses this trigger.",
+    }
+}
+
+/// The trigger's times, as JSON Pointers: decimal integer strings that read as "not set" when empty.
+const TRIGGER_TIMES: &[&str] = &["/notBefore", "/expiresAt", "/schedule/startMs"];
+
+/// The trigger's other decimal integer strings, as JSON Pointers.
+const TRIGGER_COUNTS: &[&str] = &[
+    "/maxAgeMs",
+    "/maxConcurrent",
+    "/rateLimit",
+    "/rateWindowMs",
+    "/maxDepth",
+    "/schedule/intervalMs",
+    "/schedule/maxCatchUp",
+];
+
+/// The trigger's string fields that must not be empty, with what the message calls each.
+const TRIGGER_STRINGS: &[(&str, &str)] = &[
+    ("/source", "source"),
+    ("/eventType", "event type"),
+    ("/contractId", "contract"),
+    ("/waitId", "wait id"),
+    ("/filter/field", "filter's field"),
+];
+
+/// A plainer message than the schema's for a trigger field, when there is one.
+fn trigger_message(trigger: &Value, path: &str) -> Option<String> {
+    let value = trigger.pointer(path)?;
+    if TRIGGER_TIMES.contains(&path) {
+        return Some(integer_message(path, value, TRIGGER_TIMES));
+    }
+    if TRIGGER_COUNTS.contains(&path) {
+        return Some(integer_message(path, value, &[]));
+    }
+    let (_, name) = TRIGGER_STRINGS.iter().find(|(p, _)| *p == path)?;
+    (value.as_str() == Some("")).then(|| format!("The {} isn't set.", name))
+}
+
+/// Every issue in a trigger, each with its location: the schema's, the numbers and nesting
+/// canonical JSON refuses, the rules of `registerTrigger` that the trigger alone decides,
+/// and a revision that doesn't match the content.
+fn locate_trigger(trigger: &Value) -> Found {
+    let mut out = locate_record("Trigger", trigger, trigger_message);
+    let issue = |path: &str, code: &str, message: &str| field_issue(path, code, message.to_string());
+
+    // `registerTrigger`'s rules. A comparison is skipped when either side isn't a number the
+    // SDK accepts, since the schema has already said so.
+    let field = |key: &str| trigger.get(key);
+    if let (Some(start), Some(end)) = (canonical_key(field("notBefore")), canonical_key(field("expiresAt")))
+        && start >= end
+    {
+        out.push(issue("/expiresAt", "TRIGGER_CONTRACT", "The trigger must expire after it starts."));
+    }
+    for key in ["maxConcurrent", "rateLimit", "rateWindowMs"] {
+        if field(key).and_then(Value::as_str) == Some("0") {
+            out.push(issue(&format!("/{key}"), "TRIGGER_LIMIT", "This must be at least 1."));
+        }
+    }
+    let resumes = field("action").and_then(Value::as_str) == Some("RESUME_WAIT");
+    match (resumes, field("waitId").is_some_and(Value::is_string)) {
+        (true, false) => out.push(issue("/waitId", "TRIGGER_TARGET", "A RESUME_WAIT trigger needs the wait id it resumes.")),
+        (false, true) => out.push(issue("/waitId", "TRIGGER_TARGET", "Only a RESUME_WAIT trigger has a wait id.")),
+        _ => {}
+    }
+    let kind = field("kind").and_then(Value::as_str);
+    if kind == Some("CONDITION") {
+        if !field("filter").is_some_and(Value::is_object) {
+            out.push(issue("/filter", "TRIGGER_CONDITION", "A CONDITION trigger needs a filter."));
+        }
+        if !field("conditionMode").is_some_and(Value::is_string) {
+            out.push(issue("/conditionMode", "TRIGGER_CONDITION", "A CONDITION trigger needs a condition mode."));
+        }
+    } else if field("conditionMode").is_some() {
+        // The SDK accepts it, but only a CONDITION trigger reads it, and the form doesn't show it.
+        out.push(Diagnostic {
+            severity: Severity::Info,
+            ..issue("/conditionMode", "UNUSED_FIELD", "Only a CONDITION trigger uses a condition mode. Changing the kind removes it.")
+        });
+    }
+    match (kind == Some("SCHEDULED"), field("schedule").filter(|s| s.is_object())) {
+        (true, Some(schedule)) => {
+            if schedule.get("intervalMs").and_then(Value::as_str) == Some("0") {
+                out.push(issue("/schedule/intervalMs", "SCHEDULE_CONFIG", "The interval must be at least 1 ms."));
+            }
+            match canonical_key(schedule.get("maxCatchUp")) {
+                Some(n) if n == decimal_key("0") => {
+                    out.push(issue("/schedule/maxCatchUp", "SCHEDULE_CONFIG", "This must be at least 1."))
+                }
+                Some(n) if n > decimal_key("1000") => {
+                    out.push(issue("/schedule/maxCatchUp", "SCHEDULE_CONFIG", "This must be at most 1000."))
+                }
+                _ => {}
+            }
+        }
+        (true, None) => out.push(issue("/schedule", "SCHEDULE_CONFIG", "A SCHEDULED trigger needs a schedule.")),
+        (false, Some(_)) => out.push(issue("/schedule", "SCHEDULE_CONFIG", "Only a SCHEDULED trigger has a schedule.")),
+        (false, None) => {}
+    }
+    if let Some(d) = revision_issue(trigger, "trigger") {
+        out.push(d);
+    }
+    out
+}
+
+/// The value as a key that orders as its number does, when it is the SDK's canonical decimal:
+/// digits with no leading zero, at most 100 of them.
+fn canonical_key(v: Option<&Value>) -> Option<(usize, &str)> {
+    let s = v?.as_str()?;
+    let canonical =
+        !s.is_empty() && s.len() <= 100 && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0'));
+    canonical.then(|| decimal_key(s))
+}
+
+/// A canonical decimal as a key that orders as its number does: a shorter one is smaller,
+/// and ones of equal length compare digit by digit.
+fn decimal_key(s: &str) -> (usize, &str) {
+    (s.len(), s)
 }
 
 #[cfg(test)]
@@ -1102,9 +1268,9 @@ mod tests {
     }
 
     #[test]
-    fn grants_can_be_validated_and_triggers_cannot_yet() {
+    fn grants_and_triggers_can_be_validated() {
         assert!(validate_definition(PraxisKind::Grants, &json!({})).is_ok());
-        assert!(validate_definition(PraxisKind::Triggers, &json!({})).is_err());
+        assert!(validate_definition(PraxisKind::Triggers, &json!({})).is_ok());
     }
 
     // --- revision -------------------------------------------------------------------
@@ -1333,5 +1499,163 @@ mod tests {
         assert_eq!(v.verdict.as_deref(), Some("NOT_FOUND"));
         assert_eq!(codes_at(&v), pairs(&[("NOT_FOUND", "/parentId"), ("NOT_BOUND", "/parentId")]));
         assert_eq!(v.diagnostics[1].severity, Severity::Info);
+    }
+
+    // --- triggers ----------------------------------------------------------------------
+
+    fn trigger() -> Value {
+        let mut t = json!({
+            "id": "t", "revision": "1", "kind": "MANUAL", "source": "quay", "eventType": "manual",
+            "contractId": "c", "action": "START_RUN", "enabled": false,
+            "notBefore": "0", "expiresAt": "1893456000000", "maxAgeMs": "0",
+            "maxConcurrent": "1", "rateLimit": "1", "rateWindowMs": "1", "maxDepth": "0"
+        });
+        stamped(&mut t);
+        t
+    }
+
+    /// Sets the trigger's revision to match its content, as a save does, so a test sees only
+    /// the issues its edits cause.
+    fn stamped(t: &mut Value) -> &Value {
+        t["revision"] = json!(content_revision(t).unwrap());
+        t
+    }
+
+    /// Each `registerTrigger` command in the SDK's fixtures, with the error it expects.
+    fn trigger_vectors() -> Vec<(String, Value, Option<String>)> {
+        let fixtures: Value =
+            serde_json::from_str(include_str!("../../../vendor/aiws/spec/fixtures.json")).unwrap();
+        let mut vectors = Vec::new();
+        for fixture in fixtures.as_array().unwrap() {
+            for step in fixture["steps"].as_array().into_iter().flatten() {
+                if step["command"]["type"] == "registerTrigger" {
+                    vectors.push((
+                        fixture["name"].as_str().unwrap().to_string(),
+                        step["command"]["trigger"].clone(),
+                        step["error"].as_str().map(str::to_string),
+                    ));
+                }
+            }
+        }
+        vectors
+    }
+
+    /// The vectors that fail on the contract's side: a trigger naming another contract, and
+    /// a contract without the triggers feature. The scratch mission can't see either.
+    const CONTRACT_SIDE: &[&str] = &["trigger-outside-contract", "trigger-feature-required"];
+
+    #[test]
+    fn the_trigger_verdict_is_the_vector_s_expected_error_on_the_trigger_s_side() {
+        let vectors = trigger_vectors();
+        assert_eq!(vectors.len(), 22);
+        for (name, t, expected) in vectors {
+            let expected = if CONTRACT_SIDE.contains(&name.as_str()) { None } else { expected };
+            let v = validate_trigger(&t);
+            assert_eq!(v.verdict, expected, "{name}");
+            let errors: Vec<&Diagnostic> = v.diagnostics.iter().filter(|d| d.severity == Severity::Error).collect();
+            match &expected {
+                None => assert!(errors.is_empty(), "{name}: {errors:?}"),
+                Some(code) => assert_eq!(&errors[0].code, code, "{name}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_trigger_the_sdk_accepts_has_no_issues() {
+        let v = validate_definition(PraxisKind::Triggers, &trigger()).unwrap();
+        assert_eq!(v.verdict, None);
+        assert!(v.diagnostics.is_empty(), "{:?}", v.diagnostics);
+    }
+
+    #[test]
+    fn a_new_trigger_s_empty_fields_are_flagged_on_each_field() {
+        let mut t = trigger();
+        for key in ["source", "eventType", "contractId", "notBefore", "expiresAt"] {
+            t[key] = json!("");
+        }
+        let v = validate_trigger(stamped(&mut t));
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
+        let mut found: Vec<(&str, &str)> =
+            v.diagnostics.iter().map(|d| (d.path.as_str(), d.message.as_str())).collect();
+        found.sort();
+        assert_eq!(
+            found,
+            vec![
+                ("/contractId", "The contract isn't set."),
+                ("/eventType", "The event type isn't set."),
+                ("/expiresAt", "This time isn't set."),
+                ("/notBefore", "This time isn't set."),
+                ("/source", "The source isn't set."),
+            ]
+        );
+    }
+
+    #[test]
+    fn register_trigger_s_rules_are_located_on_their_fields() {
+        let mut t = trigger();
+        t["expiresAt"] = json!("0");
+        t["rateLimit"] = json!("0");
+        t["action"] = json!("RESUME_WAIT");
+        t["kind"] = json!("CONDITION");
+        let v = validate_trigger(stamped(&mut t));
+        assert_eq!(v.verdict.as_deref(), Some("TRIGGER_CONTRACT"));
+        assert_eq!(
+            codes_at(&v),
+            pairs(&[
+                ("TRIGGER_CONTRACT", "/expiresAt"),
+                ("TRIGGER_LIMIT", "/rateLimit"),
+                ("TRIGGER_TARGET", "/waitId"),
+                ("TRIGGER_CONDITION", "/filter"),
+                ("TRIGGER_CONDITION", "/conditionMode"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_schedule_must_belong_to_a_scheduled_trigger_and_fit_its_limits() {
+        let mut t = trigger();
+        t["kind"] = json!("SCHEDULED");
+        assert_eq!(codes_at(&validate_trigger(stamped(&mut t))), pairs(&[("SCHEDULE_CONFIG", "/schedule")]));
+        t["schedule"] = json!({"startMs": "0", "intervalMs": "0", "catchUp": "SKIP", "maxCatchUp": "1001"});
+        let v = validate_trigger(stamped(&mut t));
+        assert_eq!(v.verdict.as_deref(), Some("SCHEDULE_CONFIG"));
+        assert_eq!(
+            codes_at(&v),
+            pairs(&[("SCHEDULE_CONFIG", "/schedule/intervalMs"), ("SCHEDULE_CONFIG", "/schedule/maxCatchUp")])
+        );
+        t["kind"] = json!("MANUAL");
+        t["schedule"]["intervalMs"] = json!("1");
+        t["schedule"]["maxCatchUp"] = json!("1");
+        assert_eq!(codes_at(&validate_trigger(stamped(&mut t))), pairs(&[("SCHEDULE_CONFIG", "/schedule")]));
+    }
+
+    #[test]
+    fn a_wait_id_belongs_only_to_resume_wait() {
+        let mut t = trigger();
+        t["waitId"] = json!("w");
+        let v = validate_trigger(stamped(&mut t));
+        assert_eq!(v.verdict.as_deref(), Some("TRIGGER_TARGET"));
+        assert_eq!(v.diagnostics[0].message, "Only a RESUME_WAIT trigger has a wait id.");
+    }
+
+    #[test]
+    fn a_condition_mode_on_another_kind_is_an_info_issue() {
+        let mut t = trigger();
+        t["conditionMode"] = json!("EDGE");
+        let v = validate_trigger(stamped(&mut t));
+        assert_eq!(v.verdict, None);
+        let d = &v.diagnostics[0];
+        assert_eq!((d.code.as_str(), d.severity, d.path.as_str()), ("UNUSED_FIELD", Severity::Info, "/conditionMode"));
+    }
+
+    #[test]
+    fn a_trigger_s_stale_revision_is_an_info_issue() {
+        let mut t = trigger();
+        t["revision"] = json!("1");
+        let v = validate_trigger(&t);
+        assert_eq!(v.verdict, None);
+        let d = &v.diagnostics[0];
+        assert_eq!((d.code.as_str(), d.severity, d.path.as_str()), ("REVISION_MISMATCH", Severity::Info, "/revision"));
+        assert!(d.message.contains("trigger's content"), "{}", d.message);
     }
 }
