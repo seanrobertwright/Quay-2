@@ -5,7 +5,7 @@ import { buildCorpus } from "../src/corpus.ts";
 /** How long each task runs, in milliseconds. CI sets it low to run the bench quickly. */
 function benchTimeMs(): number {
   const raw = process.env.BENCH_TIME_MS;
-  if (raw === undefined) return 45_000;
+  if (raw === undefined) return 90_000;
   if (!/^[1-9][0-9]*$/.test(raw)) {
     throw new Error(`BENCH_TIME_MS must be a positive whole number of milliseconds, got "${raw}"`);
   }

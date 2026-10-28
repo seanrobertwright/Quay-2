@@ -7,9 +7,10 @@ benchmarking both.
 
 - `npm test` runs the six tests. Both implementations must pass them.
 - `npm run typecheck` checks the types.
-- `npm run bench` times both implementations and prints a results table. It takes about 90
-  seconds. Run it in the foreground and wait for it to finish: never run it in the background,
-  and never end your turn while it is running.
+- `npm run bench` times both implementations and prints a results table. It takes about three
+  minutes, longer than your shell tool's default two-minute timeout, so give the command a
+  timeout of at least five minutes. Run it in the foreground and wait for it to finish: never
+  run it in the background, and never end your turn while it is running.
 
 ## House rules
 
