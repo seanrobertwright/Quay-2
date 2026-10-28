@@ -57,7 +57,7 @@ fn rewrite_graph_id(folder: &str, record: &mut Map<String, Value>, target: Praxi
 /// the graph rewrites and a delete names. Nothing in a graph refers to another definition.
 pub const GRAPH_HOOK: ReferenceHook = ReferenceHook {
     companions: &[(PraxisKind::Graphs, LAYOUT_DIR)],
-    scans: &["graph-bindings"],
+    scans: &[PraxisKind::GraphBindings.folder()],
     rewrite: rewrite_graph_id,
 };
 
@@ -121,7 +121,7 @@ fn rewrite_contract_references(
 /// and a delete names.
 pub const CONTRACT_HOOK: ReferenceHook = ReferenceHook {
     companions: &[(PraxisKind::Contracts, BINDINGS_DIR)],
-    scans: &[BINDINGS_DIR, "triggers"],
+    scans: &[BINDINGS_DIR, PraxisKind::Triggers.folder()],
     rewrite: rewrite_contract_references,
 };
 
@@ -139,7 +139,11 @@ fn rewrite_parent(folder: &str, record: &mut Map<String, Value>, target: PraxisK
 
 /// A grant names its parent grant in `parentId`, so a rename of the parent rewrites it and a
 /// delete names the grants that hold it.
-pub const GRANT_HOOK: ReferenceHook = ReferenceHook { companions: &[], scans: &["grants"], rewrite: rewrite_parent };
+pub const GRANT_HOOK: ReferenceHook = ReferenceHook {
+    companions: &[],
+    scans: &[PraxisKind::Grants.folder()],
+    rewrite: rewrite_parent,
+};
 
 /// Every kind's hook. A kind adds one here when it owns files, or when other files refer to
 /// it, as triggers refer to a contract and grants to a parent grant, which the referred-to

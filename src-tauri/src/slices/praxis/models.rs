@@ -30,7 +30,7 @@ impl PraxisKind {
     }
 
     /// The folder under `.praxis/` that holds this kind's files.
-    pub fn folder(self) -> &'static str {
+    pub const fn folder(self) -> &'static str {
         match self {
             PraxisKind::Graphs => "graphs",
             PraxisKind::Contracts => "contracts",
