@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ariaKeyShortcuts,
+  chordLabel,
   commandFor,
   focusRegion,
   KEY_ENTRIES,
@@ -23,7 +24,7 @@ const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike => ({
 const ctrl = (k: string, mods: Partial<KeyLike> = {}) => key(k, { ctrlKey: true, ...mods });
 const cmd = (k: string, mods: Partial<KeyLike> = {}) => key(k, { metaKey: true, ...mods });
 
-const ALL_REGIONS: FocusRegion[] = ["text", "canvas", "other"];
+const ALL_REGIONS: FocusRegion[] = ["text", "node", "canvas", "other"];
 const route = (e: KeyLike, region: FocusRegion, mac = false) => commandFor(e, region, mac);
 
 test("Mod is Ctrl on Windows and Linux and Cmd on macOS", () => {
@@ -73,8 +74,43 @@ test("canvas keys need focus in the canvas", () => {
   ];
   for (const [e, command] of canvasKeys) {
     assert.equal(route(e, "canvas"), command, `${e.key} in the canvas`);
+    assert.equal(route(e, "node"), command, `${e.key} on a node`);
     assert.equal(route(e, "other"), null, `${e.key} outside the canvas`);
   }
+});
+
+test("Mod+F opens Go to node anywhere in the builder, text fields included", () => {
+  for (const region of ALL_REGIONS) assert.equal(route(ctrl("f"), region), "go-to-node");
+  assert.equal(route(cmd("f"), "text", true), "go-to-node");
+});
+
+test("arrow keys nudge in the canvas, with or without Shift, but not in a field", () => {
+  for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+    for (const region of ["canvas", "node"] as const) {
+      assert.equal(route(key(k), region), "nudge");
+      assert.equal(route(key(k, { shiftKey: true }), region), "nudge");
+    }
+    assert.equal(route(key(k), "text"), null);
+    assert.equal(route(key(k), "other"), null);
+  }
+});
+
+test("Enter, Space, Shift+Space and the menu keys act on a focused node only", () => {
+  const nodeKeys: [KeyLike, string][] = [
+    [key("Enter"), "select"],
+    [key(" "), "select"],
+    [key(" ", { shiftKey: true }), "add-to-selection"],
+    [key("F10", { shiftKey: true }), "context-menu"],
+    [key("ContextMenu"), "context-menu"],
+  ];
+  for (const [e, command] of nodeKeys) {
+    assert.equal(route(e, "node"), command, `${e.key} on a node`);
+    // A palette button, a menu item or a chip keeps its own Enter and Space.
+    assert.equal(route(e, "canvas"), null, `${e.key} elsewhere in the canvas`);
+    assert.equal(route(e, "other"), null);
+    assert.equal(route(e, "text"), null);
+  }
+  assert.equal(route(key("F10"), "node"), null, "F10 alone is not the menu key");
 });
 
 test("the builder never takes Quay's own keys", () => {
@@ -112,14 +148,27 @@ test("hints and aria-keyshortcuts come from the same table", () => {
   assert.equal(shortcutLabel("auto-arrange", false), "Shift+A");
   assert.equal(ariaKeyShortcuts("redo", false), "Control+Shift+Z Control+Y");
   assert.equal(ariaKeyShortcuts("undo", true), "Meta+Z");
+  assert.equal(shortcutLabel("go-to-node", false), "Ctrl+F");
+  assert.equal(shortcutLabel("context-menu", false), "Shift+F10");
+  assert.equal(ariaKeyShortcuts("select", false), "Enter Space");
+  assert.equal(ariaKeyShortcuts("add-to-selection", false), "Shift+Space");
+  assert.equal(ariaKeyShortcuts("nudge", false), "ArrowLeft ArrowRight ArrowUp ArrowDown");
+});
+
+test("the help names keys a person can read", () => {
+  assert.equal(chordLabel({ key: " " }, false), "Space");
+  assert.equal(chordLabel({ key: "ArrowLeft", shift: "any" }, false), "←");
+  assert.equal(chordLabel({ key: "ContextMenu" }, false), "Menu");
 });
 
 // Duck-typed targets, as ctrlBPrefix's tests use.
 const el = (tagName: string, extra: Record<string, unknown> = {}) => ({ tagName, ...extra }) as unknown as EventTarget;
 
-test("the focus region is text for typed-into fields, canvas inside the canvas, other elsewhere", () => {
+test("the focus region is text for typed-into fields, node on a card, canvas inside the canvas, other elsewhere", () => {
   const canvasChild = el("div");
-  const canvas = { contains: (t: unknown) => t === canvasChild };
+  const card = el("div");
+  const canvas = { contains: (t: unknown) => t === canvasChild || t === card, isNode: (t: unknown) => t === card };
+  assert.equal(focusRegion(card, canvas), "node");
   assert.equal(focusRegion(el("input", { type: "text" }), canvas), "text");
   assert.equal(focusRegion(el("textarea"), canvas), "text");
   assert.equal(focusRegion(el("input", { type: "checkbox" }), canvas), "other");

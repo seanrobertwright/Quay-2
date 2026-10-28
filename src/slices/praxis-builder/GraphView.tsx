@@ -2,8 +2,10 @@
 // and the inspector beside them. The graph's content is validated by the backend's
 // `praxis_validate`, never in the frontend (#220). The builder owns the selection, so undo
 // and its keys can set it, and gets a `BuilderCanvas` to run the canvas keys (#248). A
-// right-click on a card opens its context menu, with the align and distribute commands, and
-// one on empty canvas opens a menu with Paste, which puts the clipboard's nodes there.
+// right-click on a card, or Shift+F10 on a focused one, opens its context menu, with the align
+// and distribute commands, and one on empty canvas opens a menu with Paste, which puts the
+// clipboard's nodes there. Pressing a palette button with one node selected adds the new
+// node below it, depending on it (#248).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
 import { ArrangeMenu, Menu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
@@ -16,6 +18,7 @@ import { getClipboard, pasteFits } from "./clipboard.ts";
 import { nextNodeId, type GraphEdit } from "./editor.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { issuesByNode } from "./issues.ts";
+import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
 import { useValidation } from "./useValidation.ts";
 import { MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
@@ -79,10 +82,23 @@ export const UndrawnGraphProblems: FC<{ content: unknown; problemsShown: boolean
   );
 };
 
+/** A node or an edge on the canvas. An edge is named by the nodes it joins. */
+export type CanvasItem = { type: "node"; id: string } | { type: "edge"; source: string; target: string };
+
 /** The canvas as the builder's keys see it. */
 export interface BuilderCanvas extends CanvasControls {
   /** Whether a keydown's target is in the canvas region: the canvas and its palette. */
   contains: (target: Node | null) => boolean;
+  /** Whether a keydown's target is a node's card. */
+  isNode: (target: Node | null) => boolean;
+  /** The node or edge a keydown's target is, or null. */
+  itemAt: (target: EventTarget | null) => CanvasItem | null;
+  /** Selects a node, zooms to it and gives it focus, as Go to node does. */
+  goToNode: (nodeId: string) => void;
+  /** Opens a node's context menu beside its card, for Shift+F10 and the Menu key. */
+  openNodeMenu: (nodeId: string) => void;
+  /** The last card in the tab order, and the edges (SVG groups), which follow it there. */
+  tabOrder: () => { lastNode: HTMLElement | null; edges: SVGElement[] };
   /** Puts focus in the canvas region, as after deleting the focused node. */
   focus: () => void;
   fitView: () => void;
@@ -106,6 +122,23 @@ const NO_DIAGNOSTICS: never[] = [];
  */
 const STACK_OFFSET = 24;
 
+const nodeSelector = (id: string) => `.react-flow__node[data-id="${CSS.escape(id)}"]`;
+
+/** The canvas item an element is, or is inside. */
+function itemOf(el: Element | null): CanvasItem | null {
+  const item = el?.closest(".react-flow__node, .react-flow__edge");
+  const id = item?.getAttribute("data-id");
+  if (!item || id == null) return null;
+  if (item.classList.contains("react-flow__node")) return { type: "node", id };
+  // Edge ids are JSON `[source, target, tag]` (see `edgeId`).
+  try {
+    const [source, target] = JSON.parse(id) as unknown[];
+    return typeof source === "string" && typeof target === "string" ? { type: "edge", source, target } : null;
+  } catch {
+    return null;
+  }
+}
+
 const GraphViewInner: FC<GraphViewProps> = ({
   graph,
   content,
@@ -126,6 +159,35 @@ const GraphViewInner: FC<GraphViewProps> = ({
 }) => {
   const flow = useReactFlow();
   const canvasBox = useRef<HTMLDivElement | null>(null);
+  /** Pans, at the same zoom, to centre a rectangle on screen that isn't wholly in the canvas. */
+  const reveal = useCallback(
+    (r: { left: number; top: number; width: number; height: number }) => {
+      const box = canvasBox.current?.getBoundingClientRect();
+      if (!box) return;
+      if (r.left >= box.left && r.top >= box.top && r.left + r.width <= box.right && r.top + r.height <= box.bottom) return;
+      const vp = flow.getViewport();
+      void flow.setViewport({
+        x: vp.x + box.left + box.width / 2 - (r.left + r.width / 2),
+        y: vp.y + box.top + box.height / 2 - (r.top + r.height / 2),
+        zoom: vp.zoom,
+      });
+    },
+    [flow]
+  );
+  /**
+   * Focuses a node's card once the canvas draws it: a node just added has no card until React
+   * Flow renders it, which can be a frame or two after the edit. The focus doesn't scroll:
+   * that would scroll React Flow's wrapper, which pans, not scrolls, the canvas.
+   */
+  const focusNode = useCallback((nodeId: string) => {
+    let frames = 0;
+    const attempt = () => {
+      const card = canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId));
+      if (card) card.focus({ preventScroll: true });
+      else if (++frames < 10) requestAnimationFrame(attempt);
+    };
+    requestAnimationFrame(attempt);
+  }, []);
   const inspectorRef = useRef<HTMLElement | null>(null);
   const status = useValidation("graphs", content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
@@ -152,6 +214,17 @@ const GraphViewInner: FC<GraphViewProps> = ({
       onReady?.({
         ...controls,
         contains: (target) => canvasBox.current?.contains(target) ?? false,
+        isNode: (target) =>
+          target instanceof Element && target.classList.contains("react-flow__node") && (canvasBox.current?.contains(target) ?? false),
+        itemAt: (target) => (target instanceof Element && canvasBox.current?.contains(target) ? itemOf(target) : null),
+        goToNode: (nodeId) => latest.current.goToNode(nodeId),
+        openNodeMenu: (nodeId) => latest.current.openNodeMenu(nodeId),
+        tabOrder: () => {
+          const box = canvasBox.current;
+          const cards = box ? [...box.querySelectorAll<HTMLElement>(".react-flow__node")] : [];
+          const edges = box ? [...box.querySelectorAll<SVGElement>(".react-flow__edge")] : [];
+          return { lastNode: cards[cards.length - 1] ?? null, edges };
+        },
         focus: () => canvasBox.current?.focus(),
         fitView: () => void flow.fitView({ duration: duration() }),
         fitViewWhenMoved: () => {
@@ -176,14 +249,24 @@ const GraphViewInner: FC<GraphViewProps> = ({
     },
     [flow, choose]
   );
+  const goToNode = useCallback(
+    (nodeId: string) => {
+      zoomTo(nodeId);
+      focusNode(nodeId);
+    },
+    [zoomTo, focusNode]
+  );
   const clearSelection = useCallback(() => choose(null), [choose]);
 
   // A right-click on a card outside the selection selects that card alone, as file managers do.
   // The menu sits at a point on screen, so it closes when the cards or the view move. `at` is
   // in the canvas box; a pane menu also keeps the point on the canvas a paste goes to, and
   // why Paste is unavailable, if it is.
+  // A menu opened from the keyboard gives focus back to its node's card when it closes.
   const [menu, setMenu] = useState<
-    { kind: "node"; at: XYPosition } | { kind: "pane"; at: XYPosition; pasteAt: XYPosition; pasteBlocked: string | null } | null
+    | { kind: "node"; at: XYPosition; returnTo?: string }
+    | { kind: "pane"; at: XYPosition; pasteAt: XYPosition; pasteBlocked: string | null }
+    | null
   >(null);
   const nodeCount = graph.nodes.length;
   const [menuPositions, setMenuPositions] = useState(positions);
@@ -192,14 +275,27 @@ const GraphViewInner: FC<GraphViewProps> = ({
     setMenu(null);
   }
   const openMenu = useCallback(
-    (nodeId: string, at: XYPosition) => {
+    (nodeId: string, at: XYPosition, returnTo?: string) => {
       const box = canvasBox.current?.getBoundingClientRect();
       if (!box) return;
+      // The Menu key can fire a contextmenu event after the keydown has opened the menu; that
+      // second opening would move it and lose the card to give focus back to.
+      if (returnTo === undefined && menu?.kind === "node" && menu.returnTo === nodeId) return;
       if (!selected.has(nodeId)) choose(nodeId);
-      setMenu({ kind: "node", at: { x: at.x - box.left, y: at.y - box.top } });
+      setMenu({ kind: "node", at: { x: at.x - box.left, y: at.y - box.top }, returnTo });
     },
-    [selected, choose]
+    [selected, choose, menu]
   );
+  /** Opens a node's menu at its card's lower left corner, as Shift+F10 does. */
+  const openNodeMenu = (nodeId: string) => {
+    const card = canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId));
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    openMenu(nodeId, { x: r.left, y: r.bottom }, nodeId);
+  };
+  // The canvas handed to the builder is made once, so its calls go through this.
+  const latest = useRef({ goToNode, openNodeMenu });
+  latest.current = { goToNode, openNodeMenu };
   const openPaneMenu = useCallback(
     (at: XYPosition) => {
       const box = canvasBox.current?.getBoundingClientRect();
@@ -215,21 +311,41 @@ const GraphViewInner: FC<GraphViewProps> = ({
     [flow, nodeCount]
   );
   const dismissMenu = useCallback(() => setMenu(null), []);
-  const closeMenu = useCallback((refocus: boolean) => {
-    setMenu(null);
-    if (refocus) canvasBox.current?.focus();
-  }, []);
+  const returnTo = menu?.kind === "node" ? menu.returnTo : undefined;
+  const closeMenu = useCallback(
+    (refocus: boolean) => {
+      setMenu(null);
+      if (!refocus) return;
+      const card = returnTo === undefined ? null : canvasBox.current?.querySelector<HTMLElement>(nodeSelector(returnTo));
+      (card ?? canvasBox.current)?.focus({ preventScroll: true });
+    },
+    [returnTo]
+  );
 
   /**
-   * Adds a node of `kind` centred on a point on screen, if it is on the canvas, or in the
-   * middle of the view, moved off any node already there.
+   * Adds a node of `kind` centred on a point on screen, if it is on the canvas. A press, with
+   * no point, adds it below the one selected node, depending on it, or else in the middle of
+   * the view; either way it moves off any node already there. A drop never connects the node.
+   * The new node is selected and takes focus.
    */
   const addNode = (kind: NodeKind, at: XYPosition | null) => {
     const box = canvasBox.current?.getBoundingClientRect();
     if (!box) return;
     if (at && (at.x < box.left || at.x > box.right || at.y < box.top || at.y > box.bottom)) return;
-    const centre = flow.screenToFlowPosition(at ?? { x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    let position = { x: centre.x - NODE_WIDTH / 2, y: centre.y - NODE_HEIGHT / 2 };
+    const boxOf = (nodeId: string) => {
+      const n = flow.getInternalNode(nodeId);
+      return n && { ...n.internals.positionAbsolute, width: n.measured.width ?? NODE_WIDTH, height: n.measured.height ?? NODE_HEIGHT };
+    };
+    const above = at ? undefined : selectedNode?.id;
+    const aboveBox = above === undefined ? undefined : boxOf(above);
+    let position: XYPosition;
+    if (aboveBox) {
+      const taken = graph.nodes.flatMap((n) => boxOf(n.id) ?? []);
+      position = positionBelow(aboveBox, taken, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    } else {
+      const centre = flow.screenToFlowPosition(at ?? { x: box.left + box.width / 2, y: box.top + box.height / 2 });
+      position = { x: centre.x - NODE_WIDTH / 2, y: centre.y - NODE_HEIGHT / 2 };
+    }
     if (!at) {
       const taken = [...positions.values()];
       while (taken.some((p) => Math.abs(p.x - position.x) < STACK_OFFSET && Math.abs(p.y - position.y) < STACK_OFFSET)) {
@@ -237,15 +353,31 @@ const GraphViewInner: FC<GraphViewProps> = ({
       }
     }
     const id = nextNodeId(graph.nodes.map((n) => n.id), kind);
-    onEdit({ type: "add-node", id, kind, position });
+    onEdit({ type: "add-node", id, kind, position, after: aboveBox ? above : undefined });
     choose(id);
+    focusNode(id);
+    // Below a node off screen, or after a click, which doesn't show focus, the new card may
+    // be out of view.
+    const { zoom } = flow.getViewport();
+    const corner = flow.flowToScreenPosition(position);
+    reveal({ left: corner.x, top: corner.y, width: NODE_WIDTH * zoom, height: NODE_HEIGHT * zoom });
   };
 
   return (
     <div className="flex-1 min-h-0 flex">
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Focusable, so a click on empty canvas puts focus in the canvas region for its keys. */}
-        <div ref={canvasBox} tabIndex={-1} className="flex-1 min-h-0 relative outline-none">
+        {/* Focusable, so a click on empty canvas puts focus in the canvas region for its keys.
+            A card or edge that takes keyboard focus off screen is panned into view. */}
+        <div
+          ref={canvasBox}
+          tabIndex={-1}
+          className="flex-1 min-h-0 relative outline-none"
+          onFocus={(e) => {
+            if (e.target.matches(".react-flow__node:focus-visible, .react-flow__edge:focus-visible")) {
+              reveal(e.target.getBoundingClientRect());
+            }
+          }}
+        >
           <GraphCanvas
             graph={graph}
             positions={positions}
@@ -310,6 +442,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
         diagnostics={diagnostics}
         onEdit={onEdit}
         onRenamed={(id) => onSelect([id], true)}
+        onGoToNode={goToNode}
         onDeleted={() => {
           choose(null);
           // The delete button is gone; focus stays in the builder, so its keys still work.
