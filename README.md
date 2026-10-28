@@ -219,8 +219,10 @@ Step-by-step, screenshot-led walkthroughs of the Swarm launcher and the A2A bus,
 | # | Tutorial | What you'll do |
 | --- | --- | --- |
 | 1 | [Hello, A2A](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/hello-a2a/) | Send an agent a message from Mission Control, then watch one agent ask another a question and wait for the reply. |
+| 2 | [Contract-first handoff](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/contract-first-handoff/) | Have two agents agree a notes app's API over the A2A bus before either builds its half. |
 | 3 | [Hands-off TDD relay](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/tdd-relay/) | Type one prompt and watch a test writer hand failing tests to an implementer, who reports back when they pass. |
 | 5 | [Fan-out / fan-in](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
+| 6 | [Long jobs: fire, then poll](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 | 8 | [Mission Control operator run](https://seanrobertwright.github.io/Quay-2/tutorials/a2a/mission-control/) | Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI. |
 <!-- tutorials:end -->
 

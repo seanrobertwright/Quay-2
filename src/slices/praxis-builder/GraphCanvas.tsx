@@ -149,6 +149,8 @@ interface GraphCanvasProps {
   onMoveStart?: () => void;
   /** Called on a right-click on a card, with the pointer's position on screen. */
   onNodeContextMenu?: (nodeId: string, at: XYPosition) => void;
+  /** Called on a right-click on empty canvas, with the pointer's position on screen. */
+  onPaneContextMenu?: (at: XYPosition) => void;
   /** Hands over the canvas's own controls once it is ready. */
   onReady?: (controls: CanvasControls) => void;
 }
@@ -176,6 +178,7 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
   onMoveNodes,
   onMoveStart,
   onNodeContextMenu,
+  onPaneContextMenu,
   onReady,
 }) => {
   const flow = useMemo(() => graphToFlow(graph, positions), [graph, positions]);
@@ -301,6 +304,11 @@ export const GraphCanvas: FC<GraphCanvasProps> = ({
         if (!onNodeContextMenu) return;
         e.preventDefault();
         onNodeContextMenu(node.id, { x: e.clientX, y: e.clientY });
+      }}
+      onPaneContextMenu={(e) => {
+        if (!onPaneContextMenu) return;
+        e.preventDefault();
+        onPaneContextMenu({ x: e.clientX, y: e.clientY });
       }}
       onNodeClick={(_, node) => onSelectNode(node.id)}
       onConnect={onConnect}

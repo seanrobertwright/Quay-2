@@ -235,7 +235,7 @@ The entry is still **Dispatched**, so there is no reply to copy yet. Wait for **
 2. Watch `builder-agent` work in its pane, top right. Its header shows what it is doing while it works.
 3. When `builder-agent`'s header shows a green dot and `Ready`, press `Ctrl+Shift+B M` to open Mission Control again, and scroll down to the trail. Scroll inside the trail to read the end of the builder's reply.
 
-The trail lives in Quay, not in the panel, so closing the panel loses nothing. A Mission Control dispatch also waits for the agent's turn however long it takes. An agent that waits on a peer with `quay_send_message` gives up after 60 seconds, but this entry completes with the builder's reply even when its turn runs for minutes.
+The trail lives in Quay, not in the panel, so closing the panel loses nothing. A Mission Control dispatch also waits for the agent's turn however long it takes. An agent that waits on a peer with `quay_send_message` gives up after 60 seconds, as [A2A 6: Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) shows, but this entry completes with the builder's reply even when its turn runs for minutes.
 :::
 
 ::: see

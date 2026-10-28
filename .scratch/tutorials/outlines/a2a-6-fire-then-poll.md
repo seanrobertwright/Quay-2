@@ -13,6 +13,10 @@ write a named file, poll `quay_get_agent_status` until the peer is Idle, then re
 the first two moves; the charting idea never says where the answer goes. This tutorial is the series' file
 mailbox lesson, with two Claude peers, before A2A 10 uses the same pattern with Codex.
 
+**Amended by #201's walk-through:** the job runs about three minutes, two tasks at 90 seconds each
+(`BENCH_TIME_MS` default 90000), not 90 seconds. At 90 seconds it ended before a learner could look in
+Mission Control and poll once. The published page is the current text.
+
 ## Page head
 
 - **Title:** A2A 6: Long jobs: fire, then poll

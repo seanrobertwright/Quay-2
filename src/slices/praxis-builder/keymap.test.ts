@@ -41,7 +41,7 @@ test("Mod+S and Escape work in every region, text fields included", () => {
 });
 
 test("in a text field everything else goes to the field, native undo included", () => {
-  for (const e of [ctrl("z"), ctrl("y"), ctrl("z", { shiftKey: true }), key("Delete"), key("Backspace"), ctrl("a"), key("?", { shiftKey: true }), ctrl("0")]) {
+  for (const e of [ctrl("z"), ctrl("y"), ctrl("z", { shiftKey: true }), ctrl("c"), ctrl("x"), ctrl("v"), ctrl("d"), key("Delete"), key("Backspace"), ctrl("a"), key("?", { shiftKey: true }), ctrl("0")]) {
     assert.equal(route(e, "text"), null, `${e.key} in a text field`);
   }
 });
@@ -56,6 +56,10 @@ test("undo and redo work outside text fields, on Mod+Shift+Z or Mod+Y for redo",
 
 test("canvas keys need focus in the canvas", () => {
   const canvasKeys: [KeyLike, string][] = [
+    [ctrl("c"), "copy"],
+    [ctrl("x"), "cut"],
+    [ctrl("v"), "paste"],
+    [ctrl("d"), "duplicate"],
     [key("Delete"), "delete"],
     [key("Backspace"), "delete"],
     [ctrl("a"), "select-all"],
