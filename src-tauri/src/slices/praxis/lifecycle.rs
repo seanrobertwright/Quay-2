@@ -38,15 +38,27 @@ pub struct ReferenceHook {
     pub rewrite: RewriteFn,
 }
 
-fn refers_to_nothing(_: &str, _: &mut Map<String, Value>, _: PraxisKind, _: &str, _: Option<&str>) -> bool {
-    false
+/// Rewrites a graph binding's `graphId` when it names the graph `old` (#247). The pins
+/// (`graphRevision`, `graphDigest`) stay: a rename isn't a retarget.
+fn rewrite_graph_id(folder: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
+    if target != PraxisKind::Graphs
+        || folder != PraxisKind::GraphBindings.folder()
+        || record.get("graphId").and_then(Value::as_str) != Some(old)
+    {
+        return false;
+    }
+    if let Some(new) = new {
+        record.insert("graphId".to_string(), Value::String(new.to_string()));
+    }
+    true
 }
 
-/// A graph owns its layout file. Nothing in a graph refers to another definition.
+/// A graph owns its layout file. Its graph bindings name it by `graphId`, which a rename of
+/// the graph rewrites and a delete names. Nothing in a graph refers to another definition.
 pub const GRAPH_HOOK: ReferenceHook = ReferenceHook {
     companions: &[(PraxisKind::Graphs, LAYOUT_DIR)],
-    scans: &[],
-    rewrite: refers_to_nothing,
+    scans: &["graph-bindings"],
+    rewrite: rewrite_graph_id,
 };
 
 /// The list in a contract's bindings file that holds definitions of `kind`, if any.
@@ -317,7 +329,7 @@ pub fn rename_definition(
     else {
         unreachable!("parse_object returns only objects");
     };
-    record.insert("id".to_string(), Value::String(new_id.to_string()));
+    record.insert(kind.id_field().to_string(), Value::String(new_id.to_string()));
     if !same_id {
         rewrite_all(hooks, folder, &mut record, kind, id, Some(new_id));
     }
@@ -859,6 +871,57 @@ mod tests {
         let outcome = delete_definition(&repo, PraxisKind::Graphs, "g", false, HOOKS, &trash).unwrap();
         assert!(outcome.done.is_empty());
         assert!(outcome.error.unwrap().contains("no bin"));
+    }
+
+    // --- graph bindings (#273) ----------------------------------------------------------
+
+    const BINDING: &str = r#"{"format": "aiws-graph-binding/1", "graphBindingId": "g-1", "graphBindingRevision": 1,
+        "graphId": "g", "graphRevision": "r1", "graphDigest": "sha256:00", "costUnit": "u", "maxTotalActiveMs": 1000, "nodes": {}}"#;
+
+    fn binding_repo() -> PathBuf {
+        let repo = graph_repo();
+        write(&repo, ".praxis/graph-bindings/g-1.json", BINDING);
+        write(&repo, ".praxis/graph-bindings/other-1.json", &BINDING.replace("\"g-1\"", "\"other-1\"").replace("\"g\"", "\"other\""));
+        repo
+    }
+
+    #[test]
+    fn renaming_a_graph_rewrites_its_bindings_graph_id_without_retargeting() {
+        let repo = binding_repo();
+        let drafts = [DraftContent {
+            kind: PraxisKind::GraphBindings,
+            id: "g-2".to_string(),
+            content: json!({"graphBindingId": "g-2", "graphId": "g", "graphRevision": "r1"}),
+        }];
+        let outcome = rename_definition(&repo, PraxisKind::Graphs, "g", "h", &drafts, false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        let saved = read(&repo, ".praxis/graph-bindings/g-1.json");
+        assert_eq!(saved["graphId"], "h");
+        // The pins stay: a rename isn't a retarget.
+        assert_eq!(saved["graphRevision"], "r1");
+        assert_eq!(saved["graphDigest"], "sha256:00");
+        assert_eq!(read(&repo, ".praxis/graph-bindings/other-1.json")["graphId"], "other");
+        assert_eq!(outcome.drafts.len(), 1);
+        assert_eq!(outcome.drafts[0].content["graphId"], "h");
+    }
+
+    #[test]
+    fn renaming_a_binding_sets_the_graph_binding_id_inside() {
+        let repo = binding_repo();
+        let outcome = rename_definition(&repo, PraxisKind::GraphBindings, "g-1", "g-9", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        let saved = read(&repo, ".praxis/graph-bindings/g-9.json");
+        assert_eq!(saved["graphBindingId"], "g-9");
+        assert!(saved.get("id").is_none());
+    }
+
+    #[test]
+    fn deleting_a_graph_names_its_bindings_and_leaves_them() {
+        let repo = binding_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::Graphs, "g", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.referrers, vec![".praxis/graph-bindings/g-1.json"]);
+        assert_eq!(read(&repo, ".praxis/graph-bindings/g-1.json")["graphId"], "g");
     }
 
     #[test]

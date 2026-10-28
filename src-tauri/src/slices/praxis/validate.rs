@@ -37,7 +37,8 @@ const MAX_NODES: usize = 1000;
 /// broken file of thousands of nodes can't flood the webview.
 pub const MAX_DIAGNOSTICS: usize = 500;
 
-/// Validates a definition's content: a graph, contract, grant or trigger. Content over the size limit is refused.
+/// Validates a definition's content: a graph, contract, grant, trigger or graph binding (a binding without its
+/// graph, so only its shape). Content over the size limit is refused.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
     check_size(content)?;
     match kind {
@@ -45,6 +46,7 @@ pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validati
         PraxisKind::Contracts => Ok(validate_contract(content)),
         PraxisKind::Grants => Ok(validate_grant(content)),
         PraxisKind::Triggers => Ok(validate_trigger(content)),
+        PraxisKind::GraphBindings => Ok(super::graph_bindings::validate_graph_binding(content, None)),
     }
 }
 
@@ -117,13 +119,13 @@ impl Omitted {
 
 /// Diagnostics as the locator finds them: the first `MAX_DIAGNOSTICS` kept, the rest counted.
 #[derive(Default)]
-struct Found {
+pub(super) struct Found {
     kept: Vec<Diagnostic>,
     omitted: Omitted,
 }
 
 impl Found {
-    fn push(&mut self, d: Diagnostic) {
+    pub(super) fn push(&mut self, d: Diagnostic) {
         if self.kept.len() < MAX_DIAGNOSTICS {
             self.kept.push(d);
         } else {
@@ -200,7 +202,7 @@ pub fn validate_trigger(trigger: &Value) -> Validation {
 
 /// The validation for the SDK's `verdict` and what the locator `found`: the verdict's
 /// issue leads, and when the SDK accepts the record no error is kept.
-fn with_verdict(verdict: Option<String>, found: Found, describe: fn(&str) -> &'static str) -> Validation {
+pub(super) fn with_verdict(verdict: Option<String>, found: Found, describe: fn(&str) -> &'static str) -> Validation {
     let Found { kept: mut diagnostics, mut omitted } = found;
     match &verdict {
         // The SDK accepts the graph, so nothing the locator found can be an error.
@@ -484,7 +486,7 @@ fn is_positive_decimal(v: &Value) -> bool {
 }
 
 /// The numbers `aiws_sdk::canonical` refuses, and nesting deeper than it allows.
-fn check_canonical(v: &Value, path: &str, depth: usize, out: &mut impl FnMut(&'static str, &str, String)) {
+pub(super) fn check_canonical(v: &Value, path: &str, depth: usize, out: &mut impl FnMut(&'static str, &str, String)) {
     if depth > MAX_DEPTH {
         out("INPUT_LIMIT", path, format!("Nested more than {} levels deep.", MAX_DEPTH));
         return;
@@ -577,7 +579,7 @@ fn others(names: &[&str], me: Option<&str>) -> String {
 }
 
 /// Escapes a key for a JSON Pointer segment (RFC 6901).
-fn escape(key: &str) -> String {
+pub(super) fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
 
@@ -695,7 +697,7 @@ fn grant_message(grant: &Value, path: &str) -> Option<String> {
 }
 
 /// An error at `path` of a record that isn't a graph, so is on no node.
-fn field_issue(path: &str, code: &str, message: String) -> Diagnostic {
+pub(super) fn field_issue(path: &str, code: &str, message: String) -> Diagnostic {
     Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None }
 }
 

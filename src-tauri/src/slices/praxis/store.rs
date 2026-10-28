@@ -261,12 +261,15 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 },
             };
             match parsed {
-                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None },
+                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, graph_id: None },
                 Ok(record) => {
-                    let found = record.get("id").and_then(Value::as_str);
+                    let found = record.get(kind.id_field()).and_then(Value::as_str);
                     let id_mismatch =
                         (found != Some(id.as_str())).then(|| IdMismatch { found: found.map(str::to_string) });
-                    DefinitionEntry { id, problem: None, id_mismatch }
+                    let graph_id = (kind == PraxisKind::GraphBindings)
+                        .then(|| record.get("graphId").and_then(Value::as_str).map(str::to_string))
+                        .flatten();
+                    DefinitionEntry { id, problem: None, id_mismatch, graph_id }
                 }
             }
         })
@@ -507,6 +510,9 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// it. The definition is written first, so a layout that fails to write afterwards is
 /// reported in the outcome and the definition stays saved.
 ///
+/// A graph binding's unset `graphRevision` and `graphDigest` are filled from its graph as
+/// saved on disk first (#247, `graph_bindings::fill_pins`).
+///
 /// A contract's `bindings` are written to its bindings file the same way (#223). For a
 /// contract saved before, `expected_bindings_hash` is the hash of the bindings file the
 /// draft loaded, `None` for no file, and a bindings file changed since is a conflict too.
@@ -523,9 +529,12 @@ pub fn save_definition(
     force: bool,
 ) -> Result<SaveOutcome, String> {
     validate_id(id)?;
-    let Value::Object(record) = content else {
+    let Value::Object(mut record) = content else {
         return Err("A definition must be a JSON object.".to_string());
     };
+    if kind == PraxisKind::GraphBindings {
+        super::graph_bindings::fill_pins(repo, &mut record);
+    }
     let record = canonical_record(kind, record);
     let layout = match layout {
         Some(layout) if kind == PraxisKind::Graphs => Some(layout_value(layout, &record)?),

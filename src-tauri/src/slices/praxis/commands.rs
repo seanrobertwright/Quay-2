@@ -5,10 +5,11 @@ use tauri::State;
 use super::changes;
 use super::context;
 use super::grants;
+use super::graph_bindings;
 use super::lifecycle;
 use super::models::{
     BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
-    FileDiff, GrantCheck, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome,
+    FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome,
 };
 use super::store;
 use super::validate::{self, Validation};
@@ -54,10 +55,36 @@ pub async fn praxis_read(
 
 /// Validates a definition's content offline with the vendored AI-WS-SDK, reporting every
 /// issue with its location. The content is passed in, not read from disk, so an unsaved
-/// draft can be checked.
+/// draft can be checked. A graph binding is also checked against `graph`, the content of its
+/// graph's draft, when it is given (#273).
 #[tauri::command]
-pub async fn praxis_validate(kind: PraxisKind, content: serde_json::Value) -> Result<Validation, String> {
-    blocking(move || validate::validate_definition(kind, &content)).await
+pub async fn praxis_validate(
+    kind: PraxisKind,
+    content: serde_json::Value,
+    graph: Option<serde_json::Value>,
+) -> Result<Validation, String> {
+    blocking(move || match (kind, graph) {
+        (PraxisKind::GraphBindings, Some(graph)) => {
+            validate::check_size(&content)?;
+            validate::check_size(&graph)?;
+            Ok(graph_bindings::validate_graph_binding(&content, Some(&graph)))
+        }
+        _ => validate::validate_definition(kind, &content),
+    })
+    .await
+}
+
+/// The pin of the graph `graphId` as saved on disk (#247): its revision and SDK digest, which
+/// a binding's `graphRevision` and `graphDigest` are compared with to tell it is Stale, and
+/// which Retarget to current graph copies into it. `None` when the graph isn't saved.
+#[tauri::command]
+pub async fn praxis_graph_pin(
+    project_path: String,
+    graph_id: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<Option<GraphPin>, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || graph_bindings::graph_pin(&project_root(&workspace, &project_path)?, &graph_id)).await
 }
 
 /// Shows a definition file in the system file manager.
@@ -156,7 +183,7 @@ pub async fn praxis_check_context(
     blocking(move || context::check_context(&project_root(&workspace, &project_path)?, record.as_ref(), &also)).await
 }
 
-/// The contracts and grants whose files have changed since the last commit (#223), for the
+/// The contracts, grants and graph bindings whose files have changed since the last commit (#223), for the
 /// list's badge. Empty for a project that isn't a git repository.
 #[tauri::command]
 pub async fn praxis_changes(project_path: String, workspace: State<'_, WorkspaceManager>) -> Result<ChangedFiles, String> {
@@ -164,7 +191,7 @@ pub async fn praxis_changes(project_path: String, workspace: State<'_, Workspace
     blocking(move || changes::changed_files(&project_root(&workspace, &project_path)?)).await
 }
 
-/// The diff of one contract or grant file against the last commit, for the badge's diff view.
+/// The diff of one contract, grant or graph binding file against the last commit, for the badge's diff view.
 #[tauri::command]
 pub async fn praxis_diff(
     project_path: String,
