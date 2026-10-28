@@ -391,7 +391,7 @@ An agent changed a file it doesn't own. If `git status` marks it ` M`, paste `gi
 :::
 
 ::: next
-[Tutorials](/tutorials/)
+[A2A 10: Second opinion from Codex](/tutorials/a2a/second-opinion-codex/)
 
-The next tutorial in series order, A2A 9: Docs that can't lie, isn't published yet. The Tutorials page lists every tutorial that is.
+The next published tutorial in series order; A2A 9 isn't published yet. Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down.
 :::

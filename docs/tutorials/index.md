@@ -31,4 +31,5 @@ Every screenshot and clip in these tutorials comes from a real run of that tutor
 | 5 | [Fan-out / fan-in](/tutorials/a2a/fan-out-fan-in/) | Have a lead agent split a static-site generator across three workers at once, then wire their parts together. |
 | 6 | [Long jobs: fire, then poll](/tutorials/a2a/fire-then-poll/) | Hand a three-minute benchmark to another agent without waiting, check on it, and collect the result from a file. |
 | 8 | [Mission Control operator run](/tutorials/a2a/mission-control/) | Lead three agents from Mission Control alone as they plan, build and verify a text-stats CLI. |
+| 10 | [Second opinion from Codex](/tutorials/a2a/second-opinion-codex/) | Have a Claude Code agent ask a Codex agent for a review, then fix every finding it writes down. |
 <!-- tutorials:end -->
