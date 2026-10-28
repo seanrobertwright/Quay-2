@@ -8,7 +8,7 @@ use super::grants;
 use super::graph_bindings;
 use super::lifecycle;
 use super::models::{
-    BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
+    BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
     FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome,
 };
 use super::store;
@@ -85,6 +85,17 @@ pub async fn praxis_graph_pin(
 ) -> Result<Option<GraphPin>, String> {
     let workspace = workspace.inner().clone();
     blocking(move || graph_bindings::graph_pin(&project_root(&workspace, &project_path)?, &graph_id)).await
+}
+
+/// The ids used across the project's saved graph bindings (#247), which the Runs as section
+/// suggests for its agent, protocol-binding, action and resource fields.
+#[tauri::command]
+pub async fn praxis_binding_suggestions(
+    project_path: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<BindingSuggestions, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || graph_bindings::binding_suggestions(&project_root(&workspace, &project_path)?)).await
 }
 
 /// Shows a definition file in the system file manager.

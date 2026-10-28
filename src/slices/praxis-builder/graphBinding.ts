@@ -285,9 +285,12 @@ export function withPastedEntries(
 /** An entry field whose ids are suggested from the ones already used in the project (#247). */
 export type SuggestedField = "agentId" | "protocolBindingId" | "action" | "resource";
 
-/** The distinct non-empty values of `field` across these bindings' entries, sorted. */
-export function idSuggestions(bindings: Iterable<JsonObject>, field: SuggestedField): string[] {
-  const found = new Set<string>();
+/**
+ * The distinct non-empty values of `field` across these bindings' entries and `saved`, the
+ * values `praxis_binding_suggestions` read from the project's saved bindings, sorted.
+ */
+export function idSuggestions(bindings: Iterable<JsonObject>, field: SuggestedField, saved: Iterable<string> = []): string[] {
+  const found = new Set<string>(saved);
   for (const binding of bindings) {
     for (const entry of Object.values(entriesOf(binding))) {
       const value = entry[field];

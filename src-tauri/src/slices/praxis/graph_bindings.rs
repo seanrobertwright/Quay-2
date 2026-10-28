@@ -7,13 +7,23 @@
 //! SDK uses, never in the frontend. A binding pins its graph by `graphRevision` and
 //! `graphDigest`, read from the graph file as saved on disk, never from an unsaved draft.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::{Map, Value};
 
-use super::models::{GraphPin, PraxisKind};
-use super::store::{read_definition, validate_id};
+use super::models::{BindingSuggestions, GraphPin, PraxisKind};
+use super::store::{confined_dir, json_ids, read_definition, validate_id};
 use super::validate::{check_canonical, escape, field_issue, with_verdict, Diagnostic, Found, Severity, Validation};
+
+/// The most binding files `binding_suggestions` reads.
+pub const MAX_BINDINGS_SCANNED: usize = 10_000;
+
+/// The most values `binding_suggestions` returns for each field.
+pub const MAX_SUGGESTIONS: usize = 500;
+
+/// The entry fields `binding_suggestions` collects, in `BindingSuggestions` field order.
+const SUGGESTED_FIELDS: [&str; 4] = ["agentId", "protocolBindingId", "action", "resource"];
 
 /// How many hex digits of the content's SHA-256 make `graphBindingRevision`: 52 bits, so the
 /// integer stays within the schema's 2^53 - 1.
@@ -51,6 +61,32 @@ pub fn graph_pin(repo: &Path, graph_id: &str) -> Result<Option<GraphPin>, String
     let digest = aiws_sdk::digest(&graph).map_err(|e| format!("Graph {} can't be digested: {}", graph_id, e.code))?;
     let revision = graph.get("revision").and_then(Value::as_str).map(str::to_string);
     Ok(Some(GraphPin { revision, digest }))
+}
+
+/// The non-blank `agentId`, `protocolBindingId`, `action` and `resource` values of every
+/// entry in the project's saved graph bindings (#247), each list distinct and sorted. It reads
+/// the first `MAX_BINDINGS_SCANNED` files in id order, skips any that can't be read, and keeps
+/// the first `MAX_SUGGESTIONS` values of each field: these are hints, not checks.
+pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
+    let folder = PraxisKind::GraphBindings.folder();
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(BindingSuggestions::default()) };
+    let mut found: [BTreeSet<String>; 4] = Default::default();
+    for id in json_ids(&dir, folder)?.into_iter().take(MAX_BINDINGS_SCANNED) {
+        let Ok(file) = read_definition(repo, PraxisKind::GraphBindings, &id) else { continue };
+        let Some(nodes) = file.content.as_ref().and_then(|c| c.get("nodes")).and_then(Value::as_object) else {
+            continue;
+        };
+        for entry in nodes.values() {
+            for (field, values) in SUGGESTED_FIELDS.iter().zip(found.iter_mut()) {
+                if let Some(value) = entry.get(*field).and_then(Value::as_str).filter(|v| !v.trim().is_empty()) {
+                    values.insert(value.to_string());
+                }
+            }
+        }
+    }
+    let [agent_id, protocol_binding_id, action, resource] =
+        found.map(|values| values.into_iter().take(MAX_SUGGESTIONS).collect());
+    Ok(BindingSuggestions { agent_id, protocol_binding_id, action, resource })
 }
 
 /// Fills a binding's `graphRevision` and `graphDigest` from its graph as saved on disk, when
@@ -435,5 +471,27 @@ mod tests {
         let v = validate_graph_binding(&record, Some(&graph));
         assert_eq!(v.verdict, None);
         assert!(errors(&v).is_empty(), "{:?}", v.diagnostics);
+    }
+
+    #[test]
+    fn suggestions_are_the_ids_used_across_every_saved_binding() {
+        let repo = temp_repo();
+        write(
+            &repo,
+            ".praxis/graph-bindings/b.json",
+            r#"{"graphBindingId": "b", "nodes": {"x": {"agentId": "codex"}, "y": {"protocolBindingId": "gh", "action": "merge", "resource": "repo"}}}"#,
+        );
+        write(
+            &repo,
+            ".praxis/graph-bindings/a.json",
+            r#"{"graphBindingId": "a", "nodes": {"x": {"agentId": "claude-code"}, "z": {"agentId": "codex", "action": " "}}}"#,
+        );
+        write(&repo, ".praxis/graph-bindings/broken.json", "{");
+        let found = binding_suggestions(&repo).unwrap();
+        assert_eq!(found.agent_id, vec!["claude-code", "codex"]);
+        assert_eq!(found.protocol_binding_id, vec!["gh"]);
+        assert_eq!(found.action, vec!["merge"]);
+        assert_eq!(found.resource, vec!["repo"]);
+        assert_eq!(binding_suggestions(&temp_repo()).unwrap(), BindingSuggestions::default());
     }
 }

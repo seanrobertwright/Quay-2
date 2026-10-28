@@ -405,6 +405,17 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
+/// The ids used across the project's saved graph bindings (#247), each list distinct and sorted,
+/// which the Runs as section suggests for its free-text id fields.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindingSuggestions {
+    pub agent_id: Vec<String>,
+    pub protocol_binding_id: Vec<String>,
+    pub action: Vec<String>,
+    pub resource: Vec<String>,
+}
+
 /// What a graph binding pins (#247): a graph's `revision` and the SDK digest of the graph
 /// record as saved on disk. `revision` is `None` when the graph has no string revision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

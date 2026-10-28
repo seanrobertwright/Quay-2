@@ -139,6 +139,7 @@ import {
   type Sessions,
 } from "./session.ts";
 import type {
+  BindingSuggestions,
   BindingsInput,
   ChangedFiles,
   ChangeStatus,
@@ -476,6 +477,24 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       stale = true;
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
+
+  // The ids used across the project's saved bindings (#247), read with an open graph and after
+  // every save, for the Runs as section to suggest. Keyed by project.
+  const [savedSuggestions, setSavedSuggestions] = useState<{ projectKey: string; ids: BindingSuggestions } | null>(null);
+  useEffect(() => {
+    if (!isOpen || !projectPath || openKind !== "graphs") return;
+    let stale = false;
+    const key = normalizePath(projectPath);
+    invoke<BindingSuggestions>("praxis_binding_suggestions", { projectPath }).then(
+      (ids) => {
+        if (!stale) setSavedSuggestions({ projectKey: key, ids });
+      },
+      (e) => console.error("[praxis-builder] can't read the binding id suggestions:", e)
+    );
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, openKind, refreshCount]);
 
   // The open graph's bindings, read each time the list is, so each has a draft: a node rename
   // rewrites every binding of the graph (#247), and the picker offers them all.
@@ -1077,19 +1096,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     });
   })();
 
-  // Suggestions for the Runs as id fields: the ids used in the project's bindings the builder has read.
+  // Suggestions for the Runs as id fields: the ids used in the project's saved bindings and in
+  // the binding drafts, which may hold ids not saved yet.
   const bindingContents = useMemo(
     () => Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-bindings").map((d) => d.content),
     [session?.drafts]
   );
+  const saved = savedSuggestions?.projectKey === projectKey ? savedSuggestions.ids : null;
   const suggestions = useMemo(
     () => ({
-      agentId: idSuggestions(bindingContents, "agentId"),
-      protocolBindingId: idSuggestions(bindingContents, "protocolBindingId"),
-      action: idSuggestions(bindingContents, "action"),
-      resource: idSuggestions(bindingContents, "resource"),
+      agentId: idSuggestions(bindingContents, "agentId", saved?.agentId),
+      protocolBindingId: idSuggestions(bindingContents, "protocolBindingId", saved?.protocolBindingId),
+      action: idSuggestions(bindingContents, "action", saved?.action),
+      resource: idSuggestions(bindingContents, "resource", saved?.resource),
     }),
-    [bindingContents]
+    [bindingContents, saved]
   );
   const chosenContent = chosenDraft?.content;
   const shownBinding: Omit<ShownBinding, "diagnostics"> | null = useMemo(
