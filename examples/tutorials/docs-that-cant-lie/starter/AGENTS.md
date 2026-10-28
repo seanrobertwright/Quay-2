@@ -15,11 +15,13 @@ it was written for 1.x.
 
 ## README sample rules
 
-- A sample is a fenced block tagged `ts`. The block right after it is tagged `text` and holds the
-  sample's exact output, nothing else.
+- A sample is a fenced block tagged `ts`. The next block, with only blank lines between, is
+  tagged `text` and holds the sample's exact output, nothing else.
 - Samples import from `"slugkit"` and print with `console.log`.
 - No randomness, dates or file system in samples, so every run prints the same thing.
-- Every export (`slugify`, `truncate`, `uniqueSlug`) appears in at least one passing sample.
+- Every export (`slugify`, `truncate`, `uniqueSlug`) is called in at least one passing sample.
+- Tag every code sample `ts`: the checker fails a block tagged `typescript`, `js` or the like,
+  since it never runs one.
 - The Quick start stays the first section, and its sample keeps an accented title, so the first
   thing the README shows is accents being stripped.
 

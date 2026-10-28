@@ -11,6 +11,10 @@ describe("slugify", () => {
     expect(slugify("Hello World", { separator: "_" })).toBe("hello_world");
   });
 
+  it("drops a letter with no plain-Latin form and splits the word there", () => {
+    expect(slugify("Straße Øresund")).toBe("stra-e-resund");
+  });
+
   it("returns an empty slug for text with no letters or digits", () => {
     expect(slugify("¿!?")).toBe("");
   });

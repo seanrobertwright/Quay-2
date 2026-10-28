@@ -80,14 +80,14 @@ npm test; npm run check:readme
 ```
 :::
 
-The code is fine: all 13 unit tests pass. The README isn't. Its one sample says `slugify("Crème Brûlée Recipes")` prints `Crème-Brûlée-Recipes`, as 1.x did. 2.0.0 lowercases and strips accents, so it prints `creme-brulee-recipes`. Nobody noticed, because nobody ran the sample. The checker did, and it also says no passing sample uses any of the library's three exports. It writes the details to `.readme-samples/report.md`; open that file if you want to see the diff.
+The code is fine: all 15 unit tests pass. The README isn't. Its one sample says `slugify("Crème Brûlée Recipes")` prints `Crème-Brûlée-Recipes`, as 1.x did. 2.0.0 lowercases and strips accents, so it prints `creme-brulee-recipes`. Nobody noticed, because nobody ran the sample. The checker did, and it also says no passing sample calls any of the library's three exports. It writes the details to `.readme-samples/report.md`; open that file if you want to see the diff.
 
 ::: see
-![The shell pane: Vitest passes 3 test files and 13 tests, then the checker prints FAIL sample 1 (README.md line 7), Not covered: slugify, truncate, uniqueSlug, and 0 of 1 samples ran as written.](./02-readme-red.webp)
+![The shell pane: Vitest passes 3 test files and 15 tests, then the checker prints FAIL sample 1 (README.md line 7), Not covered: slugify, truncate, uniqueSlug, and 0 of 1 samples ran as written.](./02-readme-red.webp)
 :::
 
 ::: must
-- Vitest ends with `Tests  13 passed (13)`.
+- Vitest ends with `Tests  15 passed (15)`.
 - The checker prints `FAIL sample 1 (README.md line 7)`, `Not covered: slugify, truncate, uniqueSlug` and last `0 of 1 samples ran as written`.
 :::
 

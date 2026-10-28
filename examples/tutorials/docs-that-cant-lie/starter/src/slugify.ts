@@ -6,8 +6,9 @@ export type SlugifyOptions = {
 };
 
 /**
- * Turns `text` into a URL slug: accents stripped, lowercased, and every run of letters and
- * digits a word, joined by `separator`. With `maxLength`, drops whole words from the end until
+ * Turns `text` into a URL slug: accents stripped, lowercased, and every run of `a`-`z` and `0`-`9`
+ * left after that a word, joined by `separator`. Any other character, including a letter with no
+ * plain-Latin form such as `ß` or `ø`, separates words and is dropped. With `maxLength`, drops whole words from the end until
  * the slug fits; only a first word longer than `maxLength` on its own is cut.
  */
 export function slugify(text: string, options: SlugifyOptions = {}): string {

@@ -16,6 +16,11 @@ describe("truncate", () => {
     expect(truncate("Hello world", 8, { ellipsis: "..." })).toBe("Hello...");
   });
 
+  it("counts an emoji as one character and never cuts one in half", () => {
+    expect(truncate("ab😀cd", 4)).toBe("ab😀…");
+    expect(truncate("ab😀", 3)).toBe("ab😀");
+  });
+
   it("refuses a limit shorter than the ellipsis", () => {
     expect(() => truncate("Hello", 2, { ellipsis: "..." })).toThrow(RangeError);
   });

@@ -1,6 +1,6 @@
 {
   "typecheck": { "expect": "pass" },
-  "tests": { "expect": "pass", "passed": 13 },
+  "tests": { "expect": "pass", "passed": 15 },
   "scripts": [
     {
       "name": "check:readme",
