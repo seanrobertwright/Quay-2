@@ -290,7 +290,8 @@ export type SuggestedField = "agentId" | "protocolBindingId" | "action" | "resou
 
 /**
  * The distinct non-empty values of `field` across these bindings' entries and `saved`, the
- * values `praxis_binding_suggestions` read from the project's saved bindings, sorted.
+ * values `praxis_binding_suggestions` read from the project's saved bindings and workflow
+ * templates, sorted.
  */
 export function idSuggestions(bindings: Iterable<JsonObject>, field: SuggestedField, saved: Iterable<string> = []): string[] {
   const found = new Set<string>(saved);

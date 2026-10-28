@@ -245,7 +245,10 @@ export interface ContextCheck {
   unchecked: string[];
 }
 
-/** `praxis_binding_suggestions`: the ids used across the project's saved graph bindings (#247). */
+/**
+ * `praxis_binding_suggestions`: the ids used across the project's saved graph bindings, with the
+ * agents of its saved workflow templates among the agent ids (#247).
+ */
 export type BindingSuggestions = Record<"agentId" | "protocolBindingId" | "action" | "resource", string[]>;
 
 /** `praxis_graph_pin`: what a graph binding pins, read from the graph as saved on disk (#247). */

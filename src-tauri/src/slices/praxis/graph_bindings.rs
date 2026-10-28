@@ -19,6 +19,9 @@ use super::validate::{check_canonical, escape, field_issue, with_verdict, Diagno
 /// The most binding files `binding_suggestions` reads.
 pub const MAX_BINDINGS_SCANNED: usize = 10_000;
 
+/// The most workflow template files `binding_suggestions` reads.
+pub const MAX_TEMPLATES_SCANNED: usize = 10_000;
+
 /// The most values `binding_suggestions` returns for each field.
 pub const MAX_SUGGESTIONS: usize = 500;
 
@@ -64,29 +67,47 @@ pub fn graph_pin(repo: &Path, graph_id: &str) -> Result<Option<GraphPin>, String
 }
 
 /// The non-blank `agentId`, `protocolBindingId`, `action` and `resource` values of every
-/// entry in the project's saved graph bindings (#247), each list distinct and sorted. It reads
-/// the first `MAX_BINDINGS_SCANNED` files in id order, skips any that can't be read, and keeps
-/// the first `MAX_SUGGESTIONS` values of each field: these are hints, not checks.
+/// entry in the project's saved graph bindings, and the non-blank `agent` of every saved
+/// workflow template (#247), each list distinct and sorted. A template holds no protocol
+/// binding, action or resource, so it adds to the agent ids only. It reads the first
+/// `MAX_BINDINGS_SCANNED` binding files and the first `MAX_TEMPLATES_SCANNED` template files in
+/// id order, skips any that can't be read, and keeps the first `MAX_SUGGESTIONS` values of each
+/// field: these are hints, not checks.
 pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
-    let folder = PraxisKind::GraphBindings.folder();
-    let Some(dir) = confined_dir(repo, folder)? else { return Ok(BindingSuggestions::default()) };
     let mut found: [BTreeSet<String>; 4] = Default::default();
-    for id in json_ids(&dir, folder)?.into_iter().take(MAX_BINDINGS_SCANNED) {
-        let Ok(file) = read_definition(repo, PraxisKind::GraphBindings, &id) else { continue };
-        let Some(nodes) = file.content.as_ref().and_then(|c| c.get("nodes")).and_then(Value::as_object) else {
-            continue;
-        };
+    for record in saved_records(repo, PraxisKind::GraphBindings, MAX_BINDINGS_SCANNED)? {
+        let Some(nodes) = record.get("nodes").and_then(Value::as_object) else { continue };
         for entry in nodes.values() {
             for (field, values) in SUGGESTED_FIELDS.iter().zip(found.iter_mut()) {
-                if let Some(value) = entry.get(*field).and_then(Value::as_str).filter(|v| !v.trim().is_empty()) {
-                    values.insert(value.to_string());
-                }
+                insert_non_blank(values, entry.get(*field));
             }
         }
+    }
+    for record in saved_records(repo, PraxisKind::Templates, MAX_TEMPLATES_SCANNED)? {
+        insert_non_blank(&mut found[0], record.get("agent"));
     }
     let [agent_id, protocol_binding_id, action, resource] =
         found.map(|values| values.into_iter().take(MAX_SUGGESTIONS).collect());
     Ok(BindingSuggestions { agent_id, protocol_binding_id, action, resource })
+}
+
+/// The content of the first `cap` files of `kind`, in id order, leaving out any that can't be
+/// read or parsed. None when the kind's folder doesn't exist.
+fn saved_records(repo: &Path, kind: PraxisKind, cap: usize) -> Result<Vec<Value>, String> {
+    let folder = kind.folder();
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(Vec::new()) };
+    Ok(json_ids(&dir, folder)?
+        .into_iter()
+        .take(cap)
+        .filter_map(|id| read_definition(repo, kind, &id).ok()?.content)
+        .collect())
+}
+
+/// Adds `value` to `values` when it is a string that isn't blank.
+fn insert_non_blank(values: &mut BTreeSet<String>, value: Option<&Value>) {
+    if let Some(value) = value.and_then(Value::as_str).filter(|v| !v.trim().is_empty()) {
+        values.insert(value.to_string());
+    }
 }
 
 /// Fills a binding's `graphRevision` and `graphDigest` from its graph as saved on disk, when
@@ -488,5 +509,31 @@ mod tests {
         assert_eq!(found.action, vec!["merge"]);
         assert_eq!(found.resource, vec!["repo"]);
         assert_eq!(binding_suggestions(&temp_repo()).unwrap(), BindingSuggestions::default());
+    }
+
+    #[test]
+    fn agent_suggestions_add_the_agent_of_every_saved_template() {
+        let repo = temp_repo();
+        write(
+            &repo,
+            ".praxis/graph-bindings/b.json",
+            r#"{"graphBindingId": "b", "nodes": {"x": {"agentId": "codex", "protocolBindingId": "gh", "action": "merge", "resource": "repo"}}}"#,
+        );
+        write(
+            &repo,
+            ".praxis/templates/review.json",
+            r#"{"agent": "claude-code", "protocolBindingId": "jira", "action": "close", "resource": "ticket"}"#,
+        );
+        write(&repo, ".praxis/templates/no-agent.json", r#"{"title": "no agent", "agent": " "}"#);
+        write(&repo, ".praxis/templates/broken.json", "{");
+        let found = binding_suggestions(&repo).unwrap();
+        assert_eq!(found.agent_id, vec!["claude-code", "codex"]);
+        assert_eq!(found.protocol_binding_id, vec!["gh"]);
+        assert_eq!(found.action, vec!["merge"]);
+        assert_eq!(found.resource, vec!["repo"]);
+        // Templates alone, without a bindings folder.
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/review.json", r#"{"agent": "claude-code"}"#);
+        assert_eq!(binding_suggestions(&repo).unwrap().agent_id, vec!["claude-code"]);
     }
 }

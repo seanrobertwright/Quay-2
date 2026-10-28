@@ -412,8 +412,9 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
-/// The ids used across the project's saved graph bindings (#247), each list distinct and sorted,
-/// which the Runs as section suggests for its free-text id fields.
+/// The ids used across the project's saved graph bindings, with the agents of its saved workflow
+/// templates among the agent ids (#247), each list distinct and sorted, which the Runs as section
+/// suggests for its free-text id fields.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BindingSuggestions {

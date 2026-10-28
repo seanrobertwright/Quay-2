@@ -481,8 +481,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
 
-  // The ids used across the project's saved bindings (#247), read with an open graph and after
-  // every save, for the Runs as section to suggest. Keyed by project.
+  // The ids used across the project's saved bindings and templates (#247), read with an open
+  // graph and after every save, for the Runs as section to suggest. Keyed by project.
   const [savedSuggestions, setSavedSuggestions] = useState<{ projectKey: string; ids: BindingSuggestions } | null>(null);
   useEffect(() => {
     if (!isOpen || !projectPath || openKind !== "graphs") return;

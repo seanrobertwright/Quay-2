@@ -87,8 +87,9 @@ pub async fn praxis_graph_pin(
     blocking(move || graph_bindings::graph_pin(&project_root(&workspace, &project_path)?, &graph_id)).await
 }
 
-/// The ids used across the project's saved graph bindings (#247), which the Runs as section
-/// suggests for its agent, protocol-binding, action and resource fields.
+/// The ids used across the project's saved graph bindings, and the agents of its saved workflow
+/// templates (#247), which the Runs as section suggests for its agent, protocol-binding, action
+/// and resource fields.
 #[tauri::command]
 pub async fn praxis_binding_suggestions(
     project_path: String,

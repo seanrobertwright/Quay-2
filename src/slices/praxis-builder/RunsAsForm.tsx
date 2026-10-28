@@ -19,7 +19,7 @@ export interface ShownBinding {
   content: JsonObject;
   /** The binding's validation issues against the graph draft, or none while it is checked. */
   diagnostics: readonly Diagnostic[];
-  /** Ids already used in the project's bindings, for the id fields' suggestions. */
+  /** Ids already used in the project's bindings and workflow templates, for the id fields' suggestions. */
   suggestions: Readonly<Record<SuggestedField, readonly string[]>>;
   onEdit: (edit: BindingEdit) => void;
 }
