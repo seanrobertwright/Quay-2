@@ -17,10 +17,12 @@ export const DISPATCHABLE_KINDS = ["TASK", "LOOP", "COMPENSATION"] as const;
 export const isDispatchable = (kind: unknown): boolean =>
   typeof kind === "string" && (DISPATCHABLE_KINDS as readonly string[]).includes(kind);
 
+/** A graph's nodes that are objects, in node order; none when it has no `nodes` array. */
+const graphNodes = (graph: JsonObject): JsonObject[] => (Array.isArray(graph.nodes) ? graph.nodes.filter(isObject) : []);
+
 /** A graph's dispatchable nodes, in node order: their id, kind and a TASK's `executionKind`. */
 export function dispatchableNodes(graph: JsonObject): { id: string; kind: string; executionKind?: string }[] {
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes.filter(isObject) : [];
-  return nodes.flatMap((n) => {
+  return graphNodes(graph).flatMap((n) => {
     if (typeof n.id !== "string" || !isDispatchable(n.kind)) return [];
     const config = isObject(n.config) ? n.config : {};
     const executionKind = n.kind === "TASK" && typeof config.executionKind === "string" ? config.executionKind : undefined;
@@ -109,7 +111,7 @@ export interface RetargetPlan {
 /** The entries a retarget onto `graph` drops (nodes gone, or no longer dispatchable) and the new nodes it leaves unbound. */
 export function retargetPlan(binding: JsonObject, graph: JsonObject): RetargetPlan {
   const kinds = new Map<string, unknown>();
-  for (const n of Array.isArray(graph.nodes) ? graph.nodes.filter(isObject) : []) {
+  for (const n of graphNodes(graph)) {
     if (typeof n.id === "string") kinds.set(n.id, n.kind);
   }
   const entries = entriesOf(binding);

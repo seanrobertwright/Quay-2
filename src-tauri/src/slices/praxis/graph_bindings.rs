@@ -132,14 +132,15 @@ fn describe(code: &str) -> &'static str {
 /// The ids of a graph's dispatchable nodes, in node order. Nodes without a string id are left
 /// out: the graph's own validation reports them.
 pub fn dispatchable_ids(graph: &Value) -> Vec<&str> {
-    graph
-        .get("nodes")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    graph_nodes(graph)
         .filter(|n| n.get("kind").and_then(Value::as_str).is_some_and(|k| DISPATCHABLE_KINDS.contains(&k)))
         .filter_map(|n| n.get("id").and_then(Value::as_str))
         .collect()
+}
+
+/// The graph's nodes, in node order; none when it has no `nodes` array.
+fn graph_nodes(graph: &Value) -> impl Iterator<Item = &Value> {
+    graph.get("nodes").and_then(Value::as_array).into_iter().flatten()
 }
 
 /// An issue about one node's entry, placed on that node so its card and the Problems list show it.
@@ -184,13 +185,7 @@ pub fn validate_graph_binding(binding: &Value, graph: Option<&Value>) -> Validat
                 verdict.get_or_insert_with(|| "BINDING_INCOMPLETE".to_string());
             }
         }
-        let all: Vec<&str> = graph
-            .get("nodes")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|n| n.get("id").and_then(Value::as_str))
-            .collect();
+        let all: Vec<&str> = graph_nodes(graph).filter_map(|n| n.get("id").and_then(Value::as_str)).collect();
         for id in entries.keys().filter(|id| !all.contains(&id.as_str())) {
             let path = format!("/nodes/{}", escape(id));
             found.push(entry_issue(path, id, format!("The graph has no node {}. Retarget to current graph drops this entry.", id)));
