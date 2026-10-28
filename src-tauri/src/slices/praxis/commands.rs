@@ -4,7 +4,8 @@ use tauri::State;
 
 use super::lifecycle;
 use super::models::{
-    DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, LayoutInput, PraxisKind, RenameOutcome, SaveOutcome,
+    BindingsInput, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent, LayoutInput, PraxisKind,
+    RenameOutcome, SaveOutcome,
 };
 use super::store;
 use super::validate::{self, Validation};
@@ -36,7 +37,7 @@ pub async fn praxis_list(
     blocking(move || store::list_definitions(&project_root(&workspace, &project_path)?, kind)).await
 }
 
-/// Reads one definition, and a graph's layout file.
+/// Reads one definition, and a graph's layout file or a contract's bindings file.
 #[tauri::command]
 pub async fn praxis_read(
     project_path: String,
@@ -73,9 +74,10 @@ pub async fn praxis_reveal(
     .await
 }
 
-/// Saves one definition in its canonical form, and a graph's layout. Nothing is written
-/// when the file no longer has `expectedHash` (the hash the draft loaded) unless `force`
-/// is set; `expectedHash` is null for a definition that has never been saved.
+/// Saves one definition in its canonical form, and a graph's layout or a contract's
+/// bindings. Nothing is written when the file no longer has `expectedHash` (the hash the
+/// draft loaded), or a contract's bindings file no longer has `expectedBindingsHash`, unless
+/// `force` is set; `expectedHash` is null for a definition that has never been saved.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn praxis_save(
@@ -84,16 +86,39 @@ pub async fn praxis_save(
     id: String,
     content: serde_json::Value,
     layout: Option<LayoutInput>,
+    bindings: Option<BindingsInput>,
     expected_hash: Option<String>,
+    expected_bindings_hash: Option<String>,
     force: bool,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<SaveOutcome, String> {
     let workspace = workspace.inner().clone();
     blocking(move || {
         let repo = project_root(&workspace, &project_path)?;
-        store::save_definition(&repo, kind, &id, content, layout.as_ref(), expected_hash.as_deref(), force)
+        store::save_definition(
+            &repo,
+            kind,
+            &id,
+            content,
+            layout.as_ref(),
+            bindings.as_ref(),
+            expected_hash.as_deref(),
+            expected_bindings_hash.as_deref(),
+            force,
+        )
     })
     .await
+}
+
+/// The triggers whose `contractId` names the contract `contractId`, for the contract form.
+#[tauri::command]
+pub async fn praxis_contract_triggers(
+    project_path: String,
+    contract_id: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<ContractTriggers, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || store::contract_triggers(&project_root(&workspace, &project_path)?, &contract_id)).await
 }
 
 /// Renames a definition to `newId`, moving the files that belong to it and rewriting the

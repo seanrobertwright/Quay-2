@@ -32,8 +32,14 @@ export const CONFIG_FORMS: Record<NodeKind, FC<ConfigFormProps> | null> = {
   END: null,
 };
 
-export const inputClass =
-  "w-full bg-[#0d1117] border border-[#30363d] rounded-md px-2 py-1 text-xs text-[#c9d1d9] focus:outline-none focus:border-[#58a6ff] aria-invalid:border-[#f85149]";
+/**
+ * A field's look without its width or text colour. Tailwind settles two classes for one
+ * property by stylesheet order, not class order, so a field that needs another width or
+ * colour adds it to this rather than to `inputClass`.
+ */
+export const inputBaseClass =
+  "bg-[#0d1117] border border-[#30363d] rounded-md px-2 py-1 text-xs focus:outline-none focus:border-[#58a6ff] aria-invalid:border-[#f85149]";
+export const inputClass = `${inputBaseClass} w-full text-[#c9d1d9]`;
 export const labelClass = "block text-[11px] font-medium text-[#8b949e] mb-1";
 const hintClass = "mt-1 text-[10px] text-[#6e7681]";
 
@@ -149,7 +155,7 @@ function LoopForm({ node, issues, onEdit }: ConfigFormProps) {
         type="text"
         inputMode="numeric"
         spellCheck={false}
-        className={`${inputClass} w-24 font-mono`}
+        className={`${inputBaseClass} w-24 text-[#c9d1d9] font-mono`}
         // The SDK stores a decimal string; a hand-edited number is shown, and saved as text.
         value={typeof raw === "string" || typeof raw === "number" ? String(raw) : ""}
         onChange={(e) => onEdit({ type: "set-config", id: node.id, key: "maxIterations", value: e.target.value, live: true })}

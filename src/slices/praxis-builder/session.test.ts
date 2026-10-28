@@ -1,22 +1,22 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createGraphDraft, isDirty, markSaved, moveNodes, type GraphDraft } from "./drafts.ts";
+import { createGraphDraft, isDirty, markSaved, moveNodes, type Draft } from "./drafts.ts";
 import { editDraft, type GraphEdit } from "./editor.ts";
 import type { DefinitionFile } from "./types.ts";
 import {
   applyDiskRead,
-  changeGraph,
+  changeDraft,
   definitionKey,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
   EMPTY_SESSION,
-  endGraphMerge,
+  endDraftMerge,
   forgetHistories,
-  redoGraph,
+  redoDraft,
   sessionFor,
-  undoGraph,
+  undoDraft,
   updateSession,
   type Sessions,
 } from "./session.ts";
@@ -57,7 +57,7 @@ test("viewports are kept per definition", () => {
   assert.notEqual(definitionKey({ kind: "graphs", id: "g" }), definitionKey({ kind: "grants", id: "g" }));
 });
 
-function graphDraft(id: string): GraphDraft {
+function graphDraft(id: string): Draft {
   const result = createGraphDraft(
     { kind: "graphs", id },
     { id, kind: "graphs", missing: false, contentHash: "h", content: { id, nodes: [{ id: "end-1", kind: "END" }] } }
@@ -141,92 +141,92 @@ test("dropping a draft leaves the rest of the session", () => {
 // Undo history of a graph workspace (#248).
 
 const opened = () => applyDiskRead(EMPTY_SESSION, ship, shipFile("h1"));
-const edit = (e: GraphEdit) => (d: GraphDraft) => editDraft(d, e);
-const shipDraft = (s: { drafts: Record<string, GraphDraft> }) => s.drafts["graphs/ship"];
-const nodeIdsOf = (d: GraphDraft) => (d.content.nodes as { id: string }[]).map((n) => n.id);
+const edit = (e: GraphEdit) => (d: Draft) => editDraft(d, e);
+const shipDraft = (s: { drafts: Record<string, Draft> }) => s.drafts["graphs/ship"];
+const nodeIdsOf = (d: Draft) => (d.content.nodes as { id: string }[]).map((n) => n.id);
 
 test("an edit is one step, and undo and redo put the draft back and forth", () => {
   const start = opened();
-  const added = changeGraph(start, ship, edit({ type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 200 } }), { label: "Add task-1" }, 0);
+  const added = changeDraft(start, ship, edit({ type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 200 } }), { label: "Add task-1" }, 0);
   assert.deepEqual(nodeIdsOf(shipDraft(added)), ["end-1", "task-1"]);
 
-  const undone = undoGraph(added, ship)!;
+  const undone = undoDraft(added, ship)!;
   assert.equal(undone.label, "Add task-1");
   assert.deepEqual(nodeIdsOf(shipDraft(undone.session)), ["end-1"]);
   assert.equal(isDirty(shipDraft(undone.session)), false, "undoing back to the loaded state is clean");
 
-  const redone = redoGraph(undone.session, ship)!;
+  const redone = redoDraft(undone.session, ship)!;
   assert.deepEqual(nodeIdsOf(shipDraft(redone.session)), ["end-1", "task-1"]);
   assert.deepEqual(redone.changed, ["task-1"], "redo selects the node the step added");
-  assert.equal(redoGraph(redone.session, ship), null);
+  assert.equal(redoDraft(redone.session, ship), null);
 });
 
 test("a change that changes nothing, such as a drag dropped where it began, records no step", () => {
   const start = opened();
   const at = shipDraft(start).positions.get("end-1")!;
-  const moved = changeGraph(start, ship, (d) => moveNodes(d, [["end-1", at]]), { label: "Move" }, 0);
+  const moved = changeDraft(start, ship, (d) => moveNodes(d, [["end-1", at]]), { label: "Move" }, 0);
   assert.equal(moved, start);
-  assert.equal(undoGraph(moved, ship), null);
+  assert.equal(undoDraft(moved, ship), null);
 });
 
 test("undo selects the nodes the step changed that still exist", () => {
   let s = opened();
-  s = changeGraph(s, ship, edit({ type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 200 } }), { label: "Add" }, 0);
-  s = changeGraph(s, ship, edit({ type: "connect", source: "task-1", target: "end-1" }), { label: "Connect" }, 1);
-  s = changeGraph(s, ship, (d) => moveNodes(d, [["task-1", { x: 50, y: 50 }]]), { label: "Move" }, 2);
-  assert.deepEqual(undoGraph(s, ship)!.changed, ["task-1"]);
+  s = changeDraft(s, ship, edit({ type: "add-node", id: "task-1", kind: "TASK", position: { x: 0, y: 200 } }), { label: "Add" }, 0);
+  s = changeDraft(s, ship, edit({ type: "connect", source: "task-1", target: "end-1" }), { label: "Connect" }, 1);
+  s = changeDraft(s, ship, (d) => moveNodes(d, [["task-1", { x: 50, y: 50 }]]), { label: "Move" }, 2);
+  assert.deepEqual(undoDraft(s, ship)!.changed, ["task-1"]);
 
-  s = undoGraph(s, ship)!.session;
-  assert.deepEqual(undoGraph(s, ship)!.changed, ["end-1"], "undoing the connection selects the node whose dependsOn changed");
+  s = undoDraft(s, ship)!.session;
+  assert.deepEqual(undoDraft(s, ship)!.changed, ["end-1"], "undoing the connection selects the node whose dependsOn changed");
 
-  s = undoGraph(s, ship)!.session;
-  assert.deepEqual(undoGraph(s, ship)!.changed, [], "undoing an add leaves nothing to select");
+  s = undoDraft(s, ship)!.session;
+  assert.deepEqual(undoDraft(s, ship)!.changed, [], "undoing an add leaves nothing to select");
 });
 
 test("live typing in one field merges until the merge ends", () => {
-  let s = changeGraph(opened(), ship, edit({ type: "add-node", id: "loop-1", kind: "LOOP", position: { x: 0, y: 200 } }), { label: "Add" }, 0);
+  let s = changeDraft(opened(), ship, edit({ type: "add-node", id: "loop-1", kind: "LOOP", position: { x: 0, y: 200 } }), { label: "Add" }, 0);
   const typing = { label: "Edit maxIterations", merge: { key: "loop-1|config.maxIterations" } };
   for (const value of ["1", "12", "123"]) {
-    s = changeGraph(s, ship, edit({ type: "set-config", id: "loop-1", key: "maxIterations", value }), typing, 1);
+    s = changeDraft(s, ship, edit({ type: "set-config", id: "loop-1", key: "maxIterations", value }), typing, 1);
   }
-  s = endGraphMerge(s, ship);
-  s = changeGraph(s, ship, edit({ type: "set-config", id: "loop-1", key: "maxIterations", value: "1234" }), typing, 2);
+  s = endDraftMerge(s, ship);
+  s = changeDraft(s, ship, edit({ type: "set-config", id: "loop-1", key: "maxIterations", value: "1234" }), typing, 2);
   assert.equal(s.histories["graphs/ship"].past.length, 3);
-  s = undoGraph(s, ship)!.session;
-  s = undoGraph(s, ship)!.session;
+  s = undoDraft(s, ship)!.session;
+  s = undoDraft(s, ship)!.session;
   const loop = (shipDraft(s).content.nodes as { id: string; config: { maxIterations: string } }[])[1];
   assert.equal(loop.config.maxIterations, "3", "two undos go back past all three keystrokes to the default");
 });
 
 test("save keeps the history, and undoing past the save makes the draft dirty again", () => {
-  let s = changeGraph(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
+  let s = changeDraft(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
   const d = shipDraft(s);
   const layout = { nodes: [{ id: "end-1", x: 40, y: 40 }], viewport: null };
   s = { ...s, drafts: { "graphs/ship": markSaved(d, { content: d.content, contentHash: "h2" }, { content: d.content, layout }) } };
   assert.equal(isDirty(shipDraft(s)), false);
-  s = undoGraph(s, ship)!.session;
+  s = undoDraft(s, ship)!.session;
   assert.equal(isDirty(shipDraft(s)), true);
 });
 
 test("a quiet reload from disk clears the history, and a kept dirty draft keeps it", () => {
-  const edited = changeGraph(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
+  const edited = changeDraft(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
   assert.notEqual(edited.histories["graphs/ship"], undefined);
   assert.equal(applyDiskRead(edited, ship, shipFile("h2")).histories["graphs/ship"], edited.histories["graphs/ship"]);
 
-  const undone = undoGraph(edited, ship)!.session;
+  const undone = undoDraft(edited, ship)!.session;
   const reloaded = applyDiskRead(undone, ship, shipFile("h2", 300));
   assert.equal(reloaded.histories["graphs/ship"], undefined);
 });
 
 test("dropping a draft, as Reload in the conflict prompt does, drops its history", () => {
-  const edited = changeGraph(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
+  const edited = changeDraft(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 40, y: 40 }]]), { label: "Move" }, 0);
   assert.equal(dropDraft(edited, ship).histories["graphs/ship"], undefined);
 });
 
 test("removing a project forgets its histories but keeps its drafts", () => {
   let sessions: Sessions = new Map();
-  sessions = updateSession(sessions, "E:\\A", () => changeGraph(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 1, y: 1 }]]), { label: "Move" }, 0));
-  sessions = updateSession(sessions, "E:\\B", () => changeGraph(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 2, y: 2 }]]), { label: "Move" }, 0));
+  sessions = updateSession(sessions, "E:\\A", () => changeDraft(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 1, y: 1 }]]), { label: "Move" }, 0));
+  sessions = updateSession(sessions, "E:\\B", () => changeDraft(opened(), ship, (d) => moveNodes(d, [["end-1", { x: 2, y: 2 }]]), { label: "Move" }, 0));
   const after = forgetHistories(sessions, ["e:/A/"]);
   assert.deepEqual(sessionFor(after, "E:\\A").histories, {});
   assert.notEqual(sessionFor(after, "E:\\A").drafts["graphs/ship"], undefined);

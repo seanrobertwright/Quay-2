@@ -3,7 +3,7 @@
 // `then` and `else` and in the layout, so rename and delete rewrite those as well as every
 // `dependsOn`. An edit works on the record's JSON as it is, so a node it doesn't touch
 // keeps whatever it holds, even when that is something the SDK refuses.
-import { withChanges, type GraphDraft } from "./drafts.ts";
+import { withChanges, type Draft } from "./drafts.ts";
 import type { Step } from "./history.ts";
 import { NODE_KINDS_REGISTRY } from "./kinds.ts";
 import { hasOwn, isObject, MAX_NODES, type Json, type JsonObject, type NodeKind, type XYPosition } from "./model.ts";
@@ -110,7 +110,7 @@ export function stepFor(edit: GraphEdit): Step {
 }
 
 /** The draft after `edit`, or the same draft when the edit changes nothing or doesn't apply. */
-export function editDraft(draft: GraphDraft, edit: GraphEdit): GraphDraft {
+export function editDraft(draft: Draft, edit: GraphEdit): Draft {
   const nodes = nodesOf(draft.content);
   const result = apply(nodes, draft.positions, edit);
   if (!result) return draft;

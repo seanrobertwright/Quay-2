@@ -1,13 +1,13 @@
 /// <reference types="node" />
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createGraphDraft, isDirty, type GraphDraft } from "./drafts.ts";
+import { createGraphDraft, isDirty, type Draft } from "./drafts.ts";
 import { editDraft, nextNodeId, renameProblem, stepFor } from "./editor.ts";
 import { MAX_NODES, type JsonObject } from "./model.ts";
 
 const ref = { kind: "graphs" as const, id: "ship" };
 
-function draftOf(nodes: JsonObject[], positions: Record<string, { x: number; y: number }> = {}): GraphDraft {
+function draftOf(nodes: JsonObject[], positions: Record<string, { x: number; y: number }> = {}): Draft {
   const layoutNodes: JsonObject = {};
   for (const n of nodes) layoutNodes[n.id as string] = positions[n.id as string] ?? { x: 0, y: 0 };
   const result = createGraphDraft(ref, {
@@ -29,9 +29,9 @@ const node = (id: string, kind: string, dependsOn: string[] = [], config: JsonOb
   config,
 });
 
-const nodesOf = (d: GraphDraft) => d.content.nodes as JsonObject[];
-const ids = (d: GraphDraft) => nodesOf(d).map((n) => n.id as string);
-const find = (d: GraphDraft, id: string) => nodesOf(d).find((n) => n.id === id);
+const nodesOf = (d: Draft) => d.content.nodes as JsonObject[];
+const ids = (d: Draft) => nodesOf(d).map((n) => n.id as string);
+const find = (d: Draft, id: string) => nodesOf(d).find((n) => n.id === id);
 
 const decisionGraph = () =>
   draftOf([

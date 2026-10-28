@@ -5,6 +5,10 @@
 //! here repeats each SDK rule over the whole graph and attaches a JSON Pointer, the node and
 //! the field. The SDK's code stays the verdict: it always leads the list, and when the SDK
 //! accepts a graph no error is reported. The tests hold the locator to the SDK's vectors.
+//!
+//! Contracts are checked the same way (#223): the verdict is what `Contract::from_value`
+//! and then `create_mission` say, and the locator repeats the schema and both of
+//! `create_mission`'s rules with a path to each field.
 
 use std::collections::HashMap;
 
@@ -23,7 +27,7 @@ const MAX_NODES: usize = 1000;
 /// broken file of thousands of nodes can't flood the webview.
 pub const MAX_DIAGNOSTICS: usize = 500;
 
-/// Validates a definition's content. Only graphs can be validated so far.
+/// Validates a definition's content. Graphs and contracts can be validated so far.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
     if !fits_in(content, MAX_FILE_BYTES) {
         return Err(format!(
@@ -33,6 +37,7 @@ pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validati
     }
     match kind {
         PraxisKind::Graphs => Ok(validate_graph(content)),
+        PraxisKind::Contracts => Ok(validate_contract(content)),
         other => Err(format!("Quay can't validate {} yet.", other.folder())),
     }
 }
@@ -136,7 +141,23 @@ fn fits_in(value: &Value, limit: u64) -> bool {
 /// Validates a graph. The verdict is `aiws_sdk::workflow::validate_graph`'s.
 pub fn validate_graph(graph: &Value) -> Validation {
     let verdict = aiws_sdk::workflow::validate_graph(graph).err().map(|e| e.code);
-    let Found { kept: mut diagnostics, mut omitted } = locate_graph(graph);
+    with_verdict(verdict, locate_graph(graph), describe)
+}
+
+/// Validates a contract. The verdict is the SDK's: the contract must be a valid record
+/// that `create_mission` accepts.
+pub fn validate_contract(contract: &Value) -> Validation {
+    let verdict = aiws_sdk::Contract::from_value(contract.clone())
+        .and_then(|c| aiws_sdk::create_mission(&c))
+        .err()
+        .map(|e| e.code);
+    with_verdict(verdict, locate_contract(contract), describe_contract)
+}
+
+/// The validation for the SDK's `verdict` and what the locator `found`: the verdict's
+/// issue leads, and when the SDK accepts the record no error is kept.
+fn with_verdict(verdict: Option<String>, found: Found, describe: fn(&str) -> &'static str) -> Validation {
+    let Found { kept: mut diagnostics, mut omitted } = found;
     match &verdict {
         // The SDK accepts the graph, so nothing the locator found can be an error.
         None => {
@@ -150,7 +171,7 @@ pub fn validate_graph(graph: &Value) -> Validation {
                 diagnostics.insert(0, first);
             }
             None => {
-                diagnostics.insert(0, graph_issue(code, describe(code)));
+                diagnostics.insert(0, record_issue(code, describe(code)));
                 if diagnostics.len() > MAX_DIAGNOSTICS
                     && let Some(dropped) = diagnostics.pop()
                 {
@@ -195,7 +216,7 @@ fn locate_graph(graph: &Value) -> Found {
     let node_id = |i: usize| nodes.get(i).and_then(|n| n.get("id")).and_then(Value::as_str);
 
     // Schema rules, with the instance path of each failure.
-    for error in graph_schema().iter_errors(graph) {
+    for error in record_schema("Graph").iter_errors(graph) {
         let path = error.instance_path.as_str().to_string();
         out.push(at(graph, &path, "INVALID_RECORD", Severity::Error, error.to_string()));
     }
@@ -221,7 +242,7 @@ fn locate_graph(graph: &Value) -> Found {
     if !has_end && !nodes.is_empty() {
         out.push(Diagnostic {
             path: "/nodes".to_string(),
-            ..graph_issue("MISSING_END", "The graph has no END node, so no run could finish.")
+            ..record_issue("MISSING_END", "The graph has no END node, so no run could finish.")
         });
     }
 
@@ -518,7 +539,7 @@ fn unescape(segment: &str) -> String {
     segment.replace("~1", "/").replace("~0", "~")
 }
 
-fn graph_issue(code: &str, message: &str) -> Diagnostic {
+fn record_issue(code: &str, message: &str) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
@@ -550,16 +571,89 @@ fn at(graph: &Value, path: &str, code: &str, severity: Severity, message: String
     Diagnostic { code: code.to_string(), severity, message, path: path.to_string(), node_id, field }
 }
 
-/// The SDK's bundled schema, with its root pointed at `Graph`, as the SDK builds it.
-fn graph_schema() -> &'static jsonschema::Validator {
-    static VALIDATOR: std::sync::OnceLock<jsonschema::Validator> = std::sync::OnceLock::new();
-    VALIDATOR.get_or_init(|| {
-        let mut schema: Value =
-            serde_json::from_str(include_str!("../../../vendor/aiws/crates/aiws/src/schema.json"))
-                .expect("the vendored schema is JSON");
-        schema["$ref"] = json!("#/$defs/Graph");
-        jsonschema::validator_for(&schema).expect("the vendored schema compiles")
-    })
+/// The SDK's bundled schema with its root pointed at the `$defs` record `name`, as the SDK
+/// builds it. Only the records the builder validates are built.
+fn record_schema(name: &str) -> &'static jsonschema::Validator {
+    type Validators = HashMap<&'static str, jsonschema::Validator>;
+    static VALIDATORS: std::sync::OnceLock<Validators> = std::sync::OnceLock::new();
+    let validators = VALIDATORS.get_or_init(|| {
+        let base: Value = serde_json::from_str(include_str!("../../../vendor/aiws/crates/aiws/src/schema.json"))
+            .expect("the vendored schema is JSON");
+        ["Graph", "Contract"]
+            .into_iter()
+            .map(|n| {
+                let mut schema = base.clone();
+                schema["$ref"] = json!(format!("#/$defs/{n}"));
+                (n, jsonschema::validator_for(&schema).expect("the vendored schema compiles"))
+            })
+            .collect()
+    });
+    &validators[name]
+}
+
+fn describe_contract(code: &str) -> &'static str {
+    match code {
+        "INVALID_RECORD" => "The contract doesn't match the Praxis contract schema.",
+        "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
+        "INPUT_LIMIT" => "The contract is nested more deeply than Praxis allows.",
+        "INVALID_CONTRACT" => "Praxis can't open a mission under this contract.",
+        _ => "Praxis refuses this contract.",
+    }
+}
+
+/// The contract fields the SDK stores as decimal integer strings.
+const CONTRACT_INTEGERS: &[&str] = &["budget", "deadline", "maxAttempts", "maxAuthorizationAgeMs"];
+
+/// A plainer message than the schema's for a contract field, when there is one.
+fn contract_message(contract: &Value, path: &str) -> Option<String> {
+    let field = path.strip_prefix('/')?;
+    let value = contract.get(field)?;
+    if CONTRACT_INTEGERS.contains(&field) {
+        return Some(match value.as_str() {
+            Some("") if field == "deadline" => "The deadline isn't set.".to_string(),
+            Some("") => "This is empty.".to_string(),
+            Some(s) if s.len() > 100 => "This is longer than the 100 digits Praxis allows.".to_string(),
+            Some(_) => "This isn't a whole number of 0 or more written in digits, with no leading zero.".to_string(),
+            None => format!("{} isn't a whole number written as a string, such as \"0\".", value),
+        });
+    }
+    match field {
+        "aiwsEdition" => Some("The edition must be \"0.4\".".to_string()),
+        "profile" => Some("The profile must be \"finite-v1\".".to_string()),
+        _ => None,
+    }
+}
+
+/// Every issue in a contract, each with its location: the schema's, the numbers and
+/// nesting canonical JSON refuses, and the rules of `create_mission`.
+fn locate_contract(contract: &Value) -> Found {
+    let mut out = Found::default();
+    let issue = |path: &str, code: &str, message: String| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        path: path.to_string(),
+        node_id: None,
+        field: None,
+    };
+    // A field can break more than one schema rule, such as a pattern and a length, which
+    // the plainer message covers at once.
+    let mut seen = std::collections::HashSet::new();
+    for error in record_schema("Contract").iter_errors(contract) {
+        let path = error.instance_path.as_str().to_string();
+        let message = contract_message(contract, &path).unwrap_or_else(|| error.to_string());
+        if seen.insert((path.clone(), message.clone())) {
+            out.push(issue(&path, "INVALID_RECORD", message));
+        }
+    }
+    check_canonical(contract, "", 0, &mut |code, path, message| out.push(issue(path, code, message)));
+    if contract.get("criteria").and_then(Value::as_array).is_some_and(Vec::is_empty) {
+        out.push(issue("/criteria", "INVALID_CONTRACT", "A contract needs at least one acceptance criterion.".to_string()));
+    }
+    if contract.get("maxAttempts").and_then(Value::as_str) == Some("0") {
+        out.push(issue("/maxAttempts", "INVALID_CONTRACT", "A contract must allow at least one attempt.".to_string()));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -835,8 +929,9 @@ mod tests {
     }
 
     #[test]
-    fn only_graphs_can_be_validated() {
-        assert!(validate_definition(PraxisKind::Contracts, &json!({})).is_err());
+    fn only_graphs_and_contracts_can_be_validated() {
+        assert!(validate_definition(PraxisKind::Grants, &json!({})).is_err());
+        assert!(validate_definition(PraxisKind::Triggers, &json!({})).is_err());
     }
 
     // --- revision -------------------------------------------------------------------
@@ -866,5 +961,67 @@ mod tests {
                 "field": "dependsOn.0"
             })
         );
+    }
+
+    // --- contracts ---------------------------------------------------------------------
+
+    fn contract() -> Value {
+        json!({
+            "id": "c", "missionId": "c", "aiwsEdition": "0.4", "profile": "finite-v1",
+            "budget": "0", "deadline": "1893456000000", "criteria": ["Tests pass"],
+            "actions": [], "resources": [], "requiresApproval": true,
+            "maxAttempts": "1", "maxAuthorizationAgeMs": "0", "features": ["graphs"]
+        })
+    }
+
+    #[test]
+    fn a_contract_the_sdk_accepts_has_no_issues() {
+        let v = validate_definition(PraxisKind::Contracts, &contract()).unwrap();
+        assert_eq!(v.verdict, None);
+        assert!(v.diagnostics.is_empty(), "{:?}", v.diagnostics);
+    }
+
+    #[test]
+    fn an_unset_deadline_is_flagged_on_its_field() {
+        let mut c = contract();
+        c["deadline"] = json!("");
+        let v = validate_contract(&c);
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
+        assert_eq!(codes_at(&v), pairs(&[("INVALID_RECORD", "/deadline")]));
+        assert_eq!(v.diagnostics[0].message, "The deadline isn't set.");
+    }
+
+    #[test]
+    fn every_bad_integer_is_reported_once_on_its_field() {
+        let mut c = contract();
+        c["budget"] = json!("01");
+        c["maxAttempts"] = json!("x".repeat(101));
+        c["maxAuthorizationAgeMs"] = json!(5);
+        let v = validate_contract(&c);
+        assert_eq!(
+            codes_at(&v),
+            pairs(&[("INVALID_RECORD", "/budget"), ("INVALID_RECORD", "/maxAttempts"), ("INVALID_RECORD", "/maxAuthorizationAgeMs")])
+        );
+    }
+
+    #[test]
+    fn create_missions_rules_are_located() {
+        let mut c = contract();
+        c["criteria"] = json!([]);
+        c["maxAttempts"] = json!("0");
+        let v = validate_contract(&c);
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_CONTRACT"));
+        assert_eq!(codes_at(&v), pairs(&[("INVALID_CONTRACT", "/criteria"), ("INVALID_CONTRACT", "/maxAttempts")]));
+    }
+
+    #[test]
+    fn a_wrong_constant_or_an_unknown_key_is_invalid() {
+        let mut c = contract();
+        c["aiwsEdition"] = json!("0.3");
+        c["extra"] = json!(1);
+        let v = validate_contract(&c);
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
+        assert!(v.diagnostics.iter().any(|d| d.path == "/aiwsEdition" && d.message.contains("0.4")));
+        assert!(v.diagnostics.iter().any(|d| d.path.is_empty()));
     }
 }

@@ -10,7 +10,7 @@ import {
   moveNodes,
   reconcileWithDisk,
   withChanges,
-  type GraphDraft,
+  type Draft,
 } from "./drafts.ts";
 import type { JsonObject } from "./model.ts";
 import type { DefinitionFile } from "./types.ts";
@@ -38,7 +38,7 @@ function file(overrides: Partial<DefinitionFile> = {}): DefinitionFile {
   };
 }
 
-function draft(f: DefinitionFile = file()): GraphDraft {
+function draft(f: DefinitionFile = file()): Draft {
   const result = createGraphDraft(ref, f);
   if (!result.ok) throw new Error(result.message);
   return result.value;

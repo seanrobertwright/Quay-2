@@ -1,13 +1,13 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createGraphDraft, createNewGraphDraft, isDirty, moveNodes, reconcileWithDisk, type GraphDraft } from "./drafts.ts";
+import { createGraphDraft, createNewDraft, isDirty, moveNodes, reconcileWithDisk, type Draft } from "./drafts.ts";
 import { parseGraph } from "./model.ts";
 import { definitionIdProblem, idProblem, MAX_DEFINITION_ID, newGraphContent, nextDefinitionId } from "./lifecycle.ts";
 import {
   addNewDraft,
   applyRename,
-  changeGraph,
+  changeDraft,
   definitionKey,
   EMPTY_SESSION,
   removeDefinition,
@@ -60,8 +60,8 @@ test("a new id is the prefix and the smallest number free ignoring case", () => 
 
 const ref = { kind: "graphs" as const, id: "graph-1" };
 
-function newDraft(): GraphDraft {
-  const result = createNewGraphDraft(ref, newGraphContent(ref.id));
+function newDraft(): Draft {
+  const result = createNewDraft(ref, newGraphContent(ref.id));
   if (!result.ok) throw new Error(result.message);
   return result.value;
 }
@@ -100,7 +100,7 @@ test("adding a new draft opens it", () => {
 
 test("renaming an unsaved draft rekeys it, sets its id and clears its history", () => {
   let session = addNewDraft(EMPTY_SESSION, ref, newDraft());
-  session = changeGraph(session, ref, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, ref, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
   session = { ...session, viewports: { [definitionKey(ref)]: { x: 1, y: 1, zoom: 1 } } };
   const to = { kind: "graphs" as const, id: "ship" };
   const next = renameUnsavedDraft(session, ref, to.id);
@@ -114,7 +114,7 @@ test("renaming an unsaved draft rekeys it, sets its id and clears its history", 
   assert.deepEqual(next.viewports, { [definitionKey(to)]: { x: 1, y: 1, zoom: 1 } });
 });
 
-function savedDraft(id: string, hash: string): GraphDraft {
+function savedDraft(id: string, hash: string): Draft {
   const result = createGraphDraft(
     { kind: "graphs", id },
     { id, kind: "graphs", missing: false, contentHash: hash, content: { id, revision: "r", nodes: [{ id: "end-1", kind: "END", dependsOn: [], config: {} }] } }
@@ -128,8 +128,8 @@ const noOutcome: RenameOutcome = { changes: [], unchecked: [], drafts: [], done:
 test("a rename drops the renamed definition's draft and history and opens the new id", () => {
   const g = { kind: "graphs" as const, id: "g" };
   let session: BuilderSession = { ...EMPTY_SESSION, open: g, drafts: { "graphs/g": savedDraft("g", "h1") } };
-  session = changeGraph(session, g, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
-  session = changeGraph(session, g, (d) => moveNodes(d, [["end-1", { x: 0, y: 0 }]]), { label: "Move" }, 2);
+  session = changeDraft(session, g, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, g, (d) => moveNodes(d, [["end-1", { x: 0, y: 0 }]]), { label: "Move" }, 2);
   session = { ...session, viewports: { "graphs/g": { x: 1, y: 2, zoom: 1 } } };
   const next = applyRename(session, g, "h", noOutcome);
   assert.deepEqual(next.drafts, {}, "the new file is read again");
@@ -147,8 +147,8 @@ test("a rename rewrites dirty drafts that refer to it and expects their rewritte
     open: other,
     drafts: { "graphs/o": savedDraft("o", "o1"), "graphs/c": savedDraft("c", "c1") },
   };
-  session = changeGraph(session, other, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
-  session = changeGraph(session, clean, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, other, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, clean, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
   session = { ...session, drafts: { ...session.drafts, "graphs/c": savedDraft("c", "c1") } };
   const rewritten = { ...session.drafts["graphs/o"].content, refersTo: "h" };
   const outcome: RenameOutcome = {
@@ -176,7 +176,7 @@ test("a rewritten file whose draft had already changed on disk keeps the draft's
   const g = { kind: "graphs" as const, id: "g" };
   const other = { kind: "graphs" as const, id: "o" };
   let session: BuilderSession = { ...EMPTY_SESSION, drafts: { "graphs/o": savedDraft("o", "stale") } };
-  session = changeGraph(session, other, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, other, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
   const outcome: RenameOutcome = {
     ...noOutcome,
     changes: [{ path: ".praxis/graphs/o.json", hashes: { previous: "o1", next: "o2" } }],
@@ -194,7 +194,7 @@ test("deleting drops the definition's draft, history and viewport, and closes it
     drafts: { "graphs/g": savedDraft("g", "h1"), "graphs/k": savedDraft("k", "k1") },
     viewports: { "graphs/g": { x: 0, y: 0, zoom: 1 } },
   };
-  session = changeGraph(session, g, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
+  session = changeDraft(session, g, (d) => moveNodes(d, [["end-1", { x: 9, y: 9 }]]), { label: "Move" }, 1);
   const next = removeDefinition(session, g);
   assert.deepEqual(Object.keys(next.drafts), ["graphs/k"]);
   assert.deepEqual(next.histories, {});

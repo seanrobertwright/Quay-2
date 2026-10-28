@@ -83,7 +83,9 @@ pub struct DefinitionList {
 /// `problem` is set, and `content_hash` is the hash of the bytes read; when it doesn't,
 /// `missing` is true and none of them is set. For a graph, `layout` holds
 /// `.praxis/layout/<id>.json` when that file exists and parses, and `layout_problem` says
-/// why it was ignored when it doesn't parse.
+/// why it was ignored when it doesn't parse. For a contract, `bindings` holds
+/// `.praxis/bindings/<id>.json` the same way, with `bindings_hash` the hash of its bytes, so a
+/// save can tell when it changed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionFile {
@@ -100,6 +102,12 @@ pub struct DefinitionFile {
     pub layout: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_problem: Option<FileProblem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bindings: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bindings_problem: Option<FileProblem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bindings_hash: Option<String>,
 }
 
 /// One node's position as the builder sends it on save.
@@ -126,6 +134,14 @@ pub struct LayoutInput {
     pub viewport: Option<LayoutViewport>,
 }
 
+/// A contract's binding record as the builder sends it on save (#223): the graphs and grants
+/// that run under the contract, written to `.praxis/bindings/<contract-id>.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BindingsInput {
+    pub graphs: Vec<String>,
+    pub grants: Vec<String>,
+}
+
 /// Why a save didn't write: the file changed since the draft loaded it, or was deleted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -136,7 +152,9 @@ pub enum ConflictReason {
 
 /// What a save did. `Saved` carries the record as written and the hash of the written
 /// bytes, which the draft records as its new base. A layout that failed to write after
-/// the definition was saved is reported in `layout_error`, not as a failed save.
+/// the definition was saved is reported in `layout_error`, not as a failed save, and so is
+/// a contract's bindings file in `bindings_error`. `bindings_hash` is the hash of the
+/// bindings file as written, when it was.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum SaveOutcome {
@@ -146,6 +164,10 @@ pub enum SaveOutcome {
         content_hash: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         layout_error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bindings_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bindings_error: Option<String>,
     },
     Conflict { reason: ConflictReason },
 }
@@ -159,8 +181,9 @@ pub struct DraftContent {
     pub content: serde_json::Value,
 }
 
-/// The hash of a definition file's bytes before and after a rename rewrites it, so a draft
-/// that loaded the old bytes can expect the new ones when it saves.
+/// The hash of a file's bytes before and after a rename rewrites it, a definition or a
+/// contract's bindings file, so a draft that loaded the old bytes can expect the new ones
+/// when it saves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HashChange {
@@ -169,8 +192,8 @@ pub struct HashChange {
 }
 
 /// One file a rename writes: rewritten in place at `path`, or moved to `new_path`. Paths
-/// are relative to the repository, with `/` separators. `hashes` is set for a definition
-/// file whose content the rename writes.
+/// are relative to the repository, with `/` separators. `hashes` is set for a file whose
+/// content the rename writes: a definition, or a file belonging to one such as a bindings file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
@@ -216,4 +239,13 @@ pub struct DeleteOutcome {
     pub done: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// The triggers whose `contractId` names a contract, in id order, and the trigger files
+/// that couldn't be read or weren't searched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractTriggers {
+    pub ids: Vec<String>,
+    pub unchecked: Vec<String>,
 }
