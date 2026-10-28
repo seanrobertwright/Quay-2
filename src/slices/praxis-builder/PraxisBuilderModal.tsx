@@ -74,6 +74,7 @@ import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderC
 import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { DiffView } from "./DiffView.tsx";
+import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
   addNewDraft,
@@ -1428,6 +1429,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     ...(entry.list?.entries ?? []),
                     ...orphans.map((d) => ({ id: d.ref.id })),
                   ];
+                  // Files deleted since the last commit have no file to list, but keep a row so
+                  // their badge still opens the diff.
+                  const deleted = currentChanges
+                    ? deletedSinceCommit(currentChanges.byKey, kind, new Set(rows.map((r) => r.id)))
+                    : [];
                   const namingNew = naming?.mode === "new" && naming.kind === kind;
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
@@ -1439,7 +1445,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           {entry.error}
                         </p>
                       )}
-                      {(rows.length > 0 || namingNew) && (
+                      {(rows.length > 0 || deleted.length > 0 || namingNew) && (
                         <ul>
                           {namingNew && (
                             <li>
@@ -1498,6 +1504,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                               </li>
                             );
                           })}
+                          {deleted.map((id) => (
+                            <li key={`deleted:${id}`} className="group flex items-center pr-1.5">
+                              <span className="flex-1 min-w-0 ml-1.5 px-2 py-1 text-xs font-mono text-[#8b949e] line-through truncate">
+                                {id}
+                              </span>
+                              <ChangedBadge id={id} status="deleted" onClick={() => setDiffShown({ kind, id })} />
+                            </li>
+                          ))}
                         </ul>
                       )}
                       {entry.list?.truncated && (
@@ -1757,7 +1771,6 @@ const ListRow: FC<{
   );
 };
 
-/** A small action beside a list row, shown for the open definition, on hover and on focus. */
 /**
  * The "changed since last commit" badge (#223) on a contract or grant whose file differs from
  * the last commit, which opens its diff. It says nothing about approval: a grant file is
@@ -1778,6 +1791,7 @@ const ChangedBadge: FC<{ id: string; status: ChangeStatus; onClick: () => void }
   );
 };
 
+/** A small action beside a list row, shown for the open definition, on hover and on focus. */
 const RowAction: FC<{ label: string; shown: boolean; onClick: () => void; children: ReactNode }> = ({
   label,
   shown,

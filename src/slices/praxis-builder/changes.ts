@@ -1,5 +1,25 @@
 // Changes since the last commit (#223): the list's badge and the diff view it opens.
 
+import type { ChangeStatus, PraxisKind } from "./types.ts";
+
+/**
+ * The ids of `kind`'s files deleted since the last commit that the list has no row for, in id
+ * order, so they still get a row with the badge and their diff. `changes` is keyed by
+ * `definitionKey`; `shown` holds the ids that already have a row.
+ */
+export function deletedSinceCommit(
+  changes: ReadonlyMap<string, ChangeStatus>,
+  kind: PraxisKind,
+  shown: ReadonlySet<string>
+): string[] {
+  const prefix = `${kind}/`;
+  return [...changes]
+    .filter(([key, status]) => status === "deleted" && key.startsWith(prefix))
+    .map(([key]) => key.slice(prefix.length))
+    .filter((id) => !shown.has(id))
+    .sort();
+}
+
 /** One line of a unified diff, with its `+`, `-` or space marker taken off. */
 export interface DiffLine {
   kind: "header" | "hunk" | "added" | "removed" | "context";

@@ -1,7 +1,22 @@
 /// <reference types="node" />
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { diffLines } from "./changes.ts";
+import { deletedSinceCommit, diffLines } from "./changes.ts";
+
+describe("deletedSinceCommit", () => {
+  test("lists the kind's files deleted since the last commit that have no row, in id order", () => {
+    const changes = new Map([
+      ["grants/zed", "deleted"],
+      ["grants/kept", "modified"],
+      ["grants/shown", "deleted"],
+      ["contracts/c", "deleted"],
+      ["grants/alpha", "deleted"],
+    ] as const);
+    assert.deepEqual(deletedSinceCommit(changes, "grants", new Set(["kept", "shown"])), ["alpha", "zed"]);
+    assert.deepEqual(deletedSinceCommit(changes, "contracts", new Set()), ["c"]);
+    assert.deepEqual(deletedSinceCommit(changes, "graphs", new Set()), []);
+  });
+});
 
 describe("diffLines", () => {
   test("marks each line of git's unified diff as a header, a hunk, an addition, a removal or context", () => {
