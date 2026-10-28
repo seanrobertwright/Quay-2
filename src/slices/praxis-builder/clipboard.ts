@@ -14,9 +14,12 @@
  * the smallest free integer), rewires internal dependencies and branches through the
  * remap, and computes positions: a cascading offset when the originals are in view, at a
  * click point for the canvas's context-menu Paste, and centred in the viewport otherwise.
+ * Each copied node's Runs as entry from the graph binding shown travels with it, and paste
+ * writes it into the binding shown in the target under the remapped id (#248).
  */
 import { withChanges, type Draft } from "./drafts.ts";
 import { MAX_ID_LENGTH, nodesOf } from "./editor.ts";
+import { entriesForNodes, withPastedEntries } from "./graphBinding.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { isObject, MAX_NODES, type JsonObject, type XYPosition } from "./model.ts";
 
@@ -32,6 +35,11 @@ export interface ClipboardEnvelope {
   positions: Record<string, XYPosition>;
   /** Key of the source graph workspace, for checking if originals are in the same graph. */
   sourceKey?: string;
+  /**
+   * The copied nodes' Runs as entries from the graph binding shown at copy time, keyed by
+   * (pre-remap) node id (#248, #273). Absent when no binding was shown.
+   */
+  runsAs?: Record<string, JsonObject>;
 }
 
 /** How far a pasted fragment is offset when the originals are in view (#248). */
@@ -69,13 +77,15 @@ export function remapId(id: string, taken: ReadonlySet<string>): string {
 /**
  * Builds an envelope from the selected nodes. Only `dependsOn` edges inside the selection
  * are kept. A DECISION `then`/`else` inside the selection is kept, and one outside becomes `""`.
- * Returns null when the selection has no matching nodes.
+ * `bindingEntries` are the entries of the binding shown, whose entries for the selected nodes
+ * travel with them. Returns null when the selection has no matching nodes.
  */
 export function copySelection(
   nodes: readonly JsonObject[],
   selection: ReadonlySet<string>,
   positions: ReadonlyMap<string, XYPosition>,
-  sourceKey?: string
+  sourceKey?: string,
+  bindingEntries?: Readonly<Record<string, JsonObject>>
 ): ClipboardEnvelope | null {
   const selected = nodes.filter((n) => typeof n.id === "string" && selection.has(n.id));
   if (selected.length === 0) return null;
@@ -104,7 +114,19 @@ export function copySelection(
     nodes: copiedNodes,
     positions: copiedPositions,
     ...(sourceKey !== undefined ? { sourceKey } : {}),
+    ...(bindingEntries !== undefined ? { runsAs: entriesForNodes({ nodes: { ...bindingEntries } }, internalIds) } : {}),
   };
+}
+
+/**
+ * The binding shown in the target graph with the envelope's Runs as entries written under the
+ * ids its nodes were pasted as (#248): `pastedIds` are in the envelope's node order, as
+ * `pasteIntoDraft` returns them. An envelope without entries leaves the binding as it is.
+ */
+export function pasteRunsAs(binding: JsonObject, envelope: ClipboardEnvelope, pastedIds: readonly string[]): JsonObject {
+  if (!envelope.runsAs) return binding;
+  const remap = new Map(envelope.nodes.map((n, i) => [n.id as string, pastedIds[i]]));
+  return withPastedEntries(binding, envelope.runsAs, remap);
 }
 
 /**
