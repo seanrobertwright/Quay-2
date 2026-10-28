@@ -1,9 +1,8 @@
-// The fields the contract and trigger forms share (#223): sections, the SDK's verdict, and
-// inputs for text, whole numbers, durations, times and flags. Each shows the SDK's issues
-// for its field, and the integer, duration and time inputs refuse what can't be stored as
-// the user types.
+// The fields the record forms share (#223): the contract, grant and trigger forms lay these out in
+// sections. Integer and time inputs refuse what can't be stored as the user types; the
+// SDK's issues, and any inline check a form adds, show under the field they are about.
 import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";
-import { CircleAlert, Info, LoaderCircle } from "lucide-react";
+import { CircleAlert, Info, LoaderCircle, Plus, X } from "lucide-react";
 import {
   epochMsFromLocalParts,
   formatDateTime,
@@ -18,8 +17,13 @@ import type { Json } from "./model.ts";
 import type { ValidationStatus } from "./ProblemsPanel.tsx";
 import type { Diagnostic } from "./types.ts";
 
+/** How `Contract.budget` and `Grant.limit` are labelled and explained (#231). */
+export const COST_UNIT_LABEL = "in the installation's ledger cost unit";
+export const COST_HINT =
+  "A whole number. Praxis never converts between units. Seeds Praxis's cost bound when a run is attached. After approval it changes only by a human adjustment in Praxis, and editing this file affects later runs only.";
+
 export const hintClass = "mt-1 text-[11px] text-[#6e7681]";
-const sectionHeading = "text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]";
+export const sectionHeading = "text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]";
 
 /** The field a diagnostic is about: the first segment of its pointer, or "" for the record. */
 const fieldOf = (d: Diagnostic) => d.path.split("/")[1]?.replace(/~1/g, "/").replace(/~0/g, "~") ?? "";
@@ -55,8 +59,8 @@ export const Section: FC<{ title: string; children: ReactNode }> = ({ title, chi
   );
 };
 
-/** The SDK's verdict on the record, `noun` such as "contract", and the issues about the record as a whole. */
-export const RecordSummary: FC<{ noun: string; status: ValidationStatus; recordIssues: readonly Diagnostic[] | undefined }> = ({
+/** The SDK's verdict, and the issues about the record as a whole. */
+export const Summary: FC<{ noun: string; status: ValidationStatus; recordIssues: readonly Diagnostic[] | undefined }> = ({
   noun,
   status,
   recordIssues,
@@ -218,6 +222,11 @@ export const IntegerInput: FC<{
   );
 };
 
+/**
+ * An absolute time, picked in this machine's zone, which the field names along with the
+ * UTC equivalent. The picker's digits become epoch milliseconds through the date helper,
+ * so no string is parsed.
+ */
 /** A duration: an amount and a unit, stored as milliseconds. */
 export const DurationInput: FC<{
   label: string;
@@ -309,11 +318,6 @@ export const DurationInput: FC<{
   );
 };
 
-/**
- * An absolute time, picked in this machine's zone, which the field names along with the
- * UTC equivalent. The picker's digits become epoch milliseconds through the date helper,
- * so no string is parsed.
- */
 export const DateTimeInput: FC<{
   label: string;
   value: Json | undefined;
@@ -384,6 +388,91 @@ export const Checkbox: FC<{
         {hint}
       </p>
       <FieldMessages id={messagesId} issues={issues} />
+    </div>
+  );
+};
+
+/** The SDK's limits on an item of a record's string lists. */
+const MAX_ITEM = 256;
+const MAX_ITEMS = 1000;
+
+/** A list of distinct strings, each removable, with a field that adds one on Enter. */
+export const StringList: FC<{
+  label: string;
+  addLabel: string;
+  items: readonly string[];
+  issues: readonly Diagnostic[] | undefined;
+  onChange: (items: string[]) => void;
+}> = ({ label, addLabel, items, issues, onChange }) => {
+  const id = useId();
+  const messagesId = useId();
+  const [text, setText] = useState("");
+  const value = text.trim();
+  const problem =
+    value === ""
+      ? null
+      : value.length > MAX_ITEM
+        ? `Use at most ${MAX_ITEM} characters.`
+        : items.includes(value)
+          ? "That is already listed."
+          : items.length >= MAX_ITEMS
+            ? `A list holds at most ${MAX_ITEMS} items.`
+            : null;
+  const add = () => {
+    if (value === "" || problem) return;
+    onChange([...items, value]);
+    setText("");
+  };
+  const shown = problem ? inline(problem) : issues;
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      {items.length > 0 && (
+        <ul className="mb-1.5 space-y-1">
+          {items.map((item) => (
+            <li key={item} className="flex items-center gap-1.5 text-xs text-[#c9d1d9]">
+              <span className="min-w-0 break-words">{item}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${item}`}
+                onClick={() => onChange(items.filter((x) => x !== item))}
+                className="p-0.5 text-[#8b949e] hover:text-white rounded"
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          id={id}
+          type="text"
+          value={text}
+          placeholder={addLabel}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          className={inputClass}
+          {...described(messagesId, shown)}
+        />
+        <button
+          type="button"
+          onClick={add}
+          aria-disabled={value === "" || problem !== null}
+          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs aria-disabled:opacity-50"
+        >
+          <Plus className="w-3 h-3" aria-hidden="true" />
+          Add
+        </button>
+      </div>
+      <FieldMessages id={messagesId} issues={shown} />
     </div>
   );
 };

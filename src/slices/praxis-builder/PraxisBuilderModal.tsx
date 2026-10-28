@@ -52,11 +52,14 @@ import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.t
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
+import { GrantForm } from "./GrantForm.tsx";
+import { grantStepFor, type GrantEdit } from "./grant.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
 import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
   createNewDraft,
   editContractDraft,
+  editGrantDraft,
   editTriggerDraft,
   hasDrafts,
   isDirty,
@@ -605,7 +608,19 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [projectPath, open, changeSessions]
   );
 
-  // A trigger form's changes go through the same history (#223).
+  // So do a grant form's (#223).
+  const editOpenGrant = useCallback(
+    (edit: GrantEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editGrantDraft(d, edit), grantStepFor(edit), now))
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
+  // And a trigger form's (#223).
   const editOpenTrigger = useCallback(
     (edit: TriggerEdit) => {
       if (!projectPath || !open) return;
@@ -1527,6 +1542,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
                     triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
                     onEdit={editOpenContract}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
+                  />
+                </>
+              ) : openDraft && projectPath && open.kind === "grants" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <GrantForm
+                    key={`${projectKey}|${openKey}`}
+                    projectPath={projectPath}
+                    draft={openDraft}
+                    known={[...new Set(takenIds("grants"))]}
+                    saved={listedEntries("grants").map((e) => e.id)}
+                    refresh={refreshCount}
+                    onEdit={editOpenGrant}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                   />

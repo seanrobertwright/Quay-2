@@ -1,5 +1,6 @@
 pub mod canonical;
 pub mod commands;
+pub mod grants;
 pub mod lifecycle;
 pub mod models;
 pub mod revision;

@@ -18,11 +18,11 @@ import {
   IntegerInput,
   issuesByPath,
   ReadOnly,
-  RecordSummary,
   Section,
+  Summary,
   TextInput,
   useSyncedText,
-} from "./FormFields.tsx";
+} from "./RecordFields.tsx";
 import { isObject, type Json, type JsonObject } from "./model.ts";
 import {
   CATCH_UP_MODES,
@@ -239,7 +239,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, onEdit, on
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Trigger ${draft.ref.id}`}>
-        <RecordSummary noun="trigger" status={status} recordIssues={untaken} />
+        <Summary noun="trigger" status={status} recordIssues={untaken} />
         {fields}
       </form>
     </div>

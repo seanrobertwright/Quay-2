@@ -7,12 +7,21 @@
 import { useEffect, useId, useState, type FC } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
-import { bindingIdProblem, CONTRACT_FEATURES, type BindingList, type Bindings, type ContractEdit } from "./contract.ts";
+import {
+  bindingIdProblem,
+  CONTRACT_FEATURES,
+  type BindingList,
+  type Bindings,
+  type ContractEdit,
+} from "./contract.ts";
 import type { Draft } from "./drafts.ts";
+import type { Json } from "./model.ts";
 import {
   asString,
   asStrings,
   Checkbox,
+  COST_HINT,
+  COST_UNIT_LABEL,
   DateTimeInput,
   DurationInput,
   hintClass,
@@ -20,11 +29,11 @@ import {
   IntegerInput,
   issuesByField,
   ReadOnly,
-  RecordSummary,
   Section,
+  StringList,
+  Summary,
   TextInput,
-} from "./FormFields.tsx";
-import type { Json } from "./model.ts";
+} from "./RecordFields.tsx";
 import { useValidation } from "./useValidation.ts";
 import type { ContractTriggers, DefinitionRef, Diagnostic, FileProblem } from "./types.ts";
 
@@ -43,8 +52,6 @@ interface ContractFormProps {
   onValidated: (verdict: string | null) => void;
 }
 
-const BUDGET_NOTE =
-  "Seeds Praxis's cost bound when a run is attached. After approval it changes only by a human adjustment in Praxis, and editing this file affects later runs only.";
 
 export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, known, triggers, onEdit, onOpen, onValidated }) => {
   const status = useValidation("contracts", draft.content);
@@ -61,7 +68,7 @@ export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, kn
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Contract ${draft.ref.id}`}>
-        <RecordSummary noun="contract" status={status} recordIssues={issues.get("")} />
+        <Summary noun="contract" status={status} recordIssues={issues.get("")} />
         {bindingsProblem && (
           <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#e3b341]">
             <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
@@ -96,11 +103,11 @@ export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, kn
         <Section title="Limits">
           <IntegerInput
             label="Budget"
-            labelNote="in the installation's ledger cost unit"
+            labelNote={COST_UNIT_LABEL}
             value={c.budget}
             issues={issues.get("budget")}
             onChange={(v) => set("budget", v, true)}
-            hint={`A whole number. Praxis never converts between units. ${BUDGET_NOTE}`}
+            hint={COST_HINT}
           />
           <IntegerInput
             label="Max attempts"
@@ -173,91 +180,6 @@ const Features: FC<{ value: readonly string[]; issues: readonly Diagnostic[] | u
       <p className={hintClass}>A graph runs only under a contract with the graphs feature.</p>
       <FieldMessages id={messagesId} issues={issues} />
     </fieldset>
-  );
-};
-
-/** The SDK's limits on an item of a contract's string lists. */
-const MAX_ITEM = 256;
-const MAX_ITEMS = 1000;
-
-/** A list of distinct strings, each removable, with a field that adds one on Enter. */
-const StringList: FC<{
-  label: string;
-  addLabel: string;
-  items: readonly string[];
-  issues: readonly Diagnostic[] | undefined;
-  onChange: (items: string[]) => void;
-}> = ({ label, addLabel, items, issues, onChange }) => {
-  const id = useId();
-  const messagesId = useId();
-  const [text, setText] = useState("");
-  const value = text.trim();
-  const problem =
-    value === ""
-      ? null
-      : value.length > MAX_ITEM
-        ? `Use at most ${MAX_ITEM} characters.`
-        : items.includes(value)
-          ? "That is already listed."
-          : items.length >= MAX_ITEMS
-            ? `A list holds at most ${MAX_ITEMS} items.`
-            : null;
-  const add = () => {
-    if (value === "" || problem) return;
-    onChange([...items, value]);
-    setText("");
-  };
-  const shown = problem ? inline(problem) : issues;
-  return (
-    <div>
-      <label htmlFor={id} className={labelClass}>
-        {label}
-      </label>
-      {items.length > 0 && (
-        <ul className="mb-1.5 space-y-1">
-          {items.map((item) => (
-            <li key={item} className="flex items-center gap-1.5 text-xs text-[#c9d1d9]">
-              <span className="min-w-0 break-words">{item}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${item}`}
-                onClick={() => onChange(items.filter((x) => x !== item))}
-                className="p-0.5 text-[#8b949e] hover:text-white rounded"
-              >
-                <X className="w-3 h-3" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex gap-2">
-        <input
-          id={id}
-          type="text"
-          value={text}
-          placeholder={addLabel}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-          className={inputClass}
-          {...described(messagesId, shown)}
-        />
-        <button
-          type="button"
-          onClick={add}
-          aria-disabled={value === "" || problem !== null}
-          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs aria-disabled:opacity-50"
-        >
-          <Plus className="w-3 h-3" aria-hidden="true" />
-          Add
-        </button>
-      </div>
-      <FieldMessages id={messagesId} issues={shown} />
-    </div>
   );
 };
 

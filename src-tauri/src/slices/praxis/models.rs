@@ -249,3 +249,48 @@ pub struct ContractTriggers {
     pub ids: Vec<String>,
     pub unchecked: Vec<String>,
 }
+
+/// A saved grant in a delegation chain, with its `limit` when that is a string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainLink {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<String>,
+}
+
+/// The grant that stopped a walk up a delegation chain, and why: it is missing, can't be
+/// read, or is already in the chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainBreak {
+    pub id: String,
+    pub message: String,
+}
+
+/// A contract whose bindings list a grant, and the grant's check on its scratch mission.
+/// `problem` says why the contract couldn't be read, and then there is no `validation`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoundContract {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation: Option<super::validate::Validation>,
+}
+
+/// A grant checked against the saved records around it (#223, #231): its delegation chain
+/// from the root grant down to its parent, and each contract whose bindings list it.
+/// `unchecked` names the bindings files that couldn't be read or weren't searched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantCheck {
+    pub chain: Vec<ChainLink>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_break: Option<ChainBreak>,
+    pub contracts: Vec<BoundContract>,
+    pub unchecked: Vec<String>,
+}
