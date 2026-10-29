@@ -1,7 +1,7 @@
 // The shapes the `praxis_*` backend commands return (src-tauri/src/slices/praxis/models.rs).
 
 /** A record kind, named by its folder under `.praxis/`. */
-export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "templates";
+export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "graph-bindings" | "templates";
 
 /** Why a definition file can't be opened. `line` and `column` are set for invalid JSON. */
 export interface FileProblem {
@@ -15,6 +15,8 @@ export interface DefinitionEntry {
   problem?: FileProblem;
   /** Set when the file parses but its `id` isn't its name: `found` is the id inside, if it has a string one. */
   idMismatch?: { found?: string };
+  /** A graph binding's `graphId`, when it is a string, so the list nests it under its graph. */
+  graphId?: string;
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
@@ -117,7 +119,7 @@ export interface GrantCheck {
 /** How a definition file differs from the last commit. */
 export type ChangeStatus = "modified" | "added" | "deleted";
 
-/** `praxis_changes`: the contracts and grants changed since the last commit, empty outside git. */
+/** `praxis_changes`: the contracts, grants and graph bindings changed since the last commit, empty outside git. */
 export interface ChangedFiles {
   files: { kind: PraxisKind; id: string; status: ChangeStatus }[];
 }
@@ -157,6 +159,12 @@ export interface Validation {
   /** The issues found beyond `diagnostics`, by severity. */
   omitted: { errors: number; info: number };
 }
+
+/** Where a check of a definition stands: running, failed to run, or done with its result. */
+export type ValidationStatus =
+  | { state: "checking" }
+  | { state: "failed"; error: string }
+  | { state: "done"; validation: Validation };
 
 /** A draft's content as `praxis_rename` takes it, and returns it with references rewritten. */
 export interface DraftContent {
@@ -235,4 +243,18 @@ export interface ContextCheck {
   contracts: ContractContext[];
   /** Bindings and trigger files that couldn't be read or weren't searched. */
   unchecked: string[];
+}
+
+/**
+ * `praxis_binding_suggestions`: the ids used across the project's saved graph bindings, with the
+ * agents of its saved workflow templates among the agent ids (#247).
+ */
+export type BindingSuggestions = Record<"agentId" | "protocolBindingId" | "action" | "resource", string[]>;
+
+/** `praxis_graph_pin`: what a graph binding pins, read from the graph as saved on disk (#247). */
+export interface GraphPin {
+  /** The graph's `revision`, when it has a string one. */
+  revision?: string;
+  /** The SDK digest of the graph record exactly as the file holds it. */
+  digest: string;
 }

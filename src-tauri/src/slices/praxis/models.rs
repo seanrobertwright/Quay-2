@@ -9,14 +9,23 @@ pub enum PraxisKind {
     Contracts,
     Grants,
     Triggers,
+    /// `aiws-graph-binding/1` documents (#247): how each dispatchable node of one graph runs.
+    #[serde(rename = "graph-bindings")]
+    GraphBindings,
     /// Workflow templates (#224): coding plans without identities, which `praxis run <name>`
     /// starts. A template file is the host's bare template, so it holds no `id`.
     Templates,
 }
 
 impl PraxisKind {
-    pub const ALL: [PraxisKind; 5] =
-        [PraxisKind::Graphs, PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::Triggers, PraxisKind::Templates];
+    pub const ALL: [PraxisKind; 6] = [
+        PraxisKind::Graphs,
+        PraxisKind::Contracts,
+        PraxisKind::Grants,
+        PraxisKind::Triggers,
+        PraxisKind::GraphBindings,
+        PraxisKind::Templates,
+    ];
 
     /// The kind whose files `folder` holds, or `None` for a folder that holds no kind's
     /// definitions, such as `layout`.
@@ -25,20 +34,26 @@ impl PraxisKind {
     }
 
     /// The folder under `.praxis/` that holds this kind's files.
-    pub fn folder(self) -> &'static str {
+    pub const fn folder(self) -> &'static str {
         match self {
             PraxisKind::Graphs => "graphs",
             PraxisKind::Contracts => "contracts",
             PraxisKind::Grants => "grants",
             PraxisKind::Triggers => "triggers",
+            PraxisKind::GraphBindings => "graph-bindings",
             PraxisKind::Templates => "templates",
         }
     }
 
-    /// Whether this kind's records carry their own `id`, which must match the file name. A
-    /// template's name is its file name alone.
-    pub fn holds_id(self) -> bool {
-        self != PraxisKind::Templates
+    /// The record field that holds a definition's id, which must equal its file name, or
+    /// `None` for a kind whose records hold no id: a template's name is its file name alone.
+    /// A graph binding names itself `graphBindingId`, apart from a protocol binding's `bindingId`.
+    pub fn id_field(self) -> Option<&'static str> {
+        match self {
+            PraxisKind::GraphBindings => Some("graphBindingId"),
+            PraxisKind::Templates => None,
+            _ => Some("id"),
+        }
     }
 }
 
@@ -79,6 +94,9 @@ pub struct DefinitionEntry {
     pub problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_mismatch: Option<IdMismatch>,
+    /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_id: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more
@@ -392,4 +410,26 @@ pub struct FileDiff {
     pub status: Option<ChangeStatus>,
     pub diff: String,
     pub truncated: bool,
+}
+
+/// The ids used across the project's saved graph bindings, with the agents of its saved workflow
+/// templates among the agent ids (#247), each list distinct and sorted, which the Runs as section
+/// suggests for its free-text id fields.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindingSuggestions {
+    pub agent_id: Vec<String>,
+    pub protocol_binding_id: Vec<String>,
+    pub action: Vec<String>,
+    pub resource: Vec<String>,
+}
+
+/// What a graph binding pins (#247): a graph's `revision` and the SDK digest of the graph
+/// record as saved on disk. `revision` is `None` when the graph has no string revision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphPin {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    pub digest: String,
 }

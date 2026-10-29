@@ -125,6 +125,8 @@ pub fn check_context(repo: &Path, record: Option<&RecordRef>, also: &[String]) -
                 PraxisKind::Triggers => {
                     ids.extend(project.triggers.get(&r.id).and_then(Project::trigger_contract).map(str::to_string))
                 }
+                // A binding's checks against its contracts are #274's; it affects no mission yet.
+                PraxisKind::GraphBindings => {}
                 // A template refers to no other record, and nothing refers to it (#224).
                 PraxisKind::Templates => {}
             }
