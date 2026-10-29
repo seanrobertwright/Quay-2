@@ -66,6 +66,8 @@ pub fn check_size(content: &Value) -> Result<(), String> {
 pub enum Severity {
     /// The SDK refuses the record.
     Error,
+    /// The record saves, but Praxis would refuse a run with it as it stands (#274).
+    Warning,
     /// Worth knowing, but the SDK accepts the record.
     Info,
 }
@@ -106,6 +108,7 @@ pub struct Validation {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct Omitted {
     pub errors: usize,
+    pub warnings: usize,
     pub info: usize,
 }
 
@@ -113,6 +116,7 @@ impl Omitted {
     fn count(&mut self, severity: Severity) {
         match severity {
             Severity::Error => self.errors += 1,
+            Severity::Warning => self.warnings += 1,
             Severity::Info => self.info += 1,
         }
     }
@@ -1270,7 +1274,7 @@ mod tests {
         assert_eq!(v.diagnostics.len(), MAX_DIAGNOSTICS);
         assert_eq!(v.diagnostics[0].code, "INVALID_DEPENDENCY");
         // 700 bad dependencies and 699 tasks no END depends on.
-        assert_eq!(v.omitted, Omitted { errors: 700 + 699 - 500, info: 0 });
+        assert_eq!(v.omitted, Omitted { errors: 700 + 699 - 500, warnings: 0, info: 0 });
     }
 
     #[test]

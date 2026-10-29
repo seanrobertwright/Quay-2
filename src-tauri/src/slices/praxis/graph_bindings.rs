@@ -78,7 +78,7 @@ pub fn graph_pin(repo: &Path, graph_id: &str) -> Result<Option<GraphPin>, String
 /// field: these are hints, not checks.
 pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
     let mut found: [BTreeSet<String>; 4] = Default::default();
-    for record in saved_records(repo, PraxisKind::GraphBindings, MAX_BINDINGS_SCANNED)? {
+    for (_, record) in saved_bindings(repo, MAX_BINDINGS_SCANNED)?.0 {
         let Some(nodes) = record.get("nodes").and_then(Value::as_object) else { continue };
         for entry in nodes.values() {
             for (field, values) in SUGGESTED_FIELDS.iter().zip(found.iter_mut()) {
@@ -86,7 +86,7 @@ pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
             }
         }
     }
-    for record in saved_records(repo, PraxisKind::Templates, MAX_TEMPLATES_SCANNED)? {
+    for (_, record) in saved_records(repo, PraxisKind::Templates, MAX_TEMPLATES_SCANNED)?.0 {
         insert_non_blank(&mut found[AGENT_ID], record.get("agent"));
     }
     let [agent_id, protocol_binding_id, action, resource] =
@@ -94,16 +94,28 @@ pub fn binding_suggestions(repo: &Path) -> Result<BindingSuggestions, String> {
     Ok(BindingSuggestions { agent_id, protocol_binding_id, action, resource })
 }
 
-/// The content of the first `cap` files of `kind`, in id order, leaving out any that can't be
-/// read or parsed. Empty when the kind's folder doesn't exist.
-fn saved_records(repo: &Path, kind: PraxisKind, cap: usize) -> Result<Vec<Value>, String> {
+/// The saved graph bindings by file id, as `saved_records` reads them.
+pub fn saved_bindings(repo: &Path, cap: usize) -> Result<(Vec<(String, Value)>, usize), String> {
+    saved_records(repo, PraxisKind::GraphBindings, cap)
+}
+
+/// The id and content of the first `cap` files of `kind`, in id order, leaving out any that
+/// can't be read or parsed, and how many files past `cap` weren't read. Empty when the kind's
+/// folder doesn't exist.
+fn saved_records(repo: &Path, kind: PraxisKind, cap: usize) -> Result<(Vec<(String, Value)>, usize), String> {
     let folder = kind.folder();
-    let Some(dir) = confined_dir(repo, folder)? else { return Ok(Vec::new()) };
-    Ok(json_ids(&dir, folder)?
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok((Vec::new(), 0)) };
+    let ids = json_ids(&dir, folder)?;
+    let skipped = ids.len().saturating_sub(cap);
+    let records = ids
         .into_iter()
         .take(cap)
-        .filter_map(|id| read_definition(repo, kind, &id).ok()?.content)
-        .collect())
+        .filter_map(|id| {
+            let content = read_definition(repo, kind, &id).ok()?.content?;
+            Some((id, content))
+        })
+        .collect();
+    Ok((records, skipped))
 }
 
 /// Adds `value` to `values` when it is a string that isn't blank.
@@ -149,8 +161,56 @@ fn describe(code: &str) -> &'static str {
         "UNSAFE_NUMBER" => "A number isn't a whole number between -(2^53 - 1) and 2^53 - 1.",
         "INPUT_LIMIT" => "The binding is nested more deeply than Praxis allows.",
         "BINDING_INCOMPLETE" => "The binding doesn't have exactly one entry per TASK, LOOP and COMPENSATION node.",
+        "BINDING_NODE_KIND" => "The binding has an entry for a node Praxis doesn't dispatch.",
+        "BINDING_KIND_MISMATCH" => "A TASK entry's executionKind isn't its node's.",
+        "DATA_SCHEMA" => "A TOOL entry's payload doesn't match its node's inputSchema.",
+        "INVALID_EXPOSURE" => "An exposure's stop threshold is above its allowance.",
         _ => "Praxis refuses this binding.",
     }
+}
+
+/// The schema issues `error` stands for, as (path, message). A `oneOf` of tagged shapes (an
+/// entry by its `executionKind`, an exposure by its `kind`) fails as a whole, so its error is
+/// replaced by the errors of the one branch whose tag the value carries, each at its own field.
+/// When no single branch matches the tag, the `oneOf` error stays, in plainer words.
+fn located_schema_issues(error: &jsonschema::ValidationError<'_>, out: &mut Vec<(String, String)>) {
+    let path = error.instance_path.as_str();
+    if let jsonschema::error::ValidationErrorKind::OneOfNotValid { context } = &error.kind {
+        let is_tag = |at: &str| at.strip_prefix(path).is_some_and(|rest| rest == "/executionKind" || rest == "/kind");
+        let tagged: Vec<_> = context.iter().filter(|branch| !branch.iter().any(|e| is_tag(e.instance_path.as_str()))).collect();
+        if let [branch] = tagged.as_slice() {
+            for e in branch.iter() {
+                located_schema_issues(e, out);
+            }
+            return;
+        }
+        out.push((path.to_string(), "This doesn't match any of the shapes the schema allows here.".to_string()));
+        return;
+    }
+    out.push((path.to_string(), error.to_string()));
+}
+
+/// A canonical positive ledger amount as (digit count, digits), so two compare as numbers.
+fn amount(v: Option<&Value>) -> Option<(usize, &str)> {
+    let s = v?.as_str()?;
+    (!s.is_empty() && !s.starts_with('0') && s.bytes().all(|c| c.is_ascii_digit())).then_some((s.len(), s))
+}
+
+/// The most characters of one schema error a message quotes: the error quotes the failing
+/// value, which can be a whole payload.
+const MAX_REASON_CHARS: usize = 200;
+
+/// `text`, cut to `MAX_REASON_CHARS` characters with an ellipsis when it is longer.
+fn clipped(text: &str) -> String {
+    match text.char_indices().nth(MAX_REASON_CHARS) {
+        Some((at, _)) => format!("{}…", &text[..at]),
+        None => text.to_string(),
+    }
+}
+
+/// The node with `id`, when the graph has one.
+fn graph_node<'a>(graph: &'a Value, id: &str) -> Option<&'a Value> {
+    graph_nodes(graph).find(|n| n.get("id").and_then(Value::as_str) == Some(id))
 }
 
 /// The ids of a graph's dispatchable nodes, in node order. Nodes without a string id are left
@@ -168,55 +228,124 @@ fn graph_nodes(graph: &Value) -> impl Iterator<Item = &Value> {
 }
 
 /// An issue about one node's entry, placed on that node so its card and the Problems list show it.
-fn entry_issue(path: String, node_id: &str, message: String) -> Diagnostic {
-    Diagnostic {
-        code: "BINDING_INCOMPLETE".to_string(),
-        severity: Severity::Error,
-        message,
-        path,
-        node_id: Some(node_id.to_string()),
-        field: None,
+fn entry_issue(code: &str, severity: Severity, path: String, node_id: &str, message: String) -> Diagnostic {
+    Diagnostic { code: code.to_string(), severity, message, path, node_id: Some(node_id.to_string()), field: None }
+}
+
+/// The builder's diagnostics and the SDK-style verdict: the code of the first error found.
+struct Checked {
+    found: Found,
+    verdict: Option<String>,
+}
+
+impl Checked {
+    fn push(&mut self, d: Diagnostic) {
+        if d.severity == Severity::Error {
+            self.verdict.get_or_insert_with(|| d.code.clone());
+        }
+        self.found.push(d);
     }
 }
 
-/// Validates a graph binding (#273): its shape against the vendored PROVISIONAL schema, the
-/// numbers canonical JSON refuses, and, with `graph`, its completeness. Each dispatchable node
-/// without an entry, and each entry for a node the graph lacks, is a `BINDING_INCOMPLETE` error
-/// on that node. The other submission and attach checks against the graph and its contracts
-/// are #274's.
+/// Validates a graph binding (#273, #274): its shape against the vendored PROVISIONAL schema,
+/// the numbers canonical JSON refuses and each BOUNDED exposure's stop threshold against its
+/// allowance. With `graph`, also the submission checks Praxis makes against the graph alone:
+///
+/// - each dispatchable node without an entry, and each entry for a node the graph lacks, is a
+///   `BINDING_INCOMPLETE` error, an entry on another kind of node `BINDING_NODE_KIND`, and a TASK
+///   entry whose `executionKind` isn't its node's `BINDING_KIND_MISMATCH`;
+/// - a TOOL entry's `payload` must match its node's `inputSchema` (`DATA_SCHEMA`);
+/// - a FUNCTION or HUMAN entry is an `EXECUTION_KIND_UNSUPPORTED` warning, since Praxis doesn't
+///   run them yet, and a pinned `graphDigest` that isn't `graph`'s digest a `BINDING_STALE` one.
+///
+/// Warnings leave the verdict alone, so a binding with only warnings still saves. The attach
+/// checks against the graph's contracts are `binding_attach::check_attach`'s.
 pub fn validate_graph_binding(binding: &Value, graph: Option<&Value>) -> Validation {
-    let mut found = Found::default();
-    let mut verdict: Option<String> = None;
+    let mut checked = Checked { found: Found::default(), verdict: None };
     // A field can break more than one schema rule; one message per path and message is enough.
     let mut seen = std::collections::HashSet::new();
     for error in schema().iter_errors(binding) {
-        let path = error.instance_path.as_str().to_string();
-        let message = error.to_string();
-        if seen.insert((path.clone(), message.clone())) {
-            found.push(field_issue(&path, "INVALID_RECORD", message));
-            verdict.get_or_insert_with(|| "INVALID_RECORD".to_string());
-        }
-    }
-    check_canonical(binding, "", 0, &mut |code, path, message| {
-        found.push(field_issue(path, code, message));
-        verdict.get_or_insert_with(|| code.to_string());
-    });
-    if let (Some(graph), Some(entries)) = (graph, binding.get("nodes").and_then(Value::as_object)) {
-        let dispatchable = dispatchable_ids(graph);
-        for id in &dispatchable {
-            if !entries.contains_key(*id) {
-                found.push(entry_issue("/nodes".to_string(), id, format!("Node {} has no entry, so Praxis can't tell what it runs.", id)));
-                verdict.get_or_insert_with(|| "BINDING_INCOMPLETE".to_string());
+        let mut located = Vec::new();
+        located_schema_issues(&error, &mut located);
+        for (path, message) in located {
+            if seen.insert((path.clone(), message.clone())) {
+                checked.push(field_issue(&path, "INVALID_RECORD", message));
             }
         }
-        let all: Vec<&str> = graph_nodes(graph).filter_map(|n| n.get("id").and_then(Value::as_str)).collect();
-        for id in entries.keys().filter(|id| !all.contains(&id.as_str())) {
-            let path = format!("/nodes/{}", escape(id));
-            found.push(entry_issue(path, id, format!("The graph has no node {}. Retarget to current graph drops this entry.", id)));
-            verdict.get_or_insert_with(|| "BINDING_INCOMPLETE".to_string());
+    }
+    check_canonical(binding, "", 0, &mut |code, path, message| checked.push(field_issue(path, code, message)));
+    let entries = binding.get("nodes").and_then(Value::as_object);
+    for (id, entry) in entries.into_iter().flatten() {
+        let threshold = entry.pointer("/exposure/stopThreshold");
+        if let (Some(allowance), Some(stop)) = (amount(entry.pointer("/exposure/allowance")), amount(threshold))
+            && stop > allowance
+        {
+            let path = format!("/nodes/{}/exposure/stopThreshold", escape(id));
+            let message = format!("The stop threshold, {}, is above the allowance, {}.", stop.1, allowance.1);
+            checked.push(entry_issue("INVALID_EXPOSURE", Severity::Error, path, id, message));
         }
     }
-    with_verdict(verdict, found, describe)
+    if let (Some(graph), Some(entries)) = (graph, entries) {
+        check_against_graph(binding, entries, graph, &mut checked);
+    }
+    with_verdict(checked.verdict, checked.found, describe)
+}
+
+/// The submission checks of `validate_graph_binding` that need the graph.
+fn check_against_graph(binding: &Value, entries: &Map<String, Value>, graph: &Value, checked: &mut Checked) {
+    let pinned = binding.get("graphDigest").and_then(Value::as_str).filter(|d| !d.is_empty());
+    if let (Some(pinned), Ok(digest)) = (pinned, aiws_sdk::digest(graph))
+        && pinned != digest
+    {
+        let revision = binding.get("graphRevision").and_then(Value::as_str).unwrap_or("");
+        let message = format!(
+            "The binding is pinned to graph revision {}, not to the graph as it is now. Save the graph, then Retarget to current graph.",
+            revision
+        );
+        checked.push(Diagnostic { severity: Severity::Warning, ..field_issue("/graphDigest", "BINDING_STALE", message) });
+    }
+    for id in dispatchable_ids(graph) {
+        if !entries.contains_key(id) {
+            let message = format!("Node {} has no entry, so Praxis can't tell what it runs.", id);
+            checked.push(entry_issue("BINDING_INCOMPLETE", Severity::Error, "/nodes".to_string(), id, message));
+        }
+    }
+    for (id, entry) in entries {
+        let at = |key: &str| format!("/nodes/{}{}", escape(id), key);
+        let Some(node) = graph_node(graph, id) else {
+            let message = format!("The graph has no node {}. Retarget to current graph drops this entry.", id);
+            checked.push(entry_issue("BINDING_INCOMPLETE", Severity::Error, at(""), id, message));
+            continue;
+        };
+        let kind = node.get("kind").and_then(Value::as_str).unwrap_or("");
+        if !DISPATCHABLE_KINDS.contains(&kind) {
+            let message = format!("{} is a {} node, which Praxis doesn't dispatch, so it has no entry. Retarget to current graph drops it.", id, kind);
+            checked.push(entry_issue("BINDING_NODE_KIND", Severity::Error, at(""), id, message));
+            continue;
+        }
+        let execution = entry.get("executionKind").and_then(Value::as_str);
+        let wanted = node.pointer("/config/executionKind").and_then(Value::as_str);
+        if kind == "TASK"
+            && let (Some(execution), Some(wanted)) = (execution, wanted)
+            && execution != wanted
+        {
+            let message = format!("Node {} runs as {} in the graph, so its entry must be a {} entry too.", id, wanted, wanted);
+            checked.push(entry_issue("BINDING_KIND_MISMATCH", Severity::Error, at("/executionKind"), id, message));
+        }
+        if let Some(unsupported @ ("FUNCTION" | "HUMAN")) = execution {
+            let message = format!("Praxis doesn't run {} entries yet, so it refuses a run with this binding.", unsupported);
+            checked.push(entry_issue("EXECUTION_KIND_UNSUPPORTED", Severity::Warning, at("/executionKind"), id, message));
+        }
+        if let (Some("TOOL"), Some(payload), Some(input)) = (execution, entry.get("payload"), node.get("inputSchema").filter(|s| s.is_object())) {
+            // The graph's own validation reports an inputSchema the SDK can't compile.
+            let Ok(validator) = aiws_sdk::data_validator(input) else { continue };
+            let reasons: Vec<String> = validator.iter_errors(payload).map(|e| clipped(&e.to_string())).take(3).collect();
+            if !reasons.is_empty() {
+                let message = format!("The payload doesn't match node {}'s inputSchema: {}.", id, reasons.join("; "));
+                checked.push(entry_issue("DATA_SCHEMA", Severity::Error, at("/payload"), id, message));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -283,6 +412,7 @@ mod tests {
         let list = list_definitions(&repo, PraxisKind::GraphBindings).unwrap();
         assert_eq!(list.entries.len(), 2);
         assert_eq!(list.entries[0].graph_id.as_deref(), Some("g"));
+        assert_eq!(list.entries[0].cost_unit.as_deref(), Some("micro-USD"));
         assert_eq!(list.entries[0].id_mismatch, None);
         // The id inside a binding is its graphBindingId.
         assert_eq!(list.entries[1].id_mismatch.as_ref().unwrap().found.as_deref(), Some("other"));
@@ -490,6 +620,162 @@ mod tests {
         let v = validate_graph_binding(&record, Some(&graph));
         assert_eq!(v.verdict, None);
         assert!(errors(&v).is_empty(), "{:?}", v.diagnostics);
+    }
+
+    // --- submission checks against the graph (#274) ----------------------------------
+
+    /// Each issue as (code, severity, path, node).
+    fn issues(v: &Validation) -> Vec<(String, Severity, String, Option<String>)> {
+        v.diagnostics.iter().map(|d| (d.code.clone(), d.severity, d.path.clone(), d.node_id.clone())).collect()
+    }
+
+    fn issue(code: &str, severity: Severity, path: &str, node: &str) -> (String, Severity, String, Option<String>) {
+        (code.to_string(), severity, path.to_string(), Some(node.to_string()))
+    }
+
+    fn graph_of(nodes: Value) -> Value {
+        json!({"id": "g", "revision": "1", "nodes": nodes})
+    }
+
+    /// A binding pinned to `graph` as it is, so it isn't stale.
+    fn pinned_to(id: &str, graph: &Value) -> Value {
+        let mut record = pinned(id, graph["id"].as_str().unwrap());
+        record["graphDigest"] = json!(aiws_sdk::digest(graph).unwrap());
+        record
+    }
+
+    fn tool_entry(payload: Value) -> Value {
+        json!({
+            "executionKind": "TOOL", "role": "WORK", "protocolBindingId": "gh", "action": "merge", "resource": "repo",
+            "payload": payload, "exposure": {"kind": "NOT_APPLICABLE", "justification": "no model"}, "maxTaskMs": 60000
+        })
+    }
+
+    #[test]
+    fn an_entry_on_a_node_praxis_doesn_t_dispatch_is_binding_node_kind() {
+        let graph = graph_of(json!([
+            {"id": "t", "kind": "TASK", "dependsOn": [], "config": {"executionKind": "AGENT"}},
+            {"id": "v", "kind": "VERIFICATION", "dependsOn": ["t"], "config": {}},
+            {"id": "end", "kind": "END", "dependsOn": ["v"], "config": {}}
+        ]));
+        let mut record = pinned_to("b", &graph);
+        record["nodes"] = json!({"t": agent_entry(), "v": agent_entry()});
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict.as_deref(), Some("BINDING_NODE_KIND"));
+        assert_eq!(issues(&v), [issue("BINDING_NODE_KIND", Severity::Error, "/nodes/v", "v")]);
+    }
+
+    #[test]
+    fn a_task_entry_of_another_kind_than_its_node_is_binding_kind_mismatch() {
+        let graph = graph_of(json!([
+            {"id": "t", "kind": "TASK", "dependsOn": [], "config": {"executionKind": "TOOL"}},
+            {"id": "end", "kind": "END", "dependsOn": ["t"], "config": {}}
+        ]));
+        let mut record = pinned_to("b", &graph);
+        record["nodes"] = json!({"t": agent_entry()});
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict.as_deref(), Some("BINDING_KIND_MISMATCH"));
+        assert_eq!(issues(&v), [issue("BINDING_KIND_MISMATCH", Severity::Error, "/nodes/t/executionKind", "t")]);
+        assert!(v.diagnostics[0].message.contains("TOOL"), "{:?}", v.diagnostics[0]);
+    }
+
+    #[test]
+    fn function_and_human_entries_are_warned_unsupported_but_the_binding_still_saves() {
+        let graph = graph_of(json!([
+            {"id": "l", "kind": "LOOP", "dependsOn": [], "config": {"maxIterations": "2"}},
+            {"id": "c", "kind": "COMPENSATION", "dependsOn": ["l"], "config": {}},
+            {"id": "end", "kind": "END", "dependsOn": ["c"], "config": {}}
+        ]));
+        let mut record = pinned_to("b", &graph);
+        record["nodes"] = json!({"l": {"executionKind": "FUNCTION"}, "c": {"executionKind": "HUMAN"}});
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict, None);
+        assert_eq!(
+            issues(&v),
+            [
+                issue("EXECUTION_KIND_UNSUPPORTED", Severity::Warning, "/nodes/l/executionKind", "l"),
+                issue("EXECUTION_KIND_UNSUPPORTED", Severity::Warning, "/nodes/c/executionKind", "c"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_pin_that_isn_t_this_graph_s_digest_is_a_stale_warning() {
+        let graph = graph_of(json!([
+            {"id": "t", "kind": "TASK", "dependsOn": [], "config": {"executionKind": "AGENT"}},
+            {"id": "end", "kind": "END", "dependsOn": ["t"], "config": {}}
+        ]));
+        let mut record = pinned("b", "g");
+        record["nodes"] = json!({"t": agent_entry()});
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict, None);
+        assert_eq!(issues(&v), [("BINDING_STALE".to_string(), Severity::Warning, "/graphDigest".to_string(), None)]);
+
+        record["graphDigest"] = json!(aiws_sdk::digest(&graph).unwrap());
+        assert_eq!(issues(&validate_graph_binding(&record, Some(&graph))), []);
+        // A binding not pinned yet is pinned on its first save, so it isn't stale.
+        record["graphRevision"] = json!("");
+        record["graphDigest"] = json!("");
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert!(!v.diagnostics.iter().any(|d| d.code == "BINDING_STALE"), "{:?}", v.diagnostics);
+    }
+
+    #[test]
+    fn a_tool_payload_is_checked_against_its_node_s_input_schema() {
+        let (graph, digest) = fixture_graph();
+        let mut record = pinned("b", "release-review");
+        record["graphDigest"] = json!(digest);
+        record["nodes"] = json!({
+            "build": agent_entry(), "test": agent_entry(), "fix": agent_entry(), "rollback": agent_entry(),
+            "publish": tool_entry(json!({"Zone": "eu"}))
+        });
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict.as_deref(), Some("DATA_SCHEMA"));
+        assert_eq!(issues(&v), [issue("DATA_SCHEMA", Severity::Error, "/nodes/publish/payload", "publish")]);
+        assert!(v.diagnostics[0].message.contains("area"), "{:?}", v.diagnostics[0]);
+
+        record["nodes"]["publish"] = tool_entry(json!({"Zone": "eu", "area": "web"}));
+        assert_eq!(issues(&validate_graph_binding(&record, Some(&graph))), []);
+
+        // The schema error quotes the failing value, so a long one is cut short.
+        record["nodes"]["publish"] = tool_entry(json!({"Zone": ["x".repeat(5000)], "area": "web"}));
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.diagnostics[0].code, "DATA_SCHEMA");
+        assert!(v.diagnostics[0].message.len() < 400, "{}", v.diagnostics[0].message.len());
+        assert!(v.diagnostics[0].message.contains('…'));
+    }
+
+    #[test]
+    fn a_stop_threshold_above_the_allowance_is_invalid_exposure() {
+        let graph = graph_of(json!([
+            {"id": "t", "kind": "TASK", "dependsOn": [], "config": {"executionKind": "AGENT"}},
+            {"id": "end", "kind": "END", "dependsOn": ["t"], "config": {}}
+        ]));
+        let mut record = pinned("b", "g");
+        record["graphDigest"] = json!(aiws_sdk::digest(&graph).unwrap());
+        let mut entry = agent_entry();
+        entry["exposure"] = json!({"kind": "BOUNDED", "allowance": "10", "stopThreshold": "11"});
+        record["nodes"] = json!({"t": entry});
+        let v = validate_graph_binding(&record, Some(&graph));
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_EXPOSURE"));
+        assert_eq!(issues(&v), [issue("INVALID_EXPOSURE", Severity::Error, "/nodes/t/exposure/stopThreshold", "t")]);
+
+        // Compared as numbers, not as text.
+        record["nodes"]["t"]["exposure"] = json!({"kind": "BOUNDED", "allowance": "10", "stopThreshold": "9"});
+        assert_eq!(issues(&validate_graph_binding(&record, Some(&graph))), []);
+        record["nodes"]["t"]["exposure"] = json!({"kind": "BOUNDED", "allowance": "10", "stopThreshold": "10"});
+        assert_eq!(issues(&validate_graph_binding(&record, Some(&graph))), []);
+    }
+
+    #[test]
+    fn max_attempts_must_be_a_whole_number_of_at_least_one() {
+        let mut record = pinned("b", "g");
+        let mut entry = agent_entry();
+        entry["maxAttempts"] = json!(0);
+        record["nodes"] = json!({"t": entry});
+        let v = validate_graph_binding(&record, None);
+        assert_eq!(v.verdict.as_deref(), Some("INVALID_RECORD"));
+        assert!(v.diagnostics.iter().any(|d| d.path == "/nodes/t/maxAttempts"), "{:?}", v.diagnostics);
     }
 
     #[test]

@@ -2,8 +2,9 @@
 // `.praxis/graph-bindings/<id>.json`, one per binding, each saying what every TASK, LOOP and
 // COMPENSATION node of one graph runs. These are the rules the builder applies to a binding's
 // JSON: a new one's entries, the pins that tell it is Stale, what Retarget to current graph
-// drops, and the edits the Runs as and Binding sections make. The backend shape-checks the
-// document against the vendored PROVISIONAL schema; nothing here validates it.
+// drops, and the edits the Runs as and Binding sections make. The backend checks the document:
+// its shape against the vendored PROVISIONAL schema, and the submission and attach checks against
+// its graph and contracts (#274); nothing here validates it.
 import type { Step } from "./history.ts";
 import { nextDefinitionId } from "./lifecycle.ts";
 import { hasOwn, isObject, type Json, type JsonObject } from "./model.ts";

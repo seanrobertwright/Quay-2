@@ -97,6 +97,10 @@ pub struct DefinitionEntry {
     /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_id: Option<String>,
+    /// A graph binding's `costUnit`, when it is a string that isn't empty, so a contract form can
+    /// show the unit of the graphs it binds (#231, #274).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_unit: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more

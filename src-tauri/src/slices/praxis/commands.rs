@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use super::binding_attach::{self, BindingAttach};
 use super::changes;
 use super::context;
 use super::grants;
@@ -85,6 +86,25 @@ pub async fn praxis_graph_pin(
 ) -> Result<Option<GraphPin>, String> {
     let workspace = workspace.inner().clone();
     blocking(move || graph_bindings::graph_pin(&project_root(&workspace, &project_path)?, &graph_id)).await
+}
+
+/// The attach checks of a graph binding (#274), with `content` as the binding and `graph` as its
+/// graph's draft, so unsaved drafts are checked, against each saved contract whose bindings list
+/// the graph: its limits, cost unit and criteria, and the coverage table of those criteria.
+#[tauri::command]
+pub async fn praxis_check_binding(
+    project_path: String,
+    content: serde_json::Value,
+    graph: serde_json::Value,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<BindingAttach, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || {
+        validate::check_size(&content)?;
+        validate::check_size(&graph)?;
+        binding_attach::check_attach(&project_root(&workspace, &project_path)?, &content, &graph)
+    })
+    .await
 }
 
 /// The ids used across the project's saved graph bindings, and the agents of its saved workflow

@@ -1,7 +1,8 @@
 // The docked inspector beside the canvas (#226): the selected node's kind and a delete button,
 // its id, its kind's config form, its `dependsOn`, its input and output schemas, and the graph's
 // read-only revision. With a graph binding chosen (#273), a TASK, LOOP or COMPENSATION node
-// gets a Runs as section, and the canvas background a Binding section. Each control shows the
+// gets a Runs as section, a VERIFICATION node the coverage of its graph's contracts' criteria
+// (#274), and the canvas background a Binding section. Each control shows the
 // validation messages about it; the node's other messages head the panel. A dependency chip's name goes to that node, and the Add
 // dependency combobox filters the graph's other nodes by id or kind (#248).
 import { useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
@@ -14,7 +15,7 @@ import { NODE_KINDS_REGISTRY, nodeKindMeta } from "./kinds.ts";
 import { matchNodes } from "./keyboard.ts";
 import { isNodeKind, type PraxisGraph, type PraxisNode } from "./model.ts";
 import { isDispatchable } from "./graphBinding.ts";
-import { BindingSection, RunsAsSection, type ShownBinding } from "./RunsAsForm.tsx";
+import { BindingSection, CoverageSection, RunsAsSection, type ShownBinding } from "./RunsAsForm.tsx";
 import type { Diagnostic } from "./types.ts";
 
 interface InspectorProps {
@@ -84,7 +85,7 @@ export const Inspector: FC<InspectorProps> = ({
         <p>Select a node to edit it, or add one from the palette on the canvas.</p>
       </div>
     )}
-    {!node && selectionCount === 0 && binding && <BindingSection binding={binding} />}
+    {!node && selectionCount === 0 && binding && <BindingSection binding={binding} nodes={graph.nodes} />}
     <Revision revision={graph.revision} />
   </aside>
 );
@@ -179,6 +180,7 @@ const NodeInspector: FC<Omit<InspectorProps, "rootRef" | "selectionKey" | "node"
         )}
       </section>
       {isDispatchable(node.kind) && <RunsAsSection node={node} binding={binding} />}
+      {node.kind === "VERIFICATION" && binding && <CoverageSection node={node} binding={binding} />}
       <div className={sectionClass}>
         <Dependencies node={node} graph={graph} issues={issues.get("dependsOn")} onEdit={onEdit} onGoToNode={onGoToNode} />
       </div>

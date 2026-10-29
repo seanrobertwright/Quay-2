@@ -17,6 +17,8 @@ export interface DefinitionEntry {
   idMismatch?: { found?: string };
   /** A graph binding's `graphId`, when it is a string, so the list nests it under its graph. */
   graphId?: string;
+  /** A graph binding's `costUnit`, when it is a string that isn't empty (#231, #274). */
+  costUnit?: string;
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
@@ -133,8 +135,11 @@ export interface FileDiff {
   truncated: boolean;
 }
 
-/** How serious an issue is: `error` when the SDK refuses the record, `info` otherwise. */
-export type Severity = "error" | "info";
+/**
+ * How serious an issue is: `error` when the SDK refuses the record, `warning` when the record
+ * saves but Praxis would refuse a run with it as it stands (#274), `info` otherwise.
+ */
+export type Severity = "error" | "warning" | "info";
 
 /** One issue in a definition, from `praxis_validate`. */
 export interface Diagnostic {
@@ -157,7 +162,7 @@ export interface Validation {
   /** At most the backend's cap (500) of the issues found. */
   diagnostics: Diagnostic[];
   /** The issues found beyond `diagnostics`, by severity. */
-  omitted: { errors: number; info: number };
+  omitted: { errors: number; warnings: number; info: number };
 }
 
 /** Where a check of a definition stands: running, failed to run, or done with its result. */
@@ -250,6 +255,42 @@ export interface ContextCheck {
  * agents of its saved workflow templates among the agent ids (#247).
  */
 export type BindingSuggestions = Record<"agentId" | "protocolBindingId" | "action" | "resource", string[]>;
+
+/** One contract criterion at a VERIFICATION node, and the Validation ancestors whose entries list it. */
+export interface CriterionCoverage {
+  criterion: string;
+  /** The ancestors' ids, in graph order; empty when the criterion is uncovered there. */
+  coveredBy: string[];
+}
+
+/** A VERIFICATION node's coverage of one contract's criteria, in the contract's order. */
+export interface VerificationCoverage {
+  nodeId: string;
+  criteria: CriterionCoverage[];
+}
+
+/** One contract whose bindings list a binding's graph, and the binding's attach checks under it (#274). */
+export interface AttachContract {
+  id: string;
+  /** Why the contract couldn't be read, so nothing was checked against it. */
+  problem?: string;
+  /** `Contract.budget`, when it is a string. */
+  budget?: string;
+  /** `Contract.maxAttempts`, when it is a string. */
+  maxAttempts?: string;
+  coverage: VerificationCoverage[];
+  /** Warnings, each named after the contract. */
+  diagnostics: Diagnostic[];
+  /** How many more warnings were found than `diagnostics` holds. */
+  omitted: number;
+}
+
+/** `praxis_check_binding`: a binding's attach checks under each contract that lists its graph, in id order. */
+export interface BindingAttach {
+  contracts: AttachContract[];
+  /** Files that couldn't be read or weren't searched. */
+  unchecked: string[];
+}
 
 /** `praxis_graph_pin`: what a graph binding pins, read from the graph as saved on disk (#247). */
 export interface GraphPin {

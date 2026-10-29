@@ -4,9 +4,14 @@ import type { Diagnostic, Severity, Validation, ValidationStatus } from "./types
 /** A node's issues as its card badge shows them. */
 export interface NodeIssues {
   count: number;
-  /** `error` when any of the node's issues is an error. */
+  /** The most serious of the node's issues. */
   severity: Severity;
 }
+
+const RANK: Record<Severity, number> = { info: 0, warning: 1, error: 2 };
+
+/** The more serious of two severities. */
+export const worse = (a: Severity, b: Severity): Severity => (RANK[a] >= RANK[b] ? a : b);
 
 /** A stable key per diagnostic from what it says, numbered when two say the same thing. */
 export function withKeys(diagnostics: readonly Diagnostic[]): [string, Diagnostic][] {
@@ -27,7 +32,7 @@ export function issuesByNode(diagnostics: readonly Diagnostic[]): Map<string, No
     const seen = byNode.get(d.nodeId);
     byNode.set(d.nodeId, {
       count: (seen?.count ?? 0) + 1,
-      severity: seen?.severity === "error" || d.severity === "error" ? "error" : "info",
+      severity: seen ? worse(seen.severity, d.severity) : d.severity,
     });
   }
   return byNode;
@@ -46,12 +51,13 @@ export function issueField(d: Diagnostic): string {
     .join(".");
 }
 
-/** How many errors and info issues a validation found, the omitted ones included. */
-export function problemCounts(validation: Validation): { errors: number; info: number } {
-  const errors = validation.diagnostics.filter((d) => d.severity === "error").length;
+/** How many errors, warnings and info issues a validation found, the omitted ones included. */
+export function problemCounts(validation: Validation): { errors: number; warnings: number; info: number } {
+  const count = (severity: Severity) => validation.diagnostics.filter((d) => d.severity === severity).length;
   return {
-    errors: errors + validation.omitted.errors,
-    info: validation.diagnostics.length - errors + validation.omitted.info,
+    errors: count("error") + validation.omitted.errors,
+    warnings: count("warning") + validation.omitted.warnings,
+    info: count("info") + validation.omitted.info,
   };
 }
 
@@ -101,6 +107,7 @@ export function withBindingIssues(
       ],
       omitted: {
         errors: graph.validation.omitted.errors + validation.omitted.errors,
+        warnings: graph.validation.omitted.warnings + validation.omitted.warnings,
         info: graph.validation.omitted.info + validation.omitted.info,
       },
     },

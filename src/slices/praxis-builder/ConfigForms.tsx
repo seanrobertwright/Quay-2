@@ -1,12 +1,12 @@
 // Each node kind's config form in the inspector (#226), keyed by the kinds of the registry in
 // `kinds.ts`. A kind with no form has a config that is always `{}`.
 import { useId, useState, type FC, type KeyboardEvent } from "react";
-import { CircleAlert, Info } from "lucide-react";
+import { CircleAlert, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 import { EXECUTION_KINDS, JOIN_MODES } from "./kinds.ts";
 import type { Branch, GraphEdit } from "./editor.ts";
 import type { Json, NodeKind, PraxisGraph, PraxisNode } from "./model.ts";
 import { withKeys } from "./issues.ts";
-import type { Diagnostic } from "./types.ts";
+import type { Diagnostic, Severity } from "./types.ts";
 
 export interface ConfigFormProps {
   node: PraxisNode;
@@ -43,20 +43,26 @@ export const inputClass = `${inputBaseClass} w-full text-[#c9d1d9]`;
 export const labelClass = "block text-[11px] font-medium text-[#8b949e] mb-1";
 const hintClass = "mt-1 text-[10px] text-[#6e7681]";
 
+/** How an issue of each severity shows: its icon, the name a screen reader hears, and its colours. */
+export const SEVERITY_LOOK: Record<Severity, { Icon: LucideIcon; label: string; icon: string; text: string }> = {
+  error: { Icon: CircleAlert, label: "Error", icon: "text-[#ff7b72]", text: "text-[#ff7b72]" },
+  warning: { Icon: TriangleAlert, label: "Warning", icon: "text-[#e3b341]", text: "text-[#e3b341]" },
+  info: { Icon: Info, label: "Info", icon: "text-[#58a6ff]", text: "text-[#79c0ff]" },
+};
+
+/** An issue's severity icon, named for a screen reader. */
+export const SeverityIcon: FC<{ severity: Severity; className: string }> = ({ severity, className }) => {
+  const { Icon, label, icon } = SEVERITY_LOOK[severity];
+  return <Icon role="img" aria-label={label} className={`${className} ${icon}`} />;
+};
+
 /** The validation messages for one control. `id` lets the control point at them. */
 export const FieldMessages: FC<{ id: string; issues: readonly Diagnostic[] | undefined }> = ({ id, issues }) =>
   issues && issues.length > 0 ? (
     <ul id={id} className="mt-1 space-y-0.5">
       {withKeys(issues).map(([key, d]) => (
-        <li
-          key={key}
-          className={`flex items-start gap-1 text-[11px] break-words ${d.severity === "error" ? "text-[#ff7b72]" : "text-[#79c0ff]"}`}
-        >
-          {d.severity === "error" ? (
-            <CircleAlert className="w-3 h-3 mt-px shrink-0" aria-label="Error" role="img" />
-          ) : (
-            <Info className="w-3 h-3 mt-px shrink-0" aria-label="Info" role="img" />
-          )}
+        <li key={key} className={`flex items-start gap-1 text-[11px] break-words ${SEVERITY_LOOK[d.severity].text}`}>
+          <SeverityIcon severity={d.severity} className="w-3 h-3 mt-px shrink-0" />
           <span className="min-w-0">{d.message}</span>
         </li>
       ))}

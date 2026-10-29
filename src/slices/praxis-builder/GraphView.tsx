@@ -6,8 +6,9 @@
 // and distribute commands, and one on empty canvas opens a menu with Paste, which puts the
 // clipboard's nodes there. Pressing a palette button with one node selected adds the new
 // node below it, depending on it (#248). With a graph binding chosen (#273), the binding is
-// validated against the graph draft, its problems join the graph's, its marks show on the
-// cards, and the inspector edits it.
+// validated against the graph draft, its attach checks' warnings under the graph's contracts
+// are added (#274), its problems join the graph's, its marks show on the cards, and the
+// inspector edits it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
 import { ArrangeMenu, Menu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
@@ -20,6 +21,7 @@ import { getClipboard, pasteFits } from "./clipboard.ts";
 import { nextNodeId, type GraphEdit } from "./editor.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
 import { issuesByNode, withBindingIssues } from "./issues.ts";
+import { withAttachIssues } from "./bindingChecks.ts";
 import { bindingMarks } from "./graphBinding.ts";
 import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
@@ -202,7 +204,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   const graphStatus = useValidation("graphs", content);
   const verdict = graphStatus.state === "done" ? graphStatus.validation.verdict : undefined;
   const bindingCheck = useValidation("graph-bindings", binding?.content ?? null, content);
-  const bindingStatus = binding ? bindingCheck : null;
+  const bindingStatus = binding ? withAttachIssues(bindingCheck, binding.attach) : null;
   const status = useMemo(
     () => withBindingIssues(graphStatus, binding?.id ?? "", bindingStatus),
     [graphStatus, binding?.id, bindingStatus]

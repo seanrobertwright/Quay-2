@@ -61,15 +61,15 @@ fn walk_chain(repo: &Path, id: &str, parent: Option<&str>) -> (Vec<Value>, Optio
     (ancestors, stop)
 }
 
-/// A contract whose bindings file lists a grant, and every grant id that file lists.
-struct Binder {
-    contract: String,
-    grants: Vec<String>,
+/// A contract whose bindings file lists a record, and every id that file lists of that record's kind.
+pub(super) struct Binder {
+    pub(super) contract: String,
+    pub(super) listed: Vec<String>,
 }
 
-/// The contracts whose bindings file lists the grant `id`, in id order, and the bindings files
-/// that couldn't be read or weren't searched.
-fn binding_contracts(repo: &Path, id: &str) -> Result<(Vec<Binder>, Vec<String>), String> {
+/// The contracts whose bindings file lists `id` in its `list` (`graphs` or `grants`), in id
+/// order, and the bindings files that couldn't be read or weren't searched.
+pub(super) fn binding_contracts(repo: &Path, list: &str, id: &str) -> Result<(Vec<Binder>, Vec<String>), String> {
     let mut ids = Vec::new();
     let mut unchecked = Vec::new();
     let Some(dir) = confined_dir(repo, BINDINGS_DIR)? else { return Ok((ids, unchecked)) };
@@ -86,13 +86,13 @@ fn binding_contracts(repo: &Path, id: &str) -> Result<(Vec<Binder>, Vec<String>)
     for contract in files.into_iter().take(MAX_SCANNED) {
         match read_record(repo, BINDINGS_DIR, &contract) {
             Ok(Some(record)) => {
-                let grants: Vec<String> = record
-                    .get("grants")
+                let listed: Vec<String> = record
+                    .get(list)
                     .and_then(Value::as_array)
                     .map(|g| g.iter().filter_map(Value::as_str).map(str::to_string).collect())
                     .unwrap_or_default();
-                if grants.iter().any(|g| g == id) {
-                    ids.push(Binder { contract, grants });
+                if listed.iter().any(|g| g == id) {
+                    ids.push(Binder { contract, listed });
                 }
             }
             Ok(None) => {}
@@ -116,10 +116,10 @@ pub fn check_grant(repo: &Path, id: &str, content: &Value) -> Result<GrantCheck,
             limit: g.get("limit").and_then(Value::as_str).map(str::to_string),
         })
         .collect();
-    let (binders, unchecked) = binding_contracts(repo, id)?;
+    let (binders, unchecked) = binding_contracts(repo, "grants", id)?;
     let contracts = binders
         .into_iter()
-        .map(|Binder { contract: cid, grants }| match read_record(repo, PraxisKind::Contracts.folder(), &cid) {
+        .map(|Binder { contract: cid, listed: grants }| match read_record(repo, PraxisKind::Contracts.folder(), &cid) {
             Ok(Some(contract)) => {
                 let bound: Vec<&str> = grants.iter().map(String::as_str).collect();
                 BoundContract {

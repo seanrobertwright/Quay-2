@@ -5,8 +5,8 @@
 //! and so is a binding, `parentId` or `contractId` that names no record. Every record is read
 //! as saved, so the builder runs the check when a record is opened or saved.
 //!
-//! `costUnit` disagreement across a contract's graphs (#231) needs the per-node binding records
-//! of AI-WS-SDK #249, which don't exist yet, so it isn't checked.
+//! A graph binding's checks against the contracts of its graph, `costUnit` agreement across a
+//! contract's graphs (#231) among them, are `binding_attach`'s (#274), run on the binding's draft.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
@@ -125,7 +125,7 @@ pub fn check_context(repo: &Path, record: Option<&RecordRef>, also: &[String]) -
                 PraxisKind::Triggers => {
                     ids.extend(project.triggers.get(&r.id).and_then(Project::trigger_contract).map(str::to_string))
                 }
-                // A binding's checks against its contracts are #274's; it affects no mission yet.
+                // A binding opens no mission; `binding_attach` checks it against its contracts.
                 PraxisKind::GraphBindings => {}
                 // A template refers to no other record, and nothing refers to it (#224).
                 PraxisKind::Templates => {}
