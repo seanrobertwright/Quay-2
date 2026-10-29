@@ -453,6 +453,18 @@ pub fn definition_path(repo: &Path, kind: PraxisKind, id: &str) -> Result<PathBu
         .ok_or_else(|| format!("{}/{}/{}.json doesn't exist.", PRAXIS_DIR, kind.folder(), id))
 }
 
+/// `path` as a person would type it: without the `\\?\` prefix a canonical Windows path carries.
+/// Refused when the path isn't valid Unicode, since a lossy copy would name another file.
+pub fn display_path(path: &Path) -> Result<String, String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("The path {} isn't valid Unicode, so Quay can't show it to copy.", path.display()))?;
+    Ok(match text.strip_prefix(r"\\?\UNC\") {
+        Some(share) => format!(r"\\{}", share),
+        None => text.strip_prefix(r"\\?\").unwrap_or(text).to_string(),
+    })
+}
+
 /// The layout file's JSON for `record`: positions rounded to integers, in node order, with
 /// positions for nodes the graph no longer has dropped, and the viewport. Refuses
 /// positions or a viewport that aren't finite numbers.
@@ -1264,5 +1276,12 @@ mod tests {
         assert!(found.unchecked[0].starts_with(".praxis/triggers/broken.json"));
         assert!(contract_triggers(&repo, "../c").is_err());
         assert!(contract_triggers(&temp_repo(), "c").unwrap().ids.is_empty());
+    }
+
+    #[test]
+    fn display_path_drops_the_verbatim_prefix_of_a_windows_canonical_path() {
+        assert_eq!(display_path(Path::new(r"\\?\E:\repo\.praxis\templates\t.json")).unwrap(), r"E:\repo\.praxis\templates\t.json");
+        assert_eq!(display_path(Path::new(r"\\?\UNC\server\share\t.json")).unwrap(), r"\\server\share\t.json");
+        assert_eq!(display_path(Path::new("/home/me/repo/t.json")).unwrap(), "/home/me/repo/t.json");
     }
 }

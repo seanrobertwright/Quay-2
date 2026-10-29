@@ -5,7 +5,7 @@
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
 // resolves a command.
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Info, Plus, Repeat, UserCheck, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Info, Plus, Repeat, UserCheck, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
 import {
@@ -51,6 +51,8 @@ interface TemplateFormProps {
   draft: Draft;
   onEdit: (edit: TemplateEdit) => void;
   onValidated: (verdict: string | null) => void;
+  /** Opens "Install on host…" for this template; only a saved file can be installed. */
+  onInstall: () => void;
 }
 
 /** The list item a pointer such as `/outputPaths/2` names, quoted, or the pointer when it names none. */
@@ -69,7 +71,7 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated }) => {
+export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall }) => {
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -96,6 +98,8 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
   };
 
   const t = draft.content;
+  // A never-saved draft, or one whose file was deleted, has no file to install.
+  const installable = draft.baseHash !== null && !draft.deletedOnDisk;
   const set = (key: string, value: Json | undefined, live = false) => onEdit({ type: "set-field", key, value, live });
   const command = (key: CommandKey, label: string, hint: string, stage: StageKey) => (
     <div id={anchor(stage)} className="scroll-mt-4">
@@ -278,10 +282,23 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Workflow template ${draft.ref.id}`}>
         <header className="space-y-2">
-          <h2 className="text-sm font-semibold text-[#c9d1d9]">
-            Workflow template · coding profile
-            <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#c9d1d9]">
+              Workflow template · coding profile
+              <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
+            </h2>
+            <button
+              type="button"
+              // Not `disabled`, which would drop focus; the reason is in the title.
+              aria-disabled={!installable}
+              title={installable ? "How to install this template on a Praxis host" : "Save the template first: a host is given the saved file."}
+              onClick={() => installable && onInstall()}
+              className="ml-auto aria-disabled:opacity-40 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white shrink-0"
+            >
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
+              Install on host…
+            </button>
+          </div>
           <p role="note" className="flex items-start gap-1.5 text-[11px] text-[#79c0ff]">
             <Info className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
             <span>

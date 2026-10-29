@@ -113,6 +113,7 @@ import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderC
 import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { DiffView } from "./DiffView.tsx";
+import { InstallDialog } from "./InstallDialog.tsx";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
@@ -325,6 +326,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   >(null);
   const [diffShown, setDiffShown] = useState<DefinitionRef | null>(null);
   const diffRef = useRef<HTMLDivElement | null>(null);
+  // The workflow template whose "Install on host…" dialog is shown (#224).
+  const [installShown, setInstallShown] = useState<string | null>(null);
+  const installRef = useRef<HTMLDivElement | null>(null);
   // What the live region says. `n` counts announcements, so saying the same thing twice in a
   // row still changes the region's text, and it is read again.
   const [announcement, setAnnouncement] = useState({ text: "", n: 0 });
@@ -388,6 +392,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setPending(null);
     setNewMenuShown(false);
     setDiffShown(null);
+    setInstallShown(null);
   }, [projectKey]);
 
   const unsavedKey = useMemo(() => dirtyProjectKeys(sessions).join("\n"), [sessions]);
@@ -1165,12 +1170,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
 
   /**
-   * Escape (#221): the first of help, a diff, Go to node, a prompt, a dragged connection, a
+   * Escape (#221): the first of help, a diff, the install dialog, Go to node, a prompt, a dragged connection, a
    * focused field, the selection, then the builder.
    */
   const escape = (target: EventTarget | null) => {
     if (helpShown) return setHelpShown(false);
     if (diffShown) return setDiffShown(null);
+    if (installShown) return setInstallShown(null);
     if (goToShown) return setGoToShown(false);
     if (conflict) return setConflict(null);
     if (pending) return lifecycleBusy ? undefined : setPending(null);
@@ -1264,6 +1270,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       ? helpRef.current
       : diffShown
         ? diffRef.current
+        : installShown
+        ? installRef.current
         : goToShown
         ? goToRef.current
         : conflict
@@ -2193,7 +2201,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
               ) : openDraft && open.kind === "templates" ? (
                 <>
                   {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
-                  <TemplateForm key={`${projectKey}|${openKey}`} draft={openDraft} onEdit={editOpenTemplate} onValidated={recordValidity} />
+                  <TemplateForm
+                    key={`${projectKey}|${openKey}`}
+                    draft={openDraft}
+                    onEdit={editOpenTemplate}
+                    onValidated={recordValidity}
+                    onInstall={() => setInstallShown(open.id)}
+                  />
                 </>
               ) : openDraft ? (
                 <GraphDraftView
@@ -2282,6 +2296,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
 
         {diffShown && projectPath && (
           <DiffView rootRef={diffRef} projectPath={projectPath} target={diffShown} onClose={() => setDiffShown(null)} />
+        )}
+
+        {installShown !== null && projectPath && (
+          <InstallDialog
+            rootRef={installRef}
+            projectPath={projectPath}
+            name={installShown}
+            changed={changesError ? "unknown" : currentChanges?.byKey.get(definitionKey({ kind: "templates", id: installShown }))}
+            refresh={refreshCount}
+            unsaved={open?.kind === "templates" && open.id === installShown && openDirty}
+            onClose={() => setInstallShown(null)}
+          />
         )}
 
         {pending && (

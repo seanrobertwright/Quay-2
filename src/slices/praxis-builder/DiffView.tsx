@@ -26,7 +26,7 @@ const LINE_CLASSES: Record<DiffLine["kind"], string> = {
 
 const MARKERS: Record<DiffLine["kind"], string> = { header: "", hunk: "", added: "+", removed: "-", context: " " };
 
-type Read = { state: "loading" } | { state: "failed"; error: string } | { state: "done"; diff: FileDiff };
+export type Read = { state: "loading" } | { state: "failed"; error: string } | { state: "done"; diff: FileDiff };
 
 export const DiffView: FC<{
   rootRef: Ref<HTMLDivElement>;
@@ -36,8 +36,8 @@ export const DiffView: FC<{
 }> = ({ rootRef, projectPath, target, onClose }) => {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement | null>(null);
-  const [read, setRead] = useState<Read>({ state: "loading" });
-  const { kind, id } = target;
+  const read = useFileDiff(projectPath, target);
+  const { kind } = target;
 
   // Focus goes to Close while it is shown and back to where it was when it closes.
   useEffect(() => {
@@ -47,22 +47,6 @@ export const DiffView: FC<{
       if (previous?.isConnected) previous.focus();
     };
   }, []);
-
-  useEffect(() => {
-    let stale = false;
-    setRead({ state: "loading" });
-    invoke<FileDiff>("praxis_diff", { projectPath, kind, id }).then(
-      (diff) => {
-        if (!stale) setRead({ state: "done", diff });
-      },
-      (e) => {
-        if (!stale) setRead({ state: "failed", error: String(e) });
-      }
-    );
-    return () => {
-      stale = true;
-    };
-  }, [projectPath, kind, id]);
 
   const path = read.state === "done" ? read.diff.path : definitionPath(target);
   return (
@@ -94,38 +78,67 @@ export const DiffView: FC<{
             {GRANT_PROPOSAL_NOTE}
           </p>
         )}
-        {read.state === "loading" && <p className="text-xs text-[#6e7681]">Reading the diff…</p>}
-        {read.state === "failed" && (
-          <p role="alert" className="text-xs text-[#ff7b72] break-words">
-            {read.error}
-          </p>
-        )}
-        {read.state === "done" && (
-          <>
-            <p role="status" className="mb-2 text-xs text-[#8b949e]">
-              {read.diff.status ? STATUS_NOTES[read.diff.status] : "No changes since the last commit."}
-              {" Compared with the last commit, staged changes included."}
-            </p>
-            {read.diff.diff && (
-              <pre className="min-h-0 overflow-auto rounded-md border border-[#30363d] bg-[#0d1117] py-1 text-[11px] leading-4 font-mono">
-                {diffLines(read.diff.diff).map((line, i) => (
-                  <div key={i} className={`px-2 whitespace-pre ${LINE_CLASSES[line.kind]}`}>
-                    <span aria-hidden="true" className="select-none inline-block w-3">
-                      {MARKERS[line.kind]}
-                    </span>
-                    {line.kind === "added" && <span className="sr-only">Added: </span>}
-                    {line.kind === "removed" && <span className="sr-only">Removed: </span>}
-                    {line.text}
-                  </div>
-                ))}
-              </pre>
-            )}
-            {read.diff.truncated && (
-              <p className="mt-1 text-[10px] text-[#e3b341]">The diff is longer than Quay shows, so it is cut short.</p>
-            )}
-          </>
-        )}
+        <DiffBody read={read} />
       </div>
     </div>
   );
 };
+
+/** Reads the diff of `target`'s file against the last commit with `praxis_diff`, again when `refresh` changes. */
+export function useFileDiff(projectPath: string, target: DefinitionRef, refresh = 0): Read {
+  const [read, setRead] = useState<Read>({ state: "loading" });
+  const { kind, id } = target;
+  useEffect(() => {
+    let stale = false;
+    setRead({ state: "loading" });
+    invoke<FileDiff>("praxis_diff", { projectPath, kind, id }).then(
+      (diff) => {
+        if (!stale) setRead({ state: "done", diff });
+      },
+      (e) => {
+        if (!stale) setRead({ state: "failed", error: String(e) });
+      }
+    );
+    return () => {
+      stale = true;
+    };
+  }, [projectPath, kind, id, refresh]);
+  return read;
+}
+
+/** A read diff: what changed, then the diff's lines, with added and removed lines named for screen readers. */
+export const DiffBody: FC<{ read: Read }> = ({ read }) => (
+  <>
+  {read.state === "loading" && <p className="text-xs text-[#6e7681]">Reading the diff…</p>}
+  {read.state === "failed" && (
+    <p role="alert" className="text-xs text-[#ff7b72] break-words">
+      {read.error}
+    </p>
+  )}
+  {read.state === "done" && (
+    <>
+      <p role="status" className="mb-2 text-xs text-[#8b949e]">
+        {read.diff.status ? STATUS_NOTES[read.diff.status] : "No changes since the last commit."}
+        {" Compared with the last commit, staged changes included."}
+      </p>
+      {read.diff.diff && (
+        <pre className="min-h-0 overflow-auto rounded-md border border-[#30363d] bg-[#0d1117] py-1 text-[11px] leading-4 font-mono">
+          {diffLines(read.diff.diff).map((line, i) => (
+            <div key={i} className={`px-2 whitespace-pre ${LINE_CLASSES[line.kind]}`}>
+              <span aria-hidden="true" className="select-none inline-block w-3">
+                {MARKERS[line.kind]}
+              </span>
+              {line.kind === "added" && <span className="sr-only">Added: </span>}
+              {line.kind === "removed" && <span className="sr-only">Removed: </span>}
+              {line.text}
+            </div>
+          ))}
+        </pre>
+      )}
+      {read.diff.truncated && (
+        <p className="mt-1 text-[10px] text-[#e3b341]">The diff is longer than Quay shows, so it is cut short.</p>
+      )}
+    </>
+  )}
+  </>
+);
