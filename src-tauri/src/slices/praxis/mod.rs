@@ -1,3 +1,4 @@
+pub mod binding_attach;
 pub mod canonical;
 pub mod changes;
 pub mod commands;

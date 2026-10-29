@@ -261,18 +261,22 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 },
             };
             match parsed {
-                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, graph_id: None },
+                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, graph_id: None, cost_unit: None },
                 Ok(record) => {
                     let Some(id_field) = kind.id_field() else {
-                        return DefinitionEntry { id, problem: None, id_mismatch: None, graph_id: None };
+                        return DefinitionEntry { id, problem: None, id_mismatch: None, graph_id: None, cost_unit: None };
                     };
                     let found = record.get(id_field).and_then(Value::as_str);
                     let id_mismatch =
                         (found != Some(id.as_str())).then(|| IdMismatch { found: found.map(str::to_string) });
-                    let graph_id = (kind == PraxisKind::GraphBindings)
-                        .then(|| record.get("graphId").and_then(Value::as_str).map(str::to_string))
-                        .flatten();
-                    DefinitionEntry { id, problem: None, id_mismatch, graph_id }
+                    let binding_field = |key: &str| {
+                        (kind == PraxisKind::GraphBindings)
+                            .then(|| record.get(key).and_then(Value::as_str).map(str::to_string))
+                            .flatten()
+                    };
+                    let graph_id = binding_field("graphId");
+                    let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
+                    DefinitionEntry { id, problem: None, id_mismatch, graph_id, cost_unit }
                 }
             }
         })
