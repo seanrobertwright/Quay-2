@@ -4,7 +4,9 @@
 // Closing only hides it, so each project's session, drafts and undo histories included,
 // survives until Quay quits. Quitting with unsaved drafts asks first.
 // The canvas works from the keyboard alone (#264): Tab reaches the nodes, then the edges, and
-// a polite live region announces undo, redo, paste, delete and save.
+// a polite live region announces undo, redo, paste, delete and save. A graph's row expands to
+// its graph bindings (#273), and the canvas toolbar's Binding picker chooses the one the cards
+// and the inspector show; bindings whose graph is missing are listed apart, as unattached.
 import {
   useCallback,
   useEffect,
@@ -24,8 +26,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Viewport } from "@xyflow/react";
 import {
+  ChevronDown,
+  ChevronRight,
   CircleAlert,
   FolderOpen,
+  Link2Off,
   FolderPlus,
   GitCompareArrows,
   PanelLeftClose,
@@ -43,7 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
-import { MAX_NODES, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
+import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
 import { definitionIdProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
@@ -51,6 +56,20 @@ import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
 import { arrangedPositions, arrangeLabel, type ArrangeAction } from "./arrange.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
+import { BindingBar } from "./BindingBar.tsx";
+import {
+  applyBindingEdit,
+  bindingStatus,
+  bindingStepFor,
+  entriesOf,
+  idSuggestions,
+  newBindingContent,
+  nextBindingId,
+  retargetBinding,
+  retargetPlan,
+  type BindingEdit,
+} from "./graphBinding.ts";
+import type { ShownBinding } from "./RunsAsForm.tsx";
 import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
@@ -74,10 +93,20 @@ import {
   markDeletedOnDisk,
   markSaved,
   moveNodes,
+  withChanges,
   type Draft,
 } from "./drafts.ts";
-import { editDraft, nodeIdsOf, nodesOf, stepFor, type GraphEdit } from "./editor.ts";
-import { copySelection, duplicateSelection, getClipboard, pasteDelta, pasteIntoDraft, setClipboard } from "./clipboard.ts";
+import { editDraft, nodeIdsOf, nodesOf, type GraphEdit } from "./editor.ts";
+import {
+  copySelection,
+  duplicateSelection,
+  getClipboard,
+  pasteDelta,
+  pasteIntoDraft,
+  pasteRunsAs,
+  setClipboard,
+  type ClipboardEnvelope,
+} from "./clipboard.ts";
 import { canRedo, canUndo } from "./history.ts";
 import { ariaKeyShortcuts, commandFor, focusRegion, shortcutLabel, type BuilderCommand } from "./keymap.ts";
 import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts";
@@ -92,13 +121,18 @@ import {
   applyRename,
   bindingsPath,
   changeDraft,
+  changeWorkspace,
+  chooseBinding,
+  chosenBinding,
   definitionKey,
   definitionPath,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
+  editGraph,
   endDraftMerge,
   forgetHistories,
+  graphBindingDrafts,
   redoDraft,
   removeDefinition,
   renameUnsavedDraft,
@@ -109,6 +143,7 @@ import {
   type Sessions,
 } from "./session.ts";
 import type {
+  BindingSuggestions,
   BindingsInput,
   ChangedFiles,
   ChangeStatus,
@@ -120,6 +155,7 @@ import type {
   DeleteOutcome,
   DraftContent,
   FileProblem,
+  GraphPin,
   PraxisKind,
   RenameOutcome,
   SaveOutcome,
@@ -188,10 +224,26 @@ interface Conflict {
 /** The inline name field in the list: naming a new definition, or renaming one. */
 type Naming = { mode: "new"; kind: PraxisKind; value: string } | { mode: "rename"; ref: DefinitionRef; value: string };
 
-/** A rename or delete the backend has planned, waiting for the user to confirm it. */
+/**
+ * A rename or delete the backend has planned, waiting for the user to confirm it. A graph's
+ * delete names its graph bindings, which go with it unless `alsoBindings` is turned off (#247).
+ */
 type Pending =
   | { type: "rename"; projectPath: string; ref: DefinitionRef; newId: string; plan: RenameOutcome }
-  | { type: "delete"; projectPath: string; ref: DefinitionRef; plan: DeleteOutcome | null };
+  | {
+      type: "delete";
+      projectPath: string;
+      ref: DefinitionRef;
+      plan: DeleteOutcome | null;
+      bindings: string[];
+      alsoBindings: boolean;
+    };
+
+/** The kinds the list reads: every kind with a section, and graph bindings, which nest under their graphs. */
+const LISTED_KINDS: PraxisKind[] = [...RECORD_KINDS.map((k) => k.kind), "graph-bindings"];
+
+/** A graph binding's file, relative to the repository. */
+const bindingRef = (id: string): DefinitionRef => ({ kind: "graph-bindings", id });
 
 const IS_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 const TRASH_NAME = IS_WINDOWS ? "the Recycle Bin" : "the Trash";
@@ -266,7 +318,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [quitPrompt, setQuitPrompt] = useState<{ failures: string[]; busy: boolean } | null>(null);
   const [helpShown, setHelpShown] = useState(false);
   const [goToShown, setGoToShown] = useState(false);
-  // The contracts, grants and templates changed since the last commit (#223, #224), for the list's badge, and
+  // The contracts, grants, graph bindings and templates changed since the last commit (#223, #224), for the list's badge, and
   // the one whose diff is shown.
   const [changes, setChanges] = useState<
     { projectKey: string; byKey: ReadonlyMap<string, ChangeStatus> } | { projectKey: string; error: string } | null
@@ -282,6 +334,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const announce = useCallback((text: string) => setAnnouncement((a) => ({ text, n: a.n + 1 })), []);
   const [selection, setSelection] = useState<Selection>({ key: "", ids: NO_IDS, chosen: 0 });
   const [naming, setNaming] = useState<Naming | null>(null);
+  // The graphs whose rows show their bindings, keyed by project and graph id.
+  const [expandedGraphs, setExpandedGraphs] = useState<ReadonlySet<string>>(new Set());
   const [newMenuShown, setNewMenuShown] = useState(false);
   const newMenuId = useId();
   const [pending, setPending] = useState<Pending | null>(null);
@@ -353,11 +407,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     let stale = false;
     const key = normalizePath(projectPath);
     void Promise.allSettled(
-      RECORD_KINDS.map(({ kind }) => invoke<DefinitionList>("praxis_list", { projectPath, kind }))
+      LISTED_KINDS.map((kind) => invoke<DefinitionList>("praxis_list", { projectPath, kind }))
     ).then((results) => {
       if (stale) return;
       const byKind = {} as Record<PraxisKind, KindListing>;
-      RECORD_KINDS.forEach(({ kind }, i) => {
+      LISTED_KINDS.forEach((kind, i) => {
         const r = results[i];
         byKind[kind] = r.status === "fulfilled" ? { list: r.value } : { error: String(r.reason) };
       });
@@ -413,6 +467,69 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       stale = true;
     };
   }, [isOpen, projectPath, openKind, openId, refreshCount, changeSessions]);
+
+  // The open graph's pin as saved on disk (#247), read with it and after every save, so a
+  // binding of it shows Stale once the graph changes. Keyed by project and graph.
+  const [pins, setPins] = useState<ReadonlyMap<string, GraphPin | null>>(new Map());
+  useEffect(() => {
+    if (!isOpen || !projectPath || openKind !== "graphs" || openId === undefined) return;
+    let stale = false;
+    const key = `${normalizePath(projectPath)}|${openId}`;
+    invoke<GraphPin | null>("praxis_graph_pin", { projectPath, graphId: openId }).then(
+      (pin) => {
+        if (!stale) setPins((m) => new Map(m).set(key, pin));
+      },
+      (e) => console.error("[praxis-builder] can't read the graph's pin:", e)
+    );
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, openKind, openId, refreshCount]);
+
+  // The ids used across the project's saved bindings and templates (#247), read with an open
+  // graph and after every save, for the Runs as section to suggest. Keyed by project.
+  const [savedSuggestions, setSavedSuggestions] = useState<{ projectKey: string; ids: BindingSuggestions } | null>(null);
+  useEffect(() => {
+    if (!isOpen || !projectPath || openKind !== "graphs") return;
+    let stale = false;
+    const key = normalizePath(projectPath);
+    invoke<BindingSuggestions>("praxis_binding_suggestions", { projectPath }).then(
+      (ids) => {
+        if (!stale) setSavedSuggestions({ projectKey: key, ids });
+      },
+      (e) => console.error("[praxis-builder] can't read the binding id suggestions:", e)
+    );
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, openKind, refreshCount]);
+
+  // The open graph's bindings, read each time the list is, so each has a draft: a node rename
+  // rewrites every binding of the graph (#247), and the picker offers them all.
+  const openGraphBindings = useMemo(() => {
+    if (openKind !== "graphs" || !listing || listing.projectKey !== projectKey) return "";
+    const entries = listing.byKind["graph-bindings"]?.list?.entries ?? [];
+    return entries
+      .filter((e) => e.graphId === openId && !e.problem)
+      .map((e) => e.id)
+      .join("\n");
+  }, [openKind, openId, listing, projectKey]);
+  useEffect(() => {
+    if (!isOpen || !projectPath || !openGraphBindings) return;
+    let stale = false;
+    for (const id of openGraphBindings.split("\n")) {
+      const ref = bindingRef(id);
+      invoke<DefinitionFile>("praxis_read", { projectPath, kind: ref.kind, id }).then(
+        (file) => {
+          if (!stale) changeSessions((s) => updateSession(s, projectPath, (cur) => applyDiskRead(cur, ref, file)));
+        },
+        (e) => console.error(`[praxis-builder] can't read graph binding ${id}:`, e)
+      );
+    }
+    return () => {
+      stale = true;
+    };
+  }, [isOpen, projectPath, openGraphBindings, changeSessions]);
 
   // The triggers that name the open contract, read with it, so a trigger saved meanwhile shows.
   useEffect(() => {
@@ -685,13 +802,45 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [projectPath, open, changeSessions]
   );
 
+  // A node rename also rewrites the node's key in every binding of the graph, in the same step (#247).
   const editOpen = useCallback(
     (edit: GraphEdit) => {
       if (!projectPath || !open) return;
       const now = Date.now();
-      changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, (d) => editDraft(d, edit), stepFor(edit), now)));
+      const before = sessionFor(sessionsRef.current, projectPath);
+      changeSessions((s) => updateSession(s, projectPath, (cur) => editGraph(cur, open, edit, now)));
+      if (edit.type === "rename-node") {
+        const rewritten = graphBindingDrafts(before, open.id)
+          .filter((d) => hasOwn(entriesOf(d.content), edit.from))
+          .map((d) => d.ref.id);
+        if (rewritten.length > 0) {
+          setNotice({
+            tone: "info",
+            text: `Renamed ${edit.from} to ${edit.to} in ${rewritten.length === 1 ? "binding" : "bindings"} ${rewritten.join(", ")} too. Save them to keep it.`,
+          });
+        }
+      }
     },
     [projectPath, open, changeSessions]
+  );
+
+  // The binding chosen for the open graph, and its edits, which are steps of the graph's history.
+  const chosenId = open?.kind === "graphs" && session ? chosenBinding(session, open.id) : null;
+  const chosenKey = chosenId === null ? "" : definitionKey(bindingRef(chosenId));
+  const chosenDraft = session && chosenKey ? session.drafts[chosenKey] : undefined;
+  const editChosenBinding = useCallback(
+    (edit: BindingEdit) => {
+      if (!projectPath || chosenId === null) return;
+      const now = Date.now();
+      const change = (d: Draft) => {
+        const content = applyBindingEdit(d.content, edit);
+        return content === d.content ? d : withChanges(d, content, d.positions);
+      };
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) => changeDraft(cur, bindingRef(chosenId), change, bindingStepFor(chosenId, edit), now))
+      );
+    },
+    [projectPath, chosenId, changeSessions]
   );
 
   // A contract form's changes go through the same history (#223).
@@ -752,10 +901,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const stepLabel = (verb: string, ids: readonly string[]) =>
     ids.length === 1 ? `${verb} ${ids[0]}` : `${verb} ${ids.length} nodes`;
 
-  /** Copies the selected nodes of the open graph to the in-memory clipboard. */
+  /**
+   * Copies the selected nodes of the open graph to the in-memory clipboard, with their Runs as
+   * entries from the binding shown (#248).
+   */
   const copySelected = () => {
     if (!openDraft || selected.size === 0) return;
-    const envelope = copySelection(nodesOf(openDraft.content), selected, openDraft.positions, viewKey);
+    const entries = chosenDraft ? entriesOf(chosenDraft.content) : undefined;
+    const envelope = copySelection(nodesOf(openDraft.content), selected, openDraft.positions, viewKey, entries);
     if (envelope) setClipboard(envelope);
   };
 
@@ -765,12 +918,38 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     removeSelected("Cut");
   };
 
-  /** Records nodes a paste or duplicate added to the open graph as one step, and selects them. */
-  const addFragment = (verb: "Paste" | "Duplicate", result: { draft: Draft; pastedIds: string[] } | null) => {
+  /**
+   * Records nodes a paste or duplicate added to the open graph as one step, and selects them.
+   * A paste also writes the envelope's Runs as entries into the binding shown, in the same step,
+   * or drops them when none is shown (#248).
+   */
+  const addFragment = (
+    verb: "Paste" | "Duplicate",
+    result: { draft: Draft; pastedIds: string[] } | null,
+    envelope?: ClipboardEnvelope
+  ) => {
     if (!projectPath || !open || !result) return;
     const label = stepLabel(verb, result.pastedIds);
     const now = Date.now();
-    changeSessions((s) => updateSession(s, projectPath, (cur) => changeDraft(cur, open, () => result.draft, { label }, now)));
+    changeSessions((s) =>
+      updateSession(s, projectPath, (cur) =>
+        changeWorkspace(
+          cur,
+          open,
+          (ws) => {
+            const shown = chosenKey ? ws.bindings[chosenKey] : undefined;
+            const content = shown && envelope ? pasteRunsAs(shown.content, envelope, result.pastedIds) : undefined;
+            const bindings =
+              shown && content !== undefined && content !== shown.content
+                ? { ...ws.bindings, [chosenKey]: withChanges(shown, content, shown.positions) }
+                : ws.bindings;
+            return { graph: result.draft, bindings };
+          },
+          { label },
+          now
+        )
+      )
+    );
     selectNodes(result.pastedIds);
     announce(stepLabel(PAST[verb], result.pastedIds));
   };
@@ -789,7 +968,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const delta = pasteDelta(envelope, openDraft, viewKey, viewport, box, at);
     const pasted = pasteIntoDraft(openDraft, envelope, delta);
     if (!pasted) return announce(`Not pasted: a graph holds at most ${MAX_NODES} nodes`);
-    addFragment("Paste", pasted);
+    addFragment("Paste", pasted, envelope);
   };
 
   /** Duplicates the selected nodes as one step without touching the clipboard. */
@@ -879,6 +1058,89 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       if (!dialogRef.current?.contains(document.activeElement)) (canvasFor(viewKey) ?? dialogRef.current)?.focus();
     });
   };
+
+  const openPin = open?.kind === "graphs" ? pins.get(`${projectKey}|${open.id}`) : undefined;
+
+  /** Picks a binding in the open graph's Binding picker, or None. Not a step of any history. */
+  const chooseOpenBinding = (bindingId: string | null) => {
+    if (!projectPath || open?.kind !== "graphs") return;
+    changeSessions((s) => updateSession(s, projectPath, (cur) => chooseBinding(cur, open.id, bindingId)));
+  };
+
+  /**
+   * Adds a new, unsaved binding of the open graph and picks it (#247): `content` of the binding
+   * with its id set, or a new binding with one blank entry per dispatchable node.
+   */
+  const addBinding = (content?: JsonObject) => {
+    if (!project || !openDraft || open?.kind !== "graphs") return;
+    const graphId = open.id;
+    const id = nextBindingId(graphId, takenIds("graph-bindings"));
+    const ref = bindingRef(id);
+    const record = content ? { ...content, graphBindingId: id } : newBindingContent(id, openDraft.content);
+    const created = createNewDraft(ref, record);
+    if (!created.ok) return setNotice({ tone: "error", text: created.message });
+    changeSessions((s) =>
+      updateSession(s, project.path, (cur) =>
+        chooseBinding({ ...cur, name: project.name, drafts: { ...cur.drafts, [definitionKey(ref)]: created.value } }, graphId, id)
+      )
+    );
+    announce(`${content ? "Duplicated as" : "Created"} binding ${id}. Save it to write ${definitionPath(ref)}`);
+  };
+
+  /** What Retarget to current graph would do to the chosen binding, or why it can't run now. */
+  const retargetInfo =
+    !chosenDraft || !openDraft
+      ? null
+      : isDirty(openDraft)
+        ? { blocked: "Save the graph first, so the binding is pinned to the graph as it is on disk." }
+        : !openPin
+          ? { blocked: "The graph isn't saved yet, so there is nothing to pin the binding to." }
+          : { plan: retargetPlan(chosenDraft.content, openDraft.content) };
+
+  /** Retarget to current graph (#247): re-pins the chosen binding and drops its entries for gone nodes, as one step. */
+  const retargetChosen = () => {
+    if (!chosenDraft || !openDraft || !openPin || isDirty(openDraft) || chosenId === null) return;
+    const content = retargetBinding(chosenDraft.content, openDraft.content, openPin);
+    editChosenBinding({ type: "replace", content, label: `Retarget ${chosenId} to current graph` });
+    announce(`Retargeted ${chosenId} to ${openDraft.ref.id}. Save the binding to keep it.`);
+  };
+
+  /** The open graph's bindings for the picker: those listed and those only drafted, in id order. */
+  const pickerBindings = (() => {
+    if (open?.kind !== "graphs" || !session) return [];
+    const ids = new Set(listing?.projectKey === projectKey ? (listing.byKind["graph-bindings"]?.list?.entries ?? []).filter((e) => e.graphId === open.id).map((e) => e.id) : []);
+    for (const d of graphBindingDrafts(session, open.id)) ids.add(d.ref.id);
+    return [...ids].sort().map((id) => {
+      const draft = session.drafts[definitionKey(bindingRef(id))];
+      return { id, dirty: draft ? isDirty(draft) : false, unsaved: draft?.baseHash === null };
+    });
+  })();
+
+  // Suggestions for the Runs as id fields: the ids used in the project's saved bindings, the
+  // agents of its saved workflow templates, and the ids in the binding drafts, which may hold
+  // ids not saved yet.
+  const bindingContents = useMemo(
+    () => Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-bindings").map((d) => d.content),
+    [session?.drafts]
+  );
+  const saved = savedSuggestions?.projectKey === projectKey ? savedSuggestions.ids : null;
+  const suggestions = useMemo(
+    () => ({
+      agentId: idSuggestions(bindingContents, "agentId", saved?.agentId),
+      protocolBindingId: idSuggestions(bindingContents, "protocolBindingId", saved?.protocolBindingId),
+      action: idSuggestions(bindingContents, "action", saved?.action),
+      resource: idSuggestions(bindingContents, "resource", saved?.resource),
+    }),
+    [bindingContents, saved]
+  );
+  const chosenContent = chosenDraft?.content;
+  const shownBinding: Omit<ShownBinding, "diagnostics"> | null = useMemo(
+    () =>
+      chosenId !== null && chosenContent
+        ? { id: chosenId, content: chosenContent, suggestions, onEdit: editChosenBinding }
+        : null,
+    [chosenId, chosenContent, suggestions, editChosenBinding]
+  );
 
   const recordValidity = useCallback(
     (verdict: string | null) => {
@@ -1194,14 +1456,24 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNotice(null);
     setNaming(null);
     const listed = listedEntries(ref.kind).some((e) => e.id === ref.id);
+    // A graph's bindings, saved or only drafted, which its delete offers to delete too (#247).
+    const bindings =
+      ref.kind === "graphs"
+        ? [
+            ...new Set([
+              ...listedEntries("graph-bindings").filter((e) => e.graphId === ref.id).map((e) => e.id),
+              ...(session ? graphBindingDrafts(session, ref.id).map((d) => d.ref.id) : []),
+            ]),
+          ].sort()
+        : [];
     if (!listed && session?.drafts[definitionKey(ref)]) {
-      setPending({ type: "delete", projectPath: path, ref, plan: null });
+      setPending({ type: "delete", projectPath: path, ref, plan: null, bindings, alsoBindings: true });
       return;
     }
     setLifecycleBusy(true);
     try {
       const plan = await invoke<DeleteOutcome>("praxis_delete", { projectPath: path, kind: ref.kind, id: ref.id, dryRun: true });
-      setPending({ type: "delete", projectPath: path, ref, plan });
+      setPending({ type: "delete", projectPath: path, ref, plan, bindings, alsoBindings: true });
     } catch (e) {
       setNotice({ tone: "error", text: String(e) });
     } finally {
@@ -1258,7 +1530,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       } else if (p.plan === null) {
         changeSessions((s) => updateSession(s, p.projectPath, (cur) => removeDefinition(cur, p.ref)));
         forgetValidity(p);
-        setNotice({ tone: "info", text: `Discarded the draft of ${definitionPath(p.ref)}.` });
+        const also = p.alsoBindings ? await deleteBindings(p.projectPath, p.bindings) : "";
+        setNotice({ tone: "info", text: `Discarded the draft of ${definitionPath(p.ref)}.${also}` });
       } else {
         const outcome = await invoke<DeleteOutcome>("praxis_delete", {
           projectPath: p.projectPath,
@@ -1270,7 +1543,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           changeSessions((s) => updateSession(s, p.projectPath, (cur) => removeDefinition(cur, p.ref)));
           forgetValidity(p);
         }
-        setNotice(report(`Deleted ${definitionPath(p.ref)}`, outcome));
+        // The graph's bindings go only once the graph has: a failed delete leaves them attached.
+        const also = p.alsoBindings && outcome.error === undefined ? await deleteBindings(p.projectPath, p.bindings) : "";
+        const done = report(`Deleted ${definitionPath(p.ref)}`, outcome);
+        setNotice({ ...done, text: `${done.text}${also}` });
       }
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : String(e) });
@@ -1280,6 +1556,34 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       setRefreshCount((n) => n + 1);
       runChecks.recheckAll();
     }
+  };
+
+  /**
+   * Deletes a deleted graph's bindings (#247): a saved one goes to the trash, and a draft never
+   * saved is dropped. Returns what it did, as a sentence to add to the notice.
+   */
+  const deleteBindings = async (path: string, ids: readonly string[]): Promise<string> => {
+    const listed = new Set(listedEntries("graph-bindings").map((e) => e.id));
+    const done: string[] = [];
+    const failed: string[] = [];
+    for (const id of ids) {
+      const ref = bindingRef(id);
+      try {
+        if (listed.has(id)) {
+          const outcome = await invoke<DeleteOutcome>("praxis_delete", { projectPath: path, kind: ref.kind, id, dryRun: false });
+          if (outcome.error !== undefined) throw new Error(outcome.error);
+        }
+        changeSessions((s) => updateSession(s, path, (cur) => removeDefinition(cur, ref)));
+        done.push(id);
+      } catch (e) {
+        failed.push(`${id} (${e instanceof Error ? e.message : String(e)})`);
+      }
+    }
+    const parts = [
+      done.length > 0 ? ` Deleted its ${done.length === 1 ? "binding" : "bindings"} ${done.join(", ")}.` : "",
+      failed.length > 0 ? ` Couldn't delete ${failed.join(", ")}.` : "",
+    ];
+    return parts.join("");
   };
 
   /** The fix for a file whose id isn't its name: write it with its name as the id inside. */
@@ -1308,6 +1612,95 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       setRefreshCount((n) => n + 1);
       runChecks.recheckAll();
     }
+  };
+
+  /**
+   * Opens a binding from the list (#247): its graph, with the binding chosen in the picker, or,
+   * for a binding whose graph is missing, the binding itself.
+   */
+  const openBinding = (id: string, graphId: string | undefined) => {
+    if (!project) return;
+    if (graphId === undefined) return openDefinition(bindingRef(id));
+    setNotice(null);
+    changeSessions((s) =>
+      updateSession(s, project.path, (cur) => chooseBinding({ ...cur, name: project.name, open: { kind: "graphs", id: graphId } }, graphId, id))
+    );
+  };
+
+  // The list's graph bindings (#247): each under its graph, and those whose graph is neither
+  // listed nor drafted under Unattached bindings. A draft's graphId is the one edited, so it
+  // wins over its file's.
+  type BindingRow = { id: string; graphId?: string; problem?: FileProblem; idMismatch?: DefinitionEntry["idMismatch"] };
+  const bindingRows = (() => {
+    const entries = currentListing?.byKind["graph-bindings"]?.list?.entries ?? [];
+    const drafts = Object.values(session?.drafts ?? {});
+    const draftedGraphId = (id: string) => {
+      const graphId = session?.drafts[definitionKey(bindingRef(id))]?.content.graphId;
+      return typeof graphId === "string" ? graphId : undefined;
+    };
+    const listed = new Set(entries.map((e) => e.id));
+    const rows: BindingRow[] = [
+      ...entries.map((e) => ({ id: e.id, graphId: draftedGraphId(e.id) ?? e.graphId, problem: e.problem, idMismatch: e.idMismatch })),
+      ...drafts.filter((d) => d.ref.kind === "graph-bindings" && !listed.has(d.ref.id)).map((d) => ({ id: d.ref.id, graphId: draftedGraphId(d.ref.id) })),
+    ];
+    const graphs = new Set([...listedEntries("graphs").map((e) => e.id), ...drafts.filter((d) => d.ref.kind === "graphs").map((d) => d.ref.id)]);
+    const byGraph = new Map<string, BindingRow[]>();
+    const unattached: BindingRow[] = [];
+    for (const row of rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      if (row.graphId !== undefined && graphs.has(row.graphId)) byGraph.set(row.graphId, [...(byGraph.get(row.graphId) ?? []), row]);
+      else unattached.push(row);
+    }
+    const deleted = currentChanges ? deletedSinceCommit(currentChanges.byKey, "graph-bindings", new Set(rows.map((r) => r.id))) : [];
+    return { byGraph, unattached, deleted, error: currentListing?.byKind["graph-bindings"]?.error };
+  })();
+
+  /** A binding's row in the list, under its graph (`attached`) or under Unattached bindings. */
+  const renderBindingRow = (row: BindingRow, attached: boolean) => {
+    const ref = bindingRef(row.id);
+    const key = definitionKey(ref);
+    if (naming?.mode === "rename" && definitionKey(naming.ref) === key) {
+      return (
+        <li key={row.id}>
+          <NameField
+            label={`New id for ${row.id}`}
+            value={naming.value}
+            problem={namingProblem}
+            busy={lifecycleBusy}
+            onChange={(value) => setNaming({ ...naming, value })}
+            onSubmit={() => void submitName()}
+            onCancel={() => setNaming(null)}
+          />
+        </li>
+      );
+    }
+    const isCurrent = attached ? open?.kind === "graphs" && open.id === row.graphId && chosenId === row.id : openKey === key;
+    const changed = currentChanges?.byKey.get(key);
+    return (
+      <li key={row.id}>
+        <div className="group flex items-center pr-1.5">
+          <ListRow
+            id={row.id}
+            problem={row.problem}
+            idMismatch={row.idMismatch}
+            invalid={false}
+            crossIssues={false}
+            draft={session?.drafts[key]}
+            current={isCurrent}
+            onOpen={() => openBinding(row.id, attached ? row.graphId : undefined)}
+          />
+          {changed && <ChangedBadge id={row.id} status={changed} onClick={() => setDiffShown(ref)} />}
+          <RowAction label={`Rename ${row.id}`} shown={isCurrent} onClick={() => startRename(ref)}>
+            <Pencil className="w-3 h-3" aria-hidden="true" />
+          </RowAction>
+          <RowAction label={`Delete ${row.id}`} shown={isCurrent} onClick={() => void startDelete(ref)}>
+            <Trash2 className="w-3 h-3" aria-hidden="true" />
+          </RowAction>
+        </div>
+        {!attached && row.graphId !== undefined && (
+          <p className="ml-5 px-2 text-[10px] text-[#e3b341] break-words">refers to missing graph {row.graphId}</p>
+        )}
+      </li>
+    );
   };
 
   const creatableKinds = RECORD_KINDS.filter((k) => k.newRecord);
@@ -1593,27 +1986,65 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                 </li>
                               );
                             }
+                            // A graph's row expands to its bindings (#247).
+                            const nested = kind === "graphs" ? (bindingRows.byGraph.get(def.id) ?? []) : [];
+                            const expandKey = `${projectKey}|${def.id}`;
+                            const expanded = nested.length > 0 && expandedGraphs.has(expandKey);
+                            const nestedId = `${listId}-bindings-${def.id}`;
                             return (
-                              <li key={def.id} className="group flex items-center pr-1.5">
-                                <ListRow
-                                  id={def.id}
-                                  problem={def.problem}
-                                  idMismatch={def.idMismatch}
-                                  invalid={invalid.get(`${projectKey}|${key}`) === true}
-                                  crossIssues={crossErrors.has(key)}
-                                  draft={draft}
-                                  current={isOpenDef}
-                                  onOpen={() => openDefinition(ref)}
-                                />
-                                {changed && (
-                                  <ChangedBadge id={def.id} status={changed} onClick={() => setDiffShown(ref)} />
+                              <li key={def.id}>
+                                <div className="group flex items-center pr-1.5">
+                                  {kind === "graphs" &&
+                                    (nested.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        aria-expanded={expanded}
+                                        aria-controls={expanded ? nestedId : undefined}
+                                        aria-label={`${expanded ? "Hide" : "Show"} the ${nested.length} ${nested.length === 1 ? "binding" : "bindings"} of ${def.id}`}
+                                        title={`${nested.length} ${nested.length === 1 ? "binding" : "bindings"}`}
+                                        onClick={() =>
+                                          setExpandedGraphs((cur) => {
+                                            const next = new Set(cur);
+                                            if (!next.delete(expandKey)) next.add(expandKey);
+                                            return next;
+                                          })
+                                        }
+                                        className="ml-1 p-0.5 shrink-0 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d]"
+                                      >
+                                        {expanded ? (
+                                          <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                                        ) : (
+                                          <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                                        )}
+                                      </button>
+                                    ) : (
+                                      <span className="ml-1 w-4 shrink-0" aria-hidden="true" />
+                                    ))}
+                                  <ListRow
+                                    id={def.id}
+                                    problem={def.problem}
+                                    idMismatch={def.idMismatch}
+                                    invalid={invalid.get(`${projectKey}|${key}`) === true}
+                                    crossIssues={crossErrors.has(key)}
+                                    draft={draft}
+                                    current={isOpenDef}
+                                    onOpen={() => openDefinition(ref)}
+                                  />
+                                  {changed && (
+                                    <ChangedBadge id={def.id} status={changed} onClick={() => setDiffShown(ref)} />
+                                  )}
+                                  <RowAction label={`Rename ${def.id}`} shown={isOpenDef} onClick={() => startRename(ref)}>
+                                    <Pencil className="w-3 h-3" aria-hidden="true" />
+                                  </RowAction>
+                                  <RowAction label={`Delete ${def.id}`} shown={isOpenDef} onClick={() => void startDelete(ref)}>
+                                    <Trash2 className="w-3 h-3" aria-hidden="true" />
+                                  </RowAction>
+                                </div>
+                                {expanded && (
+                                  <ul id={nestedId} aria-label={`Bindings of ${def.id}`} className="ml-4 border-l border-[#30363d]">
+                                    {nested.map((row) => renderBindingRow(row, true))}
+                                  </ul>
                                 )}
-                                <RowAction label={`Rename ${def.id}`} shown={isOpenDef} onClick={() => startRename(ref)}>
-                                  <Pencil className="w-3 h-3" aria-hidden="true" />
-                                </RowAction>
-                                <RowAction label={`Delete ${def.id}`} shown={isOpenDef} onClick={() => void startDelete(ref)}>
-                                  <Trash2 className="w-3 h-3" aria-hidden="true" />
-                                </RowAction>
                               </li>
                             );
                           })}
@@ -1635,6 +2066,30 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     </section>
                   );
                 })}
+              {currentListing &&
+                (bindingRows.unattached.length > 0 || bindingRows.deleted.length > 0 || bindingRows.error !== undefined) && (
+                  <section aria-label="Unattached bindings" className="mb-3">
+                    <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
+                      <Link2Off className="w-3 h-3" aria-hidden="true" /> Unattached bindings
+                    </h3>
+                    {bindingRows.error !== undefined && (
+                      <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
+                        {bindingRows.error}
+                      </p>
+                    )}
+                    <ul>
+                      {bindingRows.unattached.map((row) => renderBindingRow(row, false))}
+                      {bindingRows.deleted.map((id) => (
+                        <li key={`deleted:${id}`} className="group flex items-center pr-1.5">
+                          <span className="flex-1 min-w-0 ml-1.5 px-2 py-1 text-xs font-mono text-[#8b949e] line-through truncate">
+                            {id}
+                          </span>
+                          <ChangedBadge id={id} status="deleted" onClick={() => setDiffShown(bindingRef(id))} />
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
               {changesError !== null && (
                 <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
                   Changes since the last commit can't be shown: {changesError}
@@ -1686,6 +2141,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     <p>Choose a definition from the list.</p>
                   )}
                 </div>
+              ) : openDraft && open.kind === "graph-bindings" ? (
+                <UnattachedBindingView draft={openDraft} />
               ) : openDraft && open.kind === "contracts" ? (
                 <>
                   {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
@@ -1776,6 +2233,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     />
                   }
                   onOpen={openDefinition}
+                  binding={shownBinding}
+                  bindingBar={
+                    <BindingBar
+                      graphId={open.id}
+                      bindings={pickerBindings}
+                      chosen={chosenId}
+                      status={chosenDraft && openPin !== undefined ? bindingStatus(chosenDraft.content, openPin) : null}
+                      retarget={retargetInfo}
+                      saving={saving}
+                      onChoose={chooseOpenBinding}
+                      onNew={() => addBinding()}
+                      onDuplicate={() => chosenDraft && addBinding(chosenDraft.content)}
+                      onSave={() => projectPath && chosenId !== null && void saveFromBuilder(projectPath, bindingRef(chosenId), false)}
+                      onRetarget={retargetChosen}
+                    />
+                  }
                 />
               ) : !current ? (
                 <p className="p-6 text-sm text-[#6e7681]">Loading {definitionPath(open)}…</p>
@@ -1832,6 +2305,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             pending={pending}
             busy={lifecycleBusy}
             onConfirm={() => void runPending(pending)}
+            onAlsoBindings={(alsoBindings) => setPending((p) => (p?.type === "delete" ? { ...p, alsoBindings } : p))}
             onCancel={() => setPending(null)}
           />
         )}
@@ -1944,7 +2418,7 @@ const ListRow: FC<{
 };
 
 /**
- * The "changed since last commit" badge (#223) on a contract, grant or template whose file differs from
+ * The "changed since last commit" badge (#223) on a contract, grant, graph binding or template whose file differs from
  * the last commit, which opens its diff. It says nothing about approval: a grant file is
  * never approved by being committed or not.
  */
@@ -2132,6 +2606,10 @@ const GraphDraftView: FC<{
   run: GraphRunContext;
   runContext: ReactNode;
   onOpen: (ref: DefinitionRef) => void;
+  /** The graph binding chosen in the picker, or null for None (#273). */
+  binding: Omit<ShownBinding, "diagnostics"> | null;
+  /** The canvas toolbar's Binding picker and the chosen binding's actions. */
+  bindingBar: ReactNode;
 }> = ({
   draft,
   layoutProblem,
@@ -2151,6 +2629,8 @@ const GraphDraftView: FC<{
   run,
   runContext,
   onOpen,
+  binding,
+  bindingBar,
 }) => {
   // Drafts are made only from graphs the canvas can draw, and no edit makes one it can't,
   // so this always parses.
@@ -2160,6 +2640,7 @@ const GraphDraftView: FC<{
     <>
       {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
       <RunsUnder run={run} onOpen={onOpen} />
+      {bindingBar}
       {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
@@ -2186,8 +2667,32 @@ const GraphDraftView: FC<{
         problemsShown={problemsShown}
         onToggleProblems={onToggleProblems}
         runContext={runContext}
+        binding={binding}
       />
     </>
+  );
+};
+
+/**
+ * A graph binding opened on its own (#247): one whose graph is missing, listed under Unattached
+ * bindings. It can't be edited without its graph, so it shows read-only, with how to fix it.
+ */
+const UnattachedBindingView: FC<{ draft: Draft }> = ({ draft }) => {
+  const graphId = typeof draft.content.graphId === "string" ? draft.content.graphId : undefined;
+  return (
+    <div className="flex-1 overflow-auto">
+      {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
+      <div role="status" className="px-4 py-2 flex items-center gap-2 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
+        <Link2Off className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        <span className="break-words min-w-0">
+          {graphId === undefined
+            ? `${definitionPath(draft.ref)} names no graph.`
+            : `${definitionPath(draft.ref)} refers to missing graph ${graphId}. Restore or create the graph to edit it, or delete the binding.`}
+        </span>
+      </div>
+      <p className="px-4 pt-3 text-[11px] text-[#6e7681]">Read-only preview</p>
+      <pre className="px-4 py-2 text-xs leading-snug font-mono text-[#c9d1d9] select-text">{JSON.stringify(draft.content, null, 2)}</pre>
+    </div>
   );
 };
 
@@ -2280,9 +2785,37 @@ const PendingPrompt: FC<{
   pending: Pending;
   busy: boolean;
   onConfirm: () => void;
+  /** Turns a graph delete's "Also delete its N bindings" on or off (#247). */
+  onAlsoBindings: (alsoBindings: boolean) => void;
   onCancel: () => void;
-}> = ({ rootRef, pending, busy, onConfirm, onCancel }) => {
+}> = ({ rootRef, pending, busy, onConfirm, onAlsoBindings, onCancel }) => {
   const titleId = useId();
+  const alsoId = useId();
+  const alsoHintId = useId();
+  const alsoBindings =
+    pending.type === "delete" && pending.bindings.length > 0 ? (
+      <div>
+        <div className="flex items-center gap-2">
+          <input
+            id={alsoId}
+            type="checkbox"
+            checked={pending.alsoBindings}
+            disabled={busy}
+            onChange={(e) => onAlsoBindings(e.target.checked)}
+            aria-describedby={alsoHintId}
+          />
+          <label htmlFor={alsoId} className="text-xs text-[#c9d1d9]">
+            Also delete its {pending.bindings.length} {pending.bindings.length === 1 ? "binding" : "bindings"}
+          </label>
+        </div>
+        <p id={alsoHintId} className="mt-1 ml-5 text-[11px] text-[#8b949e] break-words">
+          <span className="font-mono">{pending.bindings.join(", ")}</span>.{" "}
+          {pending.alsoBindings
+            ? `They go to ${TRASH_NAME} with it.`
+            : "They stay, and move to Unattached bindings."}
+        </p>
+      </div>
+    ) : null;
   const path = definitionPath(pending.ref);
   let title: string;
   let body: ReactNode;
@@ -2311,7 +2844,12 @@ const PendingPrompt: FC<{
   } else if (pending.plan === null) {
     title = `Discard the draft of ${path}?`;
     action = "Discard";
-    body = <p className="text-xs text-[#c9d1d9]">It has no file on disk, so its draft is all there is of it.</p>;
+    body = (
+      <>
+        <p className="text-xs text-[#c9d1d9]">It has no file on disk, so its draft is all there is of it.</p>
+        {alsoBindings}
+      </>
+    );
   } else {
     const { plan } = pending;
     title = `Delete ${path}?`;
@@ -2319,9 +2857,14 @@ const PendingPrompt: FC<{
     body = (
       <>
         <PathList title={`These files move to ${TRASH_NAME}:`} paths={plan.files} />
+        {alsoBindings}
         <PathList
           title="These definitions refer to it, and will refer to a missing one afterwards:"
-          paths={plan.referrers}
+          paths={
+            pending.alsoBindings
+              ? plan.referrers.filter((r) => !pending.bindings.some((id) => r === definitionPath(bindingRef(id))))
+              : plan.referrers
+          }
         />
         <PathList title="These files couldn't be read to look for references:" paths={plan.unchecked} />
         <p className="text-xs text-[#8b949e]">Its draft and undo history are dropped.</p>

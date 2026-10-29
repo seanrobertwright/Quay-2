@@ -11,7 +11,8 @@ use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
 /// the diff by joining this list.
-pub const SHOWS_CHANGES: [PraxisKind; 3] = [PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::Templates];
+pub const SHOWS_CHANGES: [PraxisKind; 4] =
+    [PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::GraphBindings, PraxisKind::Templates];
 
 /// Whether `repo` is the root of a git repository or worktree. A folder inside some other
 /// repository isn't, since that repository isn't the project's.
@@ -173,6 +174,18 @@ mod tests {
         write(&repo, ".praxis/grants/a.json", "{\"id\":\"a\",\"limit\":\"5\"}\n");
         let got = changed_files(&repo).unwrap();
         assert_eq!(got.files, vec![changed(PraxisKind::Grants, "a", ChangeStatus::Modified)]);
+    }
+
+    #[test]
+    fn an_edited_graph_binding_is_changed_and_has_a_diff() {
+        let repo = committed_repo(&[(".praxis/graph-bindings/g-1.json", "{\"costUnit\":\"u\"}
+")]);
+        write(&repo, ".praxis/graph-bindings/g-1.json", "{\"costUnit\":\"v\"}
+");
+        assert_eq!(changed_files(&repo).unwrap().files, vec![changed(PraxisKind::GraphBindings, "g-1", ChangeStatus::Modified)]);
+        let diff = file_diff(&repo, PraxisKind::GraphBindings, "g-1").unwrap();
+        assert_eq!(diff.path, ".praxis/graph-bindings/g-1.json");
+        assert_eq!(diff.status, Some(ChangeStatus::Modified));
     }
 
     #[test]

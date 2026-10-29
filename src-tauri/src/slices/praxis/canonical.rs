@@ -8,6 +8,7 @@
 
 use serde_json::{Map, Value};
 
+use super::graph_bindings::binding_revision;
 use super::models::PraxisKind;
 use super::revision::content_revision;
 use super::template;
@@ -69,6 +70,39 @@ const GRANT_KEYS: &[&str] = &[
     "depth",
 ];
 
+// Property orders from the vendored `spec/engine-v1/graph-binding.schema.json` (#273).
+const GRAPH_BINDING_KEYS: &[&str] = &[
+    "format",
+    "graphBindingId",
+    "graphBindingRevision",
+    "graphId",
+    "graphRevision",
+    "graphDigest",
+    "costUnit",
+    "maxTotalCost",
+    "maxTotalActiveMs",
+    "contextPolicy",
+    "nodes",
+];
+const BINDING_ENTRY_KEYS: &[&str] = &[
+    "executionKind",
+    "role",
+    "criteria",
+    "agentId",
+    "protocolBindingId",
+    "action",
+    "resource",
+    "payload",
+    "commands",
+    "outputPaths",
+    "exposure",
+    "maxAttempts",
+    "maxTaskMs",
+    "requirements",
+];
+const EXPOSURE_KEYS: &[&str] = &["kind", "allowance", "stopThreshold", "justification"];
+const CONTEXT_POLICY_KEYS: &[&str] = &["format", "instructions", "retainedEvidence", "summary", "maxBytes"];
+
 /// `map` with the keys in `order` first, in that order, and every other key after them
 /// in its existing order.
 fn ordered(mut map: Map<String, Value>, order: &[&str]) -> Map<String, Value> {
@@ -114,6 +148,22 @@ fn order_record(kind: PraxisKind, record: Map<String, Value>) -> Map<String, Val
         }
         PraxisKind::Contracts => ordered(record, CONTRACT_KEYS),
         PraxisKind::Grants => ordered(record, GRANT_KEYS),
+        PraxisKind::GraphBindings => {
+            let mut map = ordered(record, GRAPH_BINDING_KEYS);
+            if let Some(policy) = map.get_mut("contextPolicy") {
+                *policy = ordered_value(policy.take(), CONTEXT_POLICY_KEYS);
+            }
+            // Entries stay in the file's node order; only the keys inside each are ordered.
+            if let Some(Value::Object(nodes)) = map.get_mut("nodes") {
+                for entry in nodes.values_mut() {
+                    *entry = ordered_value(entry.take(), BINDING_ENTRY_KEYS);
+                    if let Some(exposure) = entry.get_mut("exposure") {
+                        *exposure = ordered_value(exposure.take(), EXPOSURE_KEYS);
+                    }
+                }
+            }
+            map
+        }
         PraxisKind::Templates => ordered(record, template::template_keys()),
     }
 }
@@ -133,7 +183,8 @@ fn has_revision(kind: PraxisKind) -> bool {
 
 /// The record as it is written: keys in schema order and, for graphs and triggers,
 /// `revision` set from the content by `content_revision`, the same digest the validator
-/// checks it against. Content the SDK can't digest (an unsafe number, say) keeps the
+/// checks it against. A graph binding's `graphBindingRevision` is set the same way, by
+/// `binding_revision`. Content the SDK can't digest (an unsafe number, say) keeps the
 /// revision it has, and the validator then has nothing to compare it with either.
 pub fn canonical_record(kind: PraxisKind, record: Map<String, Value>) -> Map<String, Value> {
     let mut map = order_record(kind, record);
@@ -142,6 +193,12 @@ pub fn canonical_record(kind: PraxisKind, record: Map<String, Value>) -> Map<Str
             map.insert("revision".to_string(), Value::String(revision));
             map = order_record(kind, map);
         }
+    }
+    if kind == PraxisKind::GraphBindings
+        && let Some(revision) = binding_revision(&Value::Object(map.clone()))
+    {
+        map.insert("graphBindingRevision".to_string(), Value::from(revision));
+        map = order_record(kind, map);
     }
     map
 }

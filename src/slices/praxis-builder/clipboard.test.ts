@@ -15,6 +15,7 @@ import {
   computeClickDelta,
   cascadeDelta,
   pasteDelta,
+  pasteRunsAs,
   type ClipboardEnvelope,
 } from "./clipboard.ts";
 import { createGraphDraft } from "./drafts.ts";
@@ -353,5 +354,39 @@ describe("placement and viewport helpers", () => {
     assert.equal(getClipboard(), envelope);
     setClipboard(null);
     assert.equal(getClipboard(), null);
+  });
+});
+
+describe("Runs as entries (#248, #273)", () => {
+  const entry = (agentId: string): JsonObject => ({ executionKind: "AGENT", role: "WORK", agentId });
+
+  test("copy carries the Runs as entries of the copied nodes from the binding shown", () => {
+    const envelope = copySelection(sampleNodes, new Set(["task-1", "end"]), samplePositions, "g", {
+      "task-1": entry("codex"),
+      other: entry("claude-code"),
+    })!;
+    assert.deepEqual(envelope.runsAs, { "task-1": entry("codex") });
+  });
+
+  test("with no binding shown, copy carries no entries", () => {
+    const envelope = copySelection(sampleNodes, new Set(["task-1"]), samplePositions, "g")!;
+    assert.equal(envelope.runsAs, undefined);
+  });
+
+  test("paste writes the entries into the binding shown under the remapped ids", () => {
+    const draft = createGraphDraft({ kind: "graphs", id: "test-graph" }, fileOf(sampleNodes));
+    if (!draft.ok) throw new Error(draft.message);
+    const envelope = copySelection(sampleNodes, new Set(["task-1"]), samplePositions, "g", { "task-1": entry("codex") })!;
+    const pasted = pasteIntoDraft(draft.value, envelope, { x: 24, y: 24 })!;
+    assert.deepEqual(pasted.pastedIds, ["task-2"]);
+    const binding: JsonObject = { graphId: "test-graph", nodes: { "task-1": entry("") } };
+    const next = pasteRunsAs(binding, envelope, pasted.pastedIds);
+    assert.deepEqual(next.nodes, { "task-1": entry(""), "task-2": entry("codex") });
+  });
+
+  test("an envelope without entries leaves the binding as it is", () => {
+    const envelope = copySelection(sampleNodes, new Set(["task-1"]), samplePositions)!;
+    const binding: JsonObject = { nodes: {} };
+    assert.equal(pasteRunsAs(binding, envelope, ["task-2"]), binding);
   });
 });

@@ -1,20 +1,28 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createGraphDraft, isDirty, markSaved, moveNodes, type Draft } from "./drafts.ts";
+import { createGraphDraft, isDirty, markSaved, moveNodes, withChanges, type Draft } from "./drafts.ts";
+import { applyBindingEdit, newBindingContent } from "./graphBinding.ts";
 import { editDraft, type GraphEdit } from "./editor.ts";
+import type { JsonObject } from "./model.ts";
 import type { DefinitionFile } from "./types.ts";
 import {
   applyDiskRead,
+  applyRename,
   changeDraft,
+  chooseBinding,
+  chosenBinding,
   definitionKey,
   dirtyDrafts,
   dirtyProjectKeys,
   dropDraft,
+  editGraph,
   EMPTY_SESSION,
   endDraftMerge,
   forgetHistories,
+  graphBindingDrafts,
   redoDraft,
+  removeDefinition,
   sessionFor,
   undoDraft,
   updateSession,
@@ -232,4 +240,117 @@ test("removing a project forgets its histories but keeps its drafts", () => {
   assert.notEqual(sessionFor(after, "E:\\A").drafts["graphs/ship"], undefined);
   assert.equal(sessionFor(after, "E:\\B"), sessionFor(sessions, "E:\\B"));
   assert.equal(forgetHistories(after, ["E:\\C"]), after);
+});
+
+// --- graph workspaces: a graph and its bindings share one history (#248, #273) ----------------
+
+
+const workspaceGraph: JsonObject = {
+  id: "g",
+  revision: "r",
+  nodes: [
+    { id: "task-1", kind: "TASK", dependsOn: [], config: { executionKind: "AGENT" } },
+    { id: "end-1", kind: "END", dependsOn: ["task-1"], config: {} },
+  ],
+};
+
+function readInto(session: typeof EMPTY_SESSION, kind: "graphs" | "graph-bindings", id: string, content: object, hash = "h") {
+  const file: DefinitionFile = { id, kind, missing: false, contentHash: hash, content: content as never };
+  return applyDiskRead(session, { kind, id }, file);
+}
+
+/** A session with graph g and two of its bindings read from disk, and a binding of another graph. */
+function workspace() {
+  let s = readInto(EMPTY_SESSION, "graphs", "g", workspaceGraph);
+  s = readInto(s, "graph-bindings", "g-1", newBindingContent("g-1", workspaceGraph));
+  s = readInto(s, "graph-bindings", "g-2", newBindingContent("g-2", workspaceGraph));
+  s = readInto(s, "graph-bindings", "h-1", { ...newBindingContent("h-1", workspaceGraph), graphId: "h" });
+  return s;
+}
+
+const G = { kind: "graphs", id: "g" } as const;
+const B1 = { kind: "graph-bindings", id: "g-1" } as const;
+const entryKeys = (s: typeof EMPTY_SESSION, key: string) => Object.keys(s.drafts[key].content.nodes as object);
+
+test("a binding read from disk makes a clean draft, and is found among its graph's bindings", () => {
+  const s = workspace();
+  assert.equal(isDirty(s.drafts["graph-bindings/g-1"]), false);
+  assert.deepEqual(graphBindingDrafts(s, "g").map((d) => d.ref.id), ["g-1", "g-2"]);
+});
+
+test("a binding edit is a step of its graph's history, and undo puts it back", () => {
+  const edit = { type: "set-entry-field", node: "task-1", key: "agentId", value: "codex" } as const;
+  let s = workspace();
+  s = changeDraft(s, B1, (d) => withChanges(d, applyBindingEdit(d.content, edit), d.positions), { label: "Set agentId" }, 0);
+  assert.equal(isDirty(s.drafts["graph-bindings/g-1"]), true);
+  assert.equal(s.histories["graph-bindings/g-1"], undefined);
+  assert.equal(s.histories["graphs/g"].past.length, 1);
+  const undone = undoDraft(s, G)!;
+  assert.equal(undone.label, "Set agentId");
+  assert.equal(isDirty(undone.session.drafts["graph-bindings/g-1"]), false);
+  const redone = redoDraft(undone.session, G)!;
+  assert.equal(isDirty(redone.session.drafts["graph-bindings/g-1"]), true);
+});
+
+test("a node rename rewrites the key in every binding of the graph in the same undo step", () => {
+  let s = workspace();
+  s = editGraph(s, G, { type: "rename-node", from: "task-1", to: "build" }, 0);
+  assert.deepEqual(entryKeys(s, "graph-bindings/g-1"), ["build"]);
+  assert.deepEqual(entryKeys(s, "graph-bindings/g-2"), ["build"]);
+  assert.equal(isDirty(s.drafts["graph-bindings/g-1"]), true);
+  // Another graph's binding is left alone.
+  assert.deepEqual(entryKeys(s, "graph-bindings/h-1"), ["task-1"]);
+  assert.equal(s.histories["graphs/g"].past.length, 1);
+  const undone = undoDraft(s, G)!;
+  assert.deepEqual(entryKeys(undone.session, "graph-bindings/g-1"), ["task-1"]);
+  assert.deepEqual(entryKeys(undone.session, "graph-bindings/g-2"), ["task-1"]);
+  assert.equal(isDirty(undone.session.drafts["graphs/g"]), false);
+});
+
+test("a node delete leaves the bindings' entries for a retarget to drop", () => {
+  let s = workspace();
+  s = editGraph(s, G, { type: "delete-node", id: "task-1" }, 0);
+  assert.deepEqual(entryKeys(s, "graph-bindings/g-1"), ["task-1"]);
+  assert.equal(isDirty(s.drafts["graph-bindings/g-1"]), false);
+});
+
+test("Retarget to current graph is one step of the graph's history", () => {
+  let s = workspace();
+  s = editGraph(s, G, { type: "delete-node", id: "task-1" }, 0);
+  const retargeted = { ...s.drafts["graph-bindings/g-1"].content, nodes: {}, graphRevision: "r2", graphDigest: "d2" };
+  s = changeDraft(s, B1, (d) => withChanges(d, retargeted, d.positions), { label: "Retarget g-1" }, 1);
+  assert.equal(s.histories["graphs/g"].past.length, 2);
+  const undone = undoDraft(s, G)!;
+  assert.equal(undone.label, "Retarget g-1");
+  assert.deepEqual(entryKeys(undone.session, "graph-bindings/g-1"), ["task-1"]);
+});
+
+test("a binding that reloads from disk clears its graph's history", () => {
+  let s = editGraph(workspace(), G, { type: "rename-node", from: "end-1", to: "done" }, 0);
+  assert.equal(s.histories["graphs/g"].past.length, 1);
+  s = readInto(s, "graph-bindings", "g-2", { ...newBindingContent("g-2", workspaceGraph), costUnit: "x" }, "h2");
+  assert.equal(s.histories["graphs/g"], undefined);
+});
+
+test("the binding chosen for a graph is remembered per graph, outside the history", () => {
+  let s = workspace();
+  assert.equal(chosenBinding(s, "g"), null);
+  s = chooseBinding(s, "g", "g-2");
+  s = chooseBinding(s, "h", "h-1");
+  assert.equal(chosenBinding(s, "g"), "g-2");
+  assert.equal(chosenBinding(s, "h"), "h-1");
+  assert.equal(s.histories["graphs/g"], undefined);
+  assert.equal(chosenBinding(chooseBinding(s, "g", null), "g"), null);
+});
+
+test("the binding choice follows a rename of its graph or binding, and goes when either is deleted", () => {
+  const plan = { changes: [], unchecked: [], drafts: [], done: ["Wrote"] };
+  let s = chooseBinding(workspace(), "g", "g-1");
+  s = applyRename(s, G, "h", plan);
+  assert.equal(chosenBinding(s, "g"), null);
+  assert.equal(chosenBinding(s, "h"), "g-1");
+  s = applyRename(s, B1, "h-9", plan);
+  assert.equal(chosenBinding(s, "h"), "h-9");
+  assert.equal(chosenBinding(removeDefinition(s, { kind: "graph-bindings", id: "h-9" }), "h"), null);
+  assert.equal(chosenBinding(removeDefinition(s, { kind: "graphs", id: "h" }), "h"), null);
 });
