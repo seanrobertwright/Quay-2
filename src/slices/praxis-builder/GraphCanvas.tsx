@@ -49,7 +49,7 @@ const EDGE_FOCUS_CLASS = "[&:focus-visible_.react-flow__edge-path]:stroke-[#f0f6
 const IssueBadge: FC<{ issues: NodeIssues }> = ({ issues }) => (
   <span
     className={`absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-[#0d1117] ${
-      issues.severity === "error" ? "bg-[#da3633]" : "bg-[#1f6feb]"
+      issues.severity === "error" ? "bg-[#da3633]" : issues.severity === "warning" ? "bg-[#9e6a03]" : "bg-[#1f6feb]"
     }`}
   >
     {issues.count}

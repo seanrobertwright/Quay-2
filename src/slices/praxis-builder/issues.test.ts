@@ -18,6 +18,12 @@ const info = (path: string, nodeId?: string): Diagnostic => ({
   severity: "info",
 });
 
+const warning = (path: string, nodeId?: string): Diagnostic => ({
+  ...error(path, nodeId),
+  code: "BINDING_STALE",
+  severity: "warning",
+});
+
 describe("issuesByNode", () => {
   it("counts each node's issues and leaves out graph-level ones", () => {
     const byNode = issuesByNode([
@@ -44,6 +50,12 @@ describe("issuesByNode", () => {
   it("marks a node info when all of its issues are info", () => {
     assert.deepEqual(issuesByNode([info("/nodes/2", "x")]).get("x"), { count: 1, severity: "info" });
   });
+
+  it("marks a node warning when its worst issue is a warning", () => {
+    const byNode = issuesByNode([info("/nodes/0", "a"), warning("/nodes/0", "a"), info("/nodes/0", "a")]);
+    assert.deepEqual(byNode.get("a"), { count: 3, severity: "warning" });
+    assert.deepEqual(issuesByNode([warning("/nodes/0", "a"), error("/nodes/0", "a")]).get("a"), { count: 2, severity: "error" });
+  });
 });
 
 describe("issueField", () => {
@@ -67,18 +79,18 @@ describe("issueField", () => {
 });
 
 describe("problemCounts", () => {
-  it("counts errors and info apart", () => {
+  it("counts errors, warnings and info apart", () => {
     const validation = {
       verdict: "NODE_CONFIG",
-      diagnostics: [error("/nodes"), error("/nodes/0", "a"), info("/revision")],
-      omitted: { errors: 0, info: 0 },
+      diagnostics: [error("/nodes"), error("/nodes/0", "a"), warning("/graphDigest"), info("/revision")],
+      omitted: { errors: 0, warnings: 0, info: 0 },
     };
-    assert.deepEqual(problemCounts(validation), { errors: 2, info: 1 });
+    assert.deepEqual(problemCounts(validation), { errors: 2, warnings: 1, info: 1 });
   });
 
   it("adds the issues the backend left out of the list", () => {
-    const validation = { verdict: "NODE_CONFIG", diagnostics: [error("/nodes")], omitted: { errors: 900, info: 3 } };
-    assert.deepEqual(problemCounts(validation), { errors: 901, info: 3 });
+    const validation = { verdict: "NODE_CONFIG", diagnostics: [error("/nodes")], omitted: { errors: 900, warnings: 4, info: 3 } };
+    assert.deepEqual(problemCounts(validation), { errors: 901, warnings: 4, info: 3 });
   });
 });
 
@@ -125,14 +137,14 @@ describe("withBindingIssues", () => {
   it("joins a binding's issues to the graph's, named after the binding, and keeps the graph's verdict", () => {
   const graphIssue: Diagnostic = { code: "NO_END_PATH", severity: "error", message: "No end.", path: "/nodes/0", nodeId: "a" };
   const bindingIssue: Diagnostic = { code: "BINDING_INCOMPLETE", severity: "error", message: "Node b has no entry.", path: "/nodes", nodeId: "b" };
-  const graph: ValidationStatus = { state: "done", validation: { verdict: "NO_END_PATH", diagnostics: [graphIssue], omitted: { errors: 1, info: 0 } } };
-  const binding: ValidationStatus = { state: "done", validation: { verdict: "BINDING_INCOMPLETE", diagnostics: [bindingIssue], omitted: { errors: 0, info: 2 } } };
+  const graph: ValidationStatus = { state: "done", validation: { verdict: "NO_END_PATH", diagnostics: [graphIssue], omitted: { errors: 1, warnings: 0, info: 0 } } };
+  const binding: ValidationStatus = { state: "done", validation: { verdict: "BINDING_INCOMPLETE", diagnostics: [bindingIssue], omitted: { errors: 0, warnings: 5, info: 2 } } };
   const both = withBindingIssues(graph, "g-1", binding);
   assert.equal(both.state, "done");
   if (both.state !== "done") return;
   assert.equal(both.validation.verdict, "NO_END_PATH");
   assert.deepEqual(both.validation.diagnostics, [graphIssue, { ...bindingIssue, message: "Binding g-1: Node b has no entry." }]);
-  assert.deepEqual(both.validation.omitted, { errors: 1, info: 2 });
+  assert.deepEqual(both.validation.omitted, { errors: 1, warnings: 5, info: 2 });
   // Until both are checked, the list says it is checking; without a binding it is the graph's own.
   assert.deepEqual(withBindingIssues(graph, "g-1", { state: "checking" }), { state: "checking" });
   assert.equal(withBindingIssues(graph, "g-1", null), graph);

@@ -79,6 +79,7 @@ import { templateStepFor, type TemplateEdit } from "./template.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
 import { CrossRecordSection, RunContextPanel, RunsUnder } from "./RunContextPanel.tsx";
 import { graphRunContext, issuesOn, recordsWithErrors, type GraphRunContext } from "./runContext.ts";
+import { useBindingAttach } from "./useBindingAttach.ts";
 import { useRunContexts } from "./useRunContexts.ts";
 import { triggerStepFor, type TriggerEdit } from "./trigger.ts";
 import {
@@ -1129,12 +1130,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [bindingContents, saved]
   );
   const chosenContent = chosenDraft?.content;
+  // The chosen binding's attach checks against the saved contracts of its graph (#274), with the
+  // graph's draft, rerun after every save, which may change a contract.
+  const attach = useBindingAttach(
+    projectPath,
+    chosenId,
+    chosenContent ?? null,
+    chosenContent && open?.kind === "graphs" ? (openDraft?.content ?? null) : null,
+    refreshCount
+  );
   const shownBinding: Omit<ShownBinding, "diagnostics"> | null = useMemo(
     () =>
       chosenId !== null && chosenContent
-        ? { id: chosenId, content: chosenContent, suggestions, onEdit: editChosenBinding }
+        ? { id: chosenId, content: chosenContent, suggestions, attach, onEdit: editChosenBinding }
         : null,
-    [chosenId, chosenContent, suggestions, editChosenBinding]
+    [chosenId, chosenContent, suggestions, attach, editChosenBinding]
   );
 
   const recordValidity = useCallback(
@@ -2144,6 +2154,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     bindingsProblem={current?.file?.bindingsProblem}
                     known={{ graphs: [...new Set(takenIds("graphs"))], grants: [...new Set(takenIds("grants"))] }}
                     triggers={contractTriggers?.key === viewKey ? contractTriggers.status : { state: "loading" }}
+                    graphBindings={listedEntries("graph-bindings")}
                     crossRecord={crossRecord}
                     onEdit={editOpenContract}
                     onOpen={openDefinition}

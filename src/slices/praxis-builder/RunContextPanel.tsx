@@ -3,8 +3,8 @@
 // The checks read saved records, so they change when a record is opened or saved, not as the
 // user types; they are advisory, and saving still works.
 import { useId, useState, type FC } from "react";
-import { ChevronDown, ChevronRight, CircleAlert, FileText, Info, Plus } from "lucide-react";
-import { inputClass } from "./ConfigForms.tsx";
+import { ChevronDown, ChevronRight, FileText, Plus } from "lucide-react";
+import { inputClass, SeverityIcon } from "./ConfigForms.tsx";
 import { hintClass, Section } from "./RecordFields.tsx";
 import { issuePlace, type GraphRunContext } from "./runContext.ts";
 import type { DefinitionRef, PraxisKind, RecordIssue } from "./types.ts";
@@ -14,14 +14,9 @@ const linkClass = "font-mono text-[#58a6ff] hover:underline";
 /** One cross-record issue: its severity, the contract whose mission found it, where it is, and what it says. */
 const IssueLine: FC<{ issue: RecordIssue; onOpen: (ref: DefinitionRef) => void }> = ({ issue, onOpen }) => {
   const place = issuePlace(issue);
-  const Icon = issue.severity === "error" ? CircleAlert : Info;
   return (
     <li className="flex items-start gap-1.5 text-[11px]">
-      <Icon
-        role="img"
-        aria-label={issue.severity === "error" ? "Error" : "Info"}
-        className={`w-3.5 h-3.5 mt-px shrink-0 ${issue.severity === "error" ? "text-[#ff7b72]" : "text-[#58a6ff]"}`}
-      />
+      <SeverityIcon severity={issue.severity} className="w-3.5 h-3.5 mt-px shrink-0" />
       <span className="break-words min-w-0 text-[#c9d1d9]">
         {issue.contract !== "" && (
           <>

@@ -1,7 +1,8 @@
 // The collapsible Problems list under the canvas (#226): every validation issue with its node,
 // field, message and code. Choosing an issue on a node selects that node and zooms to it.
 import { useId, type FC, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, CircleAlert, Info, LoaderCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
+import { SeverityIcon } from "./ConfigForms.tsx";
 import { issueField, problemCounts, withKeys } from "./issues.ts";
 import type { Diagnostic, ValidationStatus } from "./types.ts";
 
@@ -21,10 +22,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 function summary(status: ValidationStatus): string {
   if (status.state === "checking") return "Checking…";
   if (status.state === "failed") return "Couldn't check this graph";
-  const { errors, info } = problemCounts(status.validation);
-  if (errors === 0 && info === 0) return "No problems";
+  const { errors, warnings, info } = problemCounts(status.validation);
+  if (errors === 0 && warnings === 0 && info === 0) return "No problems";
   const parts = [];
   if (errors > 0) parts.push(plural(errors, "error", "errors"));
+  if (warnings > 0) parts.push(plural(warnings, "warning", "warnings"));
   if (info > 0) parts.push(`${info} info`);
   return parts.join(", ");
 }
@@ -35,8 +37,10 @@ export const ProblemsPanel: FC<ProblemsPanelProps> = ({ status, expanded, onTogg
   const listId = useId();
   const validation = status.state === "done" ? status.validation : null;
   const diagnostics = validation?.diagnostics ?? [];
-  const omitted = validation ? validation.omitted.errors + validation.omitted.info : 0;
-  const hasErrors = validation !== null && problemCounts(validation).errors > 0;
+  const omitted = validation ? validation.omitted.errors + validation.omitted.warnings + validation.omitted.info : 0;
+  const counts = validation ? problemCounts(validation) : null;
+  const tone =
+    status.state === "failed" || (counts?.errors ?? 0) > 0 ? "text-[#ff7b72]" : (counts?.warnings ?? 0) > 0 ? "text-[#e3b341]" : "text-[#8b949e]";
 
   return (
     // A sibling of the canvas box, never an overlay, so nothing drawn on the canvas (such as
@@ -62,9 +66,7 @@ export const ProblemsPanel: FC<ProblemsPanelProps> = ({ status, expanded, onTogg
           </h3>
           <p
             role="status"
-            className={`ml-1 inline-flex items-center gap-1 ${
-              status.state === "failed" || hasErrors ? "text-[#ff7b72]" : "text-[#8b949e]"
-            }`}
+            className={`ml-1 inline-flex items-center gap-1 ${tone}`}
           >
             {status.state === "checking" && (
               <LoaderCircle className="w-3 h-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -112,15 +114,10 @@ const ProblemRow: FC<{ diagnostic: Diagnostic; canSelect: boolean; onSelectNode:
   canSelect,
   onSelectNode,
 }) => {
-  const Icon = d.severity === "error" ? CircleAlert : Info;
   const cells = (
     <>
       <span className="flex items-center gap-1.5 min-w-0">
-        <Icon
-          role="img"
-          className={`w-3.5 h-3.5 shrink-0 ${d.severity === "error" ? "text-[#ff7b72]" : "text-[#58a6ff]"}`}
-          aria-label={d.severity === "error" ? "Error" : "Info"}
-        />
+        <SeverityIcon severity={d.severity} className="w-3.5 h-3.5 shrink-0" />
         <span className={`truncate font-mono ${d.nodeId === undefined ? "text-[#8b949e] italic" : ""}`}>
           {d.nodeId ?? "graph"}
         </span>

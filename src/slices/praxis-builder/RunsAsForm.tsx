@@ -1,17 +1,20 @@
 // The inspector's graph binding sections (#247, #273). With a binding chosen in the Binding
 // picker, a TASK, LOOP or COMPENSATION node's inspector gets **Runs as**, which edits the node's
 // entry, and the canvas background's gets **Binding**, which edits the binding's graph-level
-// fields. Every edit is a step of the graph workspace's history. The backend shape-checks the
-// binding; each field shows the issues whose JSON Pointer points into it.
+// fields. Every edit is a step of the graph workspace's history. The backend checks the binding
+// (#274); each field shows the issues whose JSON Pointer points into it. Both sections show the
+// worst-case preview under each contract that lists the graph, and a VERIFICATION node gets the
+// coverage of those contracts' criteria.
 import { useId, useState, type FC, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 import { formatDuration } from "../../lib/dates.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
+import { entryWorstCase, worstCase, WORST_CASE_LABEL, type AttachStatus, type WorstCaseNode } from "./bindingChecks.ts";
 import { integerProblem } from "./contract.ts";
 import { entriesOf, type BindingEdit, type BindingRole, type SuggestedField } from "./graphBinding.ts";
 import { hasOwn, isObject, type Json, type JsonObject, type PraxisNode } from "./model.ts";
 import { COST_UNIT_LABEL, DurationInput, hintClass, inline, StringList, TextInput } from "./RecordFields.tsx";
-import type { Diagnostic } from "./types.ts";
+import type { AttachContract, Diagnostic } from "./types.ts";
 
 /** The binding chosen for the graph shown, as the inspector edits it. */
 export interface ShownBinding {
@@ -21,7 +24,32 @@ export interface ShownBinding {
   diagnostics: readonly Diagnostic[];
   /** Ids already used in the project's bindings and workflow templates, for the id fields' suggestions. */
   suggestions: Readonly<Record<SuggestedField, readonly string[]>>;
+  /** The binding's attach checks under each contract that lists its graph (#274). */
+  attach: AttachStatus;
   onEdit: (edit: BindingEdit) => void;
+}
+
+/** The contracts the attach checks could read, in id order; none until they have run. */
+const readContracts = (attach: AttachStatus): AttachContract[] =>
+  attach.state === "done" ? attach.attach.contracts.filter((c) => c.problem === undefined) : [];
+
+/** A ledger amount with the binding's cost unit, when it has one. */
+const inUnit = (amount: bigint | string, binding: ShownBinding) => {
+  const unit = typeof binding.content.costUnit === "string" ? binding.content.costUnit.trim() : "";
+  return unit === "" ? String(amount) : `${String(amount)} ${unit}`;
+};
+
+/**
+ * A worst-case row per contract that lists the graph, or one row when none does. A contract
+ * that couldn't be read gets a row without its figures. Null until the contracts are checked,
+ * or when the check failed, which the Problems list says.
+ */
+function contractRows(attach: AttachStatus): { label: string; contract: AttachContract | null }[] | null {
+  if (attach.state !== "done") return null;
+  const { contracts } = attach.attach;
+  return contracts.length === 0
+    ? [{ label: "With no contract", contract: null }]
+    : contracts.map((c) => ({ label: c.problem === undefined ? `Under ${c.id}` : `Under ${c.id}, which can't be read`, contract: c }));
 }
 
 /** What Praxis checks only at attach, so the builder can't (#247). */
@@ -485,6 +513,15 @@ export const RunsAsSection: FC<{ node: PraxisNode; binding: ShownBinding | null 
             />
             <p className={hintClass}>Read-only: a TASK runs as its graph node says ({graphKind}).</p>
             <FieldMessages id={messagesId} issues={at("executionKind")} />
+            {at("executionKind").some((d) => d.code === "BINDING_KIND_MISMATCH") && (
+              <button
+                type="button"
+                onClick={() => binding.onEdit({ type: "set-execution-kind", node: node.id, executionKind: graphKind })}
+                className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs"
+              >
+                Make it a {graphKind} entry
+              </button>
+            )}
           </div>
         ) : (
           <div>
@@ -596,6 +633,7 @@ export const RunsAsSection: FC<{ node: PraxisNode; binding: ShownBinding | null 
               issues={at("maxAttempts")}
               onChange={(v) => set("maxAttempts", v, true)}
             />
+            <NodeWorstCase entry={entry} node={node} binding={binding} />
             <details className="space-y-2">
               <summary className="cursor-pointer text-[11px] text-[#8b949e]">Advanced</summary>
               {kind === "AGENT" && (
@@ -638,8 +676,133 @@ export const RunsAsSection: FC<{ node: PraxisNode; binding: ShownBinding | null 
   );
 };
 
+/** Worst-case figures, one per row, headed "Worst case" with the label after them (#247). */
+const WorstCaseList: FC<{ rows: { key: string; label: string; figure: ReactNode }[] }> = ({ rows }) => {
+  const headingId = useId();
+  return (
+    <div>
+      <h4 id={headingId} className={labelClass}>
+        Worst case
+      </h4>
+      <ul aria-labelledby={headingId} className="space-y-0.5 text-[11px] text-[#c9d1d9]">
+        {rows.map((r) => (
+          <li key={r.key}>
+            <span className="text-[#8b949e]">{r.label}:</span> {r.figure}
+          </li>
+        ))}
+      </ul>
+      <p className={hintClass}>Worst case {WORST_CASE_LABEL}</p>
+    </div>
+  );
+};
+
+/** One Bounded entry's worst case under each contract that lists the graph (#247, #274). */
+const NodeWorstCase: FC<{ entry: JsonObject; node: PraxisNode; binding: ShownBinding }> = ({ entry, node, binding }) => {
+  const rows = contractRows(binding.attach);
+  if (rows === null || entryWorstCase(entry, node) === null) return null;
+  return (
+    <WorstCaseList
+      rows={rows.map(({ label, contract }) => {
+        const w = entryWorstCase(entry, node, contract?.maxAttempts);
+        let figure: ReactNode = "0";
+        if (w !== null && "reason" in w) figure = <span className="text-[#8b949e]">{w.reason}</span>;
+        else if (w !== null) {
+          const attempts = `${String(w.attempts)} ${w.attempts === 1n ? "attempt" : "attempts"}`;
+          const iterations = node.kind === "LOOP" ? ` × ${String(w.iterations)} ${w.iterations === 1n ? "iteration" : "iterations"}` : "";
+          figure = `${String(w.allowance)} × ${attempts}${iterations} = ${inUnit(w.worstCase, binding)}`;
+        }
+        return { key: contract?.id ?? "", label, figure };
+      })}
+    />
+  );
+};
+
+/** The whole binding's worst case under each contract, beside that contract's budget and the binding's max total cost. */
+const BindingWorstCase: FC<{ binding: ShownBinding; nodes: readonly WorstCaseNode[] }> = ({ binding, nodes }) => {
+  const rows = contractRows(binding.attach);
+  if (rows === null) return null;
+  const cost = typeof binding.content.maxTotalCost === "string" && binding.content.maxTotalCost !== "" ? binding.content.maxTotalCost : null;
+  return (
+    <WorstCaseList
+      rows={rows.map(({ label, contract }) => {
+        const w = worstCase(binding.content, nodes, contract?.maxAttempts);
+        const against = [
+          cost !== null ? `max total cost ${inUnit(cost, binding)}` : "no max total cost",
+          ...(contract ? [contract.budget !== undefined ? `budget ${inUnit(contract.budget, binding)}` : "no budget"] : []),
+        ].join(", ");
+        const left = w.uncounted.length === 0 ? "" : `; not counted: ${w.uncounted.map((u) => u.node).join(", ")}`;
+        return { key: contract?.id ?? "", label, figure: `${inUnit(w.total, binding)} (${against})${left}` };
+      })}
+    />
+  );
+};
+
+/**
+ * The coverage of each contract's criteria at a VERIFICATION node (#247, #274): a read-only
+ * table per contract that lists the graph, each criterion beside the Validation ancestors whose
+ * entries cover it.
+ */
+export const CoverageSection: FC<{ node: PraxisNode; binding: ShownBinding }> = ({ node, binding }) => {
+  const { attach } = binding;
+  const contracts = readContracts(attach);
+  const unread = attach.state === "done" ? attach.attach.contracts.filter((c) => c.problem !== undefined) : [];
+  const note = (text: string) => <p className="text-[11px] text-[#8b949e]">{text}</p>;
+  let body: ReactNode;
+  if (attach.state === "checking") body = note("Checking the graph's contracts…");
+  else if (attach.state === "failed") body = note("The graph's contracts couldn't be checked; the Problems list says why.");
+  else if (contracts.length === 0 && unread.length === 0) body = note("No contract lists this graph, so its criteria aren't checked.");
+  else
+    body = contracts.map((c) => (
+      <table key={c.id} className="w-full text-[11px] border-collapse">
+        <caption className="text-left text-[11px] text-[#8b949e] pb-1">
+          Contract <span className="font-mono text-[#c9d1d9]">{c.id}</span>
+        </caption>
+        <thead>
+          <tr className="text-left text-[#6e7681]">
+            <th scope="col" className="font-medium pr-2">
+              Criterion
+            </th>
+            <th scope="col" className="font-medium">
+              Covered by
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {(c.coverage.find((v) => v.nodeId === node.id)?.criteria ?? []).map((r) => (
+            <tr key={r.criterion} className="align-top border-t border-[#21262d]">
+              <th scope="row" className="font-mono font-normal text-[#c9d1d9] pr-2 py-0.5 break-all text-left">
+                {r.criterion}
+              </th>
+              <td className="py-0.5 font-mono break-all">
+                {r.coveredBy.length > 0 ? (
+                  <span className="text-[#c9d1d9]">{r.coveredBy.join(", ")}</span>
+                ) : (
+                  <span className="text-[#e3b341]">Not covered</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ));
+  return (
+    <section aria-label={`Criteria coverage in ${binding.id}`} className={sectionClass}>
+      <h3 className={headingClass}>
+        Criteria coverage: <span className="font-mono normal-case tracking-normal">{binding.id}</span>
+      </h3>
+      {body}
+      {unread.map((c) => (
+        <p key={c.id} className="text-[11px] text-[#8b949e]">
+          Contract <span className="font-mono">{c.id}</span> can&apos;t be read, so its criteria aren&apos;t shown.
+        </p>
+      ))}
+      <p className={hintClass}>A criterion is covered by a Validation node this one depends on whose entry lists it.</p>
+    </section>
+  );
+};
+
 /** The Binding section of the graph inspector (#247): the chosen binding's graph-level fields. */
-export const BindingSection: FC<{ binding: ShownBinding }> = ({ binding }) => {
+export const BindingSection: FC<{ binding: ShownBinding; nodes: readonly WorstCaseNode[] }> = ({ binding, nodes }) => {
   const c = binding.content;
   const at = (key: string) => issuesIn(binding.diagnostics, `/${key}`);
   const set = (key: string, value: Json | undefined, live = false) => binding.onEdit({ type: "set-field", key, value, live });
@@ -665,6 +828,7 @@ export const BindingSection: FC<{ binding: ShownBinding }> = ({ binding }) => {
         issues={at("maxTotalCost")}
         onChange={(v) => set("maxTotalCost", v, true)}
       />
+      <BindingWorstCase binding={binding} nodes={nodes} />
       <DurationInput
         label="Max total active time"
         value={msText(c.maxTotalActiveMs)}

@@ -5,7 +5,8 @@
 // they are about; the integer, duration and time inputs refuse what can't be stored as the
 // user types (#231 settles how `budget` reads).
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
-import { Plus, TriangleAlert, X } from "lucide-react";
+import { Info, Plus, TriangleAlert, X } from "lucide-react";
+import { boundCostUnits } from "./bindingChecks.ts";
 import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import {
   bindingIdProblem,
@@ -35,7 +36,7 @@ import {
   TextInput,
 } from "./RecordFields.tsx";
 import { useValidation } from "./useValidation.ts";
-import type { ContractTriggers, DefinitionRef, Diagnostic, FileProblem } from "./types.ts";
+import type { ContractTriggers, DefinitionEntry, DefinitionRef, Diagnostic, FileProblem } from "./types.ts";
 
 /** The triggers that name the contract, as the form last read them. */
 export type TriggersStatus = { state: "loading" } | { state: "failed"; error: string } | { state: "done"; found: ContractTriggers };
@@ -47,6 +48,8 @@ interface ContractFormProps {
   /** The ids of the graphs and grants in the project, listed or drafted, for the pickers. */
   known: Bindings;
   triggers: TriggersStatus;
+  /** The listed graph bindings, whose cost units the form shows for the graphs it binds (#231, #274). */
+  graphBindings: readonly DefinitionEntry[];
   /** The record's cross-record checks (#269), shown under the verdict. */
   crossRecord: ReactNode;
   onEdit: (edit: ContractEdit) => void;
@@ -55,7 +58,17 @@ interface ContractFormProps {
 }
 
 
-export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, known, triggers, crossRecord, onEdit, onOpen, onValidated }) => {
+export const ContractForm: FC<ContractFormProps> = ({
+  draft,
+  bindingsProblem,
+  known,
+  triggers,
+  graphBindings,
+  crossRecord,
+  onEdit,
+  onOpen,
+  onValidated,
+}) => {
   const status = useValidation("contracts", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -112,6 +125,7 @@ export const ContractForm: FC<ContractFormProps> = ({ draft, bindingsProblem, kn
             onChange={(v) => set("budget", v, true)}
             hint={COST_HINT}
           />
+          <BoundCostUnits units={boundCostUnits(bindings.graphs, graphBindings)} />
           <IntegerInput
             label="Max attempts"
             value={c.maxAttempts}
@@ -183,6 +197,34 @@ const Features: FC<{ value: readonly string[]; issues: readonly Diagnostic[] | u
       <p className={hintClass}>A graph runs only under a contract with the graphs feature.</p>
       <FieldMessages id={messagesId} issues={issues} />
     </fieldset>
+  );
+};
+
+/**
+ * The cost unit the saved bindings of the contract's graphs name (#231, #274), when any does:
+ * the unit the budget is in. Bindings that name different units are a warning, since a run's
+ * cost unit must be the installation's one ledger unit.
+ */
+const BoundCostUnits: FC<{ units: { unit: string; bindings: string[] }[] }> = ({ units }) => {
+  if (units.length === 0) return null;
+  if (units.length === 1) {
+    return (
+      <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#8b949e]">
+        <Info className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+        <span className="break-words">
+          Its graphs&apos; bindings use the cost unit <span className="font-mono text-[#c9d1d9]">{units[0].unit}</span>.
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#e3b341]">
+      <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-label="Warning" role="img" />
+      <span className="break-words">
+        Its graphs&apos; bindings name different cost units:{" "}
+        {units.map((u) => `${u.unit} (${u.bindings.join(", ")})`).join("; ")}. A run&apos;s cost unit must be the ledger&apos;s one unit.
+      </span>
+    </p>
   );
 };
 
