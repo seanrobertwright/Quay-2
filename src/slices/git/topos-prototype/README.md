@@ -34,6 +34,10 @@ in the list or a form control) cycles three presets:
 - **C**: S-curve, k = 0.8, user-resizable column, clash probing for derived
   and anonymous tracks.
 
+The #370 scale measurements, their scripts and findings live in
+[`scale/`](scale/README.md). `?scroll=scaled` turns on the scaled-scrolling mode
+they added.
+
 ## How it is built
 
 - `layout.worker.ts` stands in for the Rust graph session. It loads a

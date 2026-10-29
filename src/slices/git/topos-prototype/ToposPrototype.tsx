@@ -199,6 +199,8 @@ export function ToposPrototype() {
                 options={COMMIT_CHOICES.map((c): [string, string] => [String(c), c.toLocaleString()])} />
               <Select label="Live branches" value={String(knobs.concurrency)} onChange={(v) => setKnob({ concurrency: Number(v) })}
                 options={CONCURRENCY_CHOICES.map((c): [string, string] => [String(c), c === 30 ? "30 (stress)" : String(c)])} />
+              <Select label="Scrolling (#370)" value={knobs.scroll} onChange={(v) => setKnob({ scroll: v as Knobs["scroll"] })}
+                options={[["native", "Native spacer"], ["scaled", "Scaled past 8M px"]]} />
             </>
           )}
           <Select label="Payload" value={knobs.payload} onChange={(v) => setKnob({ payload: v as Knobs["payload"] })}

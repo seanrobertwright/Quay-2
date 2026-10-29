@@ -49,10 +49,19 @@ interface Props {
   stats: RefObject<ViewportStats>;
 }
 
+/**
+ * #370: Chromium caps an element's height at about 33.5M px (1.2M rows at H = 28). In scaled
+ * mode the spacer stops at this height and `v`, the virtual offset in content pixels, is the
+ * source of truth: wheel and keys move `v` 1:1, and the scrollbar maps proportionally.
+ */
+const SCALED_MAX_PX = 8_000_000;
+
 export function GraphViewport({ store, version, knobs, scrollRef, stats }: Props) {
   const idPrefix = useId();
   const { H, W, R, overscan, chunk } = knobs;
-  const [scrollTop, setScrollTop] = useState(0);
+  /** `px` is the scroll container's scrollTop; `v` is the content offset it stands for. */
+  const [view, setView] = useState({ px: 0, v: 0 });
+  const vRef = useRef(0);
   const [height, setHeight] = useState(600);
   const [selected, setSelected] = useState(0);
   const [hover, setHover] = useState<Hover>(null);
@@ -70,14 +79,56 @@ export function GraphViewport({ store, version, knobs, scrollRef, stats }: Props
 
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
-  const onScroll = useCallback(() => {
+  const rows = store.rows;
+  const contentH = rows * H;
+  const scaled = knobs.scroll === "scaled" && contentH > SCALED_MAX_PX;
+  const spacerH = scaled ? SCALED_MAX_PX : contentH;
+  const ratio = scaled ? Math.max(1, (contentH - height) / Math.max(1, spacerH - height)) : 1;
+  const ratioRef = useRef(ratio);
+  ratioRef.current = ratio;
+  const maxV = Math.max(0, contentH - height);
+  const maxVRef = useRef(maxV);
+  maxVRef.current = maxV;
+
+  const publish = useCallback(() => {
     cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => setScrollTop(scrollRef.current?.scrollTop ?? 0));
+    frame.current = requestAnimationFrame(() => setView({ px: scrollRef.current?.scrollTop ?? 0, v: vRef.current }));
   }, [scrollRef]);
 
-  const rows = store.rows;
-  const topRow = Math.min(Math.max(0, rows - 1), Math.floor(scrollTop / H));
-  const bottomRow = Math.min(rows - 1, Math.ceil((scrollTop + height) / H));
+  /** Moves the content offset and puts the scrollbar where it maps to. */
+  const setVirtual = useCallback((v: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    vRef.current = Math.min(maxVRef.current, Math.max(0, v));
+    el.scrollTop = vRef.current / ratioRef.current;
+    publish();
+  }, [scrollRef, publish]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // A scroll we caused lands within a pixel of v / ratio; anything else is the scrollbar,
+    // a fling or a jump, and maps proportionally.
+    if (Math.abs(el.scrollTop - vRef.current / ratioRef.current) >= 1) {
+      vRef.current = Math.min(maxVRef.current, el.scrollTop * ratioRef.current);
+    }
+    publish();
+  }, [scrollRef, publish]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !scaled) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? H : e.deltaMode === 2 ? el.clientHeight : 1;
+      setVirtual(vRef.current + e.deltaY * unit);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scrollRef, scaled, H, setVirtual]);
+
+  const topRow = Math.min(Math.max(0, rows - 1), Math.floor(view.v / H));
+  const bottomRow = Math.min(rows - 1, Math.ceil((view.v + height) / H));
   const first = Math.max(0, Math.floor((topRow - overscan) / chunk) * chunk);
   const last = Math.min(rows - 1, Math.ceil((bottomRow + overscan + 1) / chunk) * chunk);
 
@@ -172,21 +223,21 @@ export function GraphViewport({ store, version, knobs, scrollRef, stats }: Props
     const el = scrollRef.current;
     if (!el) return;
     const y = row * H;
-    if (y < el.scrollTop) el.scrollTop = y;
-    else if (y + H > el.scrollTop + el.clientHeight) el.scrollTop = y + H - el.clientHeight;
-  }, [scrollRef, H]);
+    if (y < vRef.current) setVirtual(y);
+    else if (y + H > vRef.current + el.clientHeight) setVirtual(y + H - el.clientHeight);
+  }, [scrollRef, H, setVirtual]);
 
   const jumpTo = useCallback((row: number) => {
     setSelected(row);
     const el = scrollRef.current;
-    if (el) el.scrollTop = Math.max(0, row * H - el.clientHeight / 3);
-  }, [scrollRef, H]);
+    if (el) setVirtual(row * H - el.clientHeight / 3);
+  }, [scrollRef, H, setVirtual]);
 
   const onPointerMove = (ev: React.PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el || rows === 0) return;
     const rect = el.getBoundingClientRect();
-    const y = ev.clientY - rect.top + el.scrollTop;
+    const y = ev.clientY - rect.top + vRef.current;
     const x = ev.clientX - rect.left - REFS_W;
     const row = Math.floor(y / H);
     let next: Hover = null;
@@ -295,8 +346,8 @@ export function GraphViewport({ store, version, knobs, scrollRef, stats }: Props
         onPointerLeave={() => setHover(null)}
         onClick={onClick}
       >
-        <div style={{ height: rows * H, position: "relative" }}>
-          <div style={{ position: "absolute", top: first * H, left: 0, right: 0 }}>
+        <div style={{ height: spacerH, position: "relative", overflow: "clip" }}>
+          <div style={{ position: "absolute", top: view.px + first * H - view.v, left: 0, right: 0 }}>
             <svg className={hoverTrack >= 0 ? "topos-graph topos-dim" : "topos-graph"} aria-hidden="true"
               style={{ position: "absolute", left: REFS_W, top: 0 }} width={graphW} height={(last - first + 1) * H}>
               {paths.bySlot.map((d, slot) => d !== "" && (

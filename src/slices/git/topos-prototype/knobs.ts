@@ -25,6 +25,8 @@ export interface Knobs {
   chunk: number;
   overscan: number;
   theme: "dark" | "light";
+  /** #370: native scrolling, or a spacer capped at SCALED_MAX_PX with a virtual offset. */
+  scroll: "native" | "scaled";
 }
 
 export const DEFAULTS: Knobs = {
@@ -45,9 +47,10 @@ export const DEFAULTS: Knobs = {
   chunk: 8,
   overscan: 12,
   theme: "dark",
+  scroll: "native",
 };
 
-export const COMMIT_CHOICES = [10_000, 50_000, 200_000, 500_000];
+export const COMMIT_CHOICES = [10_000, 50_000, 200_000, 500_000, 1_000_000, 1_500_000, 2_000_000];
 export const CONCURRENCY_CHOICES = [3, 8, 30];
 export const CHUNK_CHOICES = [1, 8, 32];
 
@@ -87,6 +90,7 @@ export function parseKnobs(search: string): Knobs {
     chunk: choice(q.get("chunk"), CHUNK_CHOICES, DEFAULTS.chunk),
     overscan: Math.round(num(q.get("overscan"), DEFAULTS.overscan, 0, 100)),
     theme: oneOf(q.get("theme"), ["dark", "light"] as const, DEFAULTS.theme),
+    scroll: oneOf(q.get("scroll"), ["native", "scaled"] as const, DEFAULTS.scroll),
   };
 }
 
