@@ -108,6 +108,7 @@ export default ({ command }: ConfigEnv) => {
           items: [
             { text: 'Archon & SDD Inspector', link: '/features/archon-sdd' },
             { text: 'Machina Factory', link: '/features/machina-praxis' },
+            { text: 'Praxis Builder', link: '/features/praxis-builder' },
             { text: 'Git Worktrees Management', link: '/features/git-worktrees' },
             { text: 'GitHub Companion & Triage', link: '/features/github-integration' },
             { text: 'Token Spend & Telemetry', link: '/features/token-telemetry' },
