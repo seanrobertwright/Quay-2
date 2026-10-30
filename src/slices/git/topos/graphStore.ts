@@ -8,6 +8,7 @@ import {
   EDGE_FIELD,
   EDGE_FIELDS,
   OPEN_ROW,
+  toGraphAgent,
   type GraphAgent,
   type GraphAuthor,
   type GraphPage,
@@ -196,8 +197,7 @@ export class GraphStore {
     }
     for (const author of page.newAuthors) this.authors.push(author);
     for (const a of page.agents) {
-      const agent: GraphAgent = a.raw === undefined ? { kind: a.kind, source: a.source } : { kind: a.kind, source: a.source, raw: a.raw };
-      this.agentIdsByRow[page.firstRow + a.row] = this.agentId(agent);
+      this.agentIdsByRow[page.firstRow + a.row] = this.agentId(toGraphAgent(a));
     }
 
     this.growEdges(this.edges + page.edgeCount);

@@ -37,8 +37,9 @@ export interface GraphTrack {
   right: number | null;
 }
 
+const AGENT_SOURCES = ["stamp", "coauthor"] as const;
 /** How Quay knows a commit's agent: its `Quay-Agent` stamp, or a known `Co-authored-by` email. */
-export type AgentSource = "stamp" | "coauthor";
+export type AgentSource = (typeof AGENT_SOURCES)[number];
 
 /** The agent of one agent commit, as the backend classified it (#381). */
 export interface GraphAgent {
@@ -52,6 +53,11 @@ export interface GraphAgent {
 /** An agent commit's row within its page, and its agent. */
 export interface PageAgent extends GraphAgent {
   row: number;
+}
+
+/** A page agent's agent, without its row. */
+export function toGraphAgent(a: PageAgent): GraphAgent {
+  return a.raw === undefined ? { kind: a.kind, source: a.source } : { kind: a.kind, source: a.source, raw: a.raw };
 }
 
 export interface GraphPage {
@@ -129,7 +135,7 @@ function isTrackArray(value: unknown): value is GraphTrack[] {
   );
 }
 
-const SOURCES: readonly string[] = ["stamp", "coauthor"];
+const SOURCES: readonly unknown[] = AGENT_SOURCES;
 const KINDS: readonly unknown[] = RUN_KINDS;
 
 function isAgentArray(value: unknown, rowCount: number): value is PageAgent[] {
