@@ -142,7 +142,9 @@ fn trailer_values(text: &str) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::provenance::AgentSource;
     use super::*;
+    use crate::slices::pty::models::RunKind;
 
     fn record(fields: &[&str]) -> Vec<u8> {
         fields.iter().flat_map(|f| f.bytes().chain(std::iter::once(0))).collect()
@@ -159,10 +161,10 @@ mod tests {
         let first = reader.next_record().unwrap().unwrap();
         assert_eq!(first.parents, vec![b.clone(), c]);
         assert_eq!((first.author_time, first.committer_time), (100, 200));
-        assert_eq!(first.agent.and_then(|a| a.kind), Some(crate::slices::pty::models::RunKind::Codex));
+        assert_eq!(first.agent.and_then(|a| a.kind), Some(RunKind::Codex));
         let second = reader.next_record().unwrap().unwrap();
         assert!(second.parents.is_empty());
-        assert_eq!(second.agent.map(|a| a.source), Some(super::super::provenance::AgentSource::Coauthor));
+        assert_eq!(second.agent.map(|a| a.source), Some(AgentSource::Coauthor));
         assert_eq!(reader.next_record().unwrap(), None);
     }
 
