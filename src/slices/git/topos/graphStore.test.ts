@@ -102,3 +102,46 @@ test("a close naming an edge not yet sent is refused", () => {
   ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 1, newTracks: [track(0, "main", "default")] });
   assert.throws(() => ingest(store, { pageIndex: 1, firstRow: 1, rowCount: 1, closes: [[9, 1, 0]] }), /unknown edge 9/);
 });
+
+test("a track starts at its first row or the row of its first edge, whichever comes first", () => {
+  const store = twoPages();
+  assert.equal(store.trackStartRow(0), 0);
+  // topic has no row of its own in these pages; the merge edge from row 0 opened it.
+  assert.equal(store.trackStartRow(1), 0);
+});
+
+test("the tracks passing a row are those that started above it, left to right by lane", () => {
+  const store = twoPages();
+  // At row 0 both tracks start on the row itself, so neither has scrolled away.
+  assert.deepEqual(store.tracksPassing(0), []);
+  // At row 3, main's node is on the row and topic's edge 0→6 crosses it in lane 1.
+  assert.deepEqual(store.tracksPassing(3), [
+    { track: 0, key: "main", kind: "default", lane: 0, startRow: 0 },
+    { track: 1, key: "topic", kind: "derived", lane: 1, startRow: 0 },
+  ]);
+  // topic's edge ends at row 6, so below it only main is left.
+  assert.deepEqual(
+    store.tracksPassing(7).map((t) => t.key),
+    ["main"]
+  );
+  assert.deepEqual(new GraphStore(1).tracksPassing(0), []);
+});
+
+test("a track opened by a tip in a later page starts at that tip's row", () => {
+  const store = twoPages();
+  ingest(store, {
+    pageIndex: 2,
+    firstRow: 8,
+    rowCount: 3,
+    rows: [
+      [0, 0],
+      [1, 2],
+      [1, 2],
+    ],
+    firstEdge: 8,
+    edges: [[9, 10, 1, 1, 1, 2]],
+    newTracks: [track(2, "fix", "named")],
+  });
+  assert.equal(store.trackStartRow(2), 9);
+  assert.deepEqual(store.tracksPassing(10).map((t) => [t.key, t.startRow]), [["fix", 9]]);
+});

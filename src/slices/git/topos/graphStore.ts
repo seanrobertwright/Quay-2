@@ -10,6 +10,7 @@ import {
   OPEN_ROW,
   type GraphAuthor,
   type GraphPage,
+  type TrackKind,
 } from "./graphPage.ts";
 import type { EdgeGeometry } from "./graphPaths.ts";
 import { trackSlot } from "./laneColors.ts";
@@ -25,6 +26,17 @@ function grown<T extends Growable>(array: T, needed: number, make: (n: number) =
   const next = make(capacity);
   next.set(array);
   return next;
+}
+
+/** A track met at some row, with where it started (#376). */
+export interface TrackPassing {
+  track: number;
+  key: string;
+  kind: TrackKind;
+  /** The lane it is in at that row. */
+  lane: number;
+  /** Its first row, or the child row of its first edge when that comes first. */
+  startRow: number;
 }
 
 /** One edge, with its close applied. */
@@ -49,6 +61,8 @@ export class GraphStore {
   private edges = 0;
   private readonly trackKeys: string[] = [];
   private readonly trackSlots: number[] = [];
+  private readonly trackKinds: TrackKind[] = [];
+  private readonly trackStarts: number[] = [];
   /** Each page's first row and first edge id, and the edges open at its first row. */
   private readonly pageFirstRows: number[] = [];
   private readonly pageFirstEdges: number[] = [];
@@ -110,6 +124,8 @@ export class GraphStore {
     for (const t of page.newTracks) {
       const neighbours = [t.left, t.right].filter((n): n is number => n !== null && n < this.trackSlots.length);
       this.trackKeys.push(t.key);
+      this.trackKinds.push(t.kind);
+      this.trackStarts.push(OPEN_ROW);
       this.trackSlots.push(trackSlot(t, neighbours.map((n) => this.trackSlots[n])));
     }
     const end = this.count + page.rowCount;
@@ -122,6 +138,8 @@ export class GraphStore {
     this.lanesByRow.set(page.rowLanes, this.count);
     this.tracksByRow.set(page.rowTracks, this.count);
     for (let i = 0; i < page.rowCount; i++) {
+      const t = page.rowTracks[i];
+      if (this.trackStarts[t] === OPEN_ROW) this.trackStarts[t] = page.firstRow + i;
       this.oids.push(page.oids[i]);
       this.subjects.push(page.subjects[i]);
     }
@@ -129,6 +147,10 @@ export class GraphStore {
 
     this.edgeData = grown(this.edgeData, (this.edges + page.edgeCount) * EDGE_FIELDS, (n) => new Uint32Array(n));
     this.edgeData.set(page.edges, this.edges * EDGE_FIELDS);
+    for (let i = 0; i < page.edges.length; i += EDGE_FIELDS) {
+      const t = page.edges[i + EDGE_FIELD.track];
+      this.trackStarts[t] = Math.min(this.trackStarts[t], page.edges[i + EDGE_FIELD.childRow]);
+    }
     for (let i = 0; i < page.closes.length; i += CLOSE_FIELDS) {
       const at = page.closes[i + CLOSE_FIELD.edge] * EDGE_FIELDS;
       this.edgeData[at + EDGE_FIELD.parentRow] = page.closes[i + CLOSE_FIELD.parentRow];
@@ -176,6 +198,39 @@ export class GraphStore {
   /** The color slot of `track`, from its key and, for derived and anonymous tracks, its neighbours. */
   trackSlot(track: number): number {
     return this.trackSlots[track];
+  }
+
+  trackKind(track: number): TrackKind {
+    return this.trackKinds[track];
+  }
+
+  /** The row `track` starts at: its first row, or its first edge's child row when that is earlier. */
+  trackStartRow(track: number): number {
+    return this.trackStarts[track];
+  }
+
+  /**
+   * The tracks at `row` that started above it, which the sticky strip names (#376): the track of
+   * the row's own node, and of every edge crossing or ending at the row. Left to right by lane.
+   */
+  tracksPassing(row: number): TrackPassing[] {
+    if (row < 0 || row >= this.count) return [];
+    const lanes = new Map<number, number>([[this.track(row), this.lane(row)]]);
+    for (const id of this.visibleEdges(row, row + 1)) {
+      const e = this.edge(id);
+      if (e.childRow >= row) continue;
+      if (e.parentRow === row) {
+        if (!lanes.has(e.track)) lanes.set(e.track, e.parentLane);
+      } else if (e.parentRow === OPEN_ROW || e.parentRow > row) {
+        if (!lanes.has(e.track)) lanes.set(e.track, e.lane);
+      }
+    }
+    const out: TrackPassing[] = [];
+    for (const [track, lane] of lanes) {
+      const startRow = this.trackStarts[track];
+      if (startRow < row) out.push({ track, key: this.trackKeys[track], kind: this.trackKinds[track], lane, startRow });
+    }
+    return out.sort((a, b) => a.lane - b.lane || a.track - b.track);
   }
 
   edge(id: number): GraphEdge {
