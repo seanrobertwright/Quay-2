@@ -6,6 +6,7 @@ import { useOverlay } from "../../overlay/useOverlay";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
+import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
@@ -73,6 +74,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
 
   // Date order by default; the toggle reopens the session in topo order. Not persisted (#369).
   const [order, setOrder] = useState<GraphOrder>("date");
+  // Outlives the list, which remounts for each order and target. Persisting it is the settings ticket's.
+  const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
   // The graph belongs to the root repo, so moving between its worktrees keeps the session.
   const graph = useGraphSession(target && view?.kind === "open" ? target.repoPath : null, order);
 
@@ -183,6 +186,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 feed={graph.feed}
                 version={graph.version}
                 onReachedRow={graph.reachedRow}
+                columnWidth={columnWidth}
+                onColumnWidth={setColumnWidth}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">

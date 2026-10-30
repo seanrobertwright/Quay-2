@@ -34,3 +34,13 @@ export function rowWindow(scrollTop: number, viewportHeight: number, rowCount: n
 export function sameWindow(a: RowWindow, b: RowWindow): boolean {
   return a.start === b.start && a.end === b.end;
 }
+
+/**
+ * The row `aria-activedescendant` names in `win`: `active` while it is rendered, otherwise the
+ * window's nearer edge, so it always points at a row in the DOM. Null for an empty window.
+ */
+export function renderedActiveRow(active: number | null, win: RowWindow): number | null {
+  if (win.end <= win.start) return null;
+  if (active === null) return win.start;
+  return Math.min(win.end - 1, Math.max(win.start, active));
+}

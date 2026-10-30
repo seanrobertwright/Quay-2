@@ -97,9 +97,44 @@ export function edgePath(e: EdgeGeometry, win: PathWindow): string {
   return d;
 }
 
-/** Edges batched into one path per color slot, so the edge layer is at most 12 elements. */
-export function slotPaths(edges: Iterable<EdgeGeometry & { slot: number }>, win: PathWindow): string[] {
-  const paths: string[] = Array.from({ length: SLOT_COUNT }, () => "");
-  for (const e of edges) paths[e.slot] += edgePath(e, win);
-  return paths;
+/** The lane slot `lane` is drawn in when lanes past `stubLane` collapse onto it (#376). */
+export function collapsedLane(lane: number, stubLane: number | null): number {
+  return stubLane !== null && lane > stubLane ? stubLane : lane;
+}
+
+export interface LanePaths {
+  /** One path per color slot, so the edge layer is at most 12 elements plus the stub. */
+  slots: string[];
+  /** The edges whose run lies in the stub column, drawn grey and dashed. */
+  stub: string;
+}
+
+/**
+ * Edges batched into one path per color slot. With a `stubLane`, every lane past it collapses onto
+ * it, so a ribbon into the stub curves to the stub's x and carries on there without a break.
+ */
+export function slotPaths(
+  edges: Iterable<EdgeGeometry & { slot: number }>,
+  win: PathWindow,
+  column: { stubLane: number | null } = { stubLane: null }
+): LanePaths {
+  const { stubLane } = column;
+  const slots: string[] = Array.from({ length: SLOT_COUNT }, () => "");
+  let stub = "";
+  for (const e of edges) {
+    const lane = collapsedLane(e.lane, stubLane);
+    const d = edgePath(
+      {
+        childRow: e.childRow,
+        parentRow: e.parentRow,
+        lane,
+        childLane: collapsedLane(e.childLane, stubLane),
+        parentLane: collapsedLane(e.parentLane, stubLane),
+      },
+      win
+    );
+    if (lane === stubLane) stub += d;
+    else slots[e.slot] += d;
+  }
+  return { slots, stub };
 }

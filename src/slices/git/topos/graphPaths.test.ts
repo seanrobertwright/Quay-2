@@ -64,10 +64,29 @@ test("edges batch into one path per color slot, and an octopus draws one curve p
     { ...edge(0, 1, 0, 2, 2), slot: 4 },
     { ...edge(0, 1, 0, 3, 3), slot: 7 },
   ];
-  const paths = slotPaths(edges, win);
+  const { slots: paths, stub } = slotPaths(edges, win);
   assert.equal(paths.length, 12);
+  assert.equal(stub, "");
   assert.equal(paths[0], "M16,14V98");
   assert.equal(paths[4], "M16,14C16,36.4 32,19.6 32,42M16,14C16,36.4 48,19.6 48,42");
   assert.equal(paths[7], "M16,14C16,36.4 64,19.6 64,42");
   assert.equal(paths.filter((d) => d !== "").length, 3);
+});
+
+test("edges past the column's edge draw in the stub path, and a ribbon into the stub stays continuous", () => {
+  // Lanes 3 and up collapse onto the stub in slot 3, at x = 64.
+  const stubbed = { stubLane: 3 };
+  const edges = [
+    // A merge from lane 1 into lane 5: its curve ends at the stub, and the run carries on there.
+    { ...edge(0, 3, 1, 5, 5), slot: 2 },
+    // Runs wholly past the edge, in lanes 4 and 7.
+    { ...edge(1, 2, 4, 4, 4), slot: 6 },
+    { ...edge(2, 3, 7, 7, 7), slot: 9 },
+    // A fork in lane 2, which still shows, keeps its color.
+    { ...edge(0, 2, 2, 2, 0), slot: 5 },
+  ];
+  const { slots, stub } = slotPaths(edges, win, stubbed);
+  assert.equal(stub, "M32,14C32,36.4 64,19.6 64,42V98M64,42V70M64,70V98");
+  assert.equal(slots[5], "M48,14V42C48,64.4 16,47.6 16,70");
+  assert.equal(slots.filter((d) => d !== "").length, 1);
 });
