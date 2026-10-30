@@ -7,9 +7,9 @@
 //!
 //! A refresh (#354, amended by #370) runs a second `git log` from the top and lays it out afresh,
 //! testing every new row against lane-state checkpoints taken every 64 rows of the old walk. At
-//! the first match it sends the new rows above the match and `Splice`, kills the new `git log` and
-//! keeps the old walk going. After 20k rows with no match it sends `Reset` and the new walk takes
-//! over, reloading only the rows the frontend had loaded.
+//! the first match it sends `Splice` and then the new rows above the match, kills the new
+//! `git log` and keeps the old walk going. After 20k rows with no match it sends `Reset` and then
+//! the rows laid out so far, and the new walk takes over, loading up to the rows granted before.
 
 use std::collections::HashMap;
 use std::io::{BufReader, Read};
