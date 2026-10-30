@@ -169,12 +169,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const feed = graph.feed;
   const showSpeedup =
     feed !== null &&
-    offerSpeedup(speedup.check, {
-      slowFirstRows: feed.slowFirstRows,
-      rowsLoaded: feed.store?.rowCount ?? 0,
-      moreRemain: feed.status.state === "paused",
-      dismissed: speedup.dismissed,
-    });
+    offerSpeedup(speedup.check, { ...feed.load(), dismissed: speedup.dismissed });
 
   return (
     <div

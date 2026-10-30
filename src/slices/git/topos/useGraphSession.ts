@@ -72,9 +72,7 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     // First rows slower than a second offer the speed-ups (#385), as soon as the second is up.
     let firstRows: number | null = window.setTimeout(() => {
       firstRows = null;
-      if (current.current !== feed || feed.status.state !== "loading") return;
-      feed.slowFirstRows = true;
-      bump();
+      if (current.current === feed && feed.markSlowFirstRows()) bump();
     }, SLOW_FIRST_ROWS_MS);
     const stopFirstRowsTimer = () => {
       if (firstRows !== null) window.clearTimeout(firstRows);

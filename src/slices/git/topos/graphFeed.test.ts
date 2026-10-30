@@ -292,3 +292,28 @@ test("a reset's pages name authors the session sent before, as the backend's aut
   assert.deepEqual(feed.store?.author(2), { name: "Author 0", email: "a0@example.invalid" });
   assert.notEqual(feed.status.state, "failed");
 });
+
+test("first rows that are still out are marked slow once, and rows that came are not", () => {
+  const feed = new GraphFeed();
+  started(feed, 1);
+  assert.equal(feed.load().slowFirstRows, false);
+  assert.equal(feed.markSlowFirstRows(), true);
+  assert.equal(feed.markSlowFirstRows(), false, "already marked");
+  assert.equal(feed.load().slowFirstRows, true);
+
+  const done = new GraphFeed();
+  started(done, 2);
+  done.accept(encodePage(2, 0, 0, 3));
+  done.accept({ event: "done", sessionId: 2, total: 3 });
+  assert.equal(done.markSlowFirstRows(), false);
+  assert.equal(done.load().slowFirstRows, false);
+});
+
+test("the load the speed-up banner reads counts the rows and whether the walk paused with more", () => {
+  const feed = new GraphFeed();
+  assert.deepEqual(feed.load(), { slowFirstRows: false, rowsLoaded: 0, moreRemain: false });
+  started(feed, 1);
+  feed.accept(encodePage(1, 0, 0, 512));
+  feed.accept({ event: "paused", sessionId: 1, rowsLoaded: 512 });
+  assert.deepEqual(feed.load(), { slowFirstRows: false, rowsLoaded: 512, moreRemain: true });
+});
