@@ -100,11 +100,10 @@ pub fn parse_settings(text: &str) -> ToposSettings {
             let Some(last_opened) = entry.get("lastOpened").and_then(Value::as_i64).filter(|ms| *ms >= 0) else {
                 continue;
             };
-            let key = comparable_key(key);
-            record_open(&mut settings.repos, key.clone(), last_opened);
+            let repo = record_open(&mut settings.repos, comparable_key(key), last_opened);
             // Only `true` suppresses; any other value reads as the default, still suggesting.
             if entry.get("suppressSpeedup") == Some(&Value::Bool(true)) {
-                settings.repos.get_mut(&key).expect("just recorded").suppress_speedup = true;
+                repo.suppress_speedup = true;
             }
         }
         cap_repos(&mut settings.repos);
@@ -123,10 +122,12 @@ fn comparable_key(key: &str) -> String {
     }
 }
 
-/// Records that `key` was opened at `last_opened`, keeping the later time when it already has one.
-fn record_open(repos: &mut BTreeMap<String, RepoState>, key: String, last_opened: i64) {
+/// Records that `key` was opened at `last_opened`, keeping the later time when it already has one,
+/// and returns its entry.
+fn record_open(repos: &mut BTreeMap<String, RepoState>, key: String, last_opened: i64) -> &mut RepoState {
     let entry = repos.entry(key).or_insert(RepoState { last_opened, suppress_speedup: false });
     entry.last_opened = entry.last_opened.max(last_opened);
+    entry
 }
 
 /// Keeps the [`MAX_REPOS`] most recently opened repos and evicts the rest. Among equal times the
@@ -287,8 +288,7 @@ impl ToposSettingsStore {
             record_open(&mut settings.repos, key, now);
         }
         if let Some(key) = suppressed {
-            record_open(&mut settings.repos, key.clone(), now);
-            settings.repos.get_mut(&key).expect("just recorded").suppress_speedup = true;
+            record_open(&mut settings.repos, key, now).suppress_speedup = true;
         }
         cap_repos(&mut settings.repos);
         patch.apply_prefs(settings);

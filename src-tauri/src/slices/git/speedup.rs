@@ -3,6 +3,7 @@
 //! ticks items and presses "Apply selected", and then only those items.
 
 use std::path::{Path, PathBuf};
+use std::process::Output;
 
 use serde::{Deserialize, Serialize};
 
@@ -37,15 +38,20 @@ pub struct SpeedupCheck {
     pub suppressed: bool,
 }
 
-/// Runs `git -C repo <args>` and returns its trimmed stdout, or None when git exits non-zero, as
-/// `git config --get` does for a key that isn't set.
-fn git_read(repo: &Path, args: &[&str]) -> Result<Option<String>, GitError> {
-    let out = headless_git()
+/// Runs `git -C repo <args>` to completion.
+fn git_in(repo: &Path, args: &[&str]) -> Result<Output, GitError> {
+    headless_git()
         .arg("-C")
         .arg(repo)
         .args(args)
         .output()
-        .map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })?;
+        .map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })
+}
+
+/// Runs `git -C repo <args>` and returns its trimmed stdout, or None when git exits non-zero, as
+/// `git config --get` does for a key that isn't set.
+fn git_read(repo: &Path, args: &[&str]) -> Result<Option<String>, GitError> {
+    let out = git_in(repo, args)?;
     Ok(out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()))
 }
 
@@ -192,9 +198,9 @@ pub fn speedup_apply(
             continue;
         };
         let _ = channel.send(OpEvent::Progress { phase: format!("Setting {key}"), percent: None });
-        let out = match headless_git().arg("-C").arg(repo).args(["config", key, "true"]).output() {
+        let out = match git_in(repo, &["config", key, "true"]) {
             Ok(out) => out,
-            Err(e) => return fail(GitError::Other { stderr: format!("could not run git config: {e}") }),
+            Err(error) => return fail(error),
         };
         if !out.status.success() {
             return fail(GitError::Other { stderr: String::from_utf8_lossy(&out.stderr).trim().to_string() });
