@@ -27,7 +27,7 @@ struct BranchRef {
 
 /// The track key of `refname` and its remote, or None for a ref that is never a track key:
 /// anything outside `refs/heads/` and `refs/remotes/`, and `<remote>/HEAD`.
-fn track_key(refname: &str) -> Option<(String, Option<String>)> {
+pub(super) fn track_key(refname: &str) -> Option<(String, Option<String>)> {
     if let Some(name) = refname.strip_prefix("refs/heads/") {
         return (!name.is_empty()).then(|| (name.to_string(), None));
     }
@@ -84,13 +84,17 @@ pub fn parse_branch_tips(output: &str) -> BranchTips {
     BranchTips { default_key, default_tips, keys }
 }
 
+/// A headless `git -C repo --no-optional-locks`, ready for its subcommand.
+pub(super) fn repo_git(repo: &Path) -> std::process::Command {
+    let mut git = super::super::op_runner::headless_git();
+    git.arg("-C").arg(repo).arg("--no-optional-locks");
+    git
+}
+
 /// Reads the branch tips of `repo`. A repo git can't read yields no tips; the walk reports its error.
 pub fn read_branch_tips(repo: &Path) -> BranchTips {
-    let out = super::super::op_runner::headless_git()
-        .arg("-C")
-        .arg(repo)
+    let out = repo_git(repo)
         .args([
-            "--no-optional-locks",
             "for-each-ref",
             "--format=%(objectname)%00%(refname)%00%(symref)%00%(HEAD)",
             "refs/heads",

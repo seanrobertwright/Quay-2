@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Cloud, FolderGit2, GitBranch, Tag } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import {
   clampColumnWidth,
@@ -10,6 +11,7 @@ import {
 } from "./graphColumn";
 import type { GraphFeed, GraphStatus } from "./graphFeed";
 import { hitNode, rowAt } from "./graphHit";
+import type { Badge, RefsView } from "./graphRefs";
 import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
@@ -32,6 +34,8 @@ export interface GraphListProps {
   /** The graph column's width in px, kept by the caller so it outlives the list. */
   columnWidth: number;
   onColumnWidth: (width: number) => void;
+  /** Each commit's ref and worktree HEAD badges and the footer's ref lines (#378). */
+  refs: RefsView;
 }
 
 function statusLine(status: GraphStatus, rows: number): string {
@@ -49,6 +53,67 @@ function statusLine(status: GraphStatus, rows: number): string {
       return `${loaded} loaded`;
   }
 }
+
+/** Badges a row shows before folding the rest into "+N". */
+const SHOWN_BADGES = 3;
+
+function badgeKey(b: Badge): string {
+  return b.kind === "head" ? `head:${b.path}` : `${b.kind}:${b.name}`;
+}
+
+/** Each badge kind's icon, tooltip and colors. */
+const BADGE_KINDS: Record<Badge["kind"], { Icon: typeof GitBranch; title: (name: string) => string; className: string }> = {
+  head: { Icon: FolderGit2, title: (name) => `HEAD of worktree ${name}`, className: "border-[#06B6D4]/60 text-[#67e8f9]" },
+  local: { Icon: GitBranch, title: (name) => `Branch ${name}`, className: "border-[#3fb950]/60 text-[#7ee787]" },
+  remote: { Icon: Cloud, title: (name) => `Remote branch ${name}`, className: "border-[#bc8cff]/60 text-[#d2a8ff]" },
+  tag: { Icon: Tag, title: (name) => `Tag ${name}`, className: "border-[#d29922]/60 text-[#e3b341]" },
+};
+
+/** The selected worktree's HEAD: filled rather than outlined. */
+const CURRENT_HEAD_CLASS = "bg-[#06B6D4] border-[#06B6D4] text-[#0d1117] font-semibold";
+
+function isCurrentHead(b: Badge): boolean {
+  return b.kind === "head" && b.current;
+}
+
+function badgeTitle(b: Badge): string {
+  return isCurrentHead(b) ? `HEAD of ${b.name}, the selected worktree` : BADGE_KINDS[b.kind].title(b.name);
+}
+
+/**
+ * A commit's badges (#378). The selected worktree's HEAD reads "HEAD" in a filled badge, so it is
+ * marked by text and shape as well as color, and its row carries `aria-current`.
+ */
+const RowBadges: React.FC<{ badges: Badge[] }> = ({ badges }) => {
+  const shown = badges.slice(0, SHOWN_BADGES);
+  const rest = badges.slice(SHOWN_BADGES);
+  return (
+    <span className="shrink-0 flex items-center gap-1 max-w-[50%] overflow-hidden">
+      {shown.map((b) => {
+        const { Icon, className } = BADGE_KINDS[b.kind];
+        const current = isCurrentHead(b);
+        const look = current ? CURRENT_HEAD_CLASS : className;
+        return (
+          <span
+            key={badgeKey(b)}
+            title={badgeTitle(b)}
+            className={`inline-flex items-center gap-1 max-w-40 px-1.5 rounded border text-[10px] leading-4 ${look}`}
+          >
+            <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
+            {current && <span>HEAD</span>}
+            <span className="truncate">{b.name}</span>
+            {current && <span className="sr-only">(selected worktree)</span>}
+          </span>
+        );
+      })}
+      {rest.length > 0 && (
+        <span className="shrink-0 text-[10px] text-[#8b949e]" title={rest.map(badgeTitle).join("\n")}>
+          +{rest.length}
+        </span>
+      )}
+    </span>
+  );
+};
 
 /** The stub column's stroke: grey, so it reads as "more lanes", not as a track (#351). */
 const STUB_COLOR = "#8b949e";
@@ -161,7 +226,14 @@ const TrackStrip: React.FC<{ store: GraphStore | null; topRow: number; onJump: (
  * scrolls scaled (#377): the content offset is the source of truth, a wheel event moves it by its
  * `deltaY`, scroll keys and jumps set it, and the scrollbar maps onto it proportionally.
  */
-export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRow, columnWidth, onColumnWidth }) => {
+export const GraphList: React.FC<GraphListProps> = ({
+  feed,
+  version,
+  onReachedRow,
+  columnWidth,
+  onColumnWidth,
+  refs,
+}) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
   // pixel, re-renders. Natively it is the scrollTop; scaled, the scrollTop maps onto it.
@@ -317,12 +389,16 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
       const author = store.author(row);
       const subject = store.subject(row);
       const isActive = row === activeRow;
+      const oid = store.oid(row);
+      const rowBadges = refs.badges.get(oid);
+      const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
       out.push(
         <div
-          key={store.oid(row)}
+          key={oid}
           id={`${idPrefix}-row-${row}`}
           role="option"
           aria-selected={isActive}
+          aria-current={holdsCurrentHead ? "true" : undefined}
           aria-posinset={row + 1}
           aria-setsize={statusState === "done" ? rowCount : -1}
           className={`flex items-center gap-3 pr-3 text-xs border-b border-[#21262d]/60 hover:bg-[#161b22] ${
@@ -331,6 +407,7 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
           style={{ height: ROW_HEIGHT }}
         >
           <span className="shrink-0" style={{ width: layout.width }} aria-hidden="true" />
+          {rowBadges && <RowBadges badges={rowBadges} />}
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={subject}>
             {subject}
           </span>
@@ -345,7 +422,7 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount]);
+  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -445,6 +522,14 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
       </div>
       <footer className="h-7 px-3 shrink-0 flex items-center gap-3 border-t border-[#30363d] bg-[#161b22] text-[11px] text-[#8b949e]">
         <span role="status">{statusLine(status, rowCount)}</span>
+        {refs.tagOnlyNote && (
+          <span title="Graph sessions don't walk tags, so commits only a tag reaches aren't drawn">{refs.tagOnlyNote}</span>
+        )}
+        {refs.error && (
+          <span role="alert" className="text-[#f85149] truncate min-w-0" title={refs.error}>
+            {refs.error}
+          </span>
+        )}
         {status.state === "failed" && (
           <span role="alert" className="text-[#f85149] truncate min-w-0" title={status.message}>
             {status.message}

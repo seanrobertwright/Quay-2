@@ -9,6 +9,7 @@ import ReactDOM from "react-dom/client";
 import { GraphFeed } from "../../../src/slices/git/topos/graphFeed";
 import { GraphList } from "../../../src/slices/git/topos/GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
+import { NO_REFS } from "../../../src/slices/git/topos/graphRefs";
 import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
@@ -135,6 +136,8 @@ function Bench() {
           onReachedRow={() => {}}
           columnWidth={columnWidth}
           onColumnWidth={setColumnWidth}
+          // Recordings carry no refs, so the benchmark measures rows without badges.
+          refs={NO_REFS}
         />
       ) : (
         <p role="status">Loading commits…</p>
