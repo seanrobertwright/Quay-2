@@ -44,6 +44,16 @@ export function liveAgentsAt(
 /** Agent icons a HEAD marker shows before folding the rest into "+N". */
 const SHOWN_AGENTS = 3;
 
-export function splitAgents(kinds: readonly RunKind[]): { shown: RunKind[]; more: number } {
-  return { shown: kinds.slice(0, SHOWN_AGENTS), more: Math.max(0, kinds.length - SHOWN_AGENTS) };
+/**
+ * The icons a HEAD marker shows, and how many fold into "+N". Each icon's key is its kind and which
+ * repeat of that kind it is, so two terminals of one kind still get distinct keys.
+ */
+export function splitAgents(kinds: readonly RunKind[]): { shown: { kind: RunKind; key: string }[]; more: number } {
+  const seen = new Map<RunKind, number>();
+  const shown = kinds.slice(0, SHOWN_AGENTS).map((kind) => {
+    const n = (seen.get(kind) ?? 0) + 1;
+    seen.set(kind, n);
+    return { kind, key: `${kind}-${n}` };
+  });
+  return { shown, more: Math.max(0, kinds.length - SHOWN_AGENTS) };
 }

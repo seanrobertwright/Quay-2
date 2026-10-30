@@ -145,9 +145,8 @@ const HeadAgents: React.FC<{ kinds: RunKind[] }> = ({ kinds }) => {
   const { shown, more } = splitAgents(kinds);
   return (
     <span className="shrink-0 inline-flex items-center gap-0.5" title={`Agents working here: ${kinds.join(", ")}`}>
-      {/* Several terminals of one kind repeat its icon, so position and kind make the key. */}
-      {shown.map((kind, i) => (
-        <AgentIcon key={`${i}:${kind}`} kind={kind} className="w-3 h-3" />
+      {shown.map(({ kind, key }) => (
+        <AgentIcon key={key} kind={kind} className="w-3 h-3" />
       ))}
       {more > 0 && <span>+{more}</span>}
       <span className="sr-only">, agents working here: {kinds.join(", ")}</span>
@@ -720,8 +719,8 @@ export const GraphList: React.FC<GraphListProps> = ({
                   }}
                 >
                   {/* Text children, so React escapes an unknown stamp's untrusted value. */}
-                  {nodeTooltip(store.agent(hovered), store.author(hovered).name).map((line, i) => (
-                    <div key={i === 0 ? "label" : "stamp"} className="truncate font-medium">
+                  {nodeTooltip(store.agent(hovered), store.author(hovered).name).map((line) => (
+                    <div key={line} className="truncate font-medium">
                       {line}
                     </div>
                   ))}

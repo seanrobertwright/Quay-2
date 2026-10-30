@@ -41,6 +41,16 @@ test("a worktree's live agents are its running agent terminals, not shells or ex
 });
 
 test("at most three agent icons show, then a count of the rest", () => {
-  assert.deepEqual(splitAgents(["claude", "codex"]), { shown: ["claude", "codex"], more: 0 });
-  assert.deepEqual(splitAgents(["claude", "codex", "pig", "pi", "kiro"]), { shown: ["claude", "codex", "pig"], more: 2 });
+  const kinds = (split: ReturnType<typeof splitAgents>) => split.shown.map((a) => a.kind);
+  assert.deepEqual(kinds(splitAgents(["claude", "codex"])), ["claude", "codex"]);
+  assert.equal(splitAgents(["claude", "codex"]).more, 0);
+  assert.deepEqual(kinds(splitAgents(["claude", "codex", "pig", "pi", "kiro"])), ["claude", "codex", "pig"]);
+  assert.equal(splitAgents(["claude", "codex", "pig", "pi", "kiro"]).more, 2);
+});
+
+test("each shown agent icon has a distinct key from its kind, counting repeats of that kind", () => {
+  assert.deepEqual(
+    splitAgents(["codex", "claude", "codex"]).shown.map((a) => a.key),
+    ["codex-1", "claude-1", "codex-2"]
+  );
 });
