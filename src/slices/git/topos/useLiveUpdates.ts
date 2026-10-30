@@ -8,6 +8,7 @@ import {
   graphNeeded,
   planRefresh,
   RefreshQueue,
+  RequestIds,
   tipOids,
   type Dirty,
   type RepoChanged,
@@ -102,11 +103,16 @@ export function useLiveUpdates(
   }, [repoPath, worktreePath]);
 
   // With live updates off, a fingerprint of refs, HEAD and the index stands in for the watch.
+  // Only the newest check's answer counts: one for an older worktree, or one that lands after
+  // unmount, is dropped.
   const fingerprint = useRef<string | null>(null);
+  const fingerprintIds = useRef(new RequestIds());
   const checkFingerprint = useCallback(() => {
     if (worktreePath === null) return;
+    const id = fingerprintIds.current.next();
     invoke<string>("git_repo_fingerprint", { worktreePath })
       .then((next) => {
+        if (!fingerprintIds.current.isLatest(id)) return;
         const changed = fingerprint.current !== null && fingerprint.current !== next;
         fingerprint.current = next;
         if (changed) queue.current?.request(ALL_DIRTY);
@@ -117,6 +123,8 @@ export function useLiveUpdates(
   useEffect(() => {
     fingerprint.current = null;
     if (watchState === "off") checkFingerprint();
+    const ids = fingerprintIds.current;
+    return () => void ids.next();
   }, [watchState, checkFingerprint]);
   useEffect(() => {
     if (watchState !== "off" || !visible) return;
