@@ -17,6 +17,9 @@ mod refresh_tests;
 mod refs_tests;
 #[cfg(test)]
 mod tests;
+mod watch;
+#[cfg(test)]
+mod watch_tests;
 
 use std::path::PathBuf;
 
@@ -31,6 +34,7 @@ pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
 pub use badges::{GitRefs, RefBadge, RefKind, WorktreeHead};
 pub use session::{GraphOptions, GraphRefs, GraphSessions, Refreshed};
+pub use watch::{Dirty, RepoChanged, WatchState};
 
 /// Starts a graph session on `repo_path`, closing any live one, and streams its rows to `on_event`.
 /// Returns the session id every event carries.
@@ -61,6 +65,30 @@ pub async fn git_graph_refresh(session_id: u32, sessions: State<'_, GraphSession
     let sessions = sessions.inner();
     // The walk runs a second `git log` and lays out up to 20k rows before it answers.
     tokio::task::block_in_place(|| sessions.refresh(session_id))
+}
+
+/// Points session `session_id`'s repository watch at `worktree_path`, the selected worktree, and
+/// watches its files only while `visible` (#379). Restarts a watch that is off, so this is also
+/// Retry. Returns whether live updates are on.
+#[tauri::command]
+pub async fn git_graph_watch(
+    session_id: u32,
+    worktree_path: String,
+    visible: bool,
+    sessions: State<'_, GraphSessions>,
+) -> Result<WatchState, GitError> {
+    let sessions = sessions.inner();
+    tokio::task::block_in_place(|| sessions.watch(session_id, &PathBuf::from(worktree_path), visible))
+}
+
+/// A fingerprint of `worktree_path`'s refs, HEAD and index, which Topos compares on focus and on
+/// show while live updates are off (#354).
+#[tauri::command]
+pub async fn git_repo_fingerprint(worktree_path: String) -> Result<String, GitError> {
+    let worktree = PathBuf::from(worktree_path);
+    tokio::task::spawn_blocking(move || watch::fingerprint(&worktree))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read the fingerprint: {e}") })?
 }
 
 /// Ends session `session_id` and its git processes.

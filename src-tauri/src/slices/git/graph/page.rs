@@ -40,6 +40,7 @@ use serde::Serialize;
 
 use super::super::error::GitError;
 use super::lanes::{PageLayout, Track};
+use super::watch::WatchState;
 use super::log::LogRecord;
 
 /// "TGPG" read as a little-endian `u32`: Topos graph page.
@@ -85,6 +86,8 @@ pub enum GraphEvent {
     /// A refresh found no old row to splice at within its search: every row sent so far is gone,
     /// and the pages that follow, from row 0, reload them.
     Reset { session_id: u32 },
+    /// Where the session's repository watch stands (#379).
+    Watch { session_id: u32, watch: WatchState },
 }
 
 /// An author as the frontend's author table holds it.

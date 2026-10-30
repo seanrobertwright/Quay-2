@@ -5,7 +5,9 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
-use super::graph::{Author, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, Track, TrackKind, WorktreeHead};
+use super::graph::{
+    Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
+};
 use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
@@ -75,6 +77,28 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         ("GraphEvent::Reset", s(&GraphEvent::Reset { session_id: 3 }), json!({ "event": "reset", "sessionId": 3 })),
         ("Refreshed::Spliced", s(&Refreshed::Spliced { row_delta: -2 }), json!({ "kind": "spliced", "rowDelta": -2 })),
+        (
+            "GraphEvent::Watch",
+            s(&GraphEvent::Watch { session_id: 3, watch: WatchState::Off { reason: "could not watch".into() } }),
+            json!({ "event": "watch", "sessionId": 3, "watch": { "state": "off", "reason": "could not watch" } }),
+        ),
+        ("WatchState::Live", s(&WatchState::Live), json!({ "state": "live" })),
+        ("WatchState::Gone", s(&WatchState::Gone), json!({ "state": "gone" })),
+        (
+            "RepoChanged",
+            s(&RepoChanged {
+                repo_root: "C:/repo".into(),
+                worktree_path: "C:/repo-wt".into(),
+                dirty: Dirty { refs: true, head: false, index: false, worktree: true, operation: false },
+                in_operation: false,
+            }),
+            json!({
+                "repoRoot": "C:/repo",
+                "worktreePath": "C:/repo-wt",
+                "dirty": { "refs": true, "head": false, "index": false, "worktree": true, "operation": false },
+                "inOperation": false
+            }),
+        ),
         (
             "Refreshed::Reset",
             s(&Refreshed::Reset { searched_rows: 20_000 }),

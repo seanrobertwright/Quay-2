@@ -30,6 +30,7 @@ use super::lanes::{LaneCheckpoint, LanePass};
 use super::log::{log_command, GraphOrder, LogReader, LogRecord};
 use super::page::{encode_page, AuthorTable, GraphEvent};
 use super::refs::read_branch_tips;
+use super::watch::{RepoChanged, RepoChangedSink, Watch, WatchState};
 
 /// Rows per `Rows` page.
 pub const PAGE_ROWS: usize = 512;
@@ -127,6 +128,10 @@ struct Session {
     children: Slots,
     /// Shared so a read can run without holding the live-session lock.
     cat_file: Arc<Mutex<Option<CatFileBatch>>>,
+    /// Where the session's events go, which the watch also says its state on.
+    channel: Channel<InvokeResponseBody>,
+    /// The repository watch (#379), started by the first `watch` and dropped with the session.
+    watch: Option<Watch>,
 }
 
 impl Session {
@@ -155,6 +160,8 @@ fn kill(child: &Mutex<Option<Child>>) {
 pub struct GraphSessions {
     live: Mutex<Option<Session>>,
     next_id: AtomicU32,
+    /// Where `git-repo-changed` goes; the app sets it to emit the global event.
+    repo_changed: Mutex<Option<RepoChangedSink>>,
 }
 
 impl GraphSessions {
@@ -177,14 +184,28 @@ impl GraphSessions {
             changed: Condvar::new(),
         });
         let children: Slots = Default::default();
-        let walk =
-            Walk { id, repo: repo.to_path_buf(), order: options.order, control: control.clone(), children: children.clone(), channel };
+        let walk = Walk {
+            id,
+            repo: repo.to_path_buf(),
+            order: options.order,
+            control: control.clone(),
+            children: children.clone(),
+            channel: channel.clone(),
+        };
         walk.send(GraphEvent::Started { session_id: id });
         std::thread::Builder::new()
             .name(format!("topos-graph-{id}"))
             .spawn(move || walk.run())
             .map_err(|e| GitError::Other { stderr: format!("could not start the graph session: {e}") })?;
-        *live = Some(Session { id, repo: repo.to_path_buf(), control, children, cat_file: Arc::new(Mutex::new(None)) });
+        *live = Some(Session {
+            id,
+            repo: repo.to_path_buf(),
+            control,
+            children,
+            cat_file: Arc::new(Mutex::new(None)),
+            channel,
+            watch: None,
+        });
         Ok(id)
     }
 
@@ -197,6 +218,34 @@ impl GraphSessions {
         credit.granted = credit.granted.saturating_add(rows).min(HARD_CAP);
         session.control.changed.notify_all();
         Ok(())
+    }
+
+    /// Sends every `git-repo-changed` to `sink`.
+    pub fn on_repo_changed(&self, sink: impl Fn(RepoChanged) + Send + Sync + 'static) {
+        *self.repo_changed.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(sink));
+    }
+
+    /// Points session `session_id`'s watch at `worktree`, watching its files only while `visible`.
+    /// A watch on another worktree, or one that stopped, is replaced. A watch that can't start
+    /// leaves live updates off, which the frontend covers with a fingerprint check (#354).
+    pub fn watch(&self, session_id: u32, worktree: &Path, visible: bool) -> Result<WatchState, GitError> {
+        let sink = self.repo_changed.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let mut live = self.live();
+        let session = live.as_mut().filter(|s| s.id == session_id).ok_or_else(|| not_open(session_id))?;
+        if let Some(watch) = session.watch.as_mut().filter(|w| w.worktree() == worktree && w.is_running()) {
+            return Ok(match watch.set_visible(visible) {
+                Ok(()) => WatchState::Live,
+                Err(reason) => WatchState::Off { reason },
+            });
+        }
+        session.watch = None;
+        Ok(match Watch::start(session_id, &session.repo, worktree, visible, sink, session.channel.clone()) {
+            Ok(watch) => {
+                session.watch = Some(watch);
+                WatchState::Live
+            }
+            Err(reason) => WatchState::Off { reason },
+        })
     }
 
     /// Refreshes session `session_id`: re-runs its `git log` and splices or resets the rows sent, as
