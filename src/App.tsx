@@ -28,7 +28,7 @@ import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
-import { ToposOverlay } from "./slices/git/topos/ToposOverlay";
+import { ToposOverlay, type ToposTarget } from "./slices/git/topos/ToposOverlay";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
@@ -217,6 +217,11 @@ export function App() {
     }
     return null;
   }, [projects, projectWorktrees, activeProject]);
+  // Topos targets the same folder, and draws the graph of its root repo for each worktree.
+  const toposTarget = useMemo<ToposTarget | null>(
+    () => (builderProject ? { ...builderProject, repoPath: activeRootRepo } : null),
+    [builderProject, activeRootRepo]
+  );
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
   const closeTopos = useCallback(() => setIsToposOpen(false), [setIsToposOpen]);
   // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
@@ -756,7 +761,7 @@ export function App() {
       {/* Topos git cockpit (Ctrl+Shift+B c): hidden, never unmounted, when closed */}
       <ToposOverlay
         isOpen={isToposOpen}
-        project={builderProject}
+        project={toposTarget}
         onClose={closeTopos}
         onAddProject={() => setIsAddProjectOpen(true)}
       />

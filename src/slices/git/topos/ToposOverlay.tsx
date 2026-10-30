@@ -4,13 +4,17 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, ExternalLink, FolderPlus, RefreshCw, X } from "lucide-react";
 import { useOverlay } from "../../overlay/useOverlay";
 import { ToposIcon } from "./ToposIcon";
-import { gateView, GIT_DOWNLOAD_URL, type GitError, type GitVersionStatus } from "./gitVersion";
+import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
+import { GraphList } from "./GraphList";
+import { useGraphSession } from "./useGraphSession";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
   path: string;
   /** The project's name, or `Project · branch` for a worktree. */
   name: string;
+  /** The registered project's root repo, whose graph Topos draws for each of its worktrees. */
+  repoPath: string;
 }
 
 export interface ToposOverlayProps {
@@ -26,11 +30,6 @@ type VersionCheck =
   | { state: "checking" }
   | { state: "done"; status: GitVersionStatus }
   | { state: "failed"; message: string };
-
-function errorMessage(e: unknown): string {
-  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as GitError).stderr);
-  return String(e);
-}
 
 /**
  * Topos, the visual Git cockpit (#349): a full-window overlay toggled by `Ctrl+Shift+B c`. Closing
@@ -71,6 +70,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
       : check.state === "failed"
         ? ({ kind: "blocked", title: "Couldn't run git", detail: check.message } as const)
         : null;
+
+  // The graph belongs to the root repo, so moving between its worktrees keeps the session.
+  const graph = useGraphSession(target && view?.kind === "open" ? target.repoPath : null);
 
   return (
     <div
@@ -159,9 +161,18 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 {view.warning}
               </p>
             )}
-            <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e] p-6 text-center">
-              The commit graph for {target.name} is coming in a later Quay release.
-            </div>
+            {graph.feed ? (
+              <GraphList
+                key={target.repoPath}
+                feed={graph.feed}
+                version={graph.version}
+                onReachedRow={graph.reachedRow}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
+                Loading commits…
+              </div>
+            )}
           </div>
         )}
       </div>
