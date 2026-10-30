@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::spawn::{as_tree_root, hidden_command, kill_tree};
+use crate::spawn::{hidden_command, spawn_tree};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -73,8 +73,7 @@ pub fn run_shell(
 ) -> CommandRun {
     let started = Instant::now();
     let mut cmd = shell_command(command);
-    as_tree_root(&mut cmd)
-        .current_dir(cwd)
+    cmd.current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -82,7 +81,7 @@ pub fn run_shell(
         cmd.env(k, v);
     }
 
-    let mut child = match cmd.spawn() {
+    let mut tree = match spawn_tree(&mut cmd) {
         Ok(c) => c,
         Err(e) => {
             return CommandRun {
@@ -98,30 +97,30 @@ pub fn run_shell(
 
     let sink = Arc::new(Mutex::new(Vec::new()));
     let readers = [
-        child.stdout.take().map(|s| pump(s, sink.clone())),
-        child.stderr.take().map(|s| pump(s, sink.clone())),
+        tree.child().stdout.take().map(|s| pump(s, sink.clone())),
+        tree.child().stderr.take().map(|s| pump(s, sink.clone())),
     ];
 
     let (mut timed_out, mut cancelled) = (false, false);
     let exit_code = loop {
-        match child.try_wait() {
+        match tree.child().try_wait() {
             Ok(Some(status)) => break status.code(),
             Ok(None) => {}
             Err(_) => {
-                kill_tree(&mut child);
+                tree.kill();
                 break None;
             }
         }
         if cancel.load(Ordering::SeqCst) {
             cancelled = true;
-            kill_tree(&mut child);
-            let _ = child.wait();
+            tree.kill();
+            let _ = tree.child().wait();
             break None;
         }
         if started.elapsed() >= timeout {
             timed_out = true;
-            kill_tree(&mut child);
-            let _ = child.wait();
+            tree.kill();
+            let _ = tree.child().wait();
             break None;
         }
         thread::sleep(Duration::from_millis(100));

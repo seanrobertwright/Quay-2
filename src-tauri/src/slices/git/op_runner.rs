@@ -6,12 +6,17 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
+use tauri::State;
+use uuid::Uuid;
 
 use super::error::GitError;
 
@@ -35,7 +40,7 @@ impl Default for OpOptions {
 /// keeps running until git exits or the operator cancels it.
 pub const STALL_AFTER: Duration = Duration::from_secs(30);
 
-/// How often a running op checks for a stall.
+/// How often a running op checks for a stall or a cancel.
 const POLL: Duration = Duration::from_millis(100);
 
 /// One step of a running operation, as the frontend receives it:
@@ -45,7 +50,11 @@ const POLL: Duration = Duration::from_millis(100);
 pub enum OpEvent {
     /// One of git's `--progress` lines, such as `Receiving objects:  45% (450/1000)`. `percent` is
     /// absent for phases that only count, such as `Enumerating objects: 9`.
-    Progress { phase: String, percent: Option<u8> },
+    Progress {
+        phase: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        percent: Option<u8>,
+    },
     /// A piece of git's stdout or stderr that isn't a progress line.
     Output { chunk: String },
     /// git has printed nothing for [`OpOptions::stall_after`]. It is still running, and it reports
@@ -106,7 +115,11 @@ pub fn run_op(
     opts: &OpOptions,
     channel: &Channel<OpEvent>,
 ) -> Result<OpOutput, GitError> {
-    let result = run(cwd, args, opts, channel);
+    finish(run(cwd, args, opts, &AtomicBool::new(false), channel), channel)
+}
+
+/// Sends the op's last event, `Done` or `Failed`, and passes its result on.
+fn finish(result: Result<OpOutput, GitError>, channel: &Channel<OpEvent>) -> Result<OpOutput, GitError> {
     let _ = channel.send(match &result {
         Ok(_) => OpEvent::Done,
         Err(error) => OpEvent::Failed { error: error.clone() },
@@ -114,23 +127,27 @@ pub fn run_op(
     result
 }
 
-fn run(cwd: &Path, args: &[&str], opts: &OpOptions, channel: &Channel<OpEvent>) -> Result<OpOutput, GitError> {
-    let mut cmd = headless_git(cwd);
+fn run(
+    cwd: &Path,
+    args: &[&str],
+    opts: &OpOptions,
+    cancel: &AtomicBool,
+    channel: &Channel<OpEvent>,
+) -> Result<OpOutput, GitError> {
+    let mut cmd = headless_git();
+    cmd.current_dir(cwd);
     if opts.c_locale {
         cmd.env("LC_ALL", "C");
     }
-    let mut child = cmd
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut tree = crate::spawn::spawn_tree(&mut cmd)
         .map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })?;
 
     let (tx, rx) = mpsc::channel();
-    if let Some(out) = child.stdout.take() {
+    if let Some(out) = tree.child().stdout.take() {
         pump(out, Stream::Stdout, tx.clone());
     }
-    if let Some(err) = child.stderr.take() {
+    if let Some(err) = tree.child().stderr.take() {
         pump(err, Stream::Stderr, tx);
     }
 
@@ -140,6 +157,12 @@ fn run(cwd: &Path, args: &[&str], opts: &OpOptions, channel: &Channel<OpEvent>) 
     let mut stalled = false;
     // Both pumps hang up once git, and anything it started, closes the pipes.
     loop {
+        if cancel.load(Ordering::SeqCst) {
+            // A process that outlived the kill could hold the pipes open, so don't drain them.
+            tree.kill();
+            let _ = tree.child().wait();
+            return Err(GitError::Cancelled);
+        }
         let (stream, bytes) = match rx.recv_timeout(POLL) {
             Ok(received) => received,
             Err(RecvTimeoutError::Timeout) => {
@@ -173,7 +196,7 @@ fn run(cwd: &Path, args: &[&str], opts: &OpOptions, channel: &Channel<OpEvent>) 
     if !stderr_line.is_empty() {
         stderr_segment(&stderr_line, &mut output, channel);
     }
-    let status = child.wait().map_err(|e| GitError::Other { stderr: format!("could not wait for git: {e}") })?;
+    let status = tree.child().wait().map_err(|e| GitError::Other { stderr: format!("could not wait for git: {e}") })?;
     if status.success() {
         return Ok(output);
     }
@@ -213,10 +236,62 @@ fn parse_progress(line: &str) -> Option<(&str, Option<u8>)> {
     Some((phase, percent))
 }
 
-/// A git command in `cwd` that can never stop to ask on a terminal.
-fn headless_git(cwd: &Path) -> Command {
+/// The ops that can be cancelled while they run, by the op id the frontend gave each one.
+#[derive(Default)]
+pub struct GitOps {
+    running: Mutex<HashMap<Uuid, Arc<AtomicBool>>>,
+}
+
+impl GitOps {
+    /// Runs `git <args>` like [`run_op`], cancellable through [`GitOps::cancel`] with `op_id`.
+    /// `op_id` is a UUID the frontend chose, so it can cancel before this returns.
+    pub fn run(
+        &self,
+        op_id: &str,
+        cwd: &Path,
+        args: &[&str],
+        opts: &OpOptions,
+        channel: &Channel<OpEvent>,
+    ) -> Result<OpOutput, GitError> {
+        let id = parse_op_id(op_id)?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+            if running.contains_key(&id) {
+                return Err(GitError::Other { stderr: format!("op {id} is already running") });
+            }
+            running.insert(id, cancel.clone());
+        }
+        let result = finish(run(cwd, args, opts, &cancel, channel), channel);
+        self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        result
+    }
+
+    /// Cancels the running op `op_id`: its whole process tree is killed and it ends in
+    /// `Failed { error: Cancelled }`. An op that has already finished is left alone.
+    pub fn cancel(&self, op_id: &str) -> Result<(), GitError> {
+        let id = parse_op_id(op_id)?;
+        if let Some(cancel) = self.running.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
+            cancel.store(true, Ordering::SeqCst);
+        }
+        Ok(())
+    }
+}
+
+fn parse_op_id(op_id: &str) -> Result<Uuid, GitError> {
+    Uuid::parse_str(op_id).map_err(|_| GitError::Other { stderr: format!("op id {op_id:?} is not a UUID") })
+}
+
+/// Cancels a running op. See [`GitOps::cancel`].
+#[tauri::command]
+pub fn git_op_cancel(op_id: String, ops: State<'_, GitOps>) -> Result<(), GitError> {
+    ops.cancel(&op_id)
+}
+
+/// A git command that can never stop to ask on a terminal. Every Topos git process starts here.
+pub fn headless_git() -> Command {
     let mut cmd = crate::spawn::hidden_command("git");
-    cmd.current_dir(cwd).env("GIT_TERMINAL_PROMPT", "0").stdin(Stdio::null());
+    cmd.env("GIT_TERMINAL_PROMPT", "0").stdin(Stdio::null());
     cmd
 }
 
@@ -400,6 +475,55 @@ mod tests {
         let kinds: Vec<String> =
             events.lock().unwrap().iter().map(|e| e["event"].as_str().unwrap().to_string()).collect();
         assert_eq!(kinds, ["stalled", "output", "done"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Whether a process with this OS process id is running.
+    fn process_alive(pid: u32) -> bool {
+        if cfg!(windows) {
+            let filter = format!("PID eq {pid}");
+            let out = crate::spawn::hidden_command("tasklist")
+                .args(["/FI", &filter, "/NH", "/FO", "CSV"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\""))
+        } else {
+            crate::spawn::hidden_command("kill").args(["-0", &pid.to_string()]).status().unwrap().success()
+        }
+    }
+
+    #[test]
+    fn cancel_kills_the_ops_whole_process_tree() {
+        let dir = scratch_dir();
+        let (channel, events) = test_channel();
+        let ops = GitOps::default();
+        let op_id = uuid::Uuid::new_v4().to_string();
+        // git starts a shell, which starts `sleep` and prints its OS process id.
+        let def = "alias.probe=!sleep 120 & if [ -f /proc/$!/winpid ]; then cat /proc/$!/winpid; else echo $!; fi; wait";
+
+        std::thread::scope(|scope| {
+            let running = scope.spawn(|| ops.run(&op_id, &dir, &alias_args(def), &OpOptions::default(), &channel));
+
+            let started = Instant::now();
+            let sleep_pid = loop {
+                let printed = streamed_output(&events.lock().unwrap());
+                if let Ok(pid) = printed.trim().parse::<u32>() {
+                    break pid;
+                }
+                assert!(started.elapsed() < Duration::from_secs(20), "sleep never started: {printed:?}");
+                std::thread::sleep(Duration::from_millis(50));
+            };
+            assert!(process_alive(sleep_pid), "sleep {sleep_pid} should be running before Cancel");
+
+            ops.cancel(&op_id).unwrap();
+            assert_eq!(running.join().unwrap(), Err(GitError::Cancelled));
+            assert!(started.elapsed() < Duration::from_secs(60), "Cancel waited for sleep to finish");
+            assert!(!process_alive(sleep_pid), "sleep {sleep_pid}, a child of git's shell, outlived Cancel");
+        });
+        assert_eq!(
+            events.lock().unwrap().last(),
+            Some(&serde_json::json!({ "event": "failed", "error": { "kind": "cancelled" } }))
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }
