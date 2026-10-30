@@ -67,6 +67,7 @@ const GraphLanes = React.memo<{
   win: RowWindow;
   layout: ColumnLayout;
 }>(function GraphLanes({ store, win, layout }) {
+  const stubDash = useId();
   // A window holds one edge per open lane plus its own rows' edges, so rebuilding these whenever
   // the window, the column or the store changes stays cheap.
   const edges = store.visibleEdges(win.start, win.end).map((id) => {
@@ -99,7 +100,14 @@ const GraphLanes = React.memo<{
       {slots.map((d, slot) =>
         d === "" ? null : <path key={slot} d={d} fill="none" stroke={slotColor(slot)} strokeWidth={2} />
       )}
-      {stub !== "" && <path d={stub} fill="none" stroke={STUB_COLOR} strokeWidth={1.5} strokeDasharray="4 3" />}
+      {/* The stub's 4-on, 3-off dashes come from a striped paint, not stroke-dasharray: Chromium
+          re-dashes a dashed path on every raster, which cost ~100 ms a frame on Linux's graph (#377). */}
+      <defs>
+        <pattern id={stubDash} patternUnits="userSpaceOnUse" width={layout.width} height={7}>
+          <rect width={layout.width} height={4} fill={STUB_COLOR} />
+        </pattern>
+      </defs>
+      {stub !== "" && <path d={stub} fill="none" stroke={`url(#${stubDash})`} strokeWidth={1.5} />}
       {nodes}
     </svg>
   );
