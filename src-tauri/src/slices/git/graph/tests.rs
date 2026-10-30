@@ -13,13 +13,13 @@ use super::page::{HEADER_BYTES, PAGE_FORMAT_VERSION, PAGE_MAGIC};
 use super::session::{GraphOptions, GraphSessions, PAGE_ROWS};
 use super::GraphOrder;
 
-fn git(dir: &Path, args: &[&str]) -> String {
+pub(super) fn git(dir: &Path, args: &[&str]) -> String {
     let out = crate::spawn::hidden_command("git").arg("-C").arg(dir).args(args).output().expect("git runs");
     assert!(out.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-fn temp_dir() -> PathBuf {
+pub(super) fn temp_dir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("quay-graph-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -72,12 +72,29 @@ fn repo_with_history(commits: usize) -> PathBuf {
 
 /// What a test sees on the channel.
 #[derive(Debug)]
-enum Msg {
-    Rows { session: u32, page: u32, first_row: u32, oids: Vec<String>, author_ms: f64 },
+pub(super) enum Msg {
+    Rows { session: u32, page: u32, first_row: u32, oids: Vec<String>, author_ms: f64, lanes: Box<PageLanes> },
     Event(Value),
 }
 
-fn listen() -> (Channel<InvokeResponseBody>, Receiver<Msg>) {
+/// The lane layout a page carries (#375).
+#[derive(Debug, Default)]
+pub(super) struct PageLanes {
+    /// Each row's lane and track id.
+    pub rows: Vec<(u32, u32)>,
+    /// The session-wide id of the page's first edge.
+    pub first_edge: u32,
+    /// `[childRow, parentRow, lane, childLane, parentLane, track]` per edge opened in the page.
+    pub edges: Vec<[u32; 6]>,
+    /// `[edge, parentRow, parentLane]` per edge the page closes.
+    pub closes: Vec<[u32; 3]>,
+    /// Edges open at the page's first row.
+    pub checkpoint: Vec<u32>,
+    pub peak_lanes: u32,
+    pub new_tracks: Vec<Value>,
+}
+
+pub(super) fn listen() -> (Channel<InvokeResponseBody>, Receiver<Msg>) {
     let (tx, rx) = channel();
     let ch = Channel::new(move |body| {
         let msg = match body {
@@ -92,21 +109,38 @@ fn listen() -> (Channel<InvokeResponseBody>, Receiver<Msg>) {
 
 fn decode(bytes: &[u8]) -> Msg {
     let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+    let u16_at = |at: usize| u16::from_le_bytes(bytes[at..at + 2].try_into().unwrap());
     assert_eq!(u32_at(0), PAGE_MAGIC);
-    assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), PAGE_FORMAT_VERSION);
-    let json: Value = serde_json::from_slice(&bytes[u32_at(40) as usize..]).unwrap();
+    assert_eq!(u16_at(4), PAGE_FORMAT_VERSION);
+    assert_eq!(u16_at(6) as usize, HEADER_BYTES);
+    let (json_at, json_len) = (u32_at(40) as usize, u32_at(44) as usize);
+    let json: Value = serde_json::from_slice(&bytes[json_at..json_at + json_len]).unwrap();
     let oids = json["oids"].as_array().unwrap().iter().map(|o| o.as_str().unwrap().to_string()).collect::<Vec<_>>();
-    assert_eq!(oids.len(), u32_at(20) as usize);
+    let n = u32_at(20) as usize;
+    assert_eq!(oids.len(), n);
+    let (edge_count, close_count, checkpoint_count) = (u32_at(24) as usize, u32_at(28) as usize, u32_at(52) as usize);
+    let (lanes_at, tracks_at, edges_at, closes_at, checkpoint_at) =
+        (u32_at(60) as usize, u32_at(64) as usize, u32_at(68) as usize, u32_at(72) as usize, u32_at(76) as usize);
+    let lanes = PageLanes {
+        rows: (0..n).map(|i| (u16_at(lanes_at + 2 * i) as u32, u32_at(tracks_at + 4 * i))).collect(),
+        first_edge: u32_at(48),
+        edges: (0..edge_count).map(|i| std::array::from_fn(|f| u32_at(edges_at + 24 * i + 4 * f))).collect(),
+        closes: (0..close_count).map(|i| std::array::from_fn(|f| u32_at(closes_at + 12 * i + 4 * f))).collect(),
+        checkpoint: (0..checkpoint_count).map(|i| u32_at(checkpoint_at + 4 * i)).collect(),
+        peak_lanes: u32_at(56),
+        new_tracks: json["newTracks"].as_array().cloned().unwrap_or_default(),
+    };
     Msg::Rows {
         session: u32_at(8),
         page: u32_at(12),
         first_row: u32_at(16),
         oids,
         author_ms: f64::from_le_bytes(bytes[HEADER_BYTES..HEADER_BYTES + 8].try_into().unwrap()),
+        lanes: Box::new(lanes),
     }
 }
 
-const WAIT: Duration = Duration::from_secs(30);
+pub(super) const WAIT: Duration = Duration::from_secs(30);
 
 /// Collects rows until an event other than `Started` arrives, and returns the rows and that event.
 fn rows_until_event(rx: &Receiver<Msg>, session: u32, rows: &mut Vec<String>, pages: &mut Vec<u32>) -> Value {

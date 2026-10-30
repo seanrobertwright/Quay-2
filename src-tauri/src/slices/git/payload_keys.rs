@@ -5,7 +5,7 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
-use super::graph::{Author, GraphEvent};
+use super::graph::{Author, GraphEvent, Track, TrackKind};
 use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
@@ -58,6 +58,13 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             s(&Author { name: "Ann".into(), email: "ann@example.invalid".into() }),
             json!({ "name": "Ann", "email": "ann@example.invalid" }),
         ),
+        (
+            "Track",
+            s(&Track { id: 4, key: "feature/x".into(), kind: TrackKind::Derived, left: Some(0), right: None }),
+            json!({ "id": 4, "key": "feature/x", "kind": "derived", "left": 0, "right": null }),
+        ),
+        ("TrackKind::Default", s(&TrackKind::Default), json!("default")),
+        ("TrackKind::Anonymous", s(&TrackKind::Anonymous), json!("anonymous")),
         ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),
         (
             "OpEvent::Progress",

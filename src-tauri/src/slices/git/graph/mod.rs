@@ -1,9 +1,13 @@
-//! Topos's commit graph: one streaming `git log` session at a time (#374).
+//! Topos's commit graph: one streaming `git log` session at a time (#374), laid out in lanes (#375).
 
 mod cat_file;
+mod lanes;
 mod log;
 mod page;
 mod session;
+#[cfg(test)]
+mod lane_tests;
+mod refs;
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +18,8 @@ use tauri::State;
 
 use super::error::GitError;
 
+#[cfg(test)]
+pub use lanes::{Track, TrackKind};
 pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
 pub use session::{GraphOptions, GraphRefs, GraphSessions};

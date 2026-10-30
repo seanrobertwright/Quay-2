@@ -18,8 +18,10 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 
 use super::super::error::GitError;
 use super::cat_file::{CatFileBatch, GitObject};
+use super::lanes::LanePass;
 use super::log::{log_command, GraphOrder, LogReader, LogRecord};
 use super::page::{encode_page, AuthorTable, GraphEvent};
+use super::refs::read_branch_tips;
 
 /// Rows per `Rows` page.
 pub const PAGE_ROWS: usize = 512;
@@ -222,7 +224,13 @@ impl Walk {
     }
 
     fn run(self) {
-        let mut pager = Pager { sent: 0, page_index: 0, page: Vec::with_capacity(PAGE_ROWS), authors: AuthorTable::default() };
+        let mut pager = Pager {
+            sent: 0,
+            page_index: 0,
+            page: Vec::with_capacity(PAGE_ROWS),
+            authors: AuthorTable::default(),
+            lanes: LanePass::new(read_branch_tips(&self.repo)),
+        };
         let mut ended = self.walk(true, &mut pager);
         // A repo whose HEAD is unborn fails on `HEAD` before printing a row; walk its branches alone.
         if let Ended::Exited { success: false, .. } = ended {
@@ -341,8 +349,7 @@ impl Walk {
             if !self.wait_for_credit(pager) {
                 return Outcome::Stopped;
             }
-            pager.page.push(record);
-            pager.sent += 1;
+            pager.push(record);
             if pager.page.len() == PAGE_ROWS {
                 self.flush(pager);
             }
@@ -373,7 +380,8 @@ impl Walk {
             return;
         }
         let first_row = pager.sent - pager.page.len() as u32;
-        let bytes = encode_page(self.id, pager.page_index, first_row, &pager.page, &mut pager.authors);
+        let layout = pager.lanes.take_page();
+        let bytes = encode_page(self.id, pager.page_index, first_row, &pager.page, &layout, &mut pager.authors);
         pager.page.clear();
         pager.page_index += 1;
         if !self.control.is_closed() {
@@ -395,6 +403,19 @@ struct Pager {
     page_index: u32,
     page: Vec<LogRecord>,
     authors: AuthorTable,
+    lanes: LanePass,
+}
+
+impl Pager {
+    /// Lays out `record` as the next row and adds it to the page.
+    fn push(&mut self, record: LogRecord) {
+        if self.page.is_empty() {
+            self.lanes.begin_page();
+        }
+        self.lanes.place(self.sent, &record.oid, &record.parents, &record.subject);
+        self.page.push(record);
+        self.sent += 1;
+    }
 }
 
 /// Whether `HEAD` names a commit, which it doesn't before a repo's first commit.
