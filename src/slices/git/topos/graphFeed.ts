@@ -4,7 +4,7 @@
 
 import { decodeGraphPage } from "./graphPage.ts";
 import { GraphStore, type Splice } from "./graphStore.ts";
-import type { GitError } from "./gitVersion.ts";
+import { errorMessage, type GitError } from "./gitVersion.ts";
 
 /** The JSON `GraphEvent`s from `src-tauri/src/slices/git/graph/page.rs`. `Rows` pages are raw bytes. */
 export type GraphEvent =
@@ -115,7 +115,7 @@ export class GraphFeed {
         this.status = { state: "truncated", cap: event.cap };
         return true;
       case "failed":
-        this.status = { state: "failed", message: event.error.stderr };
+        this.status = { state: "failed", message: errorMessage(event.error) };
         return true;
       default:
         return false;

@@ -9,11 +9,15 @@ export type GitVersionStatus =
   | { status: "unknown"; raw: string };
 
 /** `GitError` from `src-tauri/src/slices/git/error.rs`; later tickets add kinds. */
-export type GitError = { kind: "other"; stderr: string };
+export type GitError =
+  | { kind: "other"; stderr: string }
+  | { kind: "cancelled" }
+  | { kind: "indexLocked" }
+  | { kind: "stagingBusy" };
 
 /** The text to show for a rejected git command: a `GitError`'s stderr, or whatever was thrown. */
 export function errorMessage(e: unknown): string {
-  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as GitError).stderr);
+  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as { stderr: unknown }).stderr);
   return String(e);
 }
 
