@@ -75,6 +75,7 @@ export function useWorkspace() {
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
   const [isPraxisBuilderOpen, setIsPraxisBuilderOpen] = useState(false);
+  const [isToposOpen, setIsToposOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
 
@@ -1277,6 +1278,7 @@ export function useWorkspace() {
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
       toggleFactoryStation: () => setIsFactoryStationOpen((prev) => !prev),
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
+      toggleTopos: () => setIsToposOpen((prev) => !prev),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
       openA2A: () => setIsA2AOpen(true),
       focusNextPane,
@@ -1433,6 +1435,8 @@ export function useWorkspace() {
     setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
+    isToposOpen,
+    setIsToposOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,

@@ -1,0 +1,170 @@
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { AlertTriangle, ExternalLink, FolderPlus, RefreshCw, X } from "lucide-react";
+import { useOverlay } from "../../overlay/useOverlay";
+import { ToposIcon } from "./ToposIcon";
+import { gateView, GIT_DOWNLOAD_URL, type GitError, type GitVersionStatus } from "./gitVersion";
+
+/** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
+export interface ToposTarget {
+  path: string;
+  /** The project's name, or `Project · branch` for a worktree. */
+  name: string;
+}
+
+export interface ToposOverlayProps {
+  isOpen: boolean;
+  /** The active Rail selection, or null when no project is open. */
+  project: ToposTarget | null;
+  onClose: () => void;
+  onAddProject: () => void;
+}
+
+type VersionCheck =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "done"; status: GitVersionStatus }
+  | { state: "failed"; message: string };
+
+function errorMessage(e: unknown): string {
+  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as GitError).stderr);
+  return String(e);
+}
+
+/**
+ * Topos, the visual Git cockpit (#349): a full-window overlay toggled by `Ctrl+Shift+B c`. Closing
+ * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
+ * selection it was shown with, and checks git's version on its first open (#369).
+ */
+export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject }) => {
+  const titleId = useId();
+  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
+
+  // Retarget each time Topos is shown; while hidden it keeps the target it last showed.
+  const [target, setTarget] = useState<ToposTarget | null>(project);
+  useEffect(() => {
+    if (isOpen) setTarget(project);
+  }, [isOpen, project]);
+
+  const [check, setCheck] = useState<VersionCheck>({ state: "idle" });
+  // Only the newest check may set the result, so a slow first check can't overwrite a Retry.
+  const checkId = useRef(0);
+  const runCheck = useCallback((retry: boolean) => {
+    const id = ++checkId.current;
+    setCheck({ state: "checking" });
+    invoke<GitVersionStatus>("git_version_check", { retry })
+      .then((status) => {
+        if (id === checkId.current) setCheck({ state: "done", status });
+      })
+      .catch((e: unknown) => {
+        if (id === checkId.current) setCheck({ state: "failed", message: errorMessage(e) });
+      });
+  }, []);
+  useEffect(() => {
+    if (isOpen && check.state === "idle") runCheck(false);
+  }, [isOpen, check.state, runCheck]);
+
+  const view =
+    check.state === "done"
+      ? gateView(check.status)
+      : check.state === "failed"
+        ? ({ kind: "blocked", title: "Couldn't run git", detail: check.message } as const)
+        : null;
+
+  return (
+    <div
+      {...backdropProps}
+      className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}
+    >
+      <div
+        {...panelProps}
+        aria-labelledby={titleId}
+        className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
+      >
+        <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-[#06B6D4]/10 border border-[#06B6D4]/40 flex items-center justify-center shrink-0">
+            <ToposIcon className="w-5 h-5" />
+          </div>
+          <h2 id={titleId} className="text-sm font-bold text-white shrink-0">
+            Topos
+          </h2>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
+            Ctrl+Shift+B C
+          </span>
+          {target && (
+            <span className="text-xs text-[#8b949e] truncate min-w-0" title={target.path}>
+              {target.name}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Topos"
+            title="Close (Esc)"
+            className="ml-auto p-1.5 rounded-md text-[#8b949e] hover:text-white hover:bg-[#21262d]"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </header>
+
+        {!target ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
+            <p className="text-sm text-[#8b949e]">Open a project to see its commits in Topos.</p>
+            <button
+              type="button"
+              onClick={onAddProject}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold"
+            >
+              <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
+              Add project
+            </button>
+          </div>
+        ) : view === null ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
+            Checking git…
+          </div>
+        ) : view.kind === "blocked" ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6" role="alert">
+            <AlertTriangle className="w-6 h-6 text-[#d29922]" aria-hidden="true" />
+            <p className="text-sm font-semibold text-white">{view.title}</p>
+            <p className="text-xs text-[#8b949e] max-w-md break-words">{view.detail}</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openUrl(GIT_DOWNLOAD_URL).catch(console.error)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-[#c9d1d9]"
+              >
+                <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                Get git from git-scm.com
+              </button>
+              <button
+                type="button"
+                onClick={() => runCheck(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold"
+              >
+                <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0">
+            {view.warning && (
+              <p
+                role="status"
+                className="px-4 py-1.5 text-xs text-[#d29922] bg-[#d29922]/10 border-b border-[#d29922]/30 truncate"
+                title={view.warning}
+              >
+                {view.warning}
+              </p>
+            )}
+            <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e] p-6 text-center">
+              The commit graph for {target.name} is coming in a later Quay release.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

@@ -16,7 +16,7 @@ use slices::bridge::{
     BridgeServer, BridgeState,
 };
 use slices::git::{
-    check_git_worktree_clean, create_git_worktree, is_git_repo, list_git_worktrees,
+    check_git_worktree_clean, create_git_worktree, git_version_check, is_git_repo, list_git_worktrees,
     remove_git_worktree,
 };
 use slices::github::{
@@ -182,6 +182,7 @@ pub fn run() {
             create_git_worktree,
             check_git_worktree_clean,
             remove_git_worktree,
+            git_version_check,
             check_gh_cli_installed,
             get_github_repo_info,
             list_github_issues,

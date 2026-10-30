@@ -77,6 +77,7 @@ export interface CtrlBActions {
   toggleArchonGraph(): void;
   toggleFactoryStation(): void;
   togglePraxisBuilder(): void;
+  toggleTopos(): void;
   toggleUpdateModal(): void;
   openA2A(): void;
   focusNextPane(): void;
@@ -118,6 +119,7 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["r", "toggleArchonGraph"],
   ["f", "toggleFactoryStation"],
   ["p", "togglePraxisBuilder"],
+  ["c", "toggleTopos"],
   ["u", "toggleUpdateModal"],
   ["m", "openA2A"],
   ["o", "focusNextPane"],
