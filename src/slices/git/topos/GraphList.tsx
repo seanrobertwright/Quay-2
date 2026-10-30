@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { formatDateTime } from "../../../lib/dates";
 import type { GraphFeed, GraphStatus } from "./graphFeed";
+import { GRAPH_PADDING, LANE_WIDTH, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
+import type { GraphStore } from "./graphStore";
 import { ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
+import { slotColor } from "./laneColors";
 
 export interface GraphListProps {
   feed: GraphFeed;
@@ -26,9 +29,57 @@ function statusLine(status: GraphStatus, rows: number): string {
   }
 }
 
+/** Lanes the graph column shows; the resizable column and its stub for the rest are #376. */
+const SHOWN_LANES = 12;
+
+function graphWidth(peakLanes: number): number {
+  return 2 * GRAPH_PADDING + Math.min(Math.max(peakLanes, 1), SHOWN_LANES) * LANE_WIDTH;
+}
+
+/**
+ * The lanes for the rows in `win` (#375): one SVG over the window, in window-local y, with one
+ * `<path>` per color slot for the edges and the nodes drawn on top.
+ */
+const GraphLanes: React.FC<{ store: GraphStore; win: RowWindow; width: number }> = ({ store, win, width }) => {
+  // Rebuilt on every render: the store grows in place, and a page landing can close an edge in
+  // rows already shown. A window holds one edge per open lane plus its own rows' edges, so this
+  // stays cheap.
+  const edges = store.visibleEdges(win.start, win.end).map((id) => {
+    const edge = store.edge(id);
+    return { ...edge, slot: store.trackSlot(edge.track) };
+  });
+  const paths = slotPaths(edges, win);
+  const nodes: React.ReactNode[] = [];
+  for (let row = win.start; row < win.end; row++) {
+    nodes.push(
+      <circle
+        key={store.oid(row)}
+        cx={laneX(store.lane(row))}
+        cy={rowY(row, win.start)}
+        r={NODE_RADIUS}
+        fill={slotColor(store.trackSlot(store.track(row)))}
+      />
+    );
+  }
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute left-0 top-0 pointer-events-none"
+      width={width}
+      height={(win.end - win.start) * ROW_HEIGHT}
+    >
+      {/* The index is the color slot, a fixed identity in a fixed-length array, so it is a stable key. */}
+      {paths.map((d, slot) =>
+        d === "" ? null : <path key={slot} d={d} fill="none" stroke={slotColor(slot)} strokeWidth={2} />
+      )}
+      {nodes}
+    </svg>
+  );
+};
+
 /**
  * The commit list (#374): one scroll container over a spacer as tall as every loaded row, with
- * only a window of rows in the DOM. Lanes come with #375; until then every node sits in one column.
+ * only a window of rows in the DOM, and the lane graph (#375) drawn over the window's left edge.
  */
 export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRow }) => {
   const scroller = useRef<HTMLDivElement>(null);
@@ -66,6 +117,7 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
     updateWindow();
   };
 
+  const laneColumn = graphWidth(store?.peakLanes ?? 1);
   const rows: React.ReactNode[] = [];
   if (store) {
     for (let row = win.start; row < win.end; row++) {
@@ -77,12 +129,10 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
           role="listitem"
           aria-posinset={row + 1}
           aria-setsize={feed.status.state === "done" ? rowCount : -1}
-          className="flex items-center gap-3 px-3 text-xs border-b border-[#21262d]/60 hover:bg-[#161b22]"
+          className="flex items-center gap-3 pr-3 text-xs border-b border-[#21262d]/60 hover:bg-[#161b22]"
           style={{ height: ROW_HEIGHT }}
         >
-          <span className="w-4 flex justify-center shrink-0" aria-hidden="true">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#06B6D4]" />
-          </span>
+          <span className="shrink-0" style={{ width: laneColumn }} aria-hidden="true" />
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={subject}>
             {subject}
           </span>
@@ -115,6 +165,7 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
         >
           <div className="absolute inset-x-0" style={{ transform: `translateY(${win.start * ROW_HEIGHT}px)` }}>
             {rows}
+            {store && win.end > win.start && <GraphLanes store={store} win={win} width={laneColumn} />}
           </div>
         </div>
       </div>

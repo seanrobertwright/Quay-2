@@ -1,15 +1,38 @@
-// Decodes a `Rows` page of a Topos graph session (#369). The layout is documented, and encoded, in
-// `src-tauri/src/slices/git/graph/page.rs`; `fixtures/graph-page-v1.bin` is a page Rust encoded.
+// Decodes a `Rows` page of a Topos graph session (#369, #375). The layout is documented, and
+// encoded, in `src-tauri/src/slices/git/graph/page.rs`; `fixtures/graph-page-v2.bin` is a page Rust
+// encoded.
 
 /** "TGPG" read as a little-endian u32. */
 export const PAGE_MAGIC = 0x47504754;
-export const PAGE_FORMAT_VERSION = 1;
-const MIN_HEADER_BYTES = 48;
+export const PAGE_FORMAT_VERSION = 2;
+export const MIN_HEADER_BYTES = 80;
+/** The `parentRow` of an edge whose parent row hasn't loaded yet. */
+export const OPEN_ROW = 0xffffffff;
+/** Where each field sits in an edge's `EDGE_FIELDS` `u32`s. */
+export const EDGE_FIELD = { childRow: 0, parentRow: 1, lane: 2, childLane: 3, parentLane: 4, track: 5 } as const;
+export const EDGE_FIELDS = 6;
+/** Where each field sits in a close's `CLOSE_FIELDS` `u32`s. */
+export const CLOSE_FIELD = { edge: 0, parentRow: 1, parentLane: 2 } as const;
+export const CLOSE_FIELDS = 3;
 
 /** An author in a session's author table. */
 export interface GraphAuthor {
   name: string;
   email: string;
+}
+
+/** What a track's color key came from; only derived and anonymous tracks probe for clashes. */
+export type TrackKind = "default" | "named" | "derived" | "anonymous";
+
+/** One run of first parents drawn in one lane, as the lane pass opened it. */
+export interface GraphTrack {
+  id: number;
+  /** The branch name without `refs/heads/` or `refs/remotes/<remote>/`, or an oid. */
+  key: string;
+  kind: TrackKind;
+  /** The tracks either side of this one's lane when it opened. */
+  left: number | null;
+  right: number | null;
 }
 
 export interface GraphPage {
@@ -23,13 +46,32 @@ export interface GraphPage {
   authorTimeMs: Float64Array;
   /** Indexes into the session's author table, one per row. */
   authorIds: Uint32Array;
+  /** Each row's lane. */
+  rowLanes: Uint16Array;
+  /** Each row's track id. */
+  rowTracks: Uint32Array;
+  /** The session-wide id of the page's first edge. */
+  firstEdge: number;
+  edgeCount: number;
+  /** `EDGE_FIELDS` per edge whose child row is in this page, in child-row order. */
+  edges: Uint32Array;
+  /** `CLOSE_FIELDS` per edge from an earlier page whose parent row is in this page. */
+  closes: Uint32Array;
+  /** The ids of the edges open at the page's first row. */
+  checkpoint: Uint32Array;
+  /** The most lanes any row so far has needed. */
+  peakLanes: number;
   oids: string[];
   subjects: string[];
   /** Authors this page adds to the session's table, in id order. */
   newAuthors: GraphAuthor[];
+  /** Tracks this page opens, in id order. */
+  newTracks: GraphTrack[];
 }
 
 export class GraphPageError extends Error {}
+
+const TRACK_KINDS: readonly string[] = ["default", "named", "derived", "anonymous"];
 
 function isStringArray(value: unknown, length: number): value is string[] {
   return Array.isArray(value) && value.length === length && value.every((v) => typeof v === "string");
@@ -40,6 +82,28 @@ function isAuthorArray(value: unknown): value is GraphAuthor[] {
     Array.isArray(value) &&
     value.every(
       (a) => typeof a === "object" && a !== null && typeof a.name === "string" && typeof a.email === "string"
+    )
+  );
+}
+
+function isTrackId(value: unknown): boolean {
+  return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0);
+}
+
+function isTrackArray(value: unknown): value is GraphTrack[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (t) =>
+        typeof t === "object" &&
+        t !== null &&
+        typeof t.id === "number" &&
+        Number.isInteger(t.id) &&
+        t.id >= 0 &&
+        typeof t.key === "string" &&
+        TRACK_KINDS.includes(t.kind) &&
+        isTrackId(t.left) &&
+        isTrackId(t.right)
     )
   );
 }
@@ -61,17 +125,24 @@ export function decodeGraphPage(buffer: ArrayBuffer): GraphPage {
   const headerBytes = view.getUint16(6, true);
   if (headerBytes < MIN_HEADER_BYTES) throw new GraphPageError(`a graph page header is at least ${MIN_HEADER_BYTES} bytes`);
   const rowCount = u32(20);
-  if (u32(24) !== 0 || u32(28) !== 0) throw new GraphPageError("format 1 pages carry no edges");
+  const edgeCount = u32(24);
+  const closeCount = u32(28);
+  const checkpointCount = u32(52);
 
-  const section = (at: number, bytesPerRow: number, align: number) => {
+  const section = (at: number, count: number, bytesEach: number) => {
     const offset = u32(at);
-    if (offset < headerBytes || offset % align !== 0 || offset + rowCount * bytesPerRow > buffer.byteLength) {
+    if (offset < headerBytes || offset % bytesEach !== 0 || offset + count * bytesEach > buffer.byteLength) {
       throw new GraphPageError("a graph page section lies outside the page");
     }
     return offset;
   };
-  const authorTimeMs = new Float64Array(buffer, section(32, 8, 8), rowCount);
-  const authorIds = new Uint32Array(buffer, section(36, 4, 4), rowCount);
+  const authorTimeMs = new Float64Array(buffer, section(32, rowCount, 8), rowCount);
+  const authorIds = new Uint32Array(buffer, section(36, rowCount, 4), rowCount);
+  const rowLanes = new Uint16Array(buffer, section(60, rowCount, 2), rowCount);
+  const rowTracks = new Uint32Array(buffer, section(64, rowCount, 4), rowCount);
+  const edges = new Uint32Array(buffer, section(68, edgeCount * EDGE_FIELDS, 4), edgeCount * EDGE_FIELDS);
+  const closes = new Uint32Array(buffer, section(72, closeCount * CLOSE_FIELDS, 4), closeCount * CLOSE_FIELDS);
+  const checkpoint = new Uint32Array(buffer, section(76, checkpointCount, 4), checkpointCount);
   const jsonAt = u32(40);
   const jsonLength = u32(44);
   if (jsonAt < headerBytes || jsonAt + jsonLength > buffer.byteLength) {
@@ -83,8 +154,13 @@ export function decodeGraphPage(buffer: ArrayBuffer): GraphPage {
   } catch (e) {
     throw new GraphPageError(`the graph page's JSON doesn't parse: ${String(e)}`);
   }
-  const { oids, subjects, newAuthors } = (json ?? {}) as Record<string, unknown>;
-  if (!isStringArray(oids, rowCount) || !isStringArray(subjects, rowCount) || !isAuthorArray(newAuthors)) {
+  const { oids, subjects, newAuthors, newTracks } = (json ?? {}) as Record<string, unknown>;
+  if (
+    !isStringArray(oids, rowCount) ||
+    !isStringArray(subjects, rowCount) ||
+    !isAuthorArray(newAuthors) ||
+    !isTrackArray(newTracks)
+  ) {
     throw new GraphPageError("the graph page's JSON doesn't match its rows");
   }
   return {
@@ -94,8 +170,17 @@ export function decodeGraphPage(buffer: ArrayBuffer): GraphPage {
     rowCount,
     authorTimeMs,
     authorIds,
+    rowLanes,
+    rowTracks,
+    firstEdge: u32(48),
+    edgeCount,
+    edges,
+    closes,
+    checkpoint,
+    peakLanes: u32(56),
     oids,
     subjects,
     newAuthors,
+    newTracks,
   };
 }

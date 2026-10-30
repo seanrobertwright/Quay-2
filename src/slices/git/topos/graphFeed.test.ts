@@ -3,34 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GraphFeed, LOAD_AHEAD_ROWS, MORE_ROWS } from "./graphFeed.ts";
 import { GraphStore } from "./graphStore.ts";
-import { PAGE_MAGIC, type GraphPage } from "./graphPage.ts";
+import { decodeGraphPage, type GraphPage } from "./graphPage.ts";
+import { encodeTestPage } from "./fixtures/encodeTestPage.ts";
 
-/** A format-1 page laid out as `page.rs` lays it out, with one new author per page. */
+/** A page of `rowCount` rows, all in lane 0, with one new author per page. */
 function encodePage(sessionId: number, pageIndex: number, firstRow: number, rowCount: number): ArrayBuffer {
-  const json = new TextEncoder().encode(
-    JSON.stringify({
-      oids: Array.from({ length: rowCount }, (_, i) => (firstRow + i).toString(16).padStart(40, "0")),
-      subjects: Array.from({ length: rowCount }, (_, i) => `commit ${firstRow + i}`),
-      newAuthors: [{ name: `Author ${pageIndex}`, email: `a${pageIndex}@example.invalid` }],
-    })
-  );
-  const authorTimeAt = 48;
-  const authorIdsAt = authorTimeAt + 8 * rowCount;
-  const jsonAt = Math.ceil((authorIdsAt + 4 * rowCount) / 8) * 8;
-  const buffer = new ArrayBuffer(jsonAt + json.length);
-  const view = new DataView(buffer);
-  view.setUint32(0, PAGE_MAGIC, true);
-  view.setUint16(4, 1, true);
-  view.setUint16(6, 48, true);
-  [sessionId, pageIndex, firstRow, rowCount, 0, 0, authorTimeAt, authorIdsAt, jsonAt, json.length].forEach(
-    (value, i) => view.setUint32(8 + 4 * i, value, true)
-  );
-  for (let i = 0; i < rowCount; i++) {
-    view.setFloat64(authorTimeAt + 8 * i, 1_700_000_000_000 - (firstRow + i) * 1000, true);
-    view.setUint32(authorIdsAt + 4 * i, pageIndex, true);
-  }
-  new Uint8Array(buffer, jsonAt).set(json);
-  return buffer;
+  return encodeTestPage({ sessionId, pageIndex, firstRow, rowCount });
 }
 
 function started(feed: GraphFeed, sessionId: number) {
@@ -118,17 +96,7 @@ test("a page out of order or a garbled page fails the feed", () => {
 });
 
 function page(sessionId: number, pageIndex: number, firstRow: number, rowCount: number): GraphPage {
-  return {
-    sessionId,
-    pageIndex,
-    firstRow,
-    rowCount,
-    authorTimeMs: new Float64Array(rowCount),
-    authorIds: new Uint32Array(rowCount),
-    oids: Array.from({ length: rowCount }, (_, i) => String(firstRow + i)),
-    subjects: Array.from({ length: rowCount }, () => ""),
-    newAuthors: pageIndex === 0 ? [{ name: "A", email: "a@x" }] : [],
-  };
+  return decodeGraphPage(encodePage(sessionId, pageIndex, firstRow, rowCount));
 }
 
 test("the store's typed arrays grow by doubling, not per page", () => {
@@ -141,7 +109,7 @@ test("the store's typed arrays grow by doubling, not per page", () => {
   assert.equal(store.rowCount, 20_480);
   // 40 pages, but only the doublings 1024, 2048, ... 32768.
   assert.deepEqual([...capacities], [1024, 2048, 4096, 8192, 16384, 32768]);
-  assert.equal(store.oid(20_479), "20479");
+  assert.equal(store.oid(20_479), (20_479).toString(16).padStart(40, "0"));
 });
 
 test("the store refuses another session's page and pages that don't follow on", () => {

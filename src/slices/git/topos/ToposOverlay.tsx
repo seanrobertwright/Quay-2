@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, ExternalLink, FolderPlus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, X } from "lucide-react";
 import { useOverlay } from "../../overlay/useOverlay";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
-import { useGraphSession } from "./useGraphSession";
+import { useGraphSession, type GraphOrder } from "./useGraphSession";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -71,8 +71,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
         ? ({ kind: "blocked", title: "Couldn't run git", detail: check.message } as const)
         : null;
 
+  // Date order by default; the toggle reopens the session in topo order. Not persisted (#369).
+  const [order, setOrder] = useState<GraphOrder>("date");
   // The graph belongs to the root repo, so moving between its worktrees keeps the session.
-  const graph = useGraphSession(target && view?.kind === "open" ? target.repoPath : null);
+  const graph = useGraphSession(target && view?.kind === "open" ? target.repoPath : null, order);
 
   return (
     <div
@@ -101,10 +103,24 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
           )}
           <button
             type="button"
+            onClick={() => setOrder((o) => (o === "topo" ? "date" : "topo"))}
+            aria-pressed={order === "topo"}
+            title="Show each branch's commits together (git log --topo-order)"
+            className={`ml-auto inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs ${
+              order === "topo"
+                ? "border-[#06B6D4]/60 bg-[#06B6D4]/10 text-white"
+                : "border-[#30363d] text-[#8b949e] hover:text-white hover:bg-[#21262d]"
+            }`}
+          >
+            <GitBranch className="w-3.5 h-3.5" aria-hidden="true" />
+            Topo order
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Close Topos"
             title="Close (Esc)"
-            className="ml-auto p-1.5 rounded-md text-[#8b949e] hover:text-white hover:bg-[#21262d]"
+            className="p-1.5 rounded-md text-[#8b949e] hover:text-white hover:bg-[#21262d]"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -163,7 +179,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
             )}
             {graph.feed ? (
               <GraphList
-                key={target.repoPath}
+                key={`${order}:${target.repoPath}`}
                 feed={graph.feed}
                 version={graph.version}
                 onReachedRow={graph.reachedRow}

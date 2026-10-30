@@ -1,8 +1,8 @@
 //! What a graph session sends over its `Channel` (#369): `Rows` pages as raw little-endian bytes,
 //! every other [`GraphEvent`] as JSON. `src/slices/git/topos/graphPage.ts` decodes the bytes.
 //!
-//! Page layout, format version 1. Offsets are bytes from the start of the page; every `u32` and
-//! `f64` is little-endian, and every section starts on an 8-byte boundary.
+//! Page layout, format version 2. Offsets are bytes from the start of the page; every `u16`, `u32`
+//! and `f64` is little-endian, and every section starts on an 8-byte boundary.
 //!
 //! | Offset | Type | Field |
 //! | --- | --- | --- |
@@ -13,27 +13,41 @@
 //! | 12 | u32 | page index, from 0 within the session |
 //! | 16 | u32 | first row, the session-wide index of the page's first row |
 //! | 20 | u32 | row count |
-//! | 24 | u32 | edge count, 0 until lanes land (#375) |
-//! | 28 | u32 | close count, 0 until lanes land (#375) |
+//! | 24 | u32 | edge count: edges whose child row is in this page |
+//! | 28 | u32 | close count: edges from earlier pages whose parent row is in this page |
 //! | 32 | u32 | offset of `authorTimeMs`: one `f64` per row, epoch ms |
 //! | 36 | u32 | offset of `authorIds`: one `u32` per row, an index into the session's author table |
 //! | 40 | u32 | offset of the JSON section |
 //! | 44 | u32 | length of the JSON section in bytes |
+//! | 48 | u32 | first edge id: edges are numbered from 0 across the session, in child-row order |
+//! | 52 | u32 | checkpoint count |
+//! | 56 | u32 | peak lane count so far |
+//! | 60 | u32 | offset of `rowLanes`: one `u16` per row |
+//! | 64 | u32 | offset of `rowTracks`: one `u32` track id per row |
+//! | 68 | u32 | offset of `edges`: six `u32` per edge, `childRow, parentRow, lane, childLane, parentLane, track` |
+//! | 72 | u32 | offset of `closes`: three `u32` per close, `edge, parentRow, parentLane` |
+//! | 76 | u32 | offset of `checkpoint`: one `u32` edge id per edge open at the page's first row |
 //!
-//! The JSON section is UTF-8 [`PageJson`]: the rows' oids and subjects, and the authors this page
-//! adds to the session's author table, which the frontend appends in order.
+//! An edge is sent once, in the page holding its child row. When its parent row is in a later page
+//! it is sent with `parentRow` [`OPEN_ROW`], and that later page carries its close (#351).
+//!
+//! The JSON section is UTF-8 [`PageJson`]: the rows' oids and subjects, the authors this page adds
+//! to the session's author table, and the tracks it opens, which the frontend appends in order.
 
 use std::collections::HashMap;
 
 use serde::Serialize;
 
 use super::super::error::GitError;
+use super::lanes::{PageLayout, Track};
 use super::log::LogRecord;
 
 /// "TGPG" read as a little-endian `u32`: Topos graph page.
 pub const PAGE_MAGIC: u32 = u32::from_le_bytes(*b"TGPG");
-pub const PAGE_FORMAT_VERSION: u16 = 1;
-pub const HEADER_BYTES: usize = 48;
+pub const PAGE_FORMAT_VERSION: u16 = 2;
+pub const HEADER_BYTES: usize = 80;
+/// The `parentRow` of an edge whose parent row hasn't been placed yet.
+pub const OPEN_ROW: u32 = u32::MAX;
 
 /// Every `GraphEvent` except `Rows`, which is a raw page. Each carries `sessionId`, so the frontend
 /// drops messages from a session it no longer shows.
@@ -68,6 +82,8 @@ pub struct PageJson<'a> {
     pub subjects: Vec<&'a str>,
     /// Authors first seen in this page, appended to the session's table in order.
     pub new_authors: Vec<Author>,
+    /// Tracks this page opens, in id order.
+    pub new_tracks: &'a [Track],
 }
 
 /// Interns authors across a session, so each one crosses the channel once.
@@ -95,12 +111,18 @@ fn align8(n: usize) -> usize {
     n.div_ceil(8) * 8
 }
 
-/// Encodes `rows` as page `page_index` of session `session_id`, starting at session row `first_row`.
+fn put_u16(out: &mut [u8], at: usize, value: u16) {
+    out[at..at + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+/// Encodes `rows`, laid out as `layout`, as page `page_index` of session `session_id`, starting at
+/// session row `first_row`.
 pub fn encode_page(
     session_id: u32,
     page_index: u32,
     first_row: u32,
     rows: &[LogRecord],
+    layout: &PageLayout,
     authors: &mut AuthorTable,
 ) -> Vec<u8> {
     let n = rows.len();
@@ -113,12 +135,19 @@ pub fn encode_page(
         oids: rows.iter().map(|r| r.oid.as_str()).collect(),
         subjects: rows.iter().map(|r| r.subject.as_str()).collect(),
         new_authors,
+        new_tracks: &layout.tracks,
     })
     .expect("page JSON serializes");
+    debug_assert_eq!(layout.rows.len(), n, "every row is laid out");
 
     let author_time_at = HEADER_BYTES;
     let author_ids_at = author_time_at + 8 * n;
-    let json_at = align8(author_ids_at + 4 * n);
+    let lanes_at = align8(author_ids_at + 4 * n);
+    let tracks_at = align8(lanes_at + 2 * n);
+    let edges_at = align8(tracks_at + 4 * n);
+    let closes_at = align8(edges_at + 24 * layout.edges.len());
+    let checkpoint_at = align8(closes_at + 12 * layout.closes.len());
+    let json_at = align8(checkpoint_at + 4 * layout.checkpoint.len());
     let mut out = vec![0u8; json_at + json.len()];
 
     put_u32(&mut out, 0, PAGE_MAGIC);
@@ -128,17 +157,43 @@ pub fn encode_page(
     put_u32(&mut out, 12, page_index);
     put_u32(&mut out, 16, first_row);
     put_u32(&mut out, 20, n as u32);
-    put_u32(&mut out, 24, 0);
-    put_u32(&mut out, 28, 0);
+    put_u32(&mut out, 24, layout.edges.len() as u32);
+    put_u32(&mut out, 28, layout.closes.len() as u32);
     put_u32(&mut out, 32, author_time_at as u32);
     put_u32(&mut out, 36, author_ids_at as u32);
     put_u32(&mut out, 40, json_at as u32);
     put_u32(&mut out, 44, json.len() as u32);
+    put_u32(&mut out, 48, layout.first_edge);
+    put_u32(&mut out, 52, layout.checkpoint.len() as u32);
+    put_u32(&mut out, 56, layout.peak_lanes);
+    put_u32(&mut out, 60, lanes_at as u32);
+    put_u32(&mut out, 64, tracks_at as u32);
+    put_u32(&mut out, 68, edges_at as u32);
+    put_u32(&mut out, 72, closes_at as u32);
+    put_u32(&mut out, 76, checkpoint_at as u32);
 
     for (i, r) in rows.iter().enumerate() {
         let a = author_time_at + 8 * i;
         out[a..a + 8].copy_from_slice(&((r.author_time as f64) * 1000.0).to_le_bytes());
         put_u32(&mut out, author_ids_at + 4 * i, author_ids[i]);
+    }
+    for (i, &(lane, track)) in layout.rows.iter().enumerate() {
+        // No repo has 65,535 lanes open at once; a lane past that draws on the last one.
+        put_u16(&mut out, lanes_at + 2 * i, lane.min(u16::MAX as u32) as u16);
+        put_u32(&mut out, tracks_at + 4 * i, track);
+    }
+    for (i, e) in layout.edges.iter().enumerate() {
+        for (f, value) in [e.child_row, e.parent_row, e.lane, e.child_lane, e.parent_lane, e.track].into_iter().enumerate() {
+            put_u32(&mut out, edges_at + 24 * i + 4 * f, value);
+        }
+    }
+    for (i, c) in layout.closes.iter().enumerate() {
+        for (f, value) in [c.edge, c.parent_row, c.parent_lane].into_iter().enumerate() {
+            put_u32(&mut out, closes_at + 12 * i + 4 * f, value);
+        }
+    }
+    for (i, &edge) in layout.checkpoint.iter().enumerate() {
+        put_u32(&mut out, checkpoint_at + 4 * i, edge);
     }
     out[json_at..].copy_from_slice(&json);
     out
@@ -169,7 +224,25 @@ mod tests {
     }
 
     fn fixture_path() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/slices/git/topos/fixtures/graph-page-v1.bin")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/slices/git/topos/fixtures/graph-page-v2.bin")
+    }
+
+    /// The layout behind the fixture: `feature` opens at row 1025 in lane 1 and runs on past the
+    /// page; edge 39, open since an earlier page, closes at row 1025.
+    fn fixture_layout() -> PageLayout {
+        use super::super::lanes::{Close, Edge, TrackKind};
+        PageLayout {
+            first_edge: 40,
+            checkpoint: vec![37, 39],
+            rows: vec![(0, 0), (1, 5), (0, 0)],
+            edges: vec![
+                Edge { child_row: 1024, parent_row: 1026, lane: 0, child_lane: 0, parent_lane: 0, track: 0 },
+                Edge { child_row: 1025, parent_row: OPEN_ROW, lane: 1, child_lane: 1, parent_lane: 1, track: 5 },
+            ],
+            closes: vec![Close { edge: 39, parent_row: 1025, parent_lane: 1 }],
+            tracks: vec![Track { id: 5, key: "feature".into(), kind: TrackKind::Named, left: Some(0), right: None }],
+            peak_lanes: 3,
+        }
     }
 
     /// The fixture is page 2 of session 7, starting at row 1024, after a page that already
@@ -177,7 +250,7 @@ mod tests {
     fn fixture_bytes() -> Vec<u8> {
         let mut authors = AuthorTable::default();
         authors.intern(Author { name: "Earlier".into(), email: "earlier@example.invalid".into() }, &mut Vec::new());
-        encode_page(7, 2, 1024, &fixture_rows(), &mut authors)
+        encode_page(7, 2, 1024, &fixture_rows(), &fixture_layout(), &mut authors)
     }
 
     #[test]
@@ -197,7 +270,7 @@ mod tests {
         assert_eq!(u32_at(0), PAGE_MAGIC);
         assert_eq!(&bytes[0..4], b"TGPG");
         assert_eq!((u32_at(8), u32_at(12), u32_at(16), u32_at(20)), (7, 2, 1024, 3));
-        for section in [32, 36, 40] {
+        for section in [32, 36, 40, 60, 64, 68, 72, 76] {
             assert_eq!(u32_at(section) % 8, 0, "section at header offset {section} is aligned");
         }
         let first_time = f64::from_le_bytes(bytes[HEADER_BYTES..HEADER_BYTES + 8].try_into().unwrap());
@@ -210,5 +283,11 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&bytes[json_at..]).unwrap();
         assert_eq!(json["newAuthors"].as_array().unwrap().len(), 2);
         assert_eq!(json["subjects"][1], "Fix \"quotes\" and ünïcode");
+        assert_eq!(json["newTracks"][0], serde_json::json!({ "id": 5, "key": "feature", "kind": "named", "left": 0, "right": null }));
+        assert_eq!((u32_at(24), u32_at(28), u32_at(48), u32_at(52), u32_at(56)), (2, 1, 40, 2, 3));
+        let edge = |i: usize, f: usize| u32_at(u32_at(68) as usize + 24 * i + 4 * f);
+        assert_eq!((edge(1, 0), edge(1, 1), edge(1, 2)), (1025, OPEN_ROW, 1));
+        let lane = |i: usize| u16::from_le_bytes(bytes[u32_at(60) as usize + 2 * i..][..2].try_into().unwrap());
+        assert_eq!((lane(0), lane(1), lane(2)), (0, 1, 0));
     }
 }

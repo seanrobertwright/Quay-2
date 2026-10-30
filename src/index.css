@@ -1,8 +1,40 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
 
+/* Topos graph track colors (#348): 12 OKLCH hues 30° apart from 255°, gamut-clipped by reducing
+   chroma, as sRGB hex. Slot 0 is the default branch. Dark: L 0.76, C ≤ 0.14, each at least
+   4.7:1 on #0d1117. Light: L 0.54, C ≤ 0.17, each at least 4.7:1 on #ffffff. */
 :root {
   color-scheme: dark;
+  --topos-lane-0: #7ab4fe;
+  --topos-lane-1: #a9a5ff;
+  --topos-lane-2: #d294ee;
+  --topos-lane-3: #ef8bc5;
+  --topos-lane-4: #fd8994;
+  --topos-lane-5: #f99262;
+  --topos-lane-6: #e4a339;
+  --topos-lane-7: #bfb53b;
+  --topos-lane-8: #89c566;
+  --topos-lane-9: #40cd9b;
+  --topos-lane-10: #10caca;
+  --topos-lane-11: #1bc3f3;
+}
+
+/* Quay is dark-only today; this set is ready for a light theme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --topos-lane-0: #106dce;
+  --topos-lane-1: #685acb;
+  --topos-lane-2: #9348b1;
+  --topos-lane-3: #af3b85;
+  --topos-lane-4: #bc364e;
+  --topos-lane-5: #b44901;
+  --topos-lane-6: #946406;
+  --topos-lane-7: #797202;
+  --topos-lane-8: #428104;
+  --topos-lane-9: #07835e;
+  --topos-lane-10: #017f7f;
+  --topos-lane-11: #017a9b;
 }
 
 body {
