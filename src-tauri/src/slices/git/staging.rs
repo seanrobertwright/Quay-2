@@ -1,6 +1,10 @@
 //! The staging inspector's backend (#382): the selected worktree's status, and staging and
 //! unstaging whole files and folders. Every git process starts from the op runner's
 //! [`headless_git`]. Each write returns the post-write status, so the inspector never guesses one.
+//!
+//! These are capped `invoke` calls (#350), like the graph's reads, not streaming ops: #367 gives an
+//! op id and a `Channel<OpEvent>` to the network operations, and #366 gives Cancel to hooks. So
+//! they skip [`super::op_runner::GitOps::run`], which also has no way to feed pathspecs on stdin.
 
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
