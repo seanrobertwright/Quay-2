@@ -11,6 +11,12 @@ export type GitVersionStatus =
 /** `GitError` from `src-tauri/src/slices/git/error.rs`; later tickets add kinds. */
 export type GitError = { kind: "other"; stderr: string };
 
+/** The text to show for a rejected git command: a `GitError`'s stderr, or whatever was thrown. */
+export function errorMessage(e: unknown): string {
+  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as GitError).stderr);
+  return String(e);
+}
+
 /** The floor the backend's `MIN_GIT_VERSION` enforces, for messages. */
 export const MIN_GIT_VERSION = "2.36";
 

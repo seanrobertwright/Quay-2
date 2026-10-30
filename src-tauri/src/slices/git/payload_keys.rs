@@ -5,6 +5,7 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
+use super::graph::{Author, GraphEvent};
 use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
@@ -30,6 +31,32 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GitError::Other",
             s(&GitError::Other { stderr: "fatal: not a git repository".into() }),
             json!({ "kind": "other", "stderr": "fatal: not a git repository" }),
+        ),
+        ("GraphEvent::Started", s(&GraphEvent::Started { session_id: 3 }), json!({ "event": "started", "sessionId": 3 })),
+        (
+            "GraphEvent::Paused",
+            s(&GraphEvent::Paused { session_id: 3, rows_loaded: 50_000 }),
+            json!({ "event": "paused", "sessionId": 3, "rowsLoaded": 50_000 }),
+        ),
+        (
+            "GraphEvent::Done",
+            s(&GraphEvent::Done { session_id: 3, total: 12 }),
+            json!({ "event": "done", "sessionId": 3, "total": 12 }),
+        ),
+        (
+            "GraphEvent::Truncated",
+            s(&GraphEvent::Truncated { session_id: 3, cap: 2_000_000 }),
+            json!({ "event": "truncated", "sessionId": 3, "cap": 2_000_000 }),
+        ),
+        (
+            "GraphEvent::Failed",
+            s(&GraphEvent::Failed { session_id: 3, error: GitError::Other { stderr: "boom".into() } }),
+            json!({ "event": "failed", "sessionId": 3, "error": { "kind": "other", "stderr": "boom" } }),
+        ),
+        (
+            "Author",
+            s(&Author { name: "Ann".into(), email: "ann@example.invalid".into() }),
+            json!({ "name": "Ann", "email": "ann@example.invalid" }),
         ),
         ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),
         (

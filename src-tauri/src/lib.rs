@@ -16,8 +16,9 @@ use slices::bridge::{
     BridgeServer, BridgeState,
 };
 use slices::git::{
-    check_git_worktree_clean, create_git_worktree, git_op_cancel, git_version_check, is_git_repo,
-    list_git_worktrees, remove_git_worktree, GitOps,
+    check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open,
+    git_op_cancel, git_version_check, is_git_repo, list_git_worktrees, remove_git_worktree, GitOps,
+    GraphSessions,
 };
 use slices::github::{
     check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
@@ -97,6 +98,7 @@ pub fn run() {
         .manage(a2a_router)
         .manage(SwarmStore::new())
         .manage(machina_manager)
+        .manage(GraphSessions::default())
         .manage(GitOps::default())
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -184,6 +186,9 @@ pub fn run() {
             check_git_worktree_clean,
             remove_git_worktree,
             git_version_check,
+            git_graph_open,
+            git_graph_more,
+            git_graph_close,
             git_op_cancel,
             check_gh_cli_installed,
             get_github_repo_info,
