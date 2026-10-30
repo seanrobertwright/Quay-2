@@ -39,6 +39,13 @@ export interface TrackPassing {
   startRow: number;
 }
 
+/** How a track is named to the operator: its key, with an anonymous track's oid cut short. */
+export function trackLabel(key: string, kind: TrackKind): string {
+  if (kind !== "anonymous") return key;
+  const caret = key.indexOf("^");
+  return caret === -1 ? key.slice(0, 7) : key.slice(0, Math.min(caret, 7)) + key.slice(caret);
+}
+
 /** One edge, with its close applied. */
 export interface GraphEdge extends EdgeGeometry {
   track: number;

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GraphStore } from "./graphStore.ts";
+import { GraphStore, trackLabel } from "./graphStore.ts";
 import { decodeGraphPage, OPEN_ROW, type GraphTrack } from "./graphPage.ts";
 import { encodeTestPage, type TestPage } from "./fixtures/encodeTestPage.ts";
 
@@ -144,4 +144,11 @@ test("a track opened by a tip in a later page starts at that tip's row", () => {
   });
   assert.equal(store.trackStartRow(2), 9);
   assert.deepEqual(store.tracksPassing(10).map((t) => [t.key, t.startRow]), [["fix", 9]]);
+});
+
+test("a track's label is its branch name, or a short oid for an anonymous track", () => {
+  assert.equal(trackLabel("feature/x", "named"), "feature/x");
+  assert.equal(trackLabel("topic", "derived"), "topic");
+  assert.equal(trackLabel("0123456789abcdef0123456789abcdef01234567", "anonymous"), "0123456");
+  assert.equal(trackLabel("0123456789abcdef0123456789abcdef01234567^2", "anonymous"), "0123456^2");
 });
