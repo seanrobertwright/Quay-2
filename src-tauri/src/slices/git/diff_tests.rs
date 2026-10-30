@@ -562,3 +562,16 @@ fn the_rollback_never_removes_a_real_staged_change() {
     assert_eq!(git(&wt, &["ls-files", "--", "ita.txt"]), "");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn a_lines_selection_reads_from_the_frontend_s_camel_case_json() {
+    let req: StageRequest = serde_json::from_value(json!({
+        "path": "a.txt",
+        "side": { "kind": "unstaged" },
+        "diffToken": "3.0.0",
+        "selection": { "kind": "lines", "lines": [{ "hunk": 1, "line": 4 }] },
+        "loadLarge": false,
+    }))
+    .unwrap();
+    assert_eq!(req.selection, lines(&[(1, 4)]));
+}
