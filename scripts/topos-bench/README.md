@@ -18,13 +18,16 @@ job, and no workflow runs it.
 
 ## What it checks
 
-`drive.ts` first runs the Rust test
-`lane_pass_costs_at_most_a_microsecond_per_row` in the release profile. It
-then checks these budgets on each recording, and exits 1 when any is missed:
+`drive.ts` first runs the Rust tests
+`lane_pass_costs_at_most_a_microsecond_per_row` and
+`a_refresh_with_20k_loaded_rows_takes_at_most_250_ms` in the release profile.
+It then checks these budgets on each recording, and exits 1 when any is
+missed:
 
 | Budget | Pass when |
 | --- | --- |
 | Lane pass (once per run) | the Rust lane pass costs at most 1 µs per row over 1M synthetic rows |
+| Refresh (once per run) | with 20k rows loaded from a 30k-commit synthetic repo, each of three refreshes that reset and three that splice takes at most 250 ms, from the request until the `Reset` or `Splice` and every row it brings are sent |
 | First rows | the session's time to its first Rows page, from the recording's `.json`, plus the page's time from that page to the first frame that shows rows, is at most 300 ms |
 | Frontend memory | the JS heap after a full GC grows by at most 300 B per loaded row from before the recording is fetched to after it is applied |
 | Main-thread ingest | p95 of the per-page time, decode plus store ingest, is at most 8 ms per 512-row page |
@@ -39,6 +42,9 @@ then checks these budgets on each recording, and exits 1 when any is missed:
   100 px while it reports deltaY 300, so the wheel check skips lists short
   enough to scroll natively.
 
+- **Refresh** times the Rust session alone. The frontend then ingests the
+  rows it sends, about 40 pages for 20k rows, at the per-page cost the Ingest
+  column shows.
 - **First rows** leaves out the Tauri IPC hop from the session to the page.
   The spec states this budget for repos with a commit-graph and up to 1.5M
   commits. The gate holds every recording to it, so a 2M recording that misses
@@ -48,14 +54,13 @@ The run also prints rows and load time. They are information, not budgets.
 
 ### Budgets this benchmark does not check
 
-Of the spec's Scale budgets, the table above covers 1, 3, 5, 6, 7 and 8. The
-others are checked elsewhere or have nothing to measure yet:
+Of the spec's Scale budgets, the table above covers 1, 3, 5, 6, 7, 8 and 9.
+The others are checked elsewhere or have nothing to measure yet:
 
 | Budget | Where it stands |
 | --- | --- |
 | 2. Rows appear without a commit-graph, with a progress line and the speed-up banner | Behavior, not a timing. The banner is #385. |
 | 4. At most 50k rows load eagerly | `DEFAULT_SOFT_CAP` in the Rust session, with its soft-cap tests |
-| 9. A refresh with up to 20k rows takes at most 250 ms | Topos has no refresh yet. Live updates are #379, which should add this check here. |
 | 10. Trailer fields add at most 10 ms to the first page | The session always asks git for the trailers, so there is no trailer-free session to compare against. #370 measured +0 to 7 ms. |
 
 ## Inputs

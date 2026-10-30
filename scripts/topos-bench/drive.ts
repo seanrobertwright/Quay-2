@@ -59,23 +59,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
 const outDir = join(tmpdir(), "quay-topos-bench", "dist");
 
-// The lane pass runs in Rust before the recording is made, so its budget has its own test.
-const lanePass = spawnSync(
-  "cargo",
-  [
-    "test",
-    "--release",
-    "--lib",
-    "--",
-    "--ignored",
-    "--nocapture",
-    "--exact",
-    "slices::git::graph::lanes::tests::lane_pass_costs_at_most_a_microsecond_per_row",
-  ],
-  { cwd: join(repoRoot, "src-tauri"), stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" }
+/** Runs one ignored Rust budget test in the release profile; true when it passes. */
+function rustBudget(test: string): boolean {
+  const run = spawnSync("cargo", ["test", "--release", "--lib", "--", "--ignored", "--nocapture", "--exact", test], {
+    cwd: join(repoRoot, "src-tauri"),
+    stdio: ["ignore", "pipe", "inherit"],
+    encoding: "utf8",
+  });
+  process.stdout.write(run.stdout ?? "");
+  return run.status === 0;
+}
+
+// The lane pass runs in Rust before the recording is made, so its budget has its own test. So does
+// a refresh (#379), which happens in the Rust session against a live repo, not a recording.
+const lanePassOk = rustBudget("slices::git::graph::lanes::tests::lane_pass_costs_at_most_a_microsecond_per_row");
+const refreshOk = rustBudget(
+  "slices::git::graph::refresh_tests::a_refresh_with_20k_loaded_rows_takes_at_most_250_ms"
 );
-process.stdout.write(lanePass.stdout ?? "");
-const lanePassOk = lanePass.status === 0;
 
 // A production build: dev-mode React costs several times more per render and would skew frames.
 await build({
@@ -394,8 +394,9 @@ server.close();
 const mark = (ok: boolean) => (ok ? "pass" : "MISS");
 const wheelCell = (w: { moved: number; deltaY: number }) => `${w.moved.toFixed(1)} of ${w.deltaY.toFixed(1)} px`;
 const frameCell = (f: FrameStats) => `${f.p95} ms, ${f.slow}/${f.frames} > 20 ms (${mark(f.pass)})`;
-allPass &&= lanePassOk;
+allPass &&= lanePassOk && refreshOk;
 console.log(`\nLane pass, at most 1 µs per row: ${mark(lanePassOk)}`);
+console.log(`Refresh with 20k loaded rows, at most 250 ms: ${mark(refreshOk)}`);
 console.log(
   "\n| Recording | Rows | First rows | Memory per row | Ingest p95 (max) | Last row | Wheel: moved of deltaY, 1 and 10 events | Steady | Fling | Jumps |"
 );
