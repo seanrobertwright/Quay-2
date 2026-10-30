@@ -285,8 +285,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
             ) : graph.feed ? (
               <div className="flex-1 flex min-h-0">
                 <div className="relative flex-1 min-w-0 flex flex-col">
-                  {/* The graph stays mounted under an open diff, keeping its scroll and selection. */}
-                  <div className="flex-1 min-h-0 flex flex-col" inert={openFile !== null}>
+                  {/* The graph stays mounted under an open diff, keeping its scroll and selection. Its own
+                      stacking context keeps its raised parts, such as the column handle, under the diff. */}
+                  <div className="isolate flex-1 min-h-0 flex flex-col" inert={openFile !== null}>
                     <GraphList
                       key={`${order}:${target.repoPath}`}
                       feed={graph.feed}
