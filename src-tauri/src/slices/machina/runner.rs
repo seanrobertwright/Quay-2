@@ -114,13 +114,11 @@ pub fn run_shell(
         if cancel.load(Ordering::SeqCst) {
             cancelled = true;
             tree.kill();
-            let _ = tree.child().wait();
             break None;
         }
         if started.elapsed() >= timeout {
             timed_out = true;
             tree.kill();
-            let _ = tree.child().wait();
             break None;
         }
         thread::sleep(Duration::from_millis(100));

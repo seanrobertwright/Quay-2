@@ -65,7 +65,7 @@ impl ProcessTree {
         &mut self.child
     }
 
-    /// Kills the root process and everything it started.
+    /// Kills the root process and everything it started, then reaps the root.
     pub fn kill(&mut self) {
         #[cfg(windows)]
         match &self.job {
@@ -87,6 +87,7 @@ impl ProcessTree {
                 .status();
         }
         let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
