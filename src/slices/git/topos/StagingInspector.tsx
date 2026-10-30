@@ -315,6 +315,9 @@ export interface StagingInspectorProps {
   worktreeName: string;
   width: number;
   onWidth: (width: number) => void;
+  /** Flat or tree. It outlives the inspector, so Topos keeps it with the other prefs (#384). */
+  listMode: ListMode;
+  onListMode: (mode: ListMode) => void;
   onClose: () => void;
   /** The file whose diff is open, if any. */
   openFile: OpenFile | null;
@@ -333,13 +336,14 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   worktreeName,
   width,
   onWidth,
+  listMode: mode,
+  onListMode: setMode,
   onClose,
   openFile,
   onOpenFile,
 }) => {
   const titleId = useId();
   const hintId = useId();
-  const [mode, setMode] = useState<ListMode>("flat");
   const [collapsed, setCollapsed] = useState<Record<Side, ReadonlySet<string>>>({ unstaged: new Set(), staged: new Set() });
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);

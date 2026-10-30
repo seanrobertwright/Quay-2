@@ -7,7 +7,6 @@ import type { RunKind, TerminalInfo } from "../../terminal/types";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
-import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
 import { refsView } from "./graphRefs";
 import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
@@ -15,10 +14,11 @@ import { useGraphSession, type GraphOrder } from "./useGraphSession";
 import { useLiveUpdates } from "./useLiveUpdates";
 import { FileDiffView, type DiffMode } from "./FileDiffView";
 import { StagingInspector } from "./StagingInspector";
-import { DEFAULT_INSPECTOR_WIDTH, wipLabel } from "./stagingKeys";
-import { otherSide, splitStatus } from "./stagingLists";
+import { wipLabel } from "./stagingKeys";
+import { otherSide, splitStatus, type ListMode } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useStaging } from "./useStaging";
+import { useToposSettings } from "./useToposSettings";
 import { isSamePath } from "../../../utils/paths";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
@@ -93,10 +93,19 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
 
   // Date order by default; the toggle reopens the session in topo order. Not persisted (#369).
   const [order, setOrder] = useState<GraphOrder>("date");
-  // Outlives the list, which remounts for each order and target. Persisting it is the settings ticket's.
-  const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
+  // The column and inspector widths, the diff mode and the list mode live in topos.json (#384), so
+  // they outlive the views they size and Quay's restarts.
+  const { prefs, setPref, recordOpen } = useToposSettings();
+  const setColumnWidth = useCallback((width: number) => setPref("graphColumnWidth", width), [setPref]);
+  const setInspectorWidth = useCallback((width: number) => setPref("inspectorWidth", width), [setPref]);
+  const setDiffMode = useCallback((mode: DiffMode) => setPref("diffMode", mode), [setPref]);
+  const setListMode = useCallback((mode: ListMode) => setPref("fileListMode", mode), [setPref]);
   // The graph belongs to the root repo, so moving between its worktrees keeps the session.
   const graphRepo = target && view?.kind === "open" ? target.repoPath : null;
+  // Each show of a repo is an open, which keeps its entry among the 200 the store keeps.
+  useEffect(() => {
+    if (isOpen && graphRepo !== null) recordOpen(graphRepo);
+  }, [isOpen, graphRepo, shown, recordOpen]);
   const graph = useGraphSession(graphRepo, order);
   // Refs are per repo too, so a move between its worktrees moves only the HEAD marker (#378).
   const refsReader = useGraphRefs(graphRepo, shown);
@@ -122,8 +131,6 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   // A file's diff in place of the graph (#383). It closes when the worktree changes.
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   useEffect(() => setOpenFile(null), [selectedPath]);
-  // Outlives the diff view, like the column widths. Persisting it is the settings ticket's.
-  const [diffMode, setDiffMode] = useState<DiffMode>("unified");
   const fileDiff = useFileDiff(graphRepo !== null ? selectedPath : null, openFile, staging);
   const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
   const otherSideHasChanges = useMemo(() => {
@@ -132,8 +139,6 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   }, [openFile, staging.status]);
   const inspectorId = useId();
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  // Outlives the inspector, like the graph column. Persisting it is the settings ticket's.
-  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
   const changed = staging.status.state === "done" ? staging.status.status.total : 0;
   const headOid =
     refs.state === "done" && selectedPath !== null
@@ -292,7 +297,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                       feed={graph.feed}
                       version={graph.version}
                       onReachedRow={graph.reachedRow}
-                      columnWidth={columnWidth}
+                      columnWidth={prefs.graphColumnWidth}
                       onColumnWidth={setColumnWidth}
                       refs={refsShown}
                       worktreeAgents={worktreeAgents}
@@ -306,7 +311,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                       file={openFile}
                       reader={fileDiff}
                       busy={staging.busy}
-                      mode={diffMode}
+                      mode={prefs.diffMode}
                       onMode={setDiffMode}
                       otherSideHasChanges={otherSideHasChanges}
                       onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
@@ -320,8 +325,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     id={inspectorId}
                     staging={staging}
                     worktreeName={target.name}
-                    width={inspectorWidth}
+                    width={prefs.inspectorWidth}
                     onWidth={setInspectorWidth}
+                    listMode={prefs.fileListMode}
+                    onListMode={setListMode}
                     onClose={() => setInspectorOpen(false)}
                     openFile={openFile}
                     onOpenFile={setOpenFile}
