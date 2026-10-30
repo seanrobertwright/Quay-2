@@ -2,7 +2,7 @@
 // lists, and the sentences the inspector shows and announces.
 
 import { errorMessage } from "./gitVersion.ts";
-import type { PathTarget } from "./stagingLists.ts";
+import { STATUS_CAP, type PathTarget } from "./stagingLists.ts";
 
 export type ListAction = "up" | "down" | "open" | "stage" | "unstage";
 
@@ -47,7 +47,7 @@ export function wipLabel(total: number): string {
 
 /** The note a status past `STATUS_CAP` shows, or null. */
 export function capNote(status: { total: number; truncated: boolean }): string | null {
-  return status.truncated ? "Showing the first 10,000 changes" : null;
+  return status.truncated ? `Showing the first ${STATUS_CAP.toLocaleString("en-US")} changes` : null;
 }
 
 export type StagingAction = "stage" | "unstage" | "ignore";

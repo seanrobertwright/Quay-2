@@ -13,6 +13,9 @@ export interface StatusEntry {
   kind: EntryKind;
 }
 
+/** `STATUS_CAP` from `src-tauri/src/slices/git/staging.rs`: the most entries one status read returns. */
+export const STATUS_CAP = 10_000;
+
 /** `WorktreeStatus` from `src-tauri/src/slices/git/staging.rs`. */
 export interface WorktreeStatus {
   requestId: number;
@@ -84,6 +87,11 @@ export interface ListRow {
   expanded?: boolean;
 }
 
+/** Whether `row` stands for a folder, a tree folder or an untracked one, so its name ends in `/`. */
+export function isFolderRow(row: ListRow): boolean {
+  return row.type === "dir" || row.change?.kind === "untrackedFolder";
+}
+
 interface TreeDir {
   path: string;
   /** Child folders and changes, in the order they first appear. */
@@ -121,7 +129,7 @@ function pushChange(rows: ListRow[], c: Change, name: string, depth: number, opt
         const child = opts.mode === "flat" ? f.path : lastPart(f.path, c.path);
         rows.push({ key: `c:${f.path}`, type: "change", path: f.path, name: child, depth: depth + 1, change: f });
       }
-      if (listing.truncated) note("Showing the first 10,000 files");
+      if (listing.truncated) note(`Showing the first ${STATUS_CAP.toLocaleString("en-US")} files`);
   }
 }
 
