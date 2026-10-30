@@ -6,6 +6,8 @@ use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
+use super::provenance::{classify, Agent};
+
 /// Commit order for the walk. Date order is the default; topo order is a per-session toggle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,8 +47,7 @@ pub fn log_command(repo: &Path, order: GraphOrder, with_head: bool) -> Command {
     cmd
 }
 
-/// One commit as `git log` printed it. Trailer values stay here for the provenance pass (#381)
-/// and never reach the frontend raw.
+/// One commit as `git log` printed it, with its trailers classified and their text dropped (#381).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogRecord {
     pub oid: String,
@@ -58,10 +59,8 @@ pub struct LogRecord {
     /// Seconds since the epoch.
     pub committer_time: i64,
     pub subject: String,
-    /// `Quay-Agent` trailer values, in message order.
-    pub quay_agent: Vec<String>,
-    /// `Co-authored-by` trailer values, in message order.
-    pub co_authored_by: Vec<String>,
+    /// The agent that made the commit, or `None` for a human commit.
+    pub agent: Option<Agent>,
 }
 
 /// Reads [`LogRecord`]s from `git log` output in the [`LOG_FORMAT`] layout.
@@ -112,8 +111,9 @@ impl<R: BufRead> LogReader<R> {
         let author_time = parse_time(&next())?;
         let committer_time = parse_time(&next())?;
         let subject = next();
-        let quay_agent = trailer_values(&next());
-        let co_authored_by = trailer_values(&next());
+        let quay_agent = next();
+        let co_authored_by = next();
+        let agent = classify(trailer_values(&quay_agent), trailer_values(&co_authored_by));
         Ok(Some(LogRecord {
             oid,
             parents,
@@ -122,8 +122,7 @@ impl<R: BufRead> LogReader<R> {
             author_time,
             committer_time,
             subject,
-            quay_agent,
-            co_authored_by,
+            agent,
         }))
     }
 }
@@ -137,8 +136,8 @@ fn parse_time(text: &str) -> std::io::Result<i64> {
 }
 
 /// Trailer values joined by U+001F, without empty ones.
-fn trailer_values(text: &str) -> Vec<String> {
-    text.split('\u{1f}').map(str::trim).filter(|v| !v.is_empty()).map(str::to_string).collect()
+fn trailer_values(text: &str) -> impl Iterator<Item = &str> {
+    text.split('\u{1f}').map(str::trim).filter(|v| !v.is_empty())
 }
 
 #[cfg(test)]
@@ -160,11 +159,10 @@ mod tests {
         let first = reader.next_record().unwrap().unwrap();
         assert_eq!(first.parents, vec![b.clone(), c]);
         assert_eq!((first.author_time, first.committer_time), (100, 200));
-        assert_eq!(first.quay_agent, vec!["codex"]);
-        assert!(first.co_authored_by.is_empty());
+        assert_eq!(first.agent.and_then(|a| a.kind), Some(crate::slices::pty::models::RunKind::Codex));
         let second = reader.next_record().unwrap().unwrap();
         assert!(second.parents.is_empty());
-        assert_eq!(second.co_authored_by, vec!["Claude <noreply@anthropic.com>", "Ed <e@x>"]);
+        assert_eq!(second.agent.map(|a| a.source), Some(super::super::provenance::AgentSource::Coauthor));
         assert_eq!(reader.next_record().unwrap(), None);
     }
 

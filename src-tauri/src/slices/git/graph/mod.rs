@@ -7,6 +7,7 @@ mod cat_file;
 mod lanes;
 mod log;
 mod page;
+mod provenance;
 mod session;
 #[cfg(test)]
 mod lane_tests;

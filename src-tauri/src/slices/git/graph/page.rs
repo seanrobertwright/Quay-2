@@ -32,7 +32,8 @@
 //! it is sent with `parentRow` [`OPEN_ROW`], and that later page carries its close (#351).
 //!
 //! The JSON section is UTF-8 [`PageJson`]: the rows' oids and subjects, the authors this page adds
-//! to the session's author table, and the tracks it opens, which the frontend appends in order.
+//! to the session's author table, the tracks it opens, which the frontend appends in order, and
+//! the agent of each agent commit, by row within the page (#381).
 
 use std::collections::HashMap;
 
@@ -42,6 +43,7 @@ use super::super::error::GitError;
 use super::lanes::{PageLayout, Track};
 use super::watch::WatchState;
 use super::log::LogRecord;
+use super::provenance::Agent;
 
 /// "TGPG" read as a little-endian `u32`: Topos graph page.
 pub const PAGE_MAGIC: u32 = u32::from_le_bytes(*b"TGPG");
@@ -108,6 +110,16 @@ pub struct PageJson<'a> {
     pub new_authors: Vec<Author>,
     /// Tracks this page opens, in id order.
     pub new_tracks: &'a [Track],
+    /// The agent of each agent commit in the page, in row order; human commits have none (#381).
+    pub agents: Vec<RowAgent<'a>>,
+}
+
+/// An agent commit's row within its page, and its agent.
+#[derive(Debug, Serialize)]
+pub struct RowAgent<'a> {
+    pub row: u32,
+    #[serde(flatten)]
+    pub agent: &'a Agent,
 }
 
 /// Interns authors across a session, so each one crosses the channel once.
@@ -160,6 +172,11 @@ pub fn encode_page(
         subjects: rows.iter().map(|r| r.subject.as_str()).collect(),
         new_authors,
         new_tracks: &layout.tracks,
+        agents: rows
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| r.agent.as_ref().map(|agent| RowAgent { row: i as u32, agent }))
+            .collect(),
     })
     .expect("page JSON serializes");
     debug_assert_eq!(layout.rows.len(), n, "every row is laid out");
@@ -229,7 +246,9 @@ mod tests {
 
     /// The rows behind the checked-in fixture that `graphPage.test.ts` decodes.
     fn fixture_rows() -> Vec<LogRecord> {
-        let row = |oid: char, name: &str, email: &str, t: i64, subject: &str| LogRecord {
+        use super::super::provenance::AgentSource;
+        use crate::slices::pty::models::RunKind;
+        let row = |oid: char, name: &str, email: &str, t: i64, subject: &str, agent: Option<Agent>| LogRecord {
             oid: oid.to_string().repeat(40),
             parents: vec![],
             author_name: name.into(),
@@ -237,13 +256,14 @@ mod tests {
             author_time: t,
             committer_time: t + 60,
             subject: subject.into(),
-            quay_agent: vec![],
-            co_authored_by: vec![],
+            agent,
         };
+        let codex = Agent { kind: Some(RunKind::Codex), source: AgentSource::Stamp, raw: None };
+        let unknown = Agent { kind: None, source: AgentSource::Stamp, raw: Some("<robot>".into()) };
         vec![
-            row('a', "Ada", "ada@example.invalid", 1_700_000_000, "Add the graph"),
-            row('b', "Bo", "bo@example.invalid", 1_699_999_000, "Fix \"quotes\" and ünïcode"),
-            row('c', "Ada", "ada@example.invalid", 1_699_998_000, "Initial commit"),
+            row('a', "Ada", "ada@example.invalid", 1_700_000_000, "Add the graph", None),
+            row('b', "Bo", "bo@example.invalid", 1_699_999_000, "Fix \"quotes\" and ünïcode", Some(codex)),
+            row('c', "Ada", "ada@example.invalid", 1_699_998_000, "Initial commit", Some(unknown)),
         ]
     }
 
