@@ -158,6 +158,19 @@ fn other(stderr: impl Into<String>) -> GitError {
     GitError::Other { stderr: stderr.into() }
 }
 
+/// What `git <args>` prints in `worktree`, or its stderr as the error when it fails.
+fn run_read<const N: usize>(worktree: &Path, args: [&str; N]) -> Result<Vec<u8>, GitError> {
+    let out = worktree_git(worktree)
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| other(format!("could not run git: {e}")))?;
+    if !out.status.success() {
+        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    Ok(out.stdout)
+}
+
 fn strip_eol(line: &[u8]) -> &[u8] {
     line.strip_suffix(b"\n").unwrap_or(line)
 }
@@ -307,15 +320,8 @@ fn run_diff(mut git: Command, cap: bool, ok_codes: &[i32]) -> Result<ParsedDiff,
 
 /// The tree an unborn branch's staged side is compared with.
 fn empty_tree(worktree: &Path) -> Result<String, GitError> {
-    let out = worktree_git(worktree)
-        .args(["hash-object", "-t", "tree", "--stdin"])
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| other(format!("could not run git: {e}")))?;
-    if !out.status.success() {
-        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    let out = run_read(worktree, ["hash-object", "-t", "tree", "--stdin"])?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
 }
 
 /// An oid or ref the frontend passed for a commit diff: hex only, so it is never an option.
@@ -363,15 +369,7 @@ fn is_untracked_file(worktree: &Path, path: &str) -> Result<bool, GitError> {
     if !worktree.join(path).is_file() {
         return Ok(false);
     }
-    let out = worktree_git(worktree)
-        .args(["--no-optional-locks", "ls-files", "-z", "--", path])
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| other(format!("could not run git: {e}")))?;
-    if !out.status.success() {
-        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-    }
-    Ok(out.stdout.is_empty())
+    Ok(run_read(worktree, ["--no-optional-locks", "ls-files", "-z", "--", path])?.is_empty())
 }
 
 /// An untracked file's diff against an empty file (#366), read without touching the index.
@@ -665,27 +663,12 @@ pub fn file_bytes(worktree: &Path, path: &str, source: &ByteSource) -> Result<Ve
         }
         ByteSource::Blob { oid } => {
             let oid = parse_blob_oid(oid)?;
-            let size = worktree_git(worktree)
-                .args(["cat-file", "-s", oid])
-                .stdin(Stdio::null())
-                .output()
-                .map_err(|e| other(format!("could not run git: {e}")))?;
-            if !size.status.success() {
-                return Err(other(String::from_utf8_lossy(&size.stderr).trim().to_string()));
-            }
-            let size: u64 = String::from_utf8_lossy(&size.stdout).trim().parse().map_err(|_| other("git printed no blob size"))?;
+            let size = run_read(worktree, ["cat-file", "-s", oid])?;
+            let size: u64 = String::from_utf8_lossy(&size).trim().parse().map_err(|_| other("git printed no blob size"))?;
             if size > IMAGE_PREVIEW_CAP {
                 return Err(too_big(size));
             }
-            let out = worktree_git(worktree)
-                .args(["cat-file", "blob", oid])
-                .stdin(Stdio::null())
-                .output()
-                .map_err(|e| other(format!("could not run git: {e}")))?;
-            if !out.status.success() {
-                return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-            }
-            Ok(out.stdout)
+            run_read(worktree, ["cat-file", "blob", oid])
         }
     }
 }
