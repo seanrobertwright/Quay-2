@@ -14,6 +14,15 @@ import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { slotColor } from "./laneColors";
+import {
+  clampOffset,
+  keyOffset,
+  offsetAfterScroll,
+  scrollScale,
+  scrollTopFor,
+  wheelOffset,
+  windowTop,
+} from "./scaledScroll";
 
 export interface GraphListProps {
   feed: GraphFeed;
@@ -140,12 +149,17 @@ const TrackStrip: React.FC<{ store: GraphStore | null; topRow: number; onJump: (
 /**
  * The commit list (#374): one scroll container over a spacer as tall as every loaded row, with
  * only a window of rows in the DOM, and the lane graph (#375) drawn over the window's left edge in
- * a column the operator resizes (#376).
+ * a column the operator resizes (#376). Past 8M px of rows the spacer stops growing and the list
+ * scrolls scaled (#377): the content offset is the source of truth, a wheel event moves it by its
+ * `deltaY`, scroll keys and jumps set it, and the scrollbar maps onto it proportionally.
  */
 export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRow, columnWidth, onColumnWidth }) => {
   const scroller = useRef<HTMLDivElement>(null);
-  // The scroll offset lives in a ref: only a change of window or of top row, not every pixel, re-renders.
-  const scrollTop = useRef(0);
+  // The content offset in px lives in a ref: only a change of window or of top row, not every
+  // pixel, re-renders. Natively it is the scrollTop; scaled, the scrollTop maps onto it.
+  const offset = useRef(0);
+  // Positioned by hand on every scroll, since scaled the window moves against the spacer.
+  const layer = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
   const store = feed.store;
   const rowCount = store?.rowCount ?? 0;
@@ -158,13 +172,38 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
   const [hover, setHover] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const idPrefix = useId();
+  const scale = useMemo(() => scrollScale(rowCount * ROW_HEIGHT, height), [rowCount, height]);
+  // Handlers read these, so a scroll between a state change and its commit uses what is in the DOM.
+  const scaleRef = useRef(scale);
+  const winRef = useRef(win);
 
   const updateWindow = useCallback(() => {
-    const top = scrollTop.current;
+    const top = offset.current;
     const next = rowWindow(top, scroller.current?.clientHeight ?? height, rowCount);
     setWin((prev) => (sameWindow(prev, next) ? prev : next));
     setTopRow(Math.floor(top / ROW_HEIGHT));
   }, [height, rowCount]);
+
+  const placeWindow = useCallback(() => {
+    const el = scroller.current;
+    if (el && layer.current) {
+      layer.current.style.transform = `translateY(${windowTop(el.scrollTop, offset.current, winRef.current.start)}px)`;
+    }
+  }, []);
+
+  /** Moves the content to `next` and the scrollbar to where it maps. */
+  const scrollToOffset = useCallback(
+    (next: number) => {
+      const el = scroller.current;
+      if (!el) return;
+      offset.current = clampOffset(scaleRef.current, next);
+      // The scroll event this causes lands on the same offset, and a scrollTop already there fires none.
+      el.scrollTop = scrollTopFor(scaleRef.current, offset.current);
+      placeWindow();
+      updateWindow();
+    },
+    [placeWindow, updateWindow]
+  );
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -176,23 +215,62 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
     return () => observer.disconnect();
   }, []);
 
-  // Rows loading or the viewport resizing can move the window too.
-  useLayoutEffect(updateWindow, [updateWindow]);
+  // Rows loading or the viewport resizing change the scale and can move the window; the content
+  // offset holds still, so crossing into scaled scrolling while rows load keeps the view in place.
+  useLayoutEffect(() => {
+    scaleRef.current = scale;
+    const el = scroller.current;
+    if (el) {
+      offset.current = clampOffset(scale, offset.current);
+      el.scrollTop = scrollTopFor(scale, offset.current);
+    }
+    placeWindow();
+    updateWindow();
+  }, [scale, placeWindow, updateWindow]);
+
+  useLayoutEffect(() => {
+    winRef.current = win;
+    placeWindow();
+  }, [win, placeWindow]);
+
+  // Scaled, the browser would scroll the wheel's deltaY in scrollbar pixels, `ratio` times too far.
+  // React's onWheel is passive and can't prevent that, so this listens directly.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || !scale.scaled) return;
+    const onWheel = (e: WheelEvent) => {
+      // A pinch or Ctrl+wheel zooms, and a sideways wheel scrolls no rows.
+      if (e.ctrlKey || e.deltaY === 0) return;
+      e.preventDefault();
+      scrollToOffset(wheelOffset(scaleRef.current, offset.current, e.deltaY, e.deltaMode, el.clientHeight));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scale.scaled, scrollToOffset]);
 
   useEffect(() => {
     if (win.end > 0) onReachedRow(win.end);
   }, [win.end, version, onReachedRow]);
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    scrollTop.current = e.currentTarget.scrollTop;
+    offset.current = offsetAfterScroll(scaleRef.current, offset.current, e.currentTarget.scrollTop);
+    placeWindow();
     updateWindow();
+  };
+
+  // Natively the browser scrolls for these keys; scaled it would move the scrollbar, not the content.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!scaleRef.current.scaled || e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return;
+    const next = keyOffset(scaleRef.current, offset.current, e.key, e.shiftKey, e.currentTarget.clientHeight);
+    if (next === null) return;
+    e.preventDefault();
+    scrollToOffset(next);
   };
 
   const jumpTo = (row: number) => {
     const el = scroller.current;
     if (!el || !store) return;
-    // The scroll event that follows moves the window onto the row.
-    el.scrollTop = row * ROW_HEIGHT;
+    scrollToOffset(row * ROW_HEIGHT);
     setActive({ sessionId: store.sessionId, row });
     el.focus({ preventScroll: true });
   };
@@ -293,6 +371,7 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
         <div
           ref={scroller}
           onScroll={onScroll}
+          onKeyDown={onKeyDown}
           role="listbox"
           aria-label="Commits"
           aria-busy={status.state === "loading"}
@@ -300,11 +379,12 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
           tabIndex={0}
           className="group flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
         >
-          <div className="relative" style={{ height: rowCount * ROW_HEIGHT }}>
+          {/* Clipped, so overscan rows past the end never make the spacer taller (#370). */}
+          <div className="relative overflow-clip" style={{ height: scale.spacerHeight }}>
             {/* The pointer only hovers nodes and picks the active row here; moving it by key is #397's. */}
             <div
-              className="absolute inset-x-0"
-              style={{ transform: `translateY(${win.start * ROW_HEIGHT}px)` }}
+              ref={layer}
+              className="absolute inset-x-0 top-0"
               onPointerMove={onPointerMove}
               onPointerLeave={() => setHover(null)}
               onPointerDown={onPointerDown}
