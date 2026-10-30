@@ -221,8 +221,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
             const view = failureView(e);
             if (path.current === worktree) setFailure({ message: view.message, retry: view.retry ? retry : null });
             announce(view.message);
-            const stale = typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "staleDiff";
-            return { kind: "failed", stale };
+            return { kind: "failed", stale: view.stale };
           }
         )
         .finally(() => {

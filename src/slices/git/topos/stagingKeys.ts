@@ -64,6 +64,8 @@ export interface FailureView {
   message: string;
   /** Whether the failure offers Retry: a held `index.lock`, after the backend's own retries. */
   retry: boolean;
+  /** Whether the diff the operation was built from is out of date, so the diff view reloads it. */
+  stale: boolean;
 }
 
 /** What the inspector shows for a rejected staging command. */
@@ -74,17 +76,19 @@ export function failureView(e: unknown): FailureView {
         return {
           message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.",
           retry: true,
+          stale: false,
         };
       case "stagingBusy":
-        return { message: "Another staging operation is still running on this worktree.", retry: false };
+        return { message: "Another staging operation is still running on this worktree.", retry: false, stale: false };
       case "staleDiff":
         return {
           message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
           retry: false,
+          stale: true,
         };
     }
   }
-  return { message: errorMessage(e), retry: false };
+  return { message: errorMessage(e), retry: false, stale: false };
 }
 
 /** The inspector column's width when Topos opens (#366). Persisting it is the settings ticket's. */
