@@ -566,12 +566,17 @@ impl Walk {
     ) -> (Option<Stream>, Result<Refreshed, GitError>) {
         self.flush(pager);
         let slot = old.as_ref().map_or(0, |s| 1 - s.slot);
-        let new = match self.start(head_is_born(&self.repo), slot) {
+        // Each git process costs tens of ms to start on Windows, so the tips are read while the
+        // walk starts. The walk assumes HEAD is born and retries without it when it isn't.
+        let repo = self.repo.clone();
+        let tips = std::thread::spawn(move || read_branch_tips(&repo));
+        let mut new = match self.start(true, slot) {
             Ok(stream) => stream,
             Err(e) => return (old, Err(e)),
         };
+        let mut retried_without_head = false;
         // The author table runs on, so the old rows' author ids stay valid after a splice.
-        let mut fresh = Pager::new(LanePass::new(read_branch_tips(&self.repo)), pager.authors.clone());
+        let mut fresh = Pager::new(LanePass::new(tips.join().unwrap_or_default()), pager.authors.clone());
         fresh.buffer = Some(Vec::new());
         let found = loop {
             if fresh.sent >= SPLICE_SEARCH_ROWS {
@@ -590,7 +595,18 @@ impl Walk {
                     }
                     continue;
                 }
-                Err(RecvTimeoutError::Disconnected) => break Found::NoMatch,
+                Err(RecvTimeoutError::Disconnected) => {
+                    if fresh.sent == 0 && !retried_without_head && !head_is_born(&self.repo) {
+                        retried_without_head = true;
+                        self.abandon(Some(new));
+                        new = match self.start(false, slot) {
+                            Ok(stream) => stream,
+                            Err(e) => return (old, Err(e)),
+                        };
+                        continue;
+                    }
+                    break Found::NoMatch;
+                }
             };
             // Row 0 never matches: a splice needs a new row to carry the new rows' first track.
             if fresh.sent > 0 {

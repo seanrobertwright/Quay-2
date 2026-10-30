@@ -273,3 +273,83 @@ fn a_refresh_with_no_match_in_20k_rows_resets_and_reloads_only_the_loaded_rows()
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(other).ok();
 }
+
+#[test]
+fn a_refresh_of_a_repo_with_no_commits_yet_shows_its_first_commits() {
+    let repo = super::tests::temp_dir();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let sessions = GraphSessions::default();
+    let (ch, rx) = listen();
+    let id = sessions.open(&repo, GraphOptions::default(), ch).unwrap();
+    let mut old = Graph::default();
+    assert_eq!(read_until_event(&rx, id, &mut old)["event"], "done");
+
+    // A branch other than HEAD's gets commits; HEAD stays unborn.
+    let tree = git(&repo, &["mktree"]).trim().to_string();
+    let root = git(&repo, &["commit-tree", &tree, "-m", "first"]).trim().to_string();
+    git(&repo, &["update-ref", "refs/heads/side", &root]);
+    let (outcome, event, after, next) = refresh(&sessions, &rx, id, &old);
+    assert_eq!(event["event"], "reset");
+    assert_eq!(outcome, Refreshed::Reset { searched_rows: 1 });
+    assert_eq!((next["event"].as_str(), next["total"].as_u64()), (Some("done"), Some(1)), "{next}");
+    assert_eq!(after.oids, vec![root]);
+    std::fs::remove_dir_all(repo).ok();
+}
+
+/// The #370 budget: a refresh with up to 20k loaded rows takes at most 250 ms, timed from the
+/// request until the `Reset` or `Splice` and every row it brings have been sent. The worst case is
+/// a Reset, which lays out and sends all 20k rows again. Timings only mean something in an
+/// optimized build, so run it as
+/// `cargo test --release --lib a_refresh_with_20k_loaded_rows_takes_at_most_250_ms -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn a_refresh_with_20k_loaded_rows_takes_at_most_250_ms() {
+    const LOADED: u32 = 20_000;
+    let repo = random_repo(5, 30_000);
+    // Two histories with no commit in common, so swapping `b0` between them resets every time.
+    let (other, _) = {
+        let (history, refs) = random_history(6, 30_000);
+        let refs: Vec<(&str, &str)> = refs.iter().map(|(r, c)| (r.as_str(), c.as_str())).collect();
+        build(&history, &refs, "refs/heads/b0")
+    };
+    for r in git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]).lines() {
+        if r != "refs/heads/b0" {
+            git(&repo, &["update-ref", "--no-deref", "-d", r]);
+        }
+    }
+    git(&repo, &["fetch", "-q", other.to_str().unwrap(), "+refs/heads/b0:refs/other/b0"]);
+    git(&repo, &["commit-graph", "write", "--reachable"]);
+    let tips = [git(&repo, &["rev-parse", "b0"]).trim().to_string(), git(&repo, &["rev-parse", "refs/other/b0"]).trim().to_string()];
+
+    let sessions = GraphSessions::default();
+    let (ch, rx) = listen();
+    let id = sessions.open(&repo, GraphOptions { soft_cap: Some(LOADED), ..GraphOptions::default() }, ch).unwrap();
+    assert_eq!(read_until_event(&rx, id, &mut Graph::default())["event"], "paused");
+    let drain = |rx: &Receiver<Msg>| while rx.recv_timeout(Duration::from_millis(300)).is_ok() {};
+
+    let mut worst = Duration::ZERO;
+    for round in 1..=3 {
+        git(&repo, &["update-ref", "refs/heads/b0", &tips[round % 2]]);
+        let started = std::time::Instant::now();
+        let outcome = sessions.refresh(id).unwrap();
+        let took = started.elapsed();
+        assert_eq!(outcome, Refreshed::Reset { searched_rows: LOADED });
+        println!("refresh by reset with {LOADED} loaded rows: {} ms", took.as_millis());
+        worst = worst.max(took);
+        drain(&rx);
+    }
+    let mut time = 1_800_000_000;
+    for _ in 1..=3 {
+        commit_on(&repo, "b0", 3, &mut time);
+        let started = std::time::Instant::now();
+        let outcome = sessions.refresh(id).unwrap();
+        let took = started.elapsed();
+        assert!(matches!(outcome, Refreshed::Spliced { .. }), "{outcome:?}");
+        println!("refresh by splice with {LOADED} loaded rows: {} ms", took.as_millis());
+        worst = worst.max(took);
+        drain(&rx);
+    }
+    assert!(worst <= Duration::from_millis(250), "the slowest refresh took {} ms", worst.as_millis());
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(other).ok();
+}
