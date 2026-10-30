@@ -142,12 +142,27 @@ fn commit_on(repo: &Path, branch: &str, count: usize, time: &mut u64) -> String 
     tip
 }
 
-fn random_repo(seed: u64, commits: usize) -> std::path::PathBuf {
+/// A repo of `random_history(seed, commits)` with HEAD on `b0`.
+fn random_history_repo(seed: u64, commits: usize) -> std::path::PathBuf {
     let (history, refs) = random_history(seed, commits);
     let refs: Vec<(&str, &str)> = refs.iter().map(|(r, c)| (r.as_str(), c.as_str())).collect();
-    let (repo, _) = build(&history, &refs, "refs/heads/b0");
+    build(&history, &refs, "refs/heads/b0").0
+}
+
+/// `random_history_repo` with `origin/b0` as the remote's default branch.
+fn random_repo(seed: u64, commits: usize) -> std::path::PathBuf {
+    let repo = random_history_repo(seed, commits);
     git(&repo, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/b0"]);
     repo
+}
+
+/// Deletes every branch and remote ref in `repo` but `keep`.
+fn delete_refs_except(repo: &Path, keep: Option<&str>) {
+    for r in git(repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]).lines() {
+        if Some(r) != keep {
+            git(repo, &["update-ref", "--no-deref", "-d", r]);
+        }
+    }
 }
 
 /// Refreshes session `id` and reads what it sends: the `Splice` or `Reset`, then rows up to the
@@ -213,11 +228,7 @@ fn a_refresh_after_history_is_rewritten_resets_and_reloads_the_rows() {
     assert_eq!(read_until_event(&rx, id, &mut old)["event"], "done");
 
     // Every branch now points into a history that shares no commit with the old one.
-    for r in git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]).lines() {
-        if r != "refs/heads/b0" {
-            git(&repo, &["update-ref", "--no-deref", "-d", r]);
-        }
-    }
+    delete_refs_except(&repo, Some("refs/heads/b0"));
     let tree = git(&repo, &["rev-parse", "b0^{tree}"]).trim().to_string();
     let root = git(&repo, &["commit-tree", &tree, "-m", "new root"]).trim().to_string();
     git(&repo, &["update-ref", "refs/heads/b0", &root]);
@@ -243,14 +254,8 @@ fn a_refresh_with_no_match_in_20k_rows_resets_and_reloads_only_the_loaded_rows()
     assert_eq!(read_until_event(&rx, id, &mut old)["event"], "paused");
 
     // A second history of the same shape, every commit of it new.
-    let (other, _) = {
-        let (history, refs) = random_history(6, 21_000);
-        let refs: Vec<(&str, &str)> = refs.iter().map(|(r, c)| (r.as_str(), c.as_str())).collect();
-        build(&history, &refs, "refs/heads/b0")
-    };
-    for r in git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]).lines() {
-        git(&repo, &["update-ref", "--no-deref", "-d", r]);
-    }
+    let other = random_history_repo(6, 21_000);
+    delete_refs_except(&repo, None);
     git(&repo, &["fetch", "-q", "--update-head-ok", other.to_str().unwrap(), "+refs/heads/*:refs/heads/*"]);
 
     let outcome = sessions.refresh(id).unwrap();
@@ -307,16 +312,8 @@ fn a_refresh_with_20k_loaded_rows_takes_at_most_250_ms() {
     const LOADED: u32 = 20_000;
     let repo = random_repo(5, 30_000);
     // Two histories with no commit in common, so swapping `b0` between them resets every time.
-    let (other, _) = {
-        let (history, refs) = random_history(6, 30_000);
-        let refs: Vec<(&str, &str)> = refs.iter().map(|(r, c)| (r.as_str(), c.as_str())).collect();
-        build(&history, &refs, "refs/heads/b0")
-    };
-    for r in git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"]).lines() {
-        if r != "refs/heads/b0" {
-            git(&repo, &["update-ref", "--no-deref", "-d", r]);
-        }
-    }
+    let other = random_history_repo(6, 30_000);
+    delete_refs_except(&repo, Some("refs/heads/b0"));
     git(&repo, &["fetch", "-q", other.to_str().unwrap(), "+refs/heads/b0:refs/other/b0"]);
     git(&repo, &["commit-graph", "write", "--reachable"]);
     let tips = [git(&repo, &["rev-parse", "b0"]).trim().to_string(), git(&repo, &["rev-parse", "refs/other/b0"]).trim().to_string()];

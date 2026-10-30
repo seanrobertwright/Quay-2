@@ -54,7 +54,7 @@ impl Dirty {
         self.refs || self.head || self.index || self.worktree || self.operation
     }
 
-    fn or(self, o: Dirty) -> Dirty {
+    pub(super) fn or(self, o: Dirty) -> Dirty {
         Dirty {
             refs: self.refs || o.refs,
             head: self.head || o.head,

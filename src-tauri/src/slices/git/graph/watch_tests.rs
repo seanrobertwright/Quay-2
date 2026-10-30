@@ -49,13 +49,7 @@ fn settle(changes: &Receiver<RepoChanged>) -> Vec<RepoChanged> {
 
 /// The dirty bits of every change in `changes`, or-ed together.
 fn bits(changes: &[RepoChanged]) -> Dirty {
-    changes.iter().fold(Dirty::default(), |a, c| Dirty {
-        refs: a.refs || c.dirty.refs,
-        head: a.head || c.dirty.head,
-        index: a.index || c.dirty.index,
-        worktree: a.worktree || c.dirty.worktree,
-        operation: a.operation || c.dirty.operation,
-    })
+    changes.iter().fold(Dirty::default(), |a, c| a.or(c.dirty))
 }
 
 fn only(refs: bool, head: bool, index: bool, worktree: bool, operation: bool) -> Dirty {
