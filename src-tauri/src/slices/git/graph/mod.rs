@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod bench_dump;
+mod badges;
 mod cat_file;
 mod lanes;
 mod log;
@@ -26,7 +27,7 @@ use super::error::GitError;
 pub use lanes::{Track, TrackKind};
 pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
-pub use refs::{GitRefs, RefBadge, RefKind, WorktreeHead};
+pub use badges::{GitRefs, RefBadge, RefKind, WorktreeHead};
 pub use session::{GraphOptions, GraphRefs, GraphSessions};
 
 /// Starts a graph session on `repo_path`, closing any live one, and streams its rows to `on_event`.
@@ -64,7 +65,7 @@ pub async fn git_graph_close(session_id: u32, sessions: State<'_, GraphSessions>
 #[tauri::command]
 pub async fn git_refs(repo_path: String) -> Result<GitRefs, GitError> {
     let repo = PathBuf::from(repo_path);
-    tokio::task::spawn_blocking(move || refs::read_refs(&repo))
+    tokio::task::spawn_blocking(move || badges::read_refs(&repo))
         .await
         .map_err(|e| GitError::Other { stderr: format!("could not read refs: {e}") })?
 }
