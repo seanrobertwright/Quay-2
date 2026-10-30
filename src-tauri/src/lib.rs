@@ -17,7 +17,7 @@ use slices::bridge::{
 };
 use slices::git::{
     check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
-    git_file_bytes, git_file_diff, git_ignore_folder, git_op_cancel, git_stage_paths, git_stage_selection, git_status, git_unstage_paths, git_version_check, is_git_repo, list_git_worktrees,
+    git_file_bytes, git_file_diff, git_speedup_apply, git_speedup_check, git_ignore_folder, git_op_cancel, git_stage_paths, git_stage_selection, git_status, git_unstage_paths, git_version_check, is_git_repo, list_git_worktrees,
     remove_git_worktree, topos_settings_read, topos_settings_write, GitOps, StagingLocks, ToposSettingsStore,
     GraphSessions,
 };
@@ -212,6 +212,8 @@ pub fn run() {
             git_file_diff,
             git_stage_selection,
             git_file_bytes,
+            git_speedup_check,
+            git_speedup_apply,
             topos_settings_read,
             topos_settings_write,
             check_gh_cli_installed,

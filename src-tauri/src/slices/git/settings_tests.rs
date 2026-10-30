@@ -303,3 +303,25 @@ fn on_windows_keys_differing_only_in_case_read_as_one_entry_at_its_latest_time()
 
     assert_eq!(repos.into_iter().map(|(k, r)| (k, r.last_opened)).collect::<Vec<_>>(), vec![("c:/repo/.git".to_string(), 9)]);
 }
+
+#[test]
+fn only_a_true_suppress_speedup_turns_the_banner_away() {
+    let path = temp_path();
+    std::fs::write(
+        &path,
+        r#"{ "repos": {
+            "c:/a/.git": { "lastOpened": 5, "suppressSpeedup": true },
+            "c:/b/.git": { "lastOpened": 5, "suppressSpeedup": "true" },
+            "c:/c/.git": { "lastOpened": 5, "suppressSpeedup": 1 },
+            "c:/d/.git": { "lastOpened": 5 }
+        } }"#,
+    )
+    .unwrap();
+
+    let suppressed: Vec<(String, bool)> =
+        ToposSettingsStore::at(path).read().repos.into_iter().map(|(key, r)| (key, r.suppress_speedup)).collect();
+    assert_eq!(
+        suppressed,
+        [("c:/a/.git".into(), true), ("c:/b/.git".into(), false), ("c:/c/.git".into(), false), ("c:/d/.git".into(), false)]
+    );
+}

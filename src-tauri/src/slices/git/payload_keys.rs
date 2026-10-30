@@ -11,6 +11,7 @@ use super::graph::{
 };
 use super::op_runner::OpEvent;
 use super::settings::{DiffMode, FileListMode, RepoState, ToposSettings};
+use super::speedup::{SpeedupCheck, SpeedupItem};
 use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
 use super::version::GitVersionStatus;
 
@@ -243,8 +244,16 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         (
             "RepoState",
-            s(&RepoState { last_opened: 1_793_000_000_000 }),
-            json!({ "lastOpened": 1_793_000_000_000_i64 }),
+            s(&RepoState { last_opened: 1_793_000_000_000, suppress_speedup: true }),
+            json!({ "lastOpened": 1_793_000_000_000_i64, "suppressSpeedup": true }),
+        ),
+        (
+            "SpeedupCheck",
+            s(&SpeedupCheck {
+                items: vec![SpeedupItem::CommitGraph, SpeedupItem::Fsmonitor, SpeedupItem::UntrackedCache],
+                suppressed: false,
+            }),
+            json!({ "items": ["commitGraph", "fsmonitor", "untrackedCache"], "suppressed": false }),
         ),
         (
             "OpEvent::Failed",

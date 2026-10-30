@@ -30,6 +30,8 @@ pub struct ToposSettings {
 pub struct RepoState {
     /// When Topos last opened the repo, in ms since the Unix epoch.
     pub last_opened: i64,
+    /// Whether the operator chose "Don't suggest for this repo" on the speed-up banner (#385).
+    pub suppress_speedup: bool,
 }
 
 /// `DiffMode` in `src/slices/git/topos/FileDiffView.tsx`.
@@ -87,6 +89,7 @@ pub fn parse_settings(text: &str) -> ToposSettings {
         diff_mode: file.get("diffMode").and_then(|v| DiffMode::deserialize(v).ok()),
         file_list_mode: file.get("fileListMode").and_then(|v| FileListMode::deserialize(v).ok()),
         opened_repo: None,
+        suppress_speedup: None,
     };
     for (_, width, range) in prefs.widths() {
         *width = width.filter(|w| range.contains(w));
@@ -97,7 +100,12 @@ pub fn parse_settings(text: &str) -> ToposSettings {
             let Some(last_opened) = entry.get("lastOpened").and_then(Value::as_i64).filter(|ms| *ms >= 0) else {
                 continue;
             };
-            record_open(&mut settings.repos, comparable_key(key), last_opened);
+            let key = comparable_key(key);
+            record_open(&mut settings.repos, key.clone(), last_opened);
+            // Only `true` suppresses; any other value reads as the default, still suggesting.
+            if entry.get("suppressSpeedup") == Some(&Value::Bool(true)) {
+                settings.repos.get_mut(&key).expect("just recorded").suppress_speedup = true;
+            }
         }
         cap_repos(&mut settings.repos);
     }
@@ -117,7 +125,7 @@ fn comparable_key(key: &str) -> String {
 
 /// Records that `key` was opened at `last_opened`, keeping the later time when it already has one.
 fn record_open(repos: &mut BTreeMap<String, RepoState>, key: String, last_opened: i64) {
-    let entry = repos.entry(key).or_insert(RepoState { last_opened });
+    let entry = repos.entry(key).or_insert(RepoState { last_opened, suppress_speedup: false });
     entry.last_opened = entry.last_opened.max(last_opened);
 }
 
@@ -164,6 +172,9 @@ pub struct ToposSettingsPatch {
     pub file_list_mode: Option<FileListMode>,
     /// A repo or worktree path Topos has just opened, which records its repo's last-opened time.
     pub opened_repo: Option<String>,
+    /// A repo or worktree path whose repo the speed-up banner no longer suggests for (#385). It
+    /// counts as an open too, so the entry is kept among the most recently opened.
+    pub suppress_speedup: Option<String>,
 }
 
 impl ToposSettingsPatch {
@@ -175,7 +186,8 @@ impl ToposSettingsPatch {
         ]
     }
 
-    /// Sets each pref the patch carries. Recording `opened_repo` is the store's job.
+    /// Sets each pref the patch carries. Recording `opened_repo` and `suppress_speedup` is the
+    /// store's job.
     fn apply_prefs(&self, settings: &mut ToposSettings) {
         if let Some(width) = self.graph_column_width {
             settings.graph_column_width = width;
@@ -251,6 +263,11 @@ impl ToposSettingsStore {
         self.shared.state.lock().settings.clone()
     }
 
+    /// Whether the speed-up banner was turned away for the repo whose [`repo_key`] is `key`.
+    pub fn speedup_suppressed(&self, key: &str) -> bool {
+        self.shared.state.lock().settings.repos.get(key).is_some_and(|r| r.suppress_speedup)
+    }
+
     /// Applies `patch` and returns the prefs it leaves, or refuses the whole patch when a width is
     /// out of range. The file is written once writes have been quiet for [`WRITE_DEBOUNCE`].
     pub fn write(&self, mut patch: ToposSettingsPatch) -> Result<ToposSettings, GitError> {
@@ -262,12 +279,18 @@ impl ToposSettingsStore {
             }
         }
         let opened = patch.opened_repo.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
+        let suppressed = patch.suppress_speedup.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
         let mut state = self.shared.state.lock();
         let settings = &mut state.settings;
+        let now = crate::dates::now_ms();
         if let Some(key) = opened {
-            record_open(&mut settings.repos, key, crate::dates::now_ms());
-            cap_repos(&mut settings.repos);
+            record_open(&mut settings.repos, key, now);
         }
+        if let Some(key) = suppressed {
+            record_open(&mut settings.repos, key.clone(), now);
+            settings.repos.get_mut(&key).expect("just recorded").suppress_speedup = true;
+        }
+        cap_repos(&mut settings.repos);
         patch.apply_prefs(settings);
         let result = settings.clone();
         state.dirty = true;
