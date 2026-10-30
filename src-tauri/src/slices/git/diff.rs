@@ -1,5 +1,5 @@
-//! One file's diff for the staging inspector's diff view (#383), and staging it by hunk or mode
-//! change (#350, #366).
+//! One file's diff for the staging inspector's diff view (#383), and staging it by hunk, line or
+//! mode change (#350, #366, #386).
 //!
 //! Diffs come from the plumbing `git add -p` reads: `diff-files` for the unstaged side,
 //! `diff-index --cached` for the staged side and `diff-tree -p` for a commit, each with
@@ -376,6 +376,9 @@ fn is_untracked_file(worktree: &Path, path: &str) -> Result<bool, GitError> {
 fn read_untracked(worktree: &Path, path: &str, unified: &str, cap: bool) -> Result<ParsedDiff, GitError> {
     let mut git = worktree_git(worktree);
     git.args(["--no-optional-locks", "diff", "--no-index", "-p", "--full-index", "--no-ext-diff", "--no-color", unified]);
+    // Porcelain `diff` reads `diff.noprefix` and `diff.mnemonicPrefix`; a partial stage rebuilds
+    // its header from these names, so they are pinned to what the plumbing prints.
+    git.args(["--src-prefix=a/", "--dst-prefix=b/"]);
     git.args(["--", "/dev/null", path]);
     // `--no-index` exits 1 when the files differ.
     let mut parsed = run_diff(git, cap, &[0, 1])?;
@@ -617,11 +620,32 @@ fn reduced_patch(
     Ok(patch)
 }
 
-/// The `---` and `+++` lines of `parsed`'s file header.
-fn header_lines(parsed: &ParsedDiff) -> Result<(&[u8], &[u8]), GitError> {
-    match (parsed.minus.as_deref(), parsed.plus.as_deref()) {
-        (Some(minus), Some(plus)) => Ok((minus, plus)),
-        _ => Err(other("the diff has no hunks")),
+/// `+++ b/path` as `--- a/path`, or `--- a/path` as `+++ b/path`, keeping git's quoting.
+fn other_side_header(line: &[u8]) -> Option<Vec<u8>> {
+    let (marker, prefix): (&[u8], &[u8]) = match line.get(..4)? {
+        b"+++ " => (b"--- ", b"a/"),
+        b"--- " => (b"+++ ", b"b/"),
+        _ => return None,
+    };
+    let rest = &line[4..];
+    let quote = if rest.first() == Some(&b'"') { &b"\""[..] } else { &b""[..] };
+    let name = rest[quote.len()..].strip_prefix(if marker == b"--- " { b"b/" } else { b"a/" })?;
+    Some([marker, quote, prefix, name].concat())
+}
+
+/// The `---` and `+++` lines of `parsed`'s file header. A side that is `/dev/null`, as for a file
+/// being created or deleted, takes the other side's name, so the patch modifies the index entry
+/// (an empty one for a new file) rather than creating or deleting it.
+fn header_lines(parsed: &ParsedDiff) -> Result<(Vec<u8>, Vec<u8>), GitError> {
+    let (Some(minus), Some(plus)) = (parsed.minus.as_deref(), parsed.plus.as_deref()) else {
+        return Err(other("the diff has no hunks"));
+    };
+    let null = |line: &[u8]| strip_eol(line).ends_with(b" /dev/null");
+    let unnamed = || other("the diff's file header has no name to stage against");
+    match (null(minus), null(plus)) {
+        (true, false) => Ok((other_side_header(plus).ok_or_else(unnamed)?, plus.to_vec())),
+        (false, true) => Ok((minus.to_vec(), other_side_header(minus).ok_or_else(unnamed)?)),
+        _ => Ok((minus.to_vec(), plus.to_vec())),
     }
 }
 
@@ -662,13 +686,83 @@ fn apply_cached(worktree: &Path, patch: &[u8], reverse: bool, context: u32) -> R
     run_write_input(worktree, &args, Some(patch))
 }
 
+/// Whether `picked` holds every changed line of `parsed`.
+fn picks_every_change(parsed: &ParsedDiff, picked: &[(usize, usize)]) -> bool {
+    parsed.hunks.iter().enumerate().all(|(h, hunk)| {
+        hunk.body
+            .iter()
+            .enumerate()
+            .all(|(l, line)| !matches!(line.first(), Some(b'+' | b'-')) || picked.contains(&(h, l)))
+    })
+}
+
+/// Stages part of an untracked file (#366). `git add -N` makes the empty intent-to-add entry that
+/// `patch`, a modification of an empty file, applies to with `git apply --cached`. If the apply
+/// fails, the entry is rolled back with [`roll_back_intent_to_add`], so it goes only while it is
+/// still that empty entry. This is the only place Topos runs `git add -N`.
+pub(super) fn stage_new_file_lines(worktree: &Path, path: &str, patch: &[u8], context: u32) -> Result<(), GitError> {
+    run_write_input(worktree, &["add", "-N", "--", path], None)?;
+    let Err(failed) = apply_cached(worktree, patch, false, context) else {
+        return Ok(());
+    };
+    match roll_back_intent_to_add(worktree, path) {
+        Ok(_) => Err(failed),
+        Err(rollback) => Err(other(format!("{failed}; then the intent-to-add entry for {path} could not be removed: {rollback}"))),
+    }
+}
+
+/// Whether `path`'s index entry is an intent-to-add entry: porcelain v2 shows it with no index
+/// change (`.` for X) and no index mode (`000000`), where any staged content, even an empty file,
+/// has a mode.
+fn is_intent_to_add(worktree: &Path, path: &str) -> Result<bool, GitError> {
+    let out = run_read(
+        worktree,
+        ["--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=no", "--ignore-submodules=all", "--", path],
+    )?;
+    Ok(out.split(|&b| b == 0).any(|record| {
+        // `1 XY sub mH mI mW hH hI path`
+        let fields: Vec<&[u8]> = record.splitn(9, |&b| b == b' ').collect();
+        matches!(fields.as_slice(), [b"1", xy, _, _, b"000000", _, _, _, p] if xy.first() == Some(&b'.') && *p == path.as_bytes())
+    }))
+}
+
+/// Takes `path` out of the index with `git rm --cached` if its entry is still the empty
+/// intent-to-add entry, and says whether it did. A real staged change, an empty file included, is
+/// left alone, and `git rm --cached` without `-f` refuses staged content besides.
+pub(super) fn roll_back_intent_to_add(worktree: &Path, path: &str) -> Result<bool, GitError> {
+    if !is_intent_to_add(worktree, path)? {
+        return Ok(false);
+    }
+    run_write_input(worktree, &["rm", "--cached", "-q", "--", path], None)?;
+    Ok(true)
+}
+
+/// After an unstage, takes `path` out of the index when its entry is left empty and HEAD lacks
+/// the path (#366), so a new file whose last staged line went is untracked again.
+fn drop_empty_new_entry(worktree: &Path, path: &str) -> Result<(), GitError> {
+    if has_head(worktree) && !run_read(worktree, ["ls-tree", "-z", "HEAD", "--", path])?.is_empty() {
+        return Ok(());
+    }
+    // `mode oid stage\tpath`
+    let entry = run_read(worktree, ["--no-optional-locks", "ls-files", "-s", "-z", "--", path])?;
+    let empty = run_read(worktree, ["hash-object", "-t", "blob", "--stdin"])?;
+    if entry.split(|&b| b == b' ').nth(1) == Some(empty.trim_ascii()) {
+        // The entry is empty and HEAD lacks the path, so the `-f` loses no staged content.
+        run_write_input(worktree, &["rm", "--cached", "-f", "-q", "--", path], None)?;
+    }
+    Ok(())
+}
+
 /// Stages (from the unstaged side) or unstages (from the staged side) `request.selection` of one
 /// file (#350, #383), in the worktree's staging slot. It re-reads the diff first and refuses with
 /// [`GitError::StaleDiff`] when the token no longer matches, so a patch is never applied to an
-/// index that moved. Hunks and mode changes go through a reduced patch and `git apply --cached`;
-/// a whole file, and any change to a binary file or a submodule, goes through `git add` or
-/// `git reset`. A hunk of a file being created or deleted is the whole file. Returns the file's
-/// new diff, answering `diff_request_id`, and the post-write status, answering `request_id`.
+/// index that moved. Hunks, lines and mode changes go through a reduced patch and
+/// `git apply --cached`; a whole file, and any change to a binary file or a submodule, goes through
+/// `git add` or `git reset`. A hunk of a file being created or deleted is the whole file, and so is
+/// every line of one being staged. Some lines of an untracked file stage through
+/// [`stage_new_file_lines`]; a staged deletion unstages whole. An unstage of lines that leaves an
+/// empty entry for a path HEAD lacks removes that entry. Returns the file's new diff, answering
+/// `diff_request_id`, and the post-write status, answering `request_id`.
 pub fn stage_selection(
     locks: &StagingLocks,
     worktree: &Path,
@@ -707,7 +801,8 @@ pub fn stage_selection(
             if parsed.new_file || parsed.deleted_file {
                 write_whole()?;
             } else {
-                let patch = reduced_patch(&parsed, header_lines(&parsed)?, |h, _| selected.contains(&h), reverse)?;
+                let (minus, plus) = header_lines(&parsed)?;
+                let patch = reduced_patch(&parsed, (&minus, &plus), |h, _| selected.contains(&h), reverse)?;
                 apply_cached(worktree, &patch, reverse, context)?;
             }
         }
@@ -718,8 +813,24 @@ pub fn stage_selection(
             let picked = changed_lines(&parsed, lines)
                 .filter(|p| !p.is_empty())
                 .ok_or_else(|| other(format!("no such changed line in {path}")))?;
-            let patch = reduced_patch(&parsed, header_lines(&parsed)?, |h, l| picked.contains(&(h, l)), reverse)?;
-            apply_cached(worktree, &patch, reverse, context)?;
+            let creates_or_deletes = parsed.untracked || parsed.new_file || parsed.deleted_file;
+            // Every line of a file being created or deleted stages it whole, with no `git add -N`.
+            // A staged deletion has no index entry for a patch to apply to, so it unstages whole.
+            let stage_whole = !reverse && creates_or_deletes && picks_every_change(&parsed, &picked);
+            if stage_whole || (reverse && parsed.deleted_file) {
+                write_whole()?;
+            } else {
+                let (minus, plus) = header_lines(&parsed)?;
+                let patch = reduced_patch(&parsed, (&minus, &plus), |h, l| picked.contains(&(h, l)), reverse)?;
+                if parsed.untracked {
+                    stage_new_file_lines(worktree, path, &patch, context)?;
+                } else {
+                    apply_cached(worktree, &patch, reverse, context)?;
+                }
+                if reverse {
+                    drop_empty_new_entry(worktree, path)?;
+                }
+            }
         }
     }
     Ok(StageResult {
