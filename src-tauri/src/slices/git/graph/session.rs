@@ -226,8 +226,9 @@ impl GraphSessions {
     }
 
     /// Points session `session_id`'s watch at `worktree`, watching its files only while `visible`.
-    /// A watch on another worktree, or one that stopped, is replaced. A watch that can't start
-    /// leaves live updates off, which the frontend covers with a fingerprint check (#354).
+    /// A watch on another worktree, or one that stopped, is replaced. A folder that isn't there is
+    /// gone. A watch that can't start leaves live updates off, which the frontend covers with a
+    /// fingerprint check (#354).
     pub fn watch(&self, session_id: u32, worktree: &Path, visible: bool) -> Result<WatchState, GitError> {
         let sink = self.repo_changed.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let mut live = self.live();
@@ -239,6 +240,10 @@ impl GraphSessions {
             });
         }
         session.watch = None;
+        // A worktree or repo that was moved or removed shows Topos's empty state, not a retry.
+        if !worktree.is_dir() {
+            return Ok(WatchState::Gone);
+        }
         Ok(match Watch::start(session_id, &session.repo, worktree, visible, sink, session.channel.clone()) {
             Ok(watch) => {
                 session.watch = Some(watch);

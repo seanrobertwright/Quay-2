@@ -308,6 +308,23 @@ export const GraphList: React.FC<GraphListProps> = ({
     updateWindow();
   }, [scale, placeWindow, updateWindow]);
 
+  // A refresh that splices or resets swaps in a new store (#379). The view stays anchored to the
+  // commit at the top of the viewport, and the selection follows its commit or clears if it is gone.
+  const shownStore = useRef(store);
+  useLayoutEffect(() => {
+    const before = shownStore.current;
+    shownStore.current = store;
+    if (before === null || store === null || before === store || before.rowCount === 0) return;
+    const top = Math.min(Math.floor(offset.current / ROW_HEIGHT), before.rowCount - 1);
+    const row = store.rowOf(before.oid(top));
+    if (row !== -1) scrollToOffset(row * ROW_HEIGHT + (offset.current - top * ROW_HEIGHT));
+    setActive((prev) => {
+      if (prev === null || prev.sessionId !== before.sessionId || prev.row >= before.rowCount) return prev;
+      const moved = store.rowOf(before.oid(prev.row));
+      return moved === -1 ? null : { sessionId: store.sessionId, row: moved };
+    });
+  }, [store, scrollToOffset]);
+
   useLayoutEffect(() => {
     winRef.current = win;
     placeWindow();

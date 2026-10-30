@@ -216,7 +216,8 @@ fn a_removed_worktree_says_gone_and_a_watch_that_cannot_start_says_off() {
     assert_eq!(gone["watch"]["state"], "gone", "{gone}");
 
     let missing = repo.parent().unwrap().join("missing");
-    assert!(matches!(sessions.watch(id, &missing, true).unwrap(), WatchState::Off { .. }));
+    assert_eq!(sessions.watch(id, &missing, true).unwrap(), WatchState::Gone, "a folder that isn't there is gone");
+    assert_eq!(sessions.watch(id, &wt, true).unwrap(), WatchState::Gone, "so is the removed worktree on the next show");
     let not_a_repo = temp_dir();
     match sessions.watch(id, &not_a_repo, true).unwrap() {
         WatchState::Off { reason } => assert!(reason.contains("not a git repository"), "{reason}"),

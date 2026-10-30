@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, WifiOff, X } from "lucide-react";
 import { useOverlay } from "../../overlay/useOverlay";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
@@ -10,6 +10,7 @@ import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
 import { refsView } from "./graphRefs";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
+import { useLiveUpdates } from "./useLiveUpdates";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -87,9 +88,17 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const graphRepo = target && view?.kind === "open" ? target.repoPath : null;
   const graph = useGraphSession(graphRepo, order);
   // Refs are per repo too, so a move between its worktrees moves only the HEAD marker (#378).
-  const refs = useGraphRefs(graphRepo, shown);
+  const refsReader = useGraphRefs(graphRepo, shown);
+  const refs = refsReader.refs;
   const selectedPath = target?.path ?? null;
   const refsShown = useMemo(() => refsView(refs, selectedPath), [refs, selectedPath]);
+  // The watch follows the selected worktree; its files are watched only while Topos shows (#379).
+  const liveTarget = useMemo(
+    () => (graphRepo !== null && selectedPath !== null ? { repoPath: graphRepo, worktreePath: selectedPath } : null),
+    [graphRepo, selectedPath]
+  );
+  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader);
+  const watch = graph.feed?.watch ?? null;
 
   return (
     <div
@@ -116,12 +125,30 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
               {target.name}
             </span>
           )}
+          {watch?.state === "off" && (
+            <span
+              role="status"
+              className="ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-[#d29922]/40 bg-[#d29922]/10 text-xs text-[#d29922] shrink-0"
+              title={`${watch.reason}. Topos checks for changes when its window regains focus.`}
+            >
+              <WifiOff className="w-3.5 h-3.5" aria-hidden="true" />
+              Live updates off; the view may be stale
+              <button
+                type="button"
+                onClick={retryLiveUpdates}
+                className="ml-1 inline-flex items-center gap-1 px-1.5 rounded border border-[#d29922]/40 hover:bg-[#d29922]/20 text-[#e3b341]"
+              >
+                <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                Retry
+              </button>
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setOrder((o) => (o === "topo" ? "date" : "topo"))}
             aria-pressed={order === "topo"}
             title="Show each branch's commits together (git log --topo-order)"
-            className={`ml-auto inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs ${
+            className={`${watch?.state === "off" ? "" : "ml-auto "}inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs ${
               order === "topo"
                 ? "border-[#06B6D4]/60 bg-[#06B6D4]/10 text-white"
                 : "border-[#30363d] text-[#8b949e] hover:text-white hover:bg-[#21262d]"
@@ -192,7 +219,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 {view.warning}
               </p>
             )}
-            {graph.feed ? (
+            {watch?.state === "gone" ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center p-6" role="status">
+                <p className="text-sm text-white">This worktree or repository is gone.</p>
+                <p className="text-xs text-[#8b949e] max-w-md break-words">
+                  {target.path} was moved or removed. Pick another project or worktree in the Rail.
+                </p>
+              </div>
+            ) : graph.feed ? (
               <GraphList
                 key={`${order}:${target.repoPath}`}
                 feed={graph.feed}
