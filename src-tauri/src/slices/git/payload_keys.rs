@@ -5,7 +5,7 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
-use super::graph::{Author, GitRefs, GraphEvent, RefBadge, RefKind, Track, TrackKind, WorktreeHead};
+use super::graph::{Author, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, Track, TrackKind, WorktreeHead};
 use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
@@ -52,6 +52,33 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GraphEvent::Failed",
             s(&GraphEvent::Failed { session_id: 3, error: GitError::Other { stderr: "boom".into() } }),
             json!({ "event": "failed", "sessionId": 3, "error": { "kind": "other", "stderr": "boom" } }),
+        ),
+        (
+            "GraphEvent::Splice",
+            s(&GraphEvent::Splice {
+                session_id: 3,
+                replace_rows: 64,
+                new_rows: 69,
+                row_delta: 5,
+                edges_from: 70,
+                edges_to: 76,
+                tracks_from: 4,
+                tracks_to: 5,
+                crossing_edges: vec![[68, 74]],
+                live_tracks: vec![[0, 0]],
+            }),
+            json!({
+                "event": "splice", "sessionId": 3, "replaceRows": 64, "newRows": 69, "rowDelta": 5,
+                "edgesFrom": 70, "edgesTo": 76, "tracksFrom": 4, "tracksTo": 5,
+                "crossingEdges": [[68, 74]], "liveTracks": [[0, 0]]
+            }),
+        ),
+        ("GraphEvent::Reset", s(&GraphEvent::Reset { session_id: 3 }), json!({ "event": "reset", "sessionId": 3 })),
+        ("Refreshed::Spliced", s(&Refreshed::Spliced { row_delta: -2 }), json!({ "kind": "spliced", "rowDelta": -2 })),
+        (
+            "Refreshed::Reset",
+            s(&Refreshed::Reset { searched_rows: 20_000 }),
+            json!({ "kind": "reset", "searchedRows": 20_000 }),
         ),
         (
             "Author",

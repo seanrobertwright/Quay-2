@@ -64,6 +64,27 @@ pub enum GraphEvent {
     Truncated { session_id: u32, cap: u32 },
     /// git failed; rows already sent stay valid.
     Failed { session_id: u32, error: GitError },
+    /// A refresh found the old rows again (#370): the `newRows` rows sent next, from row 0,
+    /// replace the first `replaceRows` rows, and the rows below move by `rowDelta`. Their edge ids
+    /// from `edgesFrom` on become ids from `edgesTo` on, and their track ids from `tracksFrom` on
+    /// become ids from `tracksTo` on. The edges and tracks crossing the splice keep the new ids:
+    /// each `[old, new]` pair in `crossingEdges` gives the new edge its old edge's close, and
+    /// `liveTracks` maps the tracks in use there. Later pages follow the renumbered rows.
+    Splice {
+        session_id: u32,
+        replace_rows: u32,
+        new_rows: u32,
+        row_delta: i64,
+        edges_from: u32,
+        edges_to: u32,
+        tracks_from: u32,
+        tracks_to: u32,
+        crossing_edges: Vec<[u32; 2]>,
+        live_tracks: Vec<[u32; 2]>,
+    },
+    /// A refresh found no old row to splice at within its search: every row sent so far is gone,
+    /// and the pages that follow, from row 0, reload them.
+    Reset { session_id: u32 },
 }
 
 /// An author as the frontend's author table holds it.
@@ -87,7 +108,7 @@ pub struct PageJson<'a> {
 }
 
 /// Interns authors across a session, so each one crosses the channel once.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AuthorTable {
     ids: HashMap<Author, u32>,
 }

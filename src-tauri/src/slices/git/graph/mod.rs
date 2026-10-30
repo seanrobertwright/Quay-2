@@ -12,6 +12,8 @@ mod session;
 mod lane_tests;
 mod refs;
 #[cfg(test)]
+mod refresh_tests;
+#[cfg(test)]
 mod refs_tests;
 #[cfg(test)]
 mod tests;
@@ -28,7 +30,7 @@ pub use lanes::{Track, TrackKind};
 pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
 pub use badges::{GitRefs, RefBadge, RefKind, WorktreeHead};
-pub use session::{GraphOptions, GraphRefs, GraphSessions};
+pub use session::{GraphOptions, GraphRefs, GraphSessions, Refreshed};
 
 /// Starts a graph session on `repo_path`, closing any live one, and streams its rows to `on_event`.
 /// Returns the session id every event carries.
@@ -50,6 +52,15 @@ pub async fn git_graph_more(session_id: u32, rows: u32, sessions: State<'_, Grap
     let sessions = sessions.inner();
     // The lock it takes can be held while an open waits for the old session's git to exit.
     tokio::task::block_in_place(|| sessions.more(session_id, rows))
+}
+
+/// Refreshes session `session_id` after its repo changed (#379): re-runs its `git log` and sends
+/// `Splice` or `Reset` with the rows that announces. Returns which, once they are sent.
+#[tauri::command]
+pub async fn git_graph_refresh(session_id: u32, sessions: State<'_, GraphSessions>) -> Result<Refreshed, GitError> {
+    let sessions = sessions.inner();
+    // The walk runs a second `git log` and lays out up to 20k rows before it answers.
+    tokio::task::block_in_place(|| sessions.refresh(session_id))
 }
 
 /// Ends session `session_id` and its git processes.

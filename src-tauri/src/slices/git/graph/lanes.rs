@@ -13,6 +13,7 @@
 //! - A row's layout depends only on the rows above it, so rows already sent never move.
 
 use std::collections::{BTreeSet, HashMap};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use serde::Serialize;
 
@@ -86,6 +87,23 @@ pub struct PageLayout {
     pub peak_lanes: u32,
 }
 
+/// The lane state before some row, for splicing a refresh onto the rows already sent (#370).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaneCheckpoint {
+    /// A hash of everything the layout of the rows below depends on, with no row number, edge id
+    /// or track id in it. Two passes whose hashes match lay out the same rows below identically,
+    /// up to a shift of those numbers.
+    pub hash: u64,
+    /// The ids the next edge and the next track opened would take.
+    pub next_edge: u32,
+    pub next_track: u32,
+    /// The edges open before the row: each lane's edge in lane order, then the joins in order.
+    /// Two passes with the same hash list them in matching order.
+    pub edges: Vec<u32>,
+    /// Each lane's track, in lane order.
+    pub tracks: Vec<u32>,
+}
+
 /// A lane in use.
 #[derive(Debug, Clone)]
 struct Slot {
@@ -124,6 +142,16 @@ pub struct LanePass {
     next_track: u32,
     peak: u32,
     page: PageLayout,
+    /// The branch tips not placed yet, as an order-free sum of each tip's hash with its key: what
+    /// git's walk still has to start from besides the commits the lanes wait for.
+    pending_tips: u64,
+}
+
+/// A hash of `value` that is the same in every run.
+fn stable_hash(value: impl Hash) -> u64 {
+    let mut h = DefaultHasher::new();
+    value.hash(&mut h);
+    h.finish()
 }
 
 impl LanePass {
@@ -139,6 +167,7 @@ impl LanePass {
             peak: 0,
             page: PageLayout::default(),
             tips: BranchTips::default(),
+            pending_tips: tips.keys.iter().fold(0, |sum, tip| sum ^ stable_hash(tip)),
         };
         // Pin lane 0 to the default branch: it waits for every local and remote tip of it at once,
         // so a stale local branch can't leave it empty at the top (#351).
@@ -167,6 +196,48 @@ impl LanePass {
                 }
             }
         }
+    }
+
+    /// The lane state before the next row.
+    pub fn checkpoint(&self) -> LaneCheckpoint {
+        let mut h = DefaultHasher::new();
+        self.lanes.len().hash(&mut h);
+        for slot in &self.lanes {
+            slot.as_ref().map(|s| (s.edge.is_some(), s.merged)).hash(&mut h);
+        }
+        for free in &self.free {
+            free.hash(&mut h);
+        }
+        // The map's order is arbitrary, so its entries are summed order-free; each lane list keeps
+        // its order, which decides the order later edges open in.
+        self.awaiting.iter().fold(0u64, |sum, entry| sum ^ stable_hash(entry)).hash(&mut h);
+        self.seed_tips.hash(&mut h);
+        for join in &self.joins {
+            (join.lane, &join.awaits).hash(&mut h);
+        }
+        self.tips.default_key.hash(&mut h);
+        self.pending_tips.hash(&mut h);
+        LaneCheckpoint {
+            hash: h.finish(),
+            next_edge: self.next_edge,
+            next_track: self.next_track,
+            edges: self.lanes.iter().flatten().filter_map(|s| s.edge).chain(self.joins.iter().map(|j| j.edge)).collect(),
+            tracks: self.lanes.iter().flatten().map(|s| s.track).collect(),
+        }
+    }
+
+    /// Renames every edge and track id in the state through `edge` and `track`, and moves the next
+    /// ids to `next_edge` and `next_track`. Called between pages, after a splice renumbers the rows.
+    pub fn renumber(&mut self, edge: impl Fn(u32) -> u32, track: impl Fn(u32) -> u32, next_edge: u32, next_track: u32) {
+        debug_assert!(self.page.rows.is_empty(), "renumbered between pages");
+        for slot in self.lanes.iter_mut().flatten() {
+            slot.track = track(slot.track);
+            slot.edge = slot.edge.map(&edge);
+        }
+        for join in &mut self.joins {
+            join.edge = edge(join.edge);
+        }
+        (self.next_edge, self.next_track) = (next_edge, next_track);
     }
 
     /// Starts a page: the next row placed is its first.
@@ -300,6 +371,9 @@ impl LanePass {
     /// Places the commit `oid`, whose message starts `subject`, at `row`, the next row in stream
     /// order.
     pub fn place(&mut self, row: u32, oid: &str, parents: &[String], subject: &str) {
+        if let Some(entry) = self.tips.keys.get_key_value(oid) {
+            self.pending_tips ^= stable_hash(entry);
+        }
         let waiting = self.awaiting.remove(oid).unwrap_or_default();
         let (lane, track) = match waiting.iter().min() {
             None => {
