@@ -154,6 +154,10 @@ function sessionBeforeSplice(): GraphFeed {
         { id: 0, key: "main", kind: "default", left: null, right: null },
         { id: 1, key: "side", kind: "named", left: null, right: null },
       ],
+      agents: [
+        { row: 0, kind: "claude", source: "coauthor" },
+        { row: 2, kind: "codex", source: "stamp" },
+      ],
     })
   );
   feed.accept({ event: "done", sessionId: 1, total: 4 });
@@ -188,6 +192,7 @@ test("a splice puts the new rows above the old rows from the match, renumbered",
       firstRow: 0,
       rowCount: 3,
       oids: ["N", "A", "B"],
+      agents: [{ row: 0, kind: null, source: "stamp", raw: "robot" }],
       edges: [
         [0, 1, 0, 0, 0, 0],
         [1, 2, 0, 0, 0, 0],
@@ -222,6 +227,17 @@ test("a splice puts the new rows above the old rows from the match, renumbered",
   assert.deepEqual(store.author(3), { name: "Author 0", email: "a0@example.invalid" });
   assert.equal(store.rowOf("S"), 3);
   assert.equal(store.rowOf("gone"), -1);
+  // Each row keeps its own agent: the refresh's rows from their page, the kept rows moved down.
+  assert.deepEqual(
+    Array.from({ length: 5 }, (_, r) => store.agent(r)),
+    [
+      { kind: null, source: "stamp", raw: "robot" },
+      null,
+      null,
+      { kind: "codex", source: "stamp" },
+      null,
+    ]
+  );
 
   assert.equal(feed.accept({ event: "done", sessionId: 1, total: 5 }), true, "the finished walk says so again");
   assert.deepEqual(feed.status, { state: "done" });
