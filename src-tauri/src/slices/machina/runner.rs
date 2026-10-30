@@ -2,9 +2,9 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
-use crate::spawn::hidden_command;
+use crate::spawn::{as_tree_root, hidden_command, kill_tree};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -47,19 +47,6 @@ fn shell_command(command: &str) -> Command {
     }
 }
 
-/// Kills the command and everything it started.
-fn kill_tree(child: &mut Child) {
-    #[cfg(windows)]
-    {
-        let _ = hidden_command("taskkill")
-            .args(["/T", "/F", "/PID", &child.id().to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
-}
-
 fn pump(mut src: impl Read + Send + 'static, sink: Arc<Mutex<Vec<u8>>>) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
@@ -86,7 +73,8 @@ pub fn run_shell(
 ) -> CommandRun {
     let started = Instant::now();
     let mut cmd = shell_command(command);
-    cmd.current_dir(cwd)
+    as_tree_root(&mut cmd)
+        .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -2,9 +2,11 @@
 //! console, so on Windows any console program it starts without `CREATE_NO_WINDOW` gets a
 //! console window of its own that flashes up and closes. Every spawn goes through
 //! [`hidden_command`]; a test below fails if a `Command::new` appears anywhere else.
+//! [`kill_tree`] stops a child and everything it started, for Machina's deadlines and
+//! Topos's Cancel.
 
 use std::ffi::OsStr;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -18,6 +20,39 @@ pub fn hidden_command(program: impl AsRef<OsStr>) -> Command {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     cmd
+}
+
+/// Makes the child `cmd` spawns lead its own process group, so [`kill_tree`] can reach the
+/// processes it starts. Windows needs nothing: `taskkill /T` follows parent ids.
+pub fn as_tree_root(cmd: &mut Command) -> &mut Command {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    cmd
+}
+
+/// Kills `child` and everything it started. On Unix that reaches the whole tree only when
+/// `child` was spawned through [`as_tree_root`].
+pub fn kill_tree(child: &mut Child) {
+    #[cfg(windows)]
+    {
+        let _ = hidden_command("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(unix)]
+    {
+        let _ = hidden_command("kill")
+            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
 }
 
 #[cfg(test)]
