@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { listRows, splitStatus, type Change, type FolderListing, type ListRow, type StatusEntry } from "./stagingLists.ts";
+import { isFolderRow, listRows, splitStatus, type Change, type FolderListing, type ListRow, type StatusEntry } from "./stagingLists.ts";
 
 const entry = (path: string, xy: string, kind: StatusEntry["kind"] = "tracked"): StatusEntry => ({ path, xy, kind });
 
@@ -39,7 +39,7 @@ const change = (path: string, letter: string, kind: Change["kind"] = "tracked"):
 function outline(rows: ListRow[]): string[] {
   return rows.map((r) => {
     const mark = r.expanded === undefined ? "" : r.expanded ? "-" : "+";
-    const suffix = r.type === "dir" || r.change?.kind === "untrackedFolder" ? "/" : "";
+    const suffix = isFolderRow(r) ? "/" : "";
     const text = r.type === "note" ? `(${r.name})` : `${mark}${r.name}${suffix}`;
     return `${"  ".repeat(r.depth)}${text}`;
   });

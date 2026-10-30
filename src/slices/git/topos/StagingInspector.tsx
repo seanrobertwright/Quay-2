@@ -10,7 +10,7 @@ import {
   MAX_INSPECTOR_WIDTH,
   MIN_INSPECTOR_WIDTH,
 } from "./stagingKeys";
-import { listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
+import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { BusyOp, Staging } from "./useStaging";
 
 /** Each status letter as words, for the row's title and its spoken name. */
@@ -31,6 +31,52 @@ const LETTER_CLASS: Record<string, string> = {
   D: "text-[#f85149]",
   U: "text-[#f85149]",
   "?": "text-[#3fb950]",
+};
+
+/** What each list is called and what acting on it does. */
+const SIDE: Record<
+  Side,
+  {
+    listLabel: string;
+    heading: string;
+    empty: string;
+    action: "stage" | "unstage";
+    verb: string;
+    key: string;
+    icon: typeof Plus;
+    /** What `s` or `u` on this list says when it's the other list's key. */
+    wrongKey: (path: string) => string;
+    allLabel: string;
+    allBusy: string;
+    allClass: string;
+  }
+> = {
+  unstaged: {
+    listLabel: "Unstaged changes",
+    heading: "Unstaged",
+    empty: "No unstaged changes",
+    action: "stage",
+    verb: "Stage",
+    key: "S",
+    icon: Plus,
+    wrongKey: (path) => `${path} isn't staged`,
+    allLabel: "Stage all",
+    allBusy: "Staging…",
+    allClass: "bg-[#238636] hover:bg-[#2ea043] text-white",
+  },
+  staged: {
+    listLabel: "Staged changes",
+    heading: "Staged",
+    empty: "Nothing staged",
+    action: "unstage",
+    verb: "Unstage",
+    key: "U",
+    icon: Minus,
+    wrongKey: (path) => `${path} is already staged`,
+    allLabel: "Unstage all",
+    allBusy: "Unstaging…",
+    allClass: "border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d]",
+  },
 };
 
 /** Whether `el` takes typed text, where the lists' bare keys must not act. */
@@ -118,9 +164,8 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
       case "stage":
       case "unstage": {
         if (!row) return;
-        const wanted = side === "unstaged" ? "stage" : "unstage";
-        if (action !== wanted) {
-          announce(side === "unstaged" ? `${row.path} isn't staged` : `${row.path} is already staged`);
+        if (action !== SIDE[side].action) {
+          announce(SIDE[side].wrongKey(row.path));
           return;
         }
         if (busy !== null) {
@@ -132,7 +177,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
     }
   };
 
-  const label = side === "unstaged" ? "Unstaged changes" : "Staged changes";
+  const { listLabel, empty, verb, key: actionKey, icon: ActionIcon } = SIDE[side];
   const shown: React.ReactNode[] = [];
   for (let i = win.start; i < win.end; i++) {
     const row = rows[i];
@@ -141,7 +186,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
     const letter = row.change?.letter ?? "";
     const words = LETTER_WORDS[letter] ?? letter;
     const rowBusy = isBusyFor(busy, row);
-    const actionLabel = `${side === "unstaged" ? "Stage" : "Unstage"} ${row.path}${row.type === "dir" || row.change?.kind === "untrackedFolder" ? "/" : ""}`;
+    const actionLabel = `${verb} ${row.path}${isFolderRow(row) ? "/" : ""}`;
     shown.push(
       <div
         key={row.key}
@@ -186,7 +231,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
             </span>
             <span className="flex-1 min-w-0 truncate text-[#c9d1d9]">
               {row.name}
-              {row.type === "dir" || row.change?.kind === "untrackedFolder" ? "/" : ""}
+              {isFolderRow(row) ? "/" : ""}
             </span>
             {/* An option can't carry aria-expanded, so the folder's state is spoken instead. */}
             <span className="sr-only">
@@ -201,12 +246,12 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
                 type="button"
                 tabIndex={-1}
                 aria-label={actionLabel}
-                title={`${actionLabel} (${side === "unstaged" ? "S" : "U"})`}
+                title={`${actionLabel} (${actionKey})`}
                 disabled={busy !== null}
                 onClick={() => onAct(row)}
                 className="shrink-0 p-0.5 rounded text-[#8b949e] opacity-0 group-hover/row:opacity-100 hover:text-white hover:bg-[#30363d] disabled:opacity-40"
               >
-                {side === "unstaged" ? <Plus className="w-3.5 h-3.5" aria-hidden="true" /> : <Minus className="w-3.5 h-3.5" aria-hidden="true" />}
+                <ActionIcon className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
             )}
           </>
@@ -219,7 +264,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
     <div
       ref={scroller}
       role="listbox"
-      aria-label={label}
+      aria-label={listLabel}
       aria-describedby={hintId}
       aria-activedescendant={active === null ? undefined : `${idPrefix}-${active}`}
       tabIndex={0}
@@ -228,7 +273,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
       className="group/list flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#06B6D4]/60"
     >
       {rows.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-[#8b949e]">{side === "unstaged" ? "No unstaged changes" : "Nothing staged"}</p>
+        <p className="px-3 py-2 text-xs text-[#8b949e]">{empty}</p>
       ) : (
         <div className="relative" style={{ height: rows.length * ROW_HEIGHT }}>
           {shown}
@@ -293,7 +338,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
   };
   const act = (side: Side) => (row: ListRow) => {
     const target = rowTarget(row);
-    if (target) run(side === "unstaged" ? "stage" : "unstage", target);
+    if (target) run(SIDE[side].action, target);
   };
 
   // The ignorable folder is the one the operator last pointed at in Unstaged.
@@ -319,13 +364,12 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
   };
 
   const sectionHeader = (side: Side, count: number) => {
-    const all = side === "unstaged" ? "stage" : "unstage";
+    const { heading, action: all, allLabel, allBusy, allClass } = SIDE[side];
     const busyAll = isBusy(all);
-    const label = side === "unstaged" ? "Stage all" : "Unstage all";
     return (
       <div className="h-8 px-3 shrink-0 flex items-center gap-2 border-y border-[#30363d] bg-[#161b22]">
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#8b949e]">
-          {side === "unstaged" ? "Unstaged" : "Staged"}
+          {heading}
           <span className="ml-1.5 normal-case font-normal tabular-nums">{count.toLocaleString()}</span>
         </h4>
         {side === "unstaged" && ignoreFolder !== null && (
@@ -345,12 +389,10 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
           disabled={busy !== null || count === 0}
           aria-busy={busyAll}
           onClick={() => run(all, { kind: "all" })}
-          className={`${side === "unstaged" && ignoreFolder !== null ? "" : "ml-auto "}inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${
-            side === "unstaged" ? "bg-[#238636] hover:bg-[#2ea043] text-white" : "border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d]"
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`${side === "unstaged" && ignoreFolder !== null ? "" : "ml-auto "}inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${allClass} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {busyAll && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}
-          {busyAll ? (side === "unstaged" ? "Staging…" : "Unstaging…") : label}
+          {busyAll ? allBusy : allLabel}
         </button>
       </div>
     );
