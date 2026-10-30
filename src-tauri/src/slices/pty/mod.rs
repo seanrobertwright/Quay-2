@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod commit_stamp;
 pub mod manager;
 pub mod models;
 pub mod opencode_watch;
