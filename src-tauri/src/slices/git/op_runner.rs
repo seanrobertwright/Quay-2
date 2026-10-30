@@ -6,8 +6,9 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -15,12 +16,27 @@ use tauri::ipc::Channel;
 use super::error::GitError;
 
 /// How a git operation runs.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OpOptions {
+    /// How long git may print nothing before the op reports [`OpEvent::Stalled`].
+    pub stall_after: Duration,
     /// Run git with `LC_ALL=C`, for operations whose stderr Topos matches (fetch, pull and the
     /// local operations). The commit path leaves it off.
     pub c_locale: bool,
 }
+
+impl Default for OpOptions {
+    fn default() -> Self {
+        Self { stall_after: STALL_AFTER, c_locale: false }
+    }
+}
+
+/// How long an op runs silent before it reports a stall. It is a notice, not a timeout: the op
+/// keeps running until git exits or the operator cancels it.
+pub const STALL_AFTER: Duration = Duration::from_secs(30);
+
+/// How often a running op checks for a stall.
+const POLL: Duration = Duration::from_millis(100);
 
 /// One step of a running operation, as the frontend receives it:
 /// `{ "event": "progress", "phase": "Receiving objects", "percent": 45 }`.
@@ -32,11 +48,31 @@ pub enum OpEvent {
     Progress { phase: String, percent: Option<u8> },
     /// A piece of git's stdout or stderr that isn't a progress line.
     Output { chunk: String },
+    /// git has printed nothing for [`OpOptions::stall_after`]. It is still running, and it reports
+    /// this again after its next output and a fresh silence.
+    Stalled,
     Done,
     Failed { error: GitError },
 }
 
-/// What a finished operation printed.
+/// The most of each stream [`OpOutput`] keeps; older output is dropped from the front.
+pub const MAX_CAPTURE_BYTES: usize = 64 * 1024;
+
+/// Appends `text` to `buf`, then drops whole characters from the front until it fits
+/// [`MAX_CAPTURE_BYTES`].
+fn push_capped(buf: &mut String, text: &str) {
+    buf.push_str(text);
+    if buf.len() > MAX_CAPTURE_BYTES {
+        let mut cut = buf.len() - MAX_CAPTURE_BYTES;
+        while !buf.is_char_boundary(cut) {
+            cut += 1;
+        }
+        buf.drain(..cut);
+    }
+}
+
+/// What a finished operation printed, the last [`MAX_CAPTURE_BYTES`] of each stream. Progress
+/// lines are left out of `stderr`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OpOutput {
     pub stdout: String,
@@ -100,12 +136,27 @@ fn run(cwd: &Path, args: &[&str], opts: &OpOptions, channel: &Channel<OpEvent>) 
 
     let mut output = OpOutput::default();
     let mut stderr_line = Vec::new();
+    let mut last_heard = Instant::now();
+    let mut stalled = false;
     // Both pumps hang up once git, and anything it started, closes the pipes.
-    for (stream, bytes) in rx {
+    loop {
+        let (stream, bytes) = match rx.recv_timeout(POLL) {
+            Ok(received) => received,
+            Err(RecvTimeoutError::Timeout) => {
+                if !stalled && last_heard.elapsed() >= opts.stall_after {
+                    stalled = true;
+                    let _ = channel.send(OpEvent::Stalled);
+                }
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
+        last_heard = Instant::now();
+        stalled = false;
         match stream {
             Stream::Stdout => {
                 let chunk = String::from_utf8_lossy(&bytes).into_owned();
-                output.stdout.push_str(&chunk);
+                push_capped(&mut output.stdout, &chunk);
                 let _ = channel.send(OpEvent::Output { chunk });
             }
             Stream::Stderr => {
@@ -138,7 +189,7 @@ fn stderr_segment(line: &[u8], output: &mut OpOutput, channel: &Channel<OpEvent>
         let _ = channel.send(OpEvent::Progress { phase: phase.to_string(), percent });
         return;
     }
-    output.stderr.push_str(&text);
+    push_capped(&mut output.stderr, &text);
     let _ = channel.send(OpEvent::Output { chunk: text.into_owned() });
 }
 
@@ -236,7 +287,7 @@ mod tests {
 
     #[test]
     fn c_locale_is_applied_only_when_asked_for() {
-        assert_eq!(child_env(&OpOptions { c_locale: true }, "LC_ALL").as_deref(), Some("C"));
+        assert_eq!(child_env(&OpOptions { c_locale: true, ..OpOptions::default() }, "LC_ALL").as_deref(), Some("C"));
         // Left off, git sees whatever Quay itself was started with.
         assert_eq!(child_env(&OpOptions::default(), "LC_ALL"), std::env::var("LC_ALL").ok());
     }
@@ -245,7 +296,7 @@ mod tests {
     fn git_ssh_command_is_left_as_the_operator_set_it() {
         let parent = std::env::var("GIT_SSH_COMMAND").ok();
         assert_eq!(child_env(&OpOptions::default(), "GIT_SSH_COMMAND"), parent);
-        assert_eq!(child_env(&OpOptions { c_locale: true }, "GIT_SSH_COMMAND"), parent);
+        assert_eq!(child_env(&OpOptions { c_locale: true, ..OpOptions::default() }, "GIT_SSH_COMMAND"), parent);
     }
 
     /// The `chunk` of every `output` event, joined.
@@ -304,7 +355,7 @@ mod tests {
 
         let (channel, events) = test_channel();
         let remote_path = remote.to_string_lossy().into_owned();
-        run_op(&local, &["fetch", "--progress", &remote_path, "main"], &OpOptions { c_locale: true }, &channel).unwrap();
+        run_op(&local, &["fetch", "--progress", &remote_path, "main"], &OpOptions { c_locale: true, ..OpOptions::default() }, &channel).unwrap();
 
         let events = events.lock().unwrap();
         let counting: Vec<&Value> =
@@ -316,5 +367,39 @@ mod tests {
             .any(|e| e["event"] == "progress" && e["phase"] == "Enumerating objects" && e["percent"].is_null()));
         assert!(!streamed_output(&events).contains("objects:"), "progress leaked into output: {events:?}");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn captured_output_keeps_the_last_64_kib_of_each_stream() {
+        let dir = scratch_dir();
+        let (channel, _events) = test_channel();
+        // About 170 KB on each stream.
+        let def = "alias.probe=!seq 1 30000; seq 1 30000 >&2";
+        let out = run_op(&dir, &alias_args(def), &OpOptions::default(), &channel).unwrap();
+        for captured in [&out.stdout, &out.stderr] {
+            assert!(captured.len() <= 64 * 1024, "kept {} bytes", captured.len());
+            assert!(captured.len() > 60 * 1024, "kept only {} bytes", captured.len());
+            assert!(captured.ends_with("29999
+30000
+"));
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_silent_op_reports_stalled_and_keeps_running() {
+        assert_eq!(OpOptions::default().stall_after, Duration::from_secs(30));
+
+        let dir = scratch_dir();
+        let (channel, events) = test_channel();
+        let opts = OpOptions { stall_after: Duration::from_millis(300), ..OpOptions::default() };
+        let out = run_op(&dir, &alias_args("alias.probe=!sleep 2; echo after"), &opts, &channel).unwrap();
+        assert_eq!(out.stdout, "after
+");
+
+        let kinds: Vec<String> =
+            events.lock().unwrap().iter().map(|e| e["event"].as_str().unwrap().to_string()).collect();
+        assert_eq!(kinds, ["stalled", "output", "done"]);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
