@@ -7,7 +7,7 @@ import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
-import { badgesByOid, tagOnlyLine, type Badge } from "./graphRefs";
+import { refsView } from "./graphRefs";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 
@@ -27,8 +27,6 @@ export interface ToposOverlayProps {
   onClose: () => void;
   onAddProject: () => void;
 }
-
-const NO_BADGES: ReadonlyMap<string, Badge[]> = new Map();
 
 type VersionCheck =
   | { state: "idle" }
@@ -91,12 +89,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   // Refs are per repo too, so a move between its worktrees moves only the HEAD marker (#378).
   const refs = useGraphRefs(graphRepo, shown);
   const selectedPath = target?.path ?? null;
-  const badges = useMemo(
-    () => (refs.state === "done" ? badgesByOid(refs.refs, selectedPath) : NO_BADGES),
-    [refs, selectedPath]
-  );
-  const tagOnlyNote = refs.state === "done" ? tagOnlyLine(refs.refs.tagOnlyCount) : null;
-  const refsError = refs.state === "failed" ? `Couldn't read branches and tags: ${refs.message}` : null;
+  const refsShown = useMemo(() => refsView(refs, selectedPath), [refs, selectedPath]);
 
   return (
     <div
@@ -207,9 +200,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 onReachedRow={graph.reachedRow}
                 columnWidth={columnWidth}
                 onColumnWidth={setColumnWidth}
-                badges={badges}
-                tagOnlyNote={tagOnlyNote}
-                refsError={refsError}
+                refs={refsShown}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
