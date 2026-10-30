@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::error::GitError;
 use super::staging::{ignore_folder, read_status, stage_paths, unstage_paths, PathTarget, StagingLocks, STATUS_CAP};
 
-fn git(dir: &Path, args: &[&str]) -> String {
+pub(super) fn git(dir: &Path, args: &[&str]) -> String {
     let out = crate::spawn::hidden_command("git").current_dir(dir).args(args).output().unwrap();
     assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).into_owned()
@@ -17,7 +17,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
 /// A repo on `main` with `README.md` and `src/lib.rs` committed, and a linked worktree on `feat`.
 /// Returns (root, worktree); the tests work in the worktree, whose index lives under the main
 /// repo's `.git/worktrees/`.
-fn repo_with_worktree() -> (PathBuf, PathBuf) {
+pub(super) fn repo_with_worktree() -> (PathBuf, PathBuf) {
     let root = std::env::temp_dir().join(format!("quay-stage-{}", uuid::Uuid::new_v4().simple()));
     let repo = root.join("repo");
     let worktree = root.join("wt");
@@ -245,7 +245,7 @@ fn unstaging_on_an_unborn_branch_takes_the_paths_out_of_the_index() {
 }
 
 /// The worktree's own `index.lock`, under the main repo's `.git/worktrees/`.
-fn index_lock(wt: &Path) -> PathBuf {
+pub(super) fn index_lock(wt: &Path) -> PathBuf {
     PathBuf::from(git(wt, &["rev-parse", "--path-format=absolute", "--git-path", "index.lock"]).trim())
 }
 

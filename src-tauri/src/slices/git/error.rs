@@ -12,6 +12,9 @@ pub enum GitError {
     IndexLocked,
     /// A staging operation is already running on this worktree, and only one runs at a time.
     StagingBusy,
+    /// The file changed since its diff was read, so the selection made on that diff is dropped
+    /// rather than applied to what the file holds now.
+    StaleDiff,
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -22,6 +25,7 @@ impl std::fmt::Display for GitError {
             GitError::Cancelled => f.write_str("cancelled"),
             GitError::IndexLocked => f.write_str("another git process holds index.lock"),
             GitError::StagingBusy => f.write_str("a staging operation is already running on this worktree"),
+            GitError::StaleDiff => f.write_str("the file changed since its diff was read"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }
