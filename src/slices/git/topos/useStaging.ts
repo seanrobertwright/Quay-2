@@ -29,6 +29,12 @@ export interface StageRequest {
   loadLarge: boolean;
 }
 
+/** `StageResult` from `src-tauri/src/slices/git/diff.rs`. */
+export interface StageResult {
+  diff: FileDiff;
+  status: WorktreeStatus;
+}
+
 /** How a stage or unstage from the diff view ended. */
 export type SelectionOutcome =
   | { kind: "done"; diff: FileDiff }
@@ -205,7 +211,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
       setFailure(null);
       const id = ids.current.next();
       const retry = () => void stageSelection(action, request, diffRequestId);
-      return invoke<{ diff: FileDiff; status: WorktreeStatus }>("git_stage_selection", {
+      return invoke<StageResult>("git_stage_selection", {
         worktreePath: worktree,
         requestId: id,
         diffRequestId,
