@@ -26,6 +26,7 @@
         "script-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'"],
         "connect-src": ["ipc:", "http://ipc.localhost", "https://api.github.com"],
+        "img-src": ["'self'", "blob:"],
         "object-src": ["'none'"],
         "base-uri": ["'none'"],
         "form-action": ["'none'"],

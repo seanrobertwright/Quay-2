@@ -1,4 +1,7 @@
 pub mod commands;
+pub mod diff;
+#[cfg(test)]
+mod diff_tests;
 pub mod error;
 pub mod graph;
 pub mod models;
@@ -11,6 +14,7 @@ mod staging_tests;
 pub mod version;
 
 pub use commands::*;
+pub use diff::*;
 pub use error::*;
 pub use graph::*;
 pub use models::*;

@@ -50,18 +50,28 @@ test("a held index.lock offers Retry, and other failures say what git said", () 
   assert.deepEqual(failureView({ kind: "indexLocked" }), {
     message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.",
     retry: true,
+    stale: false,
   });
   assert.deepEqual(failureView({ kind: "stagingBusy" }), {
     message: "Another staging operation is still running on this worktree.",
     retry: false,
+    stale: false,
   });
-  assert.deepEqual(failureView({ kind: "other", stderr: "fatal: bad" }), { message: "fatal: bad", retry: false });
-  assert.deepEqual(failureView("plain"), { message: "plain", retry: false });
+  assert.deepEqual(failureView({ kind: "other", stderr: "fatal: bad" }), { message: "fatal: bad", retry: false, stale: false });
+  assert.deepEqual(failureView("plain"), { message: "plain", retry: false, stale: false });
+});
+
+test("a stale diff says the file changed, offers no Retry and asks for the diff to reload", () => {
+  assert.deepEqual(failureView({ kind: "staleDiff" }), {
+    message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
+    retry: false,
+    stale: true,
+  });
 });
 
 test("a failure reads only its own kind and stderr, never inherited ones", () => {
   const inherited = Object.create({ kind: "indexLocked", stderr: "from the prototype" }) as object;
-  assert.deepEqual(failureView(inherited), { message: "[object Object]", retry: false });
+  assert.deepEqual(failureView(inherited), { message: "[object Object]", retry: false, stale: false });
 });
 
 test("the inspector opens 400 px wide and its handle resizes it within bounds", () => {

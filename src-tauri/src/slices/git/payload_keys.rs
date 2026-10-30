@@ -4,6 +4,7 @@
 
 use serde_json::{json, Value};
 
+use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::error::GitError;
 use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
@@ -135,6 +136,56 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),
         ("GitError::IndexLocked", s(&GitError::IndexLocked), json!({ "kind": "indexLocked" })),
         ("GitError::StagingBusy", s(&GitError::StagingBusy), json!({ "kind": "stagingBusy" })),
+        ("GitError::StaleDiff", s(&GitError::StaleDiff), json!({ "kind": "staleDiff" })),
+        (
+            "DiffSide::Commit",
+            s(&DiffSide::Commit { oid: "abc1".into(), parent: None }),
+            json!({ "kind": "commit", "oid": "abc1", "parent": null }),
+        ),
+        ("DiffSide::Unstaged", s(&DiffSide::Unstaged), json!({ "kind": "unstaged" })),
+        ("FileChange::Untracked", s(&FileChange::Untracked), json!("untracked")),
+        ("LineKind::NoNewline", s(&LineKind::NoNewline), json!("noNewline")),
+        (
+            "StageResult",
+            s(&StageResult {
+                diff: FileDiff {
+                    request_id: 4,
+                    path: "src/a.rs".into(),
+                    diff_token: "3.abc.0000000000000001".into(),
+                    change: FileChange::Modified,
+                    binary: false,
+                    submodule: false,
+                    too_large: false,
+                    bytes: 120,
+                    line_count: 2,
+                    mode_change: Some(ModeChange { old_mode: "100644".into(), new_mode: "100755".into() }),
+                    old_oid: Some("abc".into()),
+                    new_oid: None,
+                    hunks: vec![Hunk {
+                        old_start: 1,
+                        old_lines: 1,
+                        new_start: 1,
+                        new_lines: 1,
+                        heading: "fn main()".into(),
+                        lines: vec![DiffLine { kind: LineKind::Del, text: "a\r".into() }],
+                    }],
+                },
+                status: WorktreeStatus { request_id: 5, entries: vec![], total: 0, truncated: false },
+            }),
+            json!({
+                "diff": {
+                    "requestId": 4, "path": "src/a.rs", "diffToken": "3.abc.0000000000000001", "change": "modified",
+                    "binary": false, "submodule": false, "tooLarge": false, "bytes": 120, "lineCount": 2,
+                    "modeChange": { "oldMode": "100644", "newMode": "100755" },
+                    "oldOid": "abc", "newOid": null,
+                    "hunks": [{
+                        "oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "heading": "fn main()",
+                        "lines": [{ "kind": "del", "text": "a\r" }]
+                    }]
+                },
+                "status": { "requestId": 5, "entries": [], "total": 0, "truncated": false }
+            }),
+        ),
         (
             "WorktreeStatus",
             s(&WorktreeStatus {

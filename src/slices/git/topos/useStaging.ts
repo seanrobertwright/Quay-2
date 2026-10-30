@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "./gitVersion";
 import { RequestIds } from "./refreshTable";
-import { doneMessage, failureView, type StagingAction } from "./stagingKeys";
+import type { DiffSide, FileDiff } from "./diffDoc";
+import { selectionDoneMessage, type Selection } from "./diffView";
+import { doneMessage, failureView, type StageDirection, type StagingAction } from "./stagingKeys";
 import { splitStatus, type FolderListing, type PathTarget, type WorktreeStatus } from "./stagingLists";
 
 export type StatusState =
@@ -14,7 +16,32 @@ export type StatusState =
 export interface BusyOp {
   action: StagingAction;
   target: PathTarget;
+  /** For a stage or unstage from the diff view, what part of the file it acts on. */
+  selection?: Selection;
 }
+
+/** `StageRequest` from `src-tauri/src/slices/git/diff.rs`. */
+export interface StageRequest {
+  path: string;
+  side: DiffSide;
+  diffToken: string;
+  selection: Selection;
+  loadLarge: boolean;
+}
+
+/** `StageResult` from `src-tauri/src/slices/git/diff.rs`. */
+export interface StageResult {
+  diff: FileDiff;
+  status: WorktreeStatus;
+}
+
+/** How a stage or unstage from the diff view ended. */
+export type SelectionOutcome =
+  | { kind: "done"; diff: FileDiff }
+  /** It failed; `stale` when the diff it was made on no longer matches the file. */
+  | { kind: "failed"; stale: boolean }
+  /** Another operation was running, or the worktree changed, so it never ran. */
+  | { kind: "skipped" };
 
 /** A failed staging operation, with Retry when the failure allows one. */
 export interface StagingFailure {
@@ -32,6 +59,12 @@ export interface Staging {
   announcement: { text: string; seq: number };
   announce: (text: string) => void;
   run: (action: StagingAction, target: PathTarget) => void;
+  /**
+   * Stages or unstages part of one file from the diff view (#383), as one of this worktree's
+   * staging operations. The post-write status lands here; the new diff, which answers
+   * `diffRequestId`, is the caller's.
+   */
+  stageSelection: (action: StageDirection, request: StageRequest, diffRequestId: number) => Promise<SelectionOutcome>;
   /** The untracked folders the operator expanded, each with its capped `status -uall`. */
   folders: ReadonlyMap<string, FolderListing>;
   toggleFolder: (folder: string) => void;
@@ -168,6 +201,43 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     [accept, announce]
   );
 
+  const stageSelection = useCallback(
+    (action: StageDirection, request: StageRequest, diffRequestId: number): Promise<SelectionOutcome> => {
+      const worktree = path.current;
+      if (worktree === null || running.current) return Promise.resolve({ kind: "skipped" });
+      running.current = true;
+      const target: PathTarget = { kind: "paths", paths: [request.path] };
+      setBusy({ action, target, selection: request.selection });
+      setFailure(null);
+      const id = ids.current.next();
+      const retry = () => void stageSelection(action, request, diffRequestId);
+      return invoke<StageResult>("git_stage_selection", {
+        worktreePath: worktree,
+        requestId: id,
+        diffRequestId,
+        request,
+      })
+        .then(
+          (out): SelectionOutcome => {
+            accept(worktree, id, out.status);
+            announce(selectionDoneMessage(action, request.path, request.selection));
+            return { kind: "done", diff: out.diff };
+          },
+          (e: unknown): SelectionOutcome => {
+            const view = failureView(e);
+            if (path.current === worktree) setFailure({ message: view.message, retry: view.retry ? retry : null });
+            announce(view.message);
+            return { kind: "failed", stale: view.stale };
+          }
+        )
+        .finally(() => {
+          running.current = false;
+          setBusy(null);
+        });
+    },
+    [accept, announce]
+  );
+
   const toggleFolder = useCallback(
     (folder: string) => {
       const worktree = path.current;
@@ -195,5 +265,5 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
 
   // Status read for another worktree is never handed out, not even for the render before a new read.
   const shown = status.state !== "idle" && status.worktreePath !== worktreePath ? ({ state: "idle" } as const) : status;
-  return { status: shown, reload, busy, failure, announcement, announce, run, folders, toggleFolder };
+  return { status: shown, reload, busy, failure, announcement, announce, run, stageSelection, folders, toggleFolder };
 }

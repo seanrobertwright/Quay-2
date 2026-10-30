@@ -44,29 +44,32 @@ export function useLiveUpdates(
   visible: boolean,
   graph: GraphSession,
   refs: GraphRefsReader,
-  status: StatusReloader
+  status: StatusReloader,
+  /** The open file's diff, or null when none is open. */
+  diff: StatusReloader | null
 ): () => void {
   const sessionId = graph.feed?.sessionId ?? null;
   const watchState = graph.feed?.watch?.state ?? null;
   // The handlers below outlive renders, so they read the newest of these through refs.
-  const latest = useRef({ graph, refs, status, target });
-  latest.current = { graph, refs, status, target };
+  const latest = useRef({ graph, refs, status, diff, target });
+  latest.current = { graph, refs, status, diff, target };
   const operation = useRef({ inOperation: false, graphHeld: false });
 
   const queue = useRef<RefreshQueue | null>(null);
   if (queue.current === null) {
     queue.current = new RefreshQueue(async (dirty: Dirty) => {
-      const { graph, refs, status, target } = latest.current;
+      const { graph, refs, status, diff, target } = latest.current;
       const store = graph.feed?.store ?? null;
       if (target === null || store === null) return;
       const plan = planRefresh(dirty, operation.current);
       if (plan.holdGraph) operation.current.graphHeld = true;
       if (plan.graph === "yes") operation.current.graphHeld = false;
-      // The staging inspector's status (#382) carries a request id, so a slower, older read never
-      // lands over it. The open diff and the operation banner join here with #383 and #389.
+      // The staging inspector's status (#382) and the open diff (#383) carry request ids, so a
+      // slower, older read never lands over either. The operation banner joins here with #389.
       const statusRead = plan.status ? status.reload() : null;
+      const diffRead = plan.diff && diff !== null ? diff.reload() : null;
       if (!plan.refs) {
-        await statusRead;
+        await Promise.all([statusRead, diffRead]);
         return;
       }
       const before = refs.refs.state === "done" ? tipOids(refs.refs.refs) : null;
@@ -81,7 +84,7 @@ export function useLiveUpdates(
             isLoaded: (oid) => store.rowOf(oid) !== -1,
           }));
       if (run) await graph.refresh();
-      await statusRead;
+      await Promise.all([statusRead, diffRead]);
     });
   }
 

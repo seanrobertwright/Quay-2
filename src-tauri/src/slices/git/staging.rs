@@ -120,7 +120,7 @@ impl StagingLocks {
 
 /// A headless git in `worktree` with literal pathspecs and `LC_ALL=C`, so a path is never a glob
 /// and stderr can be matched.
-fn worktree_git(worktree: &Path) -> Command {
+pub(super) fn worktree_git(worktree: &Path) -> Command {
     let mut git = headless_git();
     git.current_dir(worktree).env("GIT_LITERAL_PATHSPECS", "1").env("LC_ALL", "C");
     git
@@ -217,7 +217,7 @@ pub fn read_status(worktree: &Path, request_id: u32, folder: Option<&str>) -> Re
 
 /// A path relative to the worktree root as git prints it, without a trailing `/`. Refused when it
 /// is empty, absolute, holds a NUL or a drive colon, or has an empty, `.` or `..` component.
-fn parse_rel_path(path: &str) -> Result<&str, GitError> {
+pub(super) fn parse_rel_path(path: &str) -> Result<&str, GitError> {
     let trimmed = path.strip_suffix('/').unwrap_or(path);
     let bad = trimmed.is_empty()
         || trimmed.contains('\0')
@@ -244,22 +244,33 @@ fn parse_paths(paths: &[String]) -> Result<Vec<&str>, GitError> {
 /// While another process holds `index.lock` it tries again, [`INDEX_LOCK_ATTEMPTS`] times in all,
 /// and then reports [`GitError::IndexLocked`]. It never touches the lock itself.
 fn run_write(worktree: &Path, args: &[&str], pathspecs: Option<&[&str]>) -> Result<(), GitError> {
-    let mut attempt = 1;
-    loop {
-        let mut git = worktree_git(worktree);
-        git.args(args).stdout(Stdio::null()).stderr(Stdio::piped());
-        if pathspecs.is_some() {
-            git.args(["--pathspec-from-file=-", "--pathspec-file-nul"]).stdin(Stdio::piped());
-        }
-        let mut child = git.spawn().map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })?;
-        if let (Some(specs), Some(mut stdin)) = (pathspecs, child.stdin.take()) {
+    match pathspecs {
+        None => run_write_input(worktree, args, None),
+        Some(specs) => {
             let mut input = Vec::new();
             for spec in specs {
                 input.extend_from_slice(spec.as_bytes());
                 input.push(0);
             }
+            let mut args = args.to_vec();
+            args.extend(["--pathspec-from-file=-", "--pathspec-file-nul"]);
+            run_write_input(worktree, &args, Some(&input))
+        }
+    }
+}
+
+/// Runs a git write in `worktree` with `input` on its stdin, retrying a held `index.lock` the way
+/// [`run_write`] does.
+pub(super) fn run_write_input(worktree: &Path, args: &[&str], input: Option<&[u8]>) -> Result<(), GitError> {
+    let mut attempt = 1;
+    loop {
+        let mut git = worktree_git(worktree);
+        git.args(args).stdout(Stdio::null()).stderr(Stdio::piped());
+        git.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() });
+        let mut child = git.spawn().map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })?;
+        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
             // A git that fails early closes its stdin; its stderr says why.
-            let _ = stdin.write_all(&input);
+            let _ = stdin.write_all(input);
         }
         let out = child.wait_with_output().map_err(|e| GitError::Other { stderr: format!("could not wait for git: {e}") })?;
         if out.status.success() {
@@ -282,15 +293,20 @@ fn run_write(worktree: &Path, args: &[&str], pathspecs: Option<&[&str]>) -> Resu
 /// change, including those past the status cap.
 pub fn stage_paths(locks: &StagingLocks, worktree: &Path, request_id: u32, target: &PathTarget) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
-    match target {
-        PathTarget::All => run_write(worktree, &["add", "-A"], None)?,
-        PathTarget::Paths { paths } => run_write(worktree, &["add", "-A"], Some(&parse_paths(paths)?))?,
-    }
+    write_stage(worktree, target)?;
     read_status(worktree, request_id, None)
 }
 
+/// The write [`stage_paths`] makes, for a caller that already holds the worktree's staging slot.
+pub(super) fn write_stage(worktree: &Path, target: &PathTarget) -> Result<(), GitError> {
+    match target {
+        PathTarget::All => run_write(worktree, &["add", "-A"], None),
+        PathTarget::Paths { paths } => run_write(worktree, &["add", "-A"], Some(&parse_paths(paths)?)),
+    }
+}
+
 /// Whether `worktree`'s HEAD names a commit; on an unborn branch it doesn't.
-fn has_head(worktree: &Path) -> bool {
+pub(super) fn has_head(worktree: &Path) -> bool {
     worktree_git(worktree)
         .args(["rev-parse", "--verify", "--quiet", "HEAD"])
         .stdout(Stdio::null())
@@ -305,16 +321,20 @@ fn has_head(worktree: &Path) -> bool {
 /// `All` unstages every change, including those past the status cap.
 pub fn unstage_paths(locks: &StagingLocks, worktree: &Path, request_id: u32, target: &PathTarget) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
-    let born = has_head(worktree);
-    match (target, born) {
-        (PathTarget::All, true) => run_write(worktree, &["reset", "-q"], None)?,
-        (PathTarget::All, false) => run_write(worktree, &["rm", "--cached", "-r", "-q", "--ignore-unmatch", "--", "."], None)?,
-        (PathTarget::Paths { paths }, true) => run_write(worktree, &["reset", "-q"], Some(&parse_paths(paths)?))?,
+    write_unstage(worktree, target)?;
+    read_status(worktree, request_id, None)
+}
+
+/// The write [`unstage_paths`] makes, for a caller that already holds the worktree's staging slot.
+pub(super) fn write_unstage(worktree: &Path, target: &PathTarget) -> Result<(), GitError> {
+    match (target, has_head(worktree)) {
+        (PathTarget::All, true) => run_write(worktree, &["reset", "-q"], None),
+        (PathTarget::All, false) => run_write(worktree, &["rm", "--cached", "-r", "-q", "--ignore-unmatch", "--", "."], None),
+        (PathTarget::Paths { paths }, true) => run_write(worktree, &["reset", "-q"], Some(&parse_paths(paths)?)),
         (PathTarget::Paths { paths }, false) => {
-            run_write(worktree, &["rm", "--cached", "-r", "-q", "--ignore-unmatch"], Some(&parse_paths(paths)?))?
+            run_write(worktree, &["rm", "--cached", "-r", "-q", "--ignore-unmatch"], Some(&parse_paths(paths)?))
         }
     }
-    read_status(worktree, request_id, None)
 }
 
 /// `folder` as a `.gitignore` line that matches that folder alone: anchored to the root with a
