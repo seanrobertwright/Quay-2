@@ -167,6 +167,7 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
 | `Ctrl+Shift+B F` | **Machina** | Open AI Software Factory cockpit |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |
+| `Ctrl+Shift+B C` | **Topos** | Open the Git cockpit for the active project |
 | `Ctrl+Shift+P` | **Command Palette** | Global searchable command palette. `Ctrl+K` also opens it when a terminal does not have focus |
 | `Esc` | **Dismiss** | Close active modal or drawer |
 

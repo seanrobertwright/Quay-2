@@ -91,6 +91,7 @@ interface CommandPaletteProps {
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
   onOpenPraxisBuilder?: () => void;
+  onOpenTopos?: () => void;
   onCheckForUpdates?: () => void;
 }
 
@@ -123,6 +124,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenArchonGraph,
   onOpenFactoryStation,
   onOpenPraxisBuilder,
+  onOpenTopos,
   onCheckForUpdates,
   onToggleLiveMode,
   onAddProject,
@@ -450,6 +452,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    if (onOpenTopos) {
+      items.push({
+        id: "action-topos",
+        category: "Tools & Actions",
+        title: "Topos: Git Cockpit",
+        subtitle: "See the active project's commits, branches and changes",
+        icon: <GitBranch className="w-4 h-4 text-[#06B6D4]" />,
+        shortcut: "Ctrl+Shift+B c",
+        action: () => onOpenTopos(),
+      });
+    }
+
     if (onToggleLiveMode) {
       items.push({
         id: "action-toggle-gatekeeper",
@@ -574,6 +588,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenArchonGraph,
     onOpenFactoryStation,
     onOpenPraxisBuilder,
+    onOpenTopos,
     onCheckForUpdates,
     onToggleLiveMode,
     onAddProject,

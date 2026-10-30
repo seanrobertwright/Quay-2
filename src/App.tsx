@@ -28,6 +28,7 @@ import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
+import { ToposOverlay } from "./slices/git/topos/ToposOverlay";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
@@ -103,6 +104,8 @@ export function App() {
     setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
+    isToposOpen,
+    setIsToposOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
@@ -204,7 +207,7 @@ export function App() {
   );
 
   // The builder works on the active project when it is a registered project or one of its
-  // worktrees, the same folders the backend's praxis commands accept.
+  // worktrees, the same folders the backend's praxis commands accept. Topos targets the same.
   const builderProject = useMemo<BuilderProject | null>(() => {
     const registered = projects.find((p) => isSamePath(p.path, activeProject));
     if (registered) return { path: registered.path, name: registered.name };
@@ -215,6 +218,7 @@ export function App() {
     return null;
   }, [projects, projectWorktrees, activeProject]);
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
+  const closeTopos = useCallback(() => setIsToposOpen(false), [setIsToposOpen]);
   // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
   const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
@@ -556,6 +560,7 @@ export function App() {
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
+        onOpenTopos={() => setIsToposOpen(true)}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}
         onToggleLiveMode={
           activeTerminalId
@@ -746,6 +751,14 @@ export function App() {
         onClose={closePraxisBuilder}
         onAddProject={() => setIsAddProjectOpen(true)}
         onUnsavedProjectsChange={onPraxisUnsavedChange}
+      />
+
+      {/* Topos git cockpit (Ctrl+Shift+B c): hidden, never unmounted, when closed */}
+      <ToposOverlay
+        isOpen={isToposOpen}
+        project={builderProject}
+        onClose={closeTopos}
+        onAddProject={() => setIsAddProjectOpen(true)}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}
