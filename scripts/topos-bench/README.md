@@ -61,7 +61,7 @@ The others are checked elsewhere or have nothing to measure yet:
 | --- | --- |
 | 2. Rows appear without a commit-graph, with a progress line and the speed-up banner | Behavior, not a timing. The banner is #385. |
 | 4. At most 50k rows load eagerly | `DEFAULT_SOFT_CAP` in the Rust session, with its soft-cap tests |
-| 10. Trailer fields add at most 10 ms to the first page | The session always asks git for the trailers, so there is no trailer-free session to compare against. #370 measured +0 to 7 ms. |
+| 10. Trailer fields add at most 10 ms to the first page | The session always asks git for the trailers, so there is no trailer-free session to compare against. #370 measured +0 to 7 ms. #381 timed git's first 512 records with and without the two fields, median of 25 interleaved runs: +1.5 ms on `syn-1m` and +7.3 ms on `linux`. Classifying them in the session left its first-page time where it was. |
 
 ## Inputs
 
