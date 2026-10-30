@@ -13,8 +13,11 @@ import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 import { useLiveUpdates } from "./useLiveUpdates";
+import { FileDiffView, type DiffMode } from "./FileDiffView";
 import { StagingInspector } from "./StagingInspector";
 import { DEFAULT_INSPECTOR_WIDTH, wipLabel } from "./stagingKeys";
+import { splitStatus } from "./stagingLists";
+import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useStaging } from "./useStaging";
 import { isSamePath } from "../../../utils/paths";
 
@@ -116,7 +119,18 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   );
   // The inspector works on the selected worktree's own index (#349, #382).
   const staging = useStaging(graphRepo !== null ? selectedPath : null, shown);
-  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging);
+  // A file's diff in place of the graph (#383). It closes when the worktree changes.
+  const [openFile, setOpenFile] = useState<OpenFile | null>(null);
+  useEffect(() => setOpenFile(null), [selectedPath]);
+  // Outlives the diff view, like the column widths. Persisting it is the settings ticket's.
+  const [diffMode, setDiffMode] = useState<DiffMode>("unified");
+  const fileDiff = useFileDiff(graphRepo !== null ? selectedPath : null, openFile, staging);
+  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
+  const otherSideHasChanges = useMemo(() => {
+    if (openFile === null || staging.status.state !== "done") return false;
+    const other = openFile.side === "unstaged" ? "staged" : "unstaged";
+    return splitStatus(staging.status.status.entries)[other].some((c) => c.path === openFile.path);
+  }, [openFile, staging.status]);
   const inspectorId = useId();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // Outlives the inspector, like the graph column. Persisting it is the settings ticket's.
@@ -270,18 +284,38 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
               </div>
             ) : graph.feed ? (
               <div className="flex-1 flex min-h-0">
-                <div className="flex-1 min-w-0 flex flex-col">
-                  <GraphList
-                    key={`${order}:${target.repoPath}`}
-                    feed={graph.feed}
-                    version={graph.version}
-                    onReachedRow={graph.reachedRow}
-                    columnWidth={columnWidth}
-                    onColumnWidth={setColumnWidth}
-                    refs={refsShown}
-                    worktreeAgents={worktreeAgents}
-                    wip={wip}
-                  />
+                <div className="relative flex-1 min-w-0 flex flex-col">
+                  {/* The graph stays mounted under an open diff, keeping its scroll and selection. */}
+                  <div className="flex-1 min-h-0 flex flex-col" inert={openFile !== null}>
+                    <GraphList
+                      key={`${order}:${target.repoPath}`}
+                      feed={graph.feed}
+                      version={graph.version}
+                      onReachedRow={graph.reachedRow}
+                      columnWidth={columnWidth}
+                      onColumnWidth={setColumnWidth}
+                      refs={refsShown}
+                      worktreeAgents={worktreeAgents}
+                      wip={wip}
+                    />
+                  </div>
+                  {openFile && (
+                    <FileDiffView
+                      key={`${openFile.side}:${openFile.path}`}
+                      worktreePath={target.path}
+                      file={openFile}
+                      reader={fileDiff}
+                      busy={staging.busy}
+                      mode={diffMode}
+                      onMode={setDiffMode}
+                      otherSideHasChanges={otherSideHasChanges}
+                      onOpenOtherSide={() =>
+                        setOpenFile({ path: openFile.path, side: openFile.side === "unstaged" ? "staged" : "unstaged" })
+                      }
+                      onBack={() => setOpenFile(null)}
+                      visible={isOpen}
+                    />
+                  )}
                 </div>
                 {inspectorOpen && (
                   <StagingInspector
@@ -291,6 +325,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     width={inspectorWidth}
                     onWidth={setInspectorWidth}
                     onClose={() => setInspectorOpen(false)}
+                    openFile={openFile}
+                    onOpenFile={setOpenFile}
                   />
                 )}
               </div>

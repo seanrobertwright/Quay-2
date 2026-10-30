@@ -11,6 +11,7 @@ import {
   MIN_INSPECTOR_WIDTH,
 } from "./stagingKeys";
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
+import type { OpenFile } from "./useFileDiff";
 import type { BusyOp, Staging } from "./useStaging";
 
 /** Each status letter as words, for the row's title and its spoken name. */
@@ -90,6 +91,11 @@ function rowTarget(row: ListRow): PathTarget | null {
   return row.type === "note" ? null : { kind: "paths", paths: [row.path] };
 }
 
+/** Whether `row` is a file whose diff can open: a tracked or untracked file, not a folder or a conflict. */
+function opensDiff(row: ListRow): boolean {
+  return row.type === "change" && (row.change?.kind === "tracked" || row.change?.kind === "untracked");
+}
+
 function isBusyFor(busy: BusyOp | null, row: ListRow): boolean {
   return busy !== null && busy.target.kind === "paths" && busy.target.paths.includes(row.path);
 }
@@ -106,6 +112,10 @@ interface ChangeListProps {
   hintId: string;
   /** The operator made `row` the active row, by key or pointer. */
   onActive?: (row: ListRow) => void;
+  /** Click or Enter on a file: opens its diff in place of the graph. */
+  onOpenFile: (row: ListRow) => void;
+  /** The path whose diff is open from this list, or null. */
+  openPath: string | null;
 }
 
 /**
@@ -113,7 +123,7 @@ interface ChangeListProps {
  * DOM, so a list of 10,000 changes renders a few dozen. ↑/↓ move the active row, Enter opens a
  * folder, and `s` or `u` acts on the active row.
  */
-const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen, announce, hintId, onActive }) => {
+const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen, announce, hintId, onActive, onOpenFile, openPath }) => {
   const scroller = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(0);
   const [height, setHeight] = useState(0);
@@ -160,6 +170,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
         return;
       case "open":
         if (row && row.expanded !== undefined) onOpen(row);
+        else if (row && opensDiff(row)) onOpenFile(row);
         return;
       case "stage":
       case "unstage": {
@@ -175,6 +186,13 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
         if (rowTarget(row)) onAct(row);
       }
     }
+  };
+
+  // A click on a file row opens its diff; the listbox takes it, as it takes the row's keys.
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const option = e.target instanceof Element ? e.target.closest("[data-row]") : null;
+    const row = option === null ? undefined : rows[Number(option.getAttribute("data-row"))];
+    if (row !== undefined && opensDiff(row)) onOpenFile(row);
   };
 
   const { listLabel, empty, verb, key: actionKey, icon: ActionIcon } = SIDE[side];
@@ -199,11 +217,12 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
           setActiveKey(row.key);
           onActive?.(row);
         }}
+        data-row={i}
         onDoubleClick={() => row.expanded !== undefined && onOpen(row)}
         title={row.type === "note" ? row.name : `${row.path} (${row.type === "dir" ? "folder" : words})`}
-        className={`group/row absolute inset-x-0 flex items-center gap-1.5 pr-1 text-xs ${
+        className={`group/row absolute inset-x-0 flex items-center gap-1.5 pr-1 text-xs ${opensDiff(row) ? "cursor-pointer" : ""} ${
           isActive ? "bg-[#161b22] group-focus-visible/list:shadow-[inset_0_0_0_1px_#06B6D4]" : "hover:bg-[#161b22]"
-        }`}
+        } ${openPath === row.path && row.type === "change" ? "shadow-[inset_2px_0_0_#06B6D4]" : ""}`}
         style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT, paddingLeft: 8 + row.depth * 14 }}
       >
         {row.expanded === undefined ? (
@@ -248,7 +267,11 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
                 aria-label={actionLabel}
                 title={`${actionLabel} (${actionKey})`}
                 disabled={busy !== null}
-                onClick={() => onAct(row)}
+                onClick={(e) => {
+                  // The row's own click opens the diff; this one only stages or unstages.
+                  e.stopPropagation();
+                  onAct(row);
+                }}
                 className="shrink-0 p-0.5 rounded text-[#8b949e] opacity-0 group-hover/row:opacity-100 hover:text-white hover:bg-[#30363d] disabled:opacity-40"
               >
                 <ActionIcon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -269,6 +292,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
       aria-activedescendant={active === null ? undefined : `${idPrefix}-${active}`}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onClick={onClick}
       onScroll={(e) => setTop(e.currentTarget.scrollTop)}
       className="group/list flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#06B6D4]/60"
     >
@@ -291,6 +315,9 @@ export interface StagingInspectorProps {
   width: number;
   onWidth: (width: number) => void;
   onClose: () => void;
+  /** The file whose diff is open, if any. */
+  openFile: OpenFile | null;
+  onOpenFile: (file: OpenFile) => void;
 }
 
 /**
@@ -299,7 +326,16 @@ export interface StagingInspectorProps {
  * toggle. Every result comes from git's answer, never from a guess, and every action is announced
  * in a live region.
  */
-export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging, worktreeName, width, onWidth, onClose }) => {
+export const StagingInspector: React.FC<StagingInspectorProps> = ({
+  id,
+  staging,
+  worktreeName,
+  width,
+  onWidth,
+  onClose,
+  openFile,
+  onOpenFile,
+}) => {
   const titleId = useId();
   const hintId = useId();
   const [mode, setMode] = useState<ListMode>("flat");
@@ -456,7 +492,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
         </button>
       </header>
       <p id={hintId} className="sr-only">
-        Up and Down move, Enter opens a folder, S stages and U unstages the selected change. Tab moves between the lists.
+        Up and Down move, Enter opens a file's diff or a folder, S stages and U unstages the selected change. Tab moves between the lists.
       </p>
       {note && (
         <p role="status" className="px-3 py-1 text-[11px] text-[#d29922] bg-[#d29922]/10 border-t border-[#d29922]/30">
@@ -507,6 +543,8 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
             announce={announce}
             hintId={hintId}
             onActive={(row) => row.change?.kind === "untrackedFolder" && setIgnorable(row.path)}
+            onOpenFile={(row) => onOpenFile({ path: row.path, side: "unstaged" })}
+            openPath={openFile?.side === "unstaged" ? openFile.path : null}
           />
           {sectionHeader("staged", lists?.staged.length ?? 0)}
           <ChangeList
@@ -517,6 +555,8 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({ id, staging,
             onOpen={onOpen("staged")}
             announce={announce}
             hintId={hintId}
+            onOpenFile={(row) => onOpenFile({ path: row.path, side: "staged" })}
+            openPath={openFile?.side === "staged" ? openFile.path : null}
           />
         </div>
       )}

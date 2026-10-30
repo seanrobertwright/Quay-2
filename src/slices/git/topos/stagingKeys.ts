@@ -77,6 +77,11 @@ export function failureView(e: unknown): FailureView {
         };
       case "stagingBusy":
         return { message: "Another staging operation is still running on this worktree.", retry: false };
+      case "staleDiff":
+        return {
+          message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
+          retry: false,
+        };
     }
   }
   return { message: errorMessage(e), retry: false };

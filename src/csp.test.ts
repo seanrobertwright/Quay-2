@@ -19,6 +19,10 @@ test("Quay's policy reaches Tauri IPC and the GitHub API the updater checks, and
   assert.deepEqual(csp["connect-src"], ["ipc:", "http://ipc.localhost", "https://api.github.com"]);
 });
 
+test("images load from Quay itself and from blob URLs, which Topos's image preview builds from git's bytes", () => {
+  assert.deepEqual(csp["img-src"], ["'self'", "blob:"]);
+});
+
 test("Tauri leaves style-src alone, so the inline styles xterm.js writes keep working", () => {
   // xterm.js creates <style> elements at runtime. A nonce or hash in style-src
   // would make the webview ignore 'unsafe-inline' and drop them.

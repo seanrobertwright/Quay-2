@@ -59,6 +59,13 @@ test("a held index.lock offers Retry, and other failures say what git said", () 
   assert.deepEqual(failureView("plain"), { message: "plain", retry: false });
 });
 
+test("a stale diff says the file changed and offers no Retry, since the diff reloads instead", () => {
+  assert.deepEqual(failureView({ kind: "staleDiff" }), {
+    message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
+    retry: false,
+  });
+});
+
 test("a failure reads only its own kind and stderr, never inherited ones", () => {
   const inherited = Object.create({ kind: "indexLocked", stderr: "from the prototype" }) as object;
   assert.deepEqual(failureView(inherited), { message: "[object Object]", retry: false });
