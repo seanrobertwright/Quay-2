@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { GraphFeed, SOFT_CAP, type WatchState } from "./graphFeed";
 import { errorMessage } from "./gitVersion";
+import { SLOW_FIRST_ROWS_MS } from "./speedup";
 
 export interface GraphSession {
   /** The feed for the repo asked for, or null while there is none yet. */
@@ -68,9 +69,22 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     const close = (sessionId: number) =>
       inOrder(() => invoke("git_graph_close", { sessionId })).catch(console.error);
 
+    // First rows slower than a second offer the speed-ups (#385), as soon as the second is up.
+    let firstRows: number | null = window.setTimeout(() => {
+      firstRows = null;
+      if (current.current !== feed || feed.status.state !== "loading") return;
+      feed.slowFirstRows = true;
+      bump();
+    }, SLOW_FIRST_ROWS_MS);
+    const stopFirstRowsTimer = () => {
+      if (firstRows !== null) window.clearTimeout(firstRows);
+      firstRows = null;
+    };
+
     const channel = new Channel<unknown>();
     channel.onmessage = (message) => {
       if (current.current !== feed) return;
+      if (message instanceof ArrayBuffer) stopFirstRowsTimer();
       const wasFailed = feed.status.state === "failed";
       feed.accept(message);
       // A page the frontend couldn't read fails the feed; stop the walk behind it too.
@@ -95,6 +109,7 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     );
 
     return () => {
+      stopFirstRowsTimer();
       if (current.current === feed) current.current = null;
       // Queued behind the open, so the id is known by the time this runs.
       inOrder(async () => {

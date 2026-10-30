@@ -49,6 +49,8 @@ export class GraphFeed {
   status: GraphStatus = { state: "loading" };
   /** The watch's state, from its last `watch` event or `git_graph_watch`; null before either. */
   watch: WatchState | null = null;
+  /** Whether the first rows took longer than a second, or still haven't come (#385). Set by the hook. */
+  slowFirstRows = false;
   private pending: Pending | null = null;
   /** Set while a `git_graph_more` is outstanding, so scrolling asks only once. */
   private moreRequested = false;
