@@ -5,7 +5,7 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
-use super::graph::{Author, GraphEvent, Track, TrackKind};
+use super::graph::{Author, GitRefs, GraphEvent, RefBadge, RefKind, Track, TrackKind, WorktreeHead};
 use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
@@ -63,6 +63,21 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             s(&Track { id: 4, key: "feature/x".into(), kind: TrackKind::Derived, left: Some(0), right: None }),
             json!({ "id": 4, "key": "feature/x", "kind": "derived", "left": 0, "right": null }),
         ),
+        (
+            "GitRefs",
+            s(&GitRefs {
+                refs: vec![RefBadge { kind: RefKind::Remote, name: "origin/main".into(), oid: "abc".into() }],
+                worktrees: vec![WorktreeHead { path: "C:/repo-wt".into(), oid: "abc".into(), branch: None }],
+                tag_only_count: 30,
+            }),
+            json!({
+                "refs": [{ "kind": "remote", "name": "origin/main", "oid": "abc" }],
+                "worktrees": [{ "path": "C:/repo-wt", "oid": "abc", "branch": null }],
+                "tagOnlyCount": 30
+            }),
+        ),
+        ("RefKind::Local", s(&RefKind::Local), json!("local")),
+        ("RefKind::Tag", s(&RefKind::Tag), json!("tag")),
         ("TrackKind::Default", s(&TrackKind::Default), json!("default")),
         ("TrackKind::Anonymous", s(&TrackKind::Anonymous), json!("anonymous")),
         ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),

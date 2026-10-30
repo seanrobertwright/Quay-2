@@ -11,6 +11,8 @@ mod session;
 mod lane_tests;
 mod refs;
 #[cfg(test)]
+mod refs_tests;
+#[cfg(test)]
 mod tests;
 
 use std::path::PathBuf;
@@ -24,6 +26,7 @@ use super::error::GitError;
 pub use lanes::{Track, TrackKind};
 pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
+pub use refs::{GitRefs, RefBadge, RefKind, WorktreeHead};
 pub use session::{GraphOptions, GraphRefs, GraphSessions};
 
 /// Starts a graph session on `repo_path`, closing any live one, and streams its rows to `on_event`.
@@ -54,4 +57,14 @@ pub async fn git_graph_close(session_id: u32, sessions: State<'_, GraphSessions>
     let sessions = sessions.inner();
     tokio::task::block_in_place(|| sessions.close(session_id));
     Ok(())
+}
+
+/// The refs of `repo_path` and its worktrees' HEADs (#378), read apart from the graph's `git log`
+/// so badges refresh without re-running the walk.
+#[tauri::command]
+pub async fn git_refs(repo_path: String) -> Result<GitRefs, GitError> {
+    let repo = PathBuf::from(repo_path);
+    tokio::task::spawn_blocking(move || refs::read_refs(&repo))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read refs: {e}") })?
 }

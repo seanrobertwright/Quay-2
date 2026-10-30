@@ -419,7 +419,7 @@ impl Pager {
 }
 
 /// Whether `HEAD` names a commit, which it doesn't before a repo's first commit.
-fn head_is_born(repo: &Path) -> bool {
+pub(super) fn head_is_born(repo: &Path) -> bool {
     super::super::op_runner::headless_git()
         .arg("-C")
         .arg(repo)
