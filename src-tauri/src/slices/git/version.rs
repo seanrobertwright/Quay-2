@@ -30,6 +30,7 @@ pub const RELIED_ON_FLAGS: &[(&str, GitVersion)] = &[
     ("--no-optional-locks", v(2, 15, 0)),
     ("%(trailers:key=…,valueonly)", v(2, 22, 0)),
     ("git switch and git restore", v(2, 23, 0)),
+    ("add, reset and rm --pathspec-from-file", v(2, 26, 0)),
     ("commit-graph write --split", v(2, 23, 0)),
     ("push --force-if-includes", v(2, 30, 0)),
     ("status --porcelain=v2 --show-stash stash count", v(2, 35, 0)),

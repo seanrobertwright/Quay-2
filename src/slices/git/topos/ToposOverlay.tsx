@@ -13,6 +13,10 @@ import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 import { useLiveUpdates } from "./useLiveUpdates";
+import { StagingInspector } from "./StagingInspector";
+import { DEFAULT_INSPECTOR_WIDTH, wipLabel } from "./stagingKeys";
+import { useStaging } from "./useStaging";
+import { isSamePath } from "../../../utils/paths";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -110,7 +114,32 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
     () => (graphRepo !== null && selectedPath !== null ? { repoPath: graphRepo, worktreePath: selectedPath } : null),
     [graphRepo, selectedPath]
   );
-  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader);
+  // The inspector works on the selected worktree's own index (#349, #382).
+  const staging = useStaging(graphRepo !== null ? selectedPath : null, shown);
+  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging);
+  const inspectorId = useId();
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Outlives the inspector, like the graph column. Persisting it is the settings ticket's.
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const changed = staging.status.state === "done" ? staging.status.status.total : 0;
+  const headOid =
+    refs.state === "done" && selectedPath !== null
+      ? (refs.refs.worktrees.find((w) => isSamePath(w.path, selectedPath))?.oid ?? null)
+      : null;
+  const wip = useMemo(
+    () =>
+      changed > 0 && target !== null
+        ? {
+            label: wipLabel(changed),
+            headOid,
+            worktreeName: target.name,
+            open: inspectorOpen,
+            onToggle: () => setInspectorOpen((open) => !open),
+            controls: inspectorId,
+          }
+        : null,
+    [changed, headOid, target, inspectorOpen, inspectorId]
+  );
   const watch = graph.feed?.watch ?? null;
 
   return (
@@ -240,16 +269,31 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 </p>
               </div>
             ) : graph.feed ? (
-              <GraphList
-                key={`${order}:${target.repoPath}`}
-                feed={graph.feed}
-                version={graph.version}
-                onReachedRow={graph.reachedRow}
-                columnWidth={columnWidth}
-                onColumnWidth={setColumnWidth}
-                refs={refsShown}
-                worktreeAgents={worktreeAgents}
-              />
+              <div className="flex-1 flex min-h-0">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <GraphList
+                    key={`${order}:${target.repoPath}`}
+                    feed={graph.feed}
+                    version={graph.version}
+                    onReachedRow={graph.reachedRow}
+                    columnWidth={columnWidth}
+                    onColumnWidth={setColumnWidth}
+                    refs={refsShown}
+                    worktreeAgents={worktreeAgents}
+                    wip={wip}
+                  />
+                </div>
+                {inspectorOpen && (
+                  <StagingInspector
+                    id={inspectorId}
+                    staging={staging}
+                    worktreeName={target.name}
+                    width={inspectorWidth}
+                    onWidth={setInspectorWidth}
+                    onClose={() => setInspectorOpen(false)}
+                  />
+                )}
+              </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
                 Loading commits…

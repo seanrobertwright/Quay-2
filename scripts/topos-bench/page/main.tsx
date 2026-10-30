@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { GraphFeed } from "../../../src/slices/git/topos/graphFeed";
-import { GraphList } from "../../../src/slices/git/topos/GraphList";
+import { GraphList, type WipRowProps } from "../../../src/slices/git/topos/GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
 import { NO_REFS } from "../../../src/slices/git/topos/graphRefs";
 import type { BenchState } from "./benchState.ts";
@@ -15,6 +15,14 @@ import "./bench.css";
 
 // No refs means no HEAD markers to put agents on.
 const NO_WORKTREE_AGENTS = new Map();
+const WIP: WipRowProps = {
+  label: "3 changed",
+  headOid: null,
+  worktreeName: "bench",
+  open: false,
+  onToggle: () => {},
+  controls: "bench-inspector",
+};
 
 const state: BenchState = {
   phase: "loading",
@@ -142,6 +150,8 @@ function Bench() {
           // Recordings carry no refs, so the benchmark measures rows without badges.
           refs={NO_REFS}
           worktreeAgents={NO_WORKTREE_AGENTS}
+          // A dirty worktree's WIP row (#382) shows, so the gate measures the graph with it pinned on top.
+          wip={WIP}
         />
       ) : (
         <p role="status">Loading commits…</p>

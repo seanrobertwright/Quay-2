@@ -9,6 +9,7 @@ use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
 };
 use super::op_runner::OpEvent;
+use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
 use super::version::GitVersionStatus;
 
 fn s<T: serde::Serialize>(payload: &T) -> Value {
@@ -132,6 +133,31 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ("TrackKind::Default", s(&TrackKind::Default), json!("default")),
         ("TrackKind::Anonymous", s(&TrackKind::Anonymous), json!("anonymous")),
         ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),
+        ("GitError::IndexLocked", s(&GitError::IndexLocked), json!({ "kind": "indexLocked" })),
+        ("GitError::StagingBusy", s(&GitError::StagingBusy), json!({ "kind": "stagingBusy" })),
+        (
+            "WorktreeStatus",
+            s(&WorktreeStatus {
+                request_id: 12,
+                entries: vec![
+                    StatusEntry { path: "src/a.rs".into(), xy: ".M".into(), kind: EntryKind::Tracked },
+                    StatusEntry { path: "notes".into(), xy: "??".into(), kind: EntryKind::UntrackedFolder },
+                ],
+                total: 10_001,
+                truncated: true,
+            }),
+            json!({
+                "requestId": 12,
+                "entries": [
+                    { "path": "src/a.rs", "xy": ".M", "kind": "tracked" },
+                    { "path": "notes", "xy": "??", "kind": "untrackedFolder" }
+                ],
+                "total": 10_001,
+                "truncated": true
+            }),
+        ),
+        ("EntryKind::Untracked", s(&EntryKind::Untracked), json!("untracked")),
+        ("EntryKind::Unmerged", s(&EntryKind::Unmerged), json!("unmerged")),
         (
             "OpEvent::Progress",
             s(&OpEvent::Progress { phase: "Receiving objects".into(), percent: Some(45) }),

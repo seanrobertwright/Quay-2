@@ -16,6 +16,11 @@ import {
 import type { GraphSession } from "./useGraphSession";
 import type { GraphRefsReader } from "./useGraphRefs";
 
+/** What the refresh table refetches for the selected worktree's status. */
+export interface StatusReloader {
+  reload: () => Promise<void>;
+}
+
 export interface LiveUpdatesTarget {
   /** The repo whose graph session is live. */
   repoPath: string;
@@ -38,27 +43,32 @@ export function useLiveUpdates(
   target: LiveUpdatesTarget | null,
   visible: boolean,
   graph: GraphSession,
-  refs: GraphRefsReader
+  refs: GraphRefsReader,
+  status: StatusReloader
 ): () => void {
   const sessionId = graph.feed?.sessionId ?? null;
   const watchState = graph.feed?.watch?.state ?? null;
   // The handlers below outlive renders, so they read the newest of these through refs.
-  const latest = useRef({ graph, refs, target });
-  latest.current = { graph, refs, target };
+  const latest = useRef({ graph, refs, status, target });
+  latest.current = { graph, refs, status, target };
   const operation = useRef({ inOperation: false, graphHeld: false });
 
   const queue = useRef<RefreshQueue | null>(null);
   if (queue.current === null) {
     queue.current = new RefreshQueue(async (dirty: Dirty) => {
-      const { graph, refs, target } = latest.current;
+      const { graph, refs, status, target } = latest.current;
       const store = graph.feed?.store ?? null;
       if (target === null || store === null) return;
       const plan = planRefresh(dirty, operation.current);
       if (plan.holdGraph) operation.current.graphHeld = true;
       if (plan.graph === "yes") operation.current.graphHeld = false;
-      // Status, the open diff and the operation banner join here as the inspector (#382, #383)
-      // and the conflict banner (#389) land; each fetch carries a request id from `RequestIds`.
-      if (!plan.refs) return;
+      // The staging inspector's status (#382) carries a request id, so a slower, older read never
+      // lands over it. The open diff and the operation banner join here with #383 and #389.
+      const statusRead = plan.status ? status.reload() : null;
+      if (!plan.refs) {
+        await statusRead;
+        return;
+      }
       const before = refs.refs.state === "done" ? tipOids(refs.refs.refs) : null;
       const after = await refs.reload();
       const run =
@@ -71,6 +81,7 @@ export function useLiveUpdates(
             isLoaded: (oid) => store.rowOf(oid) !== -1,
           }));
       if (run) await graph.refresh();
+      await statusRead;
     });
   }
 
