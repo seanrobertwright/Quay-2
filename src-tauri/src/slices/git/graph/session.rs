@@ -406,14 +406,9 @@ impl Walk {
                 }
                 Outcome::Drained => {
                     let ended = self.finish(stream.take().expect("only a stream drains"));
-                    // A repo whose HEAD is unborn fails on `HEAD` before printing a row; walk its
-                    // branches alone.
                     if matches!(ended, Ended::Exited { success: false, .. })
-                        && pager.sent == 0
-                        && !retried_without_head
-                        && !head_is_born(&self.repo)
+                        && self.retry_without_head(pager.sent, &mut retried_without_head)
                     {
-                        retried_without_head = true;
                         stream = self.start(false, 0).ok();
                         continue;
                     }
@@ -431,6 +426,16 @@ impl Walk {
             }
         }
         self.children.iter().for_each(|c| kill(c));
+    }
+
+    /// Whether a walk that ended having sent no rows runs once more without `HEAD`. A repo whose
+    /// HEAD is unborn fails on `HEAD` before printing a row, so its branches are walked alone.
+    fn retry_without_head(&self, sent: u32, retried: &mut bool) -> bool {
+        if sent > 0 || *retried || head_is_born(&self.repo) {
+            return false;
+        }
+        *retried = true;
+        true
     }
 
     /// Starts a `git log` whose process lives in slot `slot`.
@@ -650,8 +655,7 @@ impl Walk {
                     continue;
                 }
                 Err(RecvTimeoutError::Disconnected) => {
-                    if fresh.sent == 0 && !retried_without_head && !head_is_born(&self.repo) {
-                        retried_without_head = true;
+                    if self.retry_without_head(fresh.sent, &mut retried_without_head) {
                         self.abandon(Some(new));
                         new = match self.start(false, slot) {
                             Ok(stream) => stream,
