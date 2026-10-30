@@ -38,6 +38,23 @@ export function isOverlayOpen(): boolean {
   return overlays.isOpen();
 }
 
+/**
+ * Puts a popup that opens inside an overlay, such as a menu, on the stack while `isOpen`, so
+ * Escape closes it before the overlay under it. `onClose` runs instead of the overlay's.
+ */
+export function usePopupLayer(isOpen: boolean, onClose: () => void, popupRef: RefObject<HTMLElement | null>) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    listenForEscape();
+    return overlays.open({
+      close: () => onCloseRef.current(),
+      contains: (target) => target instanceof Node && !!popupRef.current?.contains(target),
+    });
+  }, [isOpen, popupRef]);
+}
+
 interface UseOverlayOptions {
   isOpen: boolean;
   onClose: () => void;

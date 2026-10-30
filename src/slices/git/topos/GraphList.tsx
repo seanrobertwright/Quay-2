@@ -1,6 +1,16 @@
-import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Cloud, FolderGit2, GitBranch, Tag } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
+import { usePopupLayer } from "../../overlay/useOverlay";
 import {
   clampColumnWidth,
   columnLayout,
@@ -16,6 +26,7 @@ import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { slotColor } from "./laneColors";
+import { menuIndexByKey, splitStrip } from "./trackStrip";
 import {
   clampOffset,
   keyOffset,
@@ -178,46 +189,158 @@ const GraphLanes = React.memo<{
   );
 });
 
+const jumpTitle = (store: GraphStore, track: number) => `Scroll to where ${store.trackLabel(track)} starts`;
+
+/** A track's color dot and name, as the strip and its More menu show it. */
+const TrackName: React.FC<{ store: GraphStore; track: number }> = ({ store, track }) => (
+  <>
+    <span
+      aria-hidden="true"
+      className="w-2 h-2 shrink-0 rounded-full"
+      style={{ background: slotColor(store.trackSlot(track)) }}
+    />
+    <span className="truncate">{store.trackLabel(track)}</span>
+  </>
+);
+
 /**
  * The sticky strip above the list (#376): the tracks passing the top visible row whose tips have
  * scrolled above it. A track's tip is where it starts in the graph (#351): its first row, or the
- * merge row whose ribbon opened it. Clicking a name scrolls to it.
+ * merge row whose ribbon opened it. Clicking a name scrolls to it. On a wide history only the
+ * leftmost names show inline and the rest wait behind a More menu (#409), so a jump rebuilds a
+ * bounded number of buttons however many tracks are open.
  */
-const TrackStrip: React.FC<{ store: GraphStore | null; topRow: number; onJump: (row: number) => void }> = ({
-  store,
-  topRow,
-  onJump,
-}) => {
+const TrackStrip = React.memo<{
+  store: GraphStore | null;
+  topRow: number;
+  onJump: (row: number) => void;
+}>(function TrackStrip({ store, topRow, onJump }) {
+  const [isOpen, setOpen] = useState(false);
+  const [focusIndex, setFocusIndex] = useState(0);
+  const menuId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLUListElement>(null);
+  const items = useRef<(HTMLButtonElement | null)[]>([]);
   const tracks = store ? store.tracksPassing(topRow) : [];
+  const { shown, more } = splitStrip(tracks);
+  const open = isOpen && more.length > 0;
+  // A refresh can shorten the menu under its focused item.
+  const focused = Math.min(focusIndex, more.length - 1);
+
+  // Scrolling closes the menu, so an open menu never rebuilds per frame; focus inside it goes back
+  // to the trigger rather than falling to the page.
+  const openedAt = useRef(topRow);
+  useLayoutEffect(() => {
+    if (openedAt.current === topRow) return;
+    openedAt.current = topRow;
+    if (menu.current?.contains(document.activeElement)) trigger.current?.focus();
+    setOpen(false);
+  }, [topRow]);
+
+  useEffect(() => {
+    if (open) items.current[focused]?.focus();
+  }, [open, focused]);
+
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    if (refocus) trigger.current?.focus();
+  };
+  const jump = (row: number) => {
+    setOpen(false);
+    onJump(row);
+  };
+  // Escape reaches the overlay stack before the menu, so the menu joins it to close first.
+  usePopupLayer(open, () => close(true), menu);
+  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLUListElement>) => {
+    const next = menuIndexByKey(focused, more.length, e.key);
+    if (next === null) return;
+    e.preventDefault();
+    setFocusIndex(next);
+  };
+  // Focus leaving the trigger and the menu, by a click outside or by Tab, closes it.
+  const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+  };
+
+  const itemClass =
+    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-[#c9d1d9] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60";
   return (
-    <div className="h-6 shrink-0 flex items-center px-2 overflow-x-auto border-b border-[#30363d] bg-[#0d1117]">
-      {store && tracks.length > 0 && (
-        <ul aria-label="Tracks above" className="flex items-center gap-1">
-          {tracks.map((t) => {
-            const label = store.trackLabel(t.track);
-            return (
+    <div className="relative h-6 shrink-0 flex items-center border-b border-[#30363d] bg-[#0d1117]">
+      <div className="flex-1 min-w-0 h-full flex items-center px-2 overflow-x-auto overflow-y-hidden">
+        {store && shown.length > 0 && (
+          <ul aria-label="Tracks above" className="flex items-center gap-1">
+            {shown.map((t) => (
               <li key={t.track} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => onJump(t.startRow)}
-                  title={`Scroll to where ${label} starts`}
-                  className="inline-flex items-center gap-1 max-w-48 px-1.5 py-0.5 rounded text-[11px] text-[#c9d1d9] hover:bg-[#161b22] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
+                  title={jumpTitle(store, t.track)}
+                  className={`${itemClass} max-w-48 hover:bg-[#161b22]`}
                 >
-                  <span
-                    aria-hidden="true"
-                    className="w-2 h-2 shrink-0 rounded-full"
-                    style={{ background: slotColor(store.trackSlot(t.track)) }}
-                  />
-                  <span className="truncate">{label}</span>
+                  <TrackName store={store} track={t.track} />
                 </button>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )}
+      </div>
+      {store && more.length > 0 && (
+        <div className="shrink-0 pr-2" onBlur={onBlur}>
+          <button
+            ref={trigger}
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-controls={open ? menuId : undefined}
+            aria-label={`+${more.length.toLocaleString()} more ${more.length === 1 ? "track" : "tracks"} above`}
+            onClick={() => {
+              if (open) return close(false);
+              setFocusIndex(0);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+              e.preventDefault();
+              setFocusIndex(e.key === "ArrowDown" ? 0 : more.length - 1);
+              setOpen(true);
+            }}
+            className="px-1.5 py-0.5 rounded text-[11px] text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
+          >
+            +{more.length.toLocaleString()} more
+          </button>
+          {open && (
+            <ul
+              ref={menu}
+              id={menuId}
+              role="menu"
+              aria-label="More tracks above"
+              onKeyDown={onMenuKeyDown}
+              className="absolute right-2 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto p-1 flex flex-col rounded border border-[#30363d] bg-[#161b22] shadow-lg"
+            >
+              {more.map((t, i) => (
+                <li key={t.track} role="none">
+                  <button
+                    ref={(el) => {
+                      items.current[i] = el;
+                    }}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={i === focused ? 0 : -1}
+                    onClick={() => jump(t.startRow)}
+                    title={jumpTitle(store, t.track)}
+                    className={`${itemClass} w-full hover:bg-[#0d1117]`}
+                  >
+                    <TrackName store={store} track={t.track} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
-};
+});
 
 /**
  * The commit list (#374): one scroll container over a spacer as tall as every loaded row, with
@@ -247,6 +370,9 @@ export const GraphList: React.FC<GraphListProps> = ({
   const [win, setWin] = useState<RowWindow>({ start: 0, end: 0 });
   // Only the strip reads it; the rows are memoized, so a new top row alone doesn't rebuild them.
   const [topRow, setTopRow] = useState(0);
+  // The strip follows at low priority: while jumps land every frame its render keeps yielding to
+  // the rows', and it catches up once the list settles (#409).
+  const stripRow = useDeferredValue(topRow);
   // Keyed by session, so a session reopened in place doesn't inherit another history's row.
   const [active, setActive] = useState<{ sessionId: number; row: number } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -347,13 +473,16 @@ export const GraphList: React.FC<GraphListProps> = ({
     scrollToOffset(next);
   };
 
-  const jumpTo = (row: number) => {
-    const el = scroller.current;
-    if (!el || !store) return;
-    scrollToOffset(row * ROW_HEIGHT);
-    setActive({ sessionId: store.sessionId, row });
-    el.focus({ preventScroll: true });
-  };
+  const jumpTo = useCallback(
+    (row: number) => {
+      const el = scroller.current;
+      if (!el || !store) return;
+      scrollToOffset(row * ROW_HEIGHT);
+      setActive({ sessionId: store.sessionId, row });
+      el.focus({ preventScroll: true });
+    },
+    [store, scrollToOffset]
+  );
 
   const layout = useMemo(() => columnLayout(columnWidth, peakLanes), [columnWidth, peakLanes]);
   // aria-activedescendant must always name a row in the DOM (#351), so the active row is clamped
@@ -451,7 +580,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   const status = feed.status;
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <TrackStrip store={store} topRow={topRow} onJump={jumpTo} />
+      <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
       <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scroller}
