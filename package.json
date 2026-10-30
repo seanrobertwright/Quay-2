@@ -28,6 +28,8 @@
     "starters:test": "node --test \"scripts/starters-ci/*.test.ts\"",
     "starters:typecheck": "tsc -p scripts/starters-ci",
     "aiws:sync": "node scripts/aiws-sdk/sync.ts",
+    "topos:bench": "node scripts/topos-bench/drive.ts",
+    "topos:bench:typecheck": "tsc -p scripts/topos-bench && tsc -p scripts/topos-bench/page",
     "aiws:check": "node scripts/aiws-sdk/sync.ts --check && node --test \"scripts/aiws-sdk/*.test.ts\" && tsc -p scripts/aiws-sdk"
   },
   "dependencies": {

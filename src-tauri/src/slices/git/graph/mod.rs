@@ -1,5 +1,7 @@
 //! Topos's commit graph: one streaming `git log` session at a time (#374), laid out in lanes (#375).
 
+#[cfg(test)]
+mod bench_dump;
 mod cat_file;
 mod lanes;
 mod log;
