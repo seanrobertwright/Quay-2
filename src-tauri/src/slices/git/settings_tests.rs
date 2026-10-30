@@ -253,8 +253,6 @@ fn opening_a_201st_repo_evicts_the_least_recently_opened() {
 fn reopening_a_kept_repo_evicts_nothing() {
     let (root, _) = repo_with_worktree();
     let repo = root.join("repo");
-    let store = ToposSettingsStore::at(temp_path());
-    store.write(patch(json!({ "openedRepo": repo.to_string_lossy() }))).unwrap();
     let path = temp_path();
     let mut seeded: serde_json::Value = serde_json::from_str(&file_with_repos(199)).unwrap();
     seeded["repos"][expected_key(&repo)] = json!({ "lastOpened": 0 });

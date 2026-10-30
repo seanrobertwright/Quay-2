@@ -69,11 +69,9 @@ pub const GRAPH_COLUMN_WIDTHS: RangeInclusive<u32> = 48..=656;
 /// `MIN_INSPECTOR_WIDTH..=MAX_INSPECTOR_WIDTH` in `src/slices/git/topos/stagingKeys.ts`.
 pub const INSPECTOR_WIDTHS: RangeInclusive<u32> = 280..=720;
 
-/// A whole number of px inside `range`, or None for anything else: a string, a fraction, a negative
-/// or a width the frontend's resize handle can't reach.
-fn width_in(value: &Value, range: &RangeInclusive<u32>) -> Option<u32> {
-    let width = u32::try_from(value.as_u64()?).ok()?;
-    range.contains(&width).then_some(width)
+/// A whole number of px, or None for anything else: a string, a fraction or a negative.
+fn whole_px(value: &Value) -> Option<u32> {
+    u32::try_from(value.as_u64()?).ok()
 }
 
 /// Reads `topos.json` text field by field. A field that is missing or holds a bad value takes its
@@ -83,18 +81,17 @@ pub fn parse_settings(text: &str) -> ToposSettings {
     let Ok(Value::Object(file)) = serde_json::from_str::<Value>(text) else {
         return settings;
     };
-    if let Some(width) = file.get("graphColumnWidth").and_then(|v| width_in(v, &GRAPH_COLUMN_WIDTHS)) {
-        settings.graph_column_width = width;
+    let mut prefs = ToposSettingsPatch {
+        graph_column_width: file.get("graphColumnWidth").and_then(whole_px),
+        inspector_width: file.get("inspectorWidth").and_then(whole_px),
+        diff_mode: file.get("diffMode").and_then(|v| DiffMode::deserialize(v).ok()),
+        file_list_mode: file.get("fileListMode").and_then(|v| FileListMode::deserialize(v).ok()),
+        opened_repo: None,
+    };
+    for (_, width, range) in prefs.widths() {
+        *width = width.filter(|w| range.contains(w));
     }
-    if let Some(width) = file.get("inspectorWidth").and_then(|v| width_in(v, &INSPECTOR_WIDTHS)) {
-        settings.inspector_width = width;
-    }
-    if let Some(mode) = file.get("diffMode").and_then(|v| DiffMode::deserialize(v).ok()) {
-        settings.diff_mode = mode;
-    }
-    if let Some(mode) = file.get("fileListMode").and_then(|v| FileListMode::deserialize(v).ok()) {
-        settings.file_list_mode = mode;
-    }
+    prefs.apply_prefs(&mut settings);
     if let Some(Value::Object(repos)) = file.get("repos") {
         for (key, entry) in repos {
             let Some(last_opened) = entry.get("lastOpened").and_then(Value::as_i64).filter(|ms| *ms >= 0) else {
@@ -169,14 +166,41 @@ pub struct ToposSettingsPatch {
     pub opened_repo: Option<String>,
 }
 
+impl ToposSettingsPatch {
+    /// The patch's widths, each with its name and the range the frontend's resize handle reaches.
+    fn widths(&mut self) -> [(&'static str, &mut Option<u32>, &'static RangeInclusive<u32>); 2] {
+        [
+            ("graph column width", &mut self.graph_column_width, &GRAPH_COLUMN_WIDTHS),
+            ("inspector width", &mut self.inspector_width, &INSPECTOR_WIDTHS),
+        ]
+    }
+
+    /// Sets each pref the patch carries. Recording `opened_repo` is the store's job.
+    fn apply_prefs(&self, settings: &mut ToposSettings) {
+        if let Some(width) = self.graph_column_width {
+            settings.graph_column_width = width;
+        }
+        if let Some(width) = self.inspector_width {
+            settings.inspector_width = width;
+        }
+        if let Some(mode) = self.diff_mode {
+            settings.diff_mode = mode;
+        }
+        if let Some(mode) = self.file_list_mode {
+            settings.file_list_mode = mode;
+        }
+    }
+}
+
 /// The most repo entries `topos.json` keeps (#369).
 pub const MAX_REPOS: usize = 200;
 
 /// How long writes must be quiet before `topos.json` is written (#369).
 pub const WRITE_DEBOUNCE: Duration = Duration::from_millis(500);
 
-/// `topos.json` in Quay's storage directory. Clones share one store. Reads come from memory; each write changes memory at
-/// once and reaches the file through `atomic_file::write_atomic` after [`WRITE_DEBOUNCE`] of quiet.
+/// `topos.json` in Quay's storage directory. Clones share one store. Reads come from memory; each
+/// write changes memory at once and reaches the file through `atomic_file::write_atomic` after
+/// [`WRITE_DEBOUNCE`] of quiet.
 #[derive(Clone)]
 pub struct ToposSettingsStore {
     shared: Arc<Shared>,
@@ -228,13 +252,9 @@ impl ToposSettingsStore {
     }
 
     /// Applies `patch` and returns the prefs it leaves, or refuses the whole patch when a width is
-    /// out of range. The file is written once writes have been
-    /// quiet for [`WRITE_DEBOUNCE`].
-    pub fn write(&self, patch: ToposSettingsPatch) -> Result<ToposSettings, GitError> {
-        for (name, width, range) in [
-            ("graph column width", patch.graph_column_width, &GRAPH_COLUMN_WIDTHS),
-            ("inspector width", patch.inspector_width, &INSPECTOR_WIDTHS),
-        ] {
+    /// out of range. The file is written once writes have been quiet for [`WRITE_DEBOUNCE`].
+    pub fn write(&self, mut patch: ToposSettingsPatch) -> Result<ToposSettings, GitError> {
+        for (name, width, range) in patch.widths() {
             if let Some(width) = width.filter(|w| !range.contains(w)) {
                 return Err(GitError::Other {
                     stderr: format!("A {name} of {width} px is outside {}..={} px.", range.start(), range.end()),
@@ -248,18 +268,7 @@ impl ToposSettingsStore {
             record_open(&mut settings.repos, key, crate::dates::now_ms());
             cap_repos(&mut settings.repos);
         }
-        if let Some(width) = patch.graph_column_width {
-            settings.graph_column_width = width;
-        }
-        if let Some(width) = patch.inspector_width {
-            settings.inspector_width = width;
-        }
-        if let Some(mode) = patch.diff_mode {
-            settings.diff_mode = mode;
-        }
-        if let Some(mode) = patch.file_list_mode {
-            settings.file_list_mode = mode;
-        }
+        patch.apply_prefs(settings);
         let result = settings.clone();
         state.dirty = true;
         state.due = Some(Instant::now() + WRITE_DEBOUNCE);
