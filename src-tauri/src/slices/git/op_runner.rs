@@ -108,14 +108,15 @@ fn pump(mut src: impl Read + Send + 'static, stream: Stream, tx: Sender<(Stream,
 }
 
 /// Runs `git <args>` in `cwd`, streaming its events to `channel`. The last event is `Done` when
-/// git exits 0 and `Failed` otherwise, carrying the error this returns.
+/// git exits 0 and `Failed` otherwise, carrying the error this returns. It can't be cancelled;
+/// [`GitOps::run`] can.
 pub fn run_op(
     cwd: &Path,
     args: &[&str],
     opts: &OpOptions,
     channel: &Channel<OpEvent>,
 ) -> Result<OpOutput, GitError> {
-    finish(run(cwd, args, opts, &AtomicBool::new(false), channel), channel)
+    finish(run_with_cancel(cwd, args, opts, &AtomicBool::new(false), channel), channel)
 }
 
 /// Sends the op's last event, `Done` or `Failed`, and passes its result on.
@@ -127,7 +128,8 @@ fn finish(result: Result<OpOutput, GitError>, channel: &Channel<OpEvent>) -> Res
     result
 }
 
-fn run(
+/// Runs `git <args>` in `cwd`, streaming its events to `channel`, until it exits or `cancel` is set.
+fn run_with_cancel(
     cwd: &Path,
     args: &[&str],
     opts: &OpOptions,
@@ -160,7 +162,6 @@ fn run(
         if cancel.load(Ordering::SeqCst) {
             // A process that outlived the kill could hold the pipes open, so don't drain them.
             tree.kill();
-            let _ = tree.child().wait();
             return Err(GitError::Cancelled);
         }
         let (stream, bytes) = match rx.recv_timeout(POLL) {
@@ -244,56 +245,50 @@ pub struct GitOps {
 
 impl GitOps {
     /// Runs `git <args>` like [`run_op`], cancellable through [`GitOps::cancel`] with `op_id`.
-    /// `op_id` is a UUID the frontend chose, so it can cancel before this returns.
+    /// `op_id` is the frontend's choice, so it can cancel before this returns.
     pub fn run(
         &self,
-        op_id: &str,
+        op_id: Uuid,
         cwd: &Path,
         args: &[&str],
         opts: &OpOptions,
         channel: &Channel<OpEvent>,
     ) -> Result<OpOutput, GitError> {
-        let (id, cancel) = match self.register(op_id) {
-            Ok(registered) => registered,
+        let cancel = match self.register(op_id) {
+            Ok(cancel) => cancel,
             Err(error) => return finish(Err(error), channel),
         };
-        let result = finish(run(cwd, args, opts, &cancel, channel), channel);
-        self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        let result = finish(run_with_cancel(cwd, args, opts, &cancel, channel), channel);
+        self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&op_id);
         result
     }
 
     /// Adds `op_id` to the running ops, refusing an id that is already running.
-    fn register(&self, op_id: &str) -> Result<(Uuid, Arc<AtomicBool>), GitError> {
-        let id = parse_op_id(op_id)?;
+    fn register(&self, op_id: Uuid) -> Result<Arc<AtomicBool>, GitError> {
         let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
-        if running.contains_key(&id) {
-            return Err(GitError::Other { stderr: format!("op {id} is already running") });
+        if running.contains_key(&op_id) {
+            return Err(GitError::Other { stderr: format!("op {op_id} is already running") });
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        running.insert(id, cancel.clone());
-        Ok((id, cancel))
+        running.insert(op_id, cancel.clone());
+        Ok(cancel)
     }
 
     /// Cancels the running op `op_id`: its whole process tree is killed and it ends in
     /// `Failed { error: Cancelled }`. An id with no running op, one that has finished or not yet
     /// started, is ignored.
-    pub fn cancel(&self, op_id: &str) -> Result<(), GitError> {
-        let id = parse_op_id(op_id)?;
-        if let Some(cancel) = self.running.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
+    pub fn cancel(&self, op_id: Uuid) {
+        if let Some(cancel) = self.running.lock().unwrap_or_else(|e| e.into_inner()).get(&op_id) {
             cancel.store(true, Ordering::SeqCst);
         }
-        Ok(())
     }
 }
 
-fn parse_op_id(op_id: &str) -> Result<Uuid, GitError> {
-    Uuid::parse_str(op_id).map_err(|_| GitError::Other { stderr: format!("op id {op_id:?} is not a UUID") })
-}
-
-/// Cancels a running op. See [`GitOps::cancel`].
+/// Cancels a running op. See [`GitOps::cancel`]. An `opId` that isn't a UUID is rejected
+/// before this runs.
 #[tauri::command]
-pub fn git_op_cancel(op_id: String, ops: State<'_, GitOps>) -> Result<(), GitError> {
-    ops.cancel(&op_id)
+pub fn git_op_cancel(op_id: Uuid, ops: State<'_, GitOps>) {
+    ops.cancel(op_id)
 }
 
 /// A git command that can never stop to ask on a terminal. Every Topos git process starts here.
@@ -505,12 +500,12 @@ mod tests {
         let dir = scratch_dir();
         let (channel, events) = test_channel();
         let ops = GitOps::default();
-        let op_id = uuid::Uuid::new_v4().to_string();
+        let op_id = uuid::Uuid::new_v4();
         // git starts a shell, which starts `sleep` and prints its OS process id.
         let def = "alias.probe=!sleep 120 & if [ -f /proc/$!/winpid ]; then cat /proc/$!/winpid; else echo $!; fi; wait";
 
         std::thread::scope(|scope| {
-            let running = scope.spawn(|| ops.run(&op_id, &dir, &alias_args(def), &OpOptions::default(), &channel));
+            let running = scope.spawn(|| ops.run(op_id, &dir, &alias_args(def), &OpOptions::default(), &channel));
 
             let started = Instant::now();
             let sleep_pid = loop {
@@ -523,7 +518,7 @@ mod tests {
             };
             assert!(process_alive(sleep_pid), "sleep {sleep_pid} should be running before Cancel");
 
-            ops.cancel(&op_id).unwrap();
+            ops.cancel(op_id);
             assert_eq!(running.join().unwrap(), Err(GitError::Cancelled));
             assert!(started.elapsed() < Duration::from_secs(60), "Cancel waited for sleep to finish");
             assert!(!process_alive(sleep_pid), "sleep {sleep_pid}, a child of git's shell, outlived Cancel");
