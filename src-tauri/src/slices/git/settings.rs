@@ -1,7 +1,8 @@
 //! `topos.json`: Topos's user prefs and per-repo state (#369, #384).
 
+use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,16 @@ pub struct ToposSettings {
     pub inspector_width: u32,
     pub diff_mode: DiffMode,
     pub file_list_mode: FileListMode,
+    /// Per-repo state, keyed by [`repo_key`]. The store keeps at most [`MAX_REPOS`] entries.
+    pub repos: BTreeMap<String, RepoState>,
+}
+
+/// What Topos remembers about one repo. Later tickets add its filters and toggles (#369).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoState {
+    /// When Topos last opened the repo, in ms since the Unix epoch.
+    pub last_opened: i64,
 }
 
 /// `DiffMode` in `src/slices/git/topos/FileDiffView.tsx`.
@@ -44,6 +55,7 @@ impl Default for ToposSettings {
             inspector_width: DEFAULT_INSPECTOR_WIDTH,
             diff_mode: DiffMode::Unified,
             file_list_mode: FileListMode::Flat,
+            repos: BTreeMap::new(),
         }
     }
 }
@@ -83,7 +95,66 @@ pub fn parse_settings(text: &str) -> ToposSettings {
     if let Some(mode) = file.get("fileListMode").and_then(|v| FileListMode::deserialize(v).ok()) {
         settings.file_list_mode = mode;
     }
+    if let Some(Value::Object(repos)) = file.get("repos") {
+        for (key, entry) in repos {
+            let Some(last_opened) = entry.get("lastOpened").and_then(Value::as_i64).filter(|ms| *ms >= 0) else {
+                continue;
+            };
+            record_open(&mut settings.repos, comparable_key(key), last_opened);
+        }
+        cap_repos(&mut settings.repos);
+    }
     settings
+}
+
+/// A key read from the file in the form [`repo_key`] gives, so two spellings of one repo that a
+/// hand edit or an older Quay left behind become one entry.
+fn comparable_key(key: &str) -> String {
+    let slashed = key.replace('\\', "/");
+    if cfg!(any(windows, target_os = "macos")) {
+        slashed.to_lowercase()
+    } else {
+        slashed
+    }
+}
+
+/// Records that `key` was opened at `last_opened`, keeping the later time when it already has one.
+fn record_open(repos: &mut BTreeMap<String, RepoState>, key: String, last_opened: i64) {
+    let entry = repos.entry(key).or_insert(RepoState { last_opened });
+    entry.last_opened = entry.last_opened.max(last_opened);
+}
+
+/// Keeps the [`MAX_REPOS`] most recently opened repos and evicts the rest. Among equal times the
+/// key that sorts last goes first.
+fn cap_repos(repos: &mut BTreeMap<String, RepoState>) {
+    if repos.len() <= MAX_REPOS {
+        return;
+    }
+    let mut by_age: Vec<(i64, String)> = repos.iter().map(|(key, r)| (r.last_opened, key.clone())).collect();
+    by_age.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    for (_, key) in by_age.drain(MAX_REPOS..) {
+        repos.remove(&key);
+    }
+}
+
+/// The key of the repo holding `path`, a repo or any of its worktrees: git's common dir in the
+/// form two spellings of it share, so each repo has one entry and, on Windows, the key ignores
+/// case.
+pub fn repo_key(path: &Path) -> Result<String, GitError> {
+    let out = super::op_runner::headless_git()
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output()
+        .map_err(|e| GitError::Other { stderr: format!("could not run git rev-parse: {e}") })?;
+    if !out.status.success() {
+        return Err(GitError::Other { stderr: String::from_utf8_lossy(&out.stderr).trim().to_string() });
+    }
+    let common_dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if common_dir.is_empty() {
+        return Err(GitError::Other { stderr: format!("git rev-parse printed no git dir for {}", path.display()) });
+    }
+    Ok(super::commands::comparable_path(&common_dir))
 }
 
 /// A change to the prefs from `topos_settings_write`. A field left out keeps its value.
@@ -94,13 +165,19 @@ pub struct ToposSettingsPatch {
     pub inspector_width: Option<u32>,
     pub diff_mode: Option<DiffMode>,
     pub file_list_mode: Option<FileListMode>,
+    /// A repo or worktree path Topos has just opened, which records its repo's last-opened time.
+    pub opened_repo: Option<String>,
 }
+
+/// The most repo entries `topos.json` keeps (#369).
+pub const MAX_REPOS: usize = 200;
 
 /// How long writes must be quiet before `topos.json` is written (#369).
 pub const WRITE_DEBOUNCE: Duration = Duration::from_millis(500);
 
-/// `topos.json` in Quay's storage directory. Reads come from memory; each write changes memory at
+/// `topos.json` in Quay's storage directory. Clones share one store. Reads come from memory; each write changes memory at
 /// once and reaches the file through `atomic_file::write_atomic` after [`WRITE_DEBOUNCE`] of quiet.
+#[derive(Clone)]
 pub struct ToposSettingsStore {
     shared: Arc<Shared>,
 }
@@ -130,7 +207,12 @@ impl ToposSettingsStore {
     pub fn at(path: PathBuf) -> Self {
         let settings = match std::fs::read_to_string(&path) {
             Ok(text) => parse_settings(&text),
-            Err(_) => ToposSettings::default(),
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("Failed to read {}, so Topos opens with its defaults: {}", path.display(), e);
+                }
+                ToposSettings::default()
+            }
         };
         Self {
             shared: Arc::new(Shared {
@@ -159,8 +241,13 @@ impl ToposSettingsStore {
                 });
             }
         }
+        let opened = patch.opened_repo.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
         let mut state = self.shared.state.lock();
         let settings = &mut state.settings;
+        if let Some(key) = opened {
+            record_open(&mut settings.repos, key, crate::dates::now_ms());
+            cap_repos(&mut settings.repos);
+        }
         if let Some(width) = patch.graph_column_width {
             settings.graph_column_width = width;
         }
@@ -236,4 +323,23 @@ impl Shared {
         crate::atomic_file::write_atomic(&self.path, json.as_bytes())
             .map_err(|e| format!("Failed to write {}: {}", self.path.display(), e))
     }
+}
+
+/// The prefs and per-repo state Topos opens with (#384).
+#[tauri::command]
+pub fn topos_settings_read(store: tauri::State<'_, ToposSettingsStore>) -> ToposSettings {
+    store.read()
+}
+
+/// Applies `patch` and returns the result. See [`ToposSettingsStore::write`].
+#[tauri::command]
+pub async fn topos_settings_write(
+    patch: ToposSettingsPatch,
+    store: tauri::State<'_, ToposSettingsStore>,
+) -> Result<ToposSettings, GitError> {
+    // An opened repo runs git rev-parse, so keep it off the async runtime's threads.
+    let store = store.inner().clone();
+    tokio::task::spawn_blocking(move || store.write(patch))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not write the Topos settings: {e}") })?
 }
