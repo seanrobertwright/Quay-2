@@ -21,12 +21,16 @@ function inOrder<T>(call: () => Promise<T>): Promise<T> {
   return result;
 }
 
+/** Commit order for a session: date order, or topo order from the toolbar toggle (#375). */
+export type GraphOrder = "date" | "topo";
+
 /**
- * The graph session for `repoPath` (#374). A new path closes the old session and opens one; while
- * the path stays the same the session lives on, including while Topos is hidden.
+ * The graph session for `repoPath` in `order` (#374, #375). A new path or order closes the old
+ * session and opens one; while both stay the same the session lives on, including while Topos is
+ * hidden.
  */
-export function useGraphSession(repoPath: string | null): GraphSession {
-  const [opened, setOpened] = useState<{ repoPath: string; feed: GraphFeed } | null>(null);
+export function useGraphSession(repoPath: string | null, order: GraphOrder): GraphSession {
+  const [opened, setOpened] = useState<{ repoPath: string; order: GraphOrder; feed: GraphFeed } | null>(null);
   const [version, setVersion] = useState(0);
   const frame = useRef<number | null>(null);
   // The feed on screen, so a late answer for a replaced feed changes nothing.
@@ -49,7 +53,7 @@ export function useGraphSession(repoPath: string | null): GraphSession {
     }
     const feed = new GraphFeed();
     current.current = feed;
-    setOpened({ repoPath, feed });
+    setOpened({ repoPath, order, feed });
     let openedId: number | null = null;
     const close = (sessionId: number) =>
       inOrder(() => invoke("git_graph_close", { sessionId })).catch(console.error);
@@ -66,7 +70,7 @@ export function useGraphSession(repoPath: string | null): GraphSession {
     inOrder(() =>
       invoke<number>("git_graph_open", {
         repoPath,
-        options: { order: "date", refs: { kind: "branches" }, softCap: SOFT_CAP },
+        options: { order, refs: { kind: "branches" }, softCap: SOFT_CAP },
         onEvent: channel,
       })
     ).then(
@@ -88,7 +92,7 @@ export function useGraphSession(repoPath: string | null): GraphSession {
         if (sessionId !== null) await invoke("git_graph_close", { sessionId });
       }).catch(console.error);
     };
-  }, [repoPath, bump]);
+  }, [repoPath, order, bump]);
 
   useEffect(
     () => () => {
@@ -97,9 +101,9 @@ export function useGraphSession(repoPath: string | null): GraphSession {
     []
   );
 
-  // A feed opened for another path is never handed out, not even for the render before the
-  // effect above replaces it.
-  const feed = opened !== null && opened.repoPath === repoPath ? opened.feed : null;
+  // A feed opened for another path or order is never handed out, not even for the render before
+  // the effect above replaces it.
+  const feed = opened !== null && opened.repoPath === repoPath && opened.order === order ? opened.feed : null;
 
   const reachedRow = useCallback(
     (windowEnd: number) => {
