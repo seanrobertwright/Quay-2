@@ -1,8 +1,8 @@
 // The Bézier path builder for Topos ribbons (#348, #351, #375), written fresh from the
-// `topos-lane-geometry` findings. An edge is a straight vertical run in the lane it owns plus an
-// S-curve over one row pitch at each end whose node sits in another lane: a merge curves at its
-// top, a fork or a first-parent edge that joins another lane at its bottom. Only an edge whose
-// merge lane loses its parent to another lane needs both. Every y is local to the rendered window.
+// `topos-lane-geometry` findings. An edge is a straight vertical run in the lane it owns plus at
+// most one S-curve over one row pitch, at the end whose node sits in another lane: a merge curves
+// at its top, a fork or a first-parent edge that joins another lane at its bottom. The lane pass
+// never sends an edge that curves at both ends. Every y is local to the rendered window.
 
 import { OPEN_ROW } from "./graphPage.ts";
 import { SLOT_COUNT } from "./laneColors.ts";
@@ -18,7 +18,8 @@ export const GRAPH_PADDING = LANE_WIDTH / 2;
 export const CURVE_K = 0.8;
 
 const H = ROW_HEIGHT;
-const KH = CURVE_K * H;
+/** How far each control point sits from its end, along the row pitch. */
+const REACH = CURVE_K * H;
 
 export function laneX(lane: number): number {
   return GRAPH_PADDING + lane * LANE_WIDTH + LANE_WIDTH / 2;
@@ -45,14 +46,14 @@ export interface PathWindow {
   end: number;
 }
 
-/** Rounds away float noise such as 19.599999999999998. */
-function n(value: number): string {
+/** Formats an SVG coordinate, rounding away float noise such as 19.599999999999998. */
+function fmt(value: number): string {
   return String(Math.round(value * 100) / 100);
 }
 
 /** An S-curve over one row pitch from (x0, y0) down to (x1, y0 + H), vertical at both ends. */
 function curve(x0: number, y0: number, x1: number): string {
-  return `C${n(x0)},${n(y0 + KH)} ${n(x1)},${n(y0 + H - KH)} ${n(x1)},${n(y0 + H)}`;
+  return `C${fmt(x0)},${fmt(y0 + REACH)} ${fmt(x1)},${fmt(y0 + H - REACH)} ${fmt(x1)},${fmt(y0 + H)}`;
 }
 
 /**
@@ -72,7 +73,7 @@ export function edgePath(e: EdgeGeometry, win: PathWindow): string {
   const xp = open ? xl : laneX(e.parentLane);
 
   if (!open && e.parentRow === e.childRow + 1) {
-    return xc === xp ? `M${n(xc)},${n(yc)}V${n(yp)}` : `M${n(xc)},${n(yc)}${curve(xc, yc, xp)}`;
+    return xc === xp ? `M${fmt(xc)},${fmt(yc)}V${fmt(yp)}` : `M${fmt(xc)},${fmt(yc)}${curve(xc, yc, xp)}`;
   }
 
   let d = "";
@@ -81,17 +82,17 @@ export function edgePath(e: EdgeGeometry, win: PathWindow): string {
   const topCurve = xc !== xl;
   const bottomCurve = xp !== xl;
   if (topCurve && yc + H >= top) {
-    d += `M${n(xc)},${n(yc)}${curve(xc, yc, xl)}`;
+    d += `M${fmt(xc)},${fmt(yc)}${curve(xc, yc, xl)}`;
     pen = yc + H;
   }
   const runFrom = Math.max(topCurve ? yc + H : yc, top);
   const runTo = Math.min(bottomCurve ? yp - H : yp, bottom);
   if (runTo > runFrom) {
-    d += (pen === runFrom ? "" : `M${n(xl)},${n(runFrom)}`) + `V${n(runTo)}`;
+    d += (pen === runFrom ? "" : `M${fmt(xl)},${fmt(runFrom)}`) + `V${fmt(runTo)}`;
     pen = runTo;
   }
   if (bottomCurve && yp - H <= bottom) {
-    d += (pen === yp - H ? "" : `M${n(xl)},${n(yp - H)}`) + curve(xl, yp - H, xp);
+    d += (pen === yp - H ? "" : `M${fmt(xl)},${fmt(yp - H)}`) + curve(xl, yp - H, xp);
   }
   return d;
 }

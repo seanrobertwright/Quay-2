@@ -36,15 +36,11 @@ test("a one-row lane change is a single S-curve with vertical ends", () => {
   assert.equal(edgePath(edge(0, 1, 1, 0, 0), win), "M32,14C32,36.4 16,19.6 16,42");
 });
 
-test("an edge whose merge lane lost its parent to another lane curves at both ends", () => {
-  assert.equal(edgePath(edge(0, 5, 0, 2, 1), win), "M16,14C16,36.4 48,19.6 48,42V126C48,148.4 32,131.6 32,154");
-});
-
 test("a ribbon with both ends off-screen is one vertical run clipped to the window", () => {
   // The window holds rows 1000 to 1039; the clip reaches one row pitch past each side.
   const deep = { start: 1000, end: 1040 };
   assert.equal(edgePath(edge(10, 5000, 2, 2, 2), deep), "M48,-28V1148");
-  assert.equal(edgePath(edge(10, 5000, 0, 2, 1), deep), "M48,-28V1148");
+  assert.equal(edgePath(edge(10, 5000, 0, 2, 2), deep), "M48,-28V1148");
 });
 
 test("an edge still open runs to the bottom of the window", () => {

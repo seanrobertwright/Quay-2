@@ -336,6 +336,29 @@ fn a_join_ends_at_the_parent_when_the_parent_is_the_next_row_and_on_the_lane_oth
 }
 
 #[test]
+fn a_merge_lane_ends_in_a_join_once_a_lane_left_of_it_heads_for_the_same_parent() {
+    // m merges p into lane 2 (topic holds lane 1). c, on lane 1, then heads for p too, and p will
+    // land on lane 1, the leftmost. Rather than curve at both ends, the merge edge stops at c's
+    // row and a one-row join carries it into lane 1.
+    let (repo, oid) = build(
+        &[c("a", &[]), c("p", &["a"]), c("m0", &["a"]), c("c", &["p"]), merge("m", &["m0", "p"], "Merge branch 'x'"), c("t", &["c"])],
+        &[("refs/heads/main", "m"), ("refs/heads/topic", "t")],
+        "refs/heads/main",
+    );
+    let l = layout(&repo, GraphOrder::Date);
+    assert_eq!(lanes_of(&l, &oid, &["t", "m", "c", "m0", "p", "a"]), vec![1, 0, 1, 0, 1, 0]);
+    let merge = l.edges_from(&oid["m"])[1];
+    assert_eq!((merge.child_row, merge.child_lane, merge.lane, merge.parent_row, merge.parent_lane), (1, 0, 2, 2, 2));
+    let from_c = l.edges_from(&oid["c"]);
+    assert_eq!(from_c.len(), 2, "c's own edge and the join");
+    let join = from_c[1];
+    assert_eq!((join.child_row, join.child_lane, join.lane, join.parent_row, join.parent_lane), (2, 2, 1, 3, 1));
+    assert_eq!(join.track, l.rows[2].1, "a join takes the color of the lane it joins");
+    assert_eq!(l.peaks, vec![3]);
+    std::fs::remove_dir_all(repo).ok();
+}
+
+#[test]
 fn an_octopus_merge_fans_one_edge_per_extra_parent_out_to_the_right_in_parent_order() {
     let (repo, oid) = build(
         &[
@@ -464,6 +487,7 @@ fn git_graph_columns(repo: &Path, order: &str) -> Vec<(String, usize)> {
 /// - the rows are git's commit lines, in git's order;
 /// - at every row, the distinct commits the lanes are heading for, plus the row's own commit, are
 ///   as many as the columns git draws on that line;
+/// - no edge curves at both ends;
 /// - following each commit's edges, through joins, reaches exactly its parents, in order;
 /// - no two edges ever share a stretch of the same lane, so lanes never shift.
 fn check_against_git_graph(repo: &Path, order: GraphOrder) {
@@ -477,7 +501,8 @@ fn check_against_git_graph(repo: &Path, order: GraphOrder) {
     assert!(l.edges.iter().all(|e| e.parent_row != OPEN_ROW), "every edge closes once the walk is done");
 
     // The row each edge leads to: its parent row when it ends on that row's node, else the row
-    // the lane it ends on is heading for.
+    // the edge carrying on from its end is heading for: one running down that lane past the row,
+    // or a join starting there.
     let target = |e: &Edge| -> u32 {
         let mut e = *e;
         loop {
@@ -487,11 +512,17 @@ fn check_against_git_graph(repo: &Path, order: GraphOrder) {
             e = *l
                 .edges
                 .iter()
-                .find(|f| f.lane == e.parent_lane && f.child_row < e.parent_row && f.parent_row > e.parent_row)
+                .find(|f| {
+                    (f.lane == e.parent_lane && f.child_row < e.parent_row && f.parent_row > e.parent_row)
+                        || (f.child_row == e.parent_row && f.child_lane == e.parent_lane)
+                })
                 .unwrap_or_else(|| panic!("edge {e:?} ends where no lane runs"));
         }
     };
     let targets: Vec<u32> = l.edges.iter().map(target).collect();
+    for e in &l.edges {
+        assert!(e.child_lane == e.lane || e.parent_lane == e.lane, "edge {e:?} curves at both ends");
+    }
 
     for (row, (oid, columns)) in oracle.iter().enumerate() {
         let row = row as u32;
@@ -518,7 +549,7 @@ fn check_against_git_graph(repo: &Path, order: GraphOrder) {
             .edges
             .iter()
             .zip(&targets)
-            .filter(|(e, _)| e.child_row == row as u32)
+            .filter(|(e, _)| e.child_row == row as u32 && e.child_lane == l.rows[row].0)
             .map(|(_, &t)| l.oids[t as usize].clone())
             .collect();
         assert_eq!(&reached, &parents_of[oid], "the edges from row {row} reach its parents, in order");

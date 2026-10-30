@@ -6,6 +6,8 @@
 //!   lane is one of them.
 //! - The first parent continues in the commit's own lane. Each other parent gets a lane at the
 //!   merge row, the nearest free one to the right, or joins a lane already coming down for it.
+//! - No edge curves at both ends. When a lane left of a merge lane starts down toward the same
+//!   parent, the merge edge stops there and a one-row join carries it into that lane.
 //! - Live lanes never shift sideways. A new tip takes the lowest free lane. Empty lanes at the
 //!   right edge are trimmed.
 //! - A row's layout depends only on the rows above it, so rows already sent never move.
@@ -90,11 +92,14 @@ struct Slot {
     track: u32,
     /// The edge running down this lane; None while lane 0 waits for the default branch's first tip.
     edge: Option<u32>,
+    /// Whether that edge curved in from a merge at its top, so it can't also curve at its bottom.
+    merged: bool,
 }
 
 
-/// A merge edge into a lane already coming down for its parent. It ends one row below the merge,
-/// on that lane, or at the parent itself when the parent is that next row (#351).
+/// An edge into a lane already coming down for its parent: from a merge, or from a merge lane
+/// folded into a lane left of it. It ends one row below where it starts, on that lane, or at the
+/// parent itself when the parent is that next row (#351).
 #[derive(Debug, Clone)]
 struct Join {
     edge: u32,
@@ -138,8 +143,8 @@ impl LanePass {
         // Pin lane 0 to the default branch: it waits for every local and remote tip of it at once,
         // so a stale local branch can't leave it empty at the top (#351).
         if let (Some(key), false) = (&tips.default_key, tips.default_tips.is_empty()) {
-            let track = pass.open_track(key.clone(), TrackKind::Default);
-            pass.lanes.push(Some(Slot { track, edge: None }));
+            let track = pass.open_track(key.clone(), TrackKind::Default, 0);
+            pass.lanes.push(Some(Slot { track, edge: None, merged: false }));
             for tip in &tips.default_tips {
                 pass.awaiting.entry(tip.clone()).or_default().push(0);
             }
@@ -177,30 +182,33 @@ impl LanePass {
         std::mem::take(&mut self.page)
     }
 
-    fn open_track(&mut self, key: String, kind: TrackKind) -> u32 {
+    /// Opens a track in `lane`. A named or derived key that is the default branch's opens a
+    /// default track. Derived and anonymous tracks note their neighbours for clash probing; named
+    /// and default tracks keep their pure-hash color and need none.
+    fn open_track(&mut self, key: String, kind: TrackKind, lane: u32) -> u32 {
+        let kind = match kind {
+            TrackKind::Named | TrackKind::Derived if self.tips.default_key.as_ref() == Some(&key) => TrackKind::Default,
+            kind => kind,
+        };
+        let (left, right) = match kind {
+            TrackKind::Derived | TrackKind::Anonymous => {
+                let track_in =
+                    |l: Option<u32>| l.and_then(|l| self.lanes.get(l as usize)).and_then(|s| s.as_ref()).map(|s| s.track);
+                (track_in(lane.checked_sub(1)), track_in(Some(lane + 1)))
+            }
+            TrackKind::Default | TrackKind::Named => (None, None),
+        };
         let id = self.next_track;
         self.next_track += 1;
-        self.page.tracks.push(Track { id, key, kind, left: None, right: None });
-        id
-    }
-
-    /// Opens a track in `lane` for a merge parent or an unnamed tip, noting its neighbours for
-    /// clash probing. Named and default tracks keep their pure-hash color and need none.
-    fn open_unnamed_track(&mut self, key: String, kind: TrackKind, lane: u32) -> u32 {
-        let track_in = |l: Option<u32>| l.and_then(|l| self.lanes.get(l as usize)).and_then(|s| s.as_ref()).map(|s| s.track);
-        let (left, right) = (track_in(lane.checked_sub(1)), track_in(Some(lane + 1)));
-        let id = self.open_track(key, kind);
-        let track = self.page.tracks.last_mut().expect("just opened");
-        (track.left, track.right) = (left, right);
+        self.page.tracks.push(Track { id, key, kind, left, right });
         id
     }
 
     /// The track for a new tip in `lane`, keyed by the branch at that tip.
     fn tip_track(&mut self, oid: &str, lane: u32) -> u32 {
         match self.tips.keys.get(oid).cloned() {
-            Some(key) if self.tips.default_key.as_ref() == Some(&key) => self.open_track(key, TrackKind::Default),
-            Some(key) => self.open_track(key, TrackKind::Named),
-            None => self.open_unnamed_track(oid.to_string(), TrackKind::Anonymous, lane),
+            Some(key) => self.open_track(key, TrackKind::Named, lane),
+            None => self.open_track(oid.to_string(), TrackKind::Anonymous, lane),
         }
     }
 
@@ -251,20 +259,42 @@ impl LanePass {
             } else {
                 // Lane 0 has drawn nothing yet, so a join would end in empty space. The merge
                 // opens lane 0's first edge instead, and lane 0 now waits for this parent alone.
-                self.lanes[target as usize] = Some(Slot { track: slot.track, edge: Some(edge) });
+                self.lanes[target as usize] = Some(Slot { track: slot.track, edge: Some(edge), merged: true });
                 self.unseed(parent);
             }
             return;
         }
         let target = self.free_lane_right_of(lane);
         let track = match merged_branch(subject, index) {
-            Some(key) if self.tips.default_key.as_ref() == Some(&key) => self.open_track(key, TrackKind::Default),
-            Some(key) => self.open_unnamed_track(key, TrackKind::Derived, target),
-            None => self.open_unnamed_track(format!("{oid}^{}", index + 1), TrackKind::Anonymous, target),
+            Some(key) => self.open_track(key, TrackKind::Derived, target),
+            None => self.open_track(format!("{oid}^{}", index + 1), TrackKind::Anonymous, target),
         };
         let edge = self.open_edge(row, lane, target, track);
-        self.lanes[target as usize] = Some(Slot { track, edge: Some(edge) });
+        self.lanes[target as usize] = Some(Slot { track, edge: Some(edge), merged: true });
         self.awaiting.entry(parent.to_string()).or_default().push(target);
+    }
+
+    /// `lane`, holding `track` at `row`, has started down toward `parent`. A merge lane right of
+    /// it waiting for the same parent would lose it to `lane` and so curve at both ends: its edge
+    /// stops at this row, and a join takes it into `lane` at the next.
+    fn fold_merge_lanes(&mut self, row: u32, lane: u32, track: u32, parent: &str) {
+        let Some(waiting) = self.awaiting.get(parent) else { return };
+        let folded: Vec<u32> = waiting
+            .iter()
+            .copied()
+            .filter(|&l| l > lane && self.lanes[l as usize].as_ref().is_some_and(|s| s.merged))
+            .collect();
+        for l in folded {
+            if let Some(Slot { edge: Some(edge), .. }) = self.lanes[l as usize].take() {
+                self.close_edge(edge, row, l);
+            }
+            self.free.insert(l);
+            let edge = self.open_edge(row, l, lane, track);
+            self.joins.push(Join { edge, lane, awaits: parent.to_string() });
+        }
+        if let Some(waiting) = self.awaiting.get_mut(parent) {
+            waiting.retain(|&l| self.lanes[l as usize].is_some());
+        }
     }
 
     /// Places the commit `oid`, whose message starts `subject`, at `row`, the next row in stream
@@ -304,11 +334,13 @@ impl LanePass {
             }
             Some(first) => {
                 let edge = self.open_edge(row, lane, lane, track);
-                self.lanes[lane as usize] = Some(Slot { track, edge: Some(edge) });
+                self.lanes[lane as usize] = Some(Slot { track, edge: Some(edge), merged: false });
                 self.awaiting.entry(first.clone()).or_default().push(lane);
                 for (index, parent) in parents.iter().enumerate().skip(1) {
                     self.place_merge_parent(row, oid, lane, parent, index, subject);
                 }
+                // After the merge parents, so none of them takes a lane this frees at this row.
+                self.fold_merge_lanes(row, lane, track, first);
             }
         }
         while matches!(self.lanes.last(), Some(None)) {
