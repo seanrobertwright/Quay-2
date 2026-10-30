@@ -3,6 +3,7 @@ pub mod commands;
 pub mod manager;
 pub mod models;
 pub mod recents;
+pub mod settings;
 
 pub use commands::*;
 pub use manager::WorkspaceManager;

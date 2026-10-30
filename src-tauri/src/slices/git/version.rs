@@ -84,9 +84,8 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Runs `git --version` once, bounded by [`VERSION_TIMEOUT`].
 fn run_version_check() -> Result<GitVersionStatus, GitError> {
-    let mut child = match crate::spawn::hidden_command("git")
+    let mut child = match super::op_runner::headless_git()
         .arg("--version")
-        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

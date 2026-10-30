@@ -28,11 +28,11 @@ fn other(stderr: impl Into<String>) -> GitError {
 
 impl CatFileBatch {
     pub fn start(repo: &Path) -> Result<Self, GitError> {
-        let mut child = crate::spawn::hidden_command("git")
+        let mut child = super::super::op_runner::headless_git()
             .arg("-C")
             .arg(repo)
             .args(["--no-optional-locks", "cat-file", "--batch"])
-            .env("GIT_TERMINAL_PROMPT", "0")
+            // Requests go in on stdin, so this one git has a pipe rather than a null stdin.
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

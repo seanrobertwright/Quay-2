@@ -29,7 +29,7 @@ const FIELDS: usize = 9;
 /// is unborn walks without it. The rev set never names `--tags` (#370) or `--all`, which would pull
 /// in stash and notes refs.
 pub fn log_command(repo: &Path, order: GraphOrder, with_head: bool) -> Command {
-    let mut cmd = crate::spawn::hidden_command("git");
+    let mut cmd = super::super::op_runner::headless_git();
     cmd.arg("-C")
         .arg(repo)
         .args(["--no-optional-locks", "log", "--no-color", "--no-show-signature"])
@@ -41,11 +41,7 @@ pub fn log_command(repo: &Path, order: GraphOrder, with_head: bool) -> Command {
     if with_head {
         cmd.arg("HEAD");
     }
-    cmd.arg("--")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.arg("--").stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd
 }
 

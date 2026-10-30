@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter};
 use super::models::{
     LaunchPromptForm, PermissionMode, RunKind, SpawnTerminalRequest, TerminalOutputPayload,
 };
+use super::commit_stamp;
 use super::osc7501::{self, Osc7501, Osc7501Scanner};
 use super::screen::{self, ScreenKeeper};
 
@@ -661,6 +662,8 @@ pub(crate) fn build_command(
         cmd.env(osc7501::ENABLE_VAR, "on");
         cmd.env_remove(osc7501::MESSAGES_VAR);
     }
+    let hooks_dir = request.run_kind.is_agent().then(commit_stamp::launch_hooks_dir).flatten();
+    commit_stamp::apply(&mut cmd, request.run_kind, hooks_dir.as_deref());
 
     // Inject custom CLI launch flags (for any supported agent)
     if request.run_kind.is_agent() {
@@ -1364,6 +1367,68 @@ mod tests {
 
     fn env_of(cmd: &CommandBuilder, key: &str) -> Option<String> {
         cmd.get_env(key).map(|v| v.to_string_lossy().to_string())
+    }
+
+    const AGENT_KINDS: [RunKind; 12] = [
+        RunKind::Claude,
+        RunKind::Antigravity,
+        RunKind::Codex,
+        RunKind::Pi,
+        RunKind::Gemini,
+        RunKind::Grok,
+        RunKind::Aider,
+        RunKind::Kiro,
+        RunKind::Copilot,
+        RunKind::OpenCode,
+        RunKind::Pig,
+        RunKind::Archon,
+    ];
+
+    #[test]
+    fn every_agent_terminal_points_core_hooks_path_at_quays_forwarders() {
+        for run_kind in AGENT_KINDS {
+            let cmd = build_command(&spawn_request(run_kind), "term-stamp", 4321, "tok", Some(4567));
+            let count: usize = env_of(&cmd, "GIT_CONFIG_COUNT").unwrap().parse().unwrap();
+            let index = count - 1;
+            assert_eq!(
+                env_of(&cmd, &format!("GIT_CONFIG_KEY_{}", index)).as_deref(),
+                Some("core.hooksPath"),
+                "{:?}",
+                run_kind
+            );
+            let hooks = env_of(&cmd, &format!("GIT_CONFIG_VALUE_{}", index)).unwrap();
+            assert!(Path::new(&hooks).join("prepare-commit-msg").is_file(), "{:?} {}", run_kind, hooks);
+            assert_eq!(env_of(&cmd, "QUAY_AGENT_KIND").as_deref(), Some(run_kind.as_str()));
+        }
+    }
+
+    #[test]
+    fn an_agent_terminal_appends_to_a_workspace_git_config_count() {
+        let mut request = spawn_request(RunKind::Codex);
+        request.env_vars = Some(std::collections::HashMap::from([
+            ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
+            ("GIT_CONFIG_KEY_0".to_string(), "user.name".to_string()),
+            ("GIT_CONFIG_VALUE_0".to_string(), "Workspace".to_string()),
+        ]));
+
+        let cmd = build_command(&request, "term-stamp-preset", 4321, "tok", None);
+
+        assert_eq!(env_of(&cmd, "GIT_CONFIG_COUNT").as_deref(), Some("2"));
+        assert_eq!(env_of(&cmd, "GIT_CONFIG_KEY_0").as_deref(), Some("user.name"));
+        assert_eq!(env_of(&cmd, "GIT_CONFIG_KEY_1").as_deref(), Some("core.hooksPath"));
+    }
+
+    #[test]
+    fn a_plain_terminal_gets_no_stamping_env() {
+        for run_kind in [RunKind::PowerShell, RunKind::Command] {
+            let mut request = spawn_request(run_kind);
+            request.env_vars = Some(std::collections::HashMap::from([("QUAY_AGENT_KIND".to_string(), "claude".to_string())]));
+
+            let cmd = build_command(&request, "term-plain", 4321, "tok", None);
+
+            assert_eq!(env_of(&cmd, "QUAY_AGENT_KIND"), None, "{:?}", run_kind);
+            assert_eq!(env_of(&cmd, "GIT_CONFIG_COUNT"), None, "{:?}", run_kind);
+        }
     }
 
     #[test]

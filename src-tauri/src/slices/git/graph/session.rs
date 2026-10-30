@@ -399,12 +399,10 @@ struct Pager {
 
 /// Whether `HEAD` names a commit, which it doesn't before a repo's first commit.
 fn head_is_born(repo: &Path) -> bool {
-    crate::spawn::hidden_command("git")
+    super::super::op_runner::headless_git()
         .arg("-C")
         .arg(repo)
         .args(["rev-parse", "--verify", "-q", "HEAD^{commit}"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()

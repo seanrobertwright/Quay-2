@@ -29,7 +29,7 @@ portable-pty = "0.9.0"
 tokio = { version = "1.53.2", features = ["full"] }
 axum = "0.8.9"
 base64 = "0.22.1"
-uuid = { version = "1.28.0", features = ["v4", "fast-rng"] }
+uuid = { version = "1.28.0", features = ["v4", "fast-rng", "serde"] }
 parking_lot = "0.12.5"
 tracing = "0.1.44"
 hyper = { version = "1.12.0", features = ["client", "http1"] }
