@@ -24,6 +24,8 @@ export interface TestPage {
   closes?: number[][];
   checkpoint?: number[];
   peakLanes?: number;
+  /** Each row's oid; the row number in hex when left out. */
+  oids?: string[];
   /** Page 0 opens track 0, `main`, when left out. */
   newTracks?: GraphTrack[];
 }
@@ -38,8 +40,8 @@ export function encodeTestPage(p: TestPage): ArrayBuffer {
   const checkpoint = p.checkpoint ?? [];
   const json = new TextEncoder().encode(
     JSON.stringify({
-      oids: Array.from({ length: n }, (_, i) => (p.firstRow + i).toString(16).padStart(40, "0")),
-      subjects: Array.from({ length: n }, (_, i) => `commit ${p.firstRow + i}`),
+      oids: p.oids ?? Array.from({ length: n }, (_, i) => (p.firstRow + i).toString(16).padStart(40, "0")),
+      subjects: p.oids ?? Array.from({ length: n }, (_, i) => `commit ${p.firstRow + i}`),
       newAuthors: [{ name: `Author ${p.pageIndex}`, email: `a${p.pageIndex}@example.invalid` }],
       newTracks: p.newTracks ?? (p.pageIndex === 0 ? [{ id: 0, key: "main", kind: "default", left: null, right: null }] : []),
     })

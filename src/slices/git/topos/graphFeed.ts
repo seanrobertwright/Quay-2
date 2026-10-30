@@ -3,7 +3,7 @@
 // dropped, so a closed session can never write into the graph that replaced it.
 
 import { decodeGraphPage } from "./graphPage.ts";
-import { GraphStore } from "./graphStore.ts";
+import { GraphStore, type Splice } from "./graphStore.ts";
 import type { GitError } from "./gitVersion.ts";
 
 /** The JSON `GraphEvent`s from `src-tauri/src/slices/git/graph/page.rs`. `Rows` pages are raw bytes. */
@@ -12,7 +12,19 @@ export type GraphEvent =
   | { event: "paused"; sessionId: number; rowsLoaded: number }
   | { event: "done"; sessionId: number; total: number }
   | { event: "truncated"; sessionId: number; cap: number }
-  | { event: "failed"; sessionId: number; error: GitError };
+  | { event: "failed"; sessionId: number; error: GitError }
+  | ({ event: "splice"; sessionId: number } & Splice)
+  | { event: "reset"; sessionId: number }
+  | { event: "watch"; sessionId: number; watch: WatchState };
+
+/** Where the session's repository watch stands (#379). */
+export type WatchState = { state: "live" } | { state: "off"; reason: string } | { state: "gone" };
+
+/** A refresh's rows on their way in, gathered apart until they can replace the rows shown. */
+type Pending =
+  | { kind: "splice"; splice: Splice; store: GraphStore }
+  /** Swapped in once it holds `until` rows, or the walk stops. */
+  | { kind: "reset"; store: GraphStore; until: number };
 
 export type GraphStatus =
   | { state: "loading" }
@@ -35,6 +47,9 @@ export class GraphFeed {
   sessionId: number | null = null;
   store: GraphStore | null = null;
   status: GraphStatus = { state: "loading" };
+  /** The watch's state, from its last `watch` event or `git_graph_watch`; null before either. */
+  watch: WatchState | null = null;
+  private pending: Pending | null = null;
   /** Set while a `git_graph_more` is outstanding, so scrolling asks only once. */
   private moreRequested = false;
 
@@ -48,9 +63,14 @@ export class GraphFeed {
         this.fail(String(e instanceof Error ? e.message : e));
         return false;
       }
-      if (this.store === null || page.sessionId !== this.sessionId || this.status.state === "failed") return false;
+      if (this.store === null || page.sessionId !== this.sessionId) return false;
+      if (this.pending === null && this.status.state === "failed") return false;
       try {
-        this.store.ingest(page);
+        if (this.pending === null) this.store.ingest(page);
+        else {
+          this.pending.store.ingest(page);
+          this.settlePending(false);
+        }
       } catch (e) {
         this.fail(String(e instanceof Error ? e.message : e));
         return false;
@@ -64,7 +84,24 @@ export class GraphFeed {
       this.store = new GraphStore(event.sessionId);
       return true;
     }
-    if (event.sessionId !== this.sessionId || this.isOver()) return false;
+    if (event.sessionId !== this.sessionId || this.store === null) return false;
+    // A refresh can follow a walk that finished.
+    switch (event.event) {
+      case "splice":
+        this.pending = { kind: "splice", splice: event, store: this.store.continuing() };
+        this.status = { state: "loading" };
+        this.settlePending(false);
+        return true;
+      case "reset":
+        this.pending = { kind: "reset", store: new GraphStore(event.sessionId), until: this.store.rowCount };
+        this.status = { state: "loading" };
+        return true;
+      case "watch":
+        this.watch = event.watch;
+        return true;
+    }
+    if (this.isOver()) return false;
+    this.settlePending(true);
     switch (event.event) {
       case "paused":
         this.moreRequested = false;
@@ -94,6 +131,21 @@ export class GraphFeed {
     this.moreRequested = true;
     this.status = { state: "loading" };
     return MORE_ROWS;
+  }
+
+  /** Swaps in a refresh's rows once they are all here, or once the walk has stopped (`ended`). */
+  private settlePending(ended: boolean): void {
+    const pending = this.pending;
+    if (pending === null || this.store === null) return;
+    if (pending.kind === "splice") {
+      if (pending.store.rowCount < pending.splice.newRows) return;
+      this.store = this.store.spliced(pending.store, pending.splice);
+    } else {
+      if (!ended && pending.store.rowCount < pending.until) return;
+      this.store = pending.store;
+    }
+    this.pending = null;
+    this.moreRequested = false;
   }
 
   private isOver(): boolean {
