@@ -18,7 +18,7 @@ use slices::bridge::{
 use slices::git::{
     check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
     git_file_bytes, git_file_diff, git_ignore_folder, git_op_cancel, git_stage_paths, git_stage_selection, git_status, git_unstage_paths, git_version_check, is_git_repo, list_git_worktrees,
-    remove_git_worktree, GitOps, StagingLocks,
+    remove_git_worktree, topos_settings_read, topos_settings_write, GitOps, StagingLocks, ToposSettingsStore,
     GraphSessions,
 };
 use slices::github::{
@@ -89,6 +89,8 @@ pub fn run() {
     // Antigravity reports its turns in its own output, which the PTY reader hands on
     a2a_router.follow_turns(&pty_manager);
 
+    let topos_settings = ToposSettingsStore::new();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -102,6 +104,7 @@ pub fn run() {
         .manage(GraphSessions::default())
         .manage(GitOps::default())
         .manage(StagingLocks::default())
+        .manage(topos_settings.clone())
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -209,6 +212,8 @@ pub fn run() {
             git_file_diff,
             git_stage_selection,
             git_file_bytes,
+            topos_settings_read,
+            topos_settings_write,
             check_gh_cli_installed,
             get_github_repo_info,
             list_github_issues,
@@ -262,6 +267,10 @@ pub fn run() {
             // Terminals still running when Quay closes come back showing their last screen
             if let tauri::RunEvent::Exit = event {
                 exiting_terminals.save_all_screens();
+                // A pref changed in the last 500 ms is written now rather than lost.
+                if let Err(e) = topos_settings.flush() {
+                    tracing::warn!("{}", e);
+                }
             }
         });
 }

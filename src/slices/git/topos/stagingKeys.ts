@@ -94,7 +94,7 @@ export function failureView(e: unknown): FailureView {
   return { message: errorMessage(e), retry: false, stale: false };
 }
 
-/** The inspector column's width when Topos opens (#366). Persisting it is the settings ticket's. */
+/** The inspector column's width before topos.json says otherwise (#366, #384). */
 export const DEFAULT_INSPECTOR_WIDTH = 400;
 export const MIN_INSPECTOR_WIDTH = 280;
 export const MAX_INSPECTOR_WIDTH = 720;

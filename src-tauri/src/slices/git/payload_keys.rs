@@ -10,6 +10,7 @@ use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
 };
 use super::op_runner::OpEvent;
+use super::settings::{DiffMode, FileListMode, RepoState, ToposSettings};
 use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
 use super::version::GitVersionStatus;
 
@@ -228,6 +229,23 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         ("OpEvent::Stalled", s(&OpEvent::Stalled), json!({ "event": "stalled" })),
         ("OpEvent::Done", s(&OpEvent::Done), json!({ "event": "done" })),
+        (
+            "ToposSettings",
+            s(&ToposSettings {
+                graph_column_width: 300,
+                inspector_width: 520,
+                diff_mode: DiffMode::Split,
+                file_list_mode: FileListMode::Tree,
+                // The repo keys are paths, not field names, so the entry has its own fixture.
+                repos: Default::default(),
+            }),
+            json!({ "graphColumnWidth": 300, "inspectorWidth": 520, "diffMode": "split", "fileListMode": "tree", "repos": {} }),
+        ),
+        (
+            "RepoState",
+            s(&RepoState { last_opened: 1_793_000_000_000 }),
+            json!({ "lastOpened": 1_793_000_000_000_i64 }),
+        ),
         (
             "OpEvent::Failed",
             s(&OpEvent::Failed { error: GitError::Cancelled }),

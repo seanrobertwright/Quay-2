@@ -294,7 +294,7 @@ fn is_registered_worktree(repo_path: &str, worktree_path: &str) -> Result<bool, 
 /// A path in a form two spellings of the same folder share: resolved through links,
 /// short names and `..` when it exists, with forward slashes and no trailing slash, and
 /// in lower case where the file system ignores case (Windows and macOS).
-fn comparable_path(path: &str) -> String {
+pub(crate) fn comparable_path(path: &str) -> String {
     let resolved = std::fs::canonicalize(path)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_string());
