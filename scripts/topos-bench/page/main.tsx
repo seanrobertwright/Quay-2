@@ -13,6 +13,9 @@ import { NO_REFS } from "../../../src/slices/git/topos/graphRefs";
 import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
+// No refs means no HEAD markers to put agents on.
+const NO_WORKTREE_AGENTS = new Map();
+
 const state: BenchState = {
   phase: "loading",
   rows: 0,
@@ -138,6 +141,7 @@ function Bench() {
           onColumnWidth={setColumnWidth}
           // Recordings carry no refs, so the benchmark measures rows without badges.
           refs={NO_REFS}
+          worktreeAgents={NO_WORKTREE_AGENTS}
         />
       ) : (
         <p role="status">Loading commits…</p>

@@ -764,6 +764,7 @@ export function App() {
         project={toposTarget}
         onClose={closeTopos}
         onAddProject={() => setIsAddProjectOpen(true)}
+        terminals={terminals}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

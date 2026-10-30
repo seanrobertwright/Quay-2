@@ -73,7 +73,16 @@ fn repo_with_history(commits: usize) -> PathBuf {
 /// What a test sees on the channel.
 #[derive(Debug)]
 pub(super) enum Msg {
-    Rows { session: u32, page: u32, first_row: u32, oids: Vec<String>, author_ms: f64, lanes: Box<PageLanes> },
+    Rows {
+        session: u32,
+        page: u32,
+        first_row: u32,
+        oids: Vec<String>,
+        author_ms: f64,
+        lanes: Box<PageLanes>,
+        /// The page's provenance entries, as JSON (#381).
+        agents: Vec<Value>,
+    },
     Event(Value),
 }
 
@@ -137,6 +146,7 @@ fn decode(bytes: &[u8]) -> Msg {
         oids,
         author_ms: f64::from_le_bytes(bytes[HEADER_BYTES..HEADER_BYTES + 8].try_into().unwrap()),
         lanes: Box::new(lanes),
+        agents: json["agents"].as_array().cloned().unwrap_or_default(),
     }
 }
 
@@ -344,5 +354,60 @@ fn object_reads_go_through_one_cat_file_per_session() {
     assert!(sessions.read_object(id, "main\nHEAD").is_err());
     assert_eq!(sessions.read_object(id, "main").unwrap().unwrap().kind, "commit");
     assert!(sessions.read_object(id + 1, "main").is_err());
+    std::fs::remove_dir_all(repo).ok();
+}
+
+/// Commits `message` on `repo`'s current branch, with no changes, and returns its oid.
+fn commit_with_message(repo: &Path, message: &str) -> String {
+    git(repo, &["-c", "user.name=Ann", "-c", "user.email=ann@example.invalid", "commit", "-q", "--allow-empty", "-m", message]);
+    git(repo, &["rev-parse", "HEAD"]).trim().to_string()
+}
+
+#[test]
+fn rows_carry_each_commits_agent_and_how_quay_knows_it() {
+    let repo = temp_dir();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let human = commit_with_message(&repo, "By hand
+
+Co-authored-by: Ed <ed@example.invalid>");
+    let coauthor = commit_with_message(&repo, "Paired
+
+Co-authored-by: Claude Opus <NoReply@Anthropic.com>");
+    let stamp = commit_with_message(&repo, "Stamped
+
+Quay-Agent: codex");
+    let both = commit_with_message(&repo, "Both
+
+Co-authored-by: Claude <noreply@anthropic.com>
+Quay-Agent: antigravity");
+    let unknown = commit_with_message(&repo, "Odd
+
+Quay-Agent: <b>robot</b>");
+    let shell = commit_with_message(&repo, "Shell
+
+Quay-Agent: powershell");
+
+    let sessions = GraphSessions::default();
+    let (ch, rx) = listen();
+    sessions.open(&repo, options(None), ch).unwrap();
+    let (oids, agents) = loop {
+        if let Msg::Rows { oids, agents, .. } = rx.recv_timeout(WAIT).unwrap() {
+            break (oids, agents);
+        }
+    };
+    let row = |oid: &str| oids.iter().position(|o| o == oid).unwrap();
+    let mut expected = vec![
+        serde_json::json!({ "row": row(coauthor.as_str()), "kind": "claude", "source": "coauthor" }),
+        serde_json::json!({ "row": row(stamp.as_str()), "kind": "codex", "source": "stamp" }),
+        serde_json::json!({ "row": row(both.as_str()), "kind": "antigravity", "source": "stamp" }),
+        serde_json::json!({ "row": row(unknown.as_str()), "kind": null, "source": "stamp", "raw": "<b>robot</b>" }),
+        serde_json::json!({ "row": row(shell.as_str()), "kind": null, "source": "stamp", "raw": "powershell" }),
+    ];
+    expected.sort_by_key(|a| a["row"].as_u64());
+    assert_eq!(agents, expected);
+    // A human commit has no entry, and no trailer text other than an unknown stamp's reaches the page.
+    assert!(!agents.iter().any(|a| a["row"] == row(human.as_str())));
+    let text = serde_json::to_string(&agents).unwrap();
+    assert!(!text.contains("example.invalid") && !text.contains("anthropic"), "{text}");
     std::fs::remove_dir_all(repo).ok();
 }

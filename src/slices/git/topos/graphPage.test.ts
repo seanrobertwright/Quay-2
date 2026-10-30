@@ -77,3 +77,20 @@ test("rejects a track record that isn't one", () => {
   bytes.set(new TextEncoder().encode('"other"'), at);
   assert.throws(() => decodeGraphPage(buffer), /doesn't match its rows/);
 });
+
+test("decodes each agent commit's provenance by row, leaving human commits out", () => {
+  const page = decodeGraphPage(fixture());
+  assert.deepEqual(page.agents, [
+    { row: 1, kind: "codex", source: "stamp" },
+    { row: 2, kind: null, source: "stamp", raw: "<robot>" },
+  ]);
+});
+
+test("rejects a provenance entry that isn't one", () => {
+  const buffer = fixture();
+  const bytes = new Uint8Array(buffer);
+  const at = Buffer.from(bytes).indexOf('"stamp"');
+  assert.ok(at > 0);
+  bytes.set(new TextEncoder().encode('"robot"'), at);
+  assert.throws(() => decodeGraphPage(buffer), /doesn't match its rows/);
+});

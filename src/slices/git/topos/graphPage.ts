@@ -2,6 +2,8 @@
 // encoded, in `src-tauri/src/slices/git/graph/page.rs`; `fixtures/graph-page-v2.bin` is a page Rust
 // encoded.
 
+import { RUN_KINDS, type RunKind } from "../../terminal/types.ts";
+
 /** "TGPG" read as a little-endian u32. */
 export const PAGE_MAGIC = 0x47504754;
 export const PAGE_FORMAT_VERSION = 2;
@@ -33,6 +35,29 @@ export interface GraphTrack {
   /** The tracks either side of this one's lane when it opened. */
   left: number | null;
   right: number | null;
+}
+
+const AGENT_SOURCES = ["stamp", "coauthor"] as const;
+/** How Quay knows a commit's agent: its `Quay-Agent` stamp, or a known `Co-authored-by` email. */
+export type AgentSource = (typeof AGENT_SOURCES)[number];
+
+/** The agent of one agent commit, as the backend classified it (#381). */
+export interface GraphAgent {
+  /** The agent's run kind, or null for a stamp naming none. */
+  kind: RunKind | null;
+  source: AgentSource;
+  /** An unknown stamp's value, untrusted text for the tooltip only. */
+  raw?: string;
+}
+
+/** An agent commit's row within its page, and its agent. */
+export interface PageAgent extends GraphAgent {
+  row: number;
+}
+
+/** A page agent's agent, without its row. */
+export function toGraphAgent(a: PageAgent): GraphAgent {
+  return a.raw === undefined ? { kind: a.kind, source: a.source } : { kind: a.kind, source: a.source, raw: a.raw };
 }
 
 export interface GraphPage {
@@ -67,6 +92,8 @@ export interface GraphPage {
   newAuthors: GraphAuthor[];
   /** Tracks this page opens, in id order. */
   newTracks: GraphTrack[];
+  /** The page's agent commits, in row order; a human commit has no entry. */
+  agents: PageAgent[];
 }
 
 export class GraphPageError extends Error {}
@@ -104,6 +131,26 @@ function isTrackArray(value: unknown): value is GraphTrack[] {
         TRACK_KINDS.includes(t.kind) &&
         isTrackId(t.left) &&
         isTrackId(t.right)
+    )
+  );
+}
+
+const SOURCES: readonly unknown[] = AGENT_SOURCES;
+const KINDS: readonly unknown[] = RUN_KINDS;
+
+function isAgentArray(value: unknown, rowCount: number): value is PageAgent[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (a) =>
+        typeof a === "object" &&
+        a !== null &&
+        Number.isInteger(a.row) &&
+        a.row >= 0 &&
+        a.row < rowCount &&
+        (a.kind === null || KINDS.includes(a.kind)) &&
+        SOURCES.includes(a.source) &&
+        (a.raw === undefined || typeof a.raw === "string")
     )
   );
 }
@@ -154,12 +201,13 @@ export function decodeGraphPage(buffer: ArrayBuffer): GraphPage {
   } catch (e) {
     throw new GraphPageError(`the graph page's JSON doesn't parse: ${String(e)}`);
   }
-  const { oids, subjects, newAuthors, newTracks } = (json ?? {}) as Record<string, unknown>;
+  const { oids, subjects, newAuthors, newTracks, agents } = (json ?? {}) as Record<string, unknown>;
   if (
     !isStringArray(oids, rowCount) ||
     !isStringArray(subjects, rowCount) ||
     !isAuthorArray(newAuthors) ||
-    !isTrackArray(newTracks)
+    !isTrackArray(newTracks) ||
+    !isAgentArray(agents, rowCount)
   ) {
     throw new GraphPageError("the graph page's JSON doesn't match its rows");
   }
@@ -182,5 +230,6 @@ export function decodeGraphPage(buffer: ArrayBuffer): GraphPage {
     subjects,
     newAuthors,
     newTracks,
+    agents,
   };
 }

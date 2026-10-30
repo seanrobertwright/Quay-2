@@ -8,6 +8,8 @@ import {
   EDGE_FIELD,
   EDGE_FIELDS,
   OPEN_ROW,
+  toGraphAgent,
+  type GraphAgent,
   type GraphAuthor,
   type GraphPage,
   type GraphTrack,
@@ -27,6 +29,16 @@ function grown<T extends Growable>(array: T, needed: number, make: (n: number) =
   const next = make(capacity);
   next.set(array);
   return next;
+}
+
+/** The most distinct agents a store tells apart; past it an unknown stamp loses its value. */
+const MAX_AGENTS = 0xffff;
+/** An unknown stamp without its value, kept at a fixed index so a full table can still name it. */
+const UNKNOWN_STAMP: GraphAgent = { kind: null, source: "stamp" };
+const UNKNOWN_STAMP_ID = 1;
+
+function agentKey(a: GraphAgent): string {
+  return JSON.stringify([a.kind, a.source, a.raw ?? null]);
 }
 
 /** A track met at some row, with where it started (#376). */
@@ -85,6 +97,11 @@ export class GraphStore {
   private authorIdsByRow = new Uint32Array(INITIAL_CAPACITY);
   private lanesByRow = new Uint16Array(INITIAL_CAPACITY);
   private tracksByRow = new Uint32Array(INITIAL_CAPACITY);
+  /** Each row's index into `agentTable`, 0 for a human commit (#381). */
+  private agentIdsByRow = new Uint16Array(INITIAL_CAPACITY);
+  /** The distinct agents seen; few, so a row holds an index rather than an object. */
+  private readonly agentTable: (GraphAgent | null)[] = [null, UNKNOWN_STAMP];
+  private readonly agentIds = new Map<string, number>([[agentKey(UNKNOWN_STAMP), UNKNOWN_STAMP_ID]]);
   private readonly oids: string[] = [];
   private readonly subjects: string[] = [];
   private readonly authors: GraphAuthor[] = [];
@@ -179,6 +196,9 @@ export class GraphStore {
       this.subjects.push(page.subjects[i]);
     }
     for (const author of page.newAuthors) this.authors.push(author);
+    for (const a of page.agents) {
+      this.agentIdsByRow[page.firstRow + a.row] = this.agentId(toGraphAgent(a));
+    }
 
     this.growEdges(this.edges + page.edgeCount);
     this.edgeData.set(page.edges, this.edges * EDGE_FIELDS);
@@ -201,6 +221,19 @@ export class GraphStore {
     this.nextPage++;
   }
 
+  /** The index of `agent` in the agent table, adding it when it is new. */
+  private agentId(agent: GraphAgent): number {
+    const key = agentKey(agent);
+    const known = this.agentIds.get(key);
+    if (known !== undefined) return known;
+    // Only distinct unknown stamps can fill the table; past it they show without their value.
+    if (this.agentTable.length >= MAX_AGENTS) return UNKNOWN_STAMP_ID;
+    const id = this.agentTable.length;
+    this.agentTable.push(agent);
+    this.agentIds.set(key, id);
+    return id;
+  }
+
   private addTrack(t: GraphTrack): void {
     const neighbours = [t.left, t.right].filter((n): n is number => n !== null && n < this.trackSlots.length);
     this.trackKeys.push(t.key);
@@ -215,6 +248,7 @@ export class GraphStore {
     this.authorIdsByRow = grown(this.authorIdsByRow, rows, (n) => new Uint32Array(n));
     this.lanesByRow = grown(this.lanesByRow, rows, (n) => new Uint16Array(n));
     this.tracksByRow = grown(this.tracksByRow, rows, (n) => new Uint32Array(n));
+    this.agentIdsByRow = grown(this.agentIdsByRow, rows, (n) => new Uint16Array(n));
   }
 
   private growEdges(edges: number): void {
@@ -269,6 +303,8 @@ export class GraphStore {
       top.authorIdsByRow[at] = this.authorIdsByRow[r];
       top.lanesByRow[at] = this.lanesByRow[r];
       top.tracksByRow[at] = t;
+      const agent = this.agentTable[this.agentIdsByRow[r]];
+      top.agentIdsByRow[at] = agent === null ? 0 : top.agentId(agent);
       top.oids.push(this.oids[r]);
       top.subjects.push(this.subjects[r]);
       if (top.trackStarts[t] === OPEN_ROW) top.trackStarts[t] = at;
@@ -323,6 +359,11 @@ export class GraphStore {
 
   author(row: number): GraphAuthor {
     return this.authors[this.authorIdsByRow[row]];
+  }
+
+  /** The agent that made the commit at `row`, or null for a human commit (#381). */
+  agent(row: number): GraphAgent | null {
+    return this.agentTable[this.agentIdsByRow[row]];
   }
 
   /** Epoch milliseconds. */

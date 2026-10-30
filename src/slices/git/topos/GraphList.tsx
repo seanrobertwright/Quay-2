@@ -8,9 +8,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Cloud, FolderGit2, GitBranch, Tag } from "lucide-react";
+import { Bot, Cloud, FolderGit2, GitBranch, Tag } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
+import { AgentIcon } from "../../terminal/AgentIcons";
+import type { RunKind } from "../../terminal/types";
 import {
   clampColumnWidth,
   columnLayout,
@@ -23,6 +25,8 @@ import type { GraphFeed, GraphStatus } from "./graphFeed";
 import { hitNode, rowAt } from "./graphHit";
 import type { Badge, RefsView } from "./graphRefs";
 import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
+import type { GraphAgent } from "./graphPage";
+import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { slotColor } from "./laneColors";
@@ -47,6 +51,8 @@ export interface GraphListProps {
   onColumnWidth: (width: number) => void;
   /** Each commit's ref and worktree HEAD badges and the footer's ref lines (#378). */
   refs: RefsView;
+  /** The live agent terminals in each worktree, by the path its HEAD badge names (#381). */
+  worktreeAgents: ReadonlyMap<string, RunKind[]>;
 }
 
 function statusLine(status: GraphStatus, rows: number): string {
@@ -95,7 +101,10 @@ function badgeTitle(b: Badge): string {
  * A commit's badges (#378). The selected worktree's HEAD reads "HEAD" in a filled badge, so it is
  * marked by text and shape as well as color, and its row carries `aria-current`.
  */
-const RowBadges: React.FC<{ badges: Badge[] }> = ({ badges }) => {
+const RowBadges: React.FC<{ badges: Badge[]; worktreeAgents: ReadonlyMap<string, RunKind[]> }> = ({
+  badges,
+  worktreeAgents,
+}) => {
   const shown = badges.slice(0, SHOWN_BADGES);
   const rest = badges.slice(SHOWN_BADGES);
   return (
@@ -114,6 +123,7 @@ const RowBadges: React.FC<{ badges: Badge[] }> = ({ badges }) => {
             {current && <span>HEAD</span>}
             <span className="truncate">{b.name}</span>
             {current && <span className="sr-only">(selected worktree)</span>}
+            {b.kind === "head" && <HeadAgents kinds={worktreeAgents.get(b.path) ?? []} />}
           </span>
         );
       })}
@@ -125,6 +135,38 @@ const RowBadges: React.FC<{ badges: Badge[] }> = ({ badges }) => {
     </span>
   );
 };
+
+/**
+ * The live agent terminals working in a worktree, on its HEAD marker (#381): at most three icons,
+ * then "+N". Display only.
+ */
+const HeadAgents: React.FC<{ kinds: RunKind[] }> = ({ kinds }) => {
+  if (kinds.length === 0) return null;
+  const { shown, more } = splitAgents(kinds);
+  return (
+    <span className="shrink-0 inline-flex items-center gap-0.5" title={`Agents working here: ${kinds.join(", ")}`}>
+      {shown.map(({ kind, key }) => (
+        <AgentIcon key={key} kind={kind} className="w-3 h-3" />
+      ))}
+      {more > 0 && <span>+{more}</span>}
+      <span className="sr-only">, agents working here: {kinds.join(", ")}</span>
+    </span>
+  );
+};
+
+/** An agent commit's node radius: room for its icon inside the ring (#381). */
+const AGENT_NODE_RADIUS = 7;
+const AGENT_ICON_SIZE = 10;
+/** The dark fill behind an agent's icon. */
+const AGENT_NODE_FILL = "#0d1117";
+
+/** An agent commit's icon, or a generic agent glyph for a stamp naming no known agent. */
+const NodeAgentIcon: React.FC<{ agent: GraphAgent }> = ({ agent }) =>
+  agent.kind === null ? (
+    <Bot className="w-full h-full text-[#8b949e]" aria-hidden="true" />
+  ) : (
+    <AgentIcon kind={agent.kind} className="w-full h-full" />
+  );
 
 /** The stub column's stroke: grey, so it reads as "more lanes", not as a track (#351). */
 const STUB_COLOR = "#8b949e";
@@ -152,40 +194,78 @@ const GraphLanes = React.memo<{
   });
   const { slots, stub } = slotPaths(edges, win, layout);
   const nodes: React.ReactNode[] = [];
+  const icons: React.ReactNode[] = [];
   for (let row = win.start; row < win.end; row++) {
     const lane = collapsedLane(store.lane(row), layout.stubLane);
     const stubbed = lane === layout.stubLane;
+    const color = stubbed ? STUB_COLOR : slotColor(store.trackSlot(store.track(row)));
+    const agent = store.agent(row);
+    const cx = laneX(lane);
+    const cy = rowY(row, win.start);
+    if (agent === null) {
+      nodes.push(
+        <circle key={store.oid(row)} cx={cx} cy={cy} r={stubbed ? NODE_RADIUS - 1.5 : NODE_RADIUS} fill={color} />
+      );
+      continue;
+    }
+    // An agent commit rings its icon in the lane color: solid for a Quay stamp, dashed for an
+    // inferred co-author, so the source shows by line style and label, not by color alone.
     nodes.push(
       <circle
         key={store.oid(row)}
-        cx={laneX(lane)}
-        cy={rowY(row, win.start)}
-        r={stubbed ? NODE_RADIUS - 1.5 : NODE_RADIUS}
-        fill={stubbed ? STUB_COLOR : slotColor(store.trackSlot(store.track(row)))}
+        cx={cx}
+        cy={cy}
+        r={AGENT_NODE_RADIUS}
+        fill={AGENT_NODE_FILL}
+        stroke={color}
+        strokeWidth={1.5}
+        strokeDasharray={agent.source === "coauthor" ? "2.5 2" : undefined}
       />
+    );
+    icons.push(
+      <span
+        key={store.oid(row)}
+        className="absolute"
+        style={{
+          left: cx - AGENT_ICON_SIZE / 2,
+          top: cy - AGENT_ICON_SIZE / 2,
+          width: AGENT_ICON_SIZE,
+          height: AGENT_ICON_SIZE,
+        }}
+      >
+        <NodeAgentIcon agent={agent} />
+      </span>
     );
   }
   return (
-    <svg
-      aria-hidden="true"
-      className="absolute left-0 top-0 pointer-events-none"
-      width={layout.width}
-      height={(win.end - win.start) * ROW_HEIGHT}
-    >
-      {/* The index is the color slot, a fixed identity in a fixed-length array, so it is a stable key. */}
-      {slots.map((d, slot) =>
-        d === "" ? null : <path key={slot} d={d} fill="none" stroke={slotColor(slot)} strokeWidth={2} />
+    <>
+      <svg
+        aria-hidden="true"
+        className="absolute left-0 top-0 pointer-events-none"
+        width={layout.width}
+        height={(win.end - win.start) * ROW_HEIGHT}
+      >
+        {/* The index is the color slot, a fixed identity in a fixed-length array, so it is a stable key. */}
+        {slots.map((d, slot) =>
+          d === "" ? null : <path key={slot} d={d} fill="none" stroke={slotColor(slot)} strokeWidth={2} />
+        )}
+        {/* The stub's 4-on, 3-off dashes come from a striped paint, not stroke-dasharray: Chromium
+            re-dashes a dashed path on every raster, which cost ~100 ms a frame on Linux's graph (#377). */}
+        <defs>
+          <pattern id={stubDash} patternUnits="userSpaceOnUse" width={layout.width} height={7}>
+            <rect width={layout.width} height={4} fill={STUB_COLOR} />
+          </pattern>
+        </defs>
+        {stub !== "" && <path d={stub} fill="none" stroke={`url(#${stubDash})`} strokeWidth={1.5} />}
+        {nodes}
+      </svg>
+      {/* The icons sit in HTML over their rings: the shared AgentIcon is a standalone svg sized by class. */}
+      {icons.length > 0 && (
+        <div aria-hidden="true" className="absolute left-0 top-0 pointer-events-none">
+          {icons}
+        </div>
       )}
-      {/* The stub's 4-on, 3-off dashes come from a striped paint, not stroke-dasharray: Chromium
-          re-dashes a dashed path on every raster, which cost ~100 ms a frame on Linux's graph (#377). */}
-      <defs>
-        <pattern id={stubDash} patternUnits="userSpaceOnUse" width={layout.width} height={7}>
-          <rect width={layout.width} height={4} fill={STUB_COLOR} />
-        </pattern>
-      </defs>
-      {stub !== "" && <path d={stub} fill="none" stroke={`url(#${stubDash})`} strokeWidth={1.5} />}
-      {nodes}
-    </svg>
+    </>
   );
 });
 
@@ -356,6 +436,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   columnWidth,
   onColumnWidth,
   refs,
+  worktreeAgents,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -535,6 +616,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     if (!store) return out;
     for (let row = win.start; row < win.end; row++) {
       const author = store.author(row);
+      const agent = store.agent(row);
       const subject = store.subject(row);
       const isActive = row === activeRow;
       const oid = store.oid(row);
@@ -554,13 +636,14 @@ export const GraphList: React.FC<GraphListProps> = ({
           }`}
           style={{ height: ROW_HEIGHT }}
         >
-          <span className="shrink-0" style={{ width: layout.width }} aria-hidden="true" />
-          {rowBadges && <RowBadges badges={rowBadges} />}
+          {/* The node's spoken label; the node itself is drawn in the aria-hidden lane graph. */}
+          <span role="img" aria-label={nodeLabel(agent, author.name)} className="shrink-0" style={{ width: layout.width }} />
+          {rowBadges && <RowBadges badges={rowBadges} worktreeAgents={worktreeAgents} />}
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={subject}>
             {subject}
           </span>
           <span className="w-40 shrink-0 truncate text-[#8b949e]" title={author.email}>
-            {author.name}
+            {authorLine(author.name, agent)}
           </span>
           <span className="w-40 shrink-0 truncate text-right text-[#8b949e] tabular-nums">
             {formatDateTime(store.authorTimeMs(row))}
@@ -570,7 +653,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges]);
+  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -635,6 +718,12 @@ export const GraphList: React.FC<GraphListProps> = ({
                     top: (hovered - win.start + 1) * ROW_HEIGHT,
                   }}
                 >
+                  {/* Text children, so React escapes an unknown stamp's untrusted value. */}
+                  {nodeTooltip(store.agent(hovered), store.author(hovered).name).map((line) => (
+                    <div key={line} className="truncate font-medium">
+                      {line}
+                    </div>
+                  ))}
                   <div className="truncate">
                     <span className="font-mono text-[#8b949e]">{shortOid(store.oid(hovered))}</span>{" "}
                     {store.subject(hovered)}

@@ -163,3 +163,27 @@ test("the store names a track by its id", () => {
   assert.equal(store.trackLabel(0), "main");
   assert.equal(store.trackLabel(1), "topic");
 });
+
+test("each row keeps the agent its page gave it, and a human commit has none", () => {
+  const store = new GraphStore(1);
+  ingest(store, {
+    pageIndex: 0,
+    firstRow: 0,
+    rowCount: 3,
+    agents: [
+      { row: 0, kind: "codex", source: "stamp" },
+      { row: 2, kind: "claude", source: "coauthor" },
+    ],
+  });
+  ingest(store, { pageIndex: 1, firstRow: 3, rowCount: 2, agents: [{ row: 1, kind: null, source: "stamp", raw: "<b>x</b>" }] });
+  assert.deepEqual(
+    Array.from({ length: 5 }, (_, r) => store.agent(r)),
+    [
+      { kind: "codex", source: "stamp" },
+      null,
+      { kind: "claude", source: "coauthor" },
+      null,
+      { kind: null, source: "stamp", raw: "<b>x</b>" },
+    ]
+  );
+});
