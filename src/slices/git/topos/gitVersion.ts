@@ -17,7 +17,7 @@ export type GitError =
 
 /** The text to show for a rejected git command: a `GitError`'s stderr, or whatever was thrown. */
 export function errorMessage(e: unknown): string {
-  if (typeof e === "object" && e !== null && "stderr" in e) return String((e as { stderr: unknown }).stderr);
+  if (typeof e === "object" && e !== null && Object.prototype.hasOwnProperty.call(e, "stderr")) return String((e as { stderr: unknown }).stderr);
   return String(e);
 }
 

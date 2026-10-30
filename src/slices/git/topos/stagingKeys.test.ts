@@ -59,6 +59,11 @@ test("a held index.lock offers Retry, and other failures say what git said", () 
   assert.deepEqual(failureView("plain"), { message: "plain", retry: false });
 });
 
+test("a failure reads only its own kind and stderr, never inherited ones", () => {
+  const inherited = Object.create({ kind: "indexLocked", stderr: "from the prototype" }) as object;
+  assert.deepEqual(failureView(inherited), { message: "[object Object]", retry: false });
+});
+
 test("the inspector opens 400 px wide and its handle resizes it within bounds", () => {
   assert.equal(DEFAULT_INSPECTOR_WIDTH, 400);
   assert.equal(clampInspectorWidth(100), 280);

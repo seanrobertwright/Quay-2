@@ -68,7 +68,7 @@ export interface FailureView {
 
 /** What the inspector shows for a rejected staging command. */
 export function failureView(e: unknown): FailureView {
-  if (typeof e === "object" && e !== null && "kind" in e) {
+  if (typeof e === "object" && e !== null && Object.prototype.hasOwnProperty.call(e, "kind")) {
     switch ((e as { kind: unknown }).kind) {
       case "indexLocked":
         return {
