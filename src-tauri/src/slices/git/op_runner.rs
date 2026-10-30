@@ -28,11 +28,14 @@ pub struct OpOptions {
     /// Run git with `LC_ALL=C`, for operations whose stderr Topos matches (fetch, pull and the
     /// local operations). The commit path leaves it off.
     pub c_locale: bool,
+    /// Run git with `GIT_PROGRESS_DELAY=0`, so progress shows from the start instead of after git's
+    /// default two seconds.
+    pub progress_at_once: bool,
 }
 
 impl Default for OpOptions {
     fn default() -> Self {
-        Self { stall_after: STALL_AFTER, c_locale: false }
+        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false }
     }
 }
 
@@ -140,6 +143,9 @@ fn run_with_cancel(
     cmd.current_dir(cwd);
     if opts.c_locale {
         cmd.env("LC_ALL", "C");
+    }
+    if opts.progress_at_once {
+        cmd.env("GIT_PROGRESS_DELAY", "0");
     }
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut tree = crate::spawn::spawn_tree(&mut cmd)

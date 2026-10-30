@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent, type RefObject } from "react";
+import { trapTabTarget } from "./focusTrap";
 import { createOverlayStack } from "./overlayStack";
 
 /** Every open overlay in the app, topmost last. */
@@ -53,6 +54,42 @@ export function usePopupLayer(isOpen: boolean, onClose: () => void, popupRef: Re
       contains: (target) => target instanceof Node && !!popupRef.current?.contains(target),
     });
   }, [isOpen, popupRef]);
+}
+
+/** The controls a dialog's focus trap moves between. */
+const DIALOG_CONTROLS = "input:not(:disabled), button:not(:disabled)";
+
+/**
+ * Focus for a modal dialog drawn inside an overlay while `isOpen`: it starts on the first enabled
+ * control, Tab and Shift+Tab stay among the enabled controls, and on close it goes back where it
+ * was, or to `fallbackRef` when that has gone.
+ */
+export function useDialogFocus(
+  isOpen: boolean,
+  panelRef: RefObject<HTMLElement | null>,
+  fallbackRef?: RefObject<HTMLElement | null>
+) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const fallback = fallbackRef?.current ?? null;
+    const node = panelRef.current;
+    node?.querySelector<HTMLElement>(DIALOG_CONTROLS)?.focus();
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || node === null) return;
+      const controls = [...node.querySelectorAll<HTMLElement>(DIALOG_CONTROLS)];
+      const target = trapTabTarget(controls, document.activeElement, e.shiftKey);
+      if (target === null) return;
+      e.preventDefault();
+      target.focus();
+    };
+    node?.addEventListener("keydown", trap);
+    return () => {
+      node?.removeEventListener("keydown", trap);
+      if (before?.isConnected) before.focus();
+      else fallback?.focus();
+    };
+  }, [isOpen, panelRef, fallbackRef]);
 }
 
 interface UseOverlayOptions {

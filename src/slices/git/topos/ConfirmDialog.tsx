@@ -1,5 +1,5 @@
-import React, { useEffect, useId, useRef } from "react";
-import { usePopupLayer } from "../../overlay/useOverlay";
+import React, { useId, useRef } from "react";
+import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
 
 export interface ConfirmRequest {
   title: string;
@@ -16,27 +16,12 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const titleId = useId();
   const detailId = useId();
   const panel = useRef<HTMLDivElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
-  const confirm = useRef<HTMLButtonElement>(null);
   const open = request !== null;
   usePopupLayer(open, onCancel, panel);
-
-  // Focus goes back where it was once the dialog closes.
-  useEffect(() => {
-    if (!open) return;
-    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancel.current?.focus();
-    return () => before?.focus();
-  }, [open]);
+  // Cancel comes first, so focus starts on it.
+  useDialogFocus(open, panel);
 
   if (request === null) return null;
-
-  // Focus is trapped: Tab and Shift+Tab move between the two buttons.
-  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    (e.currentTarget === cancel.current ? confirm : cancel).current?.focus();
-  };
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -56,18 +41,14 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
         </p>
         <div className="flex justify-end gap-2">
           <button
-            ref={cancel}
             type="button"
             onClick={onCancel}
-            onKeyDown={onKeyDown}
             className="px-3 py-1.5 rounded-md text-xs text-[#c9d1d9] hover:bg-[#21262d] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
           >
             Cancel
           </button>
           <button
-            ref={confirm}
             type="button"
-            onKeyDown={onKeyDown}
             onClick={() => {
               onCancel();
               request.onConfirm();

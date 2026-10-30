@@ -19,6 +19,9 @@ import { otherSide, splitStatus, type ListMode } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useStaging } from "./useStaging";
 import { useToposSettings } from "./useToposSettings";
+import { offerSpeedup } from "./speedup";
+import { SpeedupBanner, SpeedupDialog } from "./SpeedupDialog";
+import { useSpeedup } from "./useSpeedup";
 import { isSamePath } from "../../../utils/paths";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
@@ -159,6 +162,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
     [changed, headOid, target, inspectorOpen, inspectorId]
   );
   const watch = graph.feed?.watch ?? null;
+  // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.
+  const speedup = useSpeedup(graphRepo);
+  const [speedupOpen, setSpeedupOpen] = useState(false);
+  useEffect(() => setSpeedupOpen(false), [graphRepo]);
+  const feed = graph.feed;
+  const showSpeedup =
+    feed !== null &&
+    offerSpeedup(speedup.check, { ...feed.load(), dismissed: speedup.dismissed });
 
   return (
     <div
@@ -279,6 +290,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 {view.warning}
               </p>
             )}
+            {showSpeedup && watch?.state !== "gone" && (
+              <SpeedupBanner speedup={speedup} onOpen={() => setSpeedupOpen(true)} />
+            )}
             {watch?.state === "gone" ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center p-6" role="status">
                 <p className="text-sm text-white">This worktree or repository is gone.</p>
@@ -342,6 +356,12 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
             )}
           </div>
         )}
+        <SpeedupDialog
+          open={speedupOpen && graphRepo !== null}
+          speedup={speedup}
+          onClose={() => setSpeedupOpen(false)}
+          fallbackFocus={panelProps.ref}
+        />
       </div>
     </div>
   );

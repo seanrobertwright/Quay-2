@@ -5,6 +5,7 @@
 import { decodeGraphPage } from "./graphPage.ts";
 import { GraphStore, type Splice } from "./graphStore.ts";
 import { errorMessage, type GitError } from "./gitVersion.ts";
+import type { GraphLoad } from "./speedup.ts";
 
 /** The JSON `GraphEvent`s from `src-tauri/src/slices/git/graph/page.rs`. `Rows` pages are raw bytes. */
 export type GraphEvent =
@@ -49,6 +50,8 @@ export class GraphFeed {
   status: GraphStatus = { state: "loading" };
   /** The watch's state, from its last `watch` event or `git_graph_watch`; null before either. */
   watch: WatchState | null = null;
+  /** Whether the first rows took longer than a second, or still haven't come (#385). */
+  private slowFirstRows = false;
   private pending: Pending | null = null;
   /** Set while a `git_graph_more` is outstanding, so scrolling asks only once. */
   private moreRequested = false;
@@ -120,6 +123,25 @@ export class GraphFeed {
       default:
         return false;
     }
+  }
+
+  /**
+   * Marks the first rows slow (#385), called once they've been out for [`SLOW_FIRST_ROWS_MS`].
+   * Returns whether that changed anything: it doesn't once rows have come or the walk has ended.
+   */
+  markSlowFirstRows(): boolean {
+    if (this.slowFirstRows || this.status.state !== "loading") return false;
+    this.slowFirstRows = true;
+    return true;
+  }
+
+  /** What the speed-up banner reads of this walk so far. */
+  load(): Omit<GraphLoad, "dismissed"> {
+    return {
+      slowFirstRows: this.slowFirstRows,
+      rowsLoaded: this.store?.rowCount ?? 0,
+      moreRemain: this.status.state === "paused",
+    };
   }
 
   /**

@@ -11,6 +11,9 @@ mod payload_keys;
 pub mod settings;
 #[cfg(test)]
 mod settings_tests;
+pub mod speedup;
+#[cfg(test)]
+mod speedup_tests;
 pub mod staging;
 #[cfg(test)]
 mod staging_tests;
@@ -23,5 +26,6 @@ pub use graph::*;
 pub use models::*;
 pub use op_runner::*;
 pub use settings::*;
+pub use speedup::*;
 pub use staging::*;
 pub use version::*;
