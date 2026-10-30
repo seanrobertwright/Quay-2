@@ -2,6 +2,7 @@
 // preview's sources, and the sentences its actions announce.
 
 import type { DiffSide, FileDiff } from "./diffDoc.ts";
+import type { StageDirection } from "./stagingKeys.ts";
 
 /** `Selection` from `src-tauri/src/slices/git/diff.rs`. */
 export type Selection = { kind: "file" } | { kind: "hunks"; hunks: number[] } | { kind: "modeChange" };
@@ -67,7 +68,7 @@ export function sizeLabel(bytes: number): string {
 }
 
 /** What the live region announces once a stage or unstage from the diff view has finished. */
-export function selectionDoneMessage(action: "stage" | "unstage", path: string, selection: Selection): string {
+export function selectionDoneMessage(action: StageDirection, path: string, selection: Selection): string {
   const verb = action === "stage" ? "Staged" : "Unstaged";
   switch (selection.kind) {
     case "file":

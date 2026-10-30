@@ -9,6 +9,7 @@ import {
   listKeyAction,
   MAX_INSPECTOR_WIDTH,
   MIN_INSPECTOR_WIDTH,
+  type StageDirection,
 } from "./stagingKeys";
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { OpenFile } from "./useFileDiff";
@@ -41,7 +42,7 @@ const SIDE: Record<
     listLabel: string;
     heading: string;
     empty: string;
-    action: "stage" | "unstage";
+    action: StageDirection;
     verb: string;
     key: string;
     icon: typeof Plus;

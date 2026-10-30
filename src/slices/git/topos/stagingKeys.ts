@@ -52,6 +52,9 @@ export function capNote(status: { total: number; truncated: boolean }): string |
 
 export type StagingAction = "stage" | "unstage" | "ignore";
 
+/** The staging actions that move changes between the worktree and the index. */
+export type StageDirection = Exclude<StagingAction, "ignore">;
+
 /** What the live region announces once `action` on `target` has finished. */
 export function doneMessage(action: StagingAction, target: PathTarget): string {
   if (action === "ignore") return `Added ${target.kind === "paths" ? target.paths[0] : ""}/ to .gitignore`;

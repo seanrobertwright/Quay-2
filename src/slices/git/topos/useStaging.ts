@@ -4,7 +4,7 @@ import { errorMessage } from "./gitVersion";
 import { RequestIds } from "./refreshTable";
 import type { DiffSide, FileDiff } from "./diffDoc";
 import { selectionDoneMessage, type Selection } from "./diffView";
-import { doneMessage, failureView, type StagingAction } from "./stagingKeys";
+import { doneMessage, failureView, type StageDirection, type StagingAction } from "./stagingKeys";
 import { splitStatus, type FolderListing, type PathTarget, type WorktreeStatus } from "./stagingLists";
 
 export type StatusState =
@@ -58,7 +58,7 @@ export interface Staging {
    * staging operations. The post-write status lands here; the new diff, which answers
    * `diffRequestId`, is the caller's.
    */
-  stageSelection: (action: "stage" | "unstage", request: StageRequest, diffRequestId: number) => Promise<SelectionOutcome>;
+  stageSelection: (action: StageDirection, request: StageRequest, diffRequestId: number) => Promise<SelectionOutcome>;
   /** The untracked folders the operator expanded, each with its capped `status -uall`. */
   folders: ReadonlyMap<string, FolderListing>;
   toggleFolder: (folder: string) => void;
@@ -196,7 +196,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
   );
 
   const stageSelection = useCallback(
-    (action: "stage" | "unstage", request: StageRequest, diffRequestId: number): Promise<SelectionOutcome> => {
+    (action: StageDirection, request: StageRequest, diffRequestId: number): Promise<SelectionOutcome> => {
       const worktree = path.current;
       if (worktree === null || running.current) return Promise.resolve({ kind: "skipped" });
       running.current = true;
