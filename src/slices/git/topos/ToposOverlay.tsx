@@ -3,11 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, WifiOff, X } from "lucide-react";
 import { useOverlay } from "../../overlay/useOverlay";
+import type { RunKind, TerminalInfo } from "../../terminal/types";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
 import { refsView } from "./graphRefs";
+import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 import { useLiveUpdates } from "./useLiveUpdates";
@@ -27,6 +29,8 @@ export interface ToposOverlayProps {
   project: ToposTarget | null;
   onClose: () => void;
   onAddProject: () => void;
+  /** Quay's terminals, whose live agents show on their worktree's HEAD marker (#381). */
+  terminals: TerminalInfo[];
 }
 
 type VersionCheck =
@@ -40,7 +44,7 @@ type VersionCheck =
  * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
  * selection it was shown with, and checks git's version on its first open (#369).
  */
-export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject }) => {
+export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals }) => {
   const titleId = useId();
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
@@ -92,6 +96,15 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const refs = refsReader.refs;
   const selectedPath = target?.path ?? null;
   const refsShown = useMemo(() => refsView(refs, selectedPath), [refs, selectedPath]);
+  // Terminal statuses change often; the map, and so the rows, change only when the agents per
+  // worktree do.
+  const agentsKey = JSON.stringify(
+    refs.state === "done" ? refs.refs.worktrees.map((w) => [w.path, liveAgentsAt(terminals, w.path)]) : []
+  );
+  const worktreeAgents = useMemo(
+    () => new Map((JSON.parse(agentsKey) as [string, RunKind[]][]).filter(([, kinds]) => kinds.length > 0)),
+    [agentsKey]
+  );
   // The watch follows the selected worktree; its files are watched only while Topos shows (#379).
   const liveTarget = useMemo(
     () => (graphRepo !== null && selectedPath !== null ? { repoPath: graphRepo, worktreePath: selectedPath } : null),
@@ -235,6 +248,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 columnWidth={columnWidth}
                 onColumnWidth={setColumnWidth}
                 refs={refsShown}
+                worktreeAgents={worktreeAgents}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
