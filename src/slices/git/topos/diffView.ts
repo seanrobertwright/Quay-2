@@ -9,9 +9,6 @@ export type Selection = { kind: "file" } | { kind: "hunks"; hunks: number[] } | 
 /** `ByteSource` from `src-tauri/src/slices/git/diff.rs`. */
 export type ByteSource = { kind: "blob"; oid: string } | { kind: "worktree" };
 
-/** `IMAGE_PREVIEW_CAP` from `src-tauri/src/slices/git/diff.rs`: the largest image previewed. */
-export const IMAGE_PREVIEW_CAP = 5 * 1024 * 1024;
-
 /**
  * What the body of the view is: the hunks, a note that only whole-file actions apply (binary, a
  * submodule), the too-large note with Load anyway, a mode change with no content change, or an

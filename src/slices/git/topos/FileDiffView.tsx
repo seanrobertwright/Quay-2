@@ -12,9 +12,9 @@ import type { BusyOp } from "./useStaging";
 
 export type DiffMode = "unified" | "split";
 
-const SIDE_WORDS: Record<Side, { name: string; verb: string; other: Side; otherName: string; icon: typeof Plus }> = {
-  unstaged: { name: "Unstaged", verb: "Stage", other: "staged", otherName: "staged", icon: Plus },
-  staged: { name: "Staged", verb: "Unstage", other: "unstaged", otherName: "unstaged", icon: Minus },
+const SIDE_WORDS: Record<Side, { name: string; verb: string; otherName: string; icon: typeof Plus }> = {
+  unstaged: { name: "Unstaged", verb: "Stage", otherName: "staged", icon: Plus },
+  staged: { name: "Staged", verb: "Unstage", otherName: "unstaged", icon: Minus },
 };
 
 type Preview = { state: "loading" } | { state: "done"; url: string; bytes: number } | { state: "failed"; message: string };

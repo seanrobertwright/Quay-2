@@ -31,6 +31,11 @@ export type PathTarget = { kind: "all" } | { kind: "paths"; paths: string[] };
 
 export type Side = "unstaged" | "staged";
 
+/** The list opposite `side`. */
+export function otherSide(side: Side): Side {
+  return side === "unstaged" ? "staged" : "unstaged";
+}
+
 /** One change in one list. */
 export interface Change {
   path: string;

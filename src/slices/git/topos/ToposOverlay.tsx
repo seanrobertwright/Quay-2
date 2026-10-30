@@ -16,7 +16,7 @@ import { useLiveUpdates } from "./useLiveUpdates";
 import { FileDiffView, type DiffMode } from "./FileDiffView";
 import { StagingInspector } from "./StagingInspector";
 import { DEFAULT_INSPECTOR_WIDTH, wipLabel } from "./stagingKeys";
-import { splitStatus } from "./stagingLists";
+import { otherSide, splitStatus } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useStaging } from "./useStaging";
 import { isSamePath } from "../../../utils/paths";
@@ -128,8 +128,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
   const otherSideHasChanges = useMemo(() => {
     if (openFile === null || staging.status.state !== "done") return false;
-    const other = openFile.side === "unstaged" ? "staged" : "unstaged";
-    return splitStatus(staging.status.status.entries)[other].some((c) => c.path === openFile.path);
+    return splitStatus(staging.status.status.entries)[otherSide(openFile.side)].some((c) => c.path === openFile.path);
   }, [openFile, staging.status]);
   const inspectorId = useId();
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -310,9 +309,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                       mode={diffMode}
                       onMode={setDiffMode}
                       otherSideHasChanges={otherSideHasChanges}
-                      onOpenOtherSide={() =>
-                        setOpenFile({ path: openFile.path, side: openFile.side === "unstaged" ? "staged" : "unstaged" })
-                      }
+                      onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
                       onBack={() => setOpenFile(null)}
                       visible={isOpen}
                     />

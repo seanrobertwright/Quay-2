@@ -1,9 +1,14 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isFolderRow, listRows, splitStatus, type Change, type FolderListing, type ListRow, type StatusEntry } from "./stagingLists.ts";
+import { isFolderRow, listRows, otherSide, splitStatus, type Change, type FolderListing, type ListRow, type StatusEntry } from "./stagingLists.ts";
 
 const entry = (path: string, xy: string, kind: StatusEntry["kind"] = "tracked"): StatusEntry => ({ path, xy, kind });
+
+test("the other side of each list is the opposite list", () => {
+  assert.equal(otherSide("unstaged"), "staged");
+  assert.equal(otherSide("staged"), "unstaged");
+});
 
 test("a file changed on both sides is in both lists; untracked and unmerged ones are unstaged", () => {
   const { unstaged, staged } = splitStatus([
