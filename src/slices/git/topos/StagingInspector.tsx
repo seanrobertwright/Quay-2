@@ -347,7 +347,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const [collapsed, setCollapsed] = useState<Record<Side, ReadonlySet<string>>>({ unstaged: new Set(), staged: new Set() });
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
-  const { status, busy, failure, announcement, announce, run, folders, toggleFolder } = staging;
+  const { status, busy, failure, announce, run, folders, toggleFolder } = staging;
 
   const lists = useMemo(() => (status.state === "done" ? splitStatus(status.status.entries) : null), [status]);
   const unstagedRows = useMemo(
@@ -565,10 +565,6 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           />
         </div>
       )}
-      {/* Keyed by the count, so the same sentence twice in a row is announced twice. */}
-      <div role="status" aria-live="polite" className="sr-only">
-        <span key={announcement.seq}>{announcement.text}</span>
-      </div>
       <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />
     </aside>
   );

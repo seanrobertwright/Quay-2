@@ -331,6 +331,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                       onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
                       onBack={() => setOpenFile(null)}
                       visible={isOpen}
+                      announce={staging.announce}
                     />
                   )}
                 </div>
@@ -362,6 +363,11 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
           onClose={() => setSpeedupOpen(false)}
           fallbackFocus={panelProps.ref}
         />
+        {/* The staging inspector's and the diff view's one live region, here so it stays while
+            either is shown. Keyed by the count, so the same sentence twice in a row is announced twice. */}
+        <div role="status" aria-live="polite" className="sr-only">
+          <span key={staging.announcement.seq}>{staging.announcement.text}</span>
+        </div>
       </div>
     </div>
   );

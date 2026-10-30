@@ -126,6 +126,12 @@ export function withNoNewlinePairs(hunks: Hunk[], picked: ReadonlySet<string>, d
   return { keys, auto };
 }
 
+/** The last item of `items` that `ok` accepts. */
+function lastWhere<T>(items: T[], ok: (item: T) => boolean): T | undefined {
+  for (let i = items.length - 1; i >= 0; i--) if (ok(items[i])) return items[i];
+  return undefined;
+}
+
 /** Orders refs as the diff lists them. */
 function compare(a: LineRef, b: LineRef): number {
   return a.hunk - b.hunk || a.line - b.line;
@@ -150,7 +156,7 @@ function moved(doc: DiffDoc, cursor: LineRef | null, dir: 1 | -1): LineRef | nul
   const rows = changedRows(doc);
   if (rows.length === 0) return cursor;
   if (cursor === null) return rows[0].ref;
-  const hit = dir === 1 ? rows.find((r) => compare(r.ref, cursor) > 0) : rows.findLast((r) => compare(r.ref, cursor) < 0);
+  const hit = dir === 1 ? rows.find((r) => compare(r.ref, cursor) > 0) : lastWhere(rows, (r) => compare(r.ref, cursor) < 0);
   return hit?.ref ?? (rows.some((r) => compare(r.ref, cursor) === 0) ? cursor : rows[dir === 1 ? rows.length - 1 : 0].ref);
 }
 
@@ -160,7 +166,7 @@ function hunkMoved(doc: DiffDoc, cursor: LineRef | null, dir: 1 | -1): LineRef |
   if (rows.length === 0) return cursor;
   if (cursor === null) return rows[0].ref;
   const firsts = rows.filter((r, i) => i === 0 || rows[i - 1].ref.hunk !== r.ref.hunk).map((r) => r.ref);
-  const hit = dir === 1 ? firsts.find((r) => r.hunk > cursor.hunk) : firsts.findLast((r) => r.hunk < cursor.hunk);
+  const hit = dir === 1 ? firsts.find((r) => r.hunk > cursor.hunk) : lastWhere(firsts, (r) => r.hunk < cursor.hunk);
   return hit ?? cursor;
 }
 
