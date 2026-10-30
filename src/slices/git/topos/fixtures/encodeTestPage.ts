@@ -8,6 +8,7 @@ import {
   PAGE_FORMAT_VERSION,
   PAGE_MAGIC,
   type GraphTrack,
+  type PageAgent,
 } from "../graphPage.ts";
 
 export interface TestPage {
@@ -32,6 +33,8 @@ export interface TestPage {
   oids?: string[];
   /** Page 0 opens track 0, `main`, when left out. */
   newTracks?: GraphTrack[];
+  /** The page's agent commits by row within the page; none when left out. */
+  agents?: PageAgent[];
 }
 
 const align8 = (n: number) => Math.ceil(n / 8) * 8;
@@ -48,6 +51,7 @@ export function encodeTestPage(p: TestPage): ArrayBuffer {
       subjects: p.oids ?? Array.from({ length: n }, (_, i) => `commit ${p.firstRow + i}`),
       newAuthors: p.newAuthors ?? [{ name: `Author ${p.pageIndex}`, email: `a${p.pageIndex}@example.invalid` }],
       newTracks: p.newTracks ?? (p.pageIndex === 0 ? [{ id: 0, key: "main", kind: "default", left: null, right: null }] : []),
+      agents: p.agents ?? [],
     })
   );
   const authorTimeAt = MIN_HEADER_BYTES;
