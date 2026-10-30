@@ -475,6 +475,16 @@ pub enum Selection {
     Hunks { hunks: Vec<u32> },
     /// Only the mode change.
     ModeChange,
+    /// These changed lines, across any of the file's hunks.
+    Lines { lines: Vec<LineRef> },
+}
+
+/// One line of a diff: its hunk's index and its index among that hunk's lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineRef {
+    pub hunk: u32,
+    pub line: u32,
 }
 
 /// A stage from the unstaged side or an unstage from the staged side.
@@ -506,20 +516,90 @@ fn push_line(patch: &mut Vec<u8>, line: &[u8]) {
     }
 }
 
-/// The patch of only the `selected` hunks of `parsed`, by the `git add -p` rules: the file header
-/// without its mode lines, then each selected hunk with the side it does not apply to renumbered
-/// for the hunks left out above it. `reverse` builds it for `git apply -R`, which matches each
-/// hunk's new side against the index. Every body byte is copied as git wrote it.
-fn hunks_patch(parsed: &ParsedDiff, selected: &[usize], reverse: bool) -> Option<Vec<u8>> {
+/// Which sides of a hunk a body line counts on, as (old, new).
+fn sides(marker: u8) -> (bool, bool) {
+    match marker {
+        b'+' => (false, true),
+        b'-' => (true, false),
+        _ => (true, true),
+    }
+}
+
+/// Refuses a selection that keeps a line after a side's last line has ended without a newline.
+fn after_last_line() -> GitError {
+    other("that selection keeps a line after a last line with no newline; select the lines that give it one too")
+}
+
+/// The patch of only the picked lines of `parsed`, by the `git add -p` rules. `picked(hunk, line)`
+/// says whether a changed line is in the selection; a hunk with none picked is left out. The file
+/// header comes first without its mode lines, with `minus` and `plus` as its `---` and `+++` lines.
+/// Within a hunk an unpicked line that the patch's preimage holds becomes context and any other
+/// unpicked line is dropped, as is a `\ No newline at end of file` after a dropped line. Each
+/// hunk's preimage start is kept and its other start is renumbered for what was left out above it.
+/// `reverse` builds it for `git apply -R`, whose preimage is the hunk's new side: there an unpicked
+/// addition becomes context and an unpicked deletion is dropped. Every kept byte is copied as git
+/// wrote it. A selection that would keep a line after a side's no-newline marker is refused, since
+/// `git apply` would join that line onto the last one.
+fn reduced_patch(
+    parsed: &ParsedDiff,
+    (minus, plus): (&[u8], &[u8]),
+    picked: impl Fn(usize, usize) -> bool,
+    reverse: bool,
+) -> Result<Vec<u8>, GitError> {
     let mut patch = Vec::new();
-    push_line(&mut patch, parsed.diff_git.as_deref()?);
-    push_line(&mut patch, parsed.minus.as_deref()?);
-    push_line(&mut patch, parsed.plus.as_deref()?);
-    // What the hunks left out above this one shift the lines by.
+    push_line(&mut patch, parsed.diff_git.as_deref().ok_or_else(|| other("the diff has no file header"))?);
+    push_line(&mut patch, minus);
+    push_line(&mut patch, plus);
+    // How far the lines left out above this hunk shift its other side.
     let mut skipped: i64 = 0;
     for (i, h) in parsed.hunks.iter().enumerate() {
+        let mut body = Vec::new();
+        let (mut old_lines, mut new_lines) = (0i64, 0i64);
+        let mut any = false;
+        // The marker of the line last kept, or None when the line before was dropped.
+        let mut prev: Option<u8> = None;
+        // Which sides have ended at a no-newline marker.
+        let (mut old_ended, mut new_ended) = (false, false);
+        for (j, line) in h.body.iter().enumerate() {
+            let kept = match line.first().copied() {
+                Some(b'\\') => {
+                    if let Some(m) = prev {
+                        push_line(&mut body, line);
+                        let (old, new) = sides(m);
+                        old_ended |= old;
+                        new_ended |= new;
+                    }
+                    continue;
+                }
+                Some(m @ (b'+' | b'-')) if picked(i, j) => {
+                    any = true;
+                    push_line(&mut body, line);
+                    Some(m)
+                }
+                // The preimage holds this unpicked line, so it stays as context.
+                Some(m @ (b'+' | b'-')) if (m == b'+') == reverse => {
+                    body.push(b' ');
+                    push_line(&mut body, &line[1..]);
+                    Some(b' ')
+                }
+                Some(b'+' | b'-') => None,
+                _ => {
+                    push_line(&mut body, line);
+                    Some(b' ')
+                }
+            };
+            if let Some(m) = kept {
+                let (old, new) = sides(m);
+                if (old && old_ended) || (new && new_ended) {
+                    return Err(after_last_line());
+                }
+                old_lines += i64::from(old);
+                new_lines += i64::from(new);
+            }
+            prev = kept;
+        }
         let delta = i64::from(h.new_lines) - i64::from(h.old_lines);
-        if !selected.contains(&i) {
+        if !any {
             skipped += delta;
             continue;
         }
@@ -528,14 +608,32 @@ fn hunks_patch(parsed: &ParsedDiff, selected: &[usize], reverse: bool) -> Option
         } else {
             (i64::from(h.old_start), i64::from(h.new_start) - skipped)
         };
-        patch.extend_from_slice(format!("@@ -{old_start},{} +{new_start},{} @@", h.old_lines, h.new_lines).as_bytes());
+        skipped += delta - (new_lines - old_lines);
+        patch.extend_from_slice(format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@").as_bytes());
         patch.extend_from_slice(&h.heading);
         patch.push(b'\n');
-        for line in &h.body {
-            push_line(&mut patch, line);
-        }
+        patch.extend_from_slice(&body);
     }
-    Some(patch)
+    Ok(patch)
+}
+
+/// The `---` and `+++` lines of `parsed`'s file header.
+fn header_lines(parsed: &ParsedDiff) -> Result<(&[u8], &[u8]), GitError> {
+    match (parsed.minus.as_deref(), parsed.plus.as_deref()) {
+        (Some(minus), Some(plus)) => Ok((minus, plus)),
+        _ => Err(other("the diff has no hunks")),
+    }
+}
+
+/// The changed lines `refs` names in `parsed`, as (hunk, line) indexes, or None when one is out
+/// of range or a context line.
+fn changed_lines(parsed: &ParsedDiff, refs: &[LineRef]) -> Option<Vec<(usize, usize)>> {
+    refs.iter()
+        .map(|r| {
+            let (h, l) = (r.hunk as usize, r.line as usize);
+            matches!(parsed.hunks.get(h)?.body.get(l)?.first(), Some(b'+' | b'-')).then_some((h, l))
+        })
+        .collect()
 }
 
 /// The patch of only `parsed`'s mode change.
@@ -609,9 +707,19 @@ pub fn stage_selection(
             if parsed.new_file || parsed.deleted_file {
                 write_whole()?;
             } else {
-                let patch = hunks_patch(&parsed, &selected, reverse).ok_or_else(|| other(format!("{path} has no hunks")))?;
+                let patch = reduced_patch(&parsed, header_lines(&parsed)?, |h, _| selected.contains(&h), reverse)?;
                 apply_cached(worktree, &patch, reverse, context)?;
             }
+        }
+        Selection::Lines { lines } => {
+            if parsed.binary || parsed.submodule {
+                return Err(other(format!("{path} is staged only as a whole file")));
+            }
+            let picked = changed_lines(&parsed, lines)
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| other(format!("no such changed line in {path}")))?;
+            let patch = reduced_patch(&parsed, header_lines(&parsed)?, |h, l| picked.contains(&(h, l)), reverse)?;
+            apply_cached(worktree, &patch, reverse, context)?;
         }
     }
     Ok(StageResult {
