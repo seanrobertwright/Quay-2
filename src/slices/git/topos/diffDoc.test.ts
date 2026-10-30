@@ -59,7 +59,7 @@ test("the unified doc lists every line with its old and new numbers and marks wh
 });
 
 test("the split doc pairs deletions with additions and pads the shorter side so rows line up", () => {
-  const { left, right, hunkStarts } = splitDoc(twoHunks);
+  const { left, right } = splitDoc(twoHunks);
   assert.equal(left.text, "one␍\ntwo\n\nnine\n\\ No newline at end of file");
   assert.equal(right.text, "one␍\nTWO\n2b\n\n");
   assert.deepEqual(
@@ -82,7 +82,8 @@ test("the split doc pairs deletions with additions and pads the shorter side so 
       ["filler", null],
     ]
   );
-  assert.deepEqual(hunkStarts, [0, 3]);
+  assert.deepEqual(left.hunkStarts, [0, 3]);
+  assert.deepEqual(right.hunkStarts, [0, 3]);
 });
 
 test("a diff with no hunks is an empty doc", () => {

@@ -102,7 +102,7 @@ interface Row {
  * run of deletions sits beside the run of additions that follows it, and the shorter run is padded
  * with filler rows. A no-newline marker stays on the side of the line it follows.
  */
-export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc; hunkStarts: number[] } {
+export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc } {
   const left: Row[] = [];
   const right: Row[] = [];
   const hunkStarts: number[] = [];
@@ -154,5 +154,5 @@ export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc; hunkS
     flush();
   });
   const doc = (rows: Row[]): DiffDoc => ({ text: rows.map((r) => r.text).join("\n"), lines: rows.map((r) => r.line), hunkStarts });
-  return { left: doc(left), right: doc(right), hunkStarts };
+  return { left: doc(left), right: doc(right) };
 }
