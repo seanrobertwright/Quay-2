@@ -5,6 +5,7 @@
 use serde_json::{json, Value};
 
 use super::error::GitError;
+use super::op_runner::OpEvent;
 use super::version::GitVersionStatus;
 
 fn s<T: serde::Serialize>(payload: &T) -> Value {
@@ -29,6 +30,31 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GitError::Other",
             s(&GitError::Other { stderr: "fatal: not a git repository".into() }),
             json!({ "kind": "other", "stderr": "fatal: not a git repository" }),
+        ),
+        ("GitError::Cancelled", s(&GitError::Cancelled), json!({ "kind": "cancelled" })),
+        (
+            "OpEvent::Progress",
+            s(&OpEvent::Progress { phase: "Receiving objects".into(), percent: Some(45) }),
+            json!({ "event": "progress", "phase": "Receiving objects", "percent": 45 }),
+        ),
+        (
+            "OpEvent::Progress without a percent",
+            s(&OpEvent::Progress { phase: "Enumerating objects".into(), percent: None }),
+            json!({ "event": "progress", "phase": "Enumerating objects" }),
+        ),
+        (
+            "OpEvent::Output",
+            s(&OpEvent::Output { chunk: "From origin
+".into() }),
+            json!({ "event": "output", "chunk": "From origin
+" }),
+        ),
+        ("OpEvent::Stalled", s(&OpEvent::Stalled), json!({ "event": "stalled" })),
+        ("OpEvent::Done", s(&OpEvent::Done), json!({ "event": "done" })),
+        (
+            "OpEvent::Failed",
+            s(&OpEvent::Failed { error: GitError::Cancelled }),
+            json!({ "event": "failed", "error": { "kind": "cancelled" } }),
         ),
     ]
 }
