@@ -11,8 +11,8 @@ export interface GraphSession {
   /** Tells the session the rendered rows now reach `windowEnd`, so it can load more in time. */
   reachedRow: (windowEnd: number) => void;
   /**
-   * Re-runs the session's `git log` and splices or resets its rows (#379). Resolves once the rows
-   * the refresh announces have arrived; does nothing before the session has started.
+   * Re-runs the session's `git log` and splices or resets its rows (#379). Resolves once the
+   * backend has sent the `Splice` or `Reset` and its rows; does nothing before the session starts.
    */
   refresh: () => Promise<void>;
   /**

@@ -93,7 +93,8 @@ export class GraphFeed {
         this.settlePending(false);
         return true;
       case "reset":
-        this.pending = { kind: "reset", store: new GraphStore(event.sessionId), until: this.store.rowCount };
+        // The backend's author table runs on across a reset too, so the reload names old authors.
+        this.pending = { kind: "reset", store: this.store.continuing(), until: this.store.rowCount };
         this.status = { state: "loading" };
         return true;
       case "watch":

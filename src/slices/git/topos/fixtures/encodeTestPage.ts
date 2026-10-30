@@ -24,6 +24,10 @@ export interface TestPage {
   closes?: number[][];
   checkpoint?: number[];
   peakLanes?: number;
+  /** The author id every row names; the page index when left out. */
+  authorId?: number;
+  /** The authors the page adds; one per page, named for the page index, when left out. */
+  newAuthors?: { name: string; email: string }[];
   /** Each row's oid; the row number in hex when left out. */
   oids?: string[];
   /** Page 0 opens track 0, `main`, when left out. */
@@ -42,7 +46,7 @@ export function encodeTestPage(p: TestPage): ArrayBuffer {
     JSON.stringify({
       oids: p.oids ?? Array.from({ length: n }, (_, i) => (p.firstRow + i).toString(16).padStart(40, "0")),
       subjects: p.oids ?? Array.from({ length: n }, (_, i) => `commit ${p.firstRow + i}`),
-      newAuthors: [{ name: `Author ${p.pageIndex}`, email: `a${p.pageIndex}@example.invalid` }],
+      newAuthors: p.newAuthors ?? [{ name: `Author ${p.pageIndex}`, email: `a${p.pageIndex}@example.invalid` }],
       newTracks: p.newTracks ?? (p.pageIndex === 0 ? [{ id: 0, key: "main", kind: "default", left: null, right: null }] : []),
     })
   );
@@ -81,7 +85,7 @@ export function encodeTestPage(p: TestPage): ArrayBuffer {
   ].forEach((value, i) => view.setUint32(8 + 4 * i, value, true));
   for (let i = 0; i < n; i++) {
     view.setFloat64(authorTimeAt + 8 * i, 1_700_000_000_000 - (p.firstRow + i) * 1000, true);
-    view.setUint32(authorIdsAt + 4 * i, p.pageIndex, true);
+    view.setUint32(authorIdsAt + 4 * i, p.authorId ?? p.pageIndex, true);
     view.setUint16(lanesAt + 2 * i, rows[i][0], true);
     view.setUint32(tracksAt + 4 * i, rows[i][1], true);
   }

@@ -108,8 +108,8 @@ export class GraphStore {
   }
 
   /**
-   * An empty store for a refresh's rows that shares this store's author table, as the backend's
-   * does, so the rows a splice keeps still name their authors.
+   * An empty store for a refresh's rows that starts from this store's author table, as the
+   * backend's does: its pages name authors sent before, and the rows a splice keeps still do.
    */
   continuing(): GraphStore {
     const next = new GraphStore(this.sessionId);

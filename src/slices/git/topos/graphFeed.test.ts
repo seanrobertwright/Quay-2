@@ -261,3 +261,18 @@ test("the watch's state is kept for the live-updates marker", () => {
   assert.deepEqual(feed.watch, { state: "gone" });
   assert.equal(feed.accept({ event: "watch", sessionId: 4, watch: { state: "live" } }), false);
 });
+
+test("a reset's pages name authors the session sent before, as the backend's author table runs on", () => {
+  const feed = new GraphFeed();
+  started(feed, 5);
+  feed.accept(encodeTestPage({ sessionId: 5, pageIndex: 0, firstRow: 0, rowCount: 2 }));
+  feed.accept({ event: "done", sessionId: 5, total: 2 });
+  feed.accept({ event: "reset", sessionId: 5 });
+  assert.equal(
+    feed.accept(encodeTestPage({ sessionId: 5, pageIndex: 0, firstRow: 0, rowCount: 3, authorId: 0, newAuthors: [] })),
+    true
+  );
+  assert.equal(feed.store?.rowCount, 3);
+  assert.deepEqual(feed.store?.author(2), { name: "Author 0", email: "a0@example.invalid" });
+  assert.notEqual(feed.status.state, "failed");
+});
