@@ -3,7 +3,7 @@ pub mod dates;
 pub mod slices;
 pub mod spawn;
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use slices::archon::{
     archon_check_service, archon_get_run_detail, archon_get_runs, archon_get_workflows,
@@ -16,7 +16,7 @@ use slices::bridge::{
     BridgeServer, BridgeState,
 };
 use slices::git::{
-    check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_refs,
+    check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
     git_op_cancel, git_version_check, is_git_repo, list_git_worktrees, remove_git_worktree, GitOps,
     GraphSessions,
 };
@@ -119,6 +119,12 @@ pub fn run() {
                 machina_pty,
             );
 
+            // Topos's repository watch is the only source of `git-repo-changed` (#354, #379).
+            let git_events = app_handle.clone();
+            app.state::<GraphSessions>().on_repo_changed(move |change| {
+                let _ = git_events.emit("git-repo-changed", change);
+            });
+
             // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task.
             // A bad QUAY_BRIDGE_PORT stops the bridge instead of falling back to random.
             match parse_bridge_port(std::env::var(BRIDGE_PORT_VAR)) {
@@ -189,6 +195,9 @@ pub fn run() {
             git_graph_open,
             git_graph_more,
             git_graph_close,
+            git_graph_refresh,
+            git_graph_watch,
+            git_repo_fingerprint,
             git_refs,
             git_op_cancel,
             check_gh_cli_installed,

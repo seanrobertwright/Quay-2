@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GraphFeed, LOAD_AHEAD_ROWS, MORE_ROWS } from "./graphFeed.ts";
 import { GraphStore } from "./graphStore.ts";
-import { decodeGraphPage, type GraphPage } from "./graphPage.ts";
+import { decodeGraphPage, OPEN_ROW, type GraphPage } from "./graphPage.ts";
 import { encodeTestPage } from "./fixtures/encodeTestPage.ts";
 
 /** A page of `rowCount` rows, all in lane 0, with one new author per page. */
@@ -122,4 +122,157 @@ test("the store refuses another session's page and pages that don't follow on", 
   unknownAuthor.authorIds[0] = 7;
   assert.throws(() => store.ingest(unknownAuthor), /unknown author 7/);
   assert.equal(store.rowCount, 2);
+});
+
+/**
+ * A session of four rows: main runs A, B, C down lane 0, and the tip S of `side` in lane 1 joins
+ * it at C. Edges: 0 = A→B, 1 = B→C (crossing row 2), 2 = S→C, opened at row 2.
+ */
+function sessionBeforeSplice(): GraphFeed {
+  const feed = new GraphFeed();
+  started(feed, 1);
+  feed.accept(
+    encodeTestPage({
+      sessionId: 1,
+      pageIndex: 0,
+      firstRow: 0,
+      rowCount: 4,
+      oids: ["A", "B", "S", "C"],
+      rows: [
+        [0, 0],
+        [0, 0],
+        [1, 1],
+        [0, 0],
+      ],
+      edges: [
+        [0, 1, 0, 0, 0, 0],
+        [1, 3, 0, 0, 0, 0],
+        [2, 3, 1, 1, 0, 1],
+      ],
+      peakLanes: 2,
+      newTracks: [
+        { id: 0, key: "main", kind: "default", left: null, right: null },
+        { id: 1, key: "side", kind: "named", left: null, right: null },
+      ],
+    })
+  );
+  feed.accept({ event: "done", sessionId: 1, total: 4 });
+  return feed;
+}
+
+test("a splice puts the new rows above the old rows from the match, renumbered", () => {
+  const feed = sessionBeforeSplice();
+  // N lands on main above A; the old rows from S (row 2) on are kept, one row lower.
+  assert.equal(
+    feed.accept({
+      event: "splice",
+      sessionId: 1,
+      replaceRows: 2,
+      newRows: 3,
+      rowDelta: 1,
+      edgesFrom: 2,
+      edgesTo: 3,
+      tracksFrom: 1,
+      tracksTo: 1,
+      crossingEdges: [[1, 2]],
+      liveTracks: [[0, 0]],
+    }),
+    true
+  );
+  assert.deepEqual(feed.status, { state: "loading" });
+  assert.equal(feed.store?.rowCount, 4, "the old rows show until the new ones arrive");
+  feed.accept(
+    encodeTestPage({
+      sessionId: 1,
+      pageIndex: 0,
+      firstRow: 0,
+      rowCount: 3,
+      oids: ["N", "A", "B"],
+      edges: [
+        [0, 1, 0, 0, 0, 0],
+        [1, 2, 0, 0, 0, 0],
+        [2, OPEN_ROW, 0, 0, 0, 0],
+      ],
+    })
+  );
+  const store = feed.store!;
+  assert.equal(store.rowCount, 5);
+  assert.deepEqual(
+    Array.from({ length: 5 }, (_, r) => [store.oid(r), store.lane(r), store.trackKey(store.track(r))]),
+    [
+      ["N", 0, "main"],
+      ["A", 0, "main"],
+      ["B", 0, "main"],
+      ["S", 1, "side"],
+      ["C", 0, "main"],
+    ]
+  );
+  assert.deepEqual(
+    Array.from({ length: store.edgeCount }, (_, id) => store.edge(id)),
+    [
+      { childRow: 0, parentRow: 1, lane: 0, childLane: 0, parentLane: 0, track: 0 },
+      { childRow: 1, parentRow: 2, lane: 0, childLane: 0, parentLane: 0, track: 0 },
+      // B→C crosses the splice: the new edge takes the old one's close, one row lower.
+      { childRow: 2, parentRow: 4, lane: 0, childLane: 0, parentLane: 0, track: 0 },
+      { childRow: 3, parentRow: 4, lane: 1, childLane: 1, parentLane: 0, track: 1 },
+    ]
+  );
+  assert.deepEqual(store.visibleEdges(3, 5).sort(), [2, 3], "the window below the splice still finds its edges");
+  assert.equal(store.trackStartRow(1), 3);
+  assert.deepEqual(store.author(3), { name: "Author 0", email: "a0@example.invalid" });
+  assert.equal(store.rowOf("S"), 3);
+  assert.equal(store.rowOf("gone"), -1);
+
+  assert.equal(feed.accept({ event: "done", sessionId: 1, total: 5 }), true, "the finished walk says so again");
+  assert.deepEqual(feed.status, { state: "done" });
+});
+
+test("a reset keeps the old rows on screen until the reload has as many, or ends", () => {
+  const feed = new GraphFeed();
+  started(feed, 2);
+  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 4 }));
+  feed.accept({ event: "paused", sessionId: 2, rowsLoaded: 4 });
+  assert.equal(feed.accept({ event: "reset", sessionId: 2 }), true);
+  assert.deepEqual(feed.status, { state: "loading" });
+  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 2, oids: ["X", "Y"] }));
+  assert.equal(feed.store?.oid(0), (0).toString(16).padStart(40, "0"), "still the old rows");
+  feed.accept({ event: "done", sessionId: 2, total: 2 });
+  assert.equal(feed.store?.rowCount, 2);
+  assert.equal(feed.store?.oid(0), "X");
+  assert.deepEqual(feed.status, { state: "done" });
+
+  // A reload that reaches the old row count swaps in at once.
+  assert.equal(feed.accept({ event: "reset", sessionId: 2 }), true, "a finished session can still refresh");
+  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 3, oids: ["P", "Q", "R"] }));
+  assert.equal(feed.store?.oid(2), "R");
+});
+
+test("refresh events from another session are dropped", () => {
+  const feed = sessionBeforeSplice();
+  assert.equal(feed.accept({ event: "reset", sessionId: 9 }), false);
+  assert.equal(feed.store?.rowCount, 4);
+});
+
+test("the watch's state is kept for the live-updates marker", () => {
+  const feed = new GraphFeed();
+  started(feed, 3);
+  assert.equal(feed.watch, null);
+  assert.equal(feed.accept({ event: "watch", sessionId: 3, watch: { state: "gone" } }), true);
+  assert.deepEqual(feed.watch, { state: "gone" });
+  assert.equal(feed.accept({ event: "watch", sessionId: 4, watch: { state: "live" } }), false);
+});
+
+test("a reset's pages name authors the session sent before, as the backend's author table runs on", () => {
+  const feed = new GraphFeed();
+  started(feed, 5);
+  feed.accept(encodeTestPage({ sessionId: 5, pageIndex: 0, firstRow: 0, rowCount: 2 }));
+  feed.accept({ event: "done", sessionId: 5, total: 2 });
+  feed.accept({ event: "reset", sessionId: 5 });
+  assert.equal(
+    feed.accept(encodeTestPage({ sessionId: 5, pageIndex: 0, firstRow: 0, rowCount: 3, authorId: 0, newAuthors: [] })),
+    true
+  );
+  assert.equal(feed.store?.rowCount, 3);
+  assert.deepEqual(feed.store?.author(2), { name: "Author 0", email: "a0@example.invalid" });
+  assert.notEqual(feed.status.state, "failed");
 });

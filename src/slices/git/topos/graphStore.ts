@@ -10,6 +10,7 @@ import {
   OPEN_ROW,
   type GraphAuthor,
   type GraphPage,
+  type GraphTrack,
   type TrackKind,
 } from "./graphPage.ts";
 import type { EdgeGeometry } from "./graphPaths.ts";
@@ -56,6 +57,25 @@ export interface GraphEdge extends EdgeGeometry {
   track: number;
 }
 
+/**
+ * How a refresh joins its rows to the rows already loaded (#370), from the backend's
+ * `GraphEvent::Splice`: the `newRows` rows sent after it replace the first `replaceRows` rows, and
+ * the rest move by `rowDelta`, their edge ids from `edgesFrom` on following on from `edgesTo` and
+ * their track ids from `tracksFrom` on following on from `tracksTo`. Edges and tracks crossing the
+ * match map through `crossingEdges` and `liveTracks`, as `[old, new]` pairs.
+ */
+export interface Splice {
+  replaceRows: number;
+  newRows: number;
+  rowDelta: number;
+  edgesFrom: number;
+  edgesTo: number;
+  tracksFrom: number;
+  tracksTo: number;
+  crossingEdges: [number, number][];
+  liveTracks: [number, number][];
+}
+
 export class GraphStore {
   /** The session these rows belong to. */
   readonly sessionId: number;
@@ -75,6 +95,8 @@ export class GraphStore {
   private readonly trackSlots: number[] = [];
   private readonly trackKinds: TrackKind[] = [];
   private readonly trackStarts: number[] = [];
+  /** The tracks either side of each track when it opened, which its color steered away from. */
+  private readonly trackNeighbours: [number | null, number | null][] = [];
   /** Each page's first row and first edge id, and the edges open at its first row. */
   private readonly pageFirstRows: number[] = [];
   private readonly pageFirstEdges: number[] = [];
@@ -83,6 +105,16 @@ export class GraphStore {
 
   constructor(sessionId: number) {
     this.sessionId = sessionId;
+  }
+
+  /**
+   * An empty store for a refresh's rows that starts from this store's author table, as the
+   * backend's does: its pages name authors sent before, and the rows a splice keeps still do.
+   */
+  continuing(): GraphStore {
+    const next = new GraphStore(this.sessionId);
+    for (const author of this.authors) next.authors.push(author);
+    return next;
   }
 
   get rowCount(): number {
@@ -133,18 +165,9 @@ export class GraphStore {
     }
     for (const e of page.checkpoint) if (e >= this.edges) throw new Error(`page's checkpoint names unknown edge ${e}`);
 
-    for (const t of page.newTracks) {
-      const neighbours = [t.left, t.right].filter((n): n is number => n !== null && n < this.trackSlots.length);
-      this.trackKeys.push(t.key);
-      this.trackKinds.push(t.kind);
-      this.trackStarts.push(OPEN_ROW);
-      this.trackSlots.push(trackSlot(t, neighbours.map((n) => this.trackSlots[n])));
-    }
+    for (const t of page.newTracks) this.addTrack(t);
     const end = this.count + page.rowCount;
-    this.authorTimes = grown(this.authorTimes, end, (n) => new Float64Array(n));
-    this.authorIdsByRow = grown(this.authorIdsByRow, end, (n) => new Uint32Array(n));
-    this.lanesByRow = grown(this.lanesByRow, end, (n) => new Uint16Array(n));
-    this.tracksByRow = grown(this.tracksByRow, end, (n) => new Uint32Array(n));
+    this.growRows(end);
     this.authorTimes.set(page.authorTimeMs, this.count);
     this.authorIdsByRow.set(page.authorIds, this.count);
     this.lanesByRow.set(page.rowLanes, this.count);
@@ -157,7 +180,7 @@ export class GraphStore {
     }
     for (const author of page.newAuthors) this.authors.push(author);
 
-    this.edgeData = grown(this.edgeData, (this.edges + page.edgeCount) * EDGE_FIELDS, (n) => new Uint32Array(n));
+    this.growEdges(this.edges + page.edgeCount);
     this.edgeData.set(page.edges, this.edges * EDGE_FIELDS);
     for (let i = 0; i < page.edges.length; i += EDGE_FIELDS) {
       const t = page.edges[i + EDGE_FIELD.track];
@@ -176,6 +199,118 @@ export class GraphStore {
     this.peak = Math.max(this.peak, page.peakLanes);
     this.count = end;
     this.nextPage++;
+  }
+
+  private addTrack(t: GraphTrack): void {
+    const neighbours = [t.left, t.right].filter((n): n is number => n !== null && n < this.trackSlots.length);
+    this.trackKeys.push(t.key);
+    this.trackKinds.push(t.kind);
+    this.trackStarts.push(OPEN_ROW);
+    this.trackNeighbours.push([t.left, t.right]);
+    this.trackSlots.push(trackSlot(t, neighbours.map((n) => this.trackSlots[n])));
+  }
+
+  private growRows(rows: number): void {
+    this.authorTimes = grown(this.authorTimes, rows, (n) => new Float64Array(n));
+    this.authorIdsByRow = grown(this.authorIdsByRow, rows, (n) => new Uint32Array(n));
+    this.lanesByRow = grown(this.lanesByRow, rows, (n) => new Uint16Array(n));
+    this.tracksByRow = grown(this.tracksByRow, rows, (n) => new Uint32Array(n));
+  }
+
+  private growEdges(edges: number): void {
+    this.edgeData = grown(this.edgeData, edges * EDGE_FIELDS, (n) => new Uint32Array(n));
+  }
+
+  /**
+   * Joins `top`, a refresh's rows in a store from `continuing()`, to this store's rows as `splice`
+   * says, and returns the joined store, which is `top`. Throws when `top` doesn't hold exactly the
+   * rows, edges and tracks the splice announced.
+   */
+  spliced(top: GraphStore, splice: Splice): GraphStore {
+    const { replaceRows, newRows, rowDelta, edgesFrom, edgesTo, tracksFrom, tracksTo } = splice;
+    if (top.count !== newRows || top.edges !== edgesTo || top.trackKeys.length !== tracksTo) {
+      throw new Error(
+        `splice expected ${newRows} rows, ${edgesTo} edges and ${tracksTo} tracks above it, got ${top.count}, ${top.edges} and ${top.trackKeys.length}`
+      );
+    }
+    if (replaceRows > this.count || edgesFrom > this.edges || tracksFrom > this.trackKeys.length) {
+      throw new Error(`splice at row ${replaceRows} is past the ${this.count} rows loaded`);
+    }
+    const crossing = new Map(splice.crossingEdges);
+    const live = new Map(splice.liveTracks);
+    const shift = (row: number) => (row === OPEN_ROW ? row : row + rowDelta);
+    const track = (t: number) => (t >= tracksFrom ? t - tracksFrom + tracksTo : (live.get(t) ?? t));
+    const edge = (e: number) => (e >= edgesFrom ? e - edgesFrom + edgesTo : (crossing.get(e) ?? e));
+    const d = this.edgeData;
+
+    for (const [old, now] of crossing) {
+      const from = old * EDGE_FIELDS;
+      const to = now * EDGE_FIELDS;
+      top.edgeData[to + EDGE_FIELD.parentRow] = shift(d[from + EDGE_FIELD.parentRow]);
+      top.edgeData[to + EDGE_FIELD.parentLane] = d[from + EDGE_FIELD.parentLane];
+    }
+    for (let t = tracksFrom; t < this.trackKeys.length; t++) {
+      const [left, right] = this.trackNeighbours[t];
+      top.addTrack({
+        id: track(t),
+        key: this.trackKeys[t],
+        kind: this.trackKinds[t],
+        left: left === null ? null : track(left),
+        right: right === null ? null : track(right),
+      });
+    }
+
+    const kept = this.count - replaceRows;
+    top.growRows(newRows + kept);
+    for (let r = replaceRows; r < this.count; r++) {
+      const at = r + rowDelta;
+      const t = track(this.tracksByRow[r]);
+      top.authorTimes[at] = this.authorTimes[r];
+      top.authorIdsByRow[at] = this.authorIdsByRow[r];
+      top.lanesByRow[at] = this.lanesByRow[r];
+      top.tracksByRow[at] = t;
+      top.oids.push(this.oids[r]);
+      top.subjects.push(this.subjects[r]);
+      if (top.trackStarts[t] === OPEN_ROW) top.trackStarts[t] = at;
+    }
+    for (let a = top.authors.length; a < this.authors.length; a++) top.authors.push(this.authors[a]);
+    top.count = newRows + kept;
+
+    const edges = edgesTo + this.edges - edgesFrom;
+    top.growEdges(edges);
+    for (let e = edgesFrom; e < this.edges; e++) {
+      const from = e * EDGE_FIELDS;
+      const to = edge(e) * EDGE_FIELDS;
+      const t = track(d[from + EDGE_FIELD.track]);
+      const childRow = shift(d[from + EDGE_FIELD.childRow]);
+      top.edgeData[to + EDGE_FIELD.childRow] = childRow;
+      top.edgeData[to + EDGE_FIELD.parentRow] = shift(d[from + EDGE_FIELD.parentRow]);
+      top.edgeData[to + EDGE_FIELD.lane] = d[from + EDGE_FIELD.lane];
+      top.edgeData[to + EDGE_FIELD.childLane] = d[from + EDGE_FIELD.childLane];
+      top.edgeData[to + EDGE_FIELD.parentLane] = d[from + EDGE_FIELD.parentLane];
+      top.edgeData[to + EDGE_FIELD.track] = t;
+      top.trackStarts[t] = Math.min(top.trackStarts[t], childRow);
+    }
+    top.edges = edges;
+
+    // The edges crossing the match are the checkpoint of a page starting there; the old pages
+    // below it follow, moved and renumbered.
+    top.pageFirstRows.push(newRows);
+    top.pageFirstEdges.push(edgesTo);
+    top.checkpoints.push(Uint32Array.from(crossing.values()));
+    for (let p = 0; p < this.pageFirstRows.length; p++) {
+      if (this.pageFirstRows[p] <= replaceRows) continue;
+      top.pageFirstRows.push(this.pageFirstRows[p] + rowDelta);
+      top.pageFirstEdges.push(edge(this.pageFirstEdges[p]));
+      top.checkpoints.push(this.checkpoints[p].map(edge));
+    }
+    top.peak = Math.max(top.peak, this.peak);
+    return top;
+  }
+
+  /** The row of the commit `oid`, or -1 when it isn't loaded. Costs a scan of the loaded rows. */
+  rowOf(oid: string): number {
+    return this.oids.indexOf(oid);
   }
 
   oid(row: number): string {

@@ -434,6 +434,25 @@ export const GraphList: React.FC<GraphListProps> = ({
     updateWindow();
   }, [scale, placeWindow, updateWindow]);
 
+  // A refresh that splices or resets swaps in a new store (#379). The view stays anchored to the
+  // commit at the top of the viewport, and the selection follows its commit or clears if it is gone.
+  // The list turns off the browser's own scroll anchoring, which measures rows inside the moving
+  // window layer and so shifted the view by the window's 8-row steps on top of this.
+  const shownStore = useRef(store);
+  useLayoutEffect(() => {
+    const before = shownStore.current;
+    shownStore.current = store;
+    if (before === null || store === null || before === store || before.rowCount === 0) return;
+    const top = Math.min(Math.floor(offset.current / ROW_HEIGHT), before.rowCount - 1);
+    const row = store.rowOf(before.oid(top));
+    if (row !== -1) scrollToOffset(row * ROW_HEIGHT + (offset.current - top * ROW_HEIGHT));
+    setActive((prev) => {
+      if (prev === null || prev.sessionId !== before.sessionId || prev.row >= before.rowCount) return prev;
+      const moved = store.rowOf(before.oid(prev.row));
+      return moved === -1 ? null : { sessionId: store.sessionId, row: moved };
+    });
+  }, [store, scrollToOffset]);
+
   useLayoutEffect(() => {
     winRef.current = win;
     placeWindow();
@@ -591,7 +610,7 @@ export const GraphList: React.FC<GraphListProps> = ({
           aria-busy={status.state === "loading"}
           aria-activedescendant={activeRow === null ? undefined : `${idPrefix}-row-${activeRow}`}
           tabIndex={0}
-          className="group flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
+          className="group flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
         >
           {/* Clipped, so overscan rows past the end never make the spacer taller (#370). */}
           <div className="relative overflow-clip" style={{ height: scale.spacerHeight }}>

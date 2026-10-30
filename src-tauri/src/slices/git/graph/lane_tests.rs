@@ -15,23 +15,23 @@ use super::tests::{git, listen, temp_dir, Msg, WAIT};
 use super::GraphOrder;
 
 /// One commit of a hand-built history. Commits are listed oldest first and get increasing times.
-struct C {
+pub(super) struct C {
     name: String,
     parents: Vec<String>,
     msg: String,
 }
 
-fn c(name: &str, parents: &[&str]) -> C {
+pub(super) fn c(name: &str, parents: &[&str]) -> C {
     merge(name, parents, "")
 }
 
-fn merge(name: &str, parents: &[&str], msg: &str) -> C {
+pub(super) fn merge(name: &str, parents: &[&str], msg: &str) -> C {
     C { name: name.into(), parents: parents.iter().map(|p| p.to_string()).collect(), msg: msg.into() }
 }
 
 /// Builds `commits` with fast-import, points each `(ref, commit)` in `refs` at its commit, and sets
 /// HEAD to `head` (a ref name). Returns the repo and the oid of each commit by name.
-fn build(commits: &[C], refs: &[(&str, &str)], head: &str) -> (PathBuf, HashMap<String, String>) {
+pub(super) fn build(commits: &[C], refs: &[(&str, &str)], head: &str) -> (PathBuf, HashMap<String, String>) {
     let repo = temp_dir();
     git(&repo, &["init", "-q", "-b", "main"]);
     let mut stream = String::new();
@@ -409,7 +409,7 @@ fn each_page_carries_the_edges_open_at_its_first_row_and_long_edges_close_in_a_l
 /// A deterministic pseudo-random history: branches commit, fork, merge (sometimes octopus) and
 /// get deleted once merged, so it has named, derived and anonymous tracks. Main is `b0`; origin
 /// has a stale copy of it.
-fn random_history(seed: u64, commits: usize) -> (Vec<C>, Vec<(String, String)>) {
+pub(super) fn random_history(seed: u64, commits: usize) -> (Vec<C>, Vec<(String, String)>) {
     let mut state = seed;
     let mut next = move |n: usize| {
         state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { GraphFeed, SOFT_CAP } from "./graphFeed";
+import { GraphFeed, SOFT_CAP, type WatchState } from "./graphFeed";
 import { errorMessage } from "./gitVersion";
 
 export interface GraphSession {
@@ -10,6 +10,16 @@ export interface GraphSession {
   version: number;
   /** Tells the session the rendered rows now reach `windowEnd`, so it can load more in time. */
   reachedRow: (windowEnd: number) => void;
+  /**
+   * Re-runs the session's `git log` and splices or resets its rows (#379). Resolves once the
+   * backend has sent the `Splice` or `Reset` and its rows; does nothing before the session starts.
+   */
+  refresh: () => Promise<void>;
+  /**
+   * Points the session's repository watch at `worktreePath`, watching its files only while
+   * `visible`, and records whether live updates are on. Calling it again is Retry.
+   */
+  watch: (worktreePath: string, visible: boolean) => Promise<WatchState | null>;
 }
 
 // Opens and closes run one at a time, in the order they were asked for. Two opens in flight at
@@ -120,5 +130,28 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     [feed, bump]
   );
 
-  return { feed, version, reachedRow };
+  const refresh = useCallback(async () => {
+    if (feed === null || feed.sessionId === null) return;
+    await invoke("git_graph_refresh", { sessionId: feed.sessionId });
+    bump();
+  }, [feed, bump]);
+
+  const watch = useCallback(
+    async (worktreePath: string, visible: boolean): Promise<WatchState | null> => {
+      if (feed === null || feed.sessionId === null) return null;
+      let state: WatchState;
+      try {
+        state = await invoke<WatchState>("git_graph_watch", { sessionId: feed.sessionId, worktreePath, visible });
+      } catch (e: unknown) {
+        state = { state: "off", reason: errorMessage(e) };
+      }
+      if (current.current !== feed) return null;
+      feed.watch = state;
+      bump();
+      return state;
+    },
+    [feed, bump]
+  );
+
+  return { feed, version, reachedRow, refresh, watch };
 }
