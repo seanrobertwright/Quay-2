@@ -53,7 +53,59 @@ export interface GraphListProps {
   refs: RefsView;
   /** The live agent terminals in each worktree, by the path its HEAD badge names (#381). */
   worktreeAgents: ReadonlyMap<string, RunKind[]>;
+  /** The WIP row (#382), while the selected worktree is dirty; null hides it. */
+  wip: WipRowProps | null;
 }
+
+export interface WipRowProps {
+  /** "n changed", counting every change. */
+  label: string;
+  /** The selected worktree's HEAD, which the row sits on. */
+  headOid: string | null;
+  worktreeName: string;
+  /** Whether the staging inspector shows. */
+  open: boolean;
+  onToggle: () => void;
+  /** The inspector's id. */
+  controls: string;
+}
+
+/**
+ * The WIP row (#382): pinned at the top of the graph while the selected worktree is dirty, with a
+ * hollow dashed node in its HEAD's lane and color, so it reads as the work sitting on that HEAD.
+ * Selecting it opens the staging inspector.
+ */
+const WipRow: React.FC<{ wip: WipRowProps; store: GraphStore | null; layout: ColumnLayout }> = ({ wip, store, layout }) => {
+  const headRow = store && wip.headOid !== null ? store.rowOf(wip.headOid) : -1;
+  const lane = store && headRow !== -1 ? collapsedLane(store.lane(headRow), layout.stubLane) : 0;
+  const color =
+    store && headRow !== -1 && lane !== layout.stubLane ? slotColor(store.trackSlot(store.track(headRow))) : STUB_COLOR;
+  const cx = laneX(lane);
+  const cy = ROW_HEIGHT / 2;
+  return (
+    <button
+      type="button"
+      onClick={wip.onToggle}
+      aria-expanded={wip.open}
+      aria-controls={wip.controls}
+      title={`Uncommitted work on HEAD of ${wip.worktreeName}. ${wip.open ? "Hide" : "Show"} the staging inspector.`}
+      className={`relative shrink-0 flex items-center gap-3 pr-3 text-xs text-left border-b border-[#30363d] hover:bg-[#161b22] focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_#06B6D4] ${
+        wip.open ? "bg-[#161b22]" : "bg-[#0d1117]"
+      }`}
+      style={{ height: ROW_HEIGHT }}
+    >
+      <svg aria-hidden="true" className="shrink-0" width={layout.width} height={ROW_HEIGHT}>
+        <line x1={cx} y1={cy + NODE_RADIUS} x2={cx} y2={ROW_HEIGHT} stroke={color} strokeWidth={2} strokeDasharray="2 2" />
+        <circle cx={cx} cy={cy} r={NODE_RADIUS} fill="#0d1117" stroke={color} strokeWidth={1.5} strokeDasharray="2.5 2" />
+      </svg>
+      <span className="shrink-0 px-1.5 rounded border border-dashed border-[#8b949e]/60 text-[10px] leading-4 text-[#c9d1d9] font-semibold">
+        WIP
+      </span>
+      <span className="flex-1 min-w-0 truncate text-[#c9d1d9]">{wip.label}</span>
+      <span className="shrink-0 truncate max-w-60 text-[#8b949e]">on HEAD · {wip.worktreeName}</span>
+    </button>
+  );
+};
 
 function statusLine(status: GraphStatus, rows: number): string {
   const loaded = `${rows.toLocaleString()} ${rows === 1 ? "commit" : "commits"}`;
@@ -437,6 +489,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   onColumnWidth,
   refs,
   worktreeAgents,
+  wip,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -683,6 +736,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
+      {wip && <WipRow wip={wip} store={store} layout={layout} />}
       <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scroller}
