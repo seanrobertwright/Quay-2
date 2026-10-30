@@ -1,7 +1,14 @@
 // Test support: encodes a format-2 graph page the way `src-tauri/src/slices/git/graph/page.rs`
 // lays one out, so store and feed tests can build sessions without the backend.
 
-import { PAGE_MAGIC, type GraphTrack } from "../graphPage.ts";
+import {
+  CLOSE_FIELDS,
+  EDGE_FIELDS,
+  MIN_HEADER_BYTES,
+  PAGE_FORMAT_VERSION,
+  PAGE_MAGIC,
+  type GraphTrack,
+} from "../graphPage.ts";
 
 export interface TestPage {
   sessionId: number;
@@ -37,19 +44,19 @@ export function encodeTestPage(p: TestPage): ArrayBuffer {
       newTracks: p.newTracks ?? (p.pageIndex === 0 ? [{ id: 0, key: "main", kind: "default", left: null, right: null }] : []),
     })
   );
-  const authorTimeAt = 80;
+  const authorTimeAt = MIN_HEADER_BYTES;
   const authorIdsAt = authorTimeAt + 8 * n;
   const lanesAt = align8(authorIdsAt + 4 * n);
   const tracksAt = align8(lanesAt + 2 * n);
   const edgesAt = align8(tracksAt + 4 * n);
-  const closesAt = align8(edgesAt + 24 * edges.length);
-  const checkpointAt = align8(closesAt + 12 * closes.length);
+  const closesAt = align8(edgesAt + 4 * EDGE_FIELDS * edges.length);
+  const checkpointAt = align8(closesAt + 4 * CLOSE_FIELDS * closes.length);
   const jsonAt = align8(checkpointAt + 4 * checkpoint.length);
   const buffer = new ArrayBuffer(jsonAt + json.length);
   const view = new DataView(buffer);
   view.setUint32(0, PAGE_MAGIC, true);
-  view.setUint16(4, 2, true);
-  view.setUint16(6, 80, true);
+  view.setUint16(4, PAGE_FORMAT_VERSION, true);
+  view.setUint16(6, MIN_HEADER_BYTES, true);
   [
     p.sessionId,
     p.pageIndex,

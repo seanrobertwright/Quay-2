@@ -2,7 +2,15 @@
 // live in typed arrays that grow by doubling, never per page, so ingesting a page stays cheap at a
 // million rows.
 
-import { CLOSE_FIELDS, EDGE_FIELDS, OPEN_ROW, type GraphAuthor, type GraphPage } from "./graphPage.ts";
+import {
+  CLOSE_FIELD,
+  CLOSE_FIELDS,
+  EDGE_FIELD,
+  EDGE_FIELDS,
+  OPEN_ROW,
+  type GraphAuthor,
+  type GraphPage,
+} from "./graphPage.ts";
 import type { EdgeGeometry } from "./graphPaths.ts";
 import { trackSlot } from "./laneColors.ts";
 
@@ -91,10 +99,10 @@ export class GraphStore {
     });
     const tracks = this.trackKeys.length + page.newTracks.length;
     for (const t of page.rowTracks) if (t >= tracks) throw new Error(`page names unknown track ${t}`);
-    for (let i = 5; i < page.edges.length; i += EDGE_FIELDS) {
+    for (let i = EDGE_FIELD.track; i < page.edges.length; i += EDGE_FIELDS) {
       if (page.edges[i] >= tracks) throw new Error(`page names unknown track ${page.edges[i]}`);
     }
-    for (let i = 0; i < page.closes.length; i += CLOSE_FIELDS) {
+    for (let i = CLOSE_FIELD.edge; i < page.closes.length; i += CLOSE_FIELDS) {
       if (page.closes[i] >= this.edges) throw new Error(`page closes unknown edge ${page.closes[i]}`);
     }
     for (const e of page.checkpoint) if (e >= this.edges) throw new Error(`page's checkpoint names unknown edge ${e}`);
@@ -122,9 +130,9 @@ export class GraphStore {
     this.edgeData = grown(this.edgeData, (this.edges + page.edgeCount) * EDGE_FIELDS, (n) => new Uint32Array(n));
     this.edgeData.set(page.edges, this.edges * EDGE_FIELDS);
     for (let i = 0; i < page.closes.length; i += CLOSE_FIELDS) {
-      const at = page.closes[i] * EDGE_FIELDS;
-      this.edgeData[at + 1] = page.closes[i + 1];
-      this.edgeData[at + 4] = page.closes[i + 2];
+      const at = page.closes[i + CLOSE_FIELD.edge] * EDGE_FIELDS;
+      this.edgeData[at + EDGE_FIELD.parentRow] = page.closes[i + CLOSE_FIELD.parentRow];
+      this.edgeData[at + EDGE_FIELD.parentLane] = page.closes[i + CLOSE_FIELD.parentLane];
     }
     this.pageFirstRows.push(page.firstRow);
     this.pageFirstEdges.push(this.edges);
@@ -173,7 +181,14 @@ export class GraphStore {
   edge(id: number): GraphEdge {
     const at = id * EDGE_FIELDS;
     const d = this.edgeData;
-    return { childRow: d[at], parentRow: d[at + 1], lane: d[at + 2], childLane: d[at + 3], parentLane: d[at + 4], track: d[at + 5] };
+    return {
+      childRow: d[at + EDGE_FIELD.childRow],
+      parentRow: d[at + EDGE_FIELD.parentRow],
+      lane: d[at + EDGE_FIELD.lane],
+      childLane: d[at + EDGE_FIELD.childLane],
+      parentLane: d[at + EDGE_FIELD.parentLane],
+      track: d[at + EDGE_FIELD.track],
+    };
   }
 
   /**
@@ -194,12 +209,12 @@ export class GraphStore {
     }
     const d = this.edgeData;
     const reaches = (id: number) => {
-      const parentRow = d[id * EDGE_FIELDS + 1];
+      const parentRow = d[id * EDGE_FIELDS + EDGE_FIELD.parentRow];
       return parentRow === OPEN_ROW || parentRow >= start - 1;
     };
     const out: number[] = [];
     for (const id of this.checkpoints[lo]) if (reaches(id)) out.push(id);
-    for (let id = this.pageFirstEdges[lo]; id < this.edges && d[id * EDGE_FIELDS] < end; id++) {
+    for (let id = this.pageFirstEdges[lo]; id < this.edges && d[id * EDGE_FIELDS + EDGE_FIELD.childRow] < end; id++) {
       if (reaches(id)) out.push(id);
     }
     return out;

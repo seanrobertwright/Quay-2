@@ -68,6 +68,7 @@ const GraphLanes: React.FC<{ store: GraphStore; win: RowWindow; width: number }>
       width={width}
       height={(win.end - win.start) * ROW_HEIGHT}
     >
+      {/* The index is the color slot, a fixed identity in a fixed-length array, so it is a stable key. */}
       {paths.map((d, slot) =>
         d === "" ? null : <path key={slot} d={d} fill="none" stroke={slotColor(slot)} strokeWidth={2} />
       )}

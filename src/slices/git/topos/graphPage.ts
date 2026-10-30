@@ -5,12 +5,14 @@
 /** "TGPG" read as a little-endian u32. */
 export const PAGE_MAGIC = 0x47504754;
 export const PAGE_FORMAT_VERSION = 2;
-const MIN_HEADER_BYTES = 80;
+export const MIN_HEADER_BYTES = 80;
 /** The `parentRow` of an edge whose parent row hasn't loaded yet. */
 export const OPEN_ROW = 0xffffffff;
-/** `u32`s per edge: childRow, parentRow, lane, childLane, parentLane, track. */
+/** Where each field sits in an edge's `EDGE_FIELDS` `u32`s. */
+export const EDGE_FIELD = { childRow: 0, parentRow: 1, lane: 2, childLane: 3, parentLane: 4, track: 5 } as const;
 export const EDGE_FIELDS = 6;
-/** `u32`s per close: edge, parentRow, parentLane. */
+/** Where each field sits in a close's `CLOSE_FIELDS` `u32`s. */
+export const CLOSE_FIELD = { edge: 0, parentRow: 1, parentLane: 2 } as const;
 export const CLOSE_FIELDS = 3;
 
 /** An author in a session's author table. */
