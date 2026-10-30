@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ROW_HEIGHT, rowWindow, WINDOW_STEP } from "./graphWindow.ts";
+import { renderedActiveRow, ROW_HEIGHT, rowWindow, WINDOW_STEP } from "./graphWindow.ts";
 
 test("the window covers the viewport with overscan and starts on a step", () => {
   // Rows 100 to 121 are visible.
@@ -30,4 +30,13 @@ test("the window stays inside the rows there are", () => {
   const past = rowWindow(50_000 * ROW_HEIGHT, 600, 10_000);
   assert.ok(past.start < 10_000 && past.end === 10_000);
   assert.deepEqual(rowWindow(Number.NaN, Number.NaN, 100), rowWindow(0, 0, 100));
+});
+
+test("the active row stays on a rendered row, moving to the window's nearer edge when it scrolls away", () => {
+  const win = { start: 40, end: 80 };
+  assert.equal(renderedActiveRow(50, win), 50);
+  assert.equal(renderedActiveRow(3, win), 40);
+  assert.equal(renderedActiveRow(500, win), 79);
+  assert.equal(renderedActiveRow(null, win), 40);
+  assert.equal(renderedActiveRow(5, { start: 0, end: 0 }), null);
 });
