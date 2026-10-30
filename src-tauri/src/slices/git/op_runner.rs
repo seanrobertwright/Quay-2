@@ -3,10 +3,10 @@
 //! `GIT_SSH_COMMAND` left as the operator set them. A long-running operation streams
 //! [`OpEvent`]s over a Tauri [`Channel`] and stops when [`git_op_cancel`] kills its process tree.
 
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -253,22 +253,30 @@ impl GitOps {
         opts: &OpOptions,
         channel: &Channel<OpEvent>,
     ) -> Result<OpOutput, GitError> {
-        let id = parse_op_id(op_id)?;
-        let cancel = Arc::new(AtomicBool::new(false));
-        {
-            let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
-            if running.contains_key(&id) {
-                return Err(GitError::Other { stderr: format!("op {id} is already running") });
-            }
-            running.insert(id, cancel.clone());
-        }
+        let (id, cancel) = match self.register(op_id) {
+            Ok(registered) => registered,
+            Err(error) => return finish(Err(error), channel),
+        };
         let result = finish(run(cwd, args, opts, &cancel, channel), channel);
         self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
         result
     }
 
+    /// Adds `op_id` to the running ops, refusing an id that is already running.
+    fn register(&self, op_id: &str) -> Result<(Uuid, Arc<AtomicBool>), GitError> {
+        let id = parse_op_id(op_id)?;
+        let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        if running.contains_key(&id) {
+            return Err(GitError::Other { stderr: format!("op {id} is already running") });
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        running.insert(id, cancel.clone());
+        Ok((id, cancel))
+    }
+
     /// Cancels the running op `op_id`: its whole process tree is killed and it ends in
-    /// `Failed { error: Cancelled }`. An op that has already finished is left alone.
+    /// `Failed { error: Cancelled }`. An id with no running op, one that has finished or not yet
+    /// started, is ignored.
     pub fn cancel(&self, op_id: &str) -> Result<(), GitError> {
         let id = parse_op_id(op_id)?;
         if let Some(cancel) = self.running.lock().unwrap_or_else(|e| e.into_inner()).get(&id) {
@@ -299,7 +307,6 @@ pub fn headless_git() -> Command {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
 
     use serde_json::Value;
     use tauri::ipc::InvokeResponseBody;
@@ -325,8 +332,9 @@ mod tests {
         dir
     }
 
-    /// `git <alias>` running `script` in git's shell, so a test can see what git's children see.
-    fn alias_args<'a>(def: &'a str) -> [&'a str; 3] {
+    /// Args that run the alias `def` defines as `probe`. An `alias.probe=!…` alias runs in git's
+    /// shell, so a test sees what git's children see.
+    fn alias_args(def: &str) -> [&str; 3] {
         ["-c", def, "probe"]
     }
 
