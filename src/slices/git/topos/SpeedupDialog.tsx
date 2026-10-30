@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Gauge, X } from "lucide-react";
-import { usePopupLayer } from "../../overlay/useOverlay";
+import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
 import { SPEEDUP_COMMANDS, type SpeedupItem } from "./speedup";
 import type { Speedup } from "./useSpeedup";
 
@@ -86,41 +86,14 @@ export const SpeedupDialog: React.FC<SpeedupDialogProps> = ({ open, speedup, onC
   };
   usePopupLayer(open, close, panel);
 
-  // Each open starts from the items offered now.
-  const itemsKey = items.join(",");
-  useEffect(() => {
-    if (open) setTicked(initiallyTicked(itemsKey === "" ? [] : (itemsKey.split(",") as SpeedupItem[])));
-  }, [open, itemsKey]);
+  useDialogFocus(open, panel, fallbackFocus);
 
+  // Each open starts from the items offered now.
+  const offered = useRef(items);
+  offered.current = items;
   useEffect(() => {
-    if (!open) return;
-    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const fallback = fallbackFocus.current;
-    const node = panel.current;
-    node?.querySelector<HTMLElement>("input, button")?.focus();
-    // Focus is trapped: Tab from the last control goes to the first, and Shift+Tab the other way.
-    const trap = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || node === null) return;
-      const controls = [...node.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)")];
-      if (controls.length === 0) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      const inside = controls.includes(document.activeElement as HTMLElement);
-      if (e.shiftKey && (document.activeElement === first || !inside)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    node?.addEventListener("keydown", trap);
-    return () => {
-      node?.removeEventListener("keydown", trap);
-      if (before?.isConnected) before.focus();
-      else fallback?.focus();
-    };
-  }, [open, fallbackFocus]);
+    if (open) setTicked(initiallyTicked(offered.current));
+  }, [open]);
 
   // Apply and Cancel swap places as a job starts and ends, so focus moves with them.
   const cancelButton = useRef<HTMLButtonElement>(null);
