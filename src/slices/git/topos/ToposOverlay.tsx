@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, X } from "lucide-react";
@@ -7,6 +7,8 @@ import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "./graphColumn";
+import { badgesByOid, tagOnlyLine, type Badge } from "./graphRefs";
+import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
@@ -25,6 +27,8 @@ export interface ToposOverlayProps {
   onClose: () => void;
   onAddProject: () => void;
 }
+
+const NO_BADGES: ReadonlyMap<string, Badge[]> = new Map();
 
 type VersionCheck =
   | { state: "idle" }
@@ -46,6 +50,11 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   useEffect(() => {
     if (isOpen) setTarget(project);
   }, [isOpen, project]);
+  // Counts the times Topos has been shown, so each show reads the refs again.
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (isOpen) setShown((n) => n + 1);
+  }, [isOpen]);
 
   const [check, setCheck] = useState<VersionCheck>({ state: "idle" });
   // Only the newest check may set the result, so a slow first check can't overwrite a Retry.
@@ -77,7 +86,17 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   // Outlives the list, which remounts for each order and target. Persisting it is the settings ticket's.
   const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
   // The graph belongs to the root repo, so moving between its worktrees keeps the session.
-  const graph = useGraphSession(target && view?.kind === "open" ? target.repoPath : null, order);
+  const graphRepo = target && view?.kind === "open" ? target.repoPath : null;
+  const graph = useGraphSession(graphRepo, order);
+  // Refs are per repo too, so a move between its worktrees moves only the HEAD marker (#378).
+  const refs = useGraphRefs(graphRepo, shown);
+  const selectedPath = target?.path ?? null;
+  const badges = useMemo(
+    () => (refs.state === "done" ? badgesByOid(refs.refs, selectedPath) : NO_BADGES),
+    [refs, selectedPath]
+  );
+  const tagOnlyNote = refs.state === "done" ? tagOnlyLine(refs.refs.tagOnlyCount) : null;
+  const refsError = refs.state === "failed" ? `Couldn't read branches and tags: ${refs.message}` : null;
 
   return (
     <div
@@ -188,6 +207,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 onReachedRow={graph.reachedRow}
                 columnWidth={columnWidth}
                 onColumnWidth={setColumnWidth}
+                badges={badges}
+                tagOnlyNote={tagOnlyNote}
+                refsError={refsError}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">

@@ -9,6 +9,7 @@ import ReactDOM from "react-dom/client";
 import { GraphFeed } from "../../../src/slices/git/topos/graphFeed";
 import { GraphList } from "../../../src/slices/git/topos/GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
+import type { Badge } from "../../../src/slices/git/topos/graphRefs";
 import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
@@ -101,6 +102,9 @@ async function replay(url: string): Promise<void> {
   state.loadMs = performance.now() - started;
 }
 
+// Recordings carry no refs, so the benchmark measures rows without badges.
+const NO_BADGES: ReadonlyMap<string, Badge[]> = new Map();
+
 function Bench() {
   const [version, setVersion] = useState(0);
   const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
@@ -135,6 +139,9 @@ function Bench() {
           onReachedRow={() => {}}
           columnWidth={columnWidth}
           onColumnWidth={setColumnWidth}
+          badges={NO_BADGES}
+          tagOnlyNote={null}
+          refsError={null}
         />
       ) : (
         <p role="status">Loading commits…</p>
