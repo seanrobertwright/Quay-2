@@ -1,8 +1,11 @@
 // The Topos scale benchmark (#377): a pre-merge gate, not a per-push CI job. See README.md.
 //   node scripts/topos-bench/drive.ts <recording.pages> [more.pages ...]
-// For each recording (from dump-pages.ts) it builds the benchmark page for production, serves it
-// with Quay's release CSP, opens it in Edge (WebView2's engine), replays the recording into the
-// real GraphFeed and GraphList, and checks the spec's Scale budgets:
+// First it runs the Rust lane-pass budget test in the release profile: at most 1 µs per row.
+// Then, for each recording (from dump-pages.ts), it builds the benchmark page for production,
+// serves it with Quay's release CSP, opens it in Edge (WebView2's engine), replays the recording
+// into the real GraphFeed and GraphList, and checks the spec's Scale budgets:
+// - first rows on screen at most 300 ms after the session opens;
+// - frontend memory at most 300 B per loaded row;
 // - main-thread ingest at most 8 ms per 512-row page at p95;
 // - the last row reachable, by the scrollbar and by End;
 // - one wheel event moving the content by exactly its deltaY;
@@ -10,6 +13,7 @@
 //   random-jump scrolling.
 // It prints one JSON line per recording and a verdict table, and exits 1 when a budget is missed.
 
+import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -19,22 +23,18 @@ import { chromium } from "playwright-core";
 import { build } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import type { BenchState } from "./page/benchState.ts";
+import { ROW_HEIGHT } from "../../src/slices/git/topos/graphWindow.ts";
+import { MAX_SPACER_HEIGHT } from "../../src/slices/git/topos/scaledScroll.ts";
 
-/** What page/main.tsx publishes as `window.__toposBench`. */
-interface BenchState {
-  phase: "loading" | "done" | "failed";
-  rows: number;
-  ingestMs: number[];
-  loadMs: number;
-  error: string | null;
-}
-declare global {
-  interface Window {
-    __toposBench: BenchState;
-  }
-}
-
-const BUDGET = { ingestP95Ms: 8, frameP95Ms: 16.8, slowFrameMs: 20, slowFrameShare: 0.01 };
+const BUDGET = {
+  firstRowsMs: 300,
+  heapBytesPerRow: 300,
+  ingestP95Ms: 8,
+  frameP95Ms: 16.8,
+  slowFrameMs: 20,
+  slowFrameShare: 0.01,
+};
 /** Seconds each scroll run lasts. */
 const RUN_SECONDS = 5;
 const VIEWPORT = { width: 1600, height: 1000 };
@@ -49,11 +49,33 @@ for (const r of recordings) {
     console.error(`${r}: no such recording; make one with dump-pages.ts`);
     process.exit(2);
   }
+  if (!existsSync(`${r}.json`)) {
+    console.error(`${r}.json: no first-page time; record ${r} again with dump-pages.ts`);
+    process.exit(2);
+  }
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
 const outDir = join(tmpdir(), "quay-topos-bench", "dist");
+
+// The lane pass runs in Rust before the recording is made, so its budget has its own test.
+const lanePass = spawnSync(
+  "cargo",
+  [
+    "test",
+    "--release",
+    "--lib",
+    "--",
+    "--ignored",
+    "--nocapture",
+    "--exact",
+    "slices::git::graph::lanes::tests::lane_pass_costs_at_most_a_microsecond_per_row",
+  ],
+  { cwd: join(repoRoot, "src-tauri"), stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" }
+);
+process.stdout.write(lanePass.stdout ?? "");
+const lanePassOk = lanePass.status === 0;
 
 // A production build: dev-mode React costs several times more per render and would skew frames.
 await build({
@@ -103,13 +125,16 @@ const address = server.address();
 if (address === null || typeof address === "string") throw new Error("the server has no port");
 const origin = `http://127.0.0.1:${address.port}`;
 
-const browser = await chromium.launch({ channel: "msedge", headless: false, args: ["--enable-precise-memory-info"] });
-const page = await browser.newPage({ viewport: VIEWPORT });
+// The page weighs its heap after a full GC, so it needs gc() and unrounded performance.memory.
+const browser = await chromium.launch({
+  channel: "msedge",
+  headless: false,
+  args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"],
+});
+// Each recording gets its own context, so the last recording's store can't sit in the heap the
+// next one weighs.
+let page = await browser.newPage({ viewport: VIEWPORT });
 const LIST = '[role="listbox"][aria-label="Commits"]';
-/** ROW_HEIGHT in src/slices/git/topos/graphWindow.ts. */
-const ROW_PX = 28;
-/** MAX_SPACER_HEIGHT in src/slices/git/topos/scaledScroll.ts. */
-const MAX_SPACER_PX = 8_000_000;
 
 const frames = (n: number) =>
   page.evaluate(
@@ -145,7 +170,7 @@ const contentOffset = () =>
       const index = Number(row.getAttribute("aria-posinset")) - 1;
       return index * rowPx + el.getBoundingClientRect().top - row.getBoundingClientRect().top;
     },
-    { list: LIST, rowPx: ROW_PX }
+    { list: LIST, rowPx: ROW_HEIGHT }
   );
 
 /**
@@ -185,19 +210,28 @@ interface FrameStats {
   pass: boolean;
 }
 
+/**
+ * Float noise left by subtracting two timestamps, such as 16.800000000000182 for a 16.8 ms frame.
+ * The budget allows only this much over its limit: a nanosecond, not the 0.05 ms that rounding
+ * to the budget's 0.1 ms would.
+ */
+const FLOAT_NOISE_MS = 1e-6;
+
 function frameStats(deltas: number[]): FrameStats {
   const sorted = [...deltas].sort((a, b) => a - b);
   const sum = deltas.reduce((a, b) => a + b, 0);
-  // Rounded to the 0.1 ms the budget is stated in; rAF timestamps jitter around 16.67 ms at 60 Hz.
-  const p95 = Math.round((sorted[Math.floor(sorted.length * 0.95)] ?? 0) * 10) / 10;
+  const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
   const slow = deltas.filter((d) => d > BUDGET.slowFrameMs).length;
   return {
     frames: deltas.length,
     fps: Math.round((deltas.length * 1000) / Math.max(1, sum)),
-    p95,
+    p95: Math.round(p95 * 100) / 100,
     max: Math.round(sorted[sorted.length - 1] ?? 0),
     slow,
-    pass: deltas.length > 0 && p95 <= BUDGET.frameP95Ms && slow <= deltas.length * BUDGET.slowFrameShare,
+    pass:
+      deltas.length > 0 &&
+      p95 <= BUDGET.frameP95Ms + FLOAT_NOISE_MS &&
+      slow <= deltas.length * BUDGET.slowFrameShare,
   };
 }
 
@@ -257,20 +291,29 @@ const quantile = (xs: number[], q: number) => [...xs].sort((a, b) => a - b)[Math
 const results = [];
 let allPass = true;
 
-for (const recording of recordings) {
+for (const [i, recording] of recordings.entries()) {
   current = recording;
+  if (i > 0) {
+    await page.context().close();
+    page = await browser.newPage({ viewport: VIEWPORT });
+  }
   await page.goto(`${origin}/?pages=/pages`);
   await page.waitForFunction(() => window.__toposBench?.phase !== "loading", null, { timeout: 900_000, polling: 1000 });
-  const state = await page.evaluate(() => window.__toposBench);
+  const state: BenchState = await page.evaluate(() => window.__toposBench);
   if (state.phase === "failed") throw new Error(`${recording}: ${state.error}`);
+  if (state.firstRowsMs === null) throw new Error(`${recording}: no rows reached the screen`);
   await frames(10);
-  const heap = await page.evaluate(() => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0);
+  // The session's ms to its first Rows page, plus the page's ms from that page to the screen.
+  // Only the Tauri IPC hop between the two is left out.
+  const { firstPageMs } = JSON.parse(readFileSync(`${recording}.json`, "utf8")) as { firstPageMs: number };
+  const firstRowsMs = firstPageMs + state.firstRowsMs;
+  const heapBytesPerRow = (state.heapAfterBytes - state.heapBeforeBytes) / state.rows;
   const ingestP95 = quantile(state.ingestMs, 0.95);
   const list = page.locator(LIST);
   const box = await list.boundingBox();
   if (!box) throw new Error("the commit list is not on screen");
   const scrollHeight = await list.evaluate((el) => el.scrollHeight);
-  const scaled = state.rows * ROW_PX > MAX_SPACER_PX;
+  const scaled = state.rows * ROW_HEIGHT > MAX_SPACER_HEIGHT;
 
   // Reachability: the scrollbar dragged to the very bottom, then Home and End from the keyboard.
   await list.evaluate((el) => {
@@ -306,6 +349,8 @@ for (const recording of recordings) {
   const jumps = await measureFrames(randomJumps);
 
   const checks = {
+    firstRows: firstRowsMs <= BUDGET.firstRowsMs,
+    memory: heapBytesPerRow <= BUDGET.heapBytesPerRow,
     ingest: ingestP95 <= BUDGET.ingestP95Ms,
     lastRow: lastByScrollbar && lastByEnd,
     // Natively the browser owns the wheel, and for Playwright's wheel it scrolls 100 px while
@@ -322,9 +367,11 @@ for (const recording of recordings) {
     rows: state.rows,
     pages: state.ingestMs.length,
     loadMs: Math.round(state.loadMs),
+    firstPageMs,
+    firstRowsMs: Math.round(firstRowsMs),
+    heapBytesPerRow: Math.round(heapBytesPerRow),
     ingestP95Ms: Math.round(ingestP95 * 100) / 100,
     ingestMaxMs: Math.round(Math.max(0, ...state.ingestMs) * 100) / 100,
-    heapMB: Math.round(heap / 1e6),
     scrollHeight,
     scaled,
     lastByScrollbar,
@@ -347,11 +394,15 @@ server.close();
 const mark = (ok: boolean) => (ok ? "pass" : "MISS");
 const wheelCell = (w: { moved: number; deltaY: number }) => `${w.moved.toFixed(1)} of ${w.deltaY.toFixed(1)} px`;
 const frameCell = (f: FrameStats) => `${f.p95} ms, ${f.slow}/${f.frames} > 20 ms (${mark(f.pass)})`;
-console.log("\n| Recording | Rows | Ingest p95 (max) | Last row | Wheel: moved of deltaY, 1 and 10 events | Steady | Fling | Jumps |");
-console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+allPass &&= lanePassOk;
+console.log(`\nLane pass, at most 1 µs per row: ${mark(lanePassOk)}`);
+console.log(
+  "\n| Recording | Rows | First rows | Memory per row | Ingest p95 (max) | Last row | Wheel: moved of deltaY, 1 and 10 events | Steady | Fling | Jumps |"
+);
+console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 for (const r of results) {
   console.log(
-    `| ${r.recording.split(/[\\/]/).pop()} | ${r.rows.toLocaleString("en-US")} | ${r.ingestP95Ms} (${r.ingestMaxMs}) ms (${mark(r.checks.ingest)}) | ${mark(r.checks.lastRow)} | ${r.scaled ? `${wheelCell(r.oneWheel)}, ${wheelCell(r.tenWheels)} (${mark(r.checks.wheel)})` : "native"} | ${frameCell(r.steady)} | ${frameCell(r.fling)} | ${frameCell(r.jumps)} |`
+    `| ${r.recording.split(/[\\/]/).pop()} | ${r.rows.toLocaleString("en-US")} | ${r.firstRowsMs} ms (${mark(r.checks.firstRows)}) | ${r.heapBytesPerRow} B (${mark(r.checks.memory)}) | ${r.ingestP95Ms} (${r.ingestMaxMs}) ms (${mark(r.checks.ingest)}) | ${mark(r.checks.lastRow)} | ${r.scaled ? `${wheelCell(r.oneWheel)}, ${wheelCell(r.tenWheels)} (${mark(r.checks.wheel)})` : "native"} | ${frameCell(r.steady)} | ${frameCell(r.fling)} | ${frameCell(r.jumps)} |`
   );
 }
 console.log(allPass ? "\nEvery budget met." : "\nA budget was missed.");

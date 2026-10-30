@@ -2,7 +2,10 @@
 //! is ignored unless named, and `scripts/topos-bench/README.md` says how to run it. It opens a
 //! session on `TOPOS_BENCH_REPO` with every row up to the hard cap granted, and writes each
 //! channel message to `TOPOS_BENCH_OUT` exactly as the frontend would receive it, framed as
-//! `[kind: u8 (0 JSON event, 1 Rows page)][length: u32 LE][bytes]`.
+//! `[kind: u8 (0 JSON event, 1 Rows page)][length: u32 LE][bytes]`. Next to it,
+//! `TOPOS_BENCH_OUT.json` holds `{"firstPageMs": n}`: ms from opening the session to its first
+//! Rows page, the backend's share of the first-rows budget. Only an optimized build times that
+//! fairly, so the dump refuses to run in a debug build.
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -29,6 +32,7 @@ fn env_path(name: &str) -> PathBuf {
 fn dump_graph_session_for_benchmark() {
     let repo = env_path("TOPOS_BENCH_REPO");
     let out = env_path("TOPOS_BENCH_OUT");
+    assert!(!cfg!(debug_assertions), "run the dump in an optimized build: cargo test --release");
     let (tx, rx) = channel::<(u8, Vec<u8>)>();
     let ch = Channel::new(move |body| {
         let _ = tx.send(match body {
@@ -60,11 +64,15 @@ fn dump_graph_session_for_benchmark() {
         }
     }
     file.flush().unwrap();
+    let first_page_ms = first_page_ms.expect("the session sent no Rows page");
+    let mut sidecar = out.clone().into_os_string();
+    sidecar.push(".json");
+    std::fs::write(&sidecar, serde_json::json!({ "firstPageMs": first_page_ms }).to_string()).unwrap();
     eprintln!(
         "{pages} pages from {} in {} ms (first page {} ms) -> {}",
         repo.display(),
         started.elapsed().as_millis(),
-        first_page_ms.unwrap_or_default(),
+        first_page_ms,
         out.display()
     );
 }

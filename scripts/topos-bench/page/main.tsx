@@ -1,6 +1,7 @@
 // The Topos scale benchmark page (#377). It mounts the real `GraphFeed` and `GraphList` and
 // replays a recorded graph session (see ../dump-pages.ts) into the feed one channel message per
-// task, as Tauri delivers them, timing each page's main-thread ingest. `drive.ts` builds this
+// task, as Tauri delivers them. It times each page's main-thread ingest and how long the first
+// page takes to reach the screen, and weighs the JS heap before and after. `drive.ts` builds this
 // page for production, serves it and reads `window.__toposBench`.
 
 import { useEffect, useState } from "react";
@@ -8,29 +9,45 @@ import ReactDOM from "react-dom/client";
 import { GraphFeed } from "../../../src/slices/git/topos/graphFeed";
 import { GraphList } from "../../../src/slices/git/topos/GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
+import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
-export interface BenchState {
-  phase: "loading" | "done" | "failed";
-  /** Rows the store holds. */
-  rows: number;
-  /** Main-thread ms for each Rows page: decode plus store ingest. */
-  ingestMs: number[];
-  /** Ms from the first byte to the last message applied. */
-  loadMs: number;
-  error: string | null;
-}
-
-declare global {
-  interface Window {
-    __toposBench: BenchState;
-  }
-}
-
-const state: BenchState = { phase: "loading", rows: 0, ingestMs: [], loadMs: 0, error: null };
+const state: BenchState = {
+  phase: "loading",
+  rows: 0,
+  ingestMs: [],
+  loadMs: 0,
+  firstRowsMs: null,
+  heapBeforeBytes: 0,
+  heapAfterBytes: 0,
+  error: null,
+};
 window.__toposBench = state;
 const feed = new GraphFeed();
 let bump: () => void = () => {};
+/** When the first Rows page arrived, for `firstRowsMs`. */
+let firstPageAt: number | null = null;
+
+/**
+ * JS heap in bytes once garbage is gone. drive.ts launches Edge with `--expose-gc` and precise
+ * memory info. V8 frees ArrayBuffer backing stores after the GC that finds them dead, so one GC
+ * and an immediate read can still count them: this collects and waits until the heap stops
+ * shrinking.
+ */
+async function settledHeap(): Promise<number> {
+  const { gc } = window as unknown as { gc?: () => void };
+  const memory = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+  if (!gc || !memory) throw new Error("the page needs gc() and performance.memory; run it through drive.ts");
+  let least = Infinity;
+  for (let quiet = 0; quiet < 3; ) {
+    gc();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const used = memory.usedJSHeapSize;
+    quiet = used < least ? 0 : quiet + 1;
+    least = Math.min(least, used);
+  }
+  return least;
+}
 
 /** One task's pause, so rendering and input interleave with messages as they do over IPC. */
 function nextTask(): Promise<void> {
@@ -43,6 +60,7 @@ function nextTask(): Promise<void> {
 
 /** Frames are `[kind: u8 (0 JSON event, 1 Rows page)][length: u32 LE][bytes]`. */
 async function replay(url: string): Promise<void> {
+  state.heapBeforeBytes = await settledHeap();
   const response = await fetch(url);
   if (!response.ok || response.body === null) throw new Error(`${url}: HTTP ${response.status}`);
   const reader = response.body.getReader();
@@ -66,6 +84,7 @@ async function replay(url: string): Promise<void> {
       at += 5 + length;
       if (kind === 1) {
         const t0 = performance.now();
+        firstPageAt ??= t0;
         feed.accept(bytes.buffer);
         state.ingestMs.push(performance.now() - t0);
       } else {
@@ -85,6 +104,14 @@ async function replay(url: string): Promise<void> {
 function Bench() {
   const [version, setVersion] = useState(0);
   const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
+  useEffect(() => {
+    // Rows are on screen in the first frame after the render that first showed them.
+    if (state.firstRowsMs !== null || firstPageAt === null || !feed.store?.rowCount) return;
+    const at = firstPageAt;
+    requestAnimationFrame(() => {
+      state.firstRowsMs ??= performance.now() - at;
+    });
+  }, [version]);
   useEffect(() => {
     let frame: number | null = null;
     // As useGraphSession does: re-render once per frame, not once per page.
@@ -118,13 +145,13 @@ function Bench() {
 
 const pages = new URLSearchParams(location.search).get("pages") ?? "/pages";
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<Bench />);
-replay(pages).then(
-  () => {
+replay(pages)
+  .then(async () => {
+    state.heapAfterBytes = await settledHeap();
     state.phase = "done";
     bump();
-  },
-  (e: unknown) => {
+  })
+  .catch((e: unknown) => {
     state.error = e instanceof Error ? e.message : String(e);
     state.phase = "failed";
-  }
-);
+  });

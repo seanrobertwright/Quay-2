@@ -2,7 +2,9 @@
 //   node scripts/topos-bench/dump-pages.ts <repo> <out.pages>
 // It runs the ignored Rust test `dump_graph_session_for_benchmark`, which opens a graph session on
 // <repo> through the same code `git_graph_open` uses, grants every row up to the 2M hard cap, and
-// writes each channel message to <out.pages> as the frontend would receive it.
+// writes each channel message to <out.pages> as the frontend would receive it. It also writes
+// <out.pages>.json with the ms from opening the session to its first Rows page. The test runs in
+// the release profile, so that time is the optimized build's.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -22,7 +24,7 @@ if (!existsSync(repo)) {
 const srcTauri = resolve(dirname(fileURLToPath(import.meta.url)), "../../src-tauri");
 const run = spawnSync(
   "cargo",
-  ["test", "--lib", "--", "--ignored", "--nocapture", "--exact", "slices::git::graph::bench_dump::dump_graph_session_for_benchmark"],
+  ["test", "--release", "--lib", "--", "--ignored", "--nocapture", "--exact", "slices::git::graph::bench_dump::dump_graph_session_for_benchmark"],
   {
     cwd: srcTauri,
     stdio: "inherit",
