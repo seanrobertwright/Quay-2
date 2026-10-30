@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hitNode } from "./graphHit.ts";
+import { hitNode, rowAt } from "./graphHit.ts";
 
 // With H = 28, W = 16 and P = 8, lane l's node sits at x = 16 + 16·l, and row r of a window
 // starting at row s at y = 14 + 28·(r - s). The hit radius is half a lane pitch, 8 px.
@@ -29,4 +29,13 @@ test("a pointer outside the window's rows hits nothing", () => {
   assert.equal(hitNode(16, -2, win, lanes), null);
   assert.equal(hitNode(16, 40 * 28 + 14, win, lanes), null);
   assert.equal(hitNode(16, 14, { start: 0, end: 0 }, lanes), null);
+});
+
+test("a pointer's row comes from the row pitch, or null outside the window's rows", () => {
+  assert.equal(rowAt(0, win), 40);
+  assert.equal(rowAt(27.9, win), 40);
+  assert.equal(rowAt(28, win), 41);
+  assert.equal(rowAt(-1, win), null);
+  assert.equal(rowAt(40 * 28, win), null);
+  assert.equal(rowAt(0, { start: 0, end: 0 }), null);
 });

@@ -7,6 +7,13 @@ import { ROW_HEIGHT } from "./graphWindow.ts";
 /** Half a lane pitch, so neighbouring nodes never share a hit area. */
 const HIT_RADIUS = LANE_WIDTH / 2;
 
+/** The row under `y`, measured from the top of the window starting at `win.start`, or null. */
+export function rowAt(y: number, win: { start: number; end: number }): number | null {
+  if (y < 0) return null;
+  const row = win.start + Math.floor(y / ROW_HEIGHT);
+  return row < win.end ? row : null;
+}
+
 /**
  * The row whose node lies under (`x`, `y`), or null. `x` is from the graph column's left edge and
  * `y` from the top of the window starting at `win.start`; `laneOf` gives the lane slot a row's
@@ -18,9 +25,8 @@ export function hitNode(
   win: { start: number; end: number },
   laneOf: (row: number) => number
 ): number | null {
-  if (y < 0) return null;
-  const row = win.start + Math.floor(y / ROW_HEIGHT);
-  if (row >= win.end) return null;
+  const row = rowAt(y, win);
+  if (row === null) return null;
   const dx = x - laneX(laneOf(row));
   const dy = y - rowY(row, win.start);
   return dx * dx + dy * dy <= HIT_RADIUS * HIT_RADIUS ? row : null;

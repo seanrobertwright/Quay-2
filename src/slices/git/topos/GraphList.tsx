@@ -3,16 +3,15 @@ import { formatDateTime } from "../../../lib/dates";
 import {
   clampColumnWidth,
   columnLayout,
-  displayLane,
   MAX_COLUMN_WIDTH,
   MIN_COLUMN_WIDTH,
   resizeByKey,
   type ColumnLayout,
 } from "./graphColumn";
 import type { GraphFeed, GraphStatus } from "./graphFeed";
-import { hitNode } from "./graphHit";
-import { laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
-import { trackLabel, type GraphStore } from "./graphStore";
+import { hitNode, rowAt } from "./graphHit";
+import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
+import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { slotColor } from "./laneColors";
 
@@ -68,7 +67,7 @@ const GraphLanes = React.memo<{
   const { slots, stub } = slotPaths(edges, win, layout);
   const nodes: React.ReactNode[] = [];
   for (let row = win.start; row < win.end; row++) {
-    const lane = displayLane(store.lane(row), layout);
+    const lane = collapsedLane(store.lane(row), layout.stubLane);
     const stubbed = lane === layout.stubLane;
     nodes.push(
       <circle
@@ -99,7 +98,8 @@ const GraphLanes = React.memo<{
 
 /**
  * The sticky strip above the list (#376): the tracks passing the top visible row whose tips have
- * scrolled above it. Clicking a name scrolls to that track's tip.
+ * scrolled above it. A track's tip is where it starts in the graph (#351): its first row, or the
+ * merge row whose ribbon opened it. Clicking a name scrolls to it.
  */
 const TrackStrip: React.FC<{ store: GraphStore | null; topRow: number; onJump: (row: number) => void }> = ({
   store,
@@ -112,13 +112,13 @@ const TrackStrip: React.FC<{ store: GraphStore | null; topRow: number; onJump: (
       {store && tracks.length > 0 && (
         <ul aria-label="Tracks above" className="flex items-center gap-1">
           {tracks.map((t) => {
-            const label = trackLabel(t.key, t.kind);
+            const label = store.trackLabel(t.track);
             return (
               <li key={t.track} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => onJump(t.startRow)}
-                  title={`Scroll to the tip of ${label}`}
+                  title={`Scroll to where ${label} starts`}
                   className="inline-flex items-center gap-1 max-w-48 px-1.5 py-0.5 rounded text-[11px] text-[#c9d1d9] hover:bg-[#161b22] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
                 >
                   <span
@@ -213,14 +213,14 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
     const box = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - box.left;
     const row =
-      x > layout.width ? null : hitNode(x, e.clientY - box.top, win, (r) => displayLane(store.lane(r), layout));
+      x > layout.width ? null : hitNode(x, e.clientY - box.top, win, (r) => collapsedLane(store.lane(r), layout.stubLane));
     setHover((prev) => (prev === row ? prev : row));
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!store) return;
-    const row = win.start + Math.floor((e.clientY - e.currentTarget.getBoundingClientRect().top) / ROW_HEIGHT);
-    if (row >= win.start && row < win.end) setActive({ sessionId: store.sessionId, row });
+    const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
+    if (row !== null) setActive({ sessionId: store.sessionId, row });
   };
 
   const statusState = feed.status.state;
@@ -318,16 +318,16 @@ export const GraphList: React.FC<GraphListProps> = ({ feed, version, onReachedRo
                   role="tooltip"
                   className="pointer-events-none absolute z-10 max-w-md px-2 py-1 rounded border border-[#30363d] bg-[#161b22] text-[11px] text-[#c9d1d9] shadow-lg"
                   style={{
-                    left: laneX(displayLane(store.lane(hovered), layout)) + TOOLTIP_GAP,
+                    left: laneX(collapsedLane(store.lane(hovered), layout.stubLane)) + TOOLTIP_GAP,
                     top: (hovered - win.start + 1) * ROW_HEIGHT,
                   }}
                 >
                   <div className="truncate">
-                    <span className="font-mono text-[#8b949e]">{store.oid(hovered).slice(0, 7)}</span>{" "}
+                    <span className="font-mono text-[#8b949e]">{shortOid(store.oid(hovered))}</span>{" "}
                     {store.subject(hovered)}
                   </div>
                   <div className="truncate text-[#8b949e]">
-                    {trackLabel(store.trackKey(hoveredTrack), store.trackKind(hoveredTrack))} ·{" "}
+                    {store.trackLabel(hoveredTrack)} ·{" "}
                     {store.author(hovered).name} · {formatDateTime(store.authorTimeMs(hovered))}
                   </div>
                 </div>

@@ -31,19 +31,24 @@ function grown<T extends Growable>(array: T, needed: number, make: (n: number) =
 /** A track met at some row, with where it started (#376). */
 export interface TrackPassing {
   track: number;
-  key: string;
-  kind: TrackKind;
   /** The lane it is in at that row. */
   lane: number;
   /** Its first row, or the child row of its first edge when that comes first. */
   startRow: number;
 }
 
+/** How many characters of an oid name a commit to the operator. */
+const SHORT_OID_LENGTH = 7;
+
+export function shortOid(oid: string): string {
+  return oid.slice(0, SHORT_OID_LENGTH);
+}
+
 /** How a track is named to the operator: its key, with an anonymous track's oid cut short. */
 export function trackLabel(key: string, kind: TrackKind): string {
   if (kind !== "anonymous") return key;
   const caret = key.indexOf("^");
-  return caret === -1 ? key.slice(0, 7) : key.slice(0, Math.min(caret, 7)) + key.slice(caret);
+  return caret === -1 ? shortOid(key) : shortOid(key.slice(0, caret)) + key.slice(caret);
 }
 
 /** One edge, with its close applied. */
@@ -211,6 +216,11 @@ export class GraphStore {
     return this.trackKinds[track];
   }
 
+  /** How `track` is named to the operator. */
+  trackLabel(track: number): string {
+    return trackLabel(this.trackKeys[track], this.trackKinds[track]);
+  }
+
   /** The row `track` starts at: its first row, or its first edge's child row when that is earlier. */
   trackStartRow(track: number): number {
     return this.trackStarts[track];
@@ -235,7 +245,7 @@ export class GraphStore {
     const out: TrackPassing[] = [];
     for (const [track, lane] of lanes) {
       const startRow = this.trackStarts[track];
-      if (startRow < row) out.push({ track, key: this.trackKeys[track], kind: this.trackKinds[track], lane, startRow });
+      if (startRow < row) out.push({ track, lane, startRow });
     }
     return out.sort((a, b) => a.lane - b.lane || a.track - b.track);
   }

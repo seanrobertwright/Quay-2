@@ -1,7 +1,7 @@
 // The resizable graph column (#351, #376). The operator sets its width; lanes past its edge
 // collapse onto one stub column, drawn as a grey dashed line in the column's last lane slot.
 
-import { collapsedLane, GRAPH_PADDING, LANE_WIDTH } from "./graphPaths.ts";
+import { GRAPH_PADDING, LANE_WIDTH } from "./graphPaths.ts";
 
 /** The prototype's default, which shows 12 lanes (#351). */
 export const DEFAULT_COLUMN_WIDTH = 220;
@@ -29,11 +29,6 @@ export function columnLayout(width: number, peakLanes: number): ColumnLayout {
   const clamped = clampColumnWidth(width);
   const slots = Math.floor((clamped - 2 * GRAPH_PADDING) / LANE_WIDTH);
   return { width: clamped, stubLane: peakLanes > slots ? slots - 1 : null };
-}
-
-/** The lane slot `lane` is drawn in. */
-export function displayLane(lane: number, layout: ColumnLayout): number {
-  return collapsedLane(lane, layout.stubLane);
 }
 
 /**

@@ -3,12 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   columnLayout,
-  displayLane,
   DEFAULT_COLUMN_WIDTH,
   MAX_COLUMN_WIDTH,
   MIN_COLUMN_WIDTH,
   resizeByKey,
 } from "./graphColumn.ts";
+import { collapsedLane } from "./graphPaths.ts";
 
 // With W = 16 and P = 8, a column w px wide has room for floor((w - 16) / 16) lane slots.
 
@@ -24,12 +24,12 @@ test("lanes past the column's edge collapse onto a stub in its last slot", () =>
   // 80 px has room for 4 slots: lanes 0 to 2 show, and slot 3 is the stub.
   const layout = columnLayout(80, 5);
   assert.equal(layout.stubLane, 3);
-  assert.deepEqual([0, 1, 2, 3, 4, 9].map((l) => displayLane(l, layout)), [0, 1, 2, 3, 3, 3]);
+  assert.deepEqual([0, 1, 2, 3, 4, 9].map((l) => collapsedLane(l, layout.stubLane)), [0, 1, 2, 3, 3, 3]);
 });
 
 test("without a stub every lane keeps its place", () => {
   const layout = columnLayout(220, 3);
-  assert.deepEqual([0, 1, 2].map((l) => displayLane(l, layout)), [0, 1, 2]);
+  assert.deepEqual([0, 1, 2].map((l) => collapsedLane(l, layout.stubLane)), [0, 1, 2]);
 });
 
 test("the width is clamped, and a non-number falls back to the default", () => {

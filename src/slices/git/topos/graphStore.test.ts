@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GraphStore, trackLabel } from "./graphStore.ts";
+import { GraphStore, shortOid, trackLabel } from "./graphStore.ts";
 import { decodeGraphPage, OPEN_ROW, type GraphTrack } from "./graphPage.ts";
 import { encodeTestPage, type TestPage } from "./fixtures/encodeTestPage.ts";
 
@@ -116,12 +116,12 @@ test("the tracks passing a row are those that started above it, left to right by
   assert.deepEqual(store.tracksPassing(0), []);
   // At row 3, main's node is on the row and topic's edge 0→6 crosses it in lane 1.
   assert.deepEqual(store.tracksPassing(3), [
-    { track: 0, key: "main", kind: "default", lane: 0, startRow: 0 },
-    { track: 1, key: "topic", kind: "derived", lane: 1, startRow: 0 },
+    { track: 0, lane: 0, startRow: 0 },
+    { track: 1, lane: 1, startRow: 0 },
   ]);
   // topic's edge ends at row 6, so below it only main is left.
   assert.deepEqual(
-    store.tracksPassing(7).map((t) => t.key),
+    store.tracksPassing(7).map((t) => store.trackKey(t.track)),
     ["main"]
   );
   assert.deepEqual(new GraphStore(1).tracksPassing(0), []);
@@ -143,7 +143,7 @@ test("a track opened by a tip in a later page starts at that tip's row", () => {
     newTracks: [track(2, "fix", "named")],
   });
   assert.equal(store.trackStartRow(2), 9);
-  assert.deepEqual(store.tracksPassing(10).map((t) => [t.key, t.startRow]), [["fix", 9]]);
+  assert.deepEqual(store.tracksPassing(10).map((t) => [store.trackKey(t.track), t.startRow]), [["fix", 9]]);
 });
 
 test("a track's label is its branch name, or a short oid for an anonymous track", () => {
@@ -151,4 +151,15 @@ test("a track's label is its branch name, or a short oid for an anonymous track"
   assert.equal(trackLabel("topic", "derived"), "topic");
   assert.equal(trackLabel("0123456789abcdef0123456789abcdef01234567", "anonymous"), "0123456");
   assert.equal(trackLabel("0123456789abcdef0123456789abcdef01234567^2", "anonymous"), "0123456^2");
+});
+
+test("a short oid is the oid's first seven characters", () => {
+  assert.equal(shortOid("0123456789abcdef0123456789abcdef01234567"), "0123456");
+  assert.equal(shortOid("abc"), "abc");
+});
+
+test("the store names a track by its id", () => {
+  const store = twoPages();
+  assert.equal(store.trackLabel(0), "main");
+  assert.equal(store.trackLabel(1), "topic");
 });
