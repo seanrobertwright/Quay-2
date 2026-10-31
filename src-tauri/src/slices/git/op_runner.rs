@@ -31,9 +31,9 @@ pub struct OpOptions {
     /// Run git with `GIT_PROGRESS_DELAY=0`, so progress shows from the start instead of after git's
     /// default two seconds.
     pub progress_at_once: bool,
-    /// The most bytes of output the op streams as [`OpEvent::Output`]. Past it one notice is sent
-    /// and the rest is only captured. `None` streams everything.
-    pub stream_cap: Option<usize>,
+    /// Stream at most [`MAX_CAPTURE_BYTES`] of output as [`OpEvent::Output`]. Past it the op sends
+    /// [`STREAM_CAP_NOTICE`] once, and the rest is only captured. Off streams everything.
+    pub cap_stream: bool,
     /// Read git's stderr for `--progress` lines and send them as [`OpEvent::Progress`]. An op that
     /// prints no progress, such as a commit whose hooks print `lint: 2 problems`, turns it off so
     /// every line stays output.
@@ -42,7 +42,7 @@ pub struct OpOptions {
 
 impl Default for OpOptions {
     fn default() -> Self {
-        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false, stream_cap: None, progress_lines: true }
+        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false, cap_stream: false, progress_lines: true }
     }
 }
 
@@ -74,7 +74,8 @@ pub enum OpEvent {
     Failed { error: GitError },
 }
 
-/// The most of each stream [`OpOutput`] keeps; older output is dropped from the front.
+/// The most of each stream, and of both together, that [`OpOutput`] keeps; older output is dropped
+/// from the front.
 pub const MAX_CAPTURE_BYTES: usize = 64 * 1024;
 
 /// Appends `text` to `buf`, then drops whole characters from the front until it fits
@@ -100,7 +101,7 @@ pub struct OpOutput {
     pub combined: String,
 }
 
-/// The notice an op sends once, in place of its output past [`OpOptions::stream_cap`].
+/// The notice an op sends once, in place of its output past [`OpOptions::cap_stream`]'s cap.
 pub const STREAM_CAP_NOTICE: &str = "\n[Quay: output past 64 KiB is not shown]\n";
 
 /// A process that ran to the end: how it exited and what it printed.
@@ -251,7 +252,7 @@ pub(super) fn run_process(
         pump(err, Stream::Stderr, tx);
     }
 
-    let mut sink = Sink { channel, output: OpOutput::default(), allowance: opts.stream_cap, noticed: false, progress_lines: opts.progress_lines };
+    let mut sink = Sink { channel, output: OpOutput::default(), allowance: opts.cap_stream.then_some(MAX_CAPTURE_BYTES), noticed: false, progress_lines: opts.progress_lines };
     let mut stderr_line = Vec::new();
     let mut last_heard = Instant::now();
     let mut stalled = false;

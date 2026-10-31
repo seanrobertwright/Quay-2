@@ -16,7 +16,7 @@ use tauri::ipc::Channel;
 use uuid::Uuid;
 
 use super::error::GitError;
-use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions, MAX_CAPTURE_BYTES};
+use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions};
 use super::staging::{worktree_git, StagingLocks};
 
 /// The longest message Topos commits.
@@ -243,7 +243,7 @@ pub fn commit(
         if request.signoff {
             cmd.arg("--signoff");
         }
-        let opts = OpOptions { stream_cap: Some(MAX_CAPTURE_BYTES), progress_lines: false, ..OpOptions::default() };
+        let opts = OpOptions { cap_stream: true, progress_lines: false, ..OpOptions::default() };
         let finished = run_process(cmd, Some(message.as_bytes().to_vec()), &opts, cancel, channel)?;
         if !finished.status.success() {
             if let Some(hook) = trace.failed_hook() {
