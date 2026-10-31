@@ -30,6 +30,7 @@ import type { GraphAgent } from "./graphPage";
 import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
+import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
 import { slotColor } from "./laneColors";
 import { menuIndexByKey, splitStrip } from "./trackStrip";
 import {
@@ -64,6 +65,17 @@ export interface GraphListProps {
   onPrimary: (primary: PrimaryAction) => void;
   /** Speaks a sentence in Topos's live region, such as the badge the cursor moved to. */
   announce: (text: string) => void;
+  /**
+   * The selected commit (#397), kept by the caller so details mode and the parent links share it.
+   * A change from outside, such as a parent link, selects that commit's row and scrolls it into view.
+   */
+  selectedOid: string | null;
+  /** The operator selected a commit, by click or key. */
+  onSelect: (oid: string) => void;
+  /** Enter on the selected commit: focus moves to the inspector. */
+  onInspect: () => void;
+  /** Set to a function that puts focus back on the list, for the inspector's Escape. */
+  focusRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export interface WipRowProps {
@@ -594,6 +606,10 @@ export const GraphList: React.FC<GraphListProps> = ({
   onRefAction,
   onPrimary,
   announce,
+  selectedOid,
+  onSelect,
+  onInspect,
+  focusRef,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -730,7 +746,7 @@ export const GraphList: React.FC<GraphListProps> = ({
 
   // Natively the browser scrolls for these keys; scaled it would move the scrollbar, not the content.
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget && onGraphKey(e)) {
+    if (e.target === e.currentTarget && (onGraphKey(e) || onSelectionKey(e))) {
       e.preventDefault();
       return;
     }
@@ -747,10 +763,52 @@ export const GraphList: React.FC<GraphListProps> = ({
       if (!el || !store) return;
       scrollToOffset(row * ROW_HEIGHT);
       setActive({ sessionId: store.sessionId, row });
+      onSelect(store.oid(row));
       el.focus({ preventScroll: true });
     },
-    [store, scrollToOffset]
+    [store, scrollToOffset, onSelect]
   );
+
+  /** Selects `row` (#397) and scrolls it into view, keeping the content offset the truth (#377). */
+  const selectRow = useCallback(
+    (row: number) => {
+      const el = scroller.current;
+      if (!el || !store) return;
+      scrollToOffset(offsetShowing(offset.current, row, el.clientHeight));
+      setActive({ sessionId: store.sessionId, row });
+      onSelect(store.oid(row));
+    },
+    [store, scrollToOffset, onSelect]
+  );
+
+  useEffect(() => {
+    if (!focusRef) return;
+    focusRef.current = () => scroller.current?.focus({ preventScroll: true });
+    return () => {
+      focusRef.current = null;
+    };
+  }, [focusRef]);
+
+  // A selection made outside the list, such as a parent link, moves the list's own selection to
+  // its row. Only a change of oid looks the row up, since that lookup walks the loaded rows.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useEffect(() => {
+    if (selectedOid === null || !store) return;
+    const current = activeRef.current;
+    if (current !== null && current.sessionId === store.sessionId && store.oid(current.row) === selectedOid) return;
+    const row = store.rowOf(selectedOid);
+    if (row === -1) {
+      announce("That commit isn't loaded in the graph yet");
+      return;
+    }
+    const el = scroller.current;
+    if (el) scrollToOffset(offsetShowing(offset.current, row, el.clientHeight));
+    setActive({ sessionId: store.sessionId, row });
+    // Only a new selection, or the first rows of a new session, look the row up; a refresh's
+    // store swap is followed by the remap above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOid, store === null]);
 
   const layout = useMemo(() => columnLayout(columnWidth, peakLanes), [columnWidth, peakLanes]);
   // aria-activedescendant must always name a row in the DOM (#351), so the active row is clamped
@@ -759,6 +817,9 @@ export const GraphList: React.FC<GraphListProps> = ({
     active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null,
     win
   );
+  // The selected row (#397): the active row once the operator has picked one, never the window
+  // edge `aria-activedescendant` falls back to.
+  const selectedRow = active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null;
   const hovered = hover !== null && hover >= win.start && hover < win.end ? hover : null;
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
 
@@ -812,6 +873,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     if (row === null) return;
     const index = badgeIndexAt(e.target);
     setActive({ sessionId: store.sessionId, row });
+    onSelect(store.oid(row));
     setCursor(index === null ? null : { row, index });
     openMenu(row, index, { x: e.clientX, y: e.clientY });
   };
@@ -824,6 +886,33 @@ export const GraphList: React.FC<GraphListProps> = ({
     if (index === null || row === null) return;
     const badge = shownBadges(row)[index];
     if (badge) onPrimary(primaryAction(badge, refContext));
+  };
+
+  /** Moves, copies or inspects the selection by key (#397); returns whether it did. */
+  const onSelectionKey = (e: React.KeyboardEvent<HTMLDivElement>): boolean => {
+    const key = selectionKey(e, false);
+    if (key === null || !store) return false;
+    switch (key.kind) {
+      case "move": {
+        const viewport = e.currentTarget.clientHeight;
+        const row = movedRow(selectedRow, key.step, {
+          rowCount,
+          pageRows: Math.floor(viewport / ROW_HEIGHT),
+          firstVisible: Math.ceil(offset.current / ROW_HEIGHT),
+        });
+        if (row === null) return false;
+        selectRow(row);
+        return true;
+      }
+      case "copy":
+        if (selectedRow === null) return false;
+        onRefAction({ kind: "copySha", oid: store.oid(selectedRow) });
+        return true;
+      case "inspect":
+        if (selectedRow === null) return false;
+        onInspect();
+        return true;
+    }
   };
 
   /** Handles a graph key (#367) on the listbox; returns whether it did. */
@@ -875,6 +964,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
     if (row === null) return;
     setActive({ sessionId: store.sessionId, row });
+    onSelect(store.oid(row));
     // A click puts the badge cursor on the badge it hit, or on the row itself.
     const index = badgeIndexAt(e.target);
     setCursor(index === null ? null : { row, index });
@@ -889,6 +979,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       const agent = store.agent(row);
       const subject = store.subject(row);
       const isActive = row === activeRow;
+      const isSelected = row === selectedRow;
       const oid = store.oid(row);
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
@@ -897,13 +988,13 @@ export const GraphList: React.FC<GraphListProps> = ({
           key={oid}
           id={`${idPrefix}-row-${row}`}
           role="option"
-          aria-selected={isActive}
+          aria-selected={isSelected}
           aria-current={holdsCurrentHead ? "true" : undefined}
           aria-posinset={row + 1}
           aria-setsize={statusState === "done" ? rowCount : -1}
           className={`flex items-center gap-3 pr-3 text-xs border-b border-[#21262d]/60 hover:bg-[#161b22] ${
-            isActive ? "bg-[#161b22] group-focus-visible:shadow-[inset_0_0_0_1px_#06B6D4]" : ""
-          }`}
+            isSelected ? "bg-[#1f2a37] shadow-[inset_2px_0_0_#06B6D4]" : isActive ? "bg-[#161b22]" : ""
+          } ${isActive ? "group-focus-visible:shadow-[inset_0_0_0_1px_#06B6D4]" : ""}`}
           style={{ height: ROW_HEIGHT }}
         >
           {/* The node's spoken label; the node itself is drawn in the aria-hidden lane graph. */}
@@ -923,7 +1014,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
+  }, [store, win, activeRow, selectedRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -969,7 +1060,7 @@ export const GraphList: React.FC<GraphListProps> = ({
         >
           {/* Clipped, so overscan rows past the end never make the spacer taller (#370). */}
           <div className="relative overflow-clip" style={{ height: scale.spacerHeight }}>
-            {/* The pointer only hovers nodes and picks the active row here; moving it by key is #397's. */}
+            {/* The pointer hovers nodes and selects a row here; the keys move the selection (#397). */}
             <div
               ref={layer}
               className="absolute inset-x-0 top-0"

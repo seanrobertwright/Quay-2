@@ -6,16 +6,8 @@ import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { DiscardButton } from "./DiscardButton";
 import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
-import {
-  BUSY_MESSAGE,
-  capNote,
-  clampInspectorWidth,
-  inspectorWidthByKey,
-  listKeyAction,
-  MAX_INSPECTOR_WIDTH,
-  MIN_INSPECTOR_WIDTH,
-  type StageDirection,
-} from "./stagingKeys";
+import { BUSY_MESSAGE, capNote, listKeyAction, type StageDirection } from "./stagingKeys";
+import { InspectorHandle } from "./InspectorHandle";
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { OpenFile } from "./useFileDiff";
 import type { Commit } from "./useCommit";
@@ -514,7 +506,6 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const hintId = useId();
   const [collapsed, setCollapsed] = useState<Record<Side, ReadonlySet<string>>>({ unstaged: new Set(), staged: new Set() });
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
-  const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const { status, busy, failure, announce, run, folders, toggleFolder, discard, discards, undo, dismissUndo, restore, copyDiscard } = staging;
   const [showDiscards, setShowDiscards] = useState(false);
   const discardsId = useId();
@@ -589,13 +580,6 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const isBusy = (action: BusyOp["action"]) => busy !== null && busy.action === action && busy.target.kind === "all";
   const note = status.state === "done" ? capNote(status.status) : null;
 
-  const onHandleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const next = inspectorWidthByKey(width, e.key, e.shiftKey);
-    if (next === null) return;
-    e.preventDefault();
-    onWidth(next);
-  };
-
   const sectionHeader = (side: Side, count: number) => {
     const { heading, action: all, allLabel, allBusy, allClass } = SIDE[side];
     const busyAll = isBusy(all);
@@ -644,32 +628,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
 
   return (
     <aside id={id} aria-labelledby={titleId} className="relative shrink-0 flex flex-col min-h-0 border-l border-[#30363d] bg-[#0d1117]" style={{ width }}>
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow) */}
-      <div role="separator" tabIndex={0}
-        aria-orientation="vertical"
-        aria-label="Resize staging inspector"
-        aria-valuenow={width}
-        aria-valuemin={MIN_INSPECTOR_WIDTH}
-        aria-valuemax={MAX_INSPECTOR_WIDTH}
-        aria-valuetext={`${width} px`}
-        title="Drag, or use the arrow keys, to resize the inspector"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          drag.current = { pointerId: e.pointerId, x: e.clientX, width };
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          if (d && d.pointerId === e.pointerId) onWidth(clampInspectorWidth(d.width - (e.clientX - d.x)));
-        }}
-        onPointerUp={(e) => {
-          if (drag.current?.pointerId === e.pointerId) drag.current = null;
-        }}
-        onPointerCancel={() => (drag.current = null)}
-        onKeyDown={onHandleKeyDown}
-        className="group/handle absolute top-0 bottom-0 left-0 z-20 w-[9px] -ml-[5px] cursor-col-resize flex justify-center outline-none touch-none"
-      >
-        <div className="w-px h-full group-hover/handle:bg-[#58a6ff] group-focus-visible/handle:w-[2px] group-focus-visible/handle:bg-[#58a6ff]" />
-      </div>
+      <InspectorHandle width={width} onWidth={onWidth} label="Resize staging inspector" />
       <header className="h-9 px-3 shrink-0 flex items-center gap-2">
         <h3 id={titleId} className="text-xs font-semibold text-white truncate min-w-0" title={worktreeName}>
           Changes · {worktreeName}
