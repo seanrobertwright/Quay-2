@@ -15,6 +15,7 @@ export type GitError =
   | { kind: "indexLocked" }
   | { kind: "stagingBusy" }
   | { kind: "staleDiff" }
+  | { kind: "conflictStale" }
   | { kind: "changedSinceDiscard"; paths: string[] }
   | { kind: "hookFailed"; hook: string; output: string }
   | { kind: "noOperation" }
@@ -29,6 +30,7 @@ export function parseGitError(e: unknown): GitError | null {
     case "indexLocked":
     case "stagingBusy":
     case "staleDiff":
+    case "conflictStale":
     case "noOperation":
       return { kind: fields.kind };
     case "conflictsRemain":

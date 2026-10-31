@@ -5,6 +5,7 @@
 use serde_json::{json, Value};
 
 use super::commit::{CommitContext, HeadCommit, Operation};
+use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, TakeSideResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
@@ -198,6 +199,44 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                     "conflicts": [{ "path": "a.txt", "xy": "DU", "kind": "deletedByUs" }],
                     "conflictsTotal": 1,
                 },
+            }),
+        ),
+        ("GitError::ConflictStale", s(&GitError::ConflictStale), json!({ "kind": "conflictStale" })),
+        (
+            "ConflictReset",
+            s(&ConflictReset {
+                file: ConflictFile {
+                    path: "a.txt".into(),
+                    token: "b:l:r:w".into(),
+                    editable: true,
+                    reason: None,
+                    left: Some("l".into()),
+                    right: Some("r".into()),
+                    result: Some("m".into()),
+                    eol: Eol::Crlf,
+                    bom: true,
+                    marker_size: 7,
+                },
+                backup: DiscardBackup { path: "a.txt".into(), blob: Some("b1".into()), after: Some("b2".into()) },
+            }),
+            json!({
+                "file": {
+                    "path": "a.txt", "token": "b:l:r:w", "editable": true, "reason": null,
+                    "left": "l", "right": "r", "result": "m", "eol": "crlf", "bom": true, "markerSize": 7,
+                },
+                "backup": { "path": "a.txt", "blob": "b1", "after": "b2" },
+            }),
+        ),
+        ("NotEditable::MixedLineEndings", s(&NotEditable::MixedLineEndings), json!("mixedLineEndings")),
+        (
+            "TakeSideResult",
+            s(&TakeSideResult {
+                backup: DiscardBackup { path: "a.txt".into(), blob: None, after: Some("b2".into()) },
+                status: WorktreeStatus { request_id: 5, entries: vec![], total: 0, truncated: false },
+            }),
+            json!({
+                "backup": { "path": "a.txt", "blob": null, "after": "b2" },
+                "status": { "requestId": 5, "entries": [], "total": 0, "truncated": false }
             }),
         ),
         (

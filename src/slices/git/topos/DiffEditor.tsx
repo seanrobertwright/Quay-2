@@ -238,7 +238,8 @@ function decorations(
   return EditorView.decorations.of(Decoration.set(ranges, true));
 }
 
-const theme = EditorView.theme(
+/** The diff view's CodeMirror theme (#383), which the conflict resolver's panes share. */
+export const diffTheme = EditorView.theme(
   {
     "&": { height: "100%", fontSize: "12px", backgroundColor: "#0d1117", color: "#c9d1d9" },
     ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", lineHeight: "18px" },
@@ -355,7 +356,7 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
           })
         ),
         gutters,
-        theme,
+        diffTheme,
         // Filled by the effect below, so a busy or selection change reconfigures only the decorations.
         decos.current.of([]),
       ],

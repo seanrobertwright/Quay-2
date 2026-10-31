@@ -2,6 +2,9 @@ pub mod commands;
 pub mod commit;
 #[cfg(test)]
 mod commit_tests;
+pub mod conflict;
+#[cfg(test)]
+mod conflict_tests;
 pub mod diff;
 pub mod discard;
 #[cfg(test)]
@@ -32,6 +35,7 @@ pub mod version;
 
 pub use commands::*;
 pub use commit::*;
+pub use conflict::*;
 pub use diff::*;
 pub use discard::*;
 pub use error::*;
