@@ -30,6 +30,13 @@ export interface RepoChanged {
 export const ALL_DIRTY: Dirty = { refs: true, head: true, index: true, worktree: true, operation: true };
 
 /**
+ * What a commit from Topos changed (#388): HEAD, its branch's ref, the index, and a merge it
+ * concluded. The composer requests it with the new HEAD's oid, so the graph needn't wait for the
+ * watcher.
+ */
+export const COMMIT_DIRTY: Dirty = { refs: true, head: true, index: true, worktree: false, operation: true };
+
+/**
  * When the graph re-runs its `git log`: never, always, if the selected worktree's new HEAD isn't a
  * loaded row, if the set of tip oids changed, or if either.
  */
@@ -119,13 +126,16 @@ export interface GraphFacts {
   tipsAfter: Set<string>;
   /** The selected worktree's HEAD after the refresh, or null when it has none. */
   headOid: string | null;
+  /** The HEAD a Topos commit just made, which the graph must show, or null. */
+  newHeadOid?: string | null;
   isLoaded: (oid: string) => boolean;
 }
 
 /** Whether `rule` re-runs the graph, given what the refs refetch found. */
 export function graphNeeded(rule: GraphRule, facts: GraphFacts): boolean {
   const tipsChanged = () => facts.tipsBefore === null || !sameSet(facts.tipsBefore, facts.tipsAfter);
-  const headNotLoaded = () => facts.headOid !== null && !facts.isLoaded(facts.headOid);
+  const notLoaded = (oid: string | null | undefined) => oid !== null && oid !== undefined && !facts.isLoaded(oid);
+  const headNotLoaded = () => notLoaded(facts.headOid) || notLoaded(facts.newHeadOid);
   switch (rule) {
     case "no":
       return false;
@@ -152,30 +162,35 @@ function merged(a: Dirty, b: Dirty): Dirty {
 
 /**
  * Runs refreshes one at a time. Changes that arrive during a refresh mark their bits dirty and
- * queue exactly one follow-up, which runs with every bit dirtied meanwhile.
+ * queue exactly one follow-up, which runs with every bit dirtied meanwhile. A request from a
+ * Topos commit carries the new HEAD's oid; a follow-up carries the newest one requested.
  */
 export class RefreshQueue {
   private running = false;
   private pending: Dirty | null = null;
-  private readonly run: (dirty: Dirty) => Promise<void>;
+  private pendingHead: string | null = null;
+  private readonly run: (dirty: Dirty, newHeadOid: string | null) => Promise<void>;
   private readonly onError: (error: unknown) => void;
 
-  constructor(run: (dirty: Dirty) => Promise<void>, onError: (error: unknown) => void = console.error) {
+  constructor(run: (dirty: Dirty, newHeadOid: string | null) => Promise<void>, onError: (error: unknown) => void = console.error) {
     this.run = run;
     this.onError = onError;
   }
 
-  request(dirty: Dirty): void {
+  request(dirty: Dirty, newHeadOid: string | null = null): void {
     this.pending = this.pending === null ? dirty : merged(this.pending, dirty);
+    if (newHeadOid !== null) this.pendingHead = newHeadOid;
     if (!this.running) this.next();
   }
 
   private next(): void {
     const dirty = this.pending;
     if (dirty === null) return;
+    const newHeadOid = this.pendingHead;
     this.pending = null;
+    this.pendingHead = null;
     this.running = true;
-    this.run(dirty)
+    this.run(dirty, newHeadOid)
       .catch(this.onError)
       .finally(() => {
         this.running = false;
