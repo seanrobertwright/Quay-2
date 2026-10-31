@@ -48,6 +48,7 @@ export const OperationBanner: React.FC<OperationBannerProps> = ({ operation, sta
     if (request !== null) setConfirm({ ...request, onConfirm: () => run(step) });
   };
   const disabled = running !== null || stagingBusy;
+  const continueOff = !view.canContinue || stagingBusy;
   const buttonClass = "inline-flex items-center gap-1 px-2 py-1 rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
@@ -80,11 +81,16 @@ export const OperationBanner: React.FC<OperationBannerProps> = ({ operation, sta
           <button
             ref={continueRef}
             type="button"
-            onClick={() => run("continue")}
-            disabled={!view.canContinue || stagingBusy}
+            // aria-disabled rather than disabled, so the composer's pointer can still move focus
+            // here and a screen reader hears why it is off.
+            onClick={() => {
+              if (continueOff) return;
+              run("continue");
+            }}
+            aria-disabled={continueOff}
             aria-describedby={view.continueBlockedBy !== null ? blockedId : undefined}
             aria-busy={running === "continue"}
-            className={`${buttonClass} bg-[#238636] hover:bg-[#2ea043] text-white font-semibold`}
+            className={`${buttonClass} bg-[#238636] text-white font-semibold ${continueOff ? "opacity-50 cursor-not-allowed" : "hover:bg-[#2ea043]"}`}
           >
             {running === "continue" ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : <Play className="w-3.5 h-3.5" aria-hidden="true" />}
             {running === "continue" ? BUSY_WORD.continue : "Continue"}
