@@ -55,7 +55,7 @@ export type BannerView =
       right: SideView;
       /** Continue acts only once no unmerged entry remains, and not while a step runs. */
       canContinue: boolean;
-      /** Why Continue is off for conflicts, or null when none remain. */
+      /** Why Continue is off: conflicts remain, or the message has no summary. Null when neither. */
       continueBlockedBy: string | null;
       /** git can skip the commit a rebase, cherry-pick or revert stopped on, never a merge. */
       canSkip: boolean;
@@ -88,8 +88,15 @@ function conflictedFiles(n: number): string {
   return `${n.toLocaleString()} conflicted ${n === 1 ? "file" : "files"}`;
 }
 
+export interface BannerOptions {
+  /** Whether a step is running. */
+  running: boolean;
+  /** The summary line of the message Continue commits, when `state.message` gives one to edit. */
+  summary?: string;
+}
+
 /** What the banner shows for `state`, or null when there is nothing under way and nothing to resolve. */
-export function bannerView(state: OpState, { running }: { running: boolean }): BannerView | null {
+export function bannerView(state: OpState, { running, summary }: BannerOptions): BannerView | null {
   const conflicts = state.conflictsTotal;
   if (state.kind === "none") {
     if (conflicts === 0) return null;
@@ -100,6 +107,12 @@ export function bannerView(state: OpState, { running }: { running: boolean }): B
     };
   }
   const words = SIDE_WORDS[state.kind];
+  const blockedBy =
+    conflicts > 0
+      ? `Resolve and stage the ${conflictedFiles(conflicts)} to continue`
+      : state.message !== null && (summary ?? "").trim() === ""
+        ? "Write a summary to continue"
+        : null;
   const step = state.step !== undefined && state.total !== undefined ? ` · step ${state.step} of ${state.total}` : "";
   return {
     kind: "operation",
@@ -107,8 +120,8 @@ export function bannerView(state: OpState, { running }: { running: boolean }): B
     title: `${TITLE[state.kind]}${step}`,
     left: side(state.leftLabel, words.left, "ours"),
     right: side(state.rightLabel, words.right, "theirs"),
-    canContinue: conflicts === 0 && !running,
-    continueBlockedBy: conflicts === 0 ? null : `Resolve and stage the ${conflictedFiles(conflicts)} to continue`,
+    canContinue: blockedBy === null && !running,
+    continueBlockedBy: blockedBy,
     canSkip: state.kind !== "merge",
   };
 }
@@ -234,3 +247,14 @@ export function stepDoneMessage(step: OpStep, before: OpState, after: OpState): 
   const conflicts = after.conflictsTotal > 0 ? ` with ${conflictedFiles(after.conflictsTotal)}` : "";
   return `${skipped}${skipped ? noun : Noun} stopped${at}${conflicts}`;
 }
+
+/** Each conflict kind in words, for the Conflicts list. */
+export const CONFLICT_WORDS: Record<ConflictKind, string> = {
+  bothModified: "changed on both sides",
+  bothAdded: "added on both sides",
+  deletedByThem: "deleted on the right",
+  deletedByUs: "deleted on the left",
+  addedByUs: "added on the left only",
+  addedByThem: "added on the right only",
+  bothDeleted: "deleted on both sides",
+};

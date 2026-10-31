@@ -18,6 +18,7 @@ import {
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { OpenFile } from "./useFileDiff";
 import type { Commit } from "./useCommit";
+import { CONFLICT_WORDS, type OpState } from "./operation";
 import type { BusyOp, Staging } from "./useStaging";
 
 /** Each status letter as words, for the row's title and its spoken name. */
@@ -392,12 +393,68 @@ export interface StagingInspectorProps {
   onOpenFile: (file: OpenFile) => void;
   /** The commit composer pinned at the bottom (#388). */
   commit: Commit;
+  /** The operation under way, whose conflicts top the inspector (#389), or null until it is read. */
+  conflicts: OpState | null;
+  /** Moves focus to the operation banner's Continue. */
+  onGoToContinue: () => void;
+}
+
+/** The most rows the Conflicts list renders; a note counts the rest. */
+const CONFLICT_ROWS = 200;
+
+interface ConflictListProps {
+  op: OpState;
+  busy: BusyOp | null;
+  onStage: (path: string) => void;
 }
 
 /**
+ * The inspector's Conflicts list (#366, #389), shown only while unmerged entries exist: each path
+ * with what happened to it on each side, and Stage to mark it resolved once its file is fixed.
+ */
+const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage }) => {
+  const headingId = useId();
+  const shown = op.conflicts.slice(0, CONFLICT_ROWS);
+  const more = op.conflictsTotal - shown.length;
+  return (
+    <section aria-labelledby={headingId} className="shrink-0 flex flex-col max-h-[40%] min-h-0">
+      <div className="h-8 px-3 shrink-0 flex items-center gap-2 border-y border-[#30363d] bg-[#161b22]">
+        <h4 id={headingId} className="text-[11px] font-semibold uppercase tracking-wide text-[#ff7b72]">
+          Conflicts
+          <span className="ml-1.5 normal-case font-normal tabular-nums">{op.conflictsTotal.toLocaleString()}</span>
+        </h4>
+      </div>
+      <ul className="overflow-y-auto min-h-0 py-0.5">
+        {shown.map((c) => (
+          <li key={c.path} className="h-7 px-3 flex items-center gap-2 text-xs">
+            <span className="w-5 shrink-0 font-mono text-[11px] text-[#f85149]" aria-hidden="true">
+              {c.xy}
+            </span>
+            <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={`${c.path}: ${CONFLICT_WORDS[c.kind]}`}>
+              {c.path}
+              <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
+            </span>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => onStage(c.path)}
+              aria-label={`Stage ${c.path} to mark it resolved`}
+              className="shrink-0 px-1.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+            >
+              Stage
+            </button>
+          </li>
+        ))}
+      </ul>
+      {more > 0 && <p className="px-3 py-1 text-[11px] text-[#8b949e]">and {more.toLocaleString()} more conflicted files</p>}
+    </section>
+  );
+};
+
+/**
  * The staging inspector (#366, #382): a right-hand column, resizable from its left edge, holding
- * Unstaged with Stage all over Staged with Unstage all, with the commit composer pinned at the
- * bottom. Lists are flat by default with a tree
+ * Conflicts while any remain (#389), Unstaged with Stage all, and Staged with Unstage all, with the
+ * commit composer pinned at the bottom. Lists are flat by default with a tree
  * toggle. Every result comes from git's answer, never from a guess, and every action is announced
  * in a live region.
  */
@@ -413,6 +470,8 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   openFile,
   onOpenFile,
   commit,
+  conflicts,
+  onGoToContinue,
 }) => {
   const titleId = useId();
   const hintId = useId();
@@ -423,7 +482,13 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const [showDiscards, setShowDiscards] = useState(false);
   const discardsId = useId();
 
-  const lists = useMemo(() => (status.state === "done" ? splitStatus(status.status.entries) : null), [status]);
+  // While the Conflicts list shows, unmerged paths are listed there rather than in Unstaged.
+  const showConflicts = conflicts !== null && conflicts.conflictsTotal > 0;
+  const lists = useMemo(() => {
+    if (status.state !== "done") return null;
+    const split = splitStatus(status.status.entries);
+    return showConflicts ? { ...split, unstaged: split.unstaged.filter((c) => c.kind !== "unmerged") } : split;
+  }, [status, showConflicts]);
   const unstagedRows = useMemo(
     () => (lists ? listRows(lists.unstaged, { mode, collapsed: collapsed.unstaged, folders }) : []),
     [lists, mode, collapsed.unstaged, folders]
@@ -639,6 +704,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
+          {showConflicts && <ConflictList op={conflicts} busy={busy} onStage={(path) => run("stage", { kind: "paths", paths: [path] })} />}
           {sectionHeader("unstaged", lists?.unstaged.length ?? 0)}
           <ChangeList
             side="unstaged"
@@ -691,7 +757,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           )}
         </section>
       )}
-      <CommitComposer commit={commit} stagingBusy={busy !== null && busy.action !== "commit"} />
+      <CommitComposer commit={commit} stagingBusy={busy !== null && busy.action !== "commit"} onGoToContinue={onGoToContinue} />
       {undo && (
         <div role="status" className="absolute left-3 right-3 bottom-3 z-30 flex items-center gap-2 px-3 py-2 rounded-md border border-[#30363d] bg-[#161b22] shadow-lg text-xs">
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={undo.label}>

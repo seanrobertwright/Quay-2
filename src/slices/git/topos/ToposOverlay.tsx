@@ -18,6 +18,8 @@ import { wipLabel } from "./stagingKeys";
 import { otherSide, splitStatus, type ListMode } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useCommit } from "./useCommit";
+import { useOperation } from "./useOperation";
+import { OperationBanner } from "./OperationBanner";
 import { useStaging } from "./useStaging";
 import { useToposSettings } from "./useToposSettings";
 import { offerSpeedup } from "./speedup";
@@ -139,6 +141,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const liveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
   // The composer commits on the selected worktree, and hands its new HEAD to the refresh table (#388).
   const commit = useCommit(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
+  // The operation under way and its banner (#389), whose steps hand HEAD to the refresh table too.
+  const operation = useOperation(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const goToContinue = useCallback(() => continueRef.current?.focus(), []);
   const otherSideHasChanges = useMemo(() => {
     if (openFile === null || staging.status.state !== "done") return false;
     return splitStatus(staging.status.status.entries)[otherSide(openFile.side)].some((c) => c.path === openFile.path);
@@ -293,6 +299,13 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 {view.warning}
               </p>
             )}
+            {watch?.state !== "gone" && (
+              <OperationBanner
+                operation={operation}
+                stagingBusy={staging.busy !== null && staging.busy.action !== "operation"}
+                continueRef={continueRef}
+              />
+            )}
             {showSpeedup && watch?.state !== "gone" && (
               <SpeedupBanner speedup={speedup} onOpen={() => setSpeedupOpen(true)} />
             )}
@@ -351,6 +364,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     openFile={openFile}
                     onOpenFile={setOpenFile}
                     commit={commit}
+                    conflicts={operation.op}
+                    onGoToContinue={goToContinue}
                   />
                 )}
               </div>

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bannerView, confirmAbort, confirmSkip, stepDoneMessage, stepFailure, type OpState } from "./operationBanner.ts";
+import { bannerView, confirmAbort, confirmSkip, stepDoneMessage, stepFailure, type OpState } from "./operation.ts";
 
 /** A state as `git_operation_state` sends it, with nothing to resolve unless `over` says so. */
 function state(over: Partial<OpState>): OpState {
@@ -55,11 +55,11 @@ test("Continue is enabled only when no conflict remains and nothing is running",
   assert.equal(blocked.continueBlockedBy, "Resolve and stage the 1 conflicted file to continue");
 
   const resolved = { ...REBASE, conflicts: [], conflictsTotal: 0 };
-  const ready = bannerView(resolved, { running: false });
+  const ready = bannerView(resolved, { running: false, summary: "Fix the login redirect" });
   assert.equal(ready?.kind === "operation" && ready.canContinue, true);
   assert.equal(ready?.kind === "operation" && ready.continueBlockedBy, null);
 
-  const running = bannerView(resolved, { running: true });
+  const running = bannerView(resolved, { running: true, summary: "Fix the login redirect" });
   assert.equal(running?.kind === "operation" && running.canContinue, false);
 
   const many = bannerView({ ...REBASE, conflictsTotal: 12 }, { running: false });
@@ -137,4 +137,14 @@ test("a step that lands says how the operation stands now", () => {
   const next = { ...REBASE, step: 3 };
   assert.equal(stepDoneMessage("continue", REBASE, next), "Rebase stopped at step 3 of 5 with 1 conflicted file");
   assert.equal(stepDoneMessage("skip", REBASE, { ...next, conflicts: [], conflictsTotal: 0 }), "Skipped the commit; rebase stopped at step 3 of 5");
+});
+
+test("with a message to commit, Continue needs a summary; a rebase that takes messages from patches doesn't", () => {
+  const resolved = { ...REBASE, conflicts: [], conflictsTotal: 0 };
+  const blank = bannerView(resolved, { running: false, summary: "  " });
+  assert.equal(blank?.kind === "operation" && blank.canContinue, false);
+  assert.equal(blank?.kind === "operation" && blank.continueBlockedBy, "Write a summary to continue");
+
+  const fromPatches = bannerView({ ...resolved, message: null }, { running: false, summary: "" });
+  assert.equal(fromPatches?.kind === "operation" && fromPatches.canContinue, true);
 });
