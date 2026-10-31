@@ -39,6 +39,11 @@ export function handOffAgents(
     .map((t) => ({ terminalId: t.id, name: t.name, runKind: t.run_kind }));
 }
 
+/** `paths` in a sentence: the one path, or how many. */
+export function filesWord(paths: readonly string[]): string {
+  return paths.length === 1 ? paths[0] : `${paths.length.toLocaleString()} files`;
+}
+
 /** `value` as one double-quoted, escaped value. */
 function quoted(value: string): string {
   return JSON.stringify(value);

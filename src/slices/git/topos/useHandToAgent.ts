@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { TerminalInfo } from "../../terminal/types";
 import { errorMessage } from "./gitVersion";
-import { handOffAgents, handOffPrompt, heldFiles, type HandOff, type HandOffRead, type PickerAgent } from "./handOff";
+import { filesWord, handOffAgents, handOffPrompt, heldFiles, type HandOff, type HandOffRead, type PickerAgent } from "./handOff";
 import type { OpState } from "./operation";
 import { RequestIds } from "./refreshTable";
 
@@ -40,11 +40,6 @@ export interface HandToAgentOptions {
   /** Starts an agent terminal in `cwd`, resolving with it, or null when it couldn't start. */
   onNewAgent?: (cwd: string) => Promise<TerminalInfo | null>;
   announce: (text: string) => void;
-}
-
-/** `paths` in a sentence: the one path, or how many. */
-function filesWord(paths: readonly string[]): string {
-  return paths.length === 1 ? paths[0] : `${paths.length.toLocaleString()} files`;
 }
 
 /**

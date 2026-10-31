@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
 import { CommitComposer } from "./CommitComposer";
+import { HeldBadge } from "./HeldBadge";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { DiscardButton } from "./DiscardButton";
 import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
@@ -447,11 +448,7 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolv
               {c.path}
               <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
             </span>
-            {held && (
-              <span className="shrink-0 max-w-[40%] truncate text-[11px] text-[#d2a8ff]" title={`With ${held.agentName}`}>
-                With {held.agentName}
-              </span>
-            )}
+            <HeldBadge held={held} />
             <button
               type="button"
               onClick={() => onResolve(c.path)}

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handOffAgents, handOffPrompt, heldFiles, type HandOff } from "./handOff.ts";
+import { filesWord, handOffAgents, handOffPrompt, heldFiles, type HandOff } from "./handOff.ts";
 import type { TerminalInfo } from "../../terminal/types.ts";
 import type { OpState } from "./operation.ts";
 
@@ -111,4 +111,9 @@ test("hand-offs read for one worktree hold nothing in another", () => {
   assert.equal(heldFiles(read, "C:/src/repo-main", MERGE).size, 0);
   assert.equal(heldFiles(null, "C:/src/repo-feat", MERGE).size, 0);
   assert.equal(heldFiles(read, "C:/src/repo-feat", null).size, 0);
+});
+
+test("filesWord names one file by its path and several by their count", () => {
+  assert.equal(filesWord(["src/app.ts"]), "src/app.ts");
+  assert.equal(filesWord(["src/app.ts", "README.md"]), "2 files");
 });

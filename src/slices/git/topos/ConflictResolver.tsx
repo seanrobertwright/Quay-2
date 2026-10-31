@@ -6,6 +6,7 @@ import { ResultEditor, SidePane, goToHunk } from "./ConflictEditor";
 import { confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, unresolvedLabel } from "./conflicts";
 import { CONFLICT_WORDS, type OpState } from "./operation";
 import { conflictCard, type CardChoice } from "./conflictCards";
+import { HeldBadge } from "./HeldBadge";
 import { SidePickerCard } from "./SidePickerCard";
 import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
 import type { HandToAgent } from "./useHandToAgent";
@@ -174,9 +175,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                   {c.path}
                   <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
                 </span>
-                {handToAgent.held.has(c.path) && (
-                  <span className="shrink-0 max-w-[45%] truncate text-[10px] text-[#d2a8ff]">With {handToAgent.held.get(c.path)?.agentName}</span>
-                )}
+                <HeldBadge held={handToAgent.held.get(c.path)} />
               </button>
             </li>
           ))}

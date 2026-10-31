@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useRef } from "react";
 import { AlertTriangle, Bot, Loader2, Plus } from "lucide-react";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
-import { NEW_AGENT_RUN_KIND } from "./handOff";
+import { filesWord, NEW_AGENT_RUN_KIND } from "./handOff";
 import type { HandOffChoice, HandOffPicker } from "./useHandToAgent";
 
 export interface HandToAgentDialogProps {
@@ -31,7 +31,7 @@ export const HandToAgentDialog: React.FC<HandToAgentDialogProps> = ({ picker, on
 
   if (picker === null) return null;
   const { paths, agents, sending, failure } = picker;
-  const files = paths.length === 1 ? paths[0] : `${paths.length.toLocaleString()} files`;
+  const files = filesWord(paths);
   const choiceClass =
     "w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-left text-xs text-[#c9d1d9] border border-[#30363d] hover:bg-[#21262d] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60";
 
