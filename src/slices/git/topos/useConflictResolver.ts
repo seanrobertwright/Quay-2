@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DiscardBackup } from "./discards";
+import type { ConflictKind } from "./operation";
 import { resolverFailure, STAGING_BUSY_MESSAGE, type ResolverFailure } from "./conflicts";
 import { RequestIds } from "./refreshTable";
 import { doneMessage } from "./stagingKeys";
@@ -23,6 +24,8 @@ export interface ConflictFile {
   path: string;
   /** git's two status letters for the stages it has, such as `UU` or `UD`. */
   xy: string;
+  /** Which conflict the stages make, as `xy` names it; the side-picker cards switch on it. */
+  kind: ConflictKind;
   /** Whether the worktree holds a file or link at the path. */
   onDisk: boolean;
   /** Stage 2's object id (a commit for a submodule), or null when the left side has none. */
@@ -46,8 +49,8 @@ interface ConflictReset {
   backup: DiscardBackup;
 }
 
-/** `TakeSideResult` from `src-tauri/src/slices/git/conflict.rs`, which Remove returns too. */
-interface TakeSideResult {
+/** `ConflictWriteResult` from `src-tauri/src/slices/git/conflict.rs`: what take-whole-side and Remove return. */
+interface ConflictWriteResult {
   backup: DiscardBackup;
   status: WorktreeStatus;
 }
@@ -224,7 +227,7 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
       if (file === null) return;
       const { path: name, token } = file;
       // The status comes back with the reload below, which carries the inspector's own request id.
-      void write<TakeSideResult, void>(
+      void write<ConflictWriteResult, void>(
         name,
         "resolve",
         "git_conflict_take_side",
@@ -243,7 +246,7 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
     if (file === null) return;
     const { path: name, token } = file;
     // As take-whole-side, the status comes back with the reload.
-    void write<TakeSideResult, void>(
+    void write<ConflictWriteResult, void>(
       name,
       "resolve",
       "git_conflict_remove",

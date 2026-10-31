@@ -5,7 +5,7 @@
 use serde_json::{json, Value};
 
 use super::commit::{CommitContext, HeadCommit, Operation};
-use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, TakeSideResult};
+use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
@@ -208,6 +208,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                 file: ConflictFile {
                     path: "a.txt".into(),
                     xy: "UU".into(),
+                    kind: ConflictKind::BothModified,
                     on_disk: true,
                     left_oid: Some("l1".into()),
                     right_oid: None,
@@ -225,7 +226,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             }),
             json!({
                 "file": {
-                    "path": "a.txt", "xy": "UU", "onDisk": true, "leftOid": "l1", "rightOid": null, "token": "b:l:r:w", "editable": true, "reason": null,
+                    "path": "a.txt", "xy": "UU", "kind": "bothModified", "onDisk": true, "leftOid": "l1", "rightOid": null, "token": "b:l:r:w", "editable": true, "reason": null,
                     "left": "l", "right": "r", "result": "m", "eol": "crlf", "bom": true, "markerSize": 7,
                 },
                 "backup": { "path": "a.txt", "blob": "b1", "after": "b2" },
@@ -233,8 +234,8 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         ("NotEditable::MixedLineEndings", s(&NotEditable::MixedLineEndings), json!("mixedLineEndings")),
         (
-            "TakeSideResult",
-            s(&TakeSideResult {
+            "ConflictWriteResult",
+            s(&ConflictWriteResult {
                 backup: DiscardBackup { path: "a.txt".into(), blob: None, after: Some("b2".into()) },
                 status: WorktreeStatus { request_id: 5, entries: vec![], total: 0, truncated: false },
             }),

@@ -12,6 +12,7 @@ function file(overrides: Partial<ConflictFile>): ConflictFile {
   return {
     path: "notes.txt",
     xy: "UU",
+    kind: "bothModified",
     onDisk: true,
     leftOid: "1111111111111111111111111111111111111111",
     rightOid: "2222222222222222222222222222222222222222",
@@ -29,7 +30,7 @@ function file(overrides: Partial<ConflictFile>): ConflictFile {
 }
 
 test("a file changed on the left and deleted on the right offers Keep modified or Accept deletion", () => {
-  const card = conflictCard(file({ xy: "UD", reason: "oneSideMissing", rightOid: null }), NAMES, []);
+  const card = conflictCard(file({ xy: "UD", kind: "deletedByThem", reason: "oneSideMissing", rightOid: null }), NAMES, []);
   assert.ok(card);
   assert.equal(card.reason, "HEAD · feat changed notes.txt and Incoming · main deleted it.");
   assert.deepEqual(
@@ -49,7 +50,7 @@ test("a file changed on the left and deleted on the right offers Keep modified o
 });
 
 test("keeping a changed file the worktree lost writes the changed side back, and accepting the deletion asks nothing", () => {
-  const card = conflictCard(file({ xy: "DU", reason: "noWorktreeFile", onDisk: false, leftOid: null }), NAMES, []);
+  const card = conflictCard(file({ xy: "DU", kind: "deletedByUs", reason: "noWorktreeFile", onDisk: false, leftOid: null }), NAMES, []);
   assert.ok(card);
   assert.equal(card.reason, "Incoming · main changed notes.txt and HEAD · feat deleted it.");
   const [keep, accept] = card.choices;
@@ -61,11 +62,11 @@ test("keeping a changed file the worktree lost writes the changed side back, and
 });
 
 test("a file only one side added offers Keep or Remove", () => {
-  for (const [xy, adder, side] of [
-    ["AU", "HEAD · feat", "left"],
-    ["UA", "Incoming · main", "right"],
+  for (const [xy, kind, adder, side] of [
+    ["AU", "addedByUs", "HEAD · feat", "left"],
+    ["UA", "addedByThem", "Incoming · main", "right"],
   ] as const) {
-    const card = conflictCard(file({ xy, reason: "oneSideMissing" }), NAMES, []);
+    const card = conflictCard(file({ xy, kind, reason: "oneSideMissing" }), NAMES, []);
     assert.ok(card, xy);
     assert.equal(card.reason, `Only ${adder} added notes.txt.`);
     assert.deepEqual(
@@ -76,7 +77,7 @@ test("a file only one side added offers Keep or Remove", () => {
       ]
     );
     assert.ok(card.choices[1].confirm, `${xy}: removing deletes the added file, so it confirms`);
-    const lost = conflictCard(file({ xy, reason: "noWorktreeFile", onDisk: false }), NAMES, []);
+    const lost = conflictCard(file({ xy, kind, reason: "noWorktreeFile", onDisk: false }), NAMES, []);
     assert.deepEqual(lost?.choices[0].action, { kind: "takeSide", side });
   }
 });
@@ -88,7 +89,7 @@ test("a file both sides deleted offers Remove alone and lists the files one side
     { path: "right.txt", xy: "UA", kind: "addedByThem" },
     { path: "other.txt", xy: "UU", kind: "bothModified" },
   ];
-  const card = conflictCard(file({ path: "a.txt", xy: "DD", reason: "oneSideMissing", onDisk: false, leftOid: null, rightOid: null }), NAMES, conflicts);
+  const card = conflictCard(file({ path: "a.txt", xy: "DD", kind: "bothDeleted", reason: "oneSideMissing", onDisk: false, leftOid: null, rightOid: null }), NAMES, conflicts);
   assert.ok(card);
   assert.equal(card.reason, "Both sides deleted a.txt, or renamed it to different names.");
   assert.deepEqual(card.details, ["left.txt, added only by HEAD · feat", "right.txt, added only by Incoming · main"]);
@@ -101,7 +102,7 @@ test("a file both sides deleted offers Remove alone and lists the files one side
 
 test("a rename's other paths are capped, with a count of the rest", () => {
   const added: Conflict[] = Array.from({ length: 12 }, (_, i) => ({ path: `new${i}.txt`, xy: "AU", kind: "addedByUs" }));
-  const card = conflictCard(file({ path: "a.txt", xy: "DD", onDisk: false }), NAMES, added);
+  const card = conflictCard(file({ path: "a.txt", xy: "DD", kind: "bothDeleted", onDisk: false }), NAMES, added);
   assert.equal(card?.details.length, 6);
   assert.equal(card?.details[5], "and 7 more files one side added");
 });
@@ -141,7 +142,7 @@ test("a file the resolver edits as text gets no card", () => {
 });
 
 test("a submodule shows both commits and offers only Open terminal and Hand to agent", () => {
-  for (const f of [file({ path: "vendor/lib", reason: "submodule" }), file({ path: "vendor/lib", xy: "UD", reason: "submodule", rightOid: null })]) {
+  for (const f of [file({ path: "vendor/lib", reason: "submodule" }), file({ path: "vendor/lib", xy: "UD", kind: "deletedByThem", reason: "submodule", rightOid: null })]) {
     const card = conflictCard(f, NAMES, []);
     assert.ok(card, f.xy);
     assert.match(card.reason, /resolve it inside the submodule/);
@@ -157,6 +158,6 @@ test("a submodule shows both commits and offers only Open terminal and Hand to a
     assert.match(card.choices[1].effect, /changes nothing/i);
     assert.equal(card.details[0], "HEAD · feat: commit 1111111111111111111111111111111111111111");
   }
-  const deleted = conflictCard(file({ path: "vendor/lib", xy: "UD", reason: "submodule", rightOid: null }), NAMES, []);
+  const deleted = conflictCard(file({ path: "vendor/lib", xy: "UD", kind: "deletedByThem", reason: "submodule", rightOid: null }), NAMES, []);
   assert.equal(deleted?.details[1], "Incoming · main: deleted");
 });

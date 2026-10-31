@@ -90,7 +90,7 @@ function takeSide(f: ConflictFile, names: SideNames, side: ConflictSide): CardCh
     effect: `Writes ${names[side]}'s version of ${f.path} to the worktree (git checkout ${flag}) and stages it (git add). This drops ${dropped}'s version. ${BACKED_UP}`,
     confirm: {
       title: `Take ${names[side]} for ${f.path}?`,
-      detail: `This replaces ${f.path} with ${names[side]}'s version and stages it as resolved, dropping ${dropped}'s version. The file is backed up first, and Recently discarded can restore it.`,
+      detail: `This replaces ${f.path} with ${names[side]}'s version and stages it as resolved, dropping ${dropped}'s version. ${BACKED_UP}`,
       confirmLabel: label,
     },
   };
@@ -112,7 +112,7 @@ function remove(f: ConflictFile, label: string): CardChoice {
     effect: `Removes ${f.path} from the index and deletes it from the worktree (git rm). ${BACKED_UP}`,
     confirm: {
       title: `${label}: delete ${f.path}?`,
-      detail: `This removes ${f.path} from the index and deletes it from the worktree (git rm). The file is backed up first, and Recently discarded can restore it.`,
+      detail: `This removes ${f.path} from the index and deletes it from the worktree (git rm). ${BACKED_UP}`,
       confirmLabel: label,
     },
   };
@@ -152,7 +152,7 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       ],
     };
   }
-  if (f.xy === "DD") {
+  if (f.kind === "bothDeleted") {
     return {
       title: `${f.path} was deleted on both sides`,
       reason: `Both sides deleted ${f.path}, or renamed it to different names.`,
@@ -160,8 +160,8 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       choices: [remove(f, "Remove")],
     };
   }
-  if (f.xy === "UD" || f.xy === "DU") {
-    const changed: ConflictSide = f.xy === "UD" ? "left" : "right";
+  if (f.kind === "deletedByThem" || f.kind === "deletedByUs") {
+    const changed: ConflictSide = f.kind === "deletedByThem" ? "left" : "right";
     return {
       title: `${f.path} was changed on one side and deleted on the other`,
       reason: `${names[changed]} changed ${f.path} and ${names[other(changed)]} deleted it.`,
@@ -169,8 +169,8 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       choices: [keep(f, names, changed, "Keep modified"), remove(f, "Accept deletion")],
     };
   }
-  if (f.xy === "AU" || f.xy === "UA") {
-    const adder: ConflictSide = f.xy === "AU" ? "left" : "right";
+  if (f.kind === "addedByUs" || f.kind === "addedByThem") {
+    const adder: ConflictSide = f.kind === "addedByUs" ? "left" : "right";
     return {
       title: `${f.path} was added on one side only`,
       reason: `Only ${names[adder]} added ${f.path}.`,

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::diff::{other, run_read, TOO_LARGE_BYTES};
 use super::discard::{back_up, blob_bytes, hash_files, inside_worktree, link_inside_worktree, run_piped, write_file, Blobs, DiscardBackup};
 use super::error::GitError;
-use super::operation::conflict_kind;
+use super::operation::{conflict_kind, ConflictKind};
 use super::staging::{parse_rel_path, read_status, run_write, write_stage, PathTarget, StagingLocks, WorktreeStatus};
 
 /// The marker length git uses when `conflict-marker-size` isn't set.
@@ -63,6 +63,8 @@ pub struct ConflictFile {
     pub path: String,
     /// git's two status letters for the stages it has, such as `UU` or `UD`.
     pub xy: String,
+    /// Which conflict the stages make, as `xy` names it; the side-picker cards switch on it.
+    pub kind: ConflictKind,
     /// Whether the worktree holds a file or link at the path.
     pub on_disk: bool,
     /// Stage 2's object id, a commit for a submodule, or null when the left side has none.
@@ -250,7 +252,7 @@ fn read_texts(worktree: &Path, path: &str, stages: &Stages, file: &WorktreeFile)
     if all().any(|s| s.mode == SUBMODULE_MODE) {
         return Ok(Err(NotEditable::Submodule));
     }
-    if matches!(file, WorktreeFile::Link(_)) || all().any(|s| s.mode == "120000") {
+    if matches!(file, WorktreeFile::Link(_)) || all().any(|s| s.mode == SYMLINK_MODE) {
         return Ok(Err(NotEditable::Symlink));
     }
     if matches!(file, WorktreeFile::Missing | WorktreeFile::Folder) {
@@ -285,9 +287,11 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
     let path = parse_rel_path(path)?;
     let worktree_file = WorktreeFile::read(worktree, path)?;
     let Some(stages) = read_stages(worktree, path)? else { return Ok(None) };
+    let (kind, xy) = conflict_kind(stages[0].is_some(), stages[1].is_some(), stages[2].is_some());
     let mut file = ConflictFile {
         path: path.to_string(),
-        xy: conflict_kind(stages[0].is_some(), stages[1].is_some(), stages[2].is_some()).1.to_string(),
+        xy: xy.to_string(),
+        kind,
         on_disk: worktree_file != WorktreeFile::Missing,
         left_oid: stages[1].as_ref().map(|s| s.oid.clone()),
         right_oid: stages[2].as_ref().map(|s| s.oid.clone()),
@@ -317,6 +321,8 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
 
 /// The mode git gives a submodule's entry.
 const SUBMODULE_MODE: &str = "160000";
+/// The index mode git gives a symbolic link.
+const SYMLINK_MODE: &str = "120000";
 
 /// Refuses a card write on a submodule, whose conflict is resolved inside the submodule: Topos
 /// never points its entry at a commit itself.
@@ -399,7 +405,7 @@ pub enum ConflictSide {
 /// What take-whole-side or Remove did: the backup of what it replaced, and the post-write status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TakeSideResult {
+pub struct ConflictWriteResult {
     pub backup: DiscardBackup,
     pub status: WorktreeStatus,
 }
@@ -417,7 +423,7 @@ pub fn take_side(
     path: &str,
     token: &str,
     side: ConflictSide,
-) -> Result<TakeSideResult, GitError> {
+) -> Result<ConflictWriteResult, GitError> {
     let _slot = locks.begin(worktree)?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
@@ -434,7 +440,7 @@ pub fn take_side(
     run_write(worktree, &["checkout", flag], Some(&[path]))?;
     write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;
     let backup = conflict_backup(worktree, path, blob)?;
-    Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
+    Ok(ConflictWriteResult { backup, status: read_status(worktree, request_id, None)? })
 }
 
 /// Remove, or Accept deletion (#391): takes the conflicted `path` out of the index and the
@@ -442,7 +448,7 @@ pub fn take_side(
 /// first, as take-whole-side stores it, and nothing changes if that fails. It refuses with
 /// [`GitError::ConflictStale`] when `token` no longer matches, and refuses a submodule. Returns the
 /// backup and the status answering `request_id`.
-pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<TakeSideResult, GitError> {
+pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<ConflictWriteResult, GitError> {
     let _slot = locks.begin(worktree)?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
@@ -451,7 +457,7 @@ pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, p
     // `-f`: the bytes are backed up, and an unmerged file never matches the index.
     run_write(worktree, &["rm", "-q", "-f"], Some(&[path]))?;
     let backup = conflict_backup(worktree, path, blob)?;
-    Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
+    Ok(ConflictWriteResult { backup, status: read_status(worktree, request_id, None)? })
 }
 
 /// Mark resolved (#390): stages the conflicted `path` as it stands on disk through the inspector's
@@ -510,7 +516,7 @@ pub async fn git_conflict_take_side(
     token: String,
     side: ConflictSide,
     locks: tauri::State<'_, StagingLocks>,
-) -> Result<TakeSideResult, GitError> {
+) -> Result<ConflictWriteResult, GitError> {
     let locks = locks.inner();
     tokio::task::block_in_place(|| take_side(locks, Path::new(&worktree_path), request_id, &path, &token, side))
 }
@@ -524,7 +530,7 @@ pub async fn git_conflict_remove(
     path: String,
     token: String,
     locks: tauri::State<'_, StagingLocks>,
-) -> Result<TakeSideResult, GitError> {
+) -> Result<ConflictWriteResult, GitError> {
     let locks = locks.inner();
     tokio::task::block_in_place(|| remove_conflict(locks, Path::new(&worktree_path), request_id, &path, &token))
 }
