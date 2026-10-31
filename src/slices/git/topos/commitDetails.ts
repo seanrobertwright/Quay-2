@@ -3,8 +3,11 @@
 
 import type { GraphAgent } from "./graphPage.ts";
 
-/** A piece of a commit body: plain text, or an http(s) URL shown as a link. */
-export type BodyPart = { kind: "text"; text: string } | { kind: "link"; text: string; href: string };
+/**
+ * A piece of a commit body: plain text, or an http(s) URL shown as a link. `start` is the piece's
+ * offset in the body, unique among the parts, so it serves as the piece's React key.
+ */
+export type BodyPart = { kind: "text"; text: string; start: number } | { kind: "link"; text: string; href: string; start: number };
 
 /**
  * An http or https URL: the scheme at a word start, then everything up to whitespace, a quote or
@@ -44,7 +47,7 @@ export function linkify(text: string): BodyPart[] {
     const last = parts[parts.length - 1];
     const piece = text.slice(at, end);
     if (last?.kind === "text") last.text += piece;
-    else parts.push({ kind: "text", text: piece });
+    else parts.push({ kind: "text", text: piece, start: at });
     at = end;
   };
   for (const match of text.matchAll(URL_PATTERN)) {
@@ -53,7 +56,7 @@ export function linkify(text: string): BodyPart[] {
     // A bare scheme names no host.
     if (url.replace(/^https?:\/\//i, "") === "") continue;
     pushText(start);
-    parts.push({ kind: "link", text: url, href: url });
+    parts.push({ kind: "link", text: url, href: url, start });
     at = start + url.length;
   }
   pushText(text.length);
@@ -80,6 +83,20 @@ export function committerShown(author: Person, committer: Person): boolean {
 export interface Trailer {
   key: string;
   value: string;
+}
+
+/**
+ * Each trailer with a React key made from its key and value, with a count for a word-for-word
+ * repeat (a message may hold the same trailer twice), so no key depends on the list index.
+ */
+export function keyedTrailers(trailers: readonly Trailer[]): { id: string; trailer: Trailer }[] {
+  const seen = new Map<string, number>();
+  return trailers.map((trailer) => {
+    const content = `${trailer.key}${trailer.value}`;
+    const n = (seen.get(content) ?? 0) + 1;
+    seen.set(content, n);
+    return { id: `${content}${n}`, trailer };
+  });
 }
 
 /** `git_commit_details`: every string in it is untrusted text, rendered only as text. */

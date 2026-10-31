@@ -1,15 +1,15 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { committerShown, filesNote, linkify } from "./commitDetails.ts";
+import { committerShown, filesNote, keyedTrailers, linkify } from "./commitDetails.ts";
 
 test("http and https URLs become links; the text around them stays text", () => {
   assert.deepEqual(linkify("See https://example.com/issue/1 and http://a.test/x?y=1#z now"), [
-    { kind: "text", text: "See " },
-    { kind: "link", text: "https://example.com/issue/1", href: "https://example.com/issue/1" },
-    { kind: "text", text: " and " },
-    { kind: "link", text: "http://a.test/x?y=1#z", href: "http://a.test/x?y=1#z" },
-    { kind: "text", text: " now" },
+    { kind: "text", text: "See ", start: 0 },
+    { kind: "link", text: "https://example.com/issue/1", href: "https://example.com/issue/1", start: 4 },
+    { kind: "text", text: " and ", start: 31 },
+    { kind: "link", text: "http://a.test/x?y=1#z", href: "http://a.test/x?y=1#z", start: 36 },
+    { kind: "text", text: " now", start: 57 },
   ]);
 });
 
@@ -23,29 +23,39 @@ test("every other scheme stays plain text", () => {
     "ftp://example.com/file",
     "xhttps://example.com",
   ]) {
-    assert.deepEqual(linkify(body), [{ kind: "text", text: body }], body);
+    assert.deepEqual(linkify(body), [{ kind: "text", text: body, start: 0 }], body);
   }
 });
 
 test("a sentence's closing punctuation stays out of the link", () => {
   assert.deepEqual(linkify("(see https://example.com/a)."), [
-    { kind: "text", text: "(see " },
-    { kind: "link", text: "https://example.com/a", href: "https://example.com/a" },
-    { kind: "text", text: ")." },
+    { kind: "text", text: "(see ", start: 0 },
+    { kind: "link", text: "https://example.com/a", href: "https://example.com/a", start: 5 },
+    { kind: "text", text: ").", start: 26 },
   ]);
 });
 
 test("a scheme with nothing after it, and markup, stay text", () => {
-  assert.deepEqual(linkify("https:// is not a link"), [{ kind: "text", text: "https:// is not a link" }]);
+  assert.deepEqual(linkify("https:// is not a link"), [{ kind: "text", text: "https:// is not a link", start: 0 }]);
   assert.deepEqual(linkify('<a href="https://x.test">x</a>'), [
-    { kind: "text", text: '<a href="' },
-    { kind: "link", text: "https://x.test", href: "https://x.test" },
-    { kind: "text", text: '">x</a>' },
+    { kind: "text", text: '<a href="', start: 0 },
+    { kind: "link", text: "https://x.test", href: "https://x.test", start: 9 },
+    { kind: "text", text: '">x</a>', start: 23 },
   ]);
 });
 
 test("empty text has no parts", () => {
   assert.deepEqual(linkify(""), []);
+});
+
+test("each trailer's key is its content, with a repeat counted, so it never depends on list position", () => {
+  const reviewed = { key: "Reviewed-by", value: "Ada <ada@example.invalid>" };
+  const trailers = [reviewed, { key: "Quay-Agent", value: "claude" }, reviewed];
+  const keyed = keyedTrailers(trailers);
+  assert.deepEqual(keyed.map((k) => k.trailer), trailers, "the trailers keep their order");
+  const keys = keyed.map((k) => k.id);
+  assert.deepEqual(keys, ["Reviewed-byAda <ada@example.invalid>1", "Quay-Agentclaude1", "Reviewed-byAda <ada@example.invalid>2"]);
+  assert.equal(new Set(keys).size, 3, "a repeated trailer still gets its own key");
 });
 
 test("the committer shows only when its name or email differs from the author's", () => {

@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, ShieldQuestion, X } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
-import { committerShown, filesNote, linkify, type CommitDetails, type CommitFile, type Person } from "./commitDetails";
+import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type Person } from "./commitDetails";
 import { movedRow } from "./commitSelection";
 import type { Badge } from "./graphRefs";
 import { shortOid } from "./graphStore";
@@ -61,13 +61,12 @@ const LETTER_CLASS: Record<string, string> = {
 /** A commit body as text with only http(s) links (#368): React text children, never HTML. */
 const Body: React.FC<{ text: string }> = ({ text }) => (
   <p className="text-xs text-[#c9d1d9] whitespace-pre-wrap break-words">
-    {linkify(text).map((part, i) =>
+    {linkify(text).map((part) =>
       part.kind === "text" ? (
-        // The parts are positional and never reorder, so their index is a stable key.
-        <React.Fragment key={i}>{part.text}</React.Fragment>
+        <React.Fragment key={part.start}>{part.text}</React.Fragment>
       ) : (
         <a
-          key={i}
+          key={part.start}
           href={part.href}
           onClick={(e) => {
             e.preventDefault();
@@ -439,9 +438,8 @@ export const CommitInspector: React.FC<CommitInspectorProps> = ({
                   </button>
                 </h5>
                 <dl id={trailersId} hidden={!trailersOpen} className="mt-1 flex flex-col gap-0.5">
-                  {shown.trailers.map((t, i) => (
-                    // A trailer can repeat word for word, so its place in the message is part of its key.
-                    <div key={`${i}:${t.key}`} className="text-[11px] break-words">
+                  {keyedTrailers(shown.trailers).map(({ id, trailer: t }) => (
+                    <div key={id} className="text-[11px] break-words">
                       <dt className="inline text-[#8b949e]">{t.key}: </dt>
                       <dd className="inline text-[#c9d1d9]">{t.value}</dd>
                     </div>
