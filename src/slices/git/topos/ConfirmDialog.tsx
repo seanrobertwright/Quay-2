@@ -40,6 +40,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const detailId = useId();
   const checkboxId = useId();
   const fieldId = useId();
+  const choiceId = useId();
   const errorId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -143,12 +144,12 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
         )}
         {request.choice && (
           <div className="flex flex-col gap-1">
-            <label htmlFor={fieldId} className="text-xs text-[#c9d1d9]">
+            <label htmlFor={choiceId} className="text-xs text-[#c9d1d9]">
               {request.choice.label}
             </label>
             <select
               ref={select}
-              id={fieldId}
+              id={choiceId}
               value={choice}
               aria-invalid={error !== null}
               aria-describedby={error === null ? undefined : errorId}
