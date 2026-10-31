@@ -60,6 +60,11 @@ pub(super) fn read_git(worktree: &Path, args: &[&str]) -> Result<Option<Vec<u8>>
     Ok(out.status.success().then_some(out.stdout))
 }
 
+/// The first line `git <args>` in `worktree` printed, trimmed, or None when it exited non-zero.
+pub(super) fn read_git_line(worktree: &Path, args: &[&str]) -> Result<Option<String>, GitError> {
+    Ok(read_git(worktree, args)?.map(|out| String::from_utf8_lossy(&out).trim().to_string()))
+}
+
 /// The oid HEAD names in `worktree`.
 pub(super) fn head_oid(worktree: &Path) -> Result<String, GitError> {
     match read_git(worktree, &["rev-parse", "--verify", "HEAD"])? {

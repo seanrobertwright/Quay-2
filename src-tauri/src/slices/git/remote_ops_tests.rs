@@ -300,14 +300,14 @@ fn wait_for(events: &std::sync::Mutex<Vec<serde_json::Value>>, want: impl Fn(&se
     }
 }
 
-/// Gives an op started on another thread time to take the repo's network lock; the slow remote
+/// Gives an op started on another thread time to take the repo's lock; the slow remote
 /// keeps it held for seconds after that.
 fn let_it_start() {
     std::thread::sleep(std::time::Duration::from_millis(400));
 }
 
 #[test]
-fn the_network_lock_runs_one_operation_per_repo_and_the_second_waits_for_the_first() {
+fn the_repo_lock_runs_one_operation_per_repo_and_the_second_waits_for_the_first() {
     let (root, wt) = repo_with_worktree();
     with_slow_remote(&root, &wt, 2);
     let main_checkout = root.join("repo");
@@ -330,7 +330,7 @@ fn the_network_lock_runs_one_operation_per_repo_and_the_second_waits_for_the_fir
     });
 
     assert!(second_done > slow_done, "the second fetch finished before the first let go");
-    let waited = second_events.lock().unwrap().iter().any(|e| e["event"] == "progress" && e["phase"] == super::remote_ops::WAITING_PHASE);
+    let waited = second_events.lock().unwrap().iter().any(|e| e["event"] == "progress" && e["phase"] == super::repo_lock::WAITING_PHASE);
     assert!(waited, "the second fetch said it was waiting");
 }
 

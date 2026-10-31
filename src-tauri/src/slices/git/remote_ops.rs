@@ -2,28 +2,25 @@
 //!
 //! Each runs headless through the op runner with `--progress`, so git's progress lines arrive as
 //! [`OpEvent::Progress`], and with `LC_ALL=C`, so its refusals can be matched. One network
-//! operation runs per repo at a time ([`NetworkLocks`]); the local ref operations wait behind it.
+//! operation runs per repo at a time, holding its [`RepoLock`](super::repo_lock::RepoLock); the local
+//! ref operations wait behind it.
 //! Remote and branch names are checked before git sees them and never read as options. Topos
 //! never force-pushes here, and never writes config except a pull's "Remember for this repo".
 
-use std::collections::HashSet;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex};
-use std::time::Duration;
+use std::sync::atomic::AtomicBool;
 
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use uuid::Uuid;
 
 use super::checkout::{check_branch_name, invalid_ref, outcome, rev_oid, run_git};
-use super::commit::Operation;
+use super::commit::{read_git, read_git_line, Operation};
 use super::operation::{detect_operation, git_dir, in_background};
-use super::commit::read_git;
 use super::error::GitError;
 use super::graph::GitRefs;
 use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions, OpOutput};
-use super::staging::{worktree_key, StagingLocks};
+use super::staging::StagingLocks;
 
 /// Where a fetch fetches from: `{ "kind": "remote", "name": "origin" }` or `{ "kind": "all" }`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -65,9 +62,7 @@ pub struct SyncStatus {
 pub fn sync_status(worktree: &Path) -> Result<SyncStatus, GitError> {
     let branch = current_branch(worktree)?;
     let upstream = match &branch {
-        Some(_) => read_git(worktree, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])?
-            .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-            .filter(|u| !u.is_empty()),
+        Some(_) => read_git_line(worktree, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])?.filter(|u| !u.is_empty()),
         None => None,
     };
     let (ahead, behind) = match &upstream {
@@ -79,71 +74,12 @@ pub fn sync_status(worktree: &Path) -> Result<SyncStatus, GitError> {
         }
         None => (0, 0),
     };
-    let fetch_head = read_git(worktree, &["rev-parse", "--path-format=absolute", "--git-path", "FETCH_HEAD"])?
-        .map(|out| std::path::PathBuf::from(String::from_utf8_lossy(&out).trim()));
+    let fetch_head = read_git_line(worktree, &["rev-parse", "--path-format=absolute", "--git-path", "FETCH_HEAD"])?.map(std::path::PathBuf::from);
     let fetched_at_ms = fetch_head
         .and_then(|path| std::fs::metadata(path).ok())
         .and_then(|meta| meta.modified().ok())
         .map(crate::dates::system_time_ms);
     Ok(SyncStatus { branch, upstream, ahead, behind, fetched_at_ms })
-}
-
-/// How often a wait for a repo's network lock checks for a cancel.
-const LOCK_POLL: Duration = Duration::from_millis(100);
-
-/// The repos with a network operation, or a local ref operation, running: at most one per repo.
-/// A second waits for the first to finish rather than being refused, so the operator's click is
-/// never lost, and gives up only when it is cancelled.
-#[derive(Default)]
-pub struct NetworkLocks {
-    held: Mutex<HashSet<String>>,
-    freed: Condvar,
-}
-
-/// Holds a repo's network lock until it drops.
-pub struct NetworkGuard<'a> {
-    locks: &'a NetworkLocks,
-    key: String,
-}
-
-impl Drop for NetworkGuard<'_> {
-    fn drop(&mut self) {
-        self.locks.held.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.key);
-        self.locks.freed.notify_all();
-    }
-}
-
-impl NetworkLocks {
-    /// Takes the lock of the repo `worktree` belongs to, shared by all its worktrees, waiting while
-    /// another operation holds it. While it waits it sends one `Progress` event saying so, and a
-    /// cancel ends the wait with [`GitError::Cancelled`].
-    pub fn hold(&self, worktree: &Path, cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<NetworkGuard<'_>, GitError> {
-        let key = repo_key(worktree)?;
-        let mut held = self.held.lock().unwrap_or_else(|e| e.into_inner());
-        let mut told = false;
-        while held.contains(&key) {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(GitError::Cancelled);
-            }
-            if !told {
-                told = true;
-                let _ = channel.send(OpEvent::Progress { phase: WAITING_PHASE.into(), percent: None });
-            }
-            held = self.freed.wait_timeout(held, LOCK_POLL).unwrap_or_else(|e| e.into_inner()).0;
-        }
-        held.insert(key.clone());
-        Ok(NetworkGuard { locks: self, key })
-    }
-}
-
-/// The progress phase of an operation waiting for the repo's network lock.
-pub const WAITING_PHASE: &str = "Waiting for the other git operation on this repo";
-
-/// One spelling of the repo `worktree` belongs to, its common git dir, so its worktrees share a lock.
-fn repo_key(worktree: &Path) -> Result<String, GitError> {
-    let out = read_git(worktree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?
-        .ok_or_else(|| GitError::Other { stderr: format!("{} is not a git worktree", worktree.display()) })?;
-    Ok(worktree_key(Path::new(String::from_utf8_lossy(&out).trim())))
 }
 
 /// The remotes `worktree`'s repo has, by name.
@@ -162,9 +98,9 @@ fn check_remote(worktree: &Path, name: &str) -> Result<(), GitError> {
 }
 
 /// Runs a network `git <args>` in `worktree` as part of the op whose cancel flag is `cancel`.
-/// Returns what git printed when it exits 0, and otherwise the refusal [`network_refusal`] reads
-/// from its stderr, or [`GitError::Other`] with the stderr.
-fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<(bool, OpOutput), GitError> {
+/// The inner result is `Ok` when git exits 0, and otherwise `Err` with what it printed, for the
+/// caller to read its refusal from; the outer one is an error running git at all.
+fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<Result<(), OpOutput>, GitError> {
     let mut cmd = headless_git();
     cmd.current_dir(worktree).args(args);
     #[cfg(test)]
@@ -175,7 +111,7 @@ fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Ch
     });
     let opts = OpOptions { c_locale: true, progress_at_once: true, redact_credentials: true, ..OpOptions::default() };
     let finished = run_process(cmd, None, &opts, cancel, channel)?;
-    Ok((finished.status.success(), finished.output))
+    Ok(if finished.status.success() { Ok(()) } else { Err(finished.output) })
 }
 
 /// The error a failed fetch, pull or push printed: a typed one Topos names, else `Other`.
@@ -216,7 +152,7 @@ pub(super) fn network_refusal(stderr: &str) -> Option<GitError> {
 }
 
 /// Fetches `from`, one remote or all, with `prune` dropping remote-tracking branches the remote
-/// deleted, as the cancellable op `op_id`. It holds the repo's network lock, and touches no
+/// deleted, as the cancellable op `op_id`. It holds the repo's lock, and touches no
 /// worktree, so it takes no staging slot.
 pub fn fetch(
     ops: &GitOps,
@@ -228,7 +164,7 @@ pub fn fetch(
     channel: &Channel<OpEvent>,
 ) -> Result<RemoteOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _net = locks.network.hold(worktree, cancel, channel)?;
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
         let mut args = vec!["fetch", "--progress"];
         if prune {
             args.push("--prune");
@@ -240,8 +176,7 @@ pub fn fetch(
                 args.extend(["--", name.as_str()]);
             }
         }
-        let (ok, output) = run_network(worktree, &args, cancel, channel)?;
-        if !ok {
+        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
             return Err(failure(&output));
         }
         remote_outcome(worktree)
@@ -291,7 +226,7 @@ impl PullStrategy {
 /// [`GitError::DivergentPullNeedsStrategy`]. With one, it applies to this pull only, unless
 /// `remember` writes it to the repo's local config first; that is the only config Topos writes.
 /// A pull that stops on conflicts returns its outcome with `conflicts` set, for the operation
-/// banner. It holds the repo's network lock and then `worktree`'s staging slot.
+/// banner. It holds the repo's lock and then `worktree`'s staging slot.
 pub fn pull(
     ops: &GitOps,
     locks: &StagingLocks,
@@ -302,7 +237,7 @@ pub fn pull(
     channel: &Channel<OpEvent>,
 ) -> Result<RemoteOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _net = locks.network.hold(worktree, cancel, channel)?;
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
         let _slot = locks.begin(worktree)?;
         let mut args = vec!["pull", "--progress"];
         if let Some(strategy) = strategy {
@@ -312,10 +247,9 @@ pub fn pull(
             }
             args.extend(strategy.flags());
         }
-        let (ok, output) = run_network(worktree, &args, cancel, channel)?;
-        if ok {
+        let Err(output) = run_network(worktree, &args, cancel, channel)? else {
             return remote_outcome(worktree);
-        }
+        };
         if detect_operation(&git_dir(worktree)?) != Operation::None {
             return Ok(RemoteOutcome { conflicts: true, ..remote_outcome(worktree)? });
         }
@@ -337,9 +271,7 @@ fn pull_refusal(worktree: &Path, stderr: &str) -> Result<Option<GitError>, GitEr
 
 /// The branch checked out in `worktree`, or None for a detached HEAD.
 fn current_branch(worktree: &Path) -> Result<Option<String>, GitError> {
-    Ok(read_git(worktree, &["symbolic-ref", "--quiet", "--short", "HEAD"])?
-        .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-        .filter(|b| !b.is_empty()))
+    Ok(read_git_line(worktree, &["symbolic-ref", "--quiet", "--short", "HEAD"])?.filter(|b| !b.is_empty()))
 }
 
 /// Fetches `from` in `worktree_path`'s repo, with `prune`, as op `op_id`. See [`fetch`].
@@ -423,7 +355,7 @@ pub struct PushTarget<'a> {
 }
 
 /// Pushes the local branch `target.branch` with `git push --porcelain`, as the cancellable op
-/// `op_id`, holding the repo's network lock. With an upstream on a remote it pushes there, to the
+/// `op_id`, holding the repo's lock. With an upstream on a remote it pushes there, to the
 /// upstream branch. With none, it refuses with [`GitError::NoUpstream`] unless
 /// `target.set_upstream` or `push.autoSetupRemote` says to push to the branch of the same name and
 /// track it (`-u`). It never forces: a remote branch with commits this one lacks returns
@@ -439,7 +371,7 @@ pub fn push(
 ) -> Result<RemoteOutcome, GitError> {
     let PushTarget { branch, remote, set_upstream } = target;
     ops.run_with(op_id, channel, |cancel| {
-        let _net = locks.network.hold(worktree, cancel, channel)?;
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
         check_branch_name(worktree, branch)?;
         rev_oid(worktree, &format!("refs/heads/{branch}"))?.ok_or_else(|| invalid_ref(branch))?;
         if let Some(remote) = remote {
@@ -463,8 +395,7 @@ pub fn push(
             args.push("--set-upstream");
         }
         args.extend(["--", to_remote.as_str(), refspec.as_str()]);
-        let (ok, output) = run_network(worktree, &args, cancel, channel)?;
-        if !ok {
+        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
             return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
         }
         remote_outcome(worktree)
@@ -475,7 +406,7 @@ pub fn push(
 /// `.merge`, or None when it has none.
 fn upstream_of(worktree: &Path, branch: &str) -> Result<Option<(String, String)>, GitError> {
     let get = |key: String| -> Result<Option<String>, GitError> {
-        Ok(read_git(worktree, &["config", "--get", &key])?.map(|out| String::from_utf8_lossy(&out).trim().to_string()))
+        read_git_line(worktree, &["config", "--get", &key])
     };
     Ok(match (get(format!("branch.{branch}.remote"))?, get(format!("branch.{branch}.merge"))?) {
         (Some(remote), Some(merge)) if !remote.is_empty() && merge.starts_with("refs/") => Some((remote, merge)),
@@ -485,7 +416,7 @@ fn upstream_of(worktree: &Path, branch: &str) -> Result<Option<(String, String)>
 
 /// Whether the boolean config `key` is set true.
 fn config_true(worktree: &Path, key: &str) -> Result<bool, GitError> {
-    Ok(read_git(worktree, &["config", "--type=bool", "--get", key])?.is_some_and(|out| String::from_utf8_lossy(&out).trim() == "true"))
+    Ok(read_git_line(worktree, &["config", "--type=bool", "--get", key])?.is_some_and(|v| v == "true"))
 }
 
 /// The refusal in a failed `push --porcelain`: its first rejected ref's status line,
