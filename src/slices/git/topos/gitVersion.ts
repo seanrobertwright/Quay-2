@@ -21,7 +21,11 @@ export type GitError =
   | { kind: "noOperation" }
   | { kind: "conflictsRemain"; count: number }
   /** The file is handed to an agent (#392); `agent` is untrusted display text. */
-  | { kind: "handedOff"; path: string; agent: string };
+  | { kind: "handedOff"; path: string; agent: string }
+  /** Ref operations (#393). Paths, worktrees and names are untrusted display text. */
+  | { kind: "checkoutWouldOverwrite"; paths: string[] }
+  | { kind: "branchInOtherWorktree"; worktree: string }
+  | { kind: "invalidRefName"; name: string };
 
 /** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
 export function parseGitError(e: unknown): GitError | null {
@@ -47,6 +51,12 @@ export function parseGitError(e: unknown): GitError | null {
       return { kind: "hookFailed", hook: String(fields.hook), output: String(fields.output) };
     case "handedOff":
       return { kind: "handedOff", path: String(fields.path), agent: String(fields.agent) };
+    case "checkoutWouldOverwrite":
+      return { kind: "checkoutWouldOverwrite", paths: Array.isArray(fields.paths) ? fields.paths.map(String) : [] };
+    case "branchInOtherWorktree":
+      return { kind: "branchInOtherWorktree", worktree: String(fields.worktree) };
+    case "invalidRefName":
+      return { kind: "invalidRefName", name: String(fields.name) };
     default:
       return null;
   }
