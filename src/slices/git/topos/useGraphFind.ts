@@ -4,11 +4,17 @@
 // rows load.
 
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import { findCounter, findKey, FindScan, findNeedle, steppedMatch, type FindBadge, type FindKeyEvent } from "./graphFind";
 import type { GraphFindBarProps } from "./GraphFindBar";
 import type { GraphStore } from "./graphStore";
+import { deepCounter, parseSearch, ResultRoute, type FeedState, type SearchQuery } from "./deepSearch";
+import { useDeepSearch, useResultRows } from "./useDeepSearch";
+import type { DeepSearchBarProps } from "./GraphFindBar";
+
+/** The graph's ref set (#370), which a deep search walks too. */
+const GRAPH_REFS = { kind: "branches" } as const;
 
 /** How long typing pauses before a query runs. */
 const DEBOUNCE_MS = 150;
@@ -88,6 +94,7 @@ export function useGraphFind(
 }
 
 const NO_MATCHES = new Int32Array(0);
+const NO_OIDS: readonly string[] = [];
 
 export interface FindControllerOptions {
   store: GraphStore | null;
@@ -103,10 +110,20 @@ export interface FindControllerOptions {
   refocus: () => void;
   /** Set to the find's key handler while it is mounted, for Topos to call for keys anywhere in it. */
   keysRef?: React.MutableRefObject<((e: FindKeyEvent) => boolean) | null>;
+  /** The repo a deep search (#400) runs in: the graph's. */
+  repoPath: string | null;
+  /** The graph feed's status, which decides how a deep result below the loaded rows opens. */
+  feedState: FeedState;
+  /** Asks the graph's session for more rows, to load the graph down to a result. */
+  loadMoreRows: () => void;
+  /** Opens only the details of a result the graph will never load. */
+  openDetails: (oid: string) => void;
 }
 
 export interface FindController {
-  /** The query the shown matches are for, or "" when there are none to show. */
+  /** Whether a find or a deep search is lighting its matches and dimming the other rows. */
+  active: boolean;
+  /** The text whose runs the rows mark, or "" for none; a deep search marks none. */
   query: string;
   /** The matching rows, ascending; they apply only while `query` isn't "". */
   matches: Int32Array;
@@ -119,21 +136,50 @@ export interface FindController {
  * written anywhere. Ctrl+F opens it, F3 and Enter step, and Escape joins the overlay stack, so it
  * clears the find before Topos closes.
  */
-export function useFindController({ store, badges, rowCount, visible, cursorRow, selectRow, refocus, keysRef }: FindControllerOptions): FindController {
+export function useFindController({
+  store,
+  badges,
+  rowCount,
+  visible,
+  cursorRow,
+  selectRow,
+  refocus,
+  keysRef,
+  repoPath,
+  feedState,
+  loadMoreRows,
+  openDetails,
+}: FindControllerOptions): FindController {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  // "Search all history" (#400): text without a prefix searches messages in all history.
+  const [allHistory, setAllHistory] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const activeText = open ? text : "";
-  const { result: found, settle } = useGraphFind(store, badges, rowCount, activeText);
+  const input = parseSearch(activeText, allHistory);
+  const deepKind = input.mode === "deep" ? input.kind : null;
+  const deepText = input.mode === "deep" ? input.text : "";
+  const deepQuery = useMemo<SearchQuery | null>(
+    () => (deepKind === null || deepText === "" ? null : { kind: deepKind, text: deepText, refs: GRAPH_REFS }),
+    [deepKind, deepText]
+  );
+  const deep = useDeepSearch(repoPath, deepQuery);
+  const deepState = deepQuery === null ? null : deep.state;
+  const deepRows = useResultRows(store, rowCount, deepState?.oids ?? NO_OIDS);
+  const { result: found, settle } = useGraphFind(store, badges, rowCount, input.mode === "find" ? activeText : "");
   // Matches only apply to the query still typed.
-  const query = found.query !== "" && found.query === activeText ? found.query : "";
+  const findQuery = input.mode === "find" && found.query !== "" && found.query === activeText ? found.query : "";
+  const query = deepQuery !== null ? "" : findQuery;
+  const active = deepQuery !== null || findQuery !== "";
+  const matches = deepQuery !== null ? deepRows.matches : found.matches;
 
   const refocusRef = useRef(refocus);
   refocusRef.current = refocus;
   const close = useCallback((refocusList: boolean) => {
     setOpen(false);
     setText("");
+    setAllHistory(false);
     if (refocusList) refocusRef.current();
   }, []);
   useEffect(() => {
@@ -146,6 +192,12 @@ export function useFindController({ store, badges, rowCount, visible, cursorRow,
   const step = useCallback(
     (direction: 1 | -1) => {
       if (!open || text.trim() === "") return;
+      if (deepQuery !== null) {
+        const row = steppedMatch(matches, cursorRow, direction);
+        if (row !== null) selectRow(row);
+        return;
+      }
+      if (input.mode === "deep") return;
       if (query === "") {
         pendingStep.current = direction;
         settle();
@@ -154,7 +206,7 @@ export function useFindController({ store, badges, rowCount, visible, cursorRow,
       const row = steppedMatch(found.matches, cursorRow, direction);
       if (row !== null) selectRow(row);
     },
-    [open, text, query, found.matches, cursorRow, selectRow, settle]
+    [open, text, query, found.matches, cursorRow, selectRow, settle, deepQuery, matches, input.mode]
   );
   useEffect(() => {
     const direction = pendingStep.current;
@@ -197,19 +249,73 @@ export function useFindController({ store, badges, rowCount, visible, cursorRow,
     };
   }, [keysRef, onKey]);
 
-  const counter =
-    open && text.trim() !== "" ? findCounter(query === "" ? NO_MATCHES : found.matches, cursorRow, query === "" || found.scanning) : "";
+  // Opening a deep result (#368): in place when loaded, by loading the graph down to it while the
+  // session has more rows, and otherwise only its details. Each new page lets the route step again.
+  const [route, setRoute] = useState<ResultRoute | null>(null);
+  useEffect(() => setRoute(null), [store, deepQuery]);
+  const routeActions = useRef({ selectRow, loadMoreRows, openDetails });
+  routeActions.current = { selectRow, loadMoreRows, openDetails };
+  useEffect(() => {
+    if (route === null || store === null) return;
+    const next = route.step(store, feedState);
+    switch (next.kind) {
+      case "inPlace":
+        setRoute(null);
+        routeActions.current.selectRow(next.row);
+        return;
+      case "loadMore":
+        routeActions.current.loadMoreRows();
+        return;
+      case "wait":
+        return;
+      case "detailsOnly":
+        setRoute(null);
+        routeActions.current.openDetails(route.oid);
+        return;
+    }
+  }, [route, store, rowCount, feedState]);
+  const openResult = useCallback((oid: string) => setRoute(new ResultRoute(oid)), []);
+
+  // The rows of the loaded results, for the results list; no more entries than results.
+  const resultRows = useMemo(() => {
+    const rows = new Map<string, number>();
+    if (store !== null && deepQuery !== null) for (const row of deepRows.matches) rows.set(store.oid(row), row);
+    return rows;
+  }, [store, deepQuery, deepRows.matches]);
+
+  let counter = "";
+  if (open && text.trim() !== "") {
+    if (deepState !== null) counter = deepCounter(deepState.status, deepState.oids.length, matches, cursorRow);
+    else if (input.mode === "find") counter = findCounter(query === "" ? NO_MATCHES : found.matches, cursorRow, query === "" || found.scanning);
+  }
+  const deepBar: DeepSearchBarProps | null =
+    input.mode === "deep"
+      ? {
+          kind: input.kind,
+          status: deepState?.status ?? "idle",
+          error: deepState?.error ?? null,
+          oids: deepState?.oids ?? NO_OIDS,
+          rowOf: (oid) => resultRows.get(oid) ?? -1,
+          store,
+          loading: route?.oid ?? null,
+          onOpen: openResult,
+          onLoadMore: deep.loadMore,
+        }
+      : null;
   const bar: GraphFindBarProps | null = open
     ? {
         text,
         onText: setText,
         counter,
-        canStep: query !== "" && found.matches.length > 0,
+        canStep: deepQuery !== null ? matches.length > 0 : query !== "" && found.matches.length > 0,
+        allHistory,
+        onAllHistory: setAllHistory,
+        deep: deepBar,
         onStep: step,
         onClose: () => close(true),
         inputRef,
         barRef,
       }
     : null;
-  return { query, matches: found.matches, bar };
+  return { active, query, matches, bar };
 }

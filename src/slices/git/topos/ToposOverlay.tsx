@@ -624,6 +624,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       focusRef={graphFocus}
                       visible={isOpen}
                       findKeysRef={findKeys}
+                      repoPath={graphRepo}
                     />
                   </div>
                   {commitFile && (

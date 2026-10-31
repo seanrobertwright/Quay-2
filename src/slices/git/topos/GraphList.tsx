@@ -91,6 +91,8 @@ export interface GraphListProps {
    * whether it handled the key.
    */
   findKeysRef?: React.MutableRefObject<((e: FindKeyEvent) => boolean) | null>;
+  /** The graph's repo, which the find's deep search (#400) runs in. */
+  repoPath: string | null;
 }
 
 export interface WipRowProps {
@@ -633,6 +635,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   focusRef,
   visible,
   findKeysRef,
+  repoPath,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -851,7 +854,9 @@ export const GraphList: React.FC<GraphListProps> = ({
   // Find (#399): the controller owns the find's state; the rows read only its query and matches.
   const selectFound = useCallback((row: number) => moveCursor(row, true), [moveCursor]);
   const refocusList = useCallback(() => scroller.current?.focus({ preventScroll: true }), []);
+  const loadMoreRows = useCallback(() => onReachedRow(rowCount), [onReachedRow, rowCount]);
   const {
+    active: findActive,
     query: findQuery,
     matches: findMatches,
     bar: findBar,
@@ -864,6 +869,10 @@ export const GraphList: React.FC<GraphListProps> = ({
     selectRow: selectFound,
     refocus: refocusList,
     keysRef: findKeysRef,
+    repoPath,
+    feedState: feed.status.state,
+    loadMoreRows,
+    openDetails: onSelect,
   });
 
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
@@ -1039,7 +1048,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
       // A binary search over the matches, so a row holds no find state of its own (#399).
-      const lit = findQuery === "" || isMatch(findMatches, row);
+      const lit = !findActive || isMatch(findMatches, row);
       const marks = lit ? findQuery : "";
       out.push(
         <div
@@ -1074,7 +1083,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex, findQuery, findMatches]);
+  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex, findActive, findQuery, findMatches]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
