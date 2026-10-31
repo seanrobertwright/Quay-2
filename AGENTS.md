@@ -18,3 +18,9 @@ Use the `agent-tauri` skill to run, attach to, inspect, or debug Quay or any
 other Tauri app. Load it before you launch the app, take a screenshot, click
 through the UI, call an IPC command, or read the app's logs. Do not write an
 ad hoc Playwright or CDP script for a task the skill covers.
+
+Never kill Quay by process name. The installed Quay is `tauri-app.exe`, the
+same name as every build you make, and your own session runs inside it, so
+`taskkill /IM tauri-app.exe` or `Stop-Process -Name tauri-app` closes it
+along with every session in it. Stop a build you launched by its PID, or
+filter `Get-Process tauri-app` by `.Path` under your own worktree first.
