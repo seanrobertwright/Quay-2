@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp09-title tp09-desc">
+  <title id="tp09-title">Topos Git Cockpit: Three-Way Trident</title>
+  <desc id="tp09-desc">Base, Ours, and Theirs: three distinct lineage paths uniting at the common consensus node.</desc>
+  <g id="tp09-icon"><path d="M 22 22 C 22 46, 44 54, 48 68" fill="none" stroke="#06B6D4" stroke-width="5" stroke-linecap="round"/><path d="M 48 18 L 48 68" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round"/><path d="M 74 22 C 74 46, 52 54, 48 68" fill="none" stroke="#F59E0B" stroke-width="5" stroke-linecap="round"/><circle cx="22" cy="22" r="6" fill="#06B6D4"/><circle cx="48" cy="18" r="6" fill="#8B5CF6"/><circle cx="74" cy="22" r="6" fill="#F59E0B"/><circle cx="48" cy="72" r="9" fill="#10B981"/><circle cx="48" cy="72" r="4.5" fill="#FFFFFF"/></g>
+  <g id="tp09-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp05-title tp05-desc">
+  <title id="tp05-title">Topos Git Cockpit: Bifurcation</title>
+  <desc id="tp05-desc">An elegant symmetrical fork that splits into dual curved channels and reconverges at the release gate.</desc>
+  <g id="tp05-icon"><path d="M 48 16 L 48 30 C 48 46, 24 50, 24 62 L 24 68 C 24 76, 48 80, 48 80 C 48 80, 72 76, 72 68 L 72 62 C 72 50, 48 46, 48 30" fill="none" stroke="#334155" stroke-width="4"/><path d="M 48 16 L 48 30 C 48 46, 72 50, 72 62 L 72 68 C 72 76, 48 80, 48 80" fill="none" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round"/><path d="M 48 16 L 48 30 C 48 46, 24 50, 24 62 L 24 68 C 24 76, 48 80, 48 80" fill="none" stroke="#06B6D4" stroke-width="5" stroke-linecap="round"/><circle cx="48" cy="18" r="7" fill="#10B981"/><circle cx="24" cy="62" r="6" fill="#06B6D4"/><circle cx="72" cy="62" r="6" fill="#8B5CF6"/><circle cx="48" cy="78" r="8" fill="#F59E0B"/><circle cx="48" cy="78" r="4" fill="#FFFFFF"/></g>
+  <g id="tp05-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>

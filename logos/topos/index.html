@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Topos (Git Cockpit) // SVG Logo Concepts</title>
+  <style>
+    :root {
+      --bg: #090D16;
+      --surface: #111827;
+      --border: #1F2937;
+      --ink: #F9FAFB;
+      --muted: #94A3B8;
+      --accent: #06B6D4;
+      --preview-bg: #FFFFFF;
+      --preview-border: #E2E8F0;
+    }
+    body.theme-dark {
+      --preview-bg: #0F172A;
+      --preview-border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+      padding: 40px 24px;
+    }
+    header {
+      max-width: 1400px;
+      margin: 0 auto 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: gap;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+    h1 span {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 24px;
+    }
+    p.lede {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 15px;
+      max-width: 700px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn {
+      background: var(--surface);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    main {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .card:hover {
+      border-color: #38BDF8;
+      transform: translateY(-2px);
+    }
+    .preview-box {
+      background: var(--preview-bg);
+      border: 1px solid var(--preview-border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .lockup-img {
+      width: 100%;
+      height: auto;
+      max-height: 80px;
+      display: block;
+    }
+    .scale-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 16px 0;
+      padding: 12px 16px;
+      background: var(--preview-bg);
+      border: 1px solid var(--preview-border);
+      border-radius: 10px;
+    }
+    .scale-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .scale-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .card-info {
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 11px;
+      font-family: monospace;
+      color: var(--accent);
+      background: rgba(6, 182, 212, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(6, 182, 212, 0.2);
+    }
+    .card-desc {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>TOPOS <span>// Git Cockpit</span></h1>
+      <p class="lede">20 vector brand marks crafted with the <code>svg-logo-designer</code> methodology. Visualizing DAG topology, Bézier ribbons, 3-way conflict resolution, and multi-agent code orchestration.</p>
+    </div>
+    <div class="controls">
+      <button class="btn" onclick="toggleTheme()">Toggle Canvas Background</button>
+    </div>
+  </header>
+
+  <main id="cards-container">
+    <!-- Generated dynamically from concepts -->
+  </main>
+
+  <script>
+    const concepts = [
+      { id: '01', slug: 'ribbon-weave', title: 'Ribbon Weave', desc: 'Two smooth cubic Bézier ribbons in cyan and violet intertwining and converging at an emerald commit node.' },
+      { id: '02', slug: 'dag-lattice', title: 'DAG Lattice', desc: 'A 3-lane topological directed acyclic graph showing clean parallel branches merging into trunk.' },
+      { id: '03', slug: 'delta-fork', title: 'Delta Fork', desc: 'The mathematical symbol for difference (Delta) re-imagined as branching Git ribbons with node terminals.' },
+      { id: '04', slug: 'topos-t-monogram', title: 'Topos T Monogram', desc: 'A bold modern letter T formed by branching lanes that curve outward and snap into a topological grid.' },
+      { id: '05', slug: 'bifurcation', title: 'Bifurcation', desc: 'An elegant symmetrical fork that splits into dual curved channels and reconverges at the release gate.' },
+      { id: '06', slug: 'lane-matrix', title: 'Lane Matrix', desc: 'Three vertical GitKraken-style commit columns with staggered nodes and lane transition ribbons.' },
+      { id: '07', slug: 'knot-loop', title: 'Topological Knot', desc: 'A continuous Möbius-inspired ribbon knot symbolizing non-destructive version control and continuous history.' },
+      { id: '08', slug: 'conflict-resolve', title: 'Conflict Resolver', desc: 'Two converging opposing vectors locking cleanly into a centered emerald alignment channel.' },
+      { id: '09', slug: 'three-way-trident', title: 'Three-Way Trident', desc: 'Base, Ours, and Theirs: three distinct lineage paths uniting at the common consensus node.' },
+      { id: '10', slug: 'hex-topology', title: 'Hex Topology', desc: 'An isometric network hexagon with internal graph axes and node interlinks.' },
+      { id: '11', slug: 'bezier-pulse', title: 'Bézier Pulse', desc: 'A dynamic S-shaped Bézier curve pulsing through discrete commit stops along an organic wave.' },
+      { id: '12', slug: 'agent-fleet-orbits', title: 'Agent Fleet Orbits', desc: 'A central coordinator commit node surrounded by three agent-driven worktree satellites.' },
+      { id: '13', slug: 'concentric-strands', title: 'Concentric Strands', desc: 'Triple nested arc lanes pivoting around a shared origin, showing clean worktree isolation.' },
+      { id: '14', slug: 'octopus-merge', title: 'Octopus Merge', desc: 'A nod to GitKraken’s octopus/squid roots: multiple peripheral tentacles feeding into one core.' },
+      { id: '15', slug: 'diff-prism', title: 'Diff Prism', desc: 'A multifaceted crystal prism splitting an incoming commit ray into three distinct diff streams.' },
+      { id: '16', slug: 'rebase-chevron', title: 'Rebase Chevron', desc: 'Stepped upward chevrons representing interactive rebase, squashing, and linear history compaction.' },
+      { id: '17', slug: 'cherry-pick', title: 'Cherry Pick', desc: 'A highlighted diamond node plucked from a side branch and transferred cleanly into the main line.' },
+      { id: '18', slug: 'quantum-switch', title: 'Quantum Switch', desc: 'A circuit-style topological logic gate that switches, stashes, and redirects branch traffic.' },
+      { id: '19', slug: 'minimal-geometry', title: 'Minimal Geometric Mark', desc: 'An ultra-refined modernist reduction: two clean nodes linked by an unbroken diagonal vector stroke.' },
+      { id: '20', slug: 'cockpit-radar', title: 'Cockpit Radar', desc: 'A precision circular radar sweep framing commit coordinates across concentric topological sectors.' }
+    ];
+
+    const container = document.getElementById('cards-container');
+    container.innerHTML = concepts.map(c => `
+      <div class="card">
+        <div class="preview-box">
+          <img class="lockup-img" src="${c.id}-${c.slug}.svg" alt="Topos ${c.title} lockup">
+        </div>
+        <div class="scale-row">
+          <div class="scale-item">
+            <img src="icons/${c.id}-${c.slug}.svg" width="64" height="64" alt="${c.title} 64px">
+            <span class="scale-label">64px</span>
+          </div>
+          <div class="scale-item">
+            <img src="icons/${c.id}-${c.slug}.svg" width="32" height="32" alt="${c.title} 32px">
+            <span class="scale-label">32px</span>
+          </div>
+          <div class="scale-item">
+            <img src="icons/${c.id}-${c.slug}.svg" width="16" height="16" alt="${c.title} 16px">
+            <span class="scale-label">16px</span>
+          </div>
+        </div>
+        <div class="card-info">
+          <div class="card-title">
+            <span class="badge">#${c.id}</span>
+            <span>${c.title}</span>
+          </div>
+          <p class="card-desc">${c.desc}</p>
+        </div>
+      </div>
+    `).join('');
+
+    function toggleTheme() {
+      document.body.classList.toggle('theme-dark');
+    }
+  </script>
+</body>
+</html>

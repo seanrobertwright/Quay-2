@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp08-title tp08-desc">
+  <title id="tp08-title">Topos Git Cockpit: Conflict Resolver</title>
+  <desc id="tp08-desc">Two converging opposing vectors locking cleanly into a centered alignment channel.</desc>
+  <g id="tp08-icon"><path d="M 18 28 L 38 48 L 18 68" fill="none" stroke="#F43F5E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M 78 28 L 58 48 L 78 68" fill="none" stroke="#06B6D4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><line x1="48" y1="16" x2="48" y2="80" stroke="#10B981" stroke-width="5" stroke-linecap="round"/><circle cx="48" cy="48" r="9" fill="#10B981"/><circle cx="48" cy="48" r="4.5" fill="#FFFFFF"/><circle cx="38" cy="48" r="4" fill="#F43F5E"/></g>
+  <g id="tp08-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>
