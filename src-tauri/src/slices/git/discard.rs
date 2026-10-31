@@ -422,6 +422,16 @@ pub enum DiscardTarget {
     Paths { paths: Vec<String> },
 }
 
+impl DiscardTarget {
+    /// The listed paths, or None for every change.
+    fn paths(&self) -> Option<Vec<&str>> {
+        match self {
+            DiscardTarget::All { .. } => None,
+            DiscardTarget::Paths { paths } => Some(paths.iter().map(String::as_str).collect()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscardPathsResult {
@@ -471,11 +481,7 @@ pub fn discard_paths(
     target: &DiscardTarget,
 ) -> Result<DiscardPathsResult, GitError> {
     let _slot = locks.begin(worktree)?;
-    let reached: Option<Vec<&str>> = match target {
-        DiscardTarget::All { .. } => None,
-        DiscardTarget::Paths { paths } => Some(paths.iter().map(String::as_str).collect()),
-    };
-    locks.refuse_handed_off(worktree, reached.as_deref())?;
+    locks.refuse_handed_off(worktree, target.paths().as_deref())?;
     let (tracked, untracked) = match target {
         DiscardTarget::All { include_untracked } => unstaged_changes(worktree, None, *include_untracked)?,
         DiscardTarget::Paths { paths } => {

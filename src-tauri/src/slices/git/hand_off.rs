@@ -76,6 +76,26 @@ impl HandOffs {
         Ok(listed)
     }
 
+    /// Records each of `paths` in `worktree` as held by `agent`, replacing any agent before it.
+    fn record(&self, worktree: &Path, paths: &[&str], agent: &Agent) {
+        let mut held = self.lock();
+        let files = held.entry(worktree_key(worktree)).or_default();
+        for path in paths {
+            files.insert((*path).to_string(), agent.clone());
+        }
+    }
+
+    /// Forgets whichever agent holds each of `paths` in `worktree`. A path no agent holds is
+    /// ignored.
+    fn release(&self, worktree: &Path, paths: &[String]) {
+        let mut held = self.lock();
+        if let Some(files) = held.get_mut(&worktree_key(worktree)) {
+            for path in paths {
+                files.remove(path.as_str());
+            }
+        }
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, BTreeMap<String, Agent>>> {
         self.held.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -111,27 +131,14 @@ pub fn hand_off(locks: &StagingLocks, worktree: &Path, paths: &[String], agent: 
     if let Some(clean) = checked.iter().find(|p| !unmerged.contains(**p)) {
         return Err(GitError::Other { stderr: format!("{clean} has no conflict to hand to an agent") });
     }
-    {
-        let mut held = locks.hand_offs.lock();
-        let files = held.entry(worktree_key(worktree)).or_default();
-        for path in checked {
-            files.insert(path.to_string(), agent.clone());
-        }
-    }
+    locks.hand_offs.record(worktree, &checked, agent);
     locks.hand_offs.current(worktree)
 }
 
 /// Takes `paths` back from whichever agent holds them in `worktree`, so Topos may write them
 /// again, and returns the hand-offs left. A path no agent holds is ignored.
 pub fn take_back(locks: &StagingLocks, worktree: &Path, paths: &[String]) -> Result<Vec<HandOff>, GitError> {
-    {
-        let mut held = locks.hand_offs.lock();
-        if let Some(files) = held.get_mut(&worktree_key(worktree)) {
-            for path in paths {
-                files.remove(path.as_str());
-            }
-        }
-    }
+    locks.hand_offs.release(worktree, paths);
     locks.hand_offs.current(worktree)
 }
 
