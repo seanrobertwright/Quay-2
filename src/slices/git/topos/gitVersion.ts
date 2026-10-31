@@ -19,7 +19,9 @@ export type GitError =
   | { kind: "changedSinceDiscard"; paths: string[] }
   | { kind: "hookFailed"; hook: string; output: string }
   | { kind: "noOperation" }
-  | { kind: "conflictsRemain"; count: number };
+  | { kind: "conflictsRemain"; count: number }
+  /** The file is handed to an agent (#392); `agent` is untrusted display text. */
+  | { kind: "handedOff"; path: string; agent: string };
 
 /** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
 export function parseGitError(e: unknown): GitError | null {
@@ -43,6 +45,8 @@ export function parseGitError(e: unknown): GitError | null {
       return { kind: "changedSinceDiscard", paths: Array.isArray(fields.paths) ? fields.paths.map(String) : [] };
     case "hookFailed":
       return { kind: "hookFailed", hook: String(fields.hook), output: String(fields.output) };
+    case "handedOff":
+      return { kind: "handedOff", path: String(fields.path), agent: String(fields.agent) };
     default:
       return null;
   }
@@ -50,6 +54,8 @@ export function parseGitError(e: unknown): GitError | null {
 
 /** The text to show for a rejected git command: a `GitError`'s stderr, or whatever was thrown. */
 export function errorMessage(e: unknown): string {
+  const error = parseGitError(e);
+  if (error?.kind === "handedOff") return `${error.path} is with ${error.agent}, so Topos changed nothing. Take it back to change it here.`;
   if (typeof e === "object" && e !== null && Object.prototype.hasOwnProperty.call(e, "stderr")) return String((e as { stderr: unknown }).stderr);
   return String(e);
 }

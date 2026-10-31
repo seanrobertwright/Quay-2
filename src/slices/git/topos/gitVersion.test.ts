@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gateView, GIT_DOWNLOAD_URL, parseGitError } from "./gitVersion.ts";
+import { errorMessage, gateView, GIT_DOWNLOAD_URL, parseGitError } from "./gitVersion.ts";
 
 test("a supported git opens Topos with no message", () => {
   assert.deepEqual(gateView({ status: "ok" }), { kind: "open" });
@@ -55,4 +55,10 @@ test("anything that isn't a known GitError parses to null", () => {
   for (const count of [undefined, "3", -1, 1.5, Number.NaN]) {
     assert.equal(parseGitError({ kind: "conflictsRemain", count }), null, `count ${String(count)}`);
   }
+});
+
+test("a write refused for a handed-off file names the file and its agent", () => {
+  const refused = { kind: "handedOff", path: "src/app.ts", agent: "claude 1" };
+  assert.deepEqual(parseGitError(refused), refused);
+  assert.equal(errorMessage(refused), "src/app.ts is with claude 1, so Topos changed nothing. Take it back to change it here.");
 });
