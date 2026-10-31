@@ -15,6 +15,9 @@ pub enum GitError {
     /// The file changed since its diff was read, so the selection made on that diff is dropped
     /// rather than applied to what the file holds now.
     StaleDiff,
+    /// A conflicted file, its stages or its worktree bytes, changed since the resolver opened it, so
+    /// the write was refused rather than overwrite what git or an agent did. Nothing was written.
+    ConflictStale,
     /// A file changed since it was discarded, so restoring its backup would overwrite the newer
     /// bytes. Nothing was restored; the backup can still be copied to a new file.
     ChangedSinceDiscard { paths: Vec<String> },
@@ -37,6 +40,7 @@ impl std::fmt::Display for GitError {
             GitError::IndexLocked => f.write_str("another git process holds index.lock"),
             GitError::StagingBusy => f.write_str("a staging operation is already running on this worktree"),
             GitError::StaleDiff => f.write_str("the file changed since its diff was read"),
+            GitError::ConflictStale => f.write_str("the conflicted file changed since it was opened"),
             GitError::ChangedSinceDiscard { paths } => write!(f, "changed since the discard: {}", paths.join(", ")),
             GitError::HookFailed { hook, .. } => write!(f, "the {hook} hook failed"),
             GitError::NoOperation => f.write_str("that operation is no longer under way"),

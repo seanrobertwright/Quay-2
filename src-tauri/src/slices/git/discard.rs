@@ -129,7 +129,7 @@ fn quoted_line(path: &str, out: &mut Vec<u8>) {
 
 /// Whether [`hash_files`] stores the blobs it hashes or only names them.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Blobs {
+pub(super) enum Blobs {
     /// Stores them in the object database (`-w`), as a backup.
     Store,
     /// Only computes their ids, to compare with a backup's.
@@ -139,7 +139,7 @@ enum Blobs {
 /// The blob id of each of `paths` in `worktree` as its bytes stand on disk (`--no-filters`), or
 /// None for a path with no file. With [`Blobs::Store`] the blobs are stored in the object database.
 /// A symlink is refused, since its bytes on disk are not what git would restore.
-fn hash_files(worktree: &Path, paths: &[&str], blobs: Blobs) -> Result<Vec<Option<String>>, GitError> {
+pub(super) fn hash_files(worktree: &Path, paths: &[&str], blobs: Blobs) -> Result<Vec<Option<String>>, GitError> {
     let mut present = Vec::new();
     let mut input = Vec::new();
     for (i, path) in paths.iter().enumerate() {
@@ -176,12 +176,12 @@ fn hash_files(worktree: &Path, paths: &[&str], blobs: Blobs) -> Result<Vec<Optio
 
 /// Stores the bytes of `paths` as blobs before a discard, and fails, so that nothing is discarded,
 /// when any of them can't be stored.
-fn back_up(worktree: &Path, paths: &[&str]) -> Result<Vec<Option<String>>, GitError> {
+pub(super) fn back_up(worktree: &Path, paths: &[&str]) -> Result<Vec<Option<String>>, GitError> {
     hash_files(worktree, paths, Blobs::Store).map_err(|e| other(format!("could not back up the files, so nothing was discarded: {e}")))
 }
 
 /// The backups of `paths`, from the blobs stored before the discard and the files as they are now.
-fn backups(worktree: &Path, paths: &[&str], blobs: Vec<Option<String>>) -> Result<Vec<DiscardBackup>, GitError> {
+pub(super) fn backups(worktree: &Path, paths: &[&str], blobs: Vec<Option<String>>) -> Result<Vec<DiscardBackup>, GitError> {
     let after = hash_files(worktree, paths, Blobs::IdsOnly)?;
     Ok(paths
         .iter()
@@ -308,7 +308,7 @@ pub fn discard_selection(
 /// `path` in `worktree`, refused unless it is a relative path that stays inside the worktree once
 /// every folder on the way is resolved, and doesn't reach into `.git`. The file itself needn't
 /// exist, but when it does it must not be a symbolic link.
-fn inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, GitError> {
+pub(super) fn inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, GitError> {
     let path = parse_rel_path(path)?;
     let outside = || other(format!("{path} is outside the worktree"));
     if path.split(['/', '\\']).next().is_some_and(|first| first.eq_ignore_ascii_case(".git")) {
@@ -333,7 +333,7 @@ fn inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, GitError> {
 
 /// Writes `bytes` to `target` without a crash leaving it half written, creating its folders and
 /// keeping the permissions of the file it replaces.
-fn write_file(target: &Path, bytes: &[u8]) -> Result<(), GitError> {
+pub(super) fn write_file(target: &Path, bytes: &[u8]) -> Result<(), GitError> {
     let failed = |e: std::io::Error| other(format!("could not write {}: {e}", target.display()));
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(failed)?;
@@ -347,7 +347,7 @@ fn write_file(target: &Path, bytes: &[u8]) -> Result<(), GitError> {
 }
 
 /// The bytes of the blob `oid`.
-fn blob_bytes(worktree: &Path, oid: &str) -> Result<Vec<u8>, GitError> {
+pub(super) fn blob_bytes(worktree: &Path, oid: &str) -> Result<Vec<u8>, GitError> {
     run_read(worktree, ["cat-file", "blob", parse_blob_oid(oid)?])
 }
 
