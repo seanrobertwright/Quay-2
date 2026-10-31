@@ -22,6 +22,7 @@ use super::graph::{
 };
 use super::op_runner::OpEvent;
 use super::operation::{Conflict, ConflictKind, OpOutcome, OpState, SideLabel};
+use super::search::SearchEvent;
 use super::settings::{DiffMode, FileListMode, RepoState, ToposSettings};
 use super::speedup::{SpeedupCheck, SpeedupItem};
 use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
@@ -536,6 +537,22 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                 "files": [{ "status": "A", "path": "a.txt", "oldPath": null, "additions": 2, "deletions": 0 }],
                 "total": 1, "truncated": false, "ahead": 3
             }),
+        ),
+        (
+            "SearchEvent::Matches",
+            s(&SearchEvent::Matches { search_id: 3, oids: vec!["a1".into()] }),
+            json!({ "event": "matches", "searchId": 3, "oids": ["a1"] }),
+        ),
+        ("SearchEvent::Done", s(&SearchEvent::Done { search_id: 3, total: 7 }), json!({ "event": "done", "searchId": 3, "total": 7 })),
+        (
+            "SearchEvent::Capped",
+            s(&SearchEvent::Capped { search_id: 3, total: 1000 }),
+            json!({ "event": "capped", "searchId": 3, "total": 1000 }),
+        ),
+        (
+            "SearchEvent::Failed",
+            s(&SearchEvent::Failed { search_id: 3, error: GitError::Cancelled }),
+            json!({ "event": "failed", "searchId": 3, "error": { "kind": "cancelled" } }),
         ),
         (
             "Verification",

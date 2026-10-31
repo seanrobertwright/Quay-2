@@ -167,6 +167,8 @@ function Bench() {
           onAddSelection={(oid) => dispatchSelection({ kind: "add", oid })}
           onInspect={() => {}}
           visible
+          // Deep search (#400) needs a repo, which the benchmark has none of.
+          repoPath={null}
         />
       ) : (
         <p role="status">Loading commits…</p>
