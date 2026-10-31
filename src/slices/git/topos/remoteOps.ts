@@ -110,8 +110,6 @@ export interface FailureView {
   setUpstreamLabel?: string;
 }
 
-const NOUN: Record<NetworkKind, string> = { fetch: "fetch", pull: "pull", push: "push" };
-
 /** The output panel's header, lines and next actions for `error`, a refused `kind`. */
 export function failureView(kind: NetworkKind, error: GitError): FailureView {
   switch (error.kind) {
@@ -129,22 +127,22 @@ export function failureView(kind: NetworkKind, error: GitError): FailureView {
       return { title: `The remote rejected ${error.ref}: ${error.reason}`, lines: error.remoteLines, actions: [] };
     case "authFailed":
       return {
-        title: `The remote wanted a credential git can't ask for here. Run the ${NOUN[kind]} in a terminal to sign in.`,
+        title: `The remote wanted a credential git can't ask for here. Run the ${kind} in a terminal to sign in.`,
         lines: [],
         actions: ["runInTerminal"],
       };
     case "hostKeyUnknown":
       return {
-        title: `ssh doesn't know the remote's host key. Run the ${NOUN[kind]} in a terminal to check and accept it.`,
+        title: `ssh doesn't know the remote's host key. Run the ${kind} in a terminal to check and accept it.`,
         lines: [],
         actions: ["runInTerminal"],
       };
     case "network":
       return { title: "git couldn't reach the remote. Check the connection and retry.", lines: [], actions: ["retry"] };
     case "other":
-      return { title: `The ${NOUN[kind]} failed`, lines: [], actions: ["retry"] };
+      return { title: `The ${kind} failed`, lines: [], actions: ["retry"] };
     default:
-      return { title: `The ${NOUN[kind]} failed`, lines: [], actions: [] };
+      return { title: `The ${kind} failed`, lines: [], actions: [] };
   }
 }
 
