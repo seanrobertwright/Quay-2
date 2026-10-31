@@ -69,7 +69,7 @@ pub(super) fn head_oid(worktree: &Path) -> Result<String, GitError> {
 }
 
 /// The operation under way in a worktree, which decides what the composer offers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
     None,
@@ -131,10 +131,10 @@ pub fn read_commit_context(worktree: &Path) -> Result<CommitContext, GitError> {
 
 /// A uniquely named file under the temp dir that git's trace2 events go to, removed on drop.
 /// From it Quay learns which hook ran and how it exited, which git's exit status alone can't tell.
-struct TraceFile(PathBuf);
+pub(super) struct TraceFile(pub(super) PathBuf);
 
 impl TraceFile {
-    fn create() -> Result<TraceFile, GitError> {
+    pub(super) fn create() -> Result<TraceFile, GitError> {
         let path = std::env::temp_dir().join(format!("quay-commit-trace-{}.json", Uuid::new_v4().simple()));
         std::fs::OpenOptions::new()
             .write(true)
@@ -144,21 +144,21 @@ impl TraceFile {
         Ok(TraceFile(path))
     }
 
-    /// The first hook the commit's own git ran that exited non-zero, or None. Events from git
-    /// processes a hook started carry a nested session id (`parent/child`) and are skipped.
-    fn failed_hook(&self) -> Option<String> {
+    /// The first hook that exited non-zero, run by the git Quay started or by a git at most
+    /// `nesting` levels under it, or None. Each level adds a `/child` to a git's session id, so a
+    /// hook's own git processes, one level further down, are skipped.
+    pub(super) fn failed_hook(&self, nesting: usize) -> Option<String> {
         let file = std::fs::File::open(&self.0).ok()?;
-        let mut hooks: HashMap<u64, String> = HashMap::new();
+        let mut hooks: HashMap<(String, u64), String> = HashMap::new();
         for line in BufReader::new(file).lines() {
             let Ok(line) = line else { break };
             if !line.contains("\"child_") {
                 continue;
             }
             let Ok(event) = serde_json::from_str::<Value>(&line) else { continue };
-            if event["sid"].as_str().is_none_or(|sid| sid.contains('/')) {
-                continue;
-            }
-            let Some(child) = event["child_id"].as_u64() else { continue };
+            let Some(sid) = event["sid"].as_str().filter(|sid| sid.matches('/').count() <= nesting) else { continue };
+            // Child ids count from 0 in each git process, so the session id tells them apart.
+            let Some(child) = event["child_id"].as_u64().map(|id| (sid.to_string(), id)) else { continue };
             match event["event"].as_str() {
                 Some("child_start") if event["child_class"] == "hook" => {
                     if let Some(name) = event["hook_name"].as_str() {
@@ -209,7 +209,7 @@ pub fn commit(
         let opts = OpOptions { cap_stream: true, progress_lines: false, ..OpOptions::default() };
         let finished = run_process(cmd, Some(message.as_bytes().to_vec()), &opts, cancel, channel)?;
         if !finished.status.success() {
-            if let Some(hook) = trace.failed_hook() {
+            if let Some(hook) = trace.failed_hook(0) {
                 return Err(GitError::HookFailed { hook, output: finished.output.combined });
             }
             let output = finished.output.combined.trim().to_string();

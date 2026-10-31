@@ -21,6 +21,11 @@ pub enum GitError {
     /// A commit hook, such as `pre-commit` or `commit-msg`, exited non-zero, so nothing was
     /// committed. `output` is the last 64 KiB of what the commit printed, hook output included.
     HookFailed { hook: String, output: String },
+    /// The operation Continue, Skip or Abort was asked for isn't the one under way: it ended, or
+    /// another took its place, since the banner read it. Nothing was run.
+    NoOperation,
+    /// Continue was asked for while `count` paths still have unmerged entries. Nothing was run.
+    ConflictsRemain { count: u32 },
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -34,6 +39,8 @@ impl std::fmt::Display for GitError {
             GitError::StaleDiff => f.write_str("the file changed since its diff was read"),
             GitError::ChangedSinceDiscard { paths } => write!(f, "changed since the discard: {}", paths.join(", ")),
             GitError::HookFailed { hook, .. } => write!(f, "the {hook} hook failed"),
+            GitError::NoOperation => f.write_str("that operation is no longer under way"),
+            GitError::ConflictsRemain { count } => write!(f, "{count} conflicted paths are not resolved and staged yet"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }

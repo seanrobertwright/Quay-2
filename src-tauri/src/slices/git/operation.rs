@@ -6,10 +6,13 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tauri::ipc::Channel;
+use uuid::Uuid;
 
-use super::commit::{MAX_MESSAGE_BYTES, Operation, read_git};
+use super::commit::{head_oid, parse_message, read_git, Operation, TraceFile, MAX_MESSAGE_BYTES};
 use super::error::GitError;
-use super::staging::STATUS_CAP;
+use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions};
+use super::staging::{StagingLocks, STATUS_CAP};
 
 /// One side of a conflict: its role in the operation, such as `HEAD` or `Onto`, and the real
 /// branch, commit or subject. The banner shows `role · name`; git's "ours" and "theirs" are
@@ -372,4 +375,221 @@ pub fn read_operation_state(worktree: &Path) -> Result<OpState, GitError> {
         }
     }
     Ok(state)
+}
+
+/// What the banner asks of the operation under way: git's `--continue`, with the message to commit
+/// in place of git's when given, `--skip` or `--abort`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step<'a> {
+    Continue(Option<&'a str>),
+    Skip,
+    Abort,
+}
+
+impl Step<'_> {
+    fn flag(self) -> &'static str {
+        match self {
+            Step::Continue(_) => "--continue",
+            Step::Skip => "--skip",
+            Step::Abort => "--abort",
+        }
+    }
+}
+
+/// How the operation stands after Continue, Skip or Abort: HEAD, and the state read afresh, which
+/// is still the operation when a rebase, cherry-pick or revert stopped on its next step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpOutcome {
+    /// HEAD's oid afterwards, or None on an unborn branch.
+    pub head: Option<String>,
+    pub state: OpState,
+}
+
+/// The git command that continues, skips or aborts `kind`. None for no operation, so nothing
+/// here can start one.
+fn command_for(kind: Operation) -> Option<&'static str> {
+    match kind {
+        Operation::None => None,
+        Operation::Merge => Some("merge"),
+        Operation::Rebase => Some("rebase"),
+        Operation::CherryPick => Some("cherry-pick"),
+        Operation::Revert => Some("revert"),
+    }
+}
+
+/// The file `git <kind> --continue` takes its message from: `MERGE_MSG`, or `rebase-merge/message`
+/// for a rebase. None for a `--apply` rebase, which takes each message from its patch.
+fn message_path(git_dir: &Path, kind: Operation) -> Option<PathBuf> {
+    match kind {
+        Operation::None => None,
+        Operation::Rebase => rebase_dir(git_dir).filter(|dir| dir.ends_with("rebase-merge")).map(|dir| dir.join("message")),
+        Operation::Merge | Operation::CherryPick | Operation::Revert => Some(git_dir.join("MERGE_MSG")),
+    }
+}
+
+/// Runs `git <op> <step>` in `worktree` for the operation `expected`, as the cancellable op
+/// `op_id` in the worktree's staging slot, streaming at most 64 KiB of its output to `channel`.
+/// It acts only on the operation `read_operation_state` finds, and only when that is `expected`.
+/// git runs with `GIT_EDITOR=true`, so it never waits on an editor, and with hooks and signing as
+/// git config has them. There is no timeout, only Cancel.
+fn run_step(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    expected: Operation,
+    step: Step,
+    channel: &Channel<OpEvent>,
+) -> Result<OpOutcome, GitError> {
+    ops.run_with(op_id, channel, |cancel| {
+        let _slot = locks.begin(worktree)?;
+        let git_dir = git_dir(worktree)?;
+        let kind = detect_operation(&git_dir);
+        let Some(command) = command_for(kind).filter(|_| kind == expected) else { return Err(GitError::NoOperation) };
+        match step {
+            Step::Continue(message) => {
+                let (_, count) = read_conflicts(worktree)?;
+                if count > 0 {
+                    return Err(GitError::ConflictsRemain { count });
+                }
+                if let Some(message) = message {
+                    let message = parse_message(message)?;
+                    let path = message_path(&git_dir, kind).ok_or_else(|| GitError::Other {
+                        stderr: "this rebase takes each commit's message from its patch, so the message can't be edited".into(),
+                    })?;
+                    std::fs::write(&path, message)
+                        .map_err(|e| GitError::Other { stderr: format!("could not write {}: {e}", path.display()) })?;
+                }
+            }
+            Step::Skip if kind == Operation::Merge => {
+                return Err(GitError::Other { stderr: "git can't skip in a merge; continue or abort it".into() });
+            }
+            Step::Skip | Step::Abort => {}
+        }
+        let trace = TraceFile::create()?;
+        let mut cmd = headless_git();
+        cmd.current_dir(worktree).env("GIT_EDITOR", "true").env("GIT_TRACE2_EVENT", &trace.0).args([command, step.flag()]);
+        let opts = OpOptions { cap_stream: true, progress_lines: false, ..OpOptions::default() };
+        let finished = run_process(cmd, None, &opts, cancel, channel)?;
+        let state = read_operation_state(worktree)?;
+        if !finished.status.success() {
+            // `cherry-pick`, `revert` and `rebase --continue` commit through a child `git commit`, one level down.
+            if let Some(hook) = trace.failed_hook(1) {
+                return Err(GitError::HookFailed { hook, output: finished.output.combined });
+            }
+            // A rebase, cherry-pick or revert of several commits stops again on the next conflict.
+            let stopped_again = step != Step::Abort && state.kind == kind && state.conflicts_total > 0;
+            if !stopped_again {
+                let output = finished.output.combined.trim().to_string();
+                return Err(GitError::Other {
+                    stderr: if output.is_empty() { format!("git exited with {}", finished.status) } else { output },
+                });
+            }
+        }
+        Ok(OpOutcome { head: head_oid(worktree).ok(), state })
+    })
+}
+
+/// Continues the operation `expected` once every conflict is resolved and staged (#352). With
+/// `message`, the step commits it in place of the one git prepared. See [`run_step`].
+pub fn op_continue(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    expected: Operation,
+    message: Option<&str>,
+    channel: &Channel<OpEvent>,
+) -> Result<OpOutcome, GitError> {
+    run_step(ops, locks, worktree, op_id, expected, Step::Continue(message), channel)
+}
+
+/// Skips the commit a rebase, cherry-pick or revert stopped on, dropping its changes and any
+/// resolution of them. A merge has nothing to skip. See [`run_step`].
+pub fn op_skip(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    expected: Operation,
+    channel: &Channel<OpEvent>,
+) -> Result<OpOutcome, GitError> {
+    run_step(ops, locks, worktree, op_id, expected, Step::Skip, channel)
+}
+
+/// Aborts the operation `expected`, putting HEAD back where it was before it started and dropping
+/// every resolution. See [`run_step`].
+pub fn op_abort(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    expected: Operation,
+    channel: &Channel<OpEvent>,
+) -> Result<OpOutcome, GitError> {
+    run_step(ops, locks, worktree, op_id, expected, Step::Abort, channel)
+}
+
+/// The operation under way in `worktree_path`. See [`read_operation_state`].
+#[tauri::command]
+pub async fn git_operation_state(worktree_path: String) -> Result<OpState, GitError> {
+    tokio::task::spawn_blocking(move || read_operation_state(Path::new(&worktree_path)))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read the operation: {e}") })?
+}
+
+/// Runs `run` with the app's ops and staging slots off the async runtime, since it waits on git.
+async fn in_background<T: Send + 'static>(
+    app: tauri::AppHandle,
+    what: &'static str,
+    run: impl FnOnce(&GitOps, &StagingLocks) -> Result<T, GitError> + Send + 'static,
+) -> Result<T, GitError> {
+    use tauri::Manager;
+    tokio::task::spawn_blocking(move || run(&app.state::<GitOps>(), &app.state::<StagingLocks>()))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not {what}: {e}") })?
+}
+
+/// Continues `operation` in `worktree_path` as op `op_id`, which `git_op_cancel` stops while a hook
+/// runs, with `message` in place of git's when given. See
+/// [`op_continue`]. An `opId` that isn't a UUID, or an operation that isn't one of the four, is
+/// rejected before this runs.
+#[tauri::command]
+pub async fn git_op_continue(
+    worktree_path: String,
+    operation: Operation,
+    message: Option<String>,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<OpOutcome, GitError> {
+    in_background(app, "continue", move |ops, locks| {
+        op_continue(ops, locks, Path::new(&worktree_path), op_id, operation, message.as_deref(), &on_event)
+    })
+    .await
+}
+
+/// Skips the commit `operation` stopped on in `worktree_path`, as op `op_id`. See [`op_skip`].
+#[tauri::command]
+pub async fn git_op_skip(
+    worktree_path: String,
+    operation: Operation,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<OpOutcome, GitError> {
+    in_background(app, "skip", move |ops, locks| op_skip(ops, locks, Path::new(&worktree_path), op_id, operation, &on_event)).await
+}
+
+/// Aborts `operation` in `worktree_path`, as op `op_id`. See [`op_abort`].
+#[tauri::command]
+pub async fn git_op_abort(
+    worktree_path: String,
+    operation: Operation,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<OpOutcome, GitError> {
+    in_background(app, "abort", move |ops, locks| op_abort(ops, locks, Path::new(&worktree_path), op_id, operation, &on_event)).await
 }
