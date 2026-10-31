@@ -59,6 +59,8 @@ pub struct ConflictFile {
     pub path: String,
     /// git's two status letters for the stages it has, such as `UU` or `UD`.
     pub xy: String,
+    /// Whether the worktree holds a file or link at the path.
+    pub on_disk: bool,
     /// Pins the stage oids and the worktree bytes; every write hands it back.
     pub token: String,
     pub editable: bool,
@@ -232,6 +234,7 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
     let mut file = ConflictFile {
         path: path.to_string(),
         xy: conflict_kind(stages[0].is_some(), stages[1].is_some(), stages[2].is_some()).1.to_string(),
+        on_disk: worktree_file != WorktreeFile::Missing,
         token: token(&stages, &worktree_file),
         editable: false,
         reason: None,

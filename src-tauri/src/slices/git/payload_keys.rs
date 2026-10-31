@@ -208,6 +208,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                 file: ConflictFile {
                     path: "a.txt".into(),
                     xy: "UU".into(),
+                    on_disk: true,
                     token: "b:l:r:w".into(),
                     editable: true,
                     reason: None,
@@ -222,7 +223,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             }),
             json!({
                 "file": {
-                    "path": "a.txt", "xy": "UU", "token": "b:l:r:w", "editable": true, "reason": null,
+                    "path": "a.txt", "xy": "UU", "onDisk": true, "token": "b:l:r:w", "editable": true, "reason": null,
                     "left": "l", "right": "r", "result": "m", "eol": "crlf", "bom": true, "markerSize": 7,
                 },
                 "backup": { "path": "a.txt", "blob": "b1", "after": "b2" },
