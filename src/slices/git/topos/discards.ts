@@ -39,7 +39,9 @@ export interface DiscardEntry {
   copiedTo: string[];
 }
 
-export type DiscardUpdate = Partial<Pick<DiscardEntry, "state" | "changedPaths" | "copiedTo">>;
+const NO_ENTRIES: readonly DiscardEntry[] = [];
+
+export type DiscardUpdate =Partial<Pick<DiscardEntry, "state" | "changedPaths" | "copiedTo">>;
 
 /**
  * The session's discards, per worktree, newest first. It outlives Topos closing and opening, so
@@ -59,8 +61,9 @@ export class DiscardLog {
     return entry;
   }
 
+  /** The same array until the next change, so it can serve as a `useSyncExternalStore` snapshot. */
   entries(worktree: string): readonly DiscardEntry[] {
-    return this.byWorktree.get(worktree) ?? [];
+    return this.byWorktree.get(worktree) ?? NO_ENTRIES;
   }
 
   update(worktree: string, id: number, patch: DiscardUpdate): void {

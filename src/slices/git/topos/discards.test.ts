@@ -105,3 +105,15 @@ test("the log holds at most MAX_DISCARDS entries a worktree, dropping the oldest
   assert.equal(entries[0].label, `file ${MAX_DISCARDS + 2}`);
   assert.equal(entries[entries.length - 1].label, "file 3");
 });
+
+test("entries returns the same list until the log changes, as useSyncExternalStore needs", () => {
+  const log = new DiscardLog();
+  // A fresh array per read made React re-render forever (error #185) when Topos opened on a
+  // worktree with no discards yet.
+  assert.equal(log.entries("C:/wt"), log.entries("C:/wt"));
+  log.add("C:/wt", "README.md", [backup("README.md")]);
+  const after = log.entries("C:/wt");
+  assert.equal(log.entries("C:/wt"), after);
+  log.add("C:/wt", "a.txt", [backup("a.txt")]);
+  assert.notEqual(log.entries("C:/wt"), after);
+});
