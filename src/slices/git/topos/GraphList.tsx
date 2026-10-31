@@ -31,6 +31,9 @@ import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
+import { findCounter, findKey, isMatch, steppedMatch, type FindKeyEvent } from "./graphFind";
+import { FindText, GraphFindBar } from "./GraphFindBar";
+import { useGraphFind } from "./useGraphFind";
 import { slotColor } from "./laneColors";
 import { menuIndexByKey, splitStrip } from "./trackStrip";
 import {
@@ -80,6 +83,14 @@ export interface GraphListProps {
   onInspect: () => void;
   /** Set to a function that puts focus back on the list, for the inspector's Escape. */
   focusRef?: React.MutableRefObject<(() => void) | null>;
+  /** Whether Topos shows; hiding it clears the find, which is never kept (#369, #399). */
+  visible: boolean;
+  /**
+   * Set to the find's key handler (#399), which Topos calls for keys anywhere in it: Ctrl+F opens
+   * the find, F3 and Shift+F3 step, and Enter and Shift+Enter step from its field. It returns
+   * whether it handled the key.
+   */
+  findKeysRef?: React.MutableRefObject<((e: FindKeyEvent) => boolean) | null>;
 }
 
 export interface WipRowProps {
@@ -178,11 +189,13 @@ function badgeTitle(b: Badge): string {
  * A commit's badges (#378). The selected worktree's HEAD reads "HEAD" in a filled badge, so it is
  * marked by text and shape as well as color, and its row carries `aria-current`.
  */
-const RowBadges: React.FC<{ badges: Badge[]; worktreeAgents: ReadonlyMap<string, RunKind[]>; cursor: number | null }> = ({
-  badges,
-  worktreeAgents,
-  cursor,
-}) => {
+const RowBadges: React.FC<{
+  badges: Badge[];
+  worktreeAgents: ReadonlyMap<string, RunKind[]>;
+  cursor: number | null;
+  /** The find query whose runs a ref name marks (#399), or "" for none. */
+  findQuery: string;
+}> = ({ badges, worktreeAgents, cursor, findQuery }) => {
   const shown = badges.slice(0, SHOWN_BADGES);
   const rest = badges.slice(SHOWN_BADGES);
   return (
@@ -202,7 +215,10 @@ const RowBadges: React.FC<{ badges: Badge[]; worktreeAgents: ReadonlyMap<string,
           >
             <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
             {current && <span>HEAD</span>}
-            <span className="truncate">{b.name}</span>
+            <span className="truncate">
+              {/* A worktree's marker names its folder, which Find doesn't search. */}
+              {b.kind === "head" ? b.name : <FindText text={b.name} query={findQuery} />}
+            </span>
             {current && <span className="sr-only">(selected worktree)</span>}
             {b.kind === "head" && <HeadAgents kinds={worktreeAgents.get(b.path) ?? []} />}
           </span>
@@ -616,6 +632,8 @@ export const GraphList: React.FC<GraphListProps> = ({
   onAddSelection,
   onInspect,
   focusRef,
+  visible,
+  findKeysRef,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -830,6 +848,81 @@ export const GraphList: React.FC<GraphListProps> = ({
   // `aria-activedescendant` falls back to. A move selects it; Ctrl with a move key doesn't (#398).
   const cursorRow = active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null;
   const hovered = hover !== null && hover >= win.start && hover < win.end ? hover : null;
+
+  // Find (#399): its text lives only here, so it is never written anywhere, and hiding Topos clears it.
+  const [findOpen, setFindOpen] = useState(false);
+  const [findText, setFindText] = useState("");
+  const findInput = useRef<HTMLInputElement>(null);
+  const findBar = useRef<HTMLDivElement>(null);
+  const { result: found, settle: settleFind } = useGraphFind(store, refs.badges, rowCount, findOpen ? findText : "");
+  // Matches only apply to the store they were found in and to the query still typed.
+  const findQuery = found.query !== "" && found.query === (findOpen ? findText : "") ? found.query : "";
+  const closeFind = useCallback((refocus: boolean) => {
+    setFindOpen(false);
+    setFindText("");
+    if (refocus) scroller.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    if (!visible) closeFind(false);
+  }, [visible, closeFind]);
+  // Escape reaches the overlay stack before Topos, so the open find joins it to clear first.
+  usePopupLayer(findOpen, () => closeFind(true), findBar);
+  // A step asked for before the typed text's matches arrived runs once they have.
+  const pendingStep = useRef<1 | -1 | null>(null);
+  const stepFind = useCallback(
+    (direction: 1 | -1) => {
+      if (!findOpen || findText.trim() === "") return;
+      if (findQuery === "") {
+        pendingStep.current = direction;
+        settleFind();
+        return;
+      }
+      const row = steppedMatch(found.matches, cursorRow, direction);
+      if (row !== null) moveCursor(row, true);
+    },
+    [findOpen, findText, findQuery, found.matches, cursorRow, moveCursor, settleFind]
+  );
+  useEffect(() => {
+    const direction = pendingStep.current;
+    if (direction === null || findQuery === "" || (found.scanning && found.matches.length === 0)) return;
+    pendingStep.current = null;
+    stepFind(direction);
+  }, [findQuery, found, stepFind]);
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    // The bar mounts with this render; focus it once it has.
+    requestAnimationFrame(() => {
+      findInput.current?.focus();
+      findInput.current?.select();
+    });
+  }, []);
+  const onFindKey = useCallback(
+    (e: FindKeyEvent): boolean => {
+      const key = findKey(e, e.target === findInput.current);
+      switch (key) {
+        case null:
+          return false;
+        case "open":
+          openFind();
+          return true;
+        case "next":
+        case "previous":
+          if (!findOpen) return false;
+          stepFind(key === "next" ? 1 : -1);
+          return true;
+      }
+    },
+    [openFind, findOpen, stepFind]
+  );
+  useEffect(() => {
+    if (!findKeysRef) return;
+    findKeysRef.current = onFindKey;
+    return () => {
+      findKeysRef.current = null;
+    };
+  }, [findKeysRef, onFindKey]);
+  const findCounterText = findOpen && findText.trim() !== "" ? findCounter(findQuery === "" ? new Int32Array(0) : found.matches, cursorRow, findQuery === "" || found.scanning) : "";
+
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
 
   /** The badges `row` shows, the ones a cursor or a click can land on. */
@@ -1002,6 +1095,9 @@ export const GraphList: React.FC<GraphListProps> = ({
       const isSelected = oid === selectedOid || oid === comparedOid;
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
+      // A binary search over the matches, so a row holds no find state of its own (#399).
+      const lit = findQuery === "" || isMatch(found.matches, row);
+      const marks = lit ? findQuery : "";
       out.push(
         <div
           key={oid}
@@ -1013,17 +1109,19 @@ export const GraphList: React.FC<GraphListProps> = ({
           aria-setsize={statusState === "done" ? rowCount : -1}
           className={`flex items-center gap-3 pr-3 text-xs border-b border-[#21262d]/60 hover:bg-[#161b22] ${
             isSelected ? "bg-[#1f2a37] shadow-[inset_2px_0_0_#06B6D4]" : isActive ? "bg-[#161b22]" : ""
-          } ${isActive ? "group-focus-visible:shadow-[inset_0_0_0_1px_#06B6D4]" : ""}`}
+          } ${isActive ? "group-focus-visible:shadow-[inset_0_0_0_1px_#06B6D4]" : ""} ${lit ? "" : "opacity-40"}`}
           style={{ height: ROW_HEIGHT }}
         >
           {/* The node's spoken label; the node itself is drawn in the aria-hidden lane graph. */}
           <span role="img" aria-label={nodeLabel(agent, author.name)} className="shrink-0" style={{ width: layout.width }} />
-          {rowBadges && <RowBadges badges={rowBadges} worktreeAgents={worktreeAgents} cursor={isActive ? cursorIndex : null} />}
+          {rowBadges && (
+            <RowBadges badges={rowBadges} worktreeAgents={worktreeAgents} cursor={isActive ? cursorIndex : null} findQuery={marks} />
+          )}
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={subject}>
-            {subject}
+            <FindText text={subject} query={marks} />
           </span>
           <span className="w-40 shrink-0 truncate text-[#8b949e]" title={author.email}>
-            {authorLine(author.name, agent)}
+            <FindText text={authorLine(author.name, agent)} query={marks} />
           </span>
           <span className="w-40 shrink-0 truncate text-right text-[#8b949e] tabular-nums">
             {formatDateTime(store.authorTimeMs(row))}
@@ -1033,7 +1131,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
+  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex, findQuery, found.matches]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1063,6 +1161,18 @@ export const GraphList: React.FC<GraphListProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
+      {findOpen && (
+        <GraphFindBar
+          text={findText}
+          onText={setFindText}
+          counter={findCounterText}
+          canStep={findQuery !== "" && found.matches.length > 0}
+          onStep={stepFind}
+          onClose={() => closeFind(true)}
+          inputRef={findInput}
+          barRef={findBar}
+        />
+      )}
       {wip && <WipRow wip={wip} store={store} layout={layout} />}
       <div ref={frame} className="relative flex-1 min-h-0 flex flex-col">
         <div

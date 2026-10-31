@@ -171,6 +171,11 @@ interface KeyPress {
 
 export type FindKey = "open" | "next" | "previous";
 
+/** A keydown as Topos hands it to the find, with the element it came from. */
+export interface FindKeyEvent extends KeyPress {
+  target: EventTarget | null;
+}
+
 /**
  * What a key does to the find, or null for a key it leaves alone. Ctrl+F (Cmd+F on a Mac) opens
  * it and F3 and Shift+F3 step from anywhere in Topos; Enter and Shift+Enter step from the find
