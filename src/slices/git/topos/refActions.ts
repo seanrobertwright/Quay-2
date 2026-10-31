@@ -1,5 +1,5 @@
-// What Topos offers on a ref badge and a commit row (#367, #393, #394): the context menus' items,
-// what a double-click or Enter on a badge checks out, and the graph's keys for them.
+// What Topos offers on a ref badge and a commit row (#367, #393, #394, #396): the context menus'
+// items, what a double-click or Enter on a badge checks out, and the graph's keys for them.
 
 import { isSamePath } from "../../../utils/paths.ts";
 import type { Operation } from "./composer.ts";
@@ -7,6 +7,7 @@ import { errorMessage, parseGitError } from "./gitVersion.ts";
 import { folderName, type Badge, type GitRefs, type WorktreeHead } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
 import { OPERATION_NOUNS } from "./operation.ts";
+import { remoteBranchOf } from "./remoteOps.ts";
 
 /** `CheckoutTarget` from `src-tauri/src/slices/git/checkout.rs`. */
 export type CheckoutTarget =
@@ -24,6 +25,8 @@ export type RefAction =
   | { kind: "setUpstream"; name: string }
   | { kind: "deleteBranch"; name: string }
   | { kind: "deleteTag"; name: string }
+  | { kind: "pushTag"; remote: string; name: string }
+  | { kind: "deleteRemoteBranch"; remote: string; branch: string }
   | { kind: "copySha"; oid: string };
 
 /** A context menu item. A disabled one has no action and says why. */
@@ -38,6 +41,8 @@ export interface RefContext {
   worktrees: readonly WorktreeHead[];
   /** Why no checkout can run now, such as an operation under way, or null when one can. */
   busy: string | null;
+  /** The repo's remotes, which a tag is pushed to and a remote branch is deleted from. */
+  remotes: readonly string[];
 }
 
 /** The label of the item, and the toast button, that retargets the Rail to another worktree. */
@@ -101,12 +106,17 @@ export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[
           ];
       }
     }
-    case "remote":
-      return [checkoutItem("Checkout", { kind: "remote", name: badge.name }, ctx), createBranchItem(oid)];
+    case "remote": {
+      const items = [checkoutItem("Checkout", { kind: "remote", name: badge.name }, ctx), createBranchItem(oid)];
+      const on = remoteBranchOf(badge.name, ctx.remotes);
+      if (on !== null) items.push({ label: `Delete from ${on.remote}…`, action: { kind: "deleteRemoteBranch", ...on } });
+      return items;
+    }
     case "tag":
       return [
         checkoutItem("Checkout detached", { kind: "detached", at: oid }, ctx),
         createBranchItem(oid),
+        ...ctx.remotes.map((remote): MenuItem => ({ label: `Push tag to ${remote}`, action: { kind: "pushTag", remote, name: badge.name } })),
         { label: "Delete tag…", action: { kind: "deleteTag", name: badge.name } },
       ];
   }

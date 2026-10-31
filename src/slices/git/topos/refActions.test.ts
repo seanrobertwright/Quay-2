@@ -24,6 +24,7 @@ const ctx: RefContext = {
     { path: "C:/src/repo-feat", oid: A, branch: "feat" },
   ],
   busy: null,
+  remotes: ["origin"],
 };
 
 /** Each item as `label` or `label (disabled: why)`, for a readable comparison. */
@@ -69,11 +70,38 @@ test("a remote branch checks out its tracking branch, and a tag checks out detac
     kind: "checkout",
     target: { kind: "remote", name: "origin/topic" },
   });
-  const tag = badgeMenu({ kind: "tag", name: "v1" }, A, ctx);
+  const tag = badgeMenu({ kind: "tag", name: "v1" }, A, { ...ctx, remotes: [] });
   assert.deepEqual(shown(tag), ["Checkout detached", "Create branch here…", "Delete tag…"]);
   assert.deepEqual(tag[0].action, { kind: "checkout", target: { kind: "detached", at: A } });
   assert.deepEqual(tag[2].action, { kind: "deleteTag", name: "v1" });
-  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "origin/topic" }, A, ctx)), ["Checkout", "Create branch here…"], "a remote branch is deleted on its remote, not here");
+});
+
+test("a remote branch is deleted on its remote, after its own confirm", () => {
+  const menu = badgeMenu({ kind: "remote", name: "origin/topic" }, A, ctx);
+  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Delete from origin…"]);
+  assert.deepEqual(menu[2].action, { kind: "deleteRemoteBranch", remote: "origin", branch: "topic" });
+  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "origin/HEAD" }, A, ctx)), ["Checkout", "Create branch here…"], "a remote's HEAD isn't a branch to delete");
+  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "gone/topic" }, A, ctx)), ["Checkout", "Create branch here…"], "nor is one of a remote the repo no longer has");
+});
+
+test("a tag is pushed to a remote only from its own menu item, one per remote", () => {
+  const menu = badgeMenu({ kind: "tag", name: "v1" }, A, { ...ctx, remotes: ["origin", "fork"] });
+  assert.deepEqual(shown(menu), ["Checkout detached", "Create branch here…", "Push tag to origin", "Push tag to fork", "Delete tag…"]);
+  assert.deepEqual(menu[3].action, { kind: "pushTag", remote: "fork", name: "v1" });
+});
+
+test("no menu or key offers a force push", () => {
+  const badges = [
+    { kind: "local", name: "side" },
+    { kind: "local", name: "feat" },
+    { kind: "remote", name: "origin/topic" },
+    { kind: "tag", name: "v1" },
+  ] as const;
+  const labels = [...badges.flatMap((b) => badgeMenu(b, A, ctx)), ...commitMenu(A, ctx)].map((i) => i.label.toLowerCase());
+  assert.ok(labels.every((l) => !l.includes("force")), labels.join(", "));
+  for (const key of ["f", "F", "p", "P"]) {
+    assert.equal(graphKey({ key, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, false), null, key);
+  }
 });
 
 test("another worktree's HEAD offers that worktree; the selected one's has no menu of its own", () => {

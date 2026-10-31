@@ -1,9 +1,12 @@
-// Fetch, pull and push from Topos's toolbar and palette (#367, #395): what a running network
-// operation shows, what each refusal offers next, and the command Run in terminal types.
+// Fetch, pull and push from Topos's toolbar and palette (#367, #395), and force push with lease,
+// tag pushes and remote deletes (#396): what a running network operation shows, what each refusal
+// offers next, what each confirm says, and the command Run in terminal types. Every remote and ref
+// name in these strings is untrusted, so they are only ever rendered as text.
 
 import { formatDateTime } from "../../../lib/dates.ts";
 import type { GitError } from "./gitVersion.ts";
 import type { GitRefs } from "./graphRefs.ts";
+import { shortOid } from "./graphStore.ts";
 import type { OpEvent } from "./speedup.ts";
 
 /** `FetchFrom` from `src-tauri/src/slices/git/remote_ops.rs`. */
@@ -19,6 +22,8 @@ export interface SyncStatus {
   ahead: number;
   behind: number;
   fetchedAtMs: number | null;
+  /** The repo's remotes by name. */
+  remotes: string[];
 }
 
 /** `RemoteOutcome` from `src-tauri/src/slices/git/remote_ops.rs`. */
@@ -29,13 +34,25 @@ export interface RemoteOutcome {
   sync: SyncStatus;
 }
 
-export type NetworkKind = "fetch" | "pull" | "push";
+export type NetworkKind = "fetch" | "pull" | "push" | "pushTag" | "pushDelete";
+
+/**
+ * A force push's lease: the remote-tracking sha its confirm showed, and the remote branch it
+ * overwrites, for Run in terminal. Only `expectedSha` reaches the backend.
+ */
+export interface Lease {
+  expectedSha: string;
+  remoteRef: string;
+}
 
 /** A network operation to run, as its command's arguments. */
 export type NetworkRequest =
   | { kind: "fetch"; from: FetchFrom; prune: boolean }
   | { kind: "pull"; strategy: PullStrategy | null; remember: boolean }
-  | { kind: "push"; branch: string; remote: string | null; setUpstream: boolean };
+  | { kind: "push"; branch: string; remote: string | null; setUpstream: boolean; lease?: Lease }
+  | { kind: "pushTag"; remote: string; name: string }
+  /** `ref` is a full `refs/heads/…` or `refs/tags/…` name. */
+  | { kind: "pushDelete"; remote: string; ref: string };
 
 /** A running network operation, as the toolbar and the output panel show it. */
 export interface RunningOp {
@@ -89,7 +106,16 @@ export function onOpEvent(op: RunningOp, event: OpEvent): RunningOp {
   }
 }
 
-const RUNNING_WORD: Record<NetworkKind, string> = { fetch: "Fetching", pull: "Pulling", push: "Pushing" };
+const RUNNING_WORD: Record<NetworkKind, string> = {
+  fetch: "Fetching",
+  pull: "Pulling",
+  push: "Pushing",
+  pushTag: "Pushing the tag",
+  pushDelete: "Deleting from the remote",
+};
+
+/** What each kind of operation is called in a refusal's header. */
+const NOUN: Record<NetworkKind, string> = { fetch: "fetch", pull: "pull", push: "push", pushTag: "tag push", pushDelete: "remote delete" };
 
 /** What the running operation's toolbar button reads. */
 export function toolbarLabel(op: RunningOp): string {
@@ -98,7 +124,7 @@ export function toolbarLabel(op: RunningOp): string {
 }
 
 /** What a refusal offers next, as the output panel's buttons. */
-export type NextAction = "pull" | "pushSetUpstream" | "runInTerminal" | "retry";
+export type NextAction = "pull" | "forcePushWithLease" | "fetch" | "pushSetUpstream" | "runInTerminal" | "retry";
 
 export interface FailureView {
   /** The panel's red header. Plain text: ref names in it are untrusted. */
@@ -110,11 +136,24 @@ export interface FailureView {
   setUpstreamLabel?: string;
 }
 
-/** The output panel's header, lines and next actions for `error`, a refused `kind`. */
+/**
+ * The output panel's header, lines and next actions for `error`, a refused `kind`. Force push
+ * (with lease) is offered here only, after a branch push is refused as non-fast-forward (#367):
+ * never as a toolbar button or a key.
+ */
 export function failureView(kind: NetworkKind, error: GitError): FailureView {
+  const noun = NOUN[kind];
   switch (error.kind) {
     case "nonFastForward":
-      return { title: `${error.ref} on the remote has commits this branch lacks. Pull them first.`, lines: [], actions: ["pull"] };
+      return kind === "push"
+        ? { title: `${error.ref} on the remote has commits this branch lacks. Pull them first.`, lines: [], actions: ["pull", "forcePushWithLease"] }
+        : { title: `${error.ref} on the remote has commits this branch lacks`, lines: [], actions: [] };
+    case "leaseRefused":
+      return {
+        title: `${error.ref} on the remote moved since Topos last fetched, so the force push overwrote nothing. Fetch and look again.`,
+        lines: [],
+        actions: ["fetch"],
+      };
     case "noUpstream": {
       const label =
         error.remotes.length === 1 ? `Push and set upstream to ${error.remotes[0]}/${error.branch}` : "Push and set upstream…";
@@ -127,22 +166,22 @@ export function failureView(kind: NetworkKind, error: GitError): FailureView {
       return { title: `The remote rejected ${error.ref}: ${error.reason}`, lines: error.remoteLines, actions: [] };
     case "authFailed":
       return {
-        title: `The remote wanted a credential git can't ask for here. Run the ${kind} in a terminal to sign in.`,
+        title: `The remote wanted a credential git can't ask for here. Run the ${noun} in a terminal to sign in.`,
         lines: [],
         actions: ["runInTerminal"],
       };
     case "hostKeyUnknown":
       return {
-        title: `ssh doesn't know the remote's host key. Run the ${kind} in a terminal to check and accept it.`,
+        title: `ssh doesn't know the remote's host key. Run the ${noun} in a terminal to check and accept it.`,
         lines: [],
         actions: ["runInTerminal"],
       };
     case "network":
       return { title: "git couldn't reach the remote. Check the connection and retry.", lines: [], actions: ["retry"] };
     case "other":
-      return { title: `The ${kind} failed`, lines: [], actions: ["retry"] };
+      return { title: `The ${noun} failed`, lines: [], actions: ["retry"] };
     default:
-      return { title: `The ${kind} failed`, lines: [], actions: [] };
+      return { title: `The ${noun} failed`, lines: [], actions: [] };
   }
 }
 
@@ -170,8 +209,110 @@ export function gitArgv(request: NetworkRequest): string[] {
       return ["git", "pull", ...(request.strategy === null ? [] : STRATEGY_FLAGS[request.strategy])];
     case "push":
       if (request.remote === null) return ["git", "push"];
+      if (request.lease !== undefined) {
+        const { expectedSha, remoteRef } = request.lease;
+        return [
+          "git",
+          "push",
+          `--force-with-lease=${remoteRef}:${expectedSha}`,
+          "--force-if-includes",
+          "--",
+          request.remote,
+          `refs/heads/${request.branch}:${remoteRef}`,
+        ];
+      }
       return ["git", "push", ...(request.setUpstream ? ["--set-upstream"] : []), "--", request.remote, request.branch];
+    case "pushTag":
+      return ["git", "push", "--no-follow-tags", "--", request.remote, `refs/tags/${request.name}:refs/tags/${request.name}`];
+    case "pushDelete":
+      return ["git", "push", "--delete", "--", request.remote, request.ref];
   }
+}
+
+/** `LeasePlan` from `src-tauri/src/slices/git/remote_ops.rs`. */
+export interface LeasePlan {
+  remote: string;
+  /** Such as `refs/heads/main`. */
+  remoteRef: string;
+  /** Such as `origin/main`. */
+  tracking: string;
+  expectedSha: string;
+  /** Remote commits the branch lacks, which the push overwrites, as of the last fetch. */
+  overwrites: number;
+  /** The remote's default branch from `refs/remotes/<remote>/HEAD`, or null. */
+  defaultBranch: string | null;
+}
+
+/** The words of a confirm dialog with no field. */
+export interface Prompt {
+  title: string;
+  detail: string;
+  confirmLabel: string;
+}
+
+/** The branch name of the remote branch `remoteRef`: `main` for `refs/heads/main`. */
+export function remoteBranchName(remoteRef: string): string {
+  return remoteRef.startsWith("refs/heads/") ? remoteRef.slice("refs/heads/".length) : remoteRef;
+}
+
+/** The first confirm of a force push of `branch`: where it goes and what it overwrites. */
+export function forcePushPrompt(branch: string, plan: LeasePlan): Prompt {
+  const n = plan.overwrites;
+  const commits = n === 0 ? "no commits" : n === 1 ? "1 commit" : `${n} commits`;
+  return {
+    title: `Force push ${branch} to ${plan.tracking}`,
+    detail: `Overwrites ${commits} on ${plan.tracking} that ${branch} lacks, as of the last fetch (at ${shortOid(plan.expectedSha)}). If the remote moved since, git refuses and overwrites nothing.`,
+    confirmLabel: "Force push",
+  };
+}
+
+/** The branches a force push to always needs a typed confirmation for, beside the remote's default. */
+const TYPED_BRANCHES = ["main", "master"];
+
+/** Whether a force push to `plan`'s remote branch needs its name typed: main, master or the default. */
+export function needsTypedConfirm(plan: LeasePlan): boolean {
+  const branch = remoteBranchName(plan.remoteRef);
+  return TYPED_BRANCHES.includes(branch) || branch === plan.defaultBranch;
+}
+
+/** The second, typed confirm of a force push to main, master or the remote's default branch. */
+export function typedForcePushPrompt(plan: LeasePlan): Prompt & { field: { label: string; initial: string } } {
+  const branch = remoteBranchName(plan.remoteRef);
+  const isDefault = branch === plan.defaultBranch;
+  return {
+    title: isDefault ? `Force push to ${branch}, ${plan.remote}'s default branch` : `Force push to ${branch}`,
+    detail: `Others build on ${branch}. Type its name to overwrite it on ${plan.remote}.`,
+    confirmLabel: "Force push",
+    field: { label: `Type ${branch} to confirm`, initial: "" },
+  };
+}
+
+/** Why `typed` doesn't confirm a force push to `branch`, or null when it is the name exactly. */
+export function typedConfirmRefusal(typed: string, branch: string): string | null {
+  return typed === branch ? null : `Type ${branch} exactly to force push`;
+}
+
+/**
+ * The remote and branch of the remote-tracking branch `name`, such as `origin/topic`, by the
+ * longest of `remotes` it starts with, or null when none does or it is the remote's `HEAD`.
+ */
+export function remoteBranchOf(name: string, remotes: readonly string[]): { remote: string; branch: string } | null {
+  let best: string | null = null;
+  for (const r of remotes) {
+    if (name.startsWith(`${r}/`) && (best === null || r.length > best.length)) best = r;
+  }
+  if (best === null) return null;
+  const branch = name.slice(best.length + 1);
+  return branch === "" || branch === "HEAD" ? null : { remote: best, branch };
+}
+
+/** The confirm of deleting `branch` from `remote`. */
+export function deleteRemoteBranchPrompt(remote: string, branch: string): Prompt {
+  return {
+    title: `Delete ${branch} from ${remote}`,
+    detail: `Deletes the branch ${branch} on the remote ${remote}. Others may be using it. There is no undo.`,
+    confirmLabel: `Delete from ${remote}`,
+  };
 }
 
 /** The toolbar's counts and their tooltip. */

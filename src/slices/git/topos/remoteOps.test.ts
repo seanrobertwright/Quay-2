@@ -1,10 +1,16 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseGitError } from "./gitVersion.ts";
+import { parseGitError, type GitError } from "./gitVersion.ts";
 import {
   appendCapped,
+  deleteRemoteBranchPrompt,
   failureView,
+  forcePushPrompt,
+  needsTypedConfirm,
+  remoteBranchOf,
+  typedConfirmRefusal,
+  typedForcePushPrompt,
   gitArgv,
   MAX_OUTPUT_BYTES,
   onOpEvent,
@@ -77,7 +83,7 @@ test("the new push and pull refusals parse from what the backend returns", () =>
 });
 
 test("each refusal shows its next action", () => {
-  assert.deepEqual(failureView("push", { kind: "nonFastForward", ref: "refs/heads/main" }).actions, ["pull"]);
+  assert.deepEqual(failureView("push", { kind: "nonFastForward", ref: "refs/heads/main" }).actions, ["pull", "forcePushWithLease"]);
   assert.deepEqual(failureView("push", { kind: "noUpstream", branch: "feat", remotes: ["origin"] }).actions, ["pushSetUpstream"]);
   assert.deepEqual(failureView("push", { kind: "authFailed" }).actions, ["runInTerminal"]);
   assert.deepEqual(failureView("fetch", { kind: "hostKeyUnknown" }).actions, ["runInTerminal"]);
@@ -125,12 +131,104 @@ test("Run in terminal types the same git command the operation ran", () => {
 
 test("the counts read as of the last fetch, through the date helper", () => {
   const at = Date.UTC(2026, 9, 31, 14, 6, 11);
-  const view = syncView({ branch: "feat", upstream: "origin/feat", ahead: 2, behind: 3, fetchedAtMs: at });
+  const view = syncView({ branch: "feat", upstream: "origin/feat", ahead: 2, behind: 3, fetchedAtMs: at, remotes: [] });
   assert.equal(view.label, "↑2 ↓3");
   assert.equal(view.title, `2 ahead and 3 behind origin/feat, as of ${formatDateTime(at)}`);
-  assert.equal(syncView({ branch: "feat", upstream: "origin/feat", ahead: 0, behind: 0, fetchedAtMs: null }).title, "Up to date with origin/feat, as of no fetch yet");
-  const none = syncView({ branch: "feat", upstream: null, ahead: 0, behind: 0, fetchedAtMs: at });
+  assert.equal(syncView({ branch: "feat", upstream: "origin/feat", ahead: 0, behind: 0, fetchedAtMs: null, remotes: [] }).title, "Up to date with origin/feat, as of no fetch yet");
+  const none = syncView({ branch: "feat", upstream: null, ahead: 0, behind: 0, fetchedAtMs: at, remotes: [] });
   assert.equal(none.label, null);
   assert.equal(none.title, "feat tracks no upstream");
-  assert.equal(syncView({ branch: null, upstream: null, ahead: 0, behind: 0, fetchedAtMs: null }).title, "HEAD is detached");
+  assert.equal(syncView({ branch: null, upstream: null, ahead: 0, behind: 0, fetchedAtMs: null, remotes: [] }).title, "HEAD is detached");
+});
+
+const plan = (overwrites: number, defaultBranch: string | null, remoteRef = "refs/heads/feat") => ({
+  remote: "origin",
+  remoteRef,
+  tracking: `origin/${remoteRef.slice("refs/heads/".length)}`,
+  expectedSha: "b".repeat(40),
+  overwrites,
+  defaultBranch,
+});
+
+test("force push (with lease) is offered only after a push is refused as non-fast-forward", () => {
+  assert.deepEqual(failureView("push", { kind: "nonFastForward", ref: "refs/heads/feat" }).actions, ["pull", "forcePushWithLease"]);
+  const others: GitError[] = [
+    { kind: "noUpstream", branch: "feat", remotes: ["origin"] },
+    { kind: "remoteRejected", ref: "refs/heads/feat", reason: "hook", remoteLines: [] },
+    { kind: "authFailed" },
+    { kind: "network" },
+    { kind: "leaseRefused", ref: "refs/heads/feat" },
+    { kind: "other", stderr: "boom" },
+  ];
+  for (const error of others) {
+    assert.ok(!failureView("push", error).actions.includes("forcePushWithLease"), error.kind);
+  }
+  for (const kind of ["fetch", "pull", "pushTag", "pushDelete"] as const) {
+    assert.ok(!failureView(kind, { kind: "nonFastForward", ref: "refs/heads/feat" }).actions.includes("forcePushWithLease"), kind);
+  }
+});
+
+test("a refused lease says nothing was overwritten and offers a fetch", () => {
+  assert.deepEqual(parseGitError({ kind: "leaseRefused", ref: "refs/heads/feat" }), { kind: "leaseRefused", ref: "refs/heads/feat" });
+  const view = failureView("push", { kind: "leaseRefused", ref: "refs/heads/feat" });
+  assert.equal(view.title, "refs/heads/feat on the remote moved since Topos last fetched, so the force push overwrote nothing. Fetch and look again.");
+  assert.deepEqual(view.actions, ["fetch"]);
+});
+
+test("the force push confirm names the remote branch and how many remote commits it overwrites", () => {
+  assert.deepEqual(forcePushPrompt("feat", plan(3, "main")), {
+    title: "Force push feat to origin/feat",
+    detail: `Overwrites 3 commits on origin/feat that feat lacks, as of the last fetch (at ${"b".repeat(7)}). If the remote moved since, git refuses and overwrites nothing.`,
+    confirmLabel: "Force push",
+  });
+  assert.match(forcePushPrompt("feat", plan(1, null)).detail, /^Overwrites 1 commit on origin\/feat /);
+  assert.match(forcePushPrompt("feat", plan(0, null)).detail, /^Overwrites no commits on origin\/feat /);
+});
+
+test("a force push to main, master or the remote's detected default branch needs the name typed", () => {
+  assert.equal(needsTypedConfirm(plan(1, null, "refs/heads/main")), true);
+  assert.equal(needsTypedConfirm(plan(1, null, "refs/heads/master")), true);
+  assert.equal(needsTypedConfirm(plan(1, "trunk", "refs/heads/trunk")), true, "the default branch from refs/remotes/origin/HEAD");
+  assert.equal(needsTypedConfirm(plan(1, "trunk", "refs/heads/feat")), false);
+  assert.equal(needsTypedConfirm(plan(1, null, "refs/heads/feat")), false);
+  assert.equal(needsTypedConfirm(plan(1, null, "refs/heads/main-old")), false);
+  assert.equal(needsTypedConfirm(plan(1, null, "refs/heads/release/main")), false);
+});
+
+test("the typed confirmation takes only the branch name exactly", () => {
+  const typed = typedForcePushPrompt(plan(2, "trunk", "refs/heads/trunk"));
+  assert.equal(typed.title, "Force push to trunk, origin's default branch");
+  assert.equal(typed.field.label, "Type trunk to confirm");
+  assert.equal(typed.field.initial, "");
+  assert.equal(typedForcePushPrompt(plan(2, null, "refs/heads/master")).title, "Force push to master");
+  assert.equal(typedConfirmRefusal("trunk", "trunk"), null);
+  for (const wrong of ["", "Trunk", "trunk ", " trunk", "trun", "origin/trunk"]) {
+    assert.equal(typedConfirmRefusal(wrong, "trunk"), "Type trunk exactly to force push", JSON.stringify(wrong));
+  }
+});
+
+test("Run in terminal types a lease push, a tag push and a remote delete as they ran", () => {
+  const sha = "b".repeat(40);
+  assert.deepEqual(
+    gitArgv({ kind: "push", branch: "feat", remote: "origin", setUpstream: false, lease: { expectedSha: sha, remoteRef: "refs/heads/feat" } }),
+    ["git", "push", `--force-with-lease=refs/heads/feat:${sha}`, "--force-if-includes", "--", "origin", "refs/heads/feat:refs/heads/feat"]
+  );
+  assert.deepEqual(gitArgv({ kind: "pushTag", remote: "origin", name: "v1" }), ["git", "push", "--no-follow-tags", "--", "origin", "refs/tags/v1:refs/tags/v1"]);
+  assert.deepEqual(gitArgv({ kind: "pushDelete", remote: "origin", ref: "refs/heads/topic" }), ["git", "push", "--delete", "--", "origin", "refs/heads/topic"]);
+});
+
+test("a remote-tracking branch splits into its remote and branch by the longest remote that matches", () => {
+  assert.deepEqual(remoteBranchOf("origin/topic", ["origin"]), { remote: "origin", branch: "topic" });
+  assert.deepEqual(remoteBranchOf("team/x/feat/a", ["team", "team/x"]), { remote: "team/x", branch: "feat/a" });
+  assert.equal(remoteBranchOf("origin/HEAD", ["origin"]), null);
+  assert.equal(remoteBranchOf("origin/", ["origin"]), null);
+  assert.equal(remoteBranchOf("fork/topic", ["origin"]), null);
+});
+
+test("deleting a remote branch confirms, naming the remote and saying there is no undo", () => {
+  assert.deepEqual(deleteRemoteBranchPrompt("origin", "<b>topic</b>"), {
+    title: "Delete <b>topic</b> from origin",
+    detail: "Deletes the branch <b>topic</b> on the remote origin. Others may be using it. There is no undo.",
+    confirmLabel: "Delete from origin",
+  });
 });
