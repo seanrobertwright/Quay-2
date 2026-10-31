@@ -31,9 +31,9 @@ import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
-import { findCounter, findKey, isFindable, isMatch, steppedMatch, type FindKeyEvent } from "./graphFind";
+import { isFindable, isMatch, type FindKeyEvent } from "./graphFind";
 import { FindText, GraphFindBar } from "./GraphFindBar";
-import { useGraphFind } from "./useGraphFind";
+import { useFindController } from "./useGraphFind";
 import { slotColor } from "./laneColors";
 import { menuIndexByKey, splitStrip } from "./trackStrip";
 import {
@@ -848,79 +848,23 @@ export const GraphList: React.FC<GraphListProps> = ({
   const cursorRow = active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null;
   const hovered = hover !== null && hover >= win.start && hover < win.end ? hover : null;
 
-  // Find (#399): its text lives only here, so it is never written anywhere, and hiding Topos clears it.
-  const [findOpen, setFindOpen] = useState(false);
-  const [findText, setFindText] = useState("");
-  const findInput = useRef<HTMLInputElement>(null);
-  const findBar = useRef<HTMLDivElement>(null);
-  const { result: found, settle: settleFind } = useGraphFind(store, refs.badges, rowCount, findOpen ? findText : "");
-  // Matches only apply to the store they were found in and to the query still typed.
-  const findQuery = found.query !== "" && found.query === (findOpen ? findText : "") ? found.query : "";
-  const closeFind = useCallback((refocus: boolean) => {
-    setFindOpen(false);
-    setFindText("");
-    if (refocus) scroller.current?.focus({ preventScroll: true });
-  }, []);
-  useEffect(() => {
-    if (!visible) closeFind(false);
-  }, [visible, closeFind]);
-  // Escape reaches the overlay stack before Topos, so the open find joins it to clear first.
-  usePopupLayer(findOpen, () => closeFind(true), findBar);
-  // A step asked for before the typed text's matches arrived runs once they have.
-  const pendingStep = useRef<1 | -1 | null>(null);
-  const stepFind = useCallback(
-    (direction: 1 | -1) => {
-      if (!findOpen || findText.trim() === "") return;
-      if (findQuery === "") {
-        pendingStep.current = direction;
-        settleFind();
-        return;
-      }
-      const row = steppedMatch(found.matches, cursorRow, direction);
-      if (row !== null) moveCursor(row, true);
-    },
-    [findOpen, findText, findQuery, found.matches, cursorRow, moveCursor, settleFind]
-  );
-  useEffect(() => {
-    const direction = pendingStep.current;
-    if (direction === null || findQuery === "" || (found.scanning && found.matches.length === 0)) return;
-    pendingStep.current = null;
-    stepFind(direction);
-  }, [findQuery, found, stepFind]);
-  const openFind = useCallback(() => {
-    setFindOpen(true);
-    // The bar mounts with this render; focus it once it has.
-    requestAnimationFrame(() => {
-      findInput.current?.focus();
-      findInput.current?.select();
-    });
-  }, []);
-  const onFindKey = useCallback(
-    (e: FindKeyEvent): boolean => {
-      const key = findKey(e, e.target === findInput.current);
-      switch (key) {
-        case null:
-          return false;
-        case "open":
-          openFind();
-          return true;
-        case "next":
-        case "previous":
-          if (!findOpen) return false;
-          stepFind(key === "next" ? 1 : -1);
-          return true;
-      }
-    },
-    [openFind, findOpen, stepFind]
-  );
-  useEffect(() => {
-    if (!findKeysRef) return;
-    findKeysRef.current = onFindKey;
-    return () => {
-      findKeysRef.current = null;
-    };
-  }, [findKeysRef, onFindKey]);
-  const findCounterText = findOpen && findText.trim() !== "" ? findCounter(findQuery === "" ? new Int32Array(0) : found.matches, cursorRow, findQuery === "" || found.scanning) : "";
+  // Find (#399): the controller owns the find's state; the rows read only its query and matches.
+  const selectFound = useCallback((row: number) => moveCursor(row, true), [moveCursor]);
+  const refocusList = useCallback(() => scroller.current?.focus({ preventScroll: true }), []);
+  const {
+    query: findQuery,
+    matches: findMatches,
+    bar: findBar,
+  } = useFindController({
+    store,
+    badges: refs.badges,
+    rowCount,
+    visible,
+    cursorRow,
+    selectRow: selectFound,
+    refocus: refocusList,
+    keysRef: findKeysRef,
+  });
 
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
 
@@ -1095,7 +1039,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
       // A binary search over the matches, so a row holds no find state of its own (#399).
-      const lit = findQuery === "" || isMatch(found.matches, row);
+      const lit = findQuery === "" || isMatch(findMatches, row);
       const marks = lit ? findQuery : "";
       out.push(
         <div
@@ -1130,7 +1074,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex, findQuery, found.matches]);
+  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex, findQuery, findMatches]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1160,18 +1104,7 @@ export const GraphList: React.FC<GraphListProps> = ({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
-      {findOpen && (
-        <GraphFindBar
-          text={findText}
-          onText={setFindText}
-          counter={findCounterText}
-          canStep={findQuery !== "" && found.matches.length > 0}
-          onStep={stepFind}
-          onClose={() => closeFind(true)}
-          inputRef={findInput}
-          barRef={findBar}
-        />
-      )}
+      {findBar && <GraphFindBar {...findBar} />}
       {wip && <WipRow wip={wip} store={store} layout={layout} />}
       <div ref={frame} className="relative flex-1 min-h-0 flex flex-col">
         <div
