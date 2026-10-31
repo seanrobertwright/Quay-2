@@ -84,6 +84,8 @@ pub struct StagingLocks {
     busy: Mutex<HashSet<String>>,
     /// The conflicted files handed to an agent, which every write here refuses (#392).
     pub(super) hand_offs: HandOffs,
+    /// One network operation per repo, which the local ref operations wait behind (#395).
+    pub(super) network: super::remote_ops::NetworkLocks,
 }
 
 /// Holds a worktree's staging slot until it drops.
@@ -118,6 +120,19 @@ impl StagingLocks {
             return Err(GitError::StagingBusy);
         }
         Ok(StagingGuard { locks: self, key })
+    }
+
+    /// Takes the repo's network lock, waiting while a fetch, pull or push holds it, and then
+    /// `worktree`'s staging slot, for a local ref operation (#393, #394, #395). The network lock
+    /// comes first, as it does for a pull, so the two can never wait on each other.
+    pub fn begin_ref_write(
+        &self,
+        worktree: &Path,
+        cancel: &std::sync::atomic::AtomicBool,
+        channel: &tauri::ipc::Channel<super::op_runner::OpEvent>,
+    ) -> Result<(super::remote_ops::NetworkGuard<'_>, StagingGuard<'_>), GitError> {
+        let network = self.network.hold(worktree, cancel, channel)?;
+        Ok((network, self.begin(worktree)?))
     }
 
     /// Refuses with [`GitError::HandedOff`] when an agent holds a conflicted file in `worktree`

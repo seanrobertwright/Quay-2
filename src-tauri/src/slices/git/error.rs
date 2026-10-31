@@ -55,6 +55,24 @@ pub enum GitError {
     /// `name` is not a valid branch name, or names no commit, so nothing was written. `name` is
     /// untrusted display text.
     InvalidRefName { name: String },
+    /// A push was refused because the remote branch has commits the local one lacks, so it isn't a
+    /// fast-forward. Topos offers Pull. `ref` is the remote ref, untrusted display text.
+    NonFastForward { r#ref: String },
+    /// The branch has no upstream to push to or pull from, and `push.autoSetupRemote` doesn't set
+    /// one. `remotes` are the repo's remotes, which "Push and set upstream" picks among.
+    NoUpstream { branch: String, remotes: Vec<String> },
+    /// The remote refused `ref`, as a server hook or branch protection does, saying `reason`.
+    /// `remote_lines` are the `remote:` lines it printed, untrusted text shown verbatim.
+    RemoteRejected { r#ref: String, reason: String, remote_lines: Vec<String> },
+    /// The remote wanted a credential that git, which never prompts here, couldn't supply.
+    AuthFailed,
+    /// ssh refused a host key it doesn't know, or one that changed, with no terminal to ask on.
+    HostKeyUnknown,
+    /// git couldn't reach the remote: the host didn't resolve, or the connection failed.
+    Network,
+    /// git refused a pull of divergent branches because git config sets no strategy for them.
+    /// Topos offers Merge, Rebase or Fast-forward only for this pull.
+    DivergentPullNeedsStrategy,
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -78,6 +96,13 @@ impl std::fmt::Display for GitError {
             GitError::RefExists { name } => write!(f, "{name} already exists"),
             GitError::RefLocked => f.write_str("another git process holds a ref lock"),
             GitError::InvalidRefName { name } => write!(f, "{name} is not a valid branch name or commit"),
+            GitError::NonFastForward { r#ref } => write!(f, "{} on the remote has commits this branch lacks", r#ref),
+            GitError::NoUpstream { branch, .. } => write!(f, "{branch} has no upstream branch"),
+            GitError::RemoteRejected { r#ref, reason, .. } => write!(f, "the remote rejected {}: {reason}", r#ref),
+            GitError::AuthFailed => f.write_str("the remote wanted a credential git could not supply"),
+            GitError::HostKeyUnknown => f.write_str("ssh could not verify the remote's host key"),
+            GitError::Network => f.write_str("git could not reach the remote"),
+            GitError::DivergentPullNeedsStrategy => f.write_str("the branches have diverged and git config sets no pull strategy"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }

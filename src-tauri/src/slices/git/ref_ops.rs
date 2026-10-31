@@ -30,7 +30,7 @@ pub fn branch_rename(
     channel: &Channel<OpEvent>,
 ) -> Result<RefsOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         check_branch_name(worktree, name)?;
         check_branch_name(worktree, new_name)?;
         run_git(worktree, &["branch", "-m", "--", name, new_name], cancel, channel)?;
@@ -78,7 +78,7 @@ pub fn branch_set_upstream(
     channel: &Channel<OpEvent>,
 ) -> Result<RefsOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         check_branch_name(worktree, name)?;
         match upstream {
             Some(upstream) => {
@@ -134,7 +134,7 @@ pub fn branch_delete(
     channel: &Channel<OpEvent>,
 ) -> Result<BranchDeleted, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         check_branch_name(worktree, name)?;
         let tip = branch_tip(worktree, name)?;
         if let Some(holder) = read_refs(worktree)?.worktrees.into_iter().find(|w| w.branch.as_deref() == Some(name)) {
@@ -179,7 +179,7 @@ pub fn tag_create(
 ) -> Result<RefsOutcome, GitError> {
     let NewTag { name, at, message } = tag;
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         check_tag_name(worktree, name)?;
         let oid = resolve_commit(worktree, at)?;
         match message.filter(|m| !m.trim().is_empty()) {
@@ -206,7 +206,7 @@ pub fn tag_delete(
     channel: &Channel<OpEvent>,
 ) -> Result<RefsOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         let full = check_tag_name(worktree, name)?;
         rev_oid(worktree, &full)?.ok_or_else(|| invalid_ref(name))?;
         run_git(worktree, &["tag", "-d", "--", name], cancel, channel)?;

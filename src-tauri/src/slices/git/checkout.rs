@@ -246,7 +246,7 @@ pub fn checkout(
     channel: &Channel<OpEvent>,
 ) -> Result<RefsOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         match target {
             CheckoutTarget::Branch { name } => {
                 check_branch_name(worktree, name)?;
@@ -296,7 +296,7 @@ pub fn branch_create(
 ) -> Result<RefsOutcome, GitError> {
     let NewBranch { name, at, checkout } = branch;
     ops.run_with(op_id, channel, |cancel| {
-        let _slot = locks.begin(worktree)?;
+        let _slot = locks.begin_ref_write(worktree, cancel, channel)?;
         check_branch_name(worktree, name)?;
         let oid = resolve_commit(worktree, at)?;
         if checkout {

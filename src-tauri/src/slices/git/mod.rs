@@ -25,6 +25,9 @@ pub mod models;
 pub mod op_runner;
 pub mod operation;
 pub mod ref_ops;
+pub mod remote_ops;
+#[cfg(test)]
+mod remote_ops_tests;
 #[cfg(test)]
 mod ref_ops_tests;
 #[cfg(test)]
@@ -46,6 +49,7 @@ pub mod version;
 
 pub use checkout::*;
 pub use ref_ops::*;
+pub use remote_ops::*;
 pub use commands::*;
 pub use commit::*;
 pub use conflict::*;
