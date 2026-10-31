@@ -106,12 +106,12 @@ test("Ctrl- or Shift-click adds a second commit, and a third replaces the second
   assert.deepEqual(selectCommits(NONE, { kind: "add", oid: "a" }), { kind: "one", oid: "a" }, "with none, an add selects one");
 });
 
-test("adding a commit already selected unselects it, back to the other one", () => {
+test("adding a commit already selected leaves the selection as it is", () => {
   const one: CommitSelection = { kind: "one", oid: "a" };
   assert.deepEqual(selectCommits(one, { kind: "add", oid: "a" }), one, "the only selected commit stays");
   const two: CommitSelection = { kind: "two", first: "a", second: "b", swapped: true };
-  assert.deepEqual(selectCommits(two, { kind: "add", oid: "b" }), { kind: "one", oid: "a" });
-  assert.deepEqual(selectCommits(two, { kind: "add", oid: "a" }), { kind: "one", oid: "b" });
+  assert.deepEqual(selectCommits(two, { kind: "add", oid: "b" }), two, "the second stays, still swapped");
+  assert.deepEqual(selectCommits(two, { kind: "add", oid: "a" }), two, "the first stays, still swapped");
 });
 
 test("Swap flips a compared pair and does nothing to one commit", () => {

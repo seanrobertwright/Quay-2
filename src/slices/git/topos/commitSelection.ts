@@ -115,8 +115,8 @@ export type SelectionAction = { kind: "pick"; oid: string } | { kind: "add"; oid
 
 /**
  * The selection after `action`. A pick selects that one commit. An add makes a second commit, and
- * a third replaces the second, so at most two are ever selected; adding a commit already in a
- * pair unselects it, leaving the other. A new pair starts in the rule's order, and Swap flips it.
+ * a third replaces the second, so at most two are ever selected; adding a commit already selected
+ * changes nothing. A new pair starts in the rule's order, and Swap flips it.
  */
 export function selectCommits(state: CommitSelection, action: SelectionAction): CommitSelection {
   switch (action.kind) {
@@ -133,8 +133,7 @@ export function selectCommits(state: CommitSelection, action: SelectionAction): 
         case "one":
           return state.oid === action.oid ? state : { kind: "two", first: state.oid, second: action.oid, swapped: false };
         case "two":
-          if (action.oid === state.first) return { kind: "one", oid: state.second };
-          if (action.oid === state.second) return { kind: "one", oid: state.first };
+          if (action.oid === state.first || action.oid === state.second) return state;
           return { kind: "two", first: state.first, second: action.oid, swapped: false };
       }
   }
