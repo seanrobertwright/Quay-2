@@ -1,17 +1,17 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, ShieldQuestion, X } from "lucide-react";
+import { ArrowLeftRight, BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, ShieldQuestion, X } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type FileStatus, type Person } from "./commitDetails";
-import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
+import { movedRow, offsetShowing, selectionKey, type ComparedCommit } from "./commitSelection";
 import type { Badge } from "./graphRefs";
 import { shortOid } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import { InspectorHandle } from "./InspectorHandle";
 import { nodeTooltip } from "./provenance";
 import type { LoadState } from "./settledLoader";
-import { useVerifyCommit, type FilesState, type OpenCommitFile, type VerifyState } from "./useCommitDetails";
+import { useVerifyCommit, type CompareState, type FilesState, type OpenCommitFile, type VerifyState } from "./useCommitDetails";
 
 export interface CommitInspectorProps {
   id: string;
@@ -184,9 +184,10 @@ const CommitFileList: React.FC<{
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    // The commit list's keys, less Ctrl+C: Enter opens the file instead of moving focus.
+    // The commit list's moves and Enter, which opens the file instead of moving focus. A file list
+    // selects one file, so the second-commit keys and Ctrl+C do nothing here.
     const press = selectionKey(e, false);
-    if (files.length === 0 || press === null || press.kind === "copy") return;
+    if (files.length === 0 || press === null || (press.kind !== "move" && press.kind !== "inspect")) return;
     e.preventDefault();
     if (press.kind === "inspect") {
       const file = files[found === -1 ? (active ?? 0) : found];
@@ -495,6 +496,167 @@ export const CommitInspector: React.FC<CommitInspectorProps> = ({
             <p role="status" className="px-3 py-2 text-xs text-[#8b949e]">
               Reading the files…
             </p>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+};
+
+export interface CompareInspectorProps {
+  id: string;
+  /** The two selected commits, their order and the files between them. */
+  compare: CompareState;
+  width: number;
+  onWidth: (width: number) => void;
+  onClose: () => void;
+  /** Reverses the pair. */
+  onSwap: () => void;
+  openFile: OpenCommitFile | null;
+  /** Opens `file` of the pair, diffed from `compare.pair.from` to `compare.pair.to`. */
+  onOpenFile: (file: CommitFile) => void;
+  /** Escape inside the inspector: focus goes back to the graph. */
+  onEscape: () => void;
+  /** Enter on the graph focuses this. */
+  focusRef: React.RefObject<HTMLElement | null>;
+}
+
+/** One side of the Comparing line: the short SHA and the subject, as text. */
+const ComparedLine: React.FC<{ commit: ComparedCommit }> = ({ commit }) => (
+  <span className="flex items-baseline gap-1.5 min-w-0" title={`${commit.oid} ${commit.subject}`}>
+    <code className="shrink-0 font-mono text-[11px] text-[#c9d1d9]">{shortOid(commit.oid)}</code>
+    <span className="min-w-0 truncate text-xs text-[#c9d1d9]">{commit.subject}</span>
+  </span>
+);
+
+/**
+ * The inspector comparing two commits (#368, #398): "Comparing ‹from› → ‹to›", each by short SHA
+ * and subject, with Swap, the commit count between them when one is an ancestor of the other, and
+ * the tree diff in details mode's capped file list, whose files open the read-only diff between the
+ * two. While a new pair loads, the previous one stays, dimmed.
+ */
+export const CompareInspector: React.FC<CompareInspectorProps> = ({
+  id,
+  compare,
+  width,
+  onWidth,
+  onClose,
+  onSwap,
+  openFile,
+  onOpenFile,
+  onEscape,
+  focusRef,
+}) => {
+  const titleId = useId();
+  const root = useRef<HTMLElement>(null);
+  const [focusWithin, setFocusWithin] = useState(false);
+  usePopupLayer(focusWithin, onEscape, root);
+  const { order, pair, files } = compare;
+  const shownPair = pair ?? (order.shown === null ? null : { from: order.shown.older, to: order.shown.newer });
+  const pending = order.pending || files.pending || (pair !== null && files.shownKey !== `${pair.from.oid}..${pair.to.oid}`);
+  const error = order.error ?? files.error;
+  const shownFiles = files.shown;
+  const ahead = shownFiles?.ahead ?? null;
+  const aheadText =
+    ahead === null || order.shown === null
+      ? null
+      : `${shortOid(order.shown.newer.oid)} is ${ahead.toLocaleString("en-US")} ${ahead === 1 ? "commit" : "commits"} ahead of ${shortOid(order.shown.older.oid)}`;
+
+  return (
+    <aside
+      id={id}
+      ref={(el) => {
+        root.current = el;
+        (focusRef as React.MutableRefObject<HTMLElement | null>).current = el;
+      }}
+      tabIndex={-1}
+      aria-labelledby={titleId}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+      }}
+      className="relative shrink-0 flex flex-col min-h-0 border-l border-[#30363d] bg-[#0d1117] outline-none"
+      style={{ width }}
+    >
+      <InspectorHandle width={width} onWidth={onWidth} label="Resize compare inspector" />
+      <header className="h-9 px-3 shrink-0 flex items-center gap-2">
+        <h3 id={titleId} className="text-xs font-semibold text-white truncate min-w-0">
+          Comparing
+        </h3>
+        {pending && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8b949e] shrink-0" aria-label="Loading the comparison" />}
+        <button
+          type="button"
+          onClick={onSwap}
+          disabled={pair === null}
+          title="Reverse the comparison"
+          className="ml-auto shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+        >
+          <ArrowLeftRight className="w-3 h-3" aria-hidden="true" />
+          Swap
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close compare inspector"
+          className="p-1 rounded text-[#8b949e] hover:text-white hover:bg-[#21262d] shrink-0"
+        >
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </header>
+      {error !== null && (
+        <p role="alert" className="px-3 py-2 text-[11px] text-[#ff7b72] bg-[#f85149]/10 border-t border-[#f85149]/30 break-words">
+          Couldn't compare the commits: {error}
+        </p>
+      )}
+      {shownPair === null ? (
+        error === null && (
+          <p role="status" className="px-3 py-2 text-xs text-[#8b949e]">
+            Reading the commits…
+          </p>
+        )
+      ) : (
+        <div aria-busy={pending || undefined} className={`flex-1 min-h-0 flex flex-col transition-opacity ${pending ? "opacity-50" : ""}`}>
+          <div className="shrink-0 px-3 pb-3 pt-3 flex flex-col gap-1 border-t border-[#30363d]">
+            <p className="sr-only">
+              Comparing {shortOid(shownPair.from.oid)} to {shortOid(shownPair.to.oid)}
+            </p>
+            <ComparedLine commit={shownPair.from} />
+            <span aria-hidden="true" className="text-xs text-[#8b949e]">
+              →
+            </span>
+            <ComparedLine commit={shownPair.to} />
+            {aheadText !== null && <p className="mt-1 text-[11px] text-[#8b949e]">{aheadText}</p>}
+          </div>
+          <div className="h-8 px-3 shrink-0 flex items-center gap-2 border-y border-[#30363d] bg-[#161b22]">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#8b949e]">
+              Files
+              {shownFiles !== null && <span className="ml-1.5 normal-case font-normal tabular-nums">{shownFiles.total.toLocaleString("en-US")}</span>}
+            </h4>
+          </div>
+          {shownFiles !== null ? (
+            <>
+              <CommitFileList
+                files={shownFiles.files}
+                openPath={
+                  openFile !== null && pair !== null && openFile.parentIndex === 0 && openFile.oid === pair.to.oid && openFile.parent === pair.from.oid
+                    ? openFile.path
+                    : null
+                }
+                onOpen={onOpenFile}
+                label={`Files from ${shortOid(shownPair.from.oid)} to ${shortOid(shownPair.to.oid)}`}
+              />
+              {filesNote(shownFiles) !== null && (
+                <p role="status" className="px-3 py-1 text-[11px] text-[#d29922] bg-[#d29922]/10 border-t border-[#d29922]/30">
+                  {filesNote(shownFiles)}
+                </p>
+              )}
+            </>
+          ) : (
+            error === null && (
+              <p role="status" className="px-3 py-2 text-xs text-[#8b949e]">
+                Reading the files…
+              </p>
+            )
           )}
         </div>
       )}

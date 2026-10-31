@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, WifiOff, X } from "lucide-react";
@@ -36,10 +36,13 @@ import type { ToposRequestKind } from "./toposPalette";
 import { useRefActions } from "./useRefActions";
 import { RemoteToolbar } from "./RemoteToolbar";
 import { useRemoteOps } from "./useRemoteOps";
-import { CommitInspector } from "./CommitInspector";
+import { CommitInspector, CompareInspector } from "./CommitInspector";
+import { selectCommits, type CommitSelection } from "./commitSelection";
 import { CommitFileDiffView } from "./CommitFileDiffView";
 import type { CommitFile } from "./commitDetails";
-import { useCommitDetails, useCommitDiff, useCommitFiles, type OpenCommitFile } from "./useCommitDetails";
+import { useCommitDetails, useCommitDiff, useCommitFiles, useCompare, type OpenCommitFile } from "./useCommitDetails";
+
+const NO_SELECTION: CommitSelection = { kind: "none" };
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -184,11 +187,13 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     setStagingFile(file);
     if (file !== null) setCommitFile(null);
   }, []);
-  // The selected commit (#397), which puts the inspector in details mode. The graph belongs to the
-  // root repo, so the selection and its open diff last until the repo changes.
-  const [selectedOid, setSelectedOid] = useState<string | null>(null);
+  // The selected commits (#397, #398): one puts the inspector in details mode, two compare them.
+  // The graph belongs to the root repo, so the selection and its open diff last until the repo changes.
+  const [selection, dispatchSelection] = useReducer(selectCommits, NO_SELECTION);
+  const selectedOid = selection.kind === "one" ? selection.oid : selection.kind === "two" ? selection.first : null;
+  const comparedOid = selection.kind === "two" ? selection.second : null;
   useEffect(() => {
-    setSelectedOid(null);
+    dispatchSelection({ kind: "clear" });
     setCommitFile(null);
   }, [graphRepo]);
   const fileDiff = useFileDiff(graphRepo !== null ? selectedPath : null, openFile, staging);
@@ -220,7 +225,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // The inspector shows the staging lists or, once a commit is selected, its details (#397).
   const [inspectorMode, setInspectorMode] = useState<"staging" | "details">("staging");
   const stagingShown = inspectorOpen && inspectorMode === "staging";
-  const details = useCommitDetails(graphRepo, selectedOid);
+  const details = useCommitDetails(graphRepo, selection.kind === "one" ? selection.oid : null);
+  const compare = useCompare(graphRepo, selectedOid, comparedOid, selection.kind === "two" && selection.swapped);
   const shownOid = details.pending ? null : (details.shown?.oid ?? null);
   // A merge's files diff against parent 1 unless the picker chose another for that commit.
   const [parentPick, setParentPick] = useState<{ oid: string | null; index: number }>({ oid: null, index: 1 });
@@ -235,10 +241,16 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     if (inspectRequest > 0) inspectorFocus.current?.focus();
   }, [inspectRequest]);
   const selectCommit = useCallback((oid: string) => {
-    setSelectedOid(oid);
+    dispatchSelection({ kind: "pick", oid });
     setInspectorMode("details");
     setInspectorOpen(true);
   }, []);
+  const addCommit = useCallback((oid: string) => {
+    dispatchSelection({ kind: "add", oid });
+    setInspectorMode("details");
+    setInspectorOpen(true);
+  }, []);
+  const swapCompare = useCallback(() => dispatchSelection({ kind: "swap" }), []);
   const inspect = useCallback(() => {
     setInspectorMode("details");
     setInspectorOpen(true);
@@ -261,18 +273,48 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     },
     [details.shown, parentIndex]
   );
-  // Where the open commit file sits in its commit's list, for ↑/↓ in the diff.
-  const commitFileIndex =
-    commitFile !== null && commitFiles.state === "done" && commitFile.oid === shownOid && commitFile.parentIndex === parentIndex
-      ? commitFiles.files.files.findIndex((f) => f.path === commitFile.path)
-      : -1;
+  // A compared pair's file opens the diff from the pair's `from` to its `to` (#398).
+  const comparePair = compare.pair;
+  const compareFiles =
+    comparePair !== null && compare.files.shown !== null && compare.files.shownKey === `${comparePair.from.oid}..${comparePair.to.oid}`
+      ? compare.files.shown.files
+      : null;
+  const openCompareFile = useCallback(
+    (file: CommitFile) => {
+      if (comparePair === null) return;
+      setStagingFile(null);
+      setCommitFile({
+        oid: comparePair.to.oid,
+        parent: comparePair.from.oid,
+        parentIndex: 0,
+        path: file.path,
+        oldPath: file.oldPath,
+        status: file.status,
+      });
+    },
+    [comparePair]
+  );
+  // The list the open commit file belongs to, for ↑/↓ in the diff: the compared pair's or the commit's.
+  const comparing = selection.kind === "two";
+  const openIsCompared =
+    commitFile !== null && comparePair !== null && commitFile.parentIndex === 0 && commitFile.oid === comparePair.to.oid && commitFile.parent === comparePair.from.oid;
+  const openIsCommits = commitFile !== null && commitFiles.state === "done" && commitFile.oid === shownOid && commitFile.parentIndex === parentIndex;
+  const stepFiles: CommitFile[] | null = comparing
+    ? openIsCompared
+      ? compareFiles
+      : null
+    : openIsCommits && commitFiles.state === "done"
+      ? commitFiles.files.files
+      : null;
+  const commitFileIndex = stepFiles === null || commitFile === null ? -1 : stepFiles.findIndex((f) => f.path === commitFile.path);
+  const openStepped = comparing ? openCompareFile : openCommitFile;
   const stepCommitFile = useCallback(
     (direction: -1 | 1) => {
-      if (commitFiles.state !== "done" || commitFileIndex === -1) return;
-      const next = commitFiles.files.files[commitFileIndex + direction];
-      if (next) openCommitFile(next);
+      if (stepFiles === null || commitFileIndex === -1) return;
+      const next = stepFiles[commitFileIndex + direction];
+      if (next) openStepped(next);
     },
-    [commitFiles, commitFileIndex, openCommitFile]
+    [stepFiles, commitFileIndex, openStepped]
   );
   const changed = staging.status.state === "done" ? staging.status.status.total : 0;
   const headOid =
@@ -555,6 +597,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       announce={staging.announce}
                       selectedOid={selectedOid}
                       onSelect={selectCommit}
+                      comparedOid={comparedOid}
+                      onAddSelection={addCommit}
                       onInspect={inspect}
                       focusRef={graphFocus}
                     />
@@ -569,7 +613,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       onStep={commitFileIndex === -1 ? null : stepCommitFile}
                       canStep={{
                         previous: commitFileIndex > 0,
-                        next: commitFiles.state === "done" && commitFileIndex !== -1 && commitFileIndex < commitFiles.files.files.length - 1,
+                        next: stepFiles !== null && commitFileIndex !== -1 && commitFileIndex < stepFiles.length - 1,
                       }}
                       onBack={() => setCommitFile(null)}
                       visible={isOpen}
@@ -592,7 +636,23 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                     />
                   )}
                 </div>
-                {inspectorOpen && inspectorMode === "details" && graphRepo !== null && (
+                {inspectorOpen && inspectorMode === "details" && graphRepo !== null && comparing && (
+                  <div className="contents" inert={resolving !== null}>
+                    <CompareInspector
+                      id={inspectorId}
+                      compare={compare}
+                      width={prefs.inspectorWidth}
+                      onWidth={setInspectorWidth}
+                      onClose={() => setInspectorOpen(false)}
+                      onSwap={swapCompare}
+                      openFile={commitFile}
+                      onOpenFile={openCompareFile}
+                      onEscape={focusGraph}
+                      focusRef={inspectorFocus}
+                    />
+                  </div>
+                )}
+                {inspectorOpen && inspectorMode === "details" && graphRepo !== null && !comparing && (
                   <div className="contents" inert={resolving !== null}>
                     <CommitInspector
                       id={inspectorId}
@@ -603,7 +663,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       onClose={() => setInspectorOpen(false)}
                       badgesOf={(oid) => refsShown.badges.get(oid) ?? []}
                       onCopy={(sha) => runRefAction({ kind: "copySha", oid: sha })}
-                      onSelectCommit={setSelectedOid}
+                      onSelectCommit={selectCommit}
                       files={commitFiles}
                       parentIndex={parentIndex}
                       onParentIndex={onParentIndex}

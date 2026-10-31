@@ -41,7 +41,10 @@ export const CommitFileDiffView: React.FC<CommitFileDiffViewProps> = ({ file, re
   const unified = useMemo(() => (diff && shownMode === "unified" ? unifiedDoc(diff) : null), [diff, shownMode]);
   const split = useMemo(() => (diff && shownMode === "split" ? splitDoc(diff) : null), [diff, shownMode]);
   const [scrollTop, setScrollTop] = useState<{ pane: "left" | "right"; top: number } | null>(null);
-  const against = file.parent === null ? "the empty tree" : `parent ${file.parentIndex} (${shortOid(file.parent)})`;
+  // A compared pair (#398) is diffed against the other commit, not a parent.
+  const compared = file.parentIndex === 0 && file.parent !== null;
+  const against =
+    file.parent === null ? "the empty tree" : compared ? shortOid(file.parent) : `parent ${file.parentIndex} (${shortOid(file.parent)})`;
   const title = file.oldPath === null ? file.path : `${file.oldPath} → ${file.path}`;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
@@ -96,7 +99,9 @@ export const CommitFileDiffView: React.FC<CommitFileDiffViewProps> = ({ file, re
           {title}
         </h3>
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] shrink-0">
-          {shortOid(file.oid)} vs {file.parent === null ? "empty tree" : `parent ${file.parentIndex}`}
+          {compared && file.parent !== null
+            ? `${shortOid(file.parent)} → ${shortOid(file.oid)}`
+            : `${shortOid(file.oid)} vs ${file.parent === null ? "empty tree" : `parent ${file.parentIndex}`}`}
         </span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           {stepButton(-1)}
