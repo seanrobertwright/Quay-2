@@ -16,7 +16,9 @@ export type GitError =
   | { kind: "stagingBusy" }
   | { kind: "staleDiff" }
   | { kind: "changedSinceDiscard"; paths: string[] }
-  | { kind: "hookFailed"; hook: string; output: string };
+  | { kind: "hookFailed"; hook: string; output: string }
+  | { kind: "noOperation" }
+  | { kind: "conflictsRemain"; count: number };
 
 /** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
 export function parseGitError(e: unknown): GitError | null {
@@ -27,7 +29,10 @@ export function parseGitError(e: unknown): GitError | null {
     case "indexLocked":
     case "stagingBusy":
     case "staleDiff":
+    case "noOperation":
       return { kind: fields.kind };
+    case "conflictsRemain":
+      return { kind: "conflictsRemain", count: Number(fields.count) };
     case "other":
       return { kind: "other", stderr: String(fields.stderr) };
     case "changedSinceDiscard":
