@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::diff::{other, run_read, TOO_LARGE_BYTES};
 use super::discard::{back_up, backups, blob_bytes, hash_files, inside_worktree, write_file, Blobs, DiscardBackup};
 use super::error::GitError;
+use super::operation::conflict_kind;
 use super::staging::{parse_rel_path, read_status, run_write, write_stage, PathTarget, StagingLocks, WorktreeStatus};
 
 /// The marker length git uses when `conflict-marker-size` isn't set.
@@ -56,6 +57,8 @@ pub enum NotEditable {
 pub struct ConflictFile {
     /// The path relative to the worktree root, with `/` separators.
     pub path: String,
+    /// git's two status letters for the stages it has, such as `UU` or `UD`.
+    pub xy: String,
     /// Pins the stage oids and the worktree bytes; every write hands it back.
     pub token: String,
     pub editable: bool,
@@ -228,6 +231,7 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
     let Some(stages) = read_stages(worktree, path)? else { return Ok(None) };
     let mut file = ConflictFile {
         path: path.to_string(),
+        xy: conflict_kind(stages[0].is_some(), stages[1].is_some(), stages[2].is_some()).1.to_string(),
         token: token(&stages, &worktree_file),
         editable: false,
         reason: None,
@@ -345,13 +349,33 @@ pub fn take_side(
     let _slot = locks.begin(worktree)?;
     inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
-    let blobs = back_up(worktree, &[path])?;
-    let flag = match side {
-        ConflictSide::Left => "--ours",
-        ConflictSide::Right => "--theirs",
+    let (index, word, flag) = match side {
+        ConflictSide::Left => (1, "left", "--ours"),
+        ConflictSide::Right => (2, "right", "--theirs"),
     };
+    let stages = read_stages(worktree, path)?.ok_or(GitError::ConflictStale)?;
+    if stages[index].is_none() {
+        return Err(other(format!("{path} has no {word} side to keep: that side deleted it")));
+    }
+    let blobs = back_up(worktree, &[path])?;
     run_write(worktree, &["checkout", flag], Some(&[path]))?;
     write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;
+    let backup = backups(worktree, &[path], blobs)?.remove(0);
+    Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
+}
+
+/// Remove, or Accept deletion (#391): takes the conflicted `path` out of the index and the
+/// worktree (`git rm`), in the worktree's staging slot. A file on disk is stored as a blob first, as
+/// take-whole-side stores it, and nothing changes if that fails. It refuses with
+/// [`GitError::ConflictStale`] when `token` no longer matches. Returns the backup and the status
+/// answering `request_id`.
+pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<TakeSideResult, GitError> {
+    let _slot = locks.begin(worktree)?;
+    inside_worktree(worktree, path)?;
+    recheck(worktree, path, token)?;
+    let blobs = back_up(worktree, &[path])?;
+    // `-f`: the bytes are backed up, and an unmerged file never matches the index.
+    run_write(worktree, &["rm", "-q", "-f"], Some(&[path]))?;
     let backup = backups(worktree, &[path], blobs)?.remove(0);
     Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
 }
