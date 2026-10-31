@@ -328,7 +328,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                 text={text}
                 markerSize={read.file.markerSize}
                 names={names}
-                ariaLabel={`Result for ${path}, editable`}
+                ariaLabel={`Result for ${path}, ${held !== null ? `read-only while with ${held.agentName}` : "editable"}`}
                 readOnly={locked}
                 onChange={setText}
                 onView={onView}
