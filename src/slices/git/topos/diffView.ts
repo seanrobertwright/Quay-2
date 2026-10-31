@@ -2,7 +2,7 @@
 // preview's sources, and the sentences its actions announce.
 
 import type { DiffSide, FileDiff } from "./diffDoc.ts";
-import type { LineRef } from "./lineSelection.ts";
+import { lineCount, type LineRef } from "./lineSelection.ts";
 import type { StageDirection } from "./stagingKeys.ts";
 
 /** `Selection` from `src-tauri/src/slices/git/diff.rs`. */
@@ -70,11 +70,6 @@ export function sizeLabel(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** "1 line" or "n lines". */
-export function lineCount(n: number): string {
-  return `${n.toLocaleString("en-US")} ${n === 1 ? "line" : "lines"}`;
 }
 
 /** What the live region announces once a stage or unstage from the diff view has finished. */

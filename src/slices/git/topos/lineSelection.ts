@@ -3,7 +3,6 @@
 // the view drops it whenever the diff changes.
 
 import type { DiffDoc, Hunk } from "./diffDoc.ts";
-import { lineCount } from "./diffView.ts";
 import type { DiffKeyAction, StageDirection } from "./stagingKeys.ts";
 
 /** `LineRef` from `src-tauri/src/slices/git/diff.rs`: a line's hunk and its index in that hunk. */
@@ -14,6 +13,17 @@ export interface LineRef {
 
 export function lineKey(ref: LineRef): string {
   return `${ref.hunk}:${ref.line}`;
+}
+
+/** The ref a `lineKey` names. */
+export function parseLineKey(key: string): LineRef {
+  const [hunk, line] = key.split(":").map(Number);
+  return { hunk, line };
+}
+
+/** "1 line" or "n lines". */
+export function lineCount(n: number): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? "line" : "lines"}`;
 }
 
 export interface LineSelection {
@@ -80,12 +90,7 @@ export function dragRows(before: LineSelection, doc: DiffDoc, from: number, to: 
 
 /** `picked` as refs in diff order, as a `Lines` selection lists them. */
 export function selectedRefs(picked: ReadonlySet<string>): LineRef[] {
-  return [...picked]
-    .map((key) => {
-      const [hunk, line] = key.split(":").map(Number);
-      return { hunk, line };
-    })
-    .sort((a, b) => a.hunk - b.hunk || a.line - b.line);
+  return [...picked].map(parseLineKey).sort(compare);
 }
 
 /** The lines a stage or unstage acts on: what was picked, plus the no-newline lines it needs. */
@@ -112,8 +117,8 @@ export function withNoNewlinePairs(hunks: Hunk[], picked: ReadonlySet<string>, d
       const laterAdds: number[] = [];
       for (let i = marker + 1; i < h.lines.length; i++) if (h.lines[i].kind === "add") laterAdds.push(i);
       const later = [...picked].some((key) => {
-        const [kh, kl] = key.split(":").map(Number);
-        return kh === hunk && kl > marker;
+        const ref = parseLineKey(key);
+        return ref.hunk === hunk && ref.line > marker;
       });
       const delPicked = picked.has(lineKey({ hunk, line: del }));
       let needs: number[] = [];
