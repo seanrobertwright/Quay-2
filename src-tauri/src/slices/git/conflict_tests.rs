@@ -1,12 +1,12 @@
 //! The three-pane resolver's backend (#352, #390) against throwaway repositories with a linked
-//! worktree, built with the system git: what opening a conflicted file reads, and Save, Reset file
-//! and take-whole-side writing it back.
+//! worktree, built with the system git: what opening a conflicted file reads, and Save, Reset file,
+//! take-whole-side and Mark resolved writing it back.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::conflict::{open_conflict, reset_conflict, save_conflict, take_side, ConflictSide};
+use super::conflict::{mark_resolved, open_conflict, reset_conflict, save_conflict, take_side, ConflictSide};
 use super::error::GitError;
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
@@ -66,28 +66,11 @@ fn opening_a_conflicted_text_file_reads_both_sides_and_the_worktree_markers() {
 
 #[test]
 fn opening_honours_the_files_conflict_marker_size() {
-    let (root, wt) = merge_conflict_with("*.txt conflict-marker-size=10
-", "notes.txt", b"one
-two
-three
-", b"one
-ours
-three
-", b"one
-theirs
-three
-");
+    let (root, wt) = merge_conflict_with("*.txt conflict-marker-size=10\n", "notes.txt", b"one\ntwo\nthree\n", b"one\nours\nthree\n", b"one\ntheirs\nthree\n");
 
     let file = open_json(&wt, "notes.txt");
     assert_eq!(file["markerSize"], 10);
-    assert_eq!(file["result"], "one
-<<<<<<<<<< HEAD
-ours
-==========
-theirs
->>>>>>>>>> main
-three
-");
+    assert_eq!(file["result"], "one\n<<<<<<<<<< HEAD\nours\n==========\ntheirs\n>>>>>>>>>> main\nthree\n");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -99,34 +82,13 @@ fn save(wt: &Path, path: &str, text: &str) -> Result<Value, GitError> {
 
 #[test]
 fn saving_writes_the_result_and_reopens_the_file_with_a_new_token() {
-    let (root, wt) = merge_conflict("notes.txt", b"one
-two
-three
-", b"one
-ours
-three
-", b"one
-theirs
-three
-");
+    let (root, wt) = merge_conflict("notes.txt", b"one\ntwo\nthree\n", b"one\nours\nthree\n", b"one\ntheirs\nthree\n");
     let before = open_json(&wt, "notes.txt");
 
-    let saved = save(&wt, "notes.txt", "one
-ours and theirs
-three
-").expect("the save lands");
-    assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"one
-ours and theirs
-three
-");
-    assert_eq!(saved["result"], "one
-ours and theirs
-three
-");
-    assert_eq!(saved["left"], "one
-ours
-three
-");
+    let saved = save(&wt, "notes.txt", "one\nours and theirs\nthree\n").expect("the save lands");
+    assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"one\nours and theirs\nthree\n");
+    assert_eq!(saved["result"], "one\nours and theirs\nthree\n");
+    assert_eq!(saved["left"], "one\nours\nthree\n");
     assert_ne!(saved["token"], before["token"], "the token pins the new bytes");
     assert_eq!(saved["token"], open_json(&wt, "notes.txt")["token"]);
     let _ = std::fs::remove_dir_all(root);
@@ -298,6 +260,31 @@ fn taking_a_side_after_an_outside_edit_is_refused_as_stale() {
 }
 
 #[test]
+fn mark_resolved_stages_the_saved_result() {
+    let (root, wt) = merge_conflict("notes.txt", b"one\ntwo\n", b"one\nours\n", b"one\ntheirs\n");
+    let saved = save(&wt, "notes.txt", "one\nboth\n").unwrap();
+
+    let status = mark_resolved(&StagingLocks::default(), &wt, 4, "notes.txt", saved["token"].as_str().unwrap()).expect("it stages");
+    assert_eq!(git(&wt, &["ls-files", "-u"]), "", "no unmerged stages remain");
+    assert_eq!(git(&wt, &["show", ":notes.txt"]), "one\nboth\n", "the Result is staged");
+    assert_eq!(status.request_id, 4);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn mark_resolved_after_an_outside_edit_is_refused_as_stale_and_stages_nothing() {
+    let (root, wt) = merge_conflict("notes.txt", b"one\ntwo\n", b"one\nours\n", b"one\ntheirs\n");
+    let token = open_conflict(&wt, "notes.txt").unwrap().token;
+    // An agent rewrites the file, markers and all, after the resolver opened it.
+    std::fs::write(wt.join("notes.txt"), "one\n<<<<<<< HEAD\nagent\n=======\ntheirs\n>>>>>>> main\n").unwrap();
+
+    let marked = mark_resolved(&StagingLocks::default(), &wt, 1, "notes.txt", &token);
+    assert_eq!(marked.err(), Some(GitError::ConflictStale));
+    assert_ne!(git(&wt, &["ls-files", "-u"]), "", "still conflicted");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn every_resolver_write_waits_for_the_worktrees_staging_slot() {
     let (root, wt) = merge_conflict("notes.txt", b"one\ntwo\n", b"one\nours\n", b"one\ntheirs\n");
     let token = open_conflict(&wt, "notes.txt").unwrap().token;
@@ -307,6 +294,7 @@ fn every_resolver_write_waits_for_the_worktrees_staging_slot() {
     assert_eq!(save_conflict(&locks, &wt, "notes.txt", &token, "x\n").err(), Some(GitError::StagingBusy));
     assert_eq!(reset_conflict(&locks, &wt, "notes.txt", &token).err(), Some(GitError::StagingBusy));
     assert_eq!(take_side(&locks, &wt, 1, "notes.txt", &token, ConflictSide::Left).err(), Some(GitError::StagingBusy));
+    assert_eq!(mark_resolved(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::StagingBusy));
     assert!(std::fs::read_to_string(wt.join("notes.txt")).unwrap().contains("<<<<<<< HEAD"));
     let _ = std::fs::remove_dir_all(root);
 }

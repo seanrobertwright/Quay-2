@@ -102,26 +102,53 @@ fn read_stages(worktree: &Path, path: &str) -> Result<Option<Stages>, GitError> 
     Ok(stages.iter().any(Option::is_some).then_some(stages))
 }
 
-/// The token for these stages and the worktree file's part.
-fn token(stages: &Stages, worktree_part: &str) -> String {
-    let oid = |s: &Option<Stage>| s.as_ref().map_or("-", |s| s.oid.as_str()).to_string();
-    format!("{}:{}:{}:{worktree_part}", oid(&stages[0]), oid(&stages[1]), oid(&stages[2]))
+/// What the worktree holds at a conflicted path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WorktreeFile {
+    /// A file, by the blob id of its bytes.
+    Blob(String),
+    Link,
+    Missing,
 }
 
-/// The worktree file's part of the token: its blob id, `link` for a symlink, or `-` with no file.
-/// The path must stay inside the worktree.
-fn worktree_part(worktree: &Path, path: &str) -> Result<String, GitError> {
-    if let Err(e) = inside_worktree(worktree, path) {
-        // A symlink is refused as a write target, but its conflict can still be read.
-        let link = std::fs::symlink_metadata(worktree.join(path)).is_ok_and(|m| m.file_type().is_symlink());
-        return if link { Ok("link".into()) } else { Err(e) };
+impl WorktreeFile {
+    /// What `path` holds. The path must stay inside the worktree.
+    fn read(worktree: &Path, path: &str) -> Result<Self, GitError> {
+        if let Err(e) = inside_worktree(worktree, path) {
+            // A symlink is refused as a write target, but its conflict can still be read.
+            let link = std::fs::symlink_metadata(worktree.join(path)).is_ok_and(|m| m.file_type().is_symlink());
+            return if link { Ok(Self::Link) } else { Err(e) };
+        }
+        Ok(hash_files(worktree, &[path], Blobs::IdsOnly)?.remove(0).map_or(Self::Missing, Self::Blob))
     }
-    Ok(hash_files(worktree, &[path], Blobs::IdsOnly)?.remove(0).unwrap_or_else(|| "-".into()))
+
+    /// Its part of the token.
+    fn token_part(&self) -> &str {
+        match self {
+            Self::Blob(oid) => oid,
+            Self::Link => "link",
+            Self::Missing => "-",
+        }
+    }
+}
+
+/// The token for these stages and the worktree file.
+fn token(stages: &Stages, file: &WorktreeFile) -> String {
+    let oid = |s: &Option<Stage>| s.as_ref().map_or("-", |s| s.oid.as_str()).to_string();
+    format!("{}:{}:{}:{}", oid(&stages[0]), oid(&stages[1]), oid(&stages[2]), file.token_part())
+}
+
+/// Text as the resolver edits it, and how to put the file's bytes back.
+struct Decoded {
+    /// Without a BOM and with `\n` endings.
+    text: String,
+    eol: Eol,
+    bom: bool,
 }
 
 /// `bytes` as text without a BOM and with `\n` endings, with its ending and whether it had a BOM,
 /// or why it can't be edited.
-fn decode(bytes: &[u8]) -> Result<(String, Eol, bool), NotEditable> {
+fn decode(bytes: &[u8]) -> Result<Decoded, NotEditable> {
     if bytes.len() as u64 > TOO_LARGE_BYTES {
         return Err(NotEditable::TooLarge);
     }
@@ -136,8 +163,8 @@ fn decode(bytes: &[u8]) -> Result<(String, Eol, bool), NotEditable> {
     let crlf = text.matches("\r\n").count();
     let lf = text.matches('\n').count() - crlf;
     match (crlf, lf) {
-        (0, _) => Ok((text.to_string(), Eol::Lf, bom)),
-        (_, 0) => Ok((text.replace("\r\n", "\n"), Eol::Crlf, bom)),
+        (0, _) => Ok(Decoded { text: text.to_string(), eol: Eol::Lf, bom }),
+        (_, 0) => Ok(Decoded { text: text.replace("\r\n", "\n"), eol: Eol::Crlf, bom }),
         _ => Err(NotEditable::MixedLineEndings),
     }
 }
@@ -150,19 +177,24 @@ fn marker_size(worktree: &Path, path: &str) -> Result<u32, GitError> {
     Ok(value.and_then(|v| v.parse::<u32>().ok()).filter(|n| (1..=1024).contains(n)).unwrap_or(DEFAULT_MARKER_SIZE))
 }
 
-type Texts = (String, String, (String, Eol, bool));
+/// Both sides' texts and the worktree file's.
+struct Texts {
+    left: String,
+    right: String,
+    result: Decoded,
+}
 
 /// Both sides' texts and the worktree file's, or why the file can't be edited as text.
-fn read_texts(worktree: &Path, path: &str, stages: &Stages, part: &str) -> Result<Result<Texts, NotEditable>, GitError> {
+fn read_texts(worktree: &Path, path: &str, stages: &Stages, file: &WorktreeFile) -> Result<Result<Texts, NotEditable>, GitError> {
     let (Some(left), Some(right)) = (&stages[1], &stages[2]) else { return Ok(Err(NotEditable::OneSideMissing)) };
     let all = || stages.iter().flatten();
     if all().any(|s| s.mode == "160000") {
         return Ok(Err(NotEditable::Submodule));
     }
-    if part == "link" || all().any(|s| s.mode == "120000") {
+    if *file == WorktreeFile::Link || all().any(|s| s.mode == "120000") {
         return Ok(Err(NotEditable::Symlink));
     }
-    if part == "-" {
+    if *file == WorktreeFile::Missing {
         return Ok(Err(NotEditable::NoWorktreeFile));
     }
     let bytes = std::fs::read(worktree.join(path)).map_err(|e| other(format!("could not read {path}: {e}")))?;
@@ -173,13 +205,13 @@ fn read_texts(worktree: &Path, path: &str, stages: &Stages, part: &str) -> Resul
     let mut sides = Vec::with_capacity(2);
     for stage in [left, right] {
         match decode(&blob_bytes(worktree, &stage.oid)?) {
-            Ok((text, _, _)) => sides.push(text),
+            Ok(side) => sides.push(side.text),
             Err(reason) => return Ok(Err(reason)),
         }
     }
     let right = sides.pop().unwrap_or_default();
     let left = sides.pop().unwrap_or_default();
-    Ok(Ok((left, right, result)))
+    Ok(Ok(Texts { left, right, result }))
 }
 
 /// Opens the conflicted `path` in `worktree` for the resolver (#390): both sides' blobs, the
@@ -192,11 +224,11 @@ pub fn open_conflict(worktree: &Path, path: &str) -> Result<ConflictFile, GitErr
 /// What [`open_conflict`] reads, or None when `path` has no unmerged stages.
 fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, GitError> {
     let path = parse_rel_path(path)?;
-    let part = worktree_part(worktree, path)?;
+    let worktree_file = WorktreeFile::read(worktree, path)?;
     let Some(stages) = read_stages(worktree, path)? else { return Ok(None) };
     let mut file = ConflictFile {
         path: path.to_string(),
-        token: token(&stages, &part),
+        token: token(&stages, &worktree_file),
         editable: false,
         reason: None,
         left: None,
@@ -206,14 +238,14 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
         bom: false,
         marker_size: marker_size(worktree, path)?,
     };
-    match read_texts(worktree, path, &stages, &part)? {
-        Ok((left, right, (result, eol, bom))) => {
+    match read_texts(worktree, path, &stages, &worktree_file)? {
+        Ok(texts) => {
             file.editable = true;
-            file.left = Some(left);
-            file.right = Some(right);
-            file.result = Some(result);
-            file.eol = eol;
-            file.bom = bom;
+            file.left = Some(texts.left);
+            file.right = Some(texts.right);
+            file.result = Some(texts.result.text);
+            file.eol = texts.result.eol;
+            file.bom = texts.result.bom;
         }
         Err(reason) => file.reason = Some(reason),
     }
@@ -231,8 +263,9 @@ fn recheck(worktree: &Path, path: &str, token: &str) -> Result<ConflictFile, Git
 
 /// Saves `text` as the Result of the conflicted `path` (#390), in the worktree's staging slot, and
 /// returns the file opened afresh. It refuses with [`GitError::ConflictStale`], writing nothing,
-/// when `token` no longer matches the file, so it never overwrites what git or an agent changed. The text gets the file's line ending and BOM back, and is
-/// written atomically, so a crash leaves the old file or the new one, never half of it.
+/// when `token` no longer matches the file, so it never overwrites what git or an agent changed.
+/// The text gets the file's line ending and BOM back, and is written atomically, so a crash leaves
+/// the old file or the new one, never half of it.
 pub fn save_conflict(locks: &StagingLocks, worktree: &Path, path: &str, token: &str, text: &str) -> Result<ConflictFile, GitError> {
     let _slot = locks.begin(worktree)?;
     let target = inside_worktree(worktree, path)?;
@@ -256,7 +289,6 @@ fn encode(text: &str, eol: Eol, bom: bool) -> Vec<u8> {
     }
     out
 }
-
 
 /// What Reset file did: the file opened afresh, and the backup of the bytes it replaced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -324,6 +356,18 @@ pub fn take_side(
     Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
 }
 
+/// Mark resolved (#390): stages the conflicted `path` as it stands on disk through the inspector's
+/// own `git add` path, in the worktree's staging slot. It refuses with [`GitError::ConflictStale`],
+/// staging nothing, when `token` no longer matches, so bytes git or an agent wrote after the
+/// resolver last read the file are never staged unseen. Returns the status answering `request_id`.
+pub fn mark_resolved(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<WorktreeStatus, GitError> {
+    let _slot = locks.begin(worktree)?;
+    inside_worktree(worktree, path)?;
+    recheck(worktree, path, token)?;
+    write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;
+    read_status(worktree, request_id, None)
+}
+
 /// Opens the conflicted `path` in `worktree_path` for the resolver. See [`open_conflict`].
 #[tauri::command]
 pub async fn git_conflict_open(worktree_path: String, path: String) -> Result<ConflictFile, GitError> {
@@ -371,4 +415,17 @@ pub async fn git_conflict_take_side(
 ) -> Result<TakeSideResult, GitError> {
     let locks = locks.inner();
     tokio::task::block_in_place(|| take_side(locks, Path::new(&worktree_path), request_id, &path, &token, side))
+}
+
+/// Stages `path` as resolved, unless `token` is stale. See [`mark_resolved`].
+#[tauri::command]
+pub async fn git_conflict_mark_resolved(
+    worktree_path: String,
+    request_id: u32,
+    path: String,
+    token: String,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<WorktreeStatus, GitError> {
+    let locks = locks.inner();
+    tokio::task::block_in_place(|| mark_resolved(locks, Path::new(&worktree_path), request_id, &path, &token))
 }
