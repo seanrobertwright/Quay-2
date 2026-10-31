@@ -21,6 +21,14 @@ export type NotEditable =
 /** `ConflictFile` from `src-tauri/src/slices/git/conflict.rs`. */
 export interface ConflictFile {
   path: string;
+  /** git's two status letters for the stages it has, such as `UU` or `UD`. */
+  xy: string;
+  /** Whether the worktree holds a file or link at the path. */
+  onDisk: boolean;
+  /** Stage 2's object id (a commit for a submodule), or null when the left side has none. */
+  leftOid: string | null;
+  /** Stage 3's object id, or null when the right side has none. */
+  rightOid: string | null;
   token: string;
   editable: boolean;
   reason: NotEditable | null;
@@ -38,7 +46,7 @@ interface ConflictReset {
   backup: DiscardBackup;
 }
 
-/** `TakeSideResult` from `src-tauri/src/slices/git/conflict.rs`. */
+/** `TakeSideResult` from `src-tauri/src/slices/git/conflict.rs`, which Remove returns too. */
 interface TakeSideResult {
   backup: DiscardBackup;
   status: WorktreeStatus;
@@ -68,6 +76,8 @@ export interface ConflictResolverState {
   reset: () => void;
   /** Keeps one whole side and stages it, after the caller's confirm. */
   takeSide: (side: ConflictSide) => void;
+  /** Takes the file out of the index and the worktree (`git rm`), after the caller's confirm. */
+  remove: () => void;
   /**
    * Stages the file through the inspector's own `git add` path, saving unsaved edits first. The
    * backend re-checks the token first, so bytes written since the file was read are never staged.
@@ -79,9 +89,9 @@ export interface ConflictResolverState {
  * The resolver's file (#390): `path` in the selected worktree, opened with `git_conflict_open`,
  * with the Result the operator edits. Every write runs as the worktree's one staging operation and
  * hands back the token it was read with, so the backend refuses it with `ConflictStale` when git or
- * an agent changed the file meanwhile. Reset file and take-whole-side record their backups in
- * Recently discarded, as a discard does (#387). Mark resolved stages through the inspector's
- * `git add` path, after the same token check.
+ * an agent changed the file meanwhile. Reset file, take-whole-side and a side-picker card's Remove
+ * (#391) record their backups in Recently discarded, as a discard does (#387). Mark resolved stages
+ * through the inspector's `git add` path, after the same token check.
  */
 export function useConflictResolver(worktreePath: string | null, path: string | null, staging: Staging): ConflictResolverState {
   const [read, setRead] = useState<ConflictRead | null>(null);
@@ -229,6 +239,25 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
     [file, write, recordDiscard, reload]
   );
 
+  const remove = useCallback(() => {
+    if (file === null) return;
+    const { path: name, token } = file;
+    // As take-whole-side, the status comes back with the reload.
+    void write<TakeSideResult, void>(
+      name,
+      "resolve",
+      "git_conflict_remove",
+      { requestId: 0, token },
+      (worktree, out) => {
+        // A file both sides deleted leaves nothing on disk to back up.
+        if (out.backup.blob !== null) recordDiscard(worktree, `${name} (removed)`, [out.backup]);
+        else announce(`Removed ${name}`);
+        void reload();
+      },
+      undefined
+    );
+  }, [file, write, recordDiscard, announce, reload]);
+
   const markResolved = useCallback(() => {
     if (file === null) return;
     const name = file.path;
@@ -254,5 +283,5 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
     });
   }, [file, dirty, save, write, announce, reload]);
 
-  return { read, text, setText, dirty, failure, reopen, save, reset, takeSide, markResolved };
+  return { read, text, setText, dirty, failure, reopen, save, reset, takeSide, remove, markResolved };
 }
