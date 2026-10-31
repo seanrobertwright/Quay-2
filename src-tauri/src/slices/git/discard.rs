@@ -231,8 +231,11 @@ fn remove_emptied_folders(worktree: &Path, files: &[PathBuf]) {
 /// Discards `request.selection` of one file's unstaged diff (#366, #387), in the worktree's staging
 /// slot. It re-reads the diff and refuses with [`GitError::StaleDiff`] when the token no longer
 /// matches, then stores the file's bytes as a blob, and only then changes the file. Hunks and lines
-/// are reverse-applied, so the file stays even when every line goes. Returns the backup, the file's
-/// new unstaged diff answering `diff_request_id`, and the status answering `request_id`.
+/// are reverse-applied, so the file stays even when every line goes; a binary file, a submodule and
+/// a lone mode change are refused. `File` restores a tracked file from the index and sends an
+/// untracked one to the Recycle Bin, and any selection of a file deleted in the worktree brings it
+/// back whole. Returns the backup, the file's new unstaged diff answering `diff_request_id`, and
+/// the status answering `request_id`.
 pub fn discard_selection(
     locks: &StagingLocks,
     bin: &dyn RecycleBin,
