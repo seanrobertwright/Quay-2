@@ -407,7 +407,7 @@ pub(super) fn with_repo_config_only<T>(run: impl FnOnce() -> T) -> T {
     result
 }
 
-//// What a push pushes: the local `branch`, to `remote` or its upstream's remote, setting the
+/// What a push pushes: the local `branch`, to `remote` or its upstream's remote, setting the
 /// upstream with `set_upstream`. With `lease`, the remote-tracking sha its confirm showed, it is a
 /// force push with that lease (#396).
 #[derive(Debug, Clone, Copy)]

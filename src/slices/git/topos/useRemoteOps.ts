@@ -147,8 +147,9 @@ const STRATEGY_CHOICES: { value: PullStrategy; label: string }[] = [
 ];
 
 /**
- * Fetch, pull and push for Topos's toolbar and palette (#367, #395). Each streams its progress to
- * the toolbar, says when git has gone quiet, takes the HEAD and refs it returns at once, and
+ * Fetch, pull and push for Topos's toolbar and palette (#367, #395), and force push with lease,
+ * tag pushes and remote deletes from the output panel and the badge menus (#396). Each streams its
+ * progress to the toolbar, says when git has gone quiet, takes the HEAD and refs it returns at once, and
  * reports success in a toast and a refusal in the output panel. The backend's per-repo lock is
  * what keeps one network operation per repo; this only keeps the toolbar from starting a second.
  */
@@ -187,7 +188,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
     function runRequest(request: NetworkRequest): Promise<boolean> {
       if (worktreePath === null) return Promise.resolve(false);
       if (current.current !== null) {
-        toast({ tone: "failed", text: "Wait for the running fetch, pull or push, or cancel it" });
+        toast({ tone: "failed", text: "Wait for the running remote operation, or cancel it" });
         return Promise.resolve(false);
       }
       setFailure(null);
