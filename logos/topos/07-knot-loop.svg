@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp07-title tp07-desc">
+  <title id="tp07-title">Topos Git Cockpit: Topological Knot</title>
+  <desc id="tp07-desc">A continuous Möbius-inspired ribbon knot symbolizing non-destructive version control and continuous history.</desc>
+  <g id="tp07-icon"><path d="M 24 48 C 24 28, 48 24, 60 36 C 72 48, 72 68, 48 68 C 28 68, 24 48, 48 36 C 64 28, 72 44, 72 56" fill="none" stroke="#1E293B" stroke-width="8" stroke-linecap="round"/><path d="M 24 48 C 24 28, 48 24, 60 36 C 72 48, 72 68, 48 68" fill="none" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round"/><path d="M 48 68 C 28 68, 24 48, 48 36 C 64 28, 72 44, 72 56" fill="none" stroke="#06B6D4" stroke-width="5" stroke-linecap="round"/><circle cx="48" cy="36" r="7" fill="#10B981"/><circle cx="60" cy="36" r="5" fill="#F59E0B"/><circle cx="48" cy="68" r="7" fill="#06B6D4"/></g>
+  <g id="tp07-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>

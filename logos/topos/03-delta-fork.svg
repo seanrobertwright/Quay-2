@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp03-title tp03-desc">
+  <title id="tp03-title">Topos Git Cockpit: Delta Fork</title>
+  <desc id="tp03-desc">The mathematical symbol for difference (Delta) re-imagined as branching Git ribbons with node terminals.</desc>
+  <g id="tp03-icon"><path d="M 48 18 L 18 76 L 78 76 Z" fill="none" stroke="#1E293B" stroke-width="6" stroke-linejoin="round"/><path d="M 48 18 C 48 40, 68 50, 78 76" fill="none" stroke="#06B6D4" stroke-width="6" stroke-linecap="round"/><circle cx="48" cy="18" r="8" fill="#8B5CF6"/><circle cx="48" cy="18" r="4" fill="#FFFFFF"/><circle cx="18" cy="76" r="7" fill="#10B981"/><circle cx="78" cy="76" r="7" fill="#06B6D4"/><circle cx="48" cy="76" r="5" fill="#F59E0B"/></g>
+  <g id="tp03-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>
