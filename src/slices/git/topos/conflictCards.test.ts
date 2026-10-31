@@ -38,6 +38,7 @@ test("a file changed on the left and deleted on the right offers Keep modified o
     [
       ["Keep modified", { kind: "stage" }],
       ["Accept deletion", { kind: "remove" }],
+      ["Hand to agent", { kind: "handToAgent" }],
     ]
   );
   const [keep, accept] = card.choices;
@@ -74,6 +75,7 @@ test("a file only one side added offers Keep or Remove", () => {
       [
         ["Keep", "stage"],
         ["Remove", "remove"],
+        ["Hand to agent", "handToAgent"],
       ]
     );
     assert.ok(card.choices[1].confirm, `${xy}: removing deletes the added file, so it confirms`);
@@ -95,7 +97,10 @@ test("a file both sides deleted offers Remove alone and lists the files one side
   assert.deepEqual(card.details, ["left.txt, added only by HEAD · feat", "right.txt, added only by Incoming · main"]);
   assert.deepEqual(
     card.choices.map((c) => [c.label, c.action.kind, c.confirm]),
-    [["Remove", "remove", null]]
+    [
+      ["Remove", "remove", null],
+      ["Hand to agent", "handToAgent", null],
+    ]
   );
   assert.match(card.choices[0].effect, /removes a\.txt from the index \(git rm\)/i);
 });
@@ -124,6 +129,7 @@ test("binary, symlink, too-large, non-UTF-8 and mixed-line-ending files offer to
       [
         ["Take HEAD · feat", { kind: "takeSide", side: "left" }],
         ["Take Incoming · main", { kind: "takeSide", side: "right" }],
+        ["Hand to agent", { kind: "handToAgent" }],
       ],
       reason
     );
@@ -160,4 +166,13 @@ test("a submodule shows both commits and offers only Open terminal and Hand to a
   }
   const deleted = conflictCard(file({ path: "vendor/lib", xy: "UD", kind: "deletedByThem", reason: "submodule", rightOid: null }), NAMES, []);
   assert.equal(deleted?.details[1], "Incoming · main: deleted");
+});
+
+test("Hand to agent on a card writes nothing itself and says the agent resolves and stages only", () => {
+  const card = conflictCard(file({ reason: "binary" }), NAMES, []);
+  const hand = card?.choices.find((c) => c.action.kind === "handToAgent");
+  assert.ok(hand);
+  assert.equal(hand.confirm, null);
+  assert.match(hand.effect, /asks an agent terminal in this worktree to resolve notes\.txt and stage it \(git add\), never to continue, commit or push/i);
+  assert.match(hand.effect, /topos itself changes nothing/i);
 });

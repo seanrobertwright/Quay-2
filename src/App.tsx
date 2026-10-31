@@ -29,6 +29,7 @@ import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
 import { ToposOverlay, type ToposTarget } from "./slices/git/topos/ToposOverlay";
+import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
 import { UpdateModal } from "./slices/updater/UpdateModal";
@@ -231,6 +232,11 @@ export function App() {
       setIsToposOpen(false);
     },
     [spawnTerminal, setIsToposOpen]
+  );
+  // A conflict handed to a new agent (#392) starts one in the worktree; Topos stays open on the hand-off.
+  const startToposAgent = useCallback(
+    (cwd: string) => spawnTerminal({ project_path: cwd, run_kind: NEW_AGENT_RUN_KIND, name: "conflict agent" }),
+    [spawnTerminal]
   );
   // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
   const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
@@ -774,6 +780,7 @@ export function App() {
         onAddProject={() => setIsAddProjectOpen(true)}
         terminals={terminals}
         onOpenTerminal={openToposTerminal}
+        onNewAgent={startToposAgent}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

@@ -21,6 +21,8 @@ import { useCommit } from "./useCommit";
 import { useOperation } from "./useOperation";
 import { OperationBanner } from "./OperationBanner";
 import { ConflictResolver } from "./ConflictResolver";
+import { HandToAgentDialog } from "./HandToAgentDialog";
+import { useHandToAgent } from "./useHandToAgent";
 import { useStaging } from "./useStaging";
 import { useToposSettings } from "./useToposSettings";
 import { offerSpeedup } from "./speedup";
@@ -47,6 +49,8 @@ export interface ToposOverlayProps {
   terminals: TerminalInfo[];
   /** Opens a shell terminal in `cwd` and shows it, for a conflict resolved by hand (#391). */
   onOpenTerminal?: (cwd: string) => void;
+  /** Starts an agent terminal in `cwd` for a conflict handed to a new agent (#392). */
+  onNewAgent?: (cwd: string) => Promise<TerminalInfo | null>;
 }
 
 type VersionCheck =
@@ -60,7 +64,7 @@ type VersionCheck =
  * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
  * selection it was shown with, and checks git's version on its first open (#369).
  */
-export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals, onOpenTerminal }) => {
+export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals, onOpenTerminal, onNewAgent }) => {
   const titleId = useId();
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
@@ -146,6 +150,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const commit = useCommit(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
   // The operation under way and its banner (#389), whose steps hand HEAD to the refresh table too.
   const operation = useOperation(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
+  // Conflicts handed to an agent terminal (#392), held per worktree and read with each operation read.
+  const handToAgent = useHandToAgent({
+    worktreePath: graphRepo !== null ? selectedPath : null,
+    op: operation.op,
+    terminals,
+    onNewAgent,
+    announce: staging.announce,
+  });
   // The conflicted file open in the three-pane resolver (#390), in place of the graph and inspector.
   const [resolving, setResolving] = useState<string | null>(null);
   useEffect(() => setResolving(null), [selectedPath]);
@@ -335,6 +347,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     onClose={closeResolver}
                     staging={staging}
                     onOpenTerminal={onOpenTerminal}
+                    handToAgent={handToAgent}
                   />
                 )}
                 <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>
@@ -388,6 +401,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     conflicts={operation.op}
                     onGoToContinue={goToContinue}
                     onResolve={setResolving}
+                    handOffs={handToAgent}
                   />
                   </div>
                 )}
@@ -405,6 +419,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
           onClose={() => setSpeedupOpen(false)}
           fallbackFocus={panelProps.ref}
         />
+        <HandToAgentDialog picker={handToAgent.picker} onChoose={handToAgent.choose} onCancel={handToAgent.closePicker} />
         {/* The staging inspector's, the commit composer's and the diff view's one live region, here so it stays while
             either is shown. Keyed by the count, so the same sentence twice in a row is announced twice. */}
         <div role="status" aria-live="polite" className="sr-only">

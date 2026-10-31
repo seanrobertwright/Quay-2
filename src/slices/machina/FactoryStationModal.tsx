@@ -21,7 +21,7 @@ interface FactoryStationModalProps {
   terminals: TerminalInfo[];
   onClose: () => void;
   onSelectTerminal: (id: string) => void;
-  onSpawnTerminal: (request: SpawnTerminalRequest) => Promise<void> | void;
+  onSpawnTerminal: (request: SpawnTerminalRequest) => Promise<unknown> | void;
 }
 
 type View = "detail" | "compose" | "config";

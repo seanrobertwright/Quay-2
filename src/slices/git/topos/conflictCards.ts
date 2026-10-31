@@ -118,6 +118,16 @@ function remove(f: ConflictFile, label: string): CardChoice {
   };
 }
 
+/** Handing the file to an agent terminal (#392), which every card offers last. It writes nothing. */
+function handToAgent(f: ConflictFile): CardChoice {
+  return {
+    label: "Hand to agent",
+    action: { kind: "handToAgent" },
+    effect: `Asks an agent terminal in this worktree to resolve ${f.path} and stage it (git add), never to continue, commit or push. Topos itself changes nothing in the index or the worktree.`,
+    confirm: null,
+  };
+}
+
 /** The most of a rename's possible new names a card lists; a line counts the rest. */
 const RENAME_ROWS = 5;
 
@@ -148,7 +158,7 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       details: [`${names.left}: ${commit(f.leftOid)}`, `${names.right}: ${commit(f.rightOid)}`],
       choices: [
         { label: "Open terminal", action: { kind: "openTerminal" }, effect: `Opens a terminal in this worktree. ${untouched}`, confirm: null },
-        { label: "Hand to agent", action: { kind: "handToAgent" }, effect: `Asks an agent terminal in this worktree to resolve it. ${untouched}`, confirm: null },
+        handToAgent(f),
       ],
     };
   }
@@ -157,7 +167,7 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       title: `${f.path} was deleted on both sides`,
       reason: `Both sides deleted ${f.path}, or renamed it to different names.`,
       details: renameTargets(conflicts, names),
-      choices: [remove(f, "Remove")],
+      choices: [remove(f, "Remove"), handToAgent(f)],
     };
   }
   if (f.kind === "deletedByThem" || f.kind === "deletedByUs") {
@@ -166,7 +176,7 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       title: `${f.path} was changed on one side and deleted on the other`,
       reason: `${names[changed]} changed ${f.path} and ${names[other(changed)]} deleted it.`,
       details: [],
-      choices: [keep(f, names, changed, "Keep modified"), remove(f, "Accept deletion")],
+      choices: [keep(f, names, changed, "Keep modified"), remove(f, "Accept deletion"), handToAgent(f)],
     };
   }
   if (f.kind === "addedByUs" || f.kind === "addedByThem") {
@@ -175,7 +185,7 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
       title: `${f.path} was added on one side only`,
       reason: `Only ${names[adder]} added ${f.path}.`,
       details: [],
-      choices: [keep(f, names, adder, "Keep"), remove(f, "Remove")],
+      choices: [keep(f, names, adder, "Keep"), remove(f, "Remove"), handToAgent(f)],
     };
   }
   const why = f.reason !== null ? REASON_WORDS[f.reason] : "Topos can't read it as text.";
@@ -183,6 +193,6 @@ export function conflictCard(f: ConflictFile, names: SideNames, conflicts: Confl
     title: `${f.path} can't be edited as text`,
     reason: `${why} Take one side whole instead.`,
     details: [],
-    choices: [takeSide(f, names, "left"), takeSide(f, names, "right")],
+    choices: [takeSide(f, names, "left"), takeSide(f, names, "right"), handToAgent(f)],
   };
 }

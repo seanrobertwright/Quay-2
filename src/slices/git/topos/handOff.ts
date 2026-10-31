@@ -8,6 +8,9 @@ import { isAgentRunKind, type RunKind, type TerminalInfo } from "../../terminal/
 import { paneLabels } from "./conflicts.ts";
 import { OPERATION_NOUNS, type OpState } from "./operation.ts";
 
+/** The agent "New agent here" starts in the worktree. */
+export const NEW_AGENT_RUN_KIND: RunKind = "claude";
+
 /** An agent terminal the picker offers. Its name is untrusted display text. */
 export interface PickerAgent {
   terminalId: string;
