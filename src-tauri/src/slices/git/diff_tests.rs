@@ -327,18 +327,18 @@ fn a_commit_diff_reads_against_its_parent_and_is_read_only() {
     let (root, wt) = two_hunks();
     git(&wt, &["commit", "-q", "-am", "edit"]);
     let head = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
-    let side = DiffSide::Commit { oid: head.clone(), parent: None };
+    let side = DiffSide::Commit { oid: head.clone(), parent: None, old_path: None };
     let read = read_file_diff(&wt, 1, "README.md", &side, 3, false).unwrap();
     assert_eq!(read.hunks.len(), 2);
     let parent = git(&wt, &["rev-parse", "HEAD~2"]).trim().to_string();
-    let side = DiffSide::Commit { oid: head, parent: Some(parent) };
+    let side = DiffSide::Commit { oid: head, parent: Some(parent), old_path: None };
     let read = read_file_diff(&wt, 1, "README.md", &side, 3, false).unwrap();
     assert_eq!(read.hunks.len(), 1, "against the first commit's one-line README");
 
     let locks = StagingLocks::default();
     let req = request("README.md", side.clone(), &read.diff_token, Selection::File);
     assert!(matches!(stage_selection(&locks, &wt, 1, 2, &req), Err(GitError::Other { .. })));
-    let bad = DiffSide::Commit { oid: "--output=x".into(), parent: None };
+    let bad = DiffSide::Commit { oid: "--output=x".into(), parent: None, old_path: None };
     assert!(matches!(read_file_diff(&wt, 1, "README.md", &bad, 3, false), Err(GitError::Other { .. })));
     let _ = std::fs::remove_dir_all(root);
 }

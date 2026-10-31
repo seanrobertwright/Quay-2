@@ -36,8 +36,14 @@ pub enum DiffSide {
     Unstaged,
     Staged,
     /// `oid` against `parent`, or against its own parent (an empty tree for a root commit) when
-    /// `parent` is absent.
-    Commit { oid: String, parent: Option<String> },
+    /// `parent` is absent. `old_path` is a rename's or copy's source, so the diff pairs the two
+    /// paths instead of showing the file as added.
+    Commit {
+        oid: String,
+        parent: Option<String>,
+        #[serde(default)]
+        old_path: Option<String>,
+    },
 }
 
 /// What the diff does to the file.
@@ -338,25 +344,35 @@ pub(super) fn read_parsed(worktree: &Path, path: &str, side: &DiffSide, context:
     let mut git = worktree_git(worktree);
     git.arg("--no-optional-locks");
     let unified = format!("-U{context}");
-    let common = ["-p", "--full-index", "--no-ext-diff", "--no-color", "--no-renames", unified.as_str()];
+    let shared = ["-p", "--full-index", "--no-ext-diff", "--no-color", unified.as_str()];
     match side {
         DiffSide::Unstaged => {
-            git.arg("diff-files").args(common);
+            git.arg("diff-files").args(shared).arg("--no-renames");
         }
         DiffSide::Staged => {
             let base = if has_head(worktree) { "HEAD".to_string() } else { empty_tree(worktree)? };
-            git.args(["diff-index", "--cached"]).args(common).arg(base);
+            git.args(["diff-index", "--cached"]).args(shared).arg("--no-renames").arg(base);
         }
-        DiffSide::Commit { oid, parent } => {
+        DiffSide::Commit { oid, parent, old_path } => {
             let oid = parse_oid(oid)?;
-            git.arg("diff-tree").args(common);
+            git.arg("diff-tree").args(shared);
+            match old_path {
+                // Limited to the two paths, git pairs them as a rename or a copy; the filter drops
+                // a copy source's own edit, so only the pair's diff is printed.
+                Some(_) => git.args(["-M", "-C", "--find-copies-harder", "--diff-filter=RC"]),
+                None => git.arg("--no-renames"),
+            };
             match parent {
                 Some(parent) => git.args([parse_oid(parent)?, oid]),
                 None => git.args(["--root", oid]),
             };
         }
     }
-    git.args(["--", path]);
+    git.arg("--");
+    if let DiffSide::Commit { old_path: Some(old_path), .. } = side {
+        git.arg(parse_rel_path(old_path)?);
+    }
+    git.arg(path);
     let parsed = run_diff(git, cap, &[0])?;
     if *side == DiffSide::Unstaged && parsed.diff_git.is_none() && is_untracked_file(worktree, path)? {
         return read_untracked(worktree, path, &unified, cap);

@@ -36,6 +36,10 @@ import type { ToposRequestKind } from "./toposPalette";
 import { useRefActions } from "./useRefActions";
 import { RemoteToolbar } from "./RemoteToolbar";
 import { useRemoteOps } from "./useRemoteOps";
+import { CommitInspector } from "./CommitInspector";
+import { CommitFileDiffView } from "./CommitFileDiffView";
+import type { CommitFile } from "./commitDetails";
+import { useCommitDetails, useCommitDiff, useCommitFiles, type OpenCommitFile } from "./useCommitDetails";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -172,8 +176,21 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // The inspector works on the selected worktree's own index (#349, #382).
   const staging = useStaging(graphRepo !== null ? selectedPath : null, shown);
   // A file's diff in place of the graph (#383). It closes when the worktree changes.
-  const [openFile, setOpenFile] = useState<OpenFile | null>(null);
-  useEffect(() => setOpenFile(null), [selectedPath]);
+  const [openFile, setStagingFile] = useState<OpenFile | null>(null);
+  useEffect(() => setStagingFile(null), [selectedPath]);
+  // A commit file's read-only diff in its place (#397); one diff shows at a time.
+  const [commitFile, setCommitFile] = useState<OpenCommitFile | null>(null);
+  const setOpenFile = useCallback((file: OpenFile | null) => {
+    setStagingFile(file);
+    if (file !== null) setCommitFile(null);
+  }, []);
+  // The selected commit (#397), which puts the inspector in details mode. The graph belongs to the
+  // root repo, so the selection and its open diff last until the repo changes.
+  const [selectedOid, setSelectedOid] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedOid(null);
+    setCommitFile(null);
+  }, [graphRepo]);
   const fileDiff = useFileDiff(graphRepo !== null ? selectedPath : null, openFile, staging);
   const liveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
   // The composer commits on the selected worktree, and hands its new HEAD to the refresh table (#388).
@@ -200,6 +217,63 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   }, [openFile, staging.status]);
   const inspectorId = useId();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // The inspector shows the staging lists or, once a commit is selected, its details (#397).
+  const [inspectorMode, setInspectorMode] = useState<"staging" | "details">("staging");
+  const stagingShown = inspectorOpen && inspectorMode === "staging";
+  const details = useCommitDetails(graphRepo, selectedOid);
+  const shownOid = details.pending ? null : (details.shown?.oid ?? null);
+  // A merge's files diff against parent 1 unless the picker chose another for that commit.
+  const [parentPick, setParentPick] = useState<{ oid: string | null; index: number }>({ oid: null, index: 1 });
+  const parentIndex = parentPick.oid !== null && parentPick.oid === shownOid ? parentPick.index : 1;
+  const onParentIndex = useCallback((oid: string, index: number) => setParentPick({ oid, index }), []);
+  const commitFiles = useCommitFiles(graphRepo, shownOid, parentIndex);
+  const commitDiff = useCommitDiff(graphRepo, commitFile);
+  const graphFocus = useRef<(() => void) | null>(null);
+  const inspectorFocus = useRef<HTMLElement | null>(null);
+  const [inspectRequest, setInspectRequest] = useState(0);
+  useEffect(() => {
+    if (inspectRequest > 0) inspectorFocus.current?.focus();
+  }, [inspectRequest]);
+  const selectCommit = useCallback((oid: string) => {
+    setSelectedOid(oid);
+    setInspectorMode("details");
+    setInspectorOpen(true);
+  }, []);
+  const inspect = useCallback(() => {
+    setInspectorMode("details");
+    setInspectorOpen(true);
+    setInspectRequest((n) => n + 1);
+  }, []);
+  const focusGraph = useCallback(() => graphFocus.current?.(), []);
+  const openCommitFile = useCallback(
+    (file: CommitFile) => {
+      const shown = details.shown;
+      if (shown === null) return;
+      setStagingFile(null);
+      setCommitFile({
+        oid: shown.oid,
+        parent: shown.parents[parentIndex - 1] ?? null,
+        parentIndex,
+        path: file.path,
+        oldPath: file.oldPath,
+        status: file.status,
+      });
+    },
+    [details.shown, parentIndex]
+  );
+  // Where the open commit file sits in its commit's list, for ↑/↓ in the diff.
+  const commitFileIndex =
+    commitFile !== null && commitFiles.state === "done" && commitFile.oid === shownOid && commitFile.parentIndex === parentIndex
+      ? commitFiles.files.files.findIndex((f) => f.path === commitFile.path)
+      : -1;
+  const stepCommitFile = useCallback(
+    (direction: -1 | 1) => {
+      if (commitFiles.state !== "done" || commitFileIndex === -1) return;
+      const next = commitFiles.files.files[commitFileIndex + direction];
+      if (next) openCommitFile(next);
+    },
+    [commitFiles, commitFileIndex, openCommitFile]
+  );
   const changed = staging.status.state === "done" ? staging.status.status.total : 0;
   const headOid =
     refs.state === "done" && selectedPath !== null
@@ -212,16 +286,22 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
             label: wipLabel(changed),
             headOid,
             worktreeName: target.name,
-            open: inspectorOpen,
-            onToggle: () => setInspectorOpen((open) => !open),
+            open: stagingShown,
+            onToggle: () => {
+              setInspectorMode("staging");
+              setInspectorOpen(!stagingShown);
+            },
             controls: inspectorId,
           }
         : null,
-    [changed, headOid, target, inspectorOpen, inspectorId]
+    [changed, headOid, target, stagingShown, inspectorId]
   );
   // Checkout and create branch from badges, rows, keys and the palette (#393).
   const showWorktree = useCallback((path: string) => onShowWorktree?.(path) ?? false, [onShowWorktree]);
-  const openInspector = useCallback(() => setInspectorOpen(true), []);
+  const openInspector = useCallback(() => {
+    setInspectorMode("staging");
+    setInspectorOpen(true);
+  }, []);
   const opKind = operation.op?.kind ?? null;
   const slotBusy = staging.busy !== null;
   const checkoutBusy = checkoutBlockedBy(opKind, slotBusy);
@@ -458,7 +538,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                 <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>
                   {/* The graph stays mounted under an open diff, keeping its scroll and selection. Its own
                       stacking context keeps its raised parts, such as the column handle, under the diff. */}
-                  <div className="isolate flex-1 min-h-0 flex flex-col" inert={openFile !== null}>
+                  <div className="isolate flex-1 min-h-0 flex flex-col" inert={openFile !== null || commitFile !== null}>
                     <GraphList
                       key={`${order}:${target.repoPath}`}
                       feed={graph.feed}
@@ -473,8 +553,28 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       onRefAction={onRefAction}
                       onPrimary={refActions.runPrimary}
                       announce={staging.announce}
+                      selectedOid={selectedOid}
+                      onSelect={selectCommit}
+                      onInspect={inspect}
+                      focusRef={graphFocus}
                     />
                   </div>
+                  {commitFile && (
+                    <CommitFileDiffView
+                      key={`${commitFile.oid}:${commitFile.parentIndex}:${commitFile.path}`}
+                      file={commitFile}
+                      reader={commitDiff}
+                      mode={prefs.diffMode}
+                      onMode={setDiffMode}
+                      onStep={commitFileIndex === -1 ? null : stepCommitFile}
+                      canStep={{
+                        previous: commitFileIndex > 0,
+                        next: commitFiles.state === "done" && commitFileIndex !== -1 && commitFileIndex < commitFiles.files.files.length - 1,
+                      }}
+                      onBack={() => setCommitFile(null)}
+                      visible={isOpen}
+                    />
+                  )}
                   {openFile && (
                     <FileDiffView
                       key={`${openFile.side}:${openFile.path}`}
@@ -492,7 +592,29 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                     />
                   )}
                 </div>
-                {inspectorOpen && (
+                {inspectorOpen && inspectorMode === "details" && graphRepo !== null && (
+                  <div className="contents" inert={resolving !== null}>
+                    <CommitInspector
+                      id={inspectorId}
+                      repoPath={graphRepo}
+                      details={details}
+                      width={prefs.inspectorWidth}
+                      onWidth={setInspectorWidth}
+                      onClose={() => setInspectorOpen(false)}
+                      badgesOf={(oid) => refsShown.badges.get(oid) ?? []}
+                      onCopy={(sha) => runRefAction({ kind: "copySha", oid: sha })}
+                      onSelectCommit={setSelectedOid}
+                      files={commitFiles}
+                      parentIndex={parentIndex}
+                      onParentIndex={onParentIndex}
+                      openFile={commitFile}
+                      onOpenFile={openCommitFile}
+                      onEscape={focusGraph}
+                      focusRef={inspectorFocus}
+                    />
+                  </div>
+                )}
+                {stagingShown && (
                   // Under the resolver, the inspector keeps its state but takes no focus.
                   <div className="contents" inert={resolving !== null}>
                   <StagingInspector

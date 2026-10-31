@@ -13,6 +13,9 @@ mod conflict_tests;
 pub mod hand_off;
 #[cfg(test)]
 mod hand_off_tests;
+pub mod details;
+#[cfg(test)]
+mod details_tests;
 pub mod diff;
 pub mod discard;
 #[cfg(test)]
@@ -54,6 +57,7 @@ pub use remote_ops::*;
 pub use commands::*;
 pub use commit::*;
 pub use conflict::*;
+pub use details::*;
 pub use diff::*;
 pub use discard::*;
 pub use error::*;
