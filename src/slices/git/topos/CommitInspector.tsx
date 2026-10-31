@@ -4,7 +4,7 @@ import { BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, Shie
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type FileStatus, type Person } from "./commitDetails";
-import { movedRow } from "./commitSelection";
+import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
 import type { Badge } from "./graphRefs";
 import { shortOid } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
@@ -144,8 +144,8 @@ function countsLabel(file: CommitFile): string {
 
 /**
  * A commit's files (#397): a virtualized listbox of status letter, path and `+n −m`. Clicking a
- * file opens its read-only diff; ↑/↓ move the selection, and the open diff follows it, so the
- * arrows step between files.
+ * file opens its read-only diff; the commit list's move keys (arrows, PageUp/PageDown, Home/End)
+ * move the selection, and the open diff follows it, so they step between files.
  */
 const CommitFileList: React.FC<{
   files: CommitFile[];
@@ -180,24 +180,21 @@ const CommitFileList: React.FC<{
     if (file === undefined || !el) return;
     setActivePath(file.path);
     if (open) onOpen(file);
-    const rowTop = index * ROW_HEIGHT;
-    if (rowTop < el.scrollTop) el.scrollTop = rowTop;
-    else if (rowTop + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = rowTop + ROW_HEIGHT - el.clientHeight;
+    el.scrollTop = offsetShowing(el.scrollTop, index, el.clientHeight);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (files.length === 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    const steps: Record<string, "up" | "down" | "home" | "end"> = { ArrowUp: "up", ArrowDown: "down", Home: "home", End: "end" };
-    if (e.key === "Enter") {
-      e.preventDefault();
+    // The commit list's keys, less Ctrl+C: Enter opens the file instead of moving focus.
+    const press = selectionKey(e, false);
+    if (files.length === 0 || press === null || press.kind === "copy") return;
+    e.preventDefault();
+    if (press.kind === "inspect") {
       const file = files[found === -1 ? (active ?? 0) : found];
       if (file) onOpen(file);
       return;
     }
-    const step = steps[e.key];
-    if (step === undefined) return;
-    e.preventDefault();
-    const row = movedRow(found === -1 ? null : found, step, { rowCount: files.length, pageRows: 1, firstVisible: win.start });
+    const pageRows = Math.floor(height / ROW_HEIGHT);
+    const row = movedRow(found === -1 ? null : found, press.step, { rowCount: files.length, pageRows, firstVisible: win.start });
     if (row !== null) moveTo(row, openPath !== null);
   };
 
@@ -235,7 +232,7 @@ const CommitFileList: React.FC<{
   return (
     <>
       <p id={hintId} className="sr-only">
-        Up and Down move between files, and the open diff follows. Enter or a click opens a file's diff.
+        Arrow keys, Page Up, Page Down, Home and End move between files, and the open diff follows. Enter or a click opens a file's diff.
       </p>
       <div
         ref={scroller}
