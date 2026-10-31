@@ -152,6 +152,11 @@ function Bench() {
           worktreeAgents={NO_WORKTREE_AGENTS}
           // A dirty worktree's WIP row (#382) shows, so the gate measures the graph with it pinned on top.
           wip={WIP}
+          // Ref actions (#393) act on badges, and recordings carry none.
+          refContext={null}
+          onRefAction={() => {}}
+          onPrimary={() => {}}
+          announce={() => {}}
         />
       ) : (
         <p role="status">Loading commits…</p>
