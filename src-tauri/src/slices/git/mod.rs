@@ -1,4 +1,7 @@
 pub mod commands;
+pub mod commit;
+#[cfg(test)]
+mod commit_tests;
 pub mod diff;
 pub mod discard;
 #[cfg(test)]
@@ -25,6 +28,7 @@ mod test_load;
 pub mod version;
 
 pub use commands::*;
+pub use commit::*;
 pub use diff::*;
 pub use discard::*;
 pub use error::*;

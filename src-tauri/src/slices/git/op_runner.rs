@@ -4,7 +4,7 @@
 //! [`OpEvent`]s over a Tauri [`Channel`] and stops when [`git_op_cancel`] kills its process tree.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,11 +31,18 @@ pub struct OpOptions {
     /// Run git with `GIT_PROGRESS_DELAY=0`, so progress shows from the start instead of after git's
     /// default two seconds.
     pub progress_at_once: bool,
+    /// The most bytes of output the op streams as [`OpEvent::Output`]. Past it one notice is sent
+    /// and the rest is only captured. `None` streams everything.
+    pub stream_cap: Option<usize>,
+    /// Read git's stderr for `--progress` lines and send them as [`OpEvent::Progress`]. An op that
+    /// prints no progress, such as a commit whose hooks print `lint: 2 problems`, turns it off so
+    /// every line stays output.
+    pub progress_lines: bool,
 }
 
 impl Default for OpOptions {
     fn default() -> Self {
-        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false }
+        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false, stream_cap: None, progress_lines: true }
     }
 }
 
@@ -84,11 +91,73 @@ fn push_capped(buf: &mut String, text: &str) {
 }
 
 /// What a finished operation printed, the last [`MAX_CAPTURE_BYTES`] of each stream. Progress
-/// lines are left out of `stderr`.
+/// lines are left out of `stderr` and `combined`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OpOutput {
     pub stdout: String,
     pub stderr: String,
+    /// Both streams in the order they arrived.
+    pub combined: String,
+}
+
+/// The notice an op sends once, in place of its output past [`OpOptions::stream_cap`].
+pub const STREAM_CAP_NOTICE: &str = "\n[Quay: output past 64 KiB is not shown]\n";
+
+/// A process that ran to the end: how it exited and what it printed.
+pub(super) struct Finished {
+    pub status: std::process::ExitStatus,
+    pub output: OpOutput,
+}
+
+impl Finished {
+    /// `Ok` with the output when git exited 0, and otherwise git's stderr as the error.
+    fn into_result(self) -> Result<OpOutput, GitError> {
+        if self.status.success() {
+            return Ok(self.output);
+        }
+        let stderr = self.output.stderr;
+        Err(GitError::Other {
+            stderr: if stderr.trim().is_empty() { format!("git exited with {}", self.status) } else { stderr },
+        })
+    }
+}
+
+/// Where an op's output goes: the channel, up to the stream cap, and the capped capture.
+struct Sink<'a> {
+    channel: &'a Channel<OpEvent>,
+    output: OpOutput,
+    /// The bytes still allowed onto the channel, or `None` for no cap.
+    allowance: Option<usize>,
+    noticed: bool,
+    progress_lines: bool,
+}
+
+impl Sink<'_> {
+    fn output(&mut self, stream: Stream, text: &str) {
+        match stream {
+            Stream::Stdout => push_capped(&mut self.output.stdout, text),
+            Stream::Stderr => push_capped(&mut self.output.stderr, text),
+        }
+        push_capped(&mut self.output.combined, text);
+        let chunk = match &mut self.allowance {
+            None => text,
+            Some(left) => {
+                let mut take = text.len().min(*left);
+                while !text.is_char_boundary(take) {
+                    take -= 1;
+                }
+                *left -= take;
+                &text[..take]
+            }
+        };
+        if !chunk.is_empty() {
+            let _ = self.channel.send(OpEvent::Output { chunk: chunk.to_string() });
+        }
+        if chunk.len() < text.len() && !self.noticed {
+            self.noticed = true;
+            let _ = self.channel.send(OpEvent::Output { chunk: STREAM_CAP_NOTICE.to_string() });
+        }
+    }
 }
 
 /// Which pipe a chunk of git's output came from.
@@ -140,17 +209,40 @@ fn run_with_cancel(
     channel: &Channel<OpEvent>,
 ) -> Result<OpOutput, GitError> {
     let mut cmd = headless_git();
-    cmd.current_dir(cwd);
+    cmd.current_dir(cwd).args(args);
+    run_process(cmd, None, opts, cancel, channel)?.into_result()
+}
+
+/// Runs `cmd`, which should come from [`headless_git`], with `input` on its stdin, streaming its
+/// events to `channel` until it exits or `cancel` is set. A cancel kills its whole process tree and
+/// returns [`GitError::Cancelled`]; any exit status is returned for the caller to judge.
+pub(super) fn run_process(
+    mut cmd: Command,
+    input: Option<Vec<u8>>,
+    opts: &OpOptions,
+    cancel: &AtomicBool,
+    channel: &Channel<OpEvent>,
+) -> Result<Finished, GitError> {
     if opts.c_locale {
         cmd.env("LC_ALL", "C");
     }
     if opts.progress_at_once {
         cmd.env("GIT_PROGRESS_DELAY", "0");
     }
-    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    if input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
     let mut tree = crate::spawn::spawn_tree(&mut cmd)
         .map_err(|e| GitError::Other { stderr: format!("could not run git: {e}") })?;
 
+    if let (Some(input), Some(mut stdin)) = (input, tree.child().stdin.take()) {
+        // From its own thread, so a long input never stalls against git's output. A git that fails
+        // early closes its stdin; its output says why.
+        thread::spawn(move || {
+            let _ = stdin.write_all(&input);
+        });
+    }
     let (tx, rx) = mpsc::channel();
     if let Some(out) = tree.child().stdout.take() {
         pump(out, Stream::Stdout, tx.clone());
@@ -159,7 +251,7 @@ fn run_with_cancel(
         pump(err, Stream::Stderr, tx);
     }
 
-    let mut output = OpOutput::default();
+    let mut sink = Sink { channel, output: OpOutput::default(), allowance: opts.stream_cap, noticed: false, progress_lines: opts.progress_lines };
     let mut stderr_line = Vec::new();
     let mut last_heard = Instant::now();
     let mut stalled = false;
@@ -184,43 +276,33 @@ fn run_with_cancel(
         last_heard = Instant::now();
         stalled = false;
         match stream {
-            Stream::Stdout => {
-                let chunk = String::from_utf8_lossy(&bytes).into_owned();
-                push_capped(&mut output.stdout, &chunk);
-                let _ = channel.send(OpEvent::Output { chunk });
-            }
+            Stream::Stdout => sink.output(Stream::Stdout, &String::from_utf8_lossy(&bytes)),
             Stream::Stderr => {
                 // Progress lines end in `\r` and other lines in `\n`; either ends a line here.
                 for &byte in &bytes {
                     stderr_line.push(byte);
                     if byte == b'\r' || byte == b'\n' {
-                        stderr_segment(&std::mem::take(&mut stderr_line), &mut output, channel);
+                        stderr_segment(&std::mem::take(&mut stderr_line), &mut sink);
                     }
                 }
             }
         }
     }
     if !stderr_line.is_empty() {
-        stderr_segment(&stderr_line, &mut output, channel);
+        stderr_segment(&stderr_line, &mut sink);
     }
     let status = tree.child().wait().map_err(|e| GitError::Other { stderr: format!("could not wait for git: {e}") })?;
-    if status.success() {
-        return Ok(output);
-    }
-    Err(GitError::Other {
-        stderr: if output.stderr.trim().is_empty() { format!("git exited with {status}") } else { output.stderr },
-    })
+    Ok(Finished { status, output: sink.output })
 }
 
 /// Sends one stderr line as a `Progress` event, or as `Output` that is also captured.
-fn stderr_segment(line: &[u8], output: &mut OpOutput, channel: &Channel<OpEvent>) {
+fn stderr_segment(line: &[u8], sink: &mut Sink) {
     let text = String::from_utf8_lossy(line);
-    if let Some((phase, percent)) = parse_progress(&text) {
-        let _ = channel.send(OpEvent::Progress { phase: phase.to_string(), percent });
+    if let Some((phase, percent)) = parse_progress(&text).filter(|_| sink.progress_lines) {
+        let _ = sink.channel.send(OpEvent::Progress { phase: phase.to_string(), percent });
         return;
     }
-    push_capped(&mut output.stderr, &text);
-    let _ = channel.send(OpEvent::Output { chunk: text.into_owned() });
+    sink.output(Stream::Stderr, &text);
 }
 
 /// The phase and percent of a git progress line: `Phase: N% (a/b)...` or `Phase: N, done.`,
@@ -260,12 +342,30 @@ impl GitOps {
         opts: &OpOptions,
         channel: &Channel<OpEvent>,
     ) -> Result<OpOutput, GitError> {
-        let cancel = match self.register(op_id) {
-            Ok(cancel) => cancel,
-            Err(error) => return finish(Err(error), channel),
+        self.run_with(op_id, channel, |cancel| run_with_cancel(cwd, args, opts, cancel, channel))
+    }
+
+    /// Runs `op` as the cancellable op `op_id`: `op` gets the flag [`GitOps::cancel`] sets, which
+    /// it hands to [`run_process`]. The op's last event, `Done` or `Failed` with the error this
+    /// returns, goes to `channel`.
+    pub(super) fn run_with<T>(
+        &self,
+        op_id: Uuid,
+        channel: &Channel<OpEvent>,
+        op: impl FnOnce(&AtomicBool) -> Result<T, GitError>,
+    ) -> Result<T, GitError> {
+        let result = match self.register(op_id) {
+            Ok(cancel) => {
+                let result = op(&cancel);
+                self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&op_id);
+                result
+            }
+            Err(error) => Err(error),
         };
-        let result = finish(run_with_cancel(cwd, args, opts, &cancel, channel), channel);
-        self.running.lock().unwrap_or_else(|e| e.into_inner()).remove(&op_id);
+        let _ = channel.send(match &result {
+            Ok(_) => OpEvent::Done,
+            Err(error) => OpEvent::Failed { error: error.clone() },
+        });
         result
     }
 
