@@ -209,6 +209,8 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                     path: "a.txt".into(),
                     xy: "UU".into(),
                     on_disk: true,
+                    left_oid: Some("l1".into()),
+                    right_oid: None,
                     token: "b:l:r:w".into(),
                     editable: true,
                     reason: None,
@@ -223,7 +225,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             }),
             json!({
                 "file": {
-                    "path": "a.txt", "xy": "UU", "onDisk": true, "token": "b:l:r:w", "editable": true, "reason": null,
+                    "path": "a.txt", "xy": "UU", "onDisk": true, "leftOid": "l1", "rightOid": null, "token": "b:l:r:w", "editable": true, "reason": null,
                     "left": "l", "right": "r", "result": "m", "eol": "crlf", "bom": true, "markerSize": 7,
                 },
                 "backup": { "path": "a.txt", "blob": "b1", "after": "b2" },

@@ -74,7 +74,7 @@ pub struct DiscardSelectionResult {
 
 /// Runs `git <args>` in `worktree` with `input` on stdin and returns what it prints. The input is
 /// written from its own thread, so a long list of paths never stalls against git's output.
-fn run_piped(worktree: &Path, args: &[&str], input: Vec<u8>) -> Result<Vec<u8>, GitError> {
+pub(super) fn run_piped(worktree: &Path, args: &[&str], input: Vec<u8>) -> Result<Vec<u8>, GitError> {
     let mut child = worktree_git(worktree)
         .args(args)
         .stdin(Stdio::piped())
@@ -309,6 +309,17 @@ pub fn discard_selection(
 /// every folder on the way is resolved, and doesn't reach into `.git`. The file itself needn't
 /// exist, but when it does it must not be a symbolic link.
 pub(super) fn inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, GitError> {
+    checked_target(worktree, path, false)
+}
+
+/// As [`inside_worktree`], but `path` itself may be a symbolic link, for a git write that replaces
+/// or removes the link rather than writing through it. The folders on the way must still resolve
+/// inside the worktree.
+pub(super) fn link_inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, GitError> {
+    checked_target(worktree, path, true)
+}
+
+fn checked_target(worktree: &Path, path: &str, allow_link: bool) -> Result<PathBuf, GitError> {
     let path = parse_rel_path(path)?;
     let outside = || other(format!("{path} is outside the worktree"));
     if path.split(['/', '\\']).next().is_some_and(|first| first.eq_ignore_ascii_case(".git")) {
@@ -316,11 +327,15 @@ pub(super) fn inside_worktree(worktree: &Path, path: &str) -> Result<PathBuf, Gi
     }
     let root = worktree.canonicalize().map_err(|e| other(format!("could not open the worktree: {e}")))?;
     let target = root.join(path);
+    let mut existing = target.as_path();
     if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
-        return Err(other(format!("{path} is a symbolic link, which Quay doesn't write through")));
+        if !allow_link {
+            return Err(other(format!("{path} is a symbolic link, which Quay doesn't write through")));
+        }
+        // The link is never followed; the folder holding it must be inside.
+        existing = target.parent().ok_or_else(outside)?;
     }
     // The deepest folder on the way that exists must resolve inside the worktree.
-    let mut existing = target.as_path();
     while std::fs::symlink_metadata(existing).is_err() {
         existing = existing.parent().ok_or_else(outside)?;
     }

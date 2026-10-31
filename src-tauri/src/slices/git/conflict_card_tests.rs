@@ -234,3 +234,197 @@ fn a_too_large_conflict_takes_either_side_whole() {
     };
     take_each_side("big.txt", &big("base\n"), &big("ours\n"), &big("theirs\n"), NotEditable::TooLarge);
 }
+
+/// Points the symbolic link `name` at `target` in the index. The repo keeps `core.symlinks` off,
+/// as Git for Windows does, so the worktree holds a plain file with the target and the test runs
+/// the same everywhere.
+fn link(name: &'static str, target: &'static str) -> impl Fn(&Path) {
+    move |dir: &Path| {
+        git(dir, &["config", "core.symlinks", "false"]);
+        std::fs::write(dir.join(name), target).unwrap();
+        let oid = git(dir, &["hash-object", "-w", name]);
+        git(dir, &["update-index", "--add", "--cacheinfo", &format!("120000,{},{name}", oid.trim())]);
+    }
+}
+
+#[test]
+fn a_symlink_conflict_takes_either_side_whole_and_stays_a_link() {
+    for (side, target) in [(ConflictSide::Left, "ours-target"), (ConflictSide::Right, "theirs-target")] {
+        let (root, wt) = conflict(&link("current", "base-target"), &link("current", "ours-target"), &link("current", "theirs-target"));
+        let opened = open_conflict(&wt, "current").unwrap();
+        assert_eq!((opened.editable, opened.reason), (false, Some(NotEditable::Symlink)));
+
+        let taken = take_side(&StagingLocks::default(), &wt, 1, "current", &opened.token, side).expect("the side lands");
+        let entry = index_entries(&wt, "current");
+        assert!(entry.starts_with("120000 ") && entry.trim_end().ends_with(" 0\tcurrent"), "{side:?}: a resolved link: {entry}");
+        assert_eq!(git(&wt, &["show", ":current"]), target, "{side:?}: it points at that side's target");
+        assert_eq!(std::fs::read_to_string(wt.join("current")).unwrap(), target);
+        assert!(taken.backup.blob.is_some());
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+/// A new commit in `dir` with git's empty tree and `message`, for a submodule entry to point at.
+fn commit_oid(dir: &Path, message: &str) -> String {
+    git(dir, &["commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", message]).trim().to_string()
+}
+
+/// Points the submodule entry `sub` at a fresh commit named `message`, and returns that change.
+fn gitlink(message: &'static str) -> impl Fn(&Path) {
+    move |dir: &Path| {
+        let oid = commit_oid(dir, message);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        git(dir, &["update-index", "--add", "--cacheinfo", &format!("160000,{oid},sub")]);
+    }
+}
+
+#[test]
+fn a_submodule_conflict_shows_both_commits_and_refuses_every_card_write() {
+    let (root, wt) = conflict(&gitlink("base"), &gitlink("ours"), &gitlink("theirs"));
+    let opened = open_conflict(&wt, "sub").unwrap();
+    assert_eq!((opened.editable, opened.reason), (false, Some(NotEditable::Submodule)));
+    let stage = |n: &str| {
+        index_entries(&wt, "sub").lines().find(|l| l.ends_with(&format!(" {n}\tsub"))).and_then(|l| l.split(' ').nth(1)).map(str::to_string)
+    };
+    assert_eq!(opened.left_oid, stage("2"), "stage 2's commit");
+    assert_eq!(opened.right_oid, stage("3"), "stage 3's commit");
+    assert!(opened.left_oid.is_some() && opened.left_oid != opened.right_oid);
+    let before = index_entries(&wt, "sub");
+
+    let locks = StagingLocks::default();
+    for side in [ConflictSide::Left, ConflictSide::Right] {
+        let taken = take_side(&locks, &wt, 1, "sub", &opened.token, side);
+        assert!(matches!(&taken, Err(GitError::Other { stderr }) if stderr.contains("submodule")), "take {side:?} refused: {taken:?}");
+    }
+    let removed = remove_conflict(&locks, &wt, 1, "sub", &opened.token);
+    assert!(matches!(&removed, Err(GitError::Other { stderr }) if stderr.contains("submodule")), "remove refused: {removed:?}");
+    assert_eq!(index_entries(&wt, "sub"), before, "the index is unchanged");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Makes `name` a real symbolic link to `target`, with `core.symlinks` on so git writes real links.
+fn real_link(name: &'static str, target: &'static str) -> impl Fn(&Path) {
+    move |dir: &Path| {
+        git(dir, &["config", "core.symlinks", "true"]);
+        let at = dir.join(name);
+        let _ = std::fs::remove_file(&at);
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(target, &at).expect("this machine can create symbolic links");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, &at).unwrap();
+    }
+}
+
+#[test]
+fn a_real_symlink_conflict_can_be_taken_and_removed_without_writing_through_the_link() {
+    let base = real_link("current", "base-target");
+    let ours = real_link("current", "ours-target");
+    let theirs = real_link("current", "theirs-target");
+    let (root, wt) = conflict(&base, &ours, &theirs);
+    assert!(std::fs::symlink_metadata(wt.join("current")).unwrap().file_type().is_symlink(), "git left a real link");
+    let opened = open_conflict(&wt, "current").unwrap();
+    assert_eq!(opened.reason, Some(NotEditable::Symlink));
+
+    let taken = take_side(&StagingLocks::default(), &wt, 1, "current", &opened.token, ConflictSide::Right).expect("the side lands");
+    assert_eq!(git(&wt, &["show", ":current"]), "theirs-target");
+    assert_eq!(std::fs::read_link(wt.join("current")).unwrap(), Path::new("theirs-target"), "the worktree holds their link");
+    let blob = taken.backup.blob.expect("the link was backed up");
+    assert_eq!(git(&wt, &["cat-file", "blob", &blob]), "ours-target", "as the target it pointed at");
+    let _ = std::fs::remove_dir_all(&root);
+
+    let (root, wt) = conflict(&base, &ours, &theirs);
+    let opened = open_conflict(&wt, "current").unwrap();
+    remove_conflict(&StagingLocks::default(), &wt, 1, "current", &opened.token).expect("the removal lands");
+    assert_eq!(index_entries(&wt, "current"), "");
+    assert!(std::fs::symlink_metadata(wt.join("current")).is_err(), "the link is gone");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn every_card_write_after_an_outside_edit_is_refused_as_stale_and_changes_nothing() {
+    let (root, wt) = changed_and_deleted();
+    let token = open_conflict(&wt, "notes.txt").unwrap().token;
+    // An agent edits the file while its card is open.
+    std::fs::write(wt.join("notes.txt"), "one\nagent's pick\n").unwrap();
+    let before = index_entries(&wt, "notes.txt");
+    let locks = StagingLocks::default();
+
+    assert_eq!(remove_conflict(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::ConflictStale));
+    assert_eq!(take_side(&locks, &wt, 1, "notes.txt", &token, ConflictSide::Left).err(), Some(GitError::ConflictStale));
+    assert_eq!(mark_resolved(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::ConflictStale));
+    assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"one\nagent's pick\n");
+    assert_eq!(index_entries(&wt, "notes.txt"), before);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_binary_side_taken_after_an_outside_edit_is_refused_as_stale() {
+    let (root, wt) = conflict(&write("logo.bin", b"\x00base".to_vec()), &write("logo.bin", b"\x00ours".to_vec()), &write("logo.bin", b"\x00theirs".to_vec()));
+    let token = open_conflict(&wt, "logo.bin").unwrap().token;
+    std::fs::write(wt.join("logo.bin"), b"\x00agent").unwrap();
+
+    let taken = take_side(&StagingLocks::default(), &wt, 1, "logo.bin", &token, ConflictSide::Right);
+    assert_eq!(taken.err(), Some(GitError::ConflictStale));
+    assert_eq!(std::fs::read(wt.join("logo.bin")).unwrap(), b"\x00agent");
+    assert_ne!(git(&wt, &["ls-files", "-u"]), "", "still conflicted");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_link_retargeted_after_it_was_opened_is_refused_as_stale() {
+    let (root, wt) = conflict(&real_link("current", "base-target"), &real_link("current", "ours-target"), &real_link("current", "theirs-target"));
+    let token = open_conflict(&wt, "current").unwrap().token;
+    std::fs::remove_file(wt.join("current")).unwrap();
+    real_link("current", "agent-target")(&wt);
+
+    let removed = remove_conflict(&StagingLocks::default(), &wt, 1, "current", &token);
+    assert_eq!(removed.err(), Some(GitError::ConflictStale));
+    assert_eq!(std::fs::read_link(wt.join("current")).unwrap(), Path::new("agent-target"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn remove_refuses_a_path_outside_the_worktree() {
+    let (root, wt) = changed_and_deleted();
+    let outside = root.join("outside.txt");
+    std::fs::write(&outside, "keep\n").unwrap();
+    let token = open_conflict(&wt, "notes.txt").unwrap().token;
+    let absolute = wt.join("notes.txt").to_string_lossy().into_owned();
+
+    for path in ["../outside.txt", "sub/../../outside.txt", absolute.as_str(), "/notes.txt", ".git/index", ""] {
+        let removed = remove_conflict(&StagingLocks::default(), &wt, 1, path, &token);
+        assert!(matches!(removed, Err(GitError::Other { .. })), "remove refuses {path:?}");
+    }
+    assert_eq!(std::fs::read(&outside).unwrap(), b"keep\n");
+    assert_ne!(index_entries(&wt, "notes.txt"), "", "still conflicted");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(windows)]
+#[test]
+fn remove_refuses_a_path_through_a_junction_out_of_the_worktree() {
+    let (root, wt) = changed_and_deleted();
+    let away = root.join("away");
+    std::fs::create_dir_all(&away).unwrap();
+    std::fs::write(away.join("notes.txt"), "keep\n").unwrap();
+    let made = crate::spawn::hidden_command("cmd").args(["/C", "mklink", "/J"]).arg(wt.join("link")).arg(&away).output().unwrap();
+    assert!(made.status.success(), "mklink /J: {}", String::from_utf8_lossy(&made.stderr));
+    let token = open_conflict(&wt, "notes.txt").unwrap().token;
+
+    assert!(remove_conflict(&StagingLocks::default(), &wt, 1, "link/notes.txt", &token).is_err());
+    assert_eq!(std::fs::read(away.join("notes.txt")).unwrap(), b"keep\n");
+    let _ = std::fs::remove_dir(wt.join("link"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn remove_waits_for_the_worktrees_staging_slot() {
+    let (root, wt) = changed_and_deleted();
+    let token = open_conflict(&wt, "notes.txt").unwrap().token;
+    let locks = StagingLocks::default();
+    let _held = locks.begin(&wt).unwrap();
+
+    assert_eq!(remove_conflict(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::StagingBusy));
+    assert!(wt.join("notes.txt").exists());
+    let _ = std::fs::remove_dir_all(root);
+}

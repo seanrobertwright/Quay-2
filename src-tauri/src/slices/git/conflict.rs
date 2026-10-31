@@ -1,18 +1,22 @@
-//! The three-pane resolver's backend (#352, #390). [`open_conflict`] reads a conflicted file's
+//! The three-pane resolver's backend (#352, #390), and the side-picker cards' for the conflicts it
+//! can't edit as text (#391). [`open_conflict`] reads a conflicted file's
 //! stage 2 (left) and stage 3 (right) blobs and its worktree bytes, whose conflict markers seed the
 //! editable Result. Rust never parses those markers: the frontend's `parseConflicts` does.
 //!
 //! Every write re-checks the [`ConflictFile::token`], which pins the stage 1, 2 and 3 oids and the
-//! worktree bytes' blob id, and refuses with [`GitError::ConflictStale`] when git or an agent changed
+//! worktree's file bytes or link target, and refuses with [`GitError::ConflictStale`] when git or an agent changed
 //! any of them since the file was opened. Writes run in the worktree's staging slot, and Topos never
-//! writes the index directly: take-whole-side and Mark resolved stage through `git add`.
+//! writes the index directly: take-whole-side and Mark resolved stage through `git add`, and Remove
+//! runs `git rm`. Before take-whole-side, Remove or Reset file replaces what the worktree holds, it
+//! is stored as a blob, as a discard stores it (#387). A submodule's conflict gets none of these
+//! writes: it is resolved inside the submodule.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use super::diff::{other, run_read, TOO_LARGE_BYTES};
-use super::discard::{back_up, backups, blob_bytes, hash_files, inside_worktree, write_file, Blobs, DiscardBackup};
+use super::discard::{back_up, blob_bytes, hash_files, inside_worktree, link_inside_worktree, run_piped, write_file, Blobs, DiscardBackup};
 use super::error::GitError;
 use super::operation::conflict_kind;
 use super::staging::{parse_rel_path, read_status, run_write, write_stage, PathTarget, StagingLocks, WorktreeStatus};
@@ -61,6 +65,10 @@ pub struct ConflictFile {
     pub xy: String,
     /// Whether the worktree holds a file or link at the path.
     pub on_disk: bool,
+    /// Stage 2's object id, a commit for a submodule, or null when the left side has none.
+    pub left_oid: Option<String>,
+    /// Stage 3's object id, or null when the right side has none.
+    pub right_oid: Option<String>,
     /// Pins the stage oids and the worktree bytes; every write hands it back.
     pub token: String,
     pub editable: bool,
@@ -112,29 +120,75 @@ fn read_stages(worktree: &Path, path: &str) -> Result<Option<Stages>, GitError> 
 enum WorktreeFile {
     /// A file, by the blob id of its bytes.
     Blob(String),
-    Link,
+    /// A symbolic link, by the blob id of the target it names.
+    Link(String),
+    /// A folder, such as a submodule's checkout.
+    Folder,
     Missing,
 }
 
 impl WorktreeFile {
-    /// What `path` holds. The path must stay inside the worktree.
+    /// What `path` holds. The path, and the folders on the way, must stay inside the worktree; a
+    /// link at `path` is read but never followed.
     fn read(worktree: &Path, path: &str) -> Result<Self, GitError> {
-        if let Err(e) = inside_worktree(worktree, path) {
-            // A symlink is refused as a write target, but its conflict can still be read.
-            let link = std::fs::symlink_metadata(worktree.join(path)).is_ok_and(|m| m.file_type().is_symlink());
-            return if link { Ok(Self::Link) } else { Err(e) };
+        let target = link_inside_worktree(worktree, path)?;
+        match std::fs::symlink_metadata(&target) {
+            Ok(meta) if meta.file_type().is_symlink() => Ok(Self::Link(link_blob(worktree, &target, Blobs::IdsOnly)?)),
+            Ok(meta) if meta.is_dir() => Ok(Self::Folder),
+            _ => Ok(hash_files(worktree, &[path], Blobs::IdsOnly)?.remove(0).map_or(Self::Missing, Self::Blob)),
         }
-        Ok(hash_files(worktree, &[path], Blobs::IdsOnly)?.remove(0).map_or(Self::Missing, Self::Blob))
     }
 
     /// Its part of the token.
-    fn token_part(&self) -> &str {
+    fn token_part(&self) -> String {
         match self {
-            Self::Blob(oid) => oid,
-            Self::Link => "link",
-            Self::Missing => "-",
+            Self::Blob(oid) => oid.clone(),
+            Self::Link(oid) => format!("link {oid}"),
+            Self::Folder => "folder".into(),
+            Self::Missing => "-".into(),
         }
     }
+
+    /// The blob id a backup and its `after` record: the file's bytes or the link's target.
+    fn blob(self) -> Option<String> {
+        match self {
+            Self::Blob(oid) | Self::Link(oid) => Some(oid),
+            Self::Folder | Self::Missing => None,
+        }
+    }
+}
+
+/// The blob id of the target the symbolic link `link` names, as git stores a link, stored in the
+/// object database with [`Blobs::Store`].
+fn link_blob(worktree: &Path, link: &Path, blobs: Blobs) -> Result<String, GitError> {
+    let target = std::fs::read_link(link).map_err(|e| other(format!("could not read the link {}: {e}", link.display())))?;
+    // git keeps `/` separators in a link's target on every platform.
+    let target = target.to_string_lossy().replace('\\', "/");
+    let mut args = vec!["hash-object"];
+    if blobs == Blobs::Store {
+        args.push("-w");
+    }
+    args.push("--stdin");
+    let printed = run_piped(worktree, &args, target.into_bytes())?;
+    Ok(String::from_utf8_lossy(&printed).trim().to_string())
+}
+
+/// Stores what `path` holds, a file's bytes or a link's target, as a blob before a card or Reset
+/// file replaces it, the way a discard backs up (#387). Fails, so that nothing changes, when it
+/// can't be stored. None when the worktree holds nothing there.
+fn back_up_conflict(worktree: &Path, path: &str) -> Result<Option<String>, GitError> {
+    let target = link_inside_worktree(worktree, path)?;
+    if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+        return link_blob(worktree, &target, Blobs::Store)
+            .map(Some)
+            .map_err(|e| other(format!("could not back up the link, so nothing was changed: {e}")));
+    }
+    Ok(back_up(worktree, &[path])?.remove(0))
+}
+
+/// The backup of `path` from the blob stored before the write and what the worktree holds now.
+fn conflict_backup(worktree: &Path, path: &str, blob: Option<String>) -> Result<DiscardBackup, GitError> {
+    Ok(DiscardBackup { path: path.to_string(), blob, after: WorktreeFile::read(worktree, path)?.blob() })
 }
 
 /// The token for these stages and the worktree file.
@@ -193,13 +247,13 @@ struct Texts {
 fn read_texts(worktree: &Path, path: &str, stages: &Stages, file: &WorktreeFile) -> Result<Result<Texts, NotEditable>, GitError> {
     let (Some(left), Some(right)) = (&stages[1], &stages[2]) else { return Ok(Err(NotEditable::OneSideMissing)) };
     let all = || stages.iter().flatten();
-    if all().any(|s| s.mode == "160000") {
+    if all().any(|s| s.mode == SUBMODULE_MODE) {
         return Ok(Err(NotEditable::Submodule));
     }
-    if *file == WorktreeFile::Link || all().any(|s| s.mode == "120000") {
+    if matches!(file, WorktreeFile::Link(_)) || all().any(|s| s.mode == "120000") {
         return Ok(Err(NotEditable::Symlink));
     }
-    if *file == WorktreeFile::Missing {
+    if matches!(file, WorktreeFile::Missing | WorktreeFile::Folder) {
         return Ok(Err(NotEditable::NoWorktreeFile));
     }
     let bytes = std::fs::read(worktree.join(path)).map_err(|e| other(format!("could not read {path}: {e}")))?;
@@ -235,6 +289,8 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
         path: path.to_string(),
         xy: conflict_kind(stages[0].is_some(), stages[1].is_some(), stages[2].is_some()).1.to_string(),
         on_disk: worktree_file != WorktreeFile::Missing,
+        left_oid: stages[1].as_ref().map(|s| s.oid.clone()),
+        right_oid: stages[2].as_ref().map(|s| s.oid.clone()),
         token: token(&stages, &worktree_file),
         editable: false,
         reason: None,
@@ -257,6 +313,18 @@ fn read_conflict(worktree: &Path, path: &str) -> Result<Option<ConflictFile>, Gi
         Err(reason) => file.reason = Some(reason),
     }
     Ok(Some(file))
+}
+
+/// The mode git gives a submodule's entry.
+const SUBMODULE_MODE: &str = "160000";
+
+/// Refuses a card write on a submodule, whose conflict is resolved inside the submodule: Topos
+/// never points its entry at a commit itself.
+fn refuse_submodule(path: &str, stages: &Stages) -> Result<(), GitError> {
+    if stages.iter().flatten().any(|s| s.mode == SUBMODULE_MODE) {
+        return Err(other(format!("{path} is a submodule; resolve it inside the submodule, in a terminal or with an agent")));
+    }
+    Ok(())
 }
 
 /// The conflicted `path` as it stands, for a write handed `token`: refused with
@@ -312,11 +380,11 @@ pub struct ConflictReset {
 /// matches. Returns the file opened afresh and the backup.
 pub fn reset_conflict(locks: &StagingLocks, worktree: &Path, path: &str, token: &str) -> Result<ConflictReset, GitError> {
     let _slot = locks.begin(worktree)?;
-    inside_worktree(worktree, path)?;
+    link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
-    let blobs = back_up(worktree, &[path])?;
+    let blob = back_up_conflict(worktree, path)?;
     run_write(worktree, &["checkout", "-m"], Some(&[path]))?;
-    let backup = backups(worktree, &[path], blobs)?.remove(0);
+    let backup = conflict_backup(worktree, path, blob)?;
     Ok(ConflictReset { file: open_conflict(worktree, path)?, backup })
 }
 
@@ -328,7 +396,7 @@ pub enum ConflictSide {
     Right,
 }
 
-/// What take-whole-side did: the backup of the bytes it replaced, and the post-write status.
+/// What take-whole-side or Remove did: the backup of what it replaced, and the post-write status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TakeSideResult {
@@ -338,9 +406,10 @@ pub struct TakeSideResult {
 
 /// Take-whole-side (#390): keeps `side` of the conflicted `path` as it stands in its stage
 /// (`git checkout --ours|--theirs`), then marks it resolved through the inspector's own `git add`
-/// path, in the worktree's staging slot. The file's bytes are stored as a blob first, as Reset file
-/// stores them. It refuses with [`GitError::ConflictStale`] when `token` no longer matches. Returns
-/// the backup and the status answering `request_id`.
+/// path, in the worktree's staging slot. The file's bytes, or a link's target, are stored as a blob
+/// first, as Reset file stores them. It refuses with [`GitError::ConflictStale`] when `token` no
+/// longer matches, and refuses a side that deleted the file and a submodule, changing nothing.
+/// Returns the backup and the status answering `request_id`.
 pub fn take_side(
     locks: &StagingLocks,
     worktree: &Path,
@@ -350,36 +419,38 @@ pub fn take_side(
     side: ConflictSide,
 ) -> Result<TakeSideResult, GitError> {
     let _slot = locks.begin(worktree)?;
-    inside_worktree(worktree, path)?;
+    link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     let (index, word, flag) = match side {
         ConflictSide::Left => (1, "left", "--ours"),
         ConflictSide::Right => (2, "right", "--theirs"),
     };
     let stages = read_stages(worktree, path)?.ok_or(GitError::ConflictStale)?;
+    refuse_submodule(path, &stages)?;
     if stages[index].is_none() {
         return Err(other(format!("{path} has no {word} side to keep: that side deleted it")));
     }
-    let blobs = back_up(worktree, &[path])?;
+    let blob = back_up_conflict(worktree, path)?;
     run_write(worktree, &["checkout", flag], Some(&[path]))?;
     write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;
-    let backup = backups(worktree, &[path], blobs)?.remove(0);
+    let backup = conflict_backup(worktree, path, blob)?;
     Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
 }
 
 /// Remove, or Accept deletion (#391): takes the conflicted `path` out of the index and the
-/// worktree (`git rm`), in the worktree's staging slot. A file on disk is stored as a blob first, as
-/// take-whole-side stores it, and nothing changes if that fails. It refuses with
-/// [`GitError::ConflictStale`] when `token` no longer matches. Returns the backup and the status
-/// answering `request_id`.
+/// worktree (`git rm`), in the worktree's staging slot. A file or link on disk is stored as a blob
+/// first, as take-whole-side stores it, and nothing changes if that fails. It refuses with
+/// [`GitError::ConflictStale`] when `token` no longer matches, and refuses a submodule. Returns the
+/// backup and the status answering `request_id`.
 pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<TakeSideResult, GitError> {
     let _slot = locks.begin(worktree)?;
-    inside_worktree(worktree, path)?;
+    link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
-    let blobs = back_up(worktree, &[path])?;
+    refuse_submodule(path, &read_stages(worktree, path)?.ok_or(GitError::ConflictStale)?)?;
+    let blob = back_up_conflict(worktree, path)?;
     // `-f`: the bytes are backed up, and an unmerged file never matches the index.
     run_write(worktree, &["rm", "-q", "-f"], Some(&[path]))?;
-    let backup = backups(worktree, &[path], blobs)?.remove(0);
+    let backup = conflict_backup(worktree, path, blob)?;
     Ok(TakeSideResult { backup, status: read_status(worktree, request_id, None)? })
 }
 
@@ -389,7 +460,7 @@ pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, p
 /// resolver last read the file are never staged unseen. Returns the status answering `request_id`.
 pub fn mark_resolved(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
-    inside_worktree(worktree, path)?;
+    link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;
     read_status(worktree, request_id, None)
@@ -442,6 +513,20 @@ pub async fn git_conflict_take_side(
 ) -> Result<TakeSideResult, GitError> {
     let locks = locks.inner();
     tokio::task::block_in_place(|| take_side(locks, Path::new(&worktree_path), request_id, &path, &token, side))
+}
+
+/// Takes `path` out of the index and the worktree, after backing it up. See [`remove_conflict`];
+/// the card confirms first.
+#[tauri::command]
+pub async fn git_conflict_remove(
+    worktree_path: String,
+    request_id: u32,
+    path: String,
+    token: String,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<TakeSideResult, GitError> {
+    let locks = locks.inner();
+    tokio::task::block_in_place(|| remove_conflict(locks, Path::new(&worktree_path), request_id, &path, &token))
 }
 
 /// Stages `path` as resolved, unless `token` is stale. See [`mark_resolved`].
