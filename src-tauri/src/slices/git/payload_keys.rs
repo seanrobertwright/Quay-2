@@ -23,7 +23,7 @@ use super::graph::{
 use super::op_runner::OpEvent;
 use super::operation::{Conflict, ConflictKind, OpOutcome, OpState, SideLabel};
 use super::search::SearchEvent;
-use super::settings::{DiffMode, FileListMode, RepoState, ToposSettings};
+use super::settings::{DiffMode, FileListMode, RepoFilters, RepoState, ToposSettings};
 use super::speedup::{SpeedupCheck, SpeedupItem};
 use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
 use super::version::GitVersionStatus;
@@ -459,8 +459,19 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         (
             "RepoState",
-            s(&RepoState { last_opened: 1_793_000_000_000, suppress_speedup: true }),
-            json!({ "lastOpened": 1_793_000_000_000_i64, "suppressSpeedup": true }),
+            s(&RepoState {
+                last_opened: 1_793_000_000_000,
+                suppress_speedup: true,
+                filters: vec!["refs/heads/main".into()],
+                remotes: false,
+                tags: true,
+            }),
+            json!({ "lastOpened": 1_793_000_000_000_i64, "suppressSpeedup": true, "filters": ["refs/heads/main"], "remotes": false, "tags": true }),
+        ),
+        (
+            "RepoFilters",
+            s(&RepoFilters { branches: vec!["refs/remotes/origin/main".into()], remotes: true, tags: false }),
+            json!({ "branches": ["refs/remotes/origin/main"], "remotes": true, "tags": false }),
         ),
         (
             "SpeedupCheck",

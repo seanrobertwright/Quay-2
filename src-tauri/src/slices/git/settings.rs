@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::error::GitError;
+use super::rev_set::{check_branches, existing_branches, MAX_REFS};
 
 /// What Topos reads at start-up and after each write.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -24,7 +25,7 @@ pub struct ToposSettings {
     pub repos: BTreeMap<String, RepoState>,
 }
 
-/// What Topos remembers about one repo. Later tickets add its filters and toggles (#369).
+/// What Topos remembers about one repo (#369).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoState {
@@ -32,6 +33,44 @@ pub struct RepoState {
     pub last_opened: i64,
     /// Whether the operator chose "Don't suggest for this repo" on the speed-up banner (#385).
     pub suppress_speedup: bool,
+    /// The branch filter (#401): full branch names, or none for every branch.
+    pub filters: Vec<String>,
+    /// The Remotes toggle: whether remote-tracking branches are walked.
+    pub remotes: bool,
+    /// The Tags toggle: whether tags are walked.
+    pub tags: bool,
+}
+
+impl RepoState {
+    fn opened_at(last_opened: i64) -> Self {
+        Self { last_opened, suppress_speedup: false, filters: Vec::new(), remotes: true, tags: false }
+    }
+
+    fn repo_filters(&self) -> RepoFilters {
+        RepoFilters { branches: self.filters.clone(), remotes: self.remotes, tags: self.tags }
+    }
+}
+
+/// A repo's branch filter and toggles, what `topos_repo_filters` returns (#401). Agent highlights
+/// and the Find text are never stored (#369).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFilters {
+    /// Full branch names such as `refs/heads/main`; empty for every branch.
+    pub branches: Vec<String>,
+    pub remotes: bool,
+    pub tags: bool,
+}
+
+/// A repo's filters from `topos_settings_write`: the whole set, replacing what was stored.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepoFiltersPatch {
+    /// A repo or worktree path; its repo's entry takes the filters.
+    pub repo_path: String,
+    pub branches: Vec<String>,
+    pub remotes: bool,
+    pub tags: bool,
 }
 
 /// `DiffMode` in `src/slices/git/topos/FileDiffView.tsx`.
@@ -90,6 +129,7 @@ pub fn parse_settings(text: &str) -> ToposSettings {
         file_list_mode: file.get("fileListMode").and_then(|v| FileListMode::deserialize(v).ok()),
         opened_repo: None,
         suppress_speedup: None,
+        repo_filters: None,
     };
     for (_, width, range) in prefs.widths() {
         *width = width.filter(|w| range.contains(w));
@@ -104,6 +144,17 @@ pub fn parse_settings(text: &str) -> ToposSettings {
             // Only `true` suppresses; any other value reads as the default, still suggesting.
             if entry.get("suppressSpeedup") == Some(&Value::Bool(true)) {
                 repo.suppress_speedup = true;
+            }
+            // A bad name is dropped alone; a toggle that isn't a boolean keeps its default.
+            if let Some(Value::Array(names)) = entry.get("filters") {
+                let names = names.iter().filter_map(Value::as_str).filter(|n| check_branches(&[n.to_string()]).is_ok());
+                repo.filters = names.take(MAX_REFS).map(str::to_string).collect();
+            }
+            if let Some(Value::Bool(remotes)) = entry.get("remotes") {
+                repo.remotes = *remotes;
+            }
+            if let Some(Value::Bool(tags)) = entry.get("tags") {
+                repo.tags = *tags;
             }
         }
         cap_repos(&mut settings.repos);
@@ -125,7 +176,7 @@ fn comparable_key(key: &str) -> String {
 /// Records that `key` was opened at `last_opened`, keeping the later time when it already has one,
 /// and returns its entry.
 fn record_open(repos: &mut BTreeMap<String, RepoState>, key: String, last_opened: i64) -> &mut RepoState {
-    let entry = repos.entry(key).or_insert(RepoState { last_opened, suppress_speedup: false });
+    let entry = repos.entry(key).or_insert_with(|| RepoState::opened_at(last_opened));
     entry.last_opened = entry.last_opened.max(last_opened);
     entry
 }
@@ -176,6 +227,8 @@ pub struct ToposSettingsPatch {
     /// A repo or worktree path whose repo the speed-up banner no longer suggests for (#385). It
     /// counts as an open too, so the entry is kept among the most recently opened.
     pub suppress_speedup: Option<String>,
+    /// A repo's branch filter and toggles (#401), which count as an open too.
+    pub repo_filters: Option<RepoFiltersPatch>,
 }
 
 impl ToposSettingsPatch {
@@ -281,6 +334,10 @@ impl ToposSettingsStore {
         }
         let opened = patch.opened_repo.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
         let suppressed = patch.suppress_speedup.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
+        if let Some(filters) = &patch.repo_filters {
+            check_branches(&filters.branches)?;
+        }
+        let filtered = patch.repo_filters.as_ref().map(|f| repo_key(Path::new(&f.repo_path))).transpose()?;
         let mut state = self.shared.state.lock();
         let settings = &mut state.settings;
         let now = crate::dates::now_ms();
@@ -290,23 +347,62 @@ impl ToposSettingsStore {
         if let Some(key) = suppressed {
             record_open(&mut settings.repos, key, now).suppress_speedup = true;
         }
+        if let (Some(key), Some(filters)) = (filtered, patch.repo_filters.take()) {
+            let repo = record_open(&mut settings.repos, key, now);
+            let mut seen = std::collections::HashSet::new();
+            repo.filters = filters.branches.into_iter().filter(|b| seen.insert(b.clone())).collect();
+            repo.remotes = filters.remotes;
+            repo.tags = filters.tags;
+        }
         cap_repos(&mut settings.repos);
         patch.apply_prefs(settings);
         let result = settings.clone();
-        state.dirty = true;
-        state.due = Some(Instant::now() + WRITE_DEBOUNCE);
-        if !state.timer {
-            state.timer = true;
-            let shared = Arc::clone(&self.shared);
-            std::thread::spawn(move || shared.write_when_due());
-        }
+        state.mark_dirty(&self.shared);
         Ok(result)
+    }
+
+    /// The branch filter and toggles stored for the repo holding `path`, with every branch that no
+    /// longer exists pruned (#369). A pruned entry is written back, debounced like any write.
+    pub fn repo_filters(&self, path: &Path) -> Result<RepoFilters, GitError> {
+        let key = repo_key(path)?;
+        let stored = self.shared.state.lock().settings.repos.get(&key).map(RepoState::repo_filters);
+        let Some(mut filters) = stored else {
+            return Ok(RepoFilters { branches: Vec::new(), remotes: true, tags: false });
+        };
+        if filters.branches.is_empty() {
+            return Ok(filters);
+        }
+        let existing = existing_branches(path)?;
+        let before = filters.branches.len();
+        filters.branches.retain(|b| existing.contains(b));
+        if filters.branches.len() != before {
+            let mut state = self.shared.state.lock();
+            if let Some(repo) = state.settings.repos.get_mut(&key) {
+                // Only names that are gone go, so a filter set meanwhile keeps its new names.
+                repo.filters.retain(|b| existing.contains(b));
+                state.mark_dirty(&self.shared);
+            }
+        }
+        Ok(filters)
     }
 
     /// Writes a pending change now, without waiting out the debounce. Quay calls this as it exits.
     pub fn flush(&self) -> Result<(), String> {
         self.shared.state.lock().due = None;
         self.shared.write_file()
+    }
+}
+
+impl State {
+    /// Records a change memory holds and the file doesn't, and schedules its write.
+    fn mark_dirty(&mut self, shared: &Arc<Shared>) {
+        self.dirty = true;
+        self.due = Some(Instant::now() + WRITE_DEBOUNCE);
+        if !self.timer {
+            self.timer = true;
+            let shared = Arc::clone(shared);
+            std::thread::spawn(move || shared.write_when_due());
+        }
     }
 }
 
@@ -374,4 +470,17 @@ pub async fn topos_settings_write(
     tokio::task::spawn_blocking(move || store.write(patch))
         .await
         .map_err(|e| GitError::Other { stderr: format!("could not write the Topos settings: {e}") })?
+}
+
+/// The branch filter and toggles Topos opens `repo_path`'s graph with, pruned of branches that
+/// are gone (#401).
+#[tauri::command]
+pub async fn topos_repo_filters(
+    repo_path: String,
+    store: tauri::State<'_, ToposSettingsStore>,
+) -> Result<RepoFilters, GitError> {
+    let store = store.inner().clone();
+    tokio::task::spawn_blocking(move || store.repo_filters(Path::new(&repo_path)))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read the Topos filters: {e}") })?
 }
