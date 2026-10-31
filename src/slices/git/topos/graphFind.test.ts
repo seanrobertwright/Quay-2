@@ -244,3 +244,28 @@ test("Enter and Shift+Enter step through the matches only in the find field", ()
   assert.equal(findKey(key("Enter"), false), null);
   assert.equal(findKey(key("Enter", { ctrlKey: true }), true), null);
 });
+
+test("Find over the graph store matches by SHA prefix and ref without building any row's oid", async () => {
+  const { GraphStore } = await import("./graphStore.ts");
+  const { decodeGraphPage } = await import("./graphPage.ts");
+  const { encodeTestPage } = await import("./fixtures/encodeTestPage.ts");
+  const store = new GraphStore(1);
+  // Rows are named by their row number in hex: row 0x1a2 is 00…01a2.
+  store.ingest(decodeGraphPage(encodeTestPage({ sessionId: 1, pageIndex: 0, firstRow: 0, rowCount: 1000 })));
+  let built = 0;
+  const rows: FindRows = new Proxy(store, {
+    get(target, key) {
+      if (key === "oid") built++;
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const refs = new Map<string, FindBadge[]>([["00000000000000000000000000000000000003e7", [{ kind: "tag", name: "zebra" }]]]);
+  const byPrefix = new FindScan("0000000000000000000000000000000000000" + "1A", refs);
+  assert.equal(byPrefix.scan(rows, 2000), true);
+  assert.deepEqual([...byPrefix.matches], [0x1a0, 0x1a1, 0x1a2, 0x1a3, 0x1a4, 0x1a5, 0x1a6, 0x1a7, 0x1a8, 0x1a9, 0x1aa, 0x1ab, 0x1ac, 0x1ad, 0x1ae, 0x1af]);
+  const byRef = new FindScan("zebra", refs);
+  byRef.scan(rows, 2000);
+  assert.deepEqual([...byRef.matches], [999]);
+  assert.equal(built, 0);
+});

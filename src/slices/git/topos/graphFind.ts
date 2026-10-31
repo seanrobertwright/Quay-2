@@ -2,10 +2,31 @@
 
 import type { Badge } from "./graphRefs.ts";
 
-/** The loaded rows as Find reads them; `GraphStore` is one. */
-export interface FindRows {
+/**
+ * Loaded rows as a scan over their oids reads them. Rows that hold oids as bytes, as `GraphStore`
+ * does (#410), also answer prefix and set tests in place, so a scan over a million rows builds no
+ * string per row; rows without them are read through `oid`.
+ */
+export interface OidRows {
   readonly rowCount: number;
   oid(row: number): string;
+  hasOidPrefix?(row: number, prefix: string): boolean;
+  oidMatcher?(oids: Iterable<string>): (row: number) => boolean;
+}
+
+/** A test of whether a row's oid is one of `oids`, through the rows' own matcher when they have one. */
+export function oidMatcher(rows: OidRows, oids: ReadonlySet<string>): (row: number) => boolean {
+  return rows.oidMatcher?.(oids) ?? ((row) => oids.has(rows.oid(row)));
+}
+
+/** A test of whether a row's oid begins with `prefix`, in place when the rows can. */
+function oidPrefixTest(rows: OidRows, prefix: string): (row: number) => boolean {
+  if (rows.hasOidPrefix) return (row) => rows.hasOidPrefix!(row, prefix);
+  return (row) => rows.oid(row).startsWith(prefix);
+}
+
+/** The loaded rows as Find reads them; `GraphStore` is one. */
+export interface FindRows extends OidRows {
   subject(row: number): string;
   author(row: number): FindAuthor;
 }
@@ -67,14 +88,21 @@ export class FindScan {
     return this.buffer.subarray(0, this.count);
   }
 
+  /** The oid tests for the rows last scanned, kept while the same rows come back. */
+  private oidTests: { rows: FindRows; prefix: (row: number) => boolean; onRef: (row: number) => boolean } | null = null;
+
   scan(rows: FindRows, budget: number): boolean {
     if (this.needle === "") return true;
+    if (this.oidTests?.rows !== rows) {
+      // Oids are lowercase hex, so the lowered needle compares as it is.
+      this.oidTests = { rows, prefix: oidPrefixTest(rows, this.needle), onRef: oidMatcher(rows, this.refOids) };
+    }
+    const { prefix, onRef } = this.oidTests;
     const end = Math.min(rows.rowCount, this.next + budget);
     for (let row = this.next; row < end; row++) {
       if (
-        // Oids are lowercase hex, so the lowered needle compares as it is.
-        rows.oid(row).startsWith(this.needle) ||
-        this.refOids.has(rows.oid(row)) ||
+        prefix(row) ||
+        (this.refOids.size > 0 && onRef(row)) ||
         this.authorMatches(rows.author(row)) ||
         rows.subject(row).toLowerCase().includes(this.needle)
       ) {

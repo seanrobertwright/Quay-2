@@ -17,7 +17,7 @@ import {
 } from "./graphPage.ts";
 import type { EdgeGeometry } from "./graphPaths.ts";
 import { trackSlot } from "./laneColors.ts";
-import { OidColumn } from "./oidColumn.ts";
+import { leadOf, OidColumn } from "./oidColumn.ts";
 
 const INITIAL_CAPACITY = 1024;
 
@@ -366,6 +366,32 @@ export class GraphStore {
   /** The row of the commit `oid`, or -1 when it isn't loaded. Costs a scan of the loaded rows. */
   rowOf(oid: string): number {
     return this.oids.indexOf(oid, this.count);
+  }
+
+  /** Whether the oid at `row` begins with the lowercase hex `prefix`, without building the oid. */
+  hasOidPrefix(row: number, prefix: string): boolean {
+    return this.oids.startsWith(row, prefix);
+  }
+
+  /**
+   * A test of whether a row's oid is one of `oids`, for scans over many rows: it compares bytes
+   * against the few oids sharing the row's first four bytes, so it builds no string per row.
+   * Entries that aren't oids match nothing.
+   */
+  oidMatcher(oids: Iterable<string>): (row: number) => boolean {
+    const byLead = new Map<number, string[]>();
+    for (const oid of oids) {
+      const lead = leadOf(oid);
+      if (lead === null) continue;
+      const bucket = byLead.get(lead);
+      if (bucket === undefined) byLead.set(lead, [oid]);
+      else bucket.push(oid);
+    }
+    return (row) => {
+      if (row < 0 || row >= this.count) return false;
+      const bucket = byLead.get(this.oids.lead(row));
+      return bucket !== undefined && bucket.some((oid) => this.oids.equals(row, oid));
+    };
   }
 
   /** The oid at `row` as hex, built on each call: the store keeps oids as bytes (#410). */

@@ -267,3 +267,34 @@ test("trimming drops the slack doubling left, keeps every row, and the store sti
   assert.equal(store.rowOf("00000000000000000000000000000000000005e5"), 1509);
   assert.deepEqual(store.author(1499), { name: "Author 1", email: "a1@example.invalid" });
 });
+
+test("a row's oid matches a hex prefix of it, of any length up to the whole oid", () => {
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 2, oids: ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", SHA256_B.slice(0, 40)] });
+  assert.equal(store.hasOidPrefix(0, "a1b2c"), true);
+  assert.equal(store.hasOidPrefix(0, "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"), true);
+  assert.equal(store.hasOidPrefix(0, ""), true);
+  assert.equal(store.hasOidPrefix(0, "a1b2d"), false);
+  assert.equal(store.hasOidPrefix(0, "a1b2c3d4e5f60718293a4b5c6d7e8f90123456780"), false, "longer than the oid");
+  assert.equal(store.hasOidPrefix(0, "fix"), false);
+  assert.equal(store.hasOidPrefix(1, "a1"), false);
+  const sha256 = new GraphStore(1);
+  ingest(sha256, { pageIndex: 0, firstRow: 0, rowCount: 1, oids: [SHA256_A] });
+  assert.equal(sha256.hasOidPrefix(0, SHA256_A.slice(0, 50)), true);
+});
+
+test("a matcher for a set of oids answers for each row whether its oid is one of them", () => {
+  const store = twoPages();
+  const isOne = store.oidMatcher([
+    "0000000000000000000000000000000000000002",
+    "0000000000000000000000000000000000000007",
+    // Shares its first eight digits with every row, but is none of them.
+    "0000000000000000000000000000000000000fff",
+    "not an oid",
+  ]);
+  assert.deepEqual(
+    Array.from({ length: store.rowCount }, (_, r) => r).filter(isOne),
+    [2, 7]
+  );
+  assert.equal(new GraphStore(1).oidMatcher(["0000000000000000000000000000000000000000"])(0), false);
+});

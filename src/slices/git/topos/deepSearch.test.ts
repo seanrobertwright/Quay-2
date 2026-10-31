@@ -247,3 +247,28 @@ test("the deep counter says what was found in history and where the selection is
   assert.equal(deepCounter("done", 1, new Int32Array(0), null), "1 found · none loaded");
   assert.equal(deepCounter("failed", 3, loaded, null), "Search failed");
 });
+
+test("over the graph store, results are matched and routed without building any row's oid", async () => {
+  const { GraphStore } = await import("./graphStore.ts");
+  const { decodeGraphPage } = await import("./graphPage.ts");
+  const { encodeTestPage } = await import("./fixtures/encodeTestPage.ts");
+  const store = new GraphStore(1);
+  // Rows are named by their row number in hex.
+  store.ingest(decodeGraphPage(encodeTestPage({ sessionId: 1, pageIndex: 0, firstRow: 0, rowCount: 1000 })));
+  let built = 0;
+  const rows = new Proxy(store, {
+    get(target, key) {
+      if (key === "oid") built++;
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const hex = (row: number) => row.toString(16).padStart(40, "0");
+  const scan = new ResultScan([hex(700), hex(5000), hex(3)]);
+  assert.equal(scan.scan(rows, 500), false);
+  assert.equal(scan.scan(rows, 500), true);
+  assert.deepEqual([...scan.matches], [3, 700]);
+  assert.deepEqual(new ResultRoute(hex(812)).step(rows, "done"), { kind: "inPlace", row: 812 });
+  assert.deepEqual(new ResultRoute(hex(5000)).step(rows, "done"), { kind: "detailsOnly" });
+  assert.equal(built, 0);
+});

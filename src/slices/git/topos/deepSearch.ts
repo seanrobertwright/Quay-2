@@ -4,6 +4,7 @@
 
 import { errorMessage, type GitError } from "./gitVersion.ts";
 import type { RefSet } from "./graphFilters.ts";
+import { oidMatcher, type OidRows } from "./graphFind.ts";
 
 /** What a deep search matches; the Rust `SearchKind`. */
 export type SearchKind = "message" | "author" | "path" | "code";
@@ -219,10 +220,7 @@ export class DeepSearch {
 }
 
 /** The loaded rows as a result lookup reads them; `GraphStore` is one. */
-export interface ResultRows {
-  readonly rowCount: number;
-  oid(row: number): string;
-}
+export type ResultRows = OidRows;
 
 /**
  * The loaded rows that are deep-search results, found by one pass over the rows against a set of
@@ -234,6 +232,8 @@ export class ResultScan {
   private buffer = new Int32Array(64);
   private count = 0;
   private next = 0;
+  /** The oid test for the rows last scanned, kept while the same rows come back. */
+  private test: { rows: ResultRows; isResult: (row: number) => boolean } | null = null;
 
   constructor(oids: Iterable<string>) {
     this.oids = new Set(oids);
@@ -247,8 +247,10 @@ export class ResultScan {
   scan(rows: ResultRows, budget: number): boolean {
     const end = Math.min(rows.rowCount, this.next + budget);
     if (this.oids.size > 0) {
+      if (this.test?.rows !== rows) this.test = { rows, isResult: oidMatcher(rows, this.oids) };
+      const { isResult } = this.test;
       for (let row = this.next; row < end; row++) {
-        if (!this.oids.has(rows.oid(row))) continue;
+        if (!isResult(row)) continue;
         if (this.count === this.buffer.length) {
           const grown = new Int32Array(this.buffer.length * 2);
           grown.set(this.buffer);
@@ -290,8 +292,9 @@ export class ResultRoute {
   }
 
   step(rows: ResultRows, state: FeedState): RouteStep {
-    for (let row = this.next; row < rows.rowCount; row++) {
-      if (rows.oid(row) === this.oid) return { kind: "inPlace", row };
+    if (this.next < rows.rowCount) {
+      const isResult = oidMatcher(rows, new Set([this.oid]));
+      for (let row = this.next; row < rows.rowCount; row++) if (isResult(row)) return { kind: "inPlace", row };
     }
     this.next = rows.rowCount;
     switch (state) {
