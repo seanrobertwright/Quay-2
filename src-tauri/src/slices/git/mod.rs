@@ -41,6 +41,9 @@ mod ref_ops_tests;
 mod operation_tests;
 #[cfg(test)]
 mod payload_keys;
+pub mod search;
+#[cfg(test)]
+mod search_tests;
 pub mod settings;
 #[cfg(test)]
 mod settings_tests;
@@ -70,6 +73,7 @@ pub use graph::*;
 pub use models::*;
 pub use op_runner::*;
 pub use operation::*;
+pub use search::*;
 pub use settings::*;
 pub use speedup::*;
 pub use staging::*;
