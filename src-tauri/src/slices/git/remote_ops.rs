@@ -4,8 +4,9 @@
 //! [`OpEvent::Progress`], and with `LC_ALL=C`, so its refusals can be matched. One network
 //! operation runs per repo at a time, holding its [`RepoLock`](super::repo_lock::RepoLock); the local
 //! ref operations wait behind it.
-//! Remote and branch names are checked before git sees them and never read as options. Topos
-//! never force-pushes here, and never writes config except a pull's "Remember for this repo".
+//! Remote and branch names are checked before git sees them and never read as options. A force
+//! push is only ever with a lease (#396), and Topos never writes config except a pull's
+//! "Remember for this repo".
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -19,6 +20,7 @@ use super::commit::{read_git, read_git_line, Operation};
 use super::operation::{detect_operation, git_dir, in_background};
 use super::error::GitError;
 use super::graph::GitRefs;
+use super::ref_ops::check_tag_name;
 use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions, OpOutput};
 use super::staging::StagingLocks;
 
@@ -42,7 +44,7 @@ pub struct RemoteOutcome {
 }
 
 /// What the toolbar shows beside Pull and Push: the checked-out branch, its upstream, how far
-/// apart they are, and when the worktree last fetched.
+/// apart they are, and when the worktree last fetched; and the repo's remotes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
@@ -56,6 +58,8 @@ pub struct SyncStatus {
     pub behind: u32,
     /// When `FETCH_HEAD` was last written, in ms since the epoch; None before any fetch.
     pub fetched_at_ms: Option<i64>,
+    /// The repo's remotes by name, which the tag and remote branch menus offer (#396).
+    pub remotes: Vec<String>,
 }
 
 /// The [`SyncStatus`] of `worktree`, read from its refs alone: it never reaches the remote.
@@ -79,7 +83,7 @@ pub fn sync_status(worktree: &Path) -> Result<SyncStatus, GitError> {
         .and_then(|path| std::fs::metadata(path).ok())
         .and_then(|meta| meta.modified().ok())
         .map(crate::dates::system_time_ms);
-    Ok(SyncStatus { branch, upstream, ahead, behind, fetched_at_ms })
+    Ok(SyncStatus { branch, upstream, ahead, behind, fetched_at_ms, remotes: remotes(worktree)? })
 }
 
 /// The remotes `worktree`'s repo has, by name.
@@ -98,9 +102,10 @@ fn check_remote(worktree: &Path, name: &str) -> Result<(), GitError> {
 }
 
 /// Runs a network `git <args>` in `worktree` as part of the op whose cancel flag is `cancel`.
-/// The inner result is `Ok` when git exits 0, and otherwise `Err` with what it printed, for the
-/// caller to read its refusal from; the outer one is an error running git at all.
-fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<Result<(), OpOutput>, GitError> {
+/// The inner result is `Ok` when git exits 0 and `Err` when it doesn't, each with what it
+/// printed, for the caller to read its answer or refusal from; the outer one is an error running
+/// git at all.
+fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<Result<OpOutput, OpOutput>, GitError> {
     let mut cmd = headless_git();
     cmd.current_dir(worktree).args(args);
     #[cfg(test)]
@@ -111,8 +116,25 @@ fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Ch
     });
     let opts = OpOptions { c_locale: true, progress_at_once: true, redact_credentials: true, ..OpOptions::default() };
     let finished = run_process(cmd, None, &opts, cancel, channel)?;
-    Ok(if finished.status.success() { Ok(()) } else { Err(finished.output) })
+    Ok(if finished.status.success() { Ok(finished.output) } else { Err(finished.output) })
 }
+
+/// Runs the `git push` `args` through [`run_network`]: what the push did, or the typed refusal
+/// the remote printed, else [`failure`].
+fn run_push(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<RemoteOutcome, GitError> {
+    if let Err(output) = run_network(worktree, args, cancel, channel)? {
+        return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
+    }
+    remote_outcome(worktree)
+}
+
+/// The full name of the local or remote branch `name`: `refs/heads/<name>`.
+fn branch_ref(name: &str) -> String {
+    format!("{HEADS}{name}")
+}
+
+/// The prefix of every full branch name.
+const HEADS: &str = "refs/heads/";
 
 /// The error a failed fetch, pull or push printed: a typed one Topos names, else `Other`.
 fn failure(output: &OpOutput) -> GitError {
@@ -301,23 +323,80 @@ pub async fn git_pull(
     in_background(app, "pull", move |ops, locks| pull(ops, locks, Path::new(&worktree_path), op_id, strategy, remember, &on_event)).await
 }
 
-/// Pushes the local branch `ref` to `remote` or its upstream, with `set_upstream` tracking it, as
-/// op `op_id`. See [`push`].
+/// A force push's lease, `{ "expectedSha": "…" }`: the remote-tracking sha its confirm showed.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lease {
+    pub expected_sha: String,
+}
+
+/// Pushes the local branch `ref` to `remote` or its upstream, with `set_upstream` tracking it, or
+/// with `lease` force-pushes it with that lease, as op `op_id`. See [`push`].
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn git_push(
     worktree_path: String,
     r#ref: String,
     remote: Option<String>,
     set_upstream: bool,
+    lease: Option<Lease>,
     op_id: Uuid,
     on_event: Channel<OpEvent>,
     app: tauri::AppHandle,
 ) -> Result<RemoteOutcome, GitError> {
     in_background(app, "push", move |ops, locks| {
-        let target = PushTarget { branch: &r#ref, remote: remote.as_deref(), set_upstream };
+        let lease = lease.as_ref().map(|l| l.expected_sha.as_str());
+        let target = PushTarget { branch: &r#ref, remote: remote.as_deref(), set_upstream, lease };
         push(ops, locks, Path::new(&worktree_path), op_id, target, &on_event)
     })
     .await
+}
+
+/// Pushes the one local tag `name` to `remote`, as op `op_id`. See [`push_tag`].
+#[tauri::command]
+pub async fn git_push_tag(
+    worktree_path: String,
+    remote: String,
+    name: String,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<RemoteOutcome, GitError> {
+    in_background(app, "push the tag", move |ops, locks| push_tag(ops, locks, Path::new(&worktree_path), op_id, &remote, &name, &on_event)).await
+}
+
+/// Deletes the branch or tag `ref` (a full `refs/heads/…` or `refs/tags/…` name) from `remote`,
+/// as op `op_id`. See [`push_delete`].
+#[tauri::command]
+pub async fn git_push_delete(
+    worktree_path: String,
+    remote: String,
+    r#ref: String,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<RemoteOutcome, GitError> {
+    in_background(app, "delete the remote ref", move |ops, locks| push_delete(ops, locks, Path::new(&worktree_path), op_id, &remote, &r#ref, &on_event)).await
+}
+
+/// The remotes that have the tag `name`, as op `op_id`. See [`tag_remotes`].
+#[tauri::command]
+pub async fn git_tag_remotes(
+    worktree_path: String,
+    name: String,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, GitError> {
+    in_background(app, "read the remotes' tags", move |ops, locks| tag_remotes(ops, locks, Path::new(&worktree_path), op_id, &name, &on_event)).await
+}
+
+/// What a force push with lease of the local branch `ref` would overwrite. See [`lease_plan`].
+#[tauri::command]
+pub async fn git_push_lease_plan(worktree_path: String, r#ref: String, remote: Option<String>) -> Result<LeasePlan, GitError> {
+    tokio::task::spawn_blocking(move || lease_plan(Path::new(&worktree_path), &r#ref, remote.as_deref()))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read the force push: {e}") })?
 }
 
 /// The toolbar's ahead and behind counts for `worktree_path`. See [`sync_status`].
@@ -346,21 +425,116 @@ pub(super) fn with_repo_config_only<T>(run: impl FnOnce() -> T) -> T {
 }
 
 /// What a push pushes: the local `branch`, to `remote` or its upstream's remote, setting the
-/// upstream with `set_upstream`.
+/// upstream with `set_upstream`. With `lease`, the remote-tracking sha its confirm showed, it is a
+/// force push with that lease (#396).
 #[derive(Debug, Clone, Copy)]
 pub struct PushTarget<'a> {
     pub branch: &'a str,
     pub remote: Option<&'a str>,
     pub set_upstream: bool,
+    pub lease: Option<&'a str>,
+}
+
+/// Where a push of a local branch goes: the remote, the remote branch's full name, and whether
+/// the push sets it as the upstream (`-u`).
+struct Destination {
+    remote: String,
+    remote_ref: String,
+    track: bool,
+}
+
+/// Where a push of the local `branch` goes. With an upstream on a remote (on `remote`, when one is
+/// asked for) it is that upstream branch. With none, it refuses with [`GitError::NoUpstream`]
+/// unless `set_upstream` or `push.autoSetupRemote` says to push to the branch of the same name and
+/// track it. Checks `branch` and `remote` first, so neither reaches git as an option.
+fn destination(worktree: &Path, branch: &str, remote: Option<&str>, set_upstream: bool) -> Result<Destination, GitError> {
+    check_branch_name(worktree, branch)?;
+    rev_oid(worktree, &branch_ref(branch))?.ok_or_else(|| invalid_ref(branch))?;
+    if let Some(remote) = remote {
+        check_remote(worktree, remote)?;
+    }
+    let all = remotes(worktree)?;
+    let no_upstream = || GitError::NoUpstream { branch: branch.to_string(), remotes: all.clone() };
+    let upstream = upstream_of(worktree, branch)?.filter(|(r, _)| all.contains(r) && remote.is_none_or(|asked| asked == r));
+    match upstream {
+        Some((remote, remote_ref)) if !set_upstream => Ok(Destination { remote, remote_ref, track: false }),
+        _ if set_upstream || config_true(worktree, "push.autoSetupRemote")? => {
+            let only = (all.len() == 1).then(|| all[0].clone());
+            let remote = remote.map(str::to_string).or(only).ok_or_else(no_upstream)?;
+            Ok(Destination { remote, remote_ref: branch_ref(branch), track: true })
+        }
+        _ => Err(no_upstream()),
+    }
+}
+
+/// The remote-tracking ref Topos shows for the remote branch `remote_ref` on `remote`:
+/// `refs/remotes/<remote>/<name>` for `refs/heads/<name>`, as the default fetch refspec maps it.
+fn tracking_ref(remote: &str, remote_ref: &str) -> Result<String, GitError> {
+    let name = remote_ref.strip_prefix(HEADS).ok_or_else(|| invalid_ref(remote_ref))?;
+    Ok(format!("refs/remotes/{remote}/{name}"))
+}
+
+/// Refuses `sha` unless it is a full commit id: 40 or 64 hex digits.
+fn check_full_sha(sha: &str) -> Result<(), GitError> {
+    if (sha.len() == 40 || sha.len() == 64) && sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(());
+    }
+    Err(GitError::Other { stderr: format!("{sha} is not a full commit id") })
+}
+
+/// What a force push with lease of a branch would do, for its confirm (#396): where it goes, the
+/// remote-tracking branch Topos shows for that remote branch and its sha, which becomes the lease,
+/// and how many commits on it the local branch lacks, which the push overwrites, as of the last
+/// fetch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeasePlan {
+    pub remote: String,
+    /// The remote branch's full name, such as `refs/heads/main`.
+    pub remote_ref: String,
+    /// The remote-tracking branch, such as `origin/main`.
+    pub tracking: String,
+    pub expected_sha: String,
+    pub overwrites: u32,
+    /// The remote's default branch as `refs/remotes/<remote>/HEAD` records it, or None.
+    pub default_branch: Option<String>,
+}
+
+/// The [`LeasePlan`] of a force push of the local `branch`, to where a plain push of it goes. It
+/// reads refs alone and never reaches the remote, so its count is as of the last fetch. With no
+/// remote-tracking branch for the remote branch there is no lease to take, and it refuses with
+/// `Other` until a fetch.
+pub fn lease_plan(worktree: &Path, branch: &str, remote: Option<&str>) -> Result<LeasePlan, GitError> {
+    let Destination { remote, remote_ref, .. } = destination(worktree, branch, remote, false)?;
+    let tracking_full = tracking_ref(&remote, &remote_ref)?;
+    let tracking = tracking_full.trim_start_matches("refs/remotes/").to_string();
+    let unfetched = || GitError::Other { stderr: format!("Topos has no {tracking} to take a lease on; fetch first") };
+    let expected_sha = rev_oid(worktree, &tracking_full)?.ok_or_else(unfetched)?;
+    let local = rev_oid(worktree, &branch_ref(branch))?.ok_or_else(|| invalid_ref(branch))?;
+    let not_local = format!("^{local}");
+    let uncounted = || GitError::Other { stderr: format!("could not count the commits on {tracking}") };
+    let out = read_git(worktree, &["rev-list", "--count", &expected_sha, &not_local])?.ok_or_else(uncounted)?;
+    let overwrites = String::from_utf8_lossy(&out).trim().parse().map_err(|_| uncounted())?;
+    let default_branch = default_branch(worktree, &remote)?;
+    Ok(LeasePlan { remote, remote_ref, tracking, expected_sha, overwrites, default_branch })
+}
+
+/// The default branch of `remote` as `refs/remotes/<remote>/HEAD` records it, or None.
+fn default_branch(worktree: &Path, remote: &str) -> Result<Option<String>, GitError> {
+    let head = format!("refs/remotes/{remote}/HEAD");
+    let prefix = format!("refs/remotes/{remote}/");
+    let target = read_git_line(worktree, &["symbolic-ref", "--quiet", &head])?;
+    Ok(target.and_then(|t| t.strip_prefix(&prefix).map(str::to_string)).filter(|b| !b.is_empty()))
 }
 
 /// Pushes the local branch `target.branch` with `git push --porcelain`, as the cancellable op
-/// `op_id`, holding the repo's lock. With an upstream on a remote it pushes there, to the
-/// upstream branch. With none, it refuses with [`GitError::NoUpstream`] unless
-/// `target.set_upstream` or `push.autoSetupRemote` says to push to the branch of the same name and
-/// track it (`-u`). It never forces: a remote branch with commits this one lacks returns
-/// [`GitError::NonFastForward`], and a remote that refuses the ref, as a hook does,
-/// [`GitError::RemoteRejected`].
+/// `op_id`, holding the repo's lock, to where [`destination`] says. Without a lease it never
+/// forces: a remote branch with commits this one lacks returns [`GitError::NonFastForward`], and a
+/// remote that refuses the ref, as a hook does, [`GitError::RemoteRejected`]. With `target.lease`
+/// it runs `--force-with-lease=<remote ref>:<lease>` plus `--force-if-includes`, never a bare
+/// `--force`. The remote-tracking branch is re-read under the lock first and must still be at the
+/// lease, and git checks the remote branch is too; either refusal returns
+/// [`GitError::LeaseRefused`] and nothing moves. A lease push never sets the upstream.
 pub fn push(
     ops: &GitOps,
     locks: &StagingLocks,
@@ -369,36 +543,113 @@ pub fn push(
     target: PushTarget<'_>,
     channel: &Channel<OpEvent>,
 ) -> Result<RemoteOutcome, GitError> {
-    let PushTarget { branch, remote, set_upstream } = target;
+    let PushTarget { branch, remote, set_upstream, lease } = target;
     ops.run_with(op_id, channel, |cancel| {
         let _net = locks.repo.hold(worktree, cancel, channel)?;
-        check_branch_name(worktree, branch)?;
-        rev_oid(worktree, &format!("refs/heads/{branch}"))?.ok_or_else(|| invalid_ref(branch))?;
-        if let Some(remote) = remote {
-            check_remote(worktree, remote)?;
-        }
-        let all = remotes(worktree)?;
-        let no_upstream = || GitError::NoUpstream { branch: branch.to_string(), remotes: all.clone() };
-        let upstream = upstream_of(worktree, branch)?.filter(|(r, _)| all.contains(r) && remote.is_none_or(|asked| asked == r));
-        let (to_remote, dest, track) = match upstream {
-            Some((r, merge)) if !set_upstream => (r, merge, false),
-            _ if set_upstream || config_true(worktree, "push.autoSetupRemote")? => {
-                let only = (all.len() == 1).then(|| all[0].clone());
-                let r = remote.map(str::to_string).or(only).ok_or_else(no_upstream)?;
-                (r, format!("refs/heads/{branch}"), true)
-            }
-            _ => return Err(no_upstream()),
-        };
-        let refspec = format!("refs/heads/{branch}:{dest}");
+        let Destination { remote, remote_ref, track } = destination(worktree, branch, remote, set_upstream && lease.is_none())?;
+        let refspec = format!("{}:{remote_ref}", branch_ref(branch));
         let mut args = vec!["push", "--porcelain", "--progress"];
-        if track {
+        let lease_arg;
+        if let Some(expected) = lease {
+            check_full_sha(expected)?;
+            if rev_oid(worktree, &tracking_ref(&remote, &remote_ref)?)?.as_deref() != Some(expected) {
+                return Err(GitError::LeaseRefused { r#ref: remote_ref });
+            }
+            lease_arg = format!("--force-with-lease={remote_ref}:{expected}");
+            args.extend([lease_arg.as_str(), "--force-if-includes"]);
+        } else if track {
             args.push("--set-upstream");
         }
-        args.extend(["--", to_remote.as_str(), refspec.as_str()]);
-        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
-            return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
+        args.extend(["--", remote.as_str(), refspec.as_str()]);
+        run_push(worktree, &args, cancel, channel)
+    })
+}
+
+/// Pushes the one local tag `name` to `remote` as `refs/tags/<name>`, as the cancellable op
+/// `op_id`, holding the repo's lock. `--no-follow-tags` keeps `push.followTags` from sending the
+/// annotated tags on the commits it carries too. A remote that already has a different tag of
+/// that name refuses it, and Topos never forces a tag.
+pub fn push_tag(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    remote: &str,
+    name: &str,
+    channel: &Channel<OpEvent>,
+) -> Result<RemoteOutcome, GitError> {
+    ops.run_with(op_id, channel, |cancel| {
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
+        let full = check_tag_name(worktree, name)?;
+        rev_oid(worktree, &full)?.ok_or_else(|| invalid_ref(name))?;
+        check_remote(worktree, remote)?;
+        let refspec = format!("{full}:{full}");
+        let args = ["push", "--porcelain", "--progress", "--no-follow-tags", "--", remote, refspec.as_str()];
+        run_push(worktree, &args, cancel, channel)
+    })
+}
+
+/// `full_ref` once it is one branch or tag, `refs/heads/<name>` or `refs/tags/<name>`, that
+/// `git check-ref-format` accepts and whose name doesn't start with `-`. Refuses anything else,
+/// so a remote delete can only ever name one branch or tag.
+fn check_branch_or_tag_ref(worktree: &Path, full_ref: &str) -> Result<(), GitError> {
+    let name = full_ref.strip_prefix(HEADS).or_else(|| full_ref.strip_prefix("refs/tags/")).ok_or_else(|| invalid_ref(full_ref))?;
+    if name.is_empty() || name.starts_with('-') || read_git(worktree, &["check-ref-format", full_ref])?.is_none() {
+        return Err(invalid_ref(full_ref));
+    }
+    Ok(())
+}
+
+/// Deletes the one branch or tag `full_ref` (`refs/heads/<name>` or `refs/tags/<name>`) from
+/// `remote` with `git push --delete`, as the cancellable op `op_id`, holding the repo's lock. The
+/// remote-tracking branch of a deleted branch goes too, and local branches and tags stay. There is
+/// no undo.
+pub fn push_delete(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    remote: &str,
+    full_ref: &str,
+    channel: &Channel<OpEvent>,
+) -> Result<RemoteOutcome, GitError> {
+    ops.run_with(op_id, channel, |cancel| {
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
+        check_branch_or_tag_ref(worktree, full_ref)?;
+        check_remote(worktree, remote)?;
+        let args = ["push", "--porcelain", "--progress", "--delete", "--", remote, full_ref];
+        run_push(worktree, &args, cancel, channel)
+    })
+}
+
+/// The remotes that have the tag `name`, from `git ls-remote --tags` on each, as the cancellable
+/// op `op_id`, holding the repo's lock: what "Also delete from ‹remote›" offers. A remote git
+/// can't reach is left out rather than failing the lookup, since the tag's local delete doesn't
+/// depend on it.
+pub fn tag_remotes(
+    ops: &GitOps,
+    locks: &StagingLocks,
+    worktree: &Path,
+    op_id: Uuid,
+    name: &str,
+    channel: &Channel<OpEvent>,
+) -> Result<Vec<String>, GitError> {
+    ops.run_with(op_id, channel, |cancel| {
+        let _net = locks.repo.hold(worktree, cancel, channel)?;
+        let full = check_tag_name(worktree, name)?;
+        let mut have = Vec::new();
+        for remote in remotes(worktree)? {
+            if remote.starts_with('-') {
+                continue;
+            }
+            let Ok(output) = run_network(worktree, &["ls-remote", "--tags", "--", &remote, &full], cancel, channel)? else {
+                continue;
+            };
+            if output.stdout.lines().any(|line| line.split('\t').nth(1) == Some(full.as_str())) {
+                have.push(remote);
+            }
         }
-        remote_outcome(worktree)
+        Ok(have)
     })
 }
 
@@ -439,6 +690,9 @@ pub(super) fn push_refusal(output: &OpOutput) -> Option<GitError> {
                 .filter(|l| !l.is_empty())
                 .collect();
             return Some(GitError::RemoteRejected { r#ref: to, reason, remote_lines });
+        }
+        if summary.starts_with("[rejected]") && reason == "stale info" {
+            return Some(GitError::LeaseRefused { r#ref: to });
         }
         if summary.starts_with("[rejected]") && (reason == "non-fast-forward" || reason == "fetch first") {
             return Some(GitError::NonFastForward { r#ref: to });

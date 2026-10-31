@@ -8,6 +8,8 @@ const BUTTON =
 
 const ACTION_LABEL: Record<Exclude<NextAction, "pushSetUpstream">, string> = {
   pull: "Pull",
+  forcePushWithLease: "Force push (with lease)…",
+  fetch: "Fetch",
   retry: "Retry",
   runInTerminal: "Run in terminal",
 };

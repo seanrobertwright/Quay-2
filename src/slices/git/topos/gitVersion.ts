@@ -32,6 +32,7 @@ export type GitError =
   | { kind: "refLocked" }
   /** Fetch, pull and push (#395). Refs, reasons and remote lines are untrusted display text. */
   | { kind: "nonFastForward"; ref: string }
+  | { kind: "leaseRefused"; ref: string }
   | { kind: "noUpstream"; branch: string; remotes: string[] }
   | { kind: "remoteRejected"; ref: string; reason: string; remoteLines: string[] }
   | { kind: "authFailed" }
@@ -58,6 +59,8 @@ export function parseGitError(e: unknown): GitError | null {
       return { kind: fields.kind };
     case "nonFastForward":
       return { kind: "nonFastForward", ref: String(fields.ref) };
+    case "leaseRefused":
+      return { kind: "leaseRefused", ref: String(fields.ref) };
     case "noUpstream":
       return Array.isArray(fields.remotes)
         ? { kind: "noUpstream", branch: String(fields.branch), remotes: fields.remotes.map(String) }

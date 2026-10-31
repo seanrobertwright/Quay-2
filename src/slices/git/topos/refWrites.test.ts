@@ -63,6 +63,25 @@ test("deleting a tag asks first and says it stays on any remote", () => {
   });
 });
 
+test("deleting a tag a remote has offers to delete it there too, unticked", () => {
+  assert.deepEqual(deleteTagPrompt("v1", ["origin"]), {
+    title: "Delete tag",
+    detail: "Deletes the local tag v1. origin has it too; deleting it there has no undo.",
+    confirmLabel: "Delete tag",
+    checkbox: { label: "Also delete from origin", initial: false },
+  });
+  const both = deleteTagPrompt("v1", ["origin", "fork"]);
+  assert.equal(both.checkbox?.label, "Also delete from origin and fork");
+  assert.equal(both.checkbox?.initial, false);
+  assert.equal(deleteTagPrompt("v1", []).checkbox, undefined, "no remote has it, so there is nothing to offer");
+});
+
+test("when the remotes couldn't be checked, the tag delete is local and says so", () => {
+  const prompt = deleteTagPrompt("v1", null);
+  assert.equal(prompt.checkbox, undefined);
+  assert.equal(prompt.detail, "Deletes the local tag v1. Topos couldn't check the remotes for it, so a tag of that name on one stays.");
+});
+
 test("a tag needs a name, and a blank message makes it lightweight", () => {
   assert.deepEqual(tagRequest("  ", "msg"), { refused: "Name the tag" });
   assert.deepEqual(tagRequest(" v1 ", ""), { name: "v1", message: null });

@@ -46,9 +46,24 @@ export function restoreFailure(name: string, e: unknown): string {
   return `Couldn't restore ${name}: ${errorMessage(e)}`;
 }
 
-/** The confirm of a tag delete, which is local only. */
-export function deleteTagPrompt(name: string): Prompt {
-  return { title: "Delete tag", detail: `Deletes the local tag ${name}. A tag of that name on a remote stays.`, confirmLabel: "Delete tag" };
+/**
+ * The confirm of a tag delete. When `onRemotes`, the remotes that have the tag, isn't empty it
+ * offers "Also delete from ‹remote›", unticked (#367); null means they couldn't be checked, and the
+ * delete stays local.
+ */
+export function deleteTagPrompt(name: string, onRemotes: readonly string[] | null = []): Prompt & { checkbox?: { label: string; initial: boolean } } {
+  const prompt = { title: "Delete tag", confirmLabel: "Delete tag" };
+  if (onRemotes === null) {
+    return { ...prompt, detail: `Deletes the local tag ${name}. Topos couldn't check the remotes for it, so a tag of that name on one stays.` };
+  }
+  if (onRemotes.length === 0) return { ...prompt, detail: `Deletes the local tag ${name}. A tag of that name on a remote stays.` };
+  const remotes = onRemotes.length === 1 ? onRemotes[0] : `${onRemotes.slice(0, -1).join(", ")} and ${onRemotes[onRemotes.length - 1]}`;
+  const has = onRemotes.length === 1 ? "has" : "have";
+  return {
+    ...prompt,
+    detail: `Deletes the local tag ${name}. ${remotes} ${has} it too; deleting it there has no undo.`,
+    checkbox: { label: `Also delete from ${remotes}`, initial: false },
+  };
 }
 
 /**

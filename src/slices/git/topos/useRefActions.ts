@@ -73,6 +73,11 @@ export interface RefActions {
   newBranch: (at: string) => void;
   /** Opens the branch picker for "Topos: Checkout…". */
   pickCheckout: () => void;
+  /**
+   * Deletes the local tag `name` with no confirm of its own, for the tag delete confirm that also
+   * offers its remotes (#396). Resolves to whether it was deleted; a refusal shows in a toast.
+   */
+  deleteTagNow: (name: string) => Promise<boolean>;
 }
 
 interface Options {
@@ -349,15 +354,21 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
     [deleteBranchNow]
   );
 
-  const deleteTag = useCallback(
-    (name: string) =>
-      setDialog({
-        ...deleteTagPrompt(name),
-        onConfirm: () => {
-          void runRefCommand({ command: "git_tag_delete", args: { name }, what: name, done: () => `Deleted tag ${name}` });
-        },
-      }),
+  const deleteTagNow = useCallback(
+    (name: string) => {
+      let deleted = false;
+      const done = () => {
+        deleted = true;
+        return `Deleted tag ${name}`;
+      };
+      return runRefCommand({ command: "git_tag_delete", args: { name }, what: name, done }).then(() => deleted);
+    },
     [runRefCommand]
+  );
+
+  const deleteTag = useCallback(
+    (name: string) => setDialog({ ...deleteTagPrompt(name), onConfirm: () => void deleteTagNow(name) }),
+    [deleteTagNow]
   );
 
   const run = useCallback(
@@ -379,6 +390,10 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
           return deleteBranch(action.name);
         case "deleteTag":
           return deleteTag(action.name);
+        case "pushTag":
+        case "deleteRemoteBranch":
+          // Network operations, which Topos's toolbar runs; see ToposOverlay.
+          return;
         case "copySha":
           navigator.clipboard.writeText(action.oid).then(
             () => toast({ tone: "done", text: `Copied ${shortOid(action.oid)}` }),
@@ -405,5 +420,5 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
 
   const closeDialog = useCallback(() => setDialog(null), []);
 
-  return { toasts, dismiss, toast, openDialog: setDialog, dialog, closeDialog, run, runPrimary, newBranch, pickCheckout };
+  return { toasts, dismiss, toast, openDialog: setDialog, dialog, closeDialog, run, runPrimary, newBranch, pickCheckout, deleteTagNow };
 }

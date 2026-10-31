@@ -159,7 +159,7 @@ pub struct NewTag<'a> {
 
 /// `refs/tags/<name>`, once `git check-ref-format` accepts it and `name` doesn't start with `-`, so
 /// it can never read as an option. Refuses any other name.
-fn check_tag_name(worktree: &Path, name: &str) -> Result<String, GitError> {
+pub(super) fn check_tag_name(worktree: &Path, name: &str) -> Result<String, GitError> {
     refuse_option_like(name)?;
     let full = format!("refs/tags/{name}");
     read_git(worktree, &["check-ref-format", &full])?.ok_or_else(|| invalid_ref(name))?;

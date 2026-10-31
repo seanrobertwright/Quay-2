@@ -2,12 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ConfirmRequest } from "./ConfirmDialog";
 import { errorMessage, parseGitError } from "./gitVersion";
+import { deleteTagPrompt } from "./refWrites";
 import {
+  branchRef,
+  deleteRemoteBranchPrompt,
   failureView,
+  forcePushPrompt,
   gitArgv,
+  isBranchRef,
+  needsTypedConfirm,
   onOpEvent,
+  remoteBranchName,
   startOp,
+  typedConfirmRefusal,
+  typedForcePushPrompt,
   type FailureView,
+  type LeasePlan,
   type NetworkKind,
   type NetworkRequest,
   type NextAction,
@@ -48,6 +58,15 @@ export interface RemoteOps {
   runInTerminal: () => void;
   /** Runs one of the output panel's next actions. */
   act: (action: NextAction) => void;
+  /** Pushes the one tag `name` to `remote`. */
+  pushTag: (remote: string, name: string) => void;
+  /** Asks, then deletes `branch` from `remote`. */
+  deleteRemoteBranch: (remote: string, branch: string) => void;
+  /**
+   * Asks, then deletes the local tag `name` with `deleteLocal`, offering to delete it from the
+   * remotes that have it too. `deleteLocal` resolves to whether the local delete succeeded.
+   */
+  deleteTag: (name: string, deleteLocal: (name: string) => Promise<boolean>) => void;
 }
 
 interface Options {
@@ -66,7 +85,16 @@ interface Options {
   onRunInTerminal?: (cwd: string, argv: string[]) => Promise<boolean>;
 }
 
-const COMMAND: Record<NetworkKind, string> = { fetch: "git_fetch", pull: "git_pull", push: "git_push" };
+const COMMAND: Record<NetworkKind, string> = {
+  fetch: "git_fetch",
+  pull: "git_pull",
+  push: "git_push",
+  pushTag: "git_push_tag",
+  pushDelete: "git_push_delete",
+};
+
+/** How long the lookup of which remotes have a tag may take before the delete stays local. */
+const TAG_LOOKUP_MS = 15_000;
 
 /** The arguments `request`'s command takes, beside the worktree, the op id and the channel. */
 function commandArgs(request: NetworkRequest): Record<string, unknown> {
@@ -76,8 +104,24 @@ function commandArgs(request: NetworkRequest): Record<string, unknown> {
     case "pull":
       return { strategy: request.strategy, remember: request.remember };
     case "push":
-      return { ref: request.branch, remote: request.remote, setUpstream: request.setUpstream };
+      return {
+        ref: request.branch,
+        remote: request.remote,
+        setUpstream: request.setUpstream,
+        lease: request.lease === undefined ? null : { expectedSha: request.lease.expectedSha },
+      };
+    case "pushTag":
+      return { remote: request.remote, name: request.name };
+    case "pushDelete":
+      return { remote: request.remote, ref: request.ref };
   }
+}
+
+/** `refs/heads/topic` or `refs/tags/v1` as the branch `topic` or the tag `v1`. */
+function refWords(ref: string): string {
+  if (isBranchRef(ref)) return `the branch ${remoteBranchName(ref)}`;
+  if (ref.startsWith("refs/tags/")) return `the tag ${ref.slice("refs/tags/".length)}`;
+  return ref;
 }
 
 /** The success toast of `request`. */
@@ -89,7 +133,12 @@ function doneText(request: NetworkRequest, outcome: RemoteOutcome): string {
     case "pull":
       return upstream === null ? "Pulled" : `Pulled from ${upstream}`;
     case "push":
+      if (request.lease !== undefined) return `Force pushed ${request.branch} with a lease`;
       return upstream === null ? `Pushed ${request.branch}` : `Pushed ${request.branch} to ${upstream}`;
+    case "pushTag":
+      return `Pushed the tag ${request.name} to ${request.remote}`;
+    case "pushDelete":
+      return `Deleted ${refWords(request.ref)} from ${request.remote}`;
   }
 }
 
@@ -100,8 +149,9 @@ const STRATEGY_CHOICES: { value: PullStrategy; label: string }[] = [
 ];
 
 /**
- * Fetch, pull and push for Topos's toolbar and palette (#367, #395). Each streams its progress to
- * the toolbar, says when git has gone quiet, takes the HEAD and refs it returns at once, and
+ * Fetch, pull and push for Topos's toolbar and palette (#367, #395), and force push with lease,
+ * tag pushes and remote deletes from the output panel and the badge menus (#396). Each streams its
+ * progress to the toolbar, says when git has gone quiet, takes the HEAD and refs it returns at once, and
  * reports success in a toast and a refusal in the output panel. The backend's per-repo lock is
  * what keeps one network operation per repo; this only keeps the toolbar from starting a second.
  */
@@ -135,12 +185,13 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
   }, [worktreePath, refsState]);
   useEffect(() => setFailure(null), [worktreePath]);
 
+  // Resolves to whether the operation succeeded, so a step can follow it.
   const run = useCallback(
-    function runRequest(request: NetworkRequest) {
-      if (worktreePath === null) return;
+    function runRequest(request: NetworkRequest): Promise<boolean> {
+      if (worktreePath === null) return Promise.resolve(false);
       if (current.current !== null) {
-        toast({ tone: "failed", text: "Wait for the running fetch, pull or push, or cancel it" });
-        return;
+        toast({ tone: "failed", text: "Wait for the running remote operation, or cancel it" });
+        return Promise.resolve(false);
       }
       setFailure(null);
       const call = (worktree: string) => {
@@ -165,6 +216,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
                   ? { tone: "failed", text: "The pull stopped on conflicts. Resolve them from the banner." }
                   : { tone: "done", text: doneText(request, outcome) }
               );
+              return !outcome.conflicts;
             },
             (e: unknown) => {
               const error = parseGitError(e);
@@ -182,7 +234,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
                     const strategy = STRATEGY_CHOICES.find((c) => c.value === choice)?.value;
                     if (strategy === undefined) return Promise.resolve("Pick a strategy");
                     // The dialog closes at once; the pull runs on the toolbar like any other.
-                    queueMicrotask(() => runRequest({ kind: "pull", strategy, remember: checked }));
+                    queueMicrotask(() => void runRequest({ kind: "pull", strategy, remember: checked }));
                     return Promise.resolve(null);
                   },
                 });
@@ -191,6 +243,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
                 const upstream = error?.kind === "noUpstream" ? { branch: error.branch, remotes: error.remotes } : undefined;
                 setFailure({ kind: request.kind, request, view, output: op.output, upstream });
               }
+              return false;
             }
           )
           .finally(() => {
@@ -201,23 +254,105 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
       if (request.kind === "pull") {
         // A pull writes the worktree, so it takes the worktree's staging slot too.
         const ran = exclusive({ action: "pull", target: { kind: "all" } }, call);
-        if (ran === null) toast({ tone: "failed", text: "Wait for the git operation running in this worktree" });
-        return;
+        if (ran !== null) return ran;
+        toast({ tone: "failed", text: "Wait for the git operation running in this worktree" });
+        return Promise.resolve(false);
       }
-      void call(worktreePath);
+      return call(worktreePath);
     },
     [worktreePath, repoPath, exclusive, reload, accept, onLanded, toast, openDialog]
   );
 
-  const fetch = useCallback(() => run({ kind: "fetch", from: { kind: "all" }, prune: true }), [run]);
-  const pull = useCallback(() => run({ kind: "pull", strategy: null, remember: false }), [run]);
+  const fetch = useCallback(() => void run({ kind: "fetch", from: { kind: "all" }, prune: true }), [run]);
+  const pull = useCallback(() => void run({ kind: "pull", strategy: null, remember: false }), [run]);
   const push = useCallback(() => {
     if (sync?.branch == null) {
       toast({ tone: "failed", text: "Check out a branch to push it" });
       return;
     }
-    run({ kind: "push", branch: sync.branch, remote: null, setUpstream: false });
+    void run({ kind: "push", branch: sync.branch, remote: null, setUpstream: false });
   }, [run, sync, toast]);
+
+  /**
+   * Force push (with lease)…, from a push refused as non-fast-forward: the confirm names what it
+   * overwrites as of the last fetch, main, master and the remote's default branch need their name
+   * typed too, and the push leases on the remote-tracking sha the confirm showed.
+   */
+  const forcePush = useCallback(() => {
+    const request = failure?.request;
+    if (request?.kind !== "push" || request.lease !== undefined || worktreePath === null) return;
+    const { branch } = request;
+    invoke<LeasePlan>("git_push_lease_plan", { worktreePath, ref: branch, remote: request.remote }).then(
+      (plan) => {
+        const lease = { kind: "push", branch, remote: plan.remote, setUpstream: false, lease: { expectedSha: plan.expectedSha, remoteRef: plan.remoteRef } } as const;
+        const typed = () => {
+          const words = typedForcePushPrompt(plan);
+          const name = remoteBranchName(plan.remoteRef);
+          openDialog({
+            ...words,
+            onSubmit: ({ text }) => {
+              const refused = typedConfirmRefusal(text, name);
+              if (refused !== null) return Promise.resolve(refused);
+              queueMicrotask(() => void run(lease));
+              return Promise.resolve(null);
+            },
+          });
+        };
+        openDialog({
+          ...forcePushPrompt(branch, plan),
+          onConfirm: () => (needsTypedConfirm(plan) ? typed() : void run(lease)),
+        });
+      },
+      (e: unknown) => toast({ tone: "failed", text: `Can't force push ${branch}: ${errorMessage(e)}` })
+    );
+  }, [failure, worktreePath, openDialog, run, toast]);
+
+  const pushTag = useCallback((remote: string, name: string) => void run({ kind: "pushTag", remote, name }), [run]);
+
+  const deleteRemoteBranch = useCallback(
+    (remote: string, branch: string) =>
+      openDialog({ ...deleteRemoteBranchPrompt(remote, branch), onConfirm: () => void run({ kind: "pushDelete", remote, ref: branchRef(branch) }) }),
+    [openDialog, run]
+  );
+
+  // The remotes that have a tag, from the backend's ls-remote, or null when that failed or took
+  // longer than TAG_LOOKUP_MS, which cancels it.
+  const tagRemotes = useCallback(
+    (name: string): Promise<string[] | null> => {
+      if (worktreePath === null || (sync?.remotes.length ?? 0) === 0) return Promise.resolve([]);
+      const opId = crypto.randomUUID();
+      const onEvent = new Channel<OpEvent>();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          void invoke("git_op_cancel", { opId }).catch(console.error);
+          resolve(null);
+        }, TAG_LOOKUP_MS);
+      });
+      const looked = invoke<string[]>("git_tag_remotes", { worktreePath, name, opId, onEvent }).catch(() => null);
+      return Promise.race([looked, timedOut]).finally(() => clearTimeout(timer));
+    },
+    [worktreePath, sync]
+  );
+
+  const deleteTag = useCallback(
+    (name: string, deleteLocal: (name: string) => Promise<boolean>) => {
+      void tagRemotes(name).then((onRemotes) => {
+        openDialog({
+          ...deleteTagPrompt(name, onRemotes),
+          onConfirm: (alsoRemote) => {
+            void deleteLocal(name).then(async (deleted) => {
+              if (!deleted || !alsoRemote || onRemotes === null) return;
+              for (const remote of onRemotes) {
+                if (!(await run({ kind: "pushDelete", remote, ref: `refs/tags/${name}` }))) return;
+              }
+            });
+          },
+        });
+      });
+    },
+    [tagRemotes, openDialog, run]
+  );
 
   const cancel = useCallback(() => {
     const op = current.current;
@@ -252,8 +387,12 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
       switch (action) {
         case "pull":
           return pull();
+        case "fetch":
+          return fetch();
+        case "forcePushWithLease":
+          return forcePush();
         case "retry":
-          if (failure !== null) run(failure.request);
+          if (failure !== null) void run(failure.request);
           return;
         case "runInTerminal":
           return runInTerminal();
@@ -262,7 +401,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
           if (upstream === undefined) return;
           const { branch, remotes } = upstream;
           if (remotes.length === 1) {
-            run({ kind: "push", branch, remote: remotes[0], setUpstream: true });
+            void run({ kind: "push", branch, remote: remotes[0], setUpstream: true });
             return;
           }
           openDialog({
@@ -272,17 +411,17 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
             choice: { label: "Remote", options: remotes.map((r) => ({ value: r, label: r })) },
             onSubmit: ({ choice }) => {
               if (!remotes.includes(choice)) return Promise.resolve("Pick a remote");
-              queueMicrotask(() => run({ kind: "push", branch, remote: choice, setUpstream: true }));
+              queueMicrotask(() => void run({ kind: "push", branch, remote: choice, setUpstream: true }));
               return Promise.resolve(null);
             },
           });
         }
       }
     },
-    [failure, pull, run, runInTerminal, openDialog]
+    [failure, pull, fetch, forcePush, run, runInTerminal, openDialog]
   );
 
   const closeFailure = useCallback(() => setFailure(null), []);
 
-  return { sync, running, failure, closeFailure, fetch, pull, push, cancel, runInTerminal, act };
+  return { sync, running, failure, closeFailure, fetch, pull, push, cancel, runInTerminal, act, pushTag, deleteRemoteBranch, deleteTag };
 }

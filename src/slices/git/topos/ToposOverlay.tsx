@@ -30,7 +30,7 @@ import { SpeedupBanner, SpeedupDialog } from "./SpeedupDialog";
 import { useSpeedup } from "./useSpeedup";
 import { isSamePath } from "../../../utils/paths";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { checkoutBlockedBy, type RefContext } from "./refActions";
+import { checkoutBlockedBy, type RefAction, type RefContext } from "./refActions";
 import { ToastQueue } from "./ToastQueue";
 import type { ToposRequestKind } from "./toposPalette";
 import { useRefActions } from "./useRefActions";
@@ -235,11 +235,6 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     onShowWorktree: showWorktree,
     onOpenInspector: openInspector,
   });
-  const refWorktrees = refs.state === "done" ? refs.refs.worktrees : null;
-  const refContext = useMemo<RefContext | null>(
-    () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBusy }),
-    [refWorktrees, selectedPath, checkoutBusy]
-  );
   // Fetch, pull and push from the toolbar and the palette (#395), sharing the toasts and dialog.
   const remote = useRemoteOps({
     worktreePath: graphRepo !== null ? selectedPath : null,
@@ -251,6 +246,32 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     openDialog: refActions.openDialog,
     onRunInTerminal,
   });
+  // The menus push tags to and delete branches from the repo's remotes (#396). Joined into one
+  // string so a new sync read with the same remotes keeps the same list.
+  const remotesKey = (remote.sync?.remotes ?? []).join("\n");
+  const remoteNames = useMemo(() => (remotesKey === "" ? [] : remotesKey.split("\n")), [remotesKey]);
+  const refWorktrees = refs.state === "done" ? refs.refs.worktrees : null;
+  const refContext = useMemo<RefContext | null>(
+    () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBusy, remotes: remoteNames }),
+    [refWorktrees, selectedPath, checkoutBusy, remoteNames]
+  );
+  const { run: runRefAction, deleteTagNow } = refActions;
+  const { pushTag, deleteRemoteBranch, deleteTag } = remote;
+  const onRefAction = useCallback(
+    (action: RefAction) => {
+      switch (action.kind) {
+        case "pushTag":
+          return pushTag(action.remote, action.name);
+        case "deleteRemoteBranch":
+          return deleteRemoteBranch(action.remote, action.branch);
+        case "deleteTag":
+          return deleteTag(action.name, deleteTagNow);
+        default:
+          return runRefAction(action);
+      }
+    },
+    [pushTag, deleteRemoteBranch, deleteTag, deleteTagNow, runRefAction]
+  );
   // A palette request runs once Topos shows a repo whose refs are read.
   const handledRequest = useRef(0);
   const { newBranch, pickCheckout } = refActions;
@@ -449,7 +470,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       worktreeAgents={worktreeAgents}
                       wip={wip}
                       refContext={refContext}
-                      onRefAction={refActions.run}
+                      onRefAction={onRefAction}
                       onPrimary={refActions.runPrimary}
                       announce={staging.announce}
                     />

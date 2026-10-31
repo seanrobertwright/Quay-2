@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::checkout_tests::{rev, test_channel};
 use super::error::GitError;
 use super::op_runner::GitOps;
-use super::remote_ops::{fetch, pull, push, push_refusal, with_repo_config_only, FetchFrom, PullStrategy, PushTarget, RemoteOutcome};
+use super::remote_ops::{fetch, lease_plan, pull, push, push_delete, push_refusal, push_tag, tag_remotes, with_repo_config_only, FetchFrom, LeasePlan, PullStrategy, PushTarget, RemoteOutcome};
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
 
@@ -187,8 +187,122 @@ fn pulling_a_branch_with_no_upstream_says_so() {
 
 fn push_in(wt: &Path, branch: &str, remote: Option<&str>, set_upstream: bool) -> Result<RemoteOutcome, GitError> {
     with_repo_config_only(|| {
-        push(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), PushTarget { branch, remote, set_upstream }, &test_channel())
+        push(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), PushTarget { branch, remote, set_upstream, lease: None }, &test_channel())
     })
+}
+
+fn lease_push_in(wt: &Path, branch: &str, remote: Option<&str>, expected: &str) -> Result<RemoteOutcome, GitError> {
+    with_repo_config_only(|| {
+        let target = PushTarget { branch, remote, set_upstream: false, lease: Some(expected) };
+        push(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), target, &test_channel())
+    })
+}
+
+/// `wt` on `feat` with a commit of its own, after another clone pushed `theirs` more commits to
+/// `origin/feat` and `wt` fetched them, so a plain push is refused as non-fast-forward. Returns
+/// (the remote's tip, ours).
+fn rejected_as_non_fast_forward(root: &Path, wt: &Path, theirs: usize) -> (String, String) {
+    let bare = with_origin(root, wt);
+    git(wt, &["push", "-q", "-u", "origin", "feat"]);
+    let other = other_clone(root, &bare);
+    git(&other, &["switch", "-q", "feat"]);
+    let mut tip = String::new();
+    for i in 0..theirs {
+        tip = commit_file(&other, &format!("theirs{i}.txt"), "theirs\n");
+    }
+    git(&other, &["push", "-q", "origin", "feat"]);
+    let ours = commit_file(wt, "ours.txt", "ours\n");
+    git(wt, &["fetch", "-q", "origin"]);
+    assert_eq!(push_in(wt, "feat", None, false), Err(GitError::NonFastForward { r#ref: "refs/heads/feat".into() }));
+    (tip, ours)
+}
+
+#[test]
+fn the_lease_plan_names_the_remote_tip_and_how_many_remote_commits_it_overwrites() {
+    let (root, wt) = repo_with_worktree();
+    let (tip, _ours) = rejected_as_non_fast_forward(&root, &wt, 2);
+
+    let plan = lease_plan(&wt, "feat", None).expect("the plan reads");
+
+    assert_eq!(
+        plan,
+        LeasePlan {
+            remote: "origin".into(),
+            remote_ref: "refs/heads/feat".into(),
+            tracking: "origin/feat".into(),
+            expected_sha: tip,
+            overwrites: 2,
+            default_branch: Some("main".into()),
+        }
+    );
+}
+
+#[test]
+fn the_lease_plan_reads_the_default_branch_from_the_remotes_head() {
+    let (root, wt) = repo_with_worktree();
+    rejected_as_non_fast_forward(&root, &wt, 1);
+    git(&wt, &["remote", "set-head", "origin", "feat"]);
+    assert_eq!(lease_plan(&wt, "feat", None).expect("the plan reads").default_branch.as_deref(), Some("feat"));
+
+    git(&wt, &["remote", "set-head", "origin", "--delete"]);
+    assert_eq!(lease_plan(&wt, "feat", None).expect("the plan reads").default_branch, None);
+}
+
+#[test]
+fn the_lease_refuses_once_the_remote_moved_and_the_remote_keeps_its_commits() {
+    let (root, wt) = repo_with_worktree();
+    rejected_as_non_fast_forward(&root, &wt, 1);
+    let plan = lease_plan(&wt, "feat", None).expect("the plan reads");
+    let bare = root.join("origin.git");
+    let other = root.join("other");
+    let moved = commit_file(&other, "later.txt", "later\n");
+    git(&other, &["push", "-q", "origin", "feat"]);
+
+    assert_eq!(lease_push_in(&wt, "feat", None, &plan.expected_sha), Err(GitError::LeaseRefused { r#ref: "refs/heads/feat".into() }));
+    assert_eq!(rev(&bare, "refs/heads/feat"), moved, "the remote kept the commit pushed after the fetch");
+}
+
+#[test]
+fn the_lease_refuses_when_a_fetch_moved_the_remote_tracking_branch_since_the_confirm() {
+    let (root, wt) = repo_with_worktree();
+    rejected_as_non_fast_forward(&root, &wt, 1);
+    let plan = lease_plan(&wt, "feat", None).expect("the plan reads");
+    let other = root.join("other");
+    let moved = commit_file(&other, "later.txt", "later\n");
+    git(&other, &["push", "-q", "origin", "feat"]);
+    git(&wt, &["fetch", "-q", "origin"]);
+
+    assert_eq!(lease_push_in(&wt, "feat", None, &plan.expected_sha), Err(GitError::LeaseRefused { r#ref: "refs/heads/feat".into() }));
+    assert_eq!(rev(&root.join("origin.git"), "refs/heads/feat"), moved);
+}
+
+#[test]
+fn a_lease_that_is_not_a_full_commit_id_is_refused_before_git_runs() {
+    let (root, wt) = repo_with_worktree();
+    let (tip, _ours) = rejected_as_non_fast_forward(&root, &wt, 1);
+
+    for lease in ["--force", "HEAD", &tip[..12]] {
+        assert!(matches!(lease_push_in(&wt, "feat", None, lease), Err(GitError::Other { .. })), "{lease}");
+    }
+    assert_eq!(rev(&root.join("origin.git"), "refs/heads/feat"), tip);
+}
+
+#[test]
+fn the_porcelain_parser_reads_a_stale_lease() {
+    let out = push_output("To ../origin.git\n!\trefs/heads/feat:refs/heads/feat\t[rejected] (stale info)\nDone\n", "");
+    assert_eq!(push_refusal(&out), Some(GitError::LeaseRefused { r#ref: "refs/heads/feat".into() }));
+}
+
+#[test]
+fn a_force_push_with_the_lease_overwrites_the_remote_branch() {
+    let (root, wt) = repo_with_worktree();
+    let (_tip, ours) = rejected_as_non_fast_forward(&root, &wt, 1);
+    let plan = lease_plan(&wt, "feat", None).expect("the plan reads");
+
+    let outcome = lease_push_in(&wt, "feat", None, &plan.expected_sha).expect("the lease holds");
+
+    assert_eq!(rev(&root.join("origin.git"), "refs/heads/feat"), ours);
+    assert!(outcome.refs.refs.iter().any(|r| r.name == "origin/feat" && r.oid == ours));
 }
 
 #[test]
@@ -415,6 +529,7 @@ fn the_sync_status_counts_ahead_and_behind_as_of_the_last_fetch() {
     assert_eq!(sync.branch.as_deref(), Some("feat"));
     assert_eq!(sync.upstream.as_deref(), Some("origin/feat"));
     assert_eq!((sync.ahead, sync.behind), (1, 1));
+    assert_eq!(sync.remotes, vec!["origin".to_string()]);
     let fetched = sync.fetched_at_ms.expect("FETCH_HEAD has a time");
     // Filesystem times can lag the clock by a few ms, and some round to the second.
     assert!(fetched >= before - 2_000 && fetched <= crate::dates::now_ms() + 2_000, "fetched {fetched}, started {before}");
@@ -428,6 +543,7 @@ fn a_branch_with_no_upstream_has_no_counts() {
 
     assert_eq!(sync.branch.as_deref(), Some("feat"));
     assert_eq!((sync.upstream, sync.ahead, sync.behind, sync.fetched_at_ms), (None, 0, 0, None));
+    assert!(sync.remotes.is_empty());
 }
 
 /// What a failed `push --porcelain` printed: `stdout` its ref lines, `stderr` the rest.
@@ -476,4 +592,132 @@ fn with_no_rejected_ref_the_porcelain_parser_falls_back_to_the_network_refusals(
     assert_eq!(push_refusal(&auth), Some(GitError::AuthFailed));
     assert_eq!(push_refusal(&push_output("", "Host key verification failed.\n")), Some(GitError::HostKeyUnknown));
     assert_eq!(push_refusal(&push_output("To ../origin.git\nDone\n", "error: something new\n")), None);
+}
+
+/// Makes the annotated tag `name` at HEAD in `dir`, unsigned whatever git config says.
+fn annotated_tag(dir: &Path, name: &str) {
+    git(dir, &["-c", "tag.gpgSign=false", "tag", "-a", "-m", name, "--", name]);
+}
+
+fn remote_has(bare: &Path, full_ref: &str) -> bool {
+    !git(bare, &["for-each-ref", "--format=%(refname)", full_ref]).trim().is_empty()
+}
+
+/// `wt` on `feat` tracking `origin/feat`, with an unpushed commit that the annotated tag `v1` is on.
+fn tagged_unpushed_commit(root: &Path, wt: &Path) -> PathBuf {
+    let bare = with_origin(root, wt);
+    git(wt, &["push", "-q", "-u", "origin", "feat"]);
+    commit_file(wt, "ours.txt", "ours\n");
+    annotated_tag(wt, "v1");
+    bare
+}
+
+#[test]
+fn a_push_sends_no_tags_unless_push_follow_tags_is_set() {
+    let (root, wt) = repo_with_worktree();
+    let bare = tagged_unpushed_commit(&root, &wt);
+
+    push_in(&wt, "feat", None, false).expect("the push runs");
+
+    assert_eq!(rev(&bare, "refs/heads/feat"), rev(&wt, "feat"));
+    assert!(!remote_has(&bare, "refs/tags/v1"), "the tag stayed local");
+}
+
+#[test]
+fn with_push_follow_tags_a_push_sends_the_annotated_tags_on_what_it_pushes() {
+    let (root, wt) = repo_with_worktree();
+    let bare = tagged_unpushed_commit(&root, &wt);
+    git(&wt, &["config", "--local", "push.followTags", "true"]);
+
+    push_in(&wt, "feat", None, false).expect("the push runs");
+
+    assert!(remote_has(&bare, "refs/tags/v1"), "push.followTags sent the tag");
+}
+
+fn push_tag_in(wt: &Path, remote: &str, name: &str) -> Result<RemoteOutcome, GitError> {
+    with_repo_config_only(|| push_tag(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), remote, name, &test_channel()))
+}
+
+#[test]
+fn pushing_a_tag_sends_that_one_tag_and_no_other_even_with_push_follow_tags() {
+    let (root, wt) = repo_with_worktree();
+    let bare = tagged_unpushed_commit(&root, &wt);
+    commit_file(&wt, "later.txt", "later\n");
+    annotated_tag(&wt, "v2");
+    git(&wt, &["config", "--local", "push.followTags", "true"]);
+
+    push_tag_in(&wt, "origin", "v2").expect("the tag push runs");
+
+    assert_eq!(rev(&bare, "refs/tags/v2"), rev(&wt, "refs/tags/v2"));
+    assert!(!remote_has(&bare, "refs/tags/v1"), "v1, on a commit v2 reaches, stayed local");
+    assert_ne!(rev(&bare, "refs/heads/feat"), rev(&wt, "feat"), "no branch moved");
+}
+
+#[test]
+fn pushing_a_tag_refuses_a_name_or_remote_that_could_read_as_an_option() {
+    let (root, wt) = repo_with_worktree();
+    let bare = tagged_unpushed_commit(&root, &wt);
+
+    assert!(matches!(push_tag_in(&wt, "origin", "--mirror"), Err(GitError::InvalidRefName { .. })));
+    assert!(matches!(push_tag_in(&wt, "origin", "missing"), Err(GitError::InvalidRefName { .. })));
+    assert!(matches!(push_tag_in(&wt, "--receive-pack=evil", "v1"), Err(GitError::Other { .. })));
+    assert!(!remote_has(&bare, "refs/tags/v1"));
+}
+
+fn push_delete_in(wt: &Path, remote: &str, full_ref: &str) -> Result<RemoteOutcome, GitError> {
+    with_repo_config_only(|| push_delete(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), remote, full_ref, &test_channel()))
+}
+
+#[test]
+fn deleting_a_remote_branch_removes_it_from_the_remote_and_its_remote_tracking_branch() {
+    let (root, wt) = repo_with_worktree();
+    let bare = with_origin(&root, &wt);
+
+    let outcome = push_delete_in(&wt, "origin", "refs/heads/topic").expect("the delete runs");
+
+    assert!(!remote_has(&bare, "refs/heads/topic"));
+    assert!(remote_has(&bare, "refs/heads/main"), "only that branch went");
+    assert!(!outcome.refs.refs.iter().any(|r| r.name == "origin/topic"), "the refs no longer show origin/topic");
+}
+
+#[test]
+fn deleting_a_remote_tag_removes_it_from_the_remote_and_leaves_the_local_tag() {
+    let (root, wt) = repo_with_worktree();
+    let bare = with_origin(&root, &wt);
+    annotated_tag(&wt, "v1");
+    git(&wt, &["push", "-q", "origin", "refs/tags/v1"]);
+
+    push_delete_in(&wt, "origin", "refs/tags/v1").expect("the delete runs");
+
+    assert!(!remote_has(&bare, "refs/tags/v1"));
+    assert!(!rev(&wt, "refs/tags/v1").is_empty(), "the local tag stays");
+}
+
+#[test]
+fn a_remote_delete_refuses_anything_but_one_branch_or_tag_on_a_known_remote() {
+    let (root, wt) = repo_with_worktree();
+    let bare = with_origin(&root, &wt);
+
+    for full_ref in ["--mirror", "topic", "refs/remotes/origin/topic", "refs/heads/*", "refs/heads/", "refs/heads/a..b", "refs/heads/-x"] {
+        assert!(matches!(push_delete_in(&wt, "origin", full_ref), Err(GitError::InvalidRefName { .. })), "{full_ref}");
+    }
+    assert!(matches!(push_delete_in(&wt, "-origin", "refs/heads/topic"), Err(GitError::Other { .. })));
+    assert!(matches!(push_delete_in(&wt, "elsewhere", "refs/heads/topic"), Err(GitError::Other { .. })));
+    assert!(remote_has(&bare, "refs/heads/topic"), "nothing was deleted");
+}
+
+#[test]
+fn the_remotes_with_a_tag_are_those_whose_refs_have_it() {
+    let (root, wt) = repo_with_worktree();
+    with_origin(&root, &wt);
+    let fork = root.join("fork.git");
+    git(&root, &["init", "-q", "--bare", "-b", "main", &fork.to_string_lossy()]);
+    git(&wt, &["remote", "add", "fork", &fork.to_string_lossy()]);
+    annotated_tag(&wt, "v1");
+    git(&wt, &["push", "-q", "origin", "refs/tags/v1"]);
+    git(&wt, &["push", "-q", "fork", "main"]);
+
+    let have = with_repo_config_only(|| tag_remotes(&GitOps::default(), &StagingLocks::default(), &wt, Uuid::new_v4(), "v1", &test_channel()));
+
+    assert_eq!(have, Ok(vec!["origin".to_string()]));
 }
