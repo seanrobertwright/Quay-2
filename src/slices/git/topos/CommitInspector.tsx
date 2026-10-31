@@ -3,15 +3,34 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeftRight, BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, ShieldQuestion, X } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
-import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type FileStatus, type Person } from "./commitDetails";
-import { movedRow, offsetShowing, selectionKey, type ComparedCommit } from "./commitSelection";
+import {
+  committerShown,
+  filesNote,
+  linkify,
+  keyedTrailers,
+  type CommitDetails,
+  type CommitFile,
+  type ComparedCommit,
+  type FileStatus,
+  type Person,
+} from "./commitDetails";
+import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
 import type { Badge } from "./graphRefs";
 import { shortOid } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import { InspectorHandle } from "./InspectorHandle";
 import { nodeTooltip } from "./provenance";
 import type { LoadState } from "./settledLoader";
-import { useVerifyCommit, type CompareState, type FilesState, type OpenCommitFile, type VerifyState } from "./useCommitDetails";
+import {
+  comparedKey,
+  isPairFile,
+  isParentFile,
+  useVerifyCommit,
+  type CompareState,
+  type FilesState,
+  type OpenCommitFile,
+  type VerifyState,
+} from "./useCommitDetails";
 
 export interface CommitInspectorProps {
   id: string;
@@ -482,7 +501,7 @@ export const CommitInspector: React.FC<CommitInspectorProps> = ({
             <>
               <CommitFileList
                 files={files.files.files}
-                openPath={openFile !== null && openFile.oid === shown.oid && openFile.parentIndex === parentIndex ? openFile.path : null}
+                openPath={isParentFile(openFile, shown.oid, parentIndex) ? openFile.path : null}
                 onOpen={onOpenFile}
                 label={`Files of ${shortOid(shown.oid)}`}
               />
@@ -553,7 +572,7 @@ export const CompareInspector: React.FC<CompareInspectorProps> = ({
   usePopupLayer(focusWithin, onEscape, root);
   const { order, pair, files } = compare;
   const shownPair = pair ?? (order.shown === null ? null : { from: order.shown.older, to: order.shown.newer });
-  const pending = order.pending || files.pending || (pair !== null && files.shownKey !== `${pair.from.oid}..${pair.to.oid}`);
+  const pending = order.pending || files.pending || (pair !== null && files.shownKey !== comparedKey(pair));
   const error = order.error ?? files.error;
   const shownFiles = files.shown;
   const ahead = shownFiles?.ahead ?? null;
@@ -637,11 +656,7 @@ export const CompareInspector: React.FC<CompareInspectorProps> = ({
             <>
               <CommitFileList
                 files={shownFiles.files}
-                openPath={
-                  openFile !== null && pair !== null && openFile.parentIndex === 0 && openFile.oid === pair.to.oid && openFile.parent === pair.from.oid
-                    ? openFile.path
-                    : null
-                }
+                openPath={isPairFile(openFile, pair) ? openFile.path : null}
                 onOpen={onOpenFile}
                 label={`Files from ${shortOid(shownPair.from.oid)} to ${shortOid(shownPair.to.oid)}`}
               />

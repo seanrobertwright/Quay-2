@@ -37,10 +37,19 @@ import { useRefActions } from "./useRefActions";
 import { RemoteToolbar } from "./RemoteToolbar";
 import { useRemoteOps } from "./useRemoteOps";
 import { CommitInspector, CompareInspector } from "./CommitInspector";
-import { selectCommits, type CommitSelection } from "./commitSelection";
+import { selectCommits, selectionOids, type CommitSelection } from "./commitSelection";
 import { CommitFileDiffView } from "./CommitFileDiffView";
 import type { CommitFile } from "./commitDetails";
-import { useCommitDetails, useCommitDiff, useCommitFiles, useCompare, type OpenCommitFile } from "./useCommitDetails";
+import {
+  filesOfPair,
+  isPairFile,
+  isParentFile,
+  useCommitDetails,
+  useCommitDiff,
+  useCommitFiles,
+  useCompare,
+  type OpenCommitFile,
+} from "./useCommitDetails";
 
 const NO_SELECTION: CommitSelection = { kind: "none" };
 
@@ -190,8 +199,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // The selected commits (#397, #398): one puts the inspector in details mode, two compare them.
   // The graph belongs to the root repo, so the selection and its open diff last until the repo changes.
   const [selection, dispatchSelection] = useReducer(selectCommits, NO_SELECTION);
-  const selectedOid = selection.kind === "one" ? selection.oid : selection.kind === "two" ? selection.first : null;
-  const comparedOid = selection.kind === "two" ? selection.second : null;
+  const { selectedOid, comparedOid } = selectionOids(selection);
   useEffect(() => {
     dispatchSelection({ kind: "clear" });
     setCommitFile(null);
@@ -264,8 +272,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
       setStagingFile(null);
       setCommitFile({
         oid: shown.oid,
-        parent: shown.parents[parentIndex - 1] ?? null,
-        parentIndex,
+        against: { kind: "parent", index: parentIndex, oid: shown.parents[parentIndex - 1] ?? null },
         path: file.path,
         oldPath: file.oldPath,
         status: file.status,
@@ -275,18 +282,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   );
   // A compared pair's file opens the diff from the pair's `from` to its `to` (#398).
   const comparePair = compare.pair;
-  const compareFiles =
-    comparePair !== null && compare.files.shown !== null && compare.files.shownKey === `${comparePair.from.oid}..${comparePair.to.oid}`
-      ? compare.files.shown.files
-      : null;
+  const compareFiles = filesOfPair(compare.files, comparePair)?.files ?? null;
   const openCompareFile = useCallback(
     (file: CommitFile) => {
       if (comparePair === null) return;
       setStagingFile(null);
       setCommitFile({
         oid: comparePair.to.oid,
-        parent: comparePair.from.oid,
-        parentIndex: 0,
+        against: { kind: "commit", oid: comparePair.from.oid },
         path: file.path,
         oldPath: file.oldPath,
         status: file.status,
@@ -296,9 +299,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   );
   // The list the open commit file belongs to, for ↑/↓ in the diff: the compared pair's or the commit's.
   const comparing = selection.kind === "two";
-  const openIsCompared =
-    commitFile !== null && comparePair !== null && commitFile.parentIndex === 0 && commitFile.oid === comparePair.to.oid && commitFile.parent === comparePair.from.oid;
-  const openIsCommits = commitFile !== null && commitFiles.state === "done" && commitFile.oid === shownOid && commitFile.parentIndex === parentIndex;
+  const openIsCompared = isPairFile(commitFile, comparePair);
+  const openIsCommits = commitFiles.state === "done" && isParentFile(commitFile, shownOid, parentIndex);
   const stepFiles: CommitFile[] | null = comparing
     ? openIsCompared
       ? compareFiles
@@ -605,7 +607,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                   </div>
                   {commitFile && (
                     <CommitFileDiffView
-                      key={`${commitFile.oid}:${commitFile.parentIndex}:${commitFile.path}`}
+                      key={`${commitFile.oid}:${commitFile.against.kind}:${commitFile.against.oid ?? ""}:${commitFile.path}`}
                       file={commitFile}
                       reader={commitDiff}
                       mode={prefs.diffMode}

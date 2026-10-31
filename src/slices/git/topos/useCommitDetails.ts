@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CommitDetails, CommitFiles, CompareFiles, FileStatus, Verification } from "./commitDetails";
-import { comparedPair, type ComparedCommit, type CompareOrder } from "./commitSelection";
+import type { CommitDetails, CommitFiles, CompareFiles, CompareOrder, ComparedPair, FileStatus, Verification } from "./commitDetails";
+import { comparedPair, pairKey, pairOfKey, unorderedPairKey } from "./commitSelection";
 import type { FileDiff } from "./diffDoc";
 import { errorMessage } from "./gitVersion";
 import { RequestIds } from "./refreshTable";
@@ -20,8 +20,8 @@ const BROWSER_TIMERS = {
 const EMPTY: LoadState<CommitDetails> = { key: null, shown: null, shownKey: null, pending: false, error: null };
 
 /**
- * The selected commit's details (#397): read 120 ms after the selection settles, with stale
- * answers dropped and up to 200 commits cached per repo. While a new commit loads, the previous
+ * The selected commit's details (#397): read `DETAILS_DELAY_MS` after the selection settles, with
+ * stale answers dropped and up to `DETAILS_CACHE` commits cached per repo. While a new commit loads, the previous
  * one stays in `shown` with `pending` set, so the inspector can dim it. The wait is cleared when
  * the repo changes or the inspector unmounts.
  */
@@ -54,14 +54,14 @@ export function useCommitDetails(repoPath: string | null, oid: string | null): L
   return state;
 }
 
-/** The compare files loader's own wait: the order's 120 ms has already passed by then. */
+/** The compare files loader's own wait: the order's `DETAILS_DELAY_MS` has already passed by then. */
 const COMPARE_FILES_DELAY_MS = 0;
 
 export interface CompareState {
   /** The pair's order by the rule, the previous pair's while it loads. */
   order: LoadState<CompareOrder>;
   /** The direction shown once the order has arrived: older to newer, or reversed by Swap. */
-  pair: { from: ComparedCommit; to: ComparedCommit } | null;
+  pair: ComparedPair | null;
   /** The files from `pair.from` to `pair.to`, the previous pair's while they load. */
   files: LoadState<CompareFiles>;
 }
@@ -70,11 +70,11 @@ const EMPTY_ORDER: LoadState<CompareOrder> = { key: null, shown: null, shownKey:
 const EMPTY_FILES: LoadState<CompareFiles> = { key: null, shown: null, shownKey: null, pending: false, error: null };
 
 /**
- * Two selected commits compared (#398). Their order loads 120 ms after the selection settles,
- * keyed by the unordered pair, then the files load for the shown direction, keyed by the ordered
- * pair, so Swap reads the reverse once and both directions stay cached. Both go through #397's
- * settled loader, so an answer for a pair no longer selected is dropped, and both caches hold
- * 200 entries per repo.
+ * Two selected commits compared (#398). Their order loads `DETAILS_DELAY_MS` after the selection
+ * settles, keyed by the unordered pair, then the files load for the shown direction, keyed by the
+ * ordered pair, so Swap reads the reverse once and both directions stay cached. Both go through
+ * #397's settled loader, so an answer for a pair no longer selected is dropped, and both caches
+ * hold `DETAILS_CACHE` entries per repo.
  */
 export function useCompare(repoPath: string | null, first: string | null, second: string | null, swapped: boolean): CompareState {
   const [order, setOrder] = useState<LoadState<CompareOrder>>(EMPTY_ORDER);
@@ -86,7 +86,7 @@ export function useCompare(repoPath: string | null, first: string | null, second
     if (repoPath === null) return;
     const orderLoader = new SettledLoader<CompareOrder>({
       fetch: (key) => {
-        const [a, b] = key.split("\n");
+        const [a, b] = pairOfKey(key);
         return invoke<CompareOrder>("git_compare_order", { repoPath, a, b });
       },
       delayMs: DETAILS_DELAY_MS,
@@ -97,7 +97,7 @@ export function useCompare(repoPath: string | null, first: string | null, second
     });
     const filesLoader = new SettledLoader<CompareFiles>({
       fetch: (key) => {
-        const [a, b] = key.split("..");
+        const [a, b] = pairOfKey(key);
         return invoke<CompareFiles>("git_compare_files", { repoPath, a, b });
       },
       delayMs: COMPARE_FILES_DELAY_MS,
@@ -119,21 +119,31 @@ export function useCompare(repoPath: string | null, first: string | null, second
   }, [repoPath]);
 
   // The unordered pair: the same two commits picked in either order share one order read.
-  const pairKey = first === null || second === null ? null : [first, second].sort().join("\n");
+  const orderKey = first === null || second === null ? null : unorderedPairKey(first, second);
   useEffect(() => {
-    orders.current?.select(pairKey);
-    if (pairKey === null) diffs.current?.select(null);
-  }, [pairKey, repoPath]);
+    orders.current?.select(orderKey);
+    if (orderKey === null) diffs.current?.select(null);
+  }, [orderKey, repoPath]);
 
-  const ordered = order.shown !== null && !order.pending && order.shownKey === pairKey ? order.shown : null;
+  const ordered = order.shown !== null && !order.pending && order.shownKey === orderKey ? order.shown : null;
   const pair = ordered === null ? null : comparedPair(ordered, swapped);
-  const filesKey = pair === null ? null : `${pair.from.oid}..${pair.to.oid}`;
+  const filesKey = pair === null ? null : comparedKey(pair);
   useEffect(() => {
     // Until the new order arrives the previous pair's files stay, dimmed.
     if (filesKey !== null) diffs.current?.select(filesKey);
   }, [filesKey, repoPath]);
 
   return { order, pair, files };
+}
+
+/** The files cache key of `pair` in its shown direction. */
+export function comparedKey(pair: ComparedPair): string {
+  return pairKey(pair.from.oid, pair.to.oid);
+}
+
+/** The compared files once they are `pair`'s in its shown direction, or null while they are another pair's. */
+export function filesOfPair(files: LoadState<CompareFiles>, pair: ComparedPair | null): CompareFiles | null {
+  return pair !== null && files.shown !== null && files.shownKey === comparedKey(pair) ? files.shown : null;
 }
 
 export type FilesState =
@@ -191,18 +201,32 @@ export function useVerifyCommit(repoPath: string | null, oid: string | null): { 
 }
 
 /**
- * A commit file open in the read-only diff (#397): the commit, the parent it is diffed against,
- * and the file. For a compared pair (#398), `oid` is the pair's `to` and `parent` its `from`.
+ * What an open commit file is diffed against: one of the commit's parents (#397), by its index
+ * from 1 and its oid, null for a root commit's empty tree; or the other commit of a compared pair
+ * (#398), the pair's `from`.
+ */
+export type DiffedAgainst = { kind: "parent"; index: number; oid: string | null } | { kind: "commit"; oid: string };
+
+/**
+ * A commit file open in the read-only diff: the commit, what it is diffed against, and the file.
+ * For a compared pair, `oid` is the pair's `to`.
  */
 export interface OpenCommitFile {
   oid: string;
-  /** The parent's oid, or null for a root commit, diffed against the empty tree. */
-  parent: string | null;
-  /** Which parent, from 1, for the header; 0 for a compared pair, whose `parent` is the other commit. */
-  parentIndex: number;
+  against: DiffedAgainst;
   path: string;
   oldPath: string | null;
   status: FileStatus;
+}
+
+/** Whether `file` is one of commit `oid`'s files against its parent `index`. */
+export function isParentFile(file: OpenCommitFile | null, oid: string | null, index: number): file is OpenCommitFile {
+  return file !== null && file.oid === oid && file.against.kind === "parent" && file.against.index === index;
+}
+
+/** Whether `file` is one of `pair`'s files, diffed in the pair's shown direction. */
+export function isPairFile(file: OpenCommitFile | null, pair: ComparedPair | null): file is OpenCommitFile {
+  return file !== null && pair !== null && file.oid === pair.to.oid && file.against.kind === "commit" && file.against.oid === pair.from.oid;
 }
 
 export type CommitDiffState = { state: "loading" } | { state: "done"; diff: FileDiff } | { state: "failed"; message: string };
@@ -218,7 +242,7 @@ export function useCommitDiff(
   const [diff, setDiff] = useState<CommitDiffState>({ state: "loading" });
   const [loadedLarge, setLoadedLarge] = useState(false);
   const ids = useRef(new RequestIds());
-  const key = repoPath === null || file === null ? null : `${repoPath}\n${file.oid}\n${file.parent ?? ""}\n${file.oldPath ?? ""}\n${file.path}`;
+  const key = repoPath === null || file === null ? null : `${repoPath}\n${file.oid}\n${file.against.oid ?? ""}\n${file.oldPath ?? ""}\n${file.path}`;
   const latest = useRef({ repoPath, file });
   latest.current = { repoPath, file };
 
@@ -231,7 +255,7 @@ export function useCommitDiff(
       requestId: id,
       path: open.path,
       // A rename or copy is read as the pair, not as the new path added.
-      side: { kind: "commit", oid: open.oid, parent: open.parent, oldPath: open.oldPath },
+      side: { kind: "commit", oid: open.oid, parent: open.against.oid, oldPath: open.oldPath },
       context: CONTEXT,
       loadLarge: large,
     }).then(

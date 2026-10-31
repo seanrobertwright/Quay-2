@@ -2,6 +2,7 @@
 // PageUp/PageDown and Home/End, with Ctrl+C copying its SHA and Enter moving to the inspector, and
 // a second commit to compare picked with Ctrl and those keys, then Ctrl+Space or Shift+Space.
 
+import type { CompareOrder, ComparedPair } from "./commitDetails.ts";
 import { ROW_HEIGHT } from "./graphWindow.ts";
 
 export type SelectionStep = "up" | "down" | "pageUp" | "pageDown" | "home" | "end";
@@ -139,31 +140,38 @@ export function selectCommits(state: CommitSelection, action: SelectionAction): 
   }
 }
 
-/** The selected commits' oids, the first one first. */
-export function selectedOids(state: CommitSelection): string[] {
+/**
+ * The graph's two selection marks: `selectedOid` is the one commit or a pair's first, and
+ * `comparedOid` a pair's second, or null with fewer than two selected.
+ */
+export function selectionOids(state: CommitSelection): { selectedOid: string | null; comparedOid: string | null } {
   switch (state.kind) {
     case "none":
-      return [];
+      return { selectedOid: null, comparedOid: null };
     case "one":
-      return [state.oid];
+      return { selectedOid: state.oid, comparedOid: null };
     case "two":
-      return [state.first, state.second];
+      return { selectedOid: state.first, comparedOid: state.second };
   }
 }
 
-/** One commit of a compared pair, as `git_compare_order` returns it. */
-export interface ComparedCommit {
-  oid: string;
-  subject: string;
-}
-
-/** A pair ordered by the rule (#368): the ancestor, or else the earlier committer date, first. */
-export interface CompareOrder {
-  older: ComparedCommit;
-  newer: ComparedCommit;
-}
-
 /** The direction a pair is diffed in: older to newer, or newer to older once swapped. */
-export function comparedPair(order: CompareOrder, swapped: boolean): { from: ComparedCommit; to: ComparedCommit } {
+export function comparedPair(order: CompareOrder, swapped: boolean): ComparedPair {
   return swapped ? { from: order.newer, to: order.older } : { from: order.older, to: order.newer };
+}
+
+/** The cache key of a pair diffed from `from` to `to`, read back by `pairOfKey`. */
+export function pairKey(from: string, to: string): string {
+  return `${from}..${to}`;
+}
+
+/** The key two commits share whichever was picked first, for the order read. */
+export function unorderedPairKey(a: string, b: string): string {
+  return a <= b ? pairKey(a, b) : pairKey(b, a);
+}
+
+/** The two oids of a `pairKey`, the `from` first. */
+export function pairOfKey(key: string): [string, string] {
+  const at = key.indexOf("..");
+  return [key.slice(0, at), key.slice(at + 2)];
 }

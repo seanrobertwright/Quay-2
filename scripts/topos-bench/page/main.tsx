@@ -10,7 +10,7 @@ import { GraphFeed } from "../../../src/slices/git/topos/graphFeed";
 import { GraphList, type WipRowProps } from "../../../src/slices/git/topos/GraphList";
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
 import { NO_REFS } from "../../../src/slices/git/topos/graphRefs";
-import { selectCommits } from "../../../src/slices/git/topos/commitSelection";
+import { selectCommits, selectionOids } from "../../../src/slices/git/topos/commitSelection";
 import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
@@ -119,8 +119,7 @@ function Bench() {
   const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
   // The selection (#397, #398), held here as Topos holds it, so the gate measures the list with it wired.
   const [selection, dispatchSelection] = useReducer(selectCommits, { kind: "none" });
-  const selectedOid = selection.kind === "one" ? selection.oid : selection.kind === "two" ? selection.first : null;
-  const comparedOid = selection.kind === "two" ? selection.second : null;
+  const { selectedOid, comparedOid } = selectionOids(selection);
   useEffect(() => {
     // Rows are on screen in the first frame after the render that first showed them.
     if (state.firstRowsMs !== null || firstPageAt === null || !feed.store?.rowCount) return;

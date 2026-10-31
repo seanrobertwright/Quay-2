@@ -1,7 +1,18 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { comparedPair, movedRow, offsetShowing, selectCommits, selectedOids, selectionKey, type CommitSelection } from "./commitSelection.ts";
+import {
+  comparedPair,
+  movedRow,
+  offsetShowing,
+  pairKey,
+  pairOfKey,
+  selectCommits,
+  selectionKey,
+  selectionOids,
+  unorderedPairKey,
+  type CommitSelection,
+} from "./commitSelection.ts";
 import { ROW_HEIGHT } from "./graphWindow.ts";
 
 const press = (key: string, mods: Partial<{ shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }> = {}) => ({
@@ -102,7 +113,7 @@ test("Ctrl- or Shift-click adds a second commit, and a third replaces the second
   const two = selectCommits(one, { kind: "add", oid: "b" });
   assert.deepEqual(two, { kind: "two", first: "a", second: "b", swapped: false });
   assert.deepEqual(selectCommits(two, { kind: "add", oid: "c" }), { kind: "two", first: "a", second: "c", swapped: false });
-  assert.deepEqual(selectedOids(selectCommits(two, { kind: "add", oid: "c" })), ["a", "c"], "never three");
+  assert.deepEqual(selectionOids(selectCommits(two, { kind: "add", oid: "c" })), { selectedOid: "a", comparedOid: "c" }, "never three");
   assert.deepEqual(selectCommits(NONE, { kind: "add", oid: "a" }), { kind: "one", oid: "a" }, "with none, an add selects one");
 });
 
@@ -122,12 +133,23 @@ test("Swap flips a compared pair and does nothing to one commit", () => {
   assert.deepEqual(selectCommits(swapped, { kind: "add", oid: "c" }), { kind: "two", first: "a", second: "c", swapped: false }, "a new pair starts unswapped");
   const one: CommitSelection = { kind: "one", oid: "a" };
   assert.equal(selectCommits(one, { kind: "swap" }), one);
-  assert.deepEqual(selectedOids(NONE), []);
-  assert.deepEqual(selectedOids(one), ["a"]);
+});
+
+test("the graph marks the one commit, or a pair's first as selected and its second as compared", () => {
+  assert.deepEqual(selectionOids(NONE), { selectedOid: null, comparedOid: null });
+  assert.deepEqual(selectionOids({ kind: "one", oid: "a" }), { selectedOid: "a", comparedOid: null });
+  assert.deepEqual(selectionOids({ kind: "two", first: "a", second: "b", swapped: true }), { selectedOid: "a", comparedOid: "b" });
 });
 
 test("the pair is diffed older to newer, and Swap reverses it", () => {
   const order = { older: { oid: "o", subject: "Older" }, newer: { oid: "n", subject: "Newer" } };
   assert.deepEqual(comparedPair(order, false), { from: order.older, to: order.newer });
   assert.deepEqual(comparedPair(order, true), { from: order.newer, to: order.older });
+});
+
+test("a pair's key keeps its direction, the unordered key does not, and both read back", () => {
+  assert.notEqual(pairKey("aa", "bb"), pairKey("bb", "aa"));
+  assert.deepEqual(pairOfKey(pairKey("aa", "bb")), ["aa", "bb"]);
+  assert.equal(unorderedPairKey("bb", "aa"), unorderedPairKey("aa", "bb"));
+  assert.deepEqual(pairOfKey(unorderedPairKey("bb", "aa")), ["aa", "bb"]);
 });
