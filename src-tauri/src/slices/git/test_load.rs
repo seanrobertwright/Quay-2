@@ -1,6 +1,6 @@
 //! Keeps a test that floods the disk from running beside tests that measure time. The repository
-//! watcher's tests wait a fixed window for debounced events; a test writing and hashing 10,003
-//! files at once slowed them past it, so `cargo test` failed on them only when both ran together.
+//! watcher's tests wait a fixed window for debounced events; a test writing and hashing over ten
+//! thousand files at once slowed them past it, so `cargo test` failed on them only when both ran together.
 
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
