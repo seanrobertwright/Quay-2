@@ -11,12 +11,21 @@ use super::diff::{other, run_read};
 use super::error::GitError;
 use super::staging::worktree_git;
 
+/// One commit of a compared pair: its full oid and its subject, untrusted text for the frontend to
+/// render as text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparedCommit {
+    pub oid: String,
+    pub subject: String,
+}
+
 /// A compared pair in the order the rule puts it: the older commit first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareOrder {
-    pub older: String,
-    pub newer: String,
+    pub older: ComparedCommit,
+    pub newer: ComparedCommit,
 }
 
 /// The files that differ from one commit to another, in [`CommitFiles`]'s shape and under its cap,
@@ -46,27 +55,33 @@ fn is_ancestor(repo: &Path, ancestor: &str, descendant: &str) -> Result<bool, Gi
     }
 }
 
-/// `oid`'s committer date in seconds since the epoch.
-fn committer_seconds(repo: &Path, oid: &str) -> Result<i64, GitError> {
-    let out = run_read(repo, ["log", "-1", "--format=%ct", oid, "--"])?;
+/// `oid`'s committer date in seconds since the epoch and its subject.
+fn date_and_subject(repo: &Path, oid: &str) -> Result<(i64, String), GitError> {
+    let out = run_read(repo, ["log", "-1", "--no-color", "--format=%ct%x00%s", oid, "--"])?;
     let text = String::from_utf8_lossy(&out);
-    text.trim().parse::<i64>().map_err(|_| other(format!("git printed a commit time that is not a number: {:?}", text.trim())))
+    let (seconds, subject) = text.trim_end_matches('\n').split_once('\0').ok_or_else(|| other("git printed no commit date"))?;
+    let seconds = seconds.trim().parse::<i64>().map_err(|_| other(format!("git printed a commit time that is not a number: {seconds:?}")))?;
+    Ok((seconds, subject.to_string()))
 }
 
-/// Which of `a` and `b` in `repo` is the older (#368): the ancestor when one is an ancestor of the
-/// other, otherwise the one with the earlier committer date. A tie in date keeps the lower oid
-/// first, so the answer never depends on the argument order. Each oid is checked as
-/// [`resolve_commit_oid`] checks it, and the answer carries the full oids.
+/// Which of `a` and `b` in `repo` is the older (#368), with each one's subject: the ancestor when
+/// one is an ancestor of the other, otherwise the one with the earlier committer date. A tie in
+/// date keeps the lower oid first, so the answer never depends on the argument order. Each oid is
+/// checked as [`resolve_commit_oid`] checks it, and the answer carries the full oids.
 pub fn compare_order(repo: &Path, a: &str, b: &str) -> Result<CompareOrder, GitError> {
     let a = resolve_commit_oid(repo, a)?;
     let b = resolve_commit_oid(repo, b)?;
+    let (a_seconds, a_subject) = date_and_subject(repo, &a)?;
+    let (b_seconds, b_subject) = date_and_subject(repo, &b)?;
     let a_first = if is_ancestor(repo, &a, &b)? {
         true
     } else if is_ancestor(repo, &b, &a)? {
         false
     } else {
-        (committer_seconds(repo, &a)?, a.as_str()) <= (committer_seconds(repo, &b)?, b.as_str())
+        (a_seconds, a.as_str()) <= (b_seconds, b.as_str())
     };
+    let a = ComparedCommit { oid: a, subject: a_subject };
+    let b = ComparedCommit { oid: b, subject: b_subject };
     Ok(if a_first { CompareOrder { older: a, newer: b } } else { CompareOrder { older: b, newer: a } })
 }
 

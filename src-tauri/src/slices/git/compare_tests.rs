@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::checkout_tests::rev;
-use super::compare::{compare_files, compare_order, CompareOrder};
+use super::compare::{compare_files, compare_order, ComparedCommit, CompareOrder};
 use super::details::FileStatus;
 use super::staging_tests::{git, repo_with_worktree};
 
@@ -33,7 +33,10 @@ fn an_ancestor_pair_is_ordered_ancestor_first_and_counts_the_commits_between() {
     commit_at(&wt, "two.txt", "two\n", 900);
     let tip = commit_at(&wt, "README.md", "changed\n", 800);
 
-    let ordered = CompareOrder { older: base.clone(), newer: tip.clone() };
+    let ordered = CompareOrder {
+        older: ComparedCommit { oid: base.clone(), subject: "init".into() },
+        newer: ComparedCommit { oid: tip.clone(), subject: "change README.md".into() },
+    };
     assert_eq!(compare_order(&wt, &tip, &base).expect("order read"), ordered, "the ancestor is older whatever the dates");
     assert_eq!(compare_order(&wt, &base, &tip).expect("order read"), ordered, "the argument order doesn't matter");
 
@@ -58,7 +61,10 @@ fn a_pair_on_two_branches_puts_the_earlier_committer_date_first_and_has_no_ahead
     git(&wt, &["switch", "-q", "-c", "other", &base]);
     let early = commit_at(&wt, "early.txt", "early\n", 1_700_004_000);
 
-    let ordered = CompareOrder { older: early.clone(), newer: late.clone() };
+    let ordered = CompareOrder {
+        older: ComparedCommit { oid: early.clone(), subject: "change early.txt".into() },
+        newer: ComparedCommit { oid: late.clone(), subject: "change late.txt".into() },
+    };
     assert_eq!(compare_order(&wt, &late, &early).expect("order read"), ordered);
     assert_eq!(compare_order(&wt, &early, &late).expect("order read"), ordered);
 
@@ -110,6 +116,7 @@ fn compare_refuses_an_oid_that_is_not_a_commit_it_can_resolve() {
     let (_root, wt) = repo_with_worktree();
     let head = rev(&wt, "HEAD");
     let tree = rev(&wt, "HEAD^{tree}");
+    assert_eq!(compare_order(&wt, &head[..8], &head[..8]).expect("an abbreviated oid resolves").older.oid, head);
     for bad in ["", "--all", "-p", "HEAD", "main", "HEAD~1..HEAD", "abc", "zzzzzzz", "0000000000", tree.as_str()] {
         assert!(compare_files(&wt, bad, &head).is_err(), "{bad:?} is refused as the first commit");
         assert!(compare_files(&wt, &head, bad).is_err(), "{bad:?} is refused as the second commit");

@@ -8,7 +8,7 @@ use super::checkout::RefsOutcome;
 use super::ref_ops::BranchDeleted;
 use super::remote_ops::{LeasePlan, RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
-use super::compare::{CompareFiles, CompareOrder};
+use super::compare::{ComparedCommit, CompareFiles, CompareOrder};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::details::{CommitDetails, CommitFile, CommitFiles, FileStatus, Person, SignatureStatus, Trailer, Verification};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -516,8 +516,11 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         (
             "CompareOrder",
-            s(&CompareOrder { older: "aaa".into(), newer: "bbb".into() }),
-            json!({ "older": "aaa", "newer": "bbb" }),
+            s(&CompareOrder {
+                older: ComparedCommit { oid: "aaa".into(), subject: "Older".into() },
+                newer: ComparedCommit { oid: "bbb".into(), subject: "Newer".into() },
+            }),
+            json!({ "older": { "oid": "aaa", "subject": "Older" }, "newer": { "oid": "bbb", "subject": "Newer" } }),
         ),
         (
             "CompareFiles",
