@@ -85,7 +85,8 @@ export interface DeepSearchState {
 /** How long typing pauses before a deep search starts (#368). */
 export const SEARCH_DEBOUNCE_MS = 300;
 
-const IDLE: DeepSearchState = { query: null, oids: [], status: "idle", error: null };
+/** A search that holds no query and no results. */
+export const IDLE: DeepSearchState = { query: null, oids: [], status: "idle", error: null };
 
 /** One `git_log_search` call; its id is null until the backend answers. */
 interface Run {

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { DeepSearch, ResultScan, type DeepSearchState, type SearchBackend, type SearchEvent, type SearchQuery } from "./deepSearch";
+import { DeepSearch, IDLE, ResultScan, type DeepSearchState, type SearchBackend, type SearchEvent, type SearchQuery } from "./deepSearch";
 import type { GraphStore } from "./graphStore";
 
 /** Rows one chunk of the result scan covers before it yields to the page. */
@@ -18,8 +18,6 @@ const tauriSearch: SearchBackend = {
   more: (searchId) => void invoke("git_search_more", { searchId }).catch(console.error),
   cancel: (searchId) => void invoke("git_search_cancel", { searchId }).catch(console.error),
 };
-
-const IDLE: DeepSearchState = { query: null, oids: [], status: "idle", error: null };
 
 /**
  * The deep search for `query` over `repoPath`'s history, or none for null. A changed query cancels
