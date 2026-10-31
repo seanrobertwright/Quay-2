@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::checkout_tests::{rev, test_channel};
 use super::error::GitError;
 use super::op_runner::GitOps;
-use super::remote_ops::{fetch, pull, push, with_repo_config_only, FetchFrom, PullStrategy, PushTarget, RemoteOutcome};
+use super::remote_ops::{fetch, pull, push, push_refusal, with_repo_config_only, FetchFrom, PullStrategy, PushTarget, RemoteOutcome};
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
 
@@ -428,4 +428,52 @@ fn a_branch_with_no_upstream_has_no_counts() {
 
     assert_eq!(sync.branch.as_deref(), Some("feat"));
     assert_eq!((sync.upstream, sync.ahead, sync.behind, sync.fetched_at_ms), (None, 0, 0, None));
+}
+
+/// What a failed `push --porcelain` printed: `stdout` its ref lines, `stderr` the rest.
+fn push_output(stdout: &str, stderr: &str) -> super::op_runner::OpOutput {
+    super::op_runner::OpOutput { stdout: stdout.into(), stderr: stderr.into(), combined: String::new() }
+}
+
+#[test]
+fn the_porcelain_parser_reads_a_non_fast_forward_rejection() {
+    for reason in ["non-fast-forward", "fetch first"] {
+        let out = push_output(&format!("To ../origin.git\n!\trefs/heads/main:refs/heads/main\t[rejected] ({reason})\nDone\n"), "");
+        assert_eq!(push_refusal(&out), Some(GitError::NonFastForward { r#ref: "refs/heads/main".into() }));
+    }
+}
+
+#[test]
+fn the_porcelain_parser_reads_a_remote_rejection_with_the_remotes_lines() {
+    let out = push_output(
+        "To ../origin.git\n!\trefs/heads/feat:refs/heads/main\t[remote rejected] (pre-receive hook declined)\nDone\n",
+        "remote: <b>no</b> pushes today   \nremote: \nerror: failed to push some refs\n",
+    );
+    assert_eq!(
+        push_refusal(&out),
+        Some(GitError::RemoteRejected {
+            r#ref: "refs/heads/main".into(),
+            reason: "pre-receive hook declined".into(),
+            remote_lines: vec!["<b>no</b> pushes today".into()],
+        })
+    );
+}
+
+#[test]
+fn the_porcelain_parser_skips_accepted_refs_and_reports_the_first_rejected_one() {
+    let out = push_output(
+        "To ../origin.git\n \trefs/heads/a:refs/heads/a\t[up to date]\n!\trefs/heads/b:refs/heads/b\t[rejected] (already exists)\n",
+        "",
+    );
+    assert_eq!(push_refusal(&out), Some(GitError::Other { stderr: "refs/heads/b: [rejected] (already exists)".into() }));
+}
+
+#[test]
+fn with_no_rejected_ref_the_porcelain_parser_falls_back_to_the_network_refusals() {
+    let unreachable = push_output("", "fatal: unable to access 'https://example.invalid/r.git/': Could not resolve host: example.invalid\n");
+    assert_eq!(push_refusal(&unreachable), Some(GitError::Network));
+    let auth = push_output("", "fatal: could not read Username for 'https://example.invalid': terminal prompts disabled\n");
+    assert_eq!(push_refusal(&auth), Some(GitError::AuthFailed));
+    assert_eq!(push_refusal(&push_output("", "Host key verification failed.\n")), Some(GitError::HostKeyUnknown));
+    assert_eq!(push_refusal(&push_output("To ../origin.git\nDone\n", "error: something new\n")), None);
 }
