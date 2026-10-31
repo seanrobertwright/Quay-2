@@ -224,6 +224,14 @@ export function App() {
   );
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
   const closeTopos = useCallback(() => setIsToposOpen(false), [setIsToposOpen]);
+  // A conflict Topos can't resolve, such as a submodule's, is resolved by hand in a shell there.
+  const openToposTerminal = useCallback(
+    (cwd: string) => {
+      void spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "conflict" });
+      setIsToposOpen(false);
+    },
+    [spawnTerminal, setIsToposOpen]
+  );
   // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
   const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
@@ -765,6 +773,7 @@ export function App() {
         onClose={closeTopos}
         onAddProject={() => setIsAddProjectOpen(true)}
         terminals={terminals}
+        onOpenTerminal={openToposTerminal}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

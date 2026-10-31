@@ -5,20 +5,11 @@ import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { ResultEditor, SidePane, goToHunk } from "./ConflictEditor";
 import { confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, unresolvedLabel } from "./conflicts";
 import { CONFLICT_WORDS, type OpState } from "./operation";
-import { useConflictResolver, type ConflictSide, type NotEditable } from "./useConflictResolver";
+import { conflictCard, type CardChoice } from "./conflictCards";
+import { SidePickerCard } from "./SidePickerCard";
+import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
+import { useHandToAgent } from "./useHandToAgent";
 import type { Staging } from "./useStaging";
-
-/** Why a file opens without the text panes, in words. */
-const REASON_WORDS: Record<NotEditable, string> = {
-  oneSideMissing: "One side deleted this file or only one side added it, so there are no two texts to merge.",
-  noWorktreeFile: "The conflict left no file in the worktree.",
-  submodule: "This is a submodule; resolve it inside the submodule.",
-  symlink: "This is a symbolic link, which Topos doesn't edit as text.",
-  binary: "This file holds binary data, which Topos doesn't edit as text.",
-  tooLarge: "This file is larger than 1 MiB, too large to edit here.",
-  notUtf8: "This file isn't UTF-8 text, so editing it here could change its bytes.",
-  mixedLineEndings: "This file mixes CRLF and LF line endings, so saving it here couldn't keep them.",
-};
 
 /** The most rows the file list renders; a note counts the rest. */
 const FILE_ROWS = 200;
@@ -31,6 +22,8 @@ export interface ConflictResolverProps {
   onPath: (path: string) => void;
   onClose: () => void;
   staging: Staging;
+  /** Opens a terminal in `cwd`; absent when Topos has no way to. */
+  onOpenTerminal?: (cwd: string) => void;
 }
 
 /**
@@ -39,9 +32,10 @@ export interface ConflictResolverProps {
  * Result seeded from the worktree's markers. Each hunk has take-left, take-right and take-both
  * boxes, a navigator counts what is unresolved, and Save, Mark resolved, Reset file and keeping a
  * whole side each run as the worktree's one staging operation. The ones that drop the operator's
- * work confirm first, with focus on Cancel. Every text here is untrusted and shown only as text.
+ * work confirm first, with focus on Cancel. A file it can't edit as text gets a side-picker card
+ * (#391) instead of the panes. Every text here is untrusted and shown only as text.
  */
-export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging }) => {
+export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging, onOpenTerminal }) => {
   const titleId = useId();
   const listId = useId();
   const resolver = useConflictResolver(worktreePath, path, staging);
@@ -55,6 +49,8 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const names = useMemo(() => ({ left: labels.left.text, right: labels.right.text }), [labels.left.text, labels.right.text]);
   const file = read?.state === "done" ? read.file : null;
   const parsed = useMemo(() => (file !== null && text !== null ? parseConflicts(text, file.markerSize) : null), [file, text]);
+  const card = useMemo(() => (file !== null ? conflictCard(file, names, op.conflicts) : null), [file, names, op.conflicts]);
+  const handToAgent = useHandToAgent();
   const busy = staging.busy !== null;
   const saving = staging.busy?.action === "resolve";
 
@@ -94,6 +90,30 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
     const request = parsed === null ? null : confirmMarkResolved(path, parsed);
     if (request === null) resolver.markResolved();
     else setConfirm({ ...request, onConfirm: resolver.markResolved });
+  };
+  /** Runs a card's choice, after its confirm when it drops work. */
+  const choose = (choice: CardChoice) => {
+    const { action } = choice;
+    const run = () => {
+      switch (action.kind) {
+        case "stage":
+          return resolver.markResolved();
+        case "takeSide":
+          return resolver.takeSide(action.side);
+        case "remove":
+          return resolver.remove();
+        case "openTerminal":
+          return onOpenTerminal?.(worktreePath);
+        case "handToAgent":
+          return handToAgent.hand?.([path]);
+      }
+    };
+    if (choice.confirm === null) run();
+    else setConfirm({ ...choice.confirm, onConfirm: run });
+  };
+  const unavailable = {
+    ...(onOpenTerminal === undefined ? { openTerminal: "Quay can't open a terminal from here." } : {}),
+    ...(handToAgent.unavailable !== null ? { handToAgent: handToAgent.unavailable } : {}),
   };
   const move = (direction: 1 | -1) => {
     if (view.current === null) return;
@@ -168,7 +188,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                 Save
               </button>
             )}
-            {file !== null && (
+            {file?.editable && (
               <>
                 <button type="button" onClick={() => askTakeSide("left")} disabled={busy} title={labels.left.tooltip} className={buttonClass}>
                   Keep {labels.left.text} whole
@@ -225,12 +245,12 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
               Retry
             </button>
           </div>
-        ) : !read.file.editable || read.file.left === null || read.file.right === null || text === null ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
-            <p className="text-sm text-white">{path} can't be edited as text</p>
-            <p className="text-xs text-[#8b949e] max-w-md">{read.file.reason !== null ? REASON_WORDS[read.file.reason] : "Topos can't read it as text."}</p>
-            <p className="text-xs text-[#8b949e] max-w-md">Keep one side whole with the buttons above, or resolve it in a terminal.</p>
-          </div>
+        ) : card !== null ? (
+          <SidePickerCard card={card} busy={busy} unavailable={unavailable} onChoose={choose} />
+        ) : read.file.left === null || read.file.right === null || text === null ? (
+          <p role="alert" className="flex-1 flex items-center justify-center p-6 text-sm text-[#8b949e]">
+            Topos couldn't read {path} as text.
+          </p>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="h-[45%] min-h-0 flex border-b border-[#30363d]">

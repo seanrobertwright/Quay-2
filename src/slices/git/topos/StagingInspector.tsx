@@ -397,7 +397,7 @@ export interface StagingInspectorProps {
   conflicts: OpState | null;
   /** Moves focus to the operation banner's Continue. */
   onGoToContinue: () => void;
-  /** Opens a conflicted file in the three-pane resolver (#390). */
+  /** Opens a conflicted file in the three-pane resolver (#390), or its side-picker card (#391). */
   onResolve: (path: string) => void;
 }
 
@@ -413,8 +413,9 @@ interface ConflictListProps {
 
 /**
  * The inspector's Conflicts list (#366, #389), shown only while unmerged entries exist: each path
- * with what happened to it on each side, Resolve to open it in the three-pane resolver (#390), and
- * Stage to mark it resolved once its file is fixed.
+ * with what happened to it on each side, Resolve to open it in the three-pane resolver (#390), or
+ * in a side-picker card when it can't be edited as text (#391), and Stage to mark it resolved once
+ * its file is fixed.
  */
 const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolve }) => {
   const headingId = useId();

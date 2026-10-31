@@ -45,6 +45,8 @@ export interface ToposOverlayProps {
   onAddProject: () => void;
   /** Quay's terminals, whose live agents show on their worktree's HEAD marker (#381). */
   terminals: TerminalInfo[];
+  /** Opens a shell terminal in `cwd` and shows it, for a conflict resolved by hand (#391). */
+  onOpenTerminal?: (cwd: string) => void;
 }
 
 type VersionCheck =
@@ -58,7 +60,7 @@ type VersionCheck =
  * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
  * selection it was shown with, and checks git's version on its first open (#369).
  */
-export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals }) => {
+export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals, onOpenTerminal }) => {
   const titleId = useId();
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
@@ -332,6 +334,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     onPath={setResolving}
                     onClose={closeResolver}
                     staging={staging}
+                    onOpenTerminal={onOpenTerminal}
                   />
                 )}
                 <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>

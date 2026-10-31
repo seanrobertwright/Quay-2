@@ -4,6 +4,8 @@ pub mod commit;
 mod commit_tests;
 pub mod conflict;
 #[cfg(test)]
+mod conflict_card_tests;
+#[cfg(test)]
 mod conflict_tests;
 pub mod diff;
 pub mod discard;

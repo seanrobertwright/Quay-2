@@ -232,7 +232,7 @@ pub(super) fn read_message_file(worktree: &Path, path: &Path) -> Result<Option<S
 }
 
 /// The conflict an unmerged path with these stages is, and its status letters.
-fn conflict_kind(base: bool, left: bool, right: bool) -> (ConflictKind, &'static str) {
+pub(super) fn conflict_kind(base: bool, left: bool, right: bool) -> (ConflictKind, &'static str) {
     match (base, left, right) {
         (true, true, true) => (ConflictKind::BothModified, "UU"),
         (false, true, true) => (ConflictKind::BothAdded, "AA"),
