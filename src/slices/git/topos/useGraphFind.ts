@@ -7,11 +7,10 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import { findCounter, findKey, FindScan, findNeedle, steppedMatch, type FindBadge, type FindKeyEvent } from "./graphFind";
-import type { GraphFindBarProps } from "./GraphFindBar";
+import type { DeepSearchBarProps, GraphFindBarProps } from "./GraphFindBar";
 import type { GraphStore } from "./graphStore";
 import { deepCounter, parseSearch, ResultRoute, type FeedState, type SearchQuery } from "./deepSearch";
 import { useDeepSearch, useResultRows } from "./useDeepSearch";
-import type { DeepSearchBarProps } from "./GraphFindBar";
 
 /** The graph's ref set (#370), which a deep search walks too. */
 const GRAPH_REFS = { kind: "branches" } as const;
@@ -96,6 +95,22 @@ export function useGraphFind(
 const NO_MATCHES = new Int32Array(0);
 const NO_OIDS: readonly string[] = [];
 
+/** What the find shows and does in its current mode: a find, a deep search, or neither. */
+interface FindMode {
+  /** Whether the mode lights its matches and dims the other rows. */
+  active: boolean;
+  /** The text whose runs the rows mark, or "" for none. */
+  query: string;
+  /** The rows lit, ascending. */
+  matches: Int32Array;
+  /** What a step walks: these rows, the typed text's once it settles, or nothing. */
+  steps: Int32Array | "settle" | null;
+  /** The counter's text, before the bar's open and non-blank check. */
+  counter: (cursorRow: number | null) => string;
+}
+
+const NO_MODE: FindMode = { active: false, query: "", matches: NO_MATCHES, steps: null, counter: () => "" };
+
 export interface FindControllerOptions {
   store: GraphStore | null;
   badges: ReadonlyMap<string, readonly FindBadge[]>;
@@ -170,9 +185,27 @@ export function useFindController({
   const { result: found, settle } = useGraphFind(store, badges, rowCount, input.mode === "find" ? activeText : "");
   // Matches only apply to the query still typed.
   const findQuery = input.mode === "find" && found.query !== "" && found.query === activeText ? found.query : "";
-  const query = deepQuery !== null ? "" : findQuery;
-  const active = deepQuery !== null || findQuery !== "";
-  const matches = deepQuery !== null ? deepRows.matches : found.matches;
+  // Each mode's rules in one place.
+  let mode: FindMode = NO_MODE;
+  if (deepState !== null) {
+    const { status, oids } = deepState;
+    mode = {
+      active: true,
+      query: "",
+      matches: deepRows.matches,
+      steps: deepRows.matches,
+      counter: (row) => deepCounter(status, oids.length, deepRows.matches, row),
+    };
+  } else if (input.mode === "find") {
+    mode = {
+      active: findQuery !== "",
+      query: findQuery,
+      matches: found.matches,
+      steps: findQuery === "" ? "settle" : found.matches,
+      counter: (row) => findCounter(findQuery === "" ? NO_MATCHES : found.matches, row, findQuery === "" || found.scanning),
+    };
+  }
+  const { active, query, matches, steps } = mode;
 
   const refocusRef = useRef(refocus);
   refocusRef.current = refocus;
@@ -191,22 +224,16 @@ export function useFindController({
   const pendingStep = useRef<1 | -1 | null>(null);
   const step = useCallback(
     (direction: 1 | -1) => {
-      if (!open || text.trim() === "") return;
-      if (deepQuery !== null) {
-        const row = steppedMatch(matches, cursorRow, direction);
-        if (row !== null) selectRow(row);
-        return;
-      }
-      if (input.mode === "deep") return;
-      if (query === "") {
+      if (!open || text.trim() === "" || steps === null) return;
+      if (steps === "settle") {
         pendingStep.current = direction;
         settle();
         return;
       }
-      const row = steppedMatch(found.matches, cursorRow, direction);
+      const row = steppedMatch(steps, cursorRow, direction);
       if (row !== null) selectRow(row);
     },
-    [open, text, query, found.matches, cursorRow, selectRow, settle, deepQuery, matches, input.mode]
+    [open, text, steps, cursorRow, selectRow, settle]
   );
   useEffect(() => {
     const direction = pendingStep.current;
@@ -283,11 +310,7 @@ export function useFindController({
     return rows;
   }, [store, deepQuery, deepRows.matches]);
 
-  let counter = "";
-  if (open && text.trim() !== "") {
-    if (deepState !== null) counter = deepCounter(deepState.status, deepState.oids.length, matches, cursorRow);
-    else if (input.mode === "find") counter = findCounter(query === "" ? NO_MATCHES : found.matches, cursorRow, query === "" || found.scanning);
-  }
+  const counter = open && text.trim() !== "" ? mode.counter(cursorRow) : "";
   const deepBar: DeepSearchBarProps | null =
     input.mode === "deep"
       ? {
@@ -307,7 +330,7 @@ export function useFindController({
         text,
         onText: setText,
         counter,
-        canStep: deepQuery !== null ? matches.length > 0 : query !== "" && found.matches.length > 0,
+        canStep: steps instanceof Int32Array && steps.length > 0,
         allHistory,
         onAllHistory: setAllHistory,
         deep: deepBar,
