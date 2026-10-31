@@ -73,16 +73,21 @@ export function useCommit(worktreePath: string | null, staging: Staging, onCommi
     if (path.current !== null) commitDrafts.set(path.current, next);
   }, []);
 
-  // Each worktree has its own draft; Amend and Sign off start off.
-  useEffect(() => {
-    setFieldsState(worktreePath === null ? splitMessage("") : commitDrafts.get(worktreePath));
+  // Shows `worktree`'s draft with Amend and Sign off off, as when it is selected or has committed.
+  const reset = useCallback((worktree: string | null) => {
+    setFieldsState(worktree === null ? splitMessage("") : commitDrafts.get(worktree));
     setAmendState(false);
     setSignoff(false);
+    beforeAmend.current = null;
+  }, []);
+
+  // Each worktree has its own draft; Amend and Sign off start off.
+  useEffect(() => {
+    reset(worktreePath);
     setFailure(null);
     setOutput("");
-    beforeAmend.current = null;
     prefilled.current = null;
-  }, [worktreePath]);
+  }, [worktreePath, reset]);
 
   // The context is read again whenever the status is, since a stage, a commit or the watcher can
   // each change the operation, the branch or HEAD.
@@ -146,12 +151,7 @@ export function useCommit(worktreePath: string | null, staging: Staging, onCommi
       return invoke<string>("git_commit", { worktreePath: worktree, request, opId, onEvent: channel }).then(
         (newHeadOid) => {
           commitDrafts.clear(worktree);
-          if (path.current === worktree) {
-            setFieldsState(splitMessage(""));
-            setAmendState(false);
-            setSignoff(false);
-            beforeAmend.current = null;
-          }
+          if (path.current === worktree) reset(worktree);
           announce(committedMessage(newHeadOid, { button, branch }));
           onCommitted(newHeadOid);
           void reload();
@@ -168,11 +168,11 @@ export function useCommit(worktreePath: string | null, staging: Staging, onCommi
       );
     });
     if (ran === null) {
-      announce("Wait for the running staging operation to finish, then commit.");
+      announce(commitFailure({ kind: "stagingBusy" }).message);
       return;
     }
     void ran.finally(() => setRunning(null));
-  }, [view, running, shown, fields, amend, signoff, exclusive, announce, onCommitted, reload]);
+  }, [view, running, shown, fields, amend, signoff, exclusive, announce, onCommitted, reload, reset]);
 
   const cancel = useCallback(() => {
     if (running === null) return;

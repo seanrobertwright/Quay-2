@@ -31,7 +31,7 @@ export const CommitComposer: React.FC<CommitComposerProps> = ({ commit, stagingB
   const notesId = useId();
   const outputId = useId();
   const [showOutput, setShowOutput] = useState(false);
-  const { context, view, fields, setFields, amend, setAmend, signoff, setSignoff, running, output, failure } = commit;
+  const { context, view, running, output, failure } = commit;
 
   // The panel opens while hooks run and stays open on a failure, so its output is in view.
   useEffect(() => {
@@ -63,16 +63,8 @@ export const CommitComposer: React.FC<CommitComposerProps> = ({ commit, stagingB
         <Fields
           view={view}
           ids={{ summaryId, counterId, descriptionId, blockedId, notesId }}
-          fields={fields}
-          setFields={setFields}
-          amend={amend}
-          setAmend={setAmend}
-          signoff={signoff}
-          setSignoff={setSignoff}
-          running={running}
+          commit={commit}
           disabled={stagingBusy && !running}
-          onCommit={commit.commit}
-          onCancel={commit.cancel}
         />
       )}
       {failure && (
@@ -115,20 +107,13 @@ export const CommitComposer: React.FC<CommitComposerProps> = ({ commit, stagingB
 interface FieldsProps {
   view: Extract<ComposerView, { kind: "composer" }>;
   ids: { summaryId: string; counterId: string; descriptionId: string; blockedId: string; notesId: string };
-  fields: Commit["fields"];
-  setFields: Commit["setFields"];
-  amend: boolean;
-  setAmend: Commit["setAmend"];
-  signoff: boolean;
-  setSignoff: Commit["setSignoff"];
-  running: boolean;
+  commit: Commit;
   /** Another staging operation holds the worktree. */
   disabled: boolean;
-  onCommit: () => void;
-  onCancel: () => void;
 }
 
-const Fields: React.FC<FieldsProps> = ({ view, ids, fields, setFields, amend, setAmend, signoff, setSignoff, running, disabled, onCommit, onCancel }) => {
+const Fields: React.FC<FieldsProps> = ({ view, ids, commit, disabled }) => {
+  const { fields, setFields, amend, setAmend, signoff, setSignoff, running, commit: onCommit, cancel: onCancel } = commit;
   const hint = summaryHint(fields.summary);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!isCommitKey(e)) return;

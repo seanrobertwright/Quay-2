@@ -406,11 +406,6 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
 
   const dismissUndo = useCallback(() => setUndo(null), []);
 
-  const exclusive = useCallback(
-    <T>(op: BusyOp, call: (worktree: string) => Promise<T>): Promise<T> | null => inSlot(op, (worktree) => call(worktree)),
-    [inSlot]
-  );
-
   const toggleFolder = useCallback(
     (folder: string) => {
       const worktree = path.current;
@@ -455,7 +450,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     dismissUndo,
     restore,
     copyDiscard,
-    exclusive,
+    exclusive: inSlot,
     folders,
     toggleFolder,
   };
