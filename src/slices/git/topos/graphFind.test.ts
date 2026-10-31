@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findCounter, findKey, findParts, FindScan, isMatch, steppedMatch, type FindRows } from "./graphFind.ts";
+import { findCounter, findKey, findParts, FindScan, isFindable, isMatch, steppedMatch, type FindBadge, type FindRows } from "./graphFind.ts";
 
 interface Row {
   oid: string;
@@ -29,7 +29,7 @@ const HISTORY: Row[] = [
 ];
 
 /** The rows `text` finds in `rows`, scanned in one go. */
-function find(text: string, rows: Row[] = HISTORY, refs: ReadonlyMap<string, readonly { kind: string; name: string }[]> = new Map()): number[] {
+function find(text: string, rows: Row[] = HISTORY, refs: ReadonlyMap<string, readonly FindBadge[]> = new Map()): number[] {
   const scan = new FindScan(text, refs);
   scan.scan(rowsOf(rows), Infinity);
   return [...scan.matches];
@@ -54,7 +54,7 @@ test("Find matches a row by a prefix of its SHA, in either case, but not by the 
 });
 
 test("Find matches a row by the name of a branch, remote branch or tag on it", () => {
-  const refs = new Map([
+  const refs = new Map<string, FindBadge[]>([
     ["ff00ee11dd", [{ kind: "local", name: "feature/Login" }]],
     ["0123456789", [{ kind: "remote", name: "origin/main" }]],
     ["deadbeef00", [{ kind: "tag", name: "v1.0-rc" }]],
@@ -65,8 +65,15 @@ test("Find matches a row by the name of a branch, remote branch or tag on it", (
 });
 
 test("Find leaves out a worktree HEAD marker, which names a folder rather than a ref", () => {
-  const refs = new Map([["a1b2c3d4e5", [{ kind: "head", name: "scratch-tree" }]]]);
+  const refs = new Map<string, FindBadge[]>([["a1b2c3d4e5", [{ kind: "head", name: "scratch-tree" }]]]);
   assert.deepEqual(find("scratch", HISTORY, refs), []);
+});
+
+test("Find searches the name of a branch, remote branch or tag badge, not a worktree HEAD marker", () => {
+  assert.equal(isFindable({ kind: "local", name: "main" }), true);
+  assert.equal(isFindable({ kind: "remote", name: "origin/main" }), true);
+  assert.equal(isFindable({ kind: "tag", name: "v1.0" }), true);
+  assert.equal(isFindable({ kind: "head", name: "scratch-tree" }), false);
 });
 
 test("Find takes regex metacharacters as literal text", () => {
@@ -121,7 +128,7 @@ test(`matching 1M synthetic rows takes under ${MILLION_ROW_BUDGET_MS} ms`, () =>
     subject: (r) => subjects[r],
     author: (r) => authors[r % authors.length],
   };
-  const refs = new Map([[oids[10], [{ kind: "local", name: "main" }]]]);
+  const refs = new Map<string, FindBadge[]>([[oids[10], [{ kind: "local", name: "main" }]]]);
   const started = performance.now();
   const scan = new FindScan("change 99999", refs);
   assert.equal(scan.scan(rows, Infinity), true);

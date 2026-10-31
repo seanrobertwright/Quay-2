@@ -1,5 +1,7 @@
 // Find (#368, #399): the client-side search over the rows already loaded.
 
+import type { Badge } from "./graphRefs.ts";
+
 /** The loaded rows as Find reads them; `GraphStore` is one. */
 export interface FindRows {
   readonly rowCount: number;
@@ -15,8 +17,16 @@ export interface FindAuthor {
 
 /** A ref badge as Find reads it. */
 export interface FindBadge {
-  kind: string;
+  kind: Badge["kind"];
   name: string;
+}
+
+/**
+ * Whether Find searches `badge`'s name: a branch, remote branch or tag does, but a worktree HEAD
+ * marker names its folder, not a ref, so it doesn't. Matching and highlighting both ask this.
+ */
+export function isFindable(badge: FindBadge): boolean {
+  return badge.kind !== "head";
 }
 
 /** What a query searches for: its text trimmed and lowered, or "" when it finds nothing. */
@@ -37,8 +47,7 @@ export class FindScan {
   constructor(text: string, refs: ReadonlyMap<string, readonly FindBadge[]>) {
     this.needle = findNeedle(text);
     for (const [oid, badges] of refs) {
-      // A worktree HEAD marker is named by its folder, not by a ref.
-      if (badges.some((b) => b.kind !== "head" && b.name.toLowerCase().includes(this.needle))) this.refOids.add(oid);
+      if (badges.some((b) => isFindable(b) && b.name.toLowerCase().includes(this.needle))) this.refOids.add(oid);
     }
   }
 

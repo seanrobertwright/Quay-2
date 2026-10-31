@@ -31,7 +31,7 @@ import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
 import { shortOid, type GraphStore } from "./graphStore";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow, sameWindow, type RowWindow } from "./graphWindow";
 import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
-import { findCounter, findKey, isMatch, steppedMatch, type FindKeyEvent } from "./graphFind";
+import { findCounter, findKey, isFindable, isMatch, steppedMatch, type FindKeyEvent } from "./graphFind";
 import { FindText, GraphFindBar } from "./GraphFindBar";
 import { useGraphFind } from "./useGraphFind";
 import { slotColor } from "./laneColors";
@@ -216,8 +216,7 @@ const RowBadges: React.FC<{
             <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
             {current && <span>HEAD</span>}
             <span className="truncate">
-              {/* A worktree's marker names its folder, which Find doesn't search. */}
-              {b.kind === "head" ? b.name : <FindText text={b.name} query={findQuery} />}
+              <FindText text={b.name} query={isFindable(b) ? findQuery : ""} />
             </span>
             {current && <span className="sr-only">(selected worktree)</span>}
             {b.kind === "head" && <HeadAgents kinds={worktreeAgents.get(b.path) ?? []} />}
