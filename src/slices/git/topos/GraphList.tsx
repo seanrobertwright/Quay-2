@@ -823,7 +823,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
     if (index === null || row === null) return;
     const badge = shownBadges(row)[index];
-    if (badge) onPrimary(primaryAction(badge, store.oid(row), refContext));
+    if (badge) onPrimary(primaryAction(badge, refContext));
   };
 
   /** Handles a graph key (#367) on the listbox; returns whether it did. */
@@ -839,7 +839,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       case "checkout": {
         const badge = cursorIndex === null ? undefined : badges[cursorIndex];
         if (!badge) return false;
-        onPrimary(primaryAction(badge, oid, refContext));
+        onPrimary(primaryAction(badge, refContext));
         return true;
       }
       case "menu":

@@ -4,7 +4,7 @@
 import { isSamePath } from "../../../utils/paths.ts";
 import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
-import { folderName, type Badge, type WorktreeHead } from "./graphRefs.ts";
+import { folderName, type Badge, type GitRefs, type WorktreeHead } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
 import { OPERATION_NOUNS } from "./operation.ts";
 
@@ -39,18 +39,19 @@ export interface RefContext {
 /** Why "Create tag here…" waits: tags come with their own ticket. */
 const TAGS_LATER = "Tags arrive in a later version";
 
-/** How checking out a local branch stands: ready, already here, or held by another worktree. */
-function localCheckout(name: string, ctx: RefContext): { item: MenuItem; holder: string | null } {
+/** The label of the item, and the toast button, that retargets the Rail to another worktree. */
+export const SHOW_WORKTREE = "Show that worktree";
+
+/** Where a local branch is checked out: nowhere, in the selected worktree, or in another one. */
+type LocalBranchAt = { at: "free" } | { at: "here" } | { at: "elsewhere"; holder: string };
+
+function localBranchAt(name: string, ctx: RefContext): LocalBranchAt {
   const holder = ctx.worktrees.find((w) => w.branch === name);
-  if (holder && isSamePath(holder.path, ctx.selectedPath)) {
-    return { item: { label: "Checkout", action: null, disabledReason: "Already checked out here" }, holder: null };
-  }
-  if (holder) {
-    const why = `Checked out in worktree ${folderName(holder.path)}`;
-    return { item: { label: "Checkout", action: null, disabledReason: why }, holder: holder.path };
-  }
-  return { item: checkoutItem("Checkout", { kind: "branch", name }, ctx), holder: null };
+  if (holder === undefined) return { at: "free" };
+  return isSamePath(holder.path, ctx.selectedPath) ? { at: "here" } : { at: "elsewhere", holder: holder.path };
 }
+
+const heldBy = (holder: string) => `Checked out in worktree ${folderName(holder)}`;
 
 function checkoutItem(label: string, target: CheckoutTarget, ctx: RefContext): MenuItem {
   return ctx.busy === null ? { label, action: { kind: "checkout", target } } : { label, action: null, disabledReason: ctx.busy };
@@ -62,11 +63,21 @@ const createBranchItem = (at: string): MenuItem => ({ label: "Create branch here
 export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[] {
   switch (badge.kind) {
     case "head":
-      return badge.current ? [] : [{ label: "Show that worktree", action: { kind: "showWorktree", path: badge.path } }];
+      return badge.current ? [] : [{ label: SHOW_WORKTREE, action: { kind: "showWorktree", path: badge.path } }];
     case "local": {
-      const { item, holder } = localCheckout(badge.name, ctx);
-      const show: MenuItem[] = holder === null ? [] : [{ label: "Show that worktree", action: { kind: "showWorktree", path: holder } }];
-      return [item, ...show, createBranchItem(oid)];
+      const where = localBranchAt(badge.name, ctx);
+      switch (where.at) {
+        case "free":
+          return [checkoutItem("Checkout", { kind: "branch", name: badge.name }, ctx), createBranchItem(oid)];
+        case "here":
+          return [{ label: "Checkout", action: null, disabledReason: "Already checked out here" }, createBranchItem(oid)];
+        case "elsewhere":
+          return [
+            { label: "Checkout", action: null, disabledReason: heldBy(where.holder) },
+            { label: SHOW_WORKTREE, action: { kind: "showWorktree", path: where.holder } },
+            createBranchItem(oid),
+          ];
+      }
     }
     case "remote":
       return [checkoutItem("Checkout", { kind: "remote", name: badge.name }, ctx), createBranchItem(oid)];
@@ -96,13 +107,63 @@ export type PrimaryAction =
  * the branch tracking it (or one made for it), and another worktree's HEAD shows that worktree.
  * A tag, and a branch already checked out here, do nothing.
  */
-export function primaryAction(badge: Badge, oid: string, ctx: RefContext): PrimaryAction {
-  const [first] = badgeMenu(badge, oid, ctx);
-  if (badge.kind === "tag" || first === undefined) return null;
-  if (first.action !== null) return { kind: "run", action: first.action };
-  if (first.disabledReason === "Already checked out here") return null;
-  const show = badge.kind === "local" ? localCheckout(badge.name, ctx).holder : null;
-  return { kind: "blocked", reason: first.disabledReason, worktree: show };
+export function primaryAction(badge: Badge, ctx: RefContext): PrimaryAction {
+  const checkout = (target: CheckoutTarget): PrimaryAction =>
+    ctx.busy === null ? { kind: "run", action: { kind: "checkout", target } } : { kind: "blocked", reason: ctx.busy, worktree: null };
+  switch (badge.kind) {
+    case "tag":
+      return null;
+    case "head":
+      return badge.current ? null : { kind: "run", action: { kind: "showWorktree", path: badge.path } };
+    case "remote":
+      return checkout({ kind: "remote", name: badge.name });
+    case "local": {
+      const where = localBranchAt(badge.name, ctx);
+      switch (where.at) {
+        case "free":
+          return checkout({ kind: "branch", name: badge.name });
+        case "here":
+          return null;
+        case "elsewhere":
+          return { kind: "blocked", reason: heldBy(where.holder), worktree: where.holder };
+      }
+    }
+  }
+}
+
+/** The branch the worktree at `path` has checked out in `refs`, or null when detached. */
+export function branchAt(refs: GitRefs, path: string): string | null {
+  return refs.worktrees.find((w) => isSamePath(w.path, path))?.branch ?? null;
+}
+
+/** An option of the "Topos: Checkout…" dialog and the checkout it runs. */
+export interface CheckoutChoice {
+  value: string;
+  label: string;
+  target: Extract<CheckoutTarget, { name: string }>;
+}
+
+/**
+ * What "Topos: Checkout…" offers the worktree at `path`: every local branch but the one checked
+ * out there, and every remote-tracking branch, in `refs` order.
+ */
+export function checkoutChoices(refs: GitRefs, path: string): CheckoutChoice[] {
+  const here = branchAt(refs, path);
+  const choices: CheckoutChoice[] = [];
+  for (const r of refs.refs) {
+    if (r.kind === "local" && r.name !== here) choices.push({ value: String(choices.length), label: r.name, target: { kind: "branch", name: r.name } });
+    if (r.kind === "remote") choices.push({ value: String(choices.length), label: `${r.name} (remote)`, target: { kind: "remote", name: r.name } });
+  }
+  return choices;
+}
+
+/**
+ * Why New branch can't create `name` now, or null when it can: it needs a name, and checking the
+ * branch out waits for `busy` (see `checkoutBlockedBy`) as every other checkout does.
+ */
+export function newBranchRefusal(name: string, checkout: boolean, busy: string | null): string | null {
+  if (name.trim() === "") return "Name the branch";
+  return checkout ? busy : null;
 }
 
 /** The graph keys of #367, which act on the selected row or the badge the cursor is on. */

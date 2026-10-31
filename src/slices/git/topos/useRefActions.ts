@@ -1,10 +1,19 @@
 import { useCallback, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { isSamePath } from "../../../utils/paths";
 import type { ConfirmRequest } from "./ConfirmDialog";
 import type { GitRefs } from "./graphRefs";
 import { shortOid } from "./graphStore";
-import { checkoutDone, refFailure, type CheckoutTarget, type PrimaryAction, type RefAction } from "./refActions";
+import {
+  branchAt,
+  checkoutChoices,
+  checkoutDone,
+  newBranchRefusal,
+  refFailure,
+  SHOW_WORKTREE,
+  type CheckoutTarget,
+  type PrimaryAction,
+  type RefAction,
+} from "./refActions";
 import type { OpEvent } from "./speedup";
 import { dismissToast, pushToast, type Toast } from "./toasts";
 import type { GraphRefsReader } from "./useGraphRefs";
@@ -37,6 +46,8 @@ interface Options {
   worktreePath: string | null;
   /** The repo whose refs the graph shows. */
   repoPath: string | null;
+  /** Why no checkout can run in the selected worktree now (see `checkoutBlockedBy`), or null. */
+  busy: string | null;
   staging: Staging;
   refs: GraphRefsReader;
   /** Hands a new HEAD to the refresh table, as a commit does. */
@@ -47,18 +58,19 @@ interface Options {
   onOpenInspector: () => void;
 }
 
-/** The branch the worktree at `path` has checked out in `refs`, or null when detached. */
-function branchAt(refs: GitRefs, path: string): string | null {
-  return refs.worktrees.find((w) => isSamePath(w.path, path))?.branch ?? null;
-}
+/** The toast of a checkout of `target`, naming the branch the worktree landed on. */
+const checkedOut = (target: CheckoutTarget) => (outcome: RefsOutcome, worktree: string) => checkoutDone(target, branchAt(outcome.refs, worktree));
 
 /**
  * Checkout and create branch for Topos's badges, rows, keys and palette (#367, #393). Each runs as
  * the selected worktree's one staging operation, takes the HEAD and refs it returns at once, and
  * reports in a toast.
  */
-export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded, onShowWorktree, onOpenInspector }: Options): RefActions {
+export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onLanded, onShowWorktree, onOpenInspector }: Options): RefActions {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // An open dialog reads the busy reason as it stands when it is confirmed, not when it opened.
+  const busyNow = useRef(busy);
+  busyNow.current = busy;
   const [dialog, setDialog] = useState<ConfirmRequest | null>(null);
   const nextId = useRef(0);
   const { exclusive, reload } = staging;
@@ -72,6 +84,7 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
     },
     [onShowWorktree, toast]
   );
+  const showAction = useCallback((path: string) => ({ label: SHOW_WORKTREE, run: () => showWorktree(path) }), [showWorktree]);
 
   /**
    * Reports `e`, a refused operation on `what`. From a dialog (`inline`), a refusal with nothing to
@@ -85,14 +98,14 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
       if (inline && worktree === null && !failure.openInspector) return failure.text;
       const action =
         worktree !== null
-          ? { label: "Show that worktree", run: () => showWorktree(worktree) }
+          ? showAction(worktree)
           : failure.openInspector
             ? { label: "Open the inspector", run: onOpenInspector }
             : undefined;
       toast({ tone: "failed", text: failure.text, lines: failure.lines, action });
       return null;
     },
-    [toast, showWorktree, onOpenInspector]
+    [toast, showAction, onOpenInspector]
   );
 
   /**
@@ -129,7 +142,7 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
   const checkout = useCallback(
     (target: CheckoutTarget) => {
       const what = target.kind === "detached" ? shortOid(target.at) : target.name;
-      void runRefCommand("git_checkout", { target }, what, (outcome, worktree) => checkoutDone(target, branchAt(outcome.refs, worktree)));
+      void runRefCommand("git_checkout", { target }, what, checkedOut(target));
     },
     [runRefCommand]
   );
@@ -143,10 +156,11 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
         detail: `Creates a branch at ${where}.`,
         confirmLabel: "Create branch",
         field: { label: "Branch name", initial: "" },
-        checkbox: { label: "Check it out here", initial: true },
+        checkbox: { label: "Check it out here", initial: busyNow.current === null },
         onSubmit: ({ text, checked }) => {
           const name = text.trim();
-          if (name === "") return Promise.resolve("Name the branch");
+          const refused = newBranchRefusal(name, checked, busyNow.current);
+          if (refused !== null) return Promise.resolve(refused);
           return runRefCommand(
             "git_branch_create",
             { name, at, checkout: checked },
@@ -162,13 +176,12 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
 
   const pickCheckout = useCallback(() => {
     if (worktreePath === null || refs.refs.state !== "done") return;
-    const known = refs.refs.refs;
-    const here = branchAt(known, worktreePath);
-    const options = known.refs
-      .filter((r) => r.kind === "local" || r.kind === "remote")
-      .filter((r) => !(r.kind === "local" && r.name === here))
-      .map((r) => ({ value: `${r.kind}:${r.name}`, label: r.kind === "remote" ? `${r.name} (remote)` : r.name }));
-    if (options.length === 0) {
+    if (busyNow.current !== null) {
+      toast({ tone: "failed", text: busyNow.current });
+      return;
+    }
+    const choices = checkoutChoices(refs.refs.refs, worktreePath);
+    if (choices.length === 0) {
       toast({ tone: "failed", text: "There is no other branch to check out" });
       return;
     }
@@ -176,12 +189,13 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
       title: "Checkout",
       detail: "Switches the selected worktree to a branch. A remote branch checks out the branch tracking it, made if there is none.",
       confirmLabel: "Checkout",
-      choice: { label: "Branch", options },
+      choice: { label: "Branch", options: choices.map(({ value, label }) => ({ value, label })) },
       onSubmit: ({ choice }) => {
-        const [kind, ...rest] = choice.split(":");
-        const name = rest.join(":");
-        const target: CheckoutTarget = kind === "remote" ? { kind: "remote", name } : { kind: "branch", name };
-        return runRefCommand("git_checkout", { target }, name, (outcome, worktree) => checkoutDone(target, branchAt(outcome.refs, worktree)), true);
+        const picked = choices.find((c) => c.value === choice);
+        if (picked === undefined) return Promise.resolve("Pick a branch");
+        if (busyNow.current !== null) return Promise.resolve(busyNow.current);
+        const { target } = picked;
+        return runRefCommand("git_checkout", { target }, target.name, checkedOut(target), true);
       },
     });
   }, [worktreePath, refs.refs, runRefCommand, toast]);
@@ -215,10 +229,10 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
       toast({
         tone: "failed",
         text: primary.reason,
-        action: worktree === null ? undefined : { label: "Show that worktree", run: () => showWorktree(worktree) },
+        action: worktree === null ? undefined : showAction(worktree),
       });
     },
-    [run, toast, showWorktree]
+    [run, toast, showAction]
   );
 
   const closeDialog = useCallback(() => setDialog(null), []);

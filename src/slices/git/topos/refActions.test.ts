@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   badgeMenu,
   checkoutBlockedBy,
+  checkoutChoices,
   checkoutDone,
   commitMenu,
   graphKey,
+  newBranchRefusal,
   nextBadge,
   primaryAction,
   refFailure,
@@ -89,20 +91,20 @@ test("while an operation is under way every checkout is disabled with the reason
 });
 
 test("double-click or Enter checks out a local or remote badge, and only says why when it can't", () => {
-  assert.deepEqual(primaryAction({ kind: "local", name: "side" }, A, ctx), {
+  assert.deepEqual(primaryAction({ kind: "local", name: "side" }, ctx), {
     kind: "run",
     action: { kind: "checkout", target: { kind: "branch", name: "side" } },
   });
-  assert.deepEqual(primaryAction({ kind: "remote", name: "origin/topic" }, A, ctx), {
+  assert.deepEqual(primaryAction({ kind: "remote", name: "origin/topic" }, ctx), {
     kind: "run",
     action: { kind: "checkout", target: { kind: "remote", name: "origin/topic" } },
   });
-  assert.deepEqual(primaryAction({ kind: "local", name: "main" }, A, ctx), {
+  assert.deepEqual(primaryAction({ kind: "local", name: "main" }, ctx), {
     kind: "blocked",
     reason: "Checked out in worktree repo",
     worktree: "C:/src/repo",
   });
-  assert.deepEqual(primaryAction({ kind: "local", name: "side" }, A, { ...ctx, busy: "Finish the rebase first" }), {
+  assert.deepEqual(primaryAction({ kind: "local", name: "side" }, { ...ctx, busy: "Finish the rebase first" }), {
     kind: "blocked",
     reason: "Finish the rebase first",
     worktree: null,
@@ -110,10 +112,10 @@ test("double-click or Enter checks out a local or remote badge, and only says wh
 });
 
 test("a tag and the selected worktree's HEAD have no double-click action; another HEAD shows its worktree", () => {
-  assert.equal(primaryAction({ kind: "tag", name: "v1" }, A, ctx), null);
-  assert.equal(primaryAction({ kind: "local", name: "feat" }, A, ctx), null);
-  assert.equal(primaryAction({ kind: "head", name: "repo-feat", path: "C:/src/repo-feat", current: true }, A, ctx), null);
-  assert.deepEqual(primaryAction({ kind: "head", name: "repo", path: "C:/src/repo", current: false }, A, ctx), {
+  assert.equal(primaryAction({ kind: "tag", name: "v1" }, ctx), null);
+  assert.equal(primaryAction({ kind: "local", name: "feat" }, ctx), null);
+  assert.equal(primaryAction({ kind: "head", name: "repo-feat", path: "C:/src/repo-feat", current: true }, ctx), null);
+  assert.deepEqual(primaryAction({ kind: "head", name: "repo", path: "C:/src/repo", current: false }, ctx), {
     kind: "run",
     action: { kind: "showWorktree", path: "C:/src/repo" },
   });
@@ -189,4 +191,33 @@ test("checkout waits while an operation is under way or another git operation ru
   assert.equal(checkoutBlockedBy("cherryPick", false), "Finish or abort the cherry-pick first");
   assert.equal(checkoutBlockedBy(null, true), "Wait for the git operation running in this worktree");
   assert.equal(checkoutBlockedBy("rebase", true), "Finish or abort the rebase first");
+});
+
+test("the Checkout dialog offers every other local and remote branch, each with its typed target", () => {
+  const refs = {
+    refs: [
+      { kind: "local" as const, name: "feat", oid: A },
+      { kind: "local" as const, name: "side", oid: A },
+      { kind: "remote" as const, name: "origin/topic:x", oid: A },
+      { kind: "tag" as const, name: "v1", oid: A },
+    ],
+    worktrees: ctx.worktrees.slice(),
+    tagOnlyCount: 0,
+  };
+  const choices = checkoutChoices(refs, "C:/src/repo-feat");
+  assert.deepEqual(
+    choices.map((c) => [c.label, c.target]),
+    [
+      ["side", { kind: "branch", name: "side" }],
+      ["origin/topic:x (remote)", { kind: "remote", name: "origin/topic:x" }],
+    ]
+  );
+  assert.equal(new Set(choices.map((c) => c.value)).size, choices.length, "values are distinct");
+});
+
+test("New branch needs a name, and refuses to check it out while an operation is under way", () => {
+  assert.equal(newBranchRefusal("  ", false, null), "Name the branch");
+  assert.equal(newBranchRefusal("topic", true, null), null);
+  assert.equal(newBranchRefusal("topic", true, "Finish or abort the merge first"), "Finish or abort the merge first");
+  assert.equal(newBranchRefusal("topic", false, "Finish or abort the merge first"), null, "creating without checkout stays");
 });

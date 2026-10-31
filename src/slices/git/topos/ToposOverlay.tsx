@@ -214,21 +214,23 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // Checkout and create branch from badges, rows, keys and the palette (#393).
   const showWorktree = useCallback((path: string) => onShowWorktree?.(path) ?? false, [onShowWorktree]);
   const openInspector = useCallback(() => setInspectorOpen(true), []);
+  const opKind = operation.op?.kind ?? null;
+  const slotBusy = staging.busy !== null;
+  const checkoutBusy = checkoutBlockedBy(opKind, slotBusy);
   const refActions = useRefActions({
     worktreePath: graphRepo !== null ? selectedPath : null,
     repoPath: graphRepo,
+    busy: checkoutBusy,
     staging,
     refs: refsReader,
     onLanded: liveUpdates.committed,
     onShowWorktree: showWorktree,
     onOpenInspector: openInspector,
   });
-  const opKind = operation.op?.kind ?? null;
-  const slotBusy = staging.busy !== null;
   const refWorktrees = refs.state === "done" ? refs.refs.worktrees : null;
   const refContext = useMemo<RefContext | null>(
-    () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBlockedBy(opKind, slotBusy) }),
-    [refWorktrees, selectedPath, opKind, slotBusy]
+    () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBusy }),
+    [refWorktrees, selectedPath, checkoutBusy]
   );
   // A palette request runs once Topos shows a repo whose refs are read.
   const handledRequest = useRef(0);
