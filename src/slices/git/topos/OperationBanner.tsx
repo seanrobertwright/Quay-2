@@ -1,5 +1,5 @@
 import React, { useId, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, GitMerge, Loader2, Play, SkipForward, Square, X } from "lucide-react";
+import { AlertTriangle, GitMerge, Loader2, Play, SkipForward, Square, X } from "lucide-react";
 import { MessageInputs, OutputPanel } from "./CommitParts";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { confirmAbort, confirmSkip, type OpStep } from "./operation";
@@ -18,15 +18,13 @@ const BUSY_WORD: Record<OpStep, string> = { continue: "Continuing…", skip: "Sk
 /**
  * The banner pinned over the graph while a merge, rebase, cherry-pick or revert is under way (#352,
  * #389). It names the operation and both sides by role and real ref, as text, with git's "ours" and
- * "theirs" only in the tooltips. Continue commits the message prefilled from git's own file and
- * streams hook output with Cancel; Skip, where git allows it, and Abort confirm first, naming what
- * each loses. A conflict with no state file gets resolve-and-stage only.
+ * "theirs" only in the tooltips. Continue commits the message prefilled from git's own file, always
+ * shown, and streams hook output with Cancel; Skip, where git allows it, and Abort confirm first,
+ * naming what each loses. A conflict with no state file gets resolve-and-stage only.
  */
 export const OperationBanner: React.FC<OperationBannerProps> = ({ operation, stagingBusy, continueRef }) => {
   const titleId = useId();
   const blockedId = useId();
-  const messageId = useId();
-  const [showMessage, setShowMessage] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const { view, op, fields, setFields, running, output, failure, run, cancel } = operation;
   if (view === null || op === null) return null;
@@ -66,18 +64,6 @@ export const OperationBanner: React.FC<OperationBannerProps> = ({ operation, sta
           {view.right.text}
         </span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          {op.message !== null && (
-            <button
-              type="button"
-              aria-expanded={showMessage}
-              aria-controls={showMessage ? messageId : undefined}
-              onClick={() => setShowMessage(!showMessage)}
-              className={`${buttonClass} text-[#8b949e] hover:text-white`}
-            >
-              {showMessage ? <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />}
-              Message
-            </button>
-          )}
           <button
             ref={continueRef}
             type="button"
@@ -123,8 +109,9 @@ export const OperationBanner: React.FC<OperationBannerProps> = ({ operation, sta
           {view.continueBlockedBy}
         </p>
       )}
-      {op.message !== null && showMessage && (
-        <div id={messageId} className="px-4 pb-2 flex flex-col gap-1.5 max-w-2xl">
+      {/* Continue commits this message, so it is always in view, never behind a disclosure. */}
+      {op.message !== null && (
+        <div className="px-4 pb-2 flex flex-col gap-1.5 max-w-2xl">
           <MessageInputs fields={fields} setFields={setFields} onSubmit={() => run("continue")} readOnly={running !== null} />
         </div>
       )}
