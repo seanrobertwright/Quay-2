@@ -73,10 +73,16 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
     [onShowWorktree, toast]
   );
 
+  /**
+   * Reports `e`, a refused operation on `what`. From a dialog (`inline`), a refusal with nothing to
+   * act on, such as a bad name, comes back to show in the dialog; one with an action, such as the
+   * files in the way, goes to a toast and the dialog closes. Resolves to what the dialog shows.
+   */
   const failed = useCallback(
-    (what: string, e: unknown): string => {
+    (what: string, e: unknown, inline: boolean): string | null => {
       const failure = refFailure(what, e);
       const worktree = failure.worktree;
+      if (inline && worktree === null && !failure.openInspector) return failure.text;
       const action =
         worktree !== null
           ? { label: "Show that worktree", run: () => showWorktree(worktree) }
@@ -84,14 +90,23 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
             ? { label: "Open the inspector", run: onOpenInspector }
             : undefined;
       toast({ tone: "failed", text: failure.text, lines: failure.lines, action });
-      return failure.text;
+      return null;
     },
     [toast, showWorktree, onOpenInspector]
   );
 
-  /** Runs `command` in the staging slot and takes what it returns; resolves to its refusal or null. */
+  /**
+   * Runs `command` in the staging slot and takes what it returns. Resolves to null, or from a
+   * dialog (`inline`) to the refusal it shows; see `failed`.
+   */
   const runRefCommand = useCallback(
-    (command: string, args: Record<string, unknown>, what: string, done: (outcome: RefsOutcome, worktree: string) => string): Promise<string | null> => {
+    (
+      command: string,
+      args: Record<string, unknown>,
+      what: string,
+      done: (outcome: RefsOutcome, worktree: string) => string,
+      inline = false
+    ): Promise<string | null> => {
       const ran = exclusive({ action: "refs", target: { kind: "all" } }, (worktree) => {
         const onEvent = new Channel<OpEvent>();
         return invoke<RefsOutcome>(command, { worktreePath: worktree, opId: crypto.randomUUID(), onEvent, ...args }).then(
@@ -102,10 +117,10 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
             toast({ tone: "done", text: done(outcome, worktree) });
             return null;
           },
-          (e: unknown) => failed(what, e)
+          (e: unknown) => failed(what, e, inline)
         );
       });
-      if (ran === null) return Promise.resolve(failed(what, { kind: "stagingBusy" }));
+      if (ran === null) return Promise.resolve(failed(what, { kind: "stagingBusy" }, inline));
       return ran;
     },
     [exclusive, repoPath, accept, onLanded, reload, toast, failed]
@@ -132,8 +147,12 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
         onSubmit: ({ text, checked }) => {
           const name = text.trim();
           if (name === "") return Promise.resolve("Name the branch");
-          return runRefCommand("git_branch_create", { name, at, checkout: checked }, name, () =>
-            checked ? `Created and checked out ${name}` : `Created branch ${name}`
+          return runRefCommand(
+            "git_branch_create",
+            { name, at, checkout: checked },
+            name,
+            () => (checked ? `Created and checked out ${name}` : `Created branch ${name}`),
+            true
           );
         },
       });
@@ -162,7 +181,7 @@ export function useRefActions({ worktreePath, repoPath, staging, refs, onLanded,
         const [kind, ...rest] = choice.split(":");
         const name = rest.join(":");
         const target: CheckoutTarget = kind === "remote" ? { kind: "remote", name } : { kind: "branch", name };
-        return runRefCommand("git_checkout", { target }, name, (outcome, worktree) => checkoutDone(target, branchAt(outcome.refs, worktree)));
+        return runRefCommand("git_checkout", { target }, name, (outcome, worktree) => checkoutDone(target, branchAt(outcome.refs, worktree)), true);
       },
     });
   }, [worktreePath, refs.refs, runRefCommand, toast]);
