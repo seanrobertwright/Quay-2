@@ -12,6 +12,7 @@ use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
 };
 use super::op_runner::OpEvent;
+use super::operation::{Conflict, ConflictKind, OpOutcome, OpState, SideLabel};
 use super::settings::{DiffMode, FileListMode, RepoState, ToposSettings};
 use super::speedup::{SpeedupCheck, SpeedupItem};
 use super::staging::{EntryKind, StatusEntry, WorktreeStatus};
@@ -164,6 +165,39 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                 "mergeMessage": "Merge branch 'main'\n",
                 "branch": null,
                 "head": { "oid": "abc", "message": "init\n", "onUpstream": true },
+            }),
+        ),
+        ("GitError::NoOperation", s(&GitError::NoOperation), json!({ "kind": "noOperation" })),
+        (
+            "GitError::ConflictsRemain",
+            s(&GitError::ConflictsRemain { count: 2 }),
+            json!({ "kind": "conflictsRemain", "count": 2 }),
+        ),
+        (
+            "OpOutcome",
+            s(&OpOutcome {
+                head: Some("abc".into()),
+                state: OpState {
+                    kind: Operation::Rebase,
+                    step: Some(1),
+                    total: Some(3),
+                    left_label: Some(SideLabel { role: "Onto".into(), name: "main @abc1234".into() }),
+                    right_label: Some(SideLabel { role: "Replaying".into(), name: "Fix it".into() }),
+                    message: Some("Fix it\n".into()),
+                    conflicts: vec![Conflict { path: "a.txt".into(), xy: "DU".into(), kind: ConflictKind::DeletedByUs }],
+                    conflicts_total: 1,
+                },
+            }),
+            json!({
+                "head": "abc",
+                "state": {
+                    "kind": "rebase", "step": 1, "total": 3,
+                    "leftLabel": { "role": "Onto", "name": "main @abc1234" },
+                    "rightLabel": { "role": "Replaying", "name": "Fix it" },
+                    "message": "Fix it\n",
+                    "conflicts": [{ "path": "a.txt", "xy": "DU", "kind": "deletedByUs" }],
+                    "conflictsTotal": 1,
+                },
             }),
         ),
         (

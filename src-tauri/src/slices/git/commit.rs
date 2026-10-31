@@ -6,7 +6,7 @@
 //! skips hooks.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use super::error::GitError;
 use super::op_runner::{headless_git, run_process, GitOps, OpEvent, OpOptions};
+use super::operation::{detect_operation, git_dir, read_message_file};
 use super::staging::{worktree_git, StagingLocks};
 
 /// The longest message Topos commits.
@@ -36,7 +37,7 @@ pub struct CommitRequest {
 
 /// The message, refused when its summary is blank, it holds a NUL, or it is longer than
 /// [`MAX_MESSAGE_BYTES`].
-fn parse_message(message: &str) -> Result<&str, GitError> {
+pub(super) fn parse_message(message: &str) -> Result<&str, GitError> {
     if message.trim().is_empty() {
         return Err(GitError::Other { stderr: "the commit message is empty".into() });
     }
@@ -50,7 +51,7 @@ fn parse_message(message: &str) -> Result<&str, GitError> {
 }
 
 /// What `git <args>` in `worktree` printed on stdout, or None when it exited non-zero.
-fn read_git(worktree: &Path, args: &[&str]) -> Result<Option<Vec<u8>>, GitError> {
+pub(super) fn read_git(worktree: &Path, args: &[&str]) -> Result<Option<Vec<u8>>, GitError> {
     let out = worktree_git(worktree)
         .args(args)
         .stderr(Stdio::null())
@@ -60,7 +61,7 @@ fn read_git(worktree: &Path, args: &[&str]) -> Result<Option<Vec<u8>>, GitError>
 }
 
 /// The oid HEAD names in `worktree`.
-fn head_oid(worktree: &Path) -> Result<String, GitError> {
+pub(super) fn head_oid(worktree: &Path) -> Result<String, GitError> {
     match read_git(worktree, &["rev-parse", "--verify", "HEAD"])? {
         Some(out) => Ok(String::from_utf8_lossy(&out).trim().to_string()),
         None => Err(GitError::Other { stderr: "the commit left no HEAD to read".into() }),
@@ -68,7 +69,7 @@ fn head_oid(worktree: &Path) -> Result<String, GitError> {
 }
 
 /// The operation under way in a worktree, which decides what the composer offers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
     None,
@@ -105,51 +106,13 @@ pub struct CommitContext {
     pub head: Option<HeadCommit>,
 }
 
-/// `text` without the lines git treats as comments, those starting with `comment`, and without
-/// trailing blank lines; empty when nothing is left.
-fn strip_comments(text: &str, comment: char) -> String {
-    let kept: Vec<&str> = text.lines().filter(|l| !l.starts_with(comment)).collect();
-    let body = kept.join("\n");
-    let body = body.trim_end();
-    if body.is_empty() {
-        String::new()
-    } else {
-        format!("{body}\n")
-    }
-}
-
 /// Reads what the composer needs from `worktree`: the operation under way, `MERGE_MSG` in a merge,
 /// the branch, and HEAD's message for Amend.
 pub fn read_commit_context(worktree: &Path) -> Result<CommitContext, GitError> {
-    let git_dir = read_git(worktree, &["rev-parse", "--absolute-git-dir"])?
-        .map(|out| PathBuf::from(String::from_utf8_lossy(&out).trim()))
-        .ok_or_else(|| GitError::Other { stderr: format!("{} is not a git worktree", worktree.display()) })?;
-    let operation = if git_dir.join("rebase-merge").is_dir() || git_dir.join("rebase-apply").is_dir() {
-        Operation::Rebase
-    } else if git_dir.join("CHERRY_PICK_HEAD").is_file() {
-        Operation::CherryPick
-    } else if git_dir.join("REVERT_HEAD").is_file() {
-        Operation::Revert
-    } else if git_dir.join("MERGE_HEAD").is_file() {
-        Operation::Merge
-    } else {
-        Operation::None
-    };
+    let git_dir = git_dir(worktree)?;
+    let operation = detect_operation(&git_dir);
     let merge_message = match operation {
-        Operation::Merge => {
-            let comment = read_git(worktree, &["config", "--get", "core.commentChar"])?
-                .and_then(|out| {
-                    let value = String::from_utf8_lossy(&out).trim().to_string();
-                    let mut chars = value.chars();
-                    chars.next().filter(|_| chars.next().is_none())
-                })
-                .unwrap_or('#');
-            let mut bytes = Vec::new();
-            if let Ok(file) = std::fs::File::open(git_dir.join("MERGE_MSG")) {
-                let _ = file.take(MAX_MESSAGE_BYTES as u64).read_to_end(&mut bytes);
-            }
-            Some(strip_comments(&String::from_utf8_lossy(&bytes), comment))
-        }
+        Operation::Merge => Some(read_message_file(worktree, &git_dir.join("MERGE_MSG"))?.unwrap_or_default()),
         _ => None,
     };
     let branch = read_git(worktree, &["symbolic-ref", "--quiet", "--short", "HEAD"])?
@@ -168,10 +131,10 @@ pub fn read_commit_context(worktree: &Path) -> Result<CommitContext, GitError> {
 
 /// A uniquely named file under the temp dir that git's trace2 events go to, removed on drop.
 /// From it Quay learns which hook ran and how it exited, which git's exit status alone can't tell.
-struct TraceFile(PathBuf);
+pub(super) struct TraceFile(pub(super) PathBuf);
 
 impl TraceFile {
-    fn create() -> Result<TraceFile, GitError> {
+    pub(super) fn create() -> Result<TraceFile, GitError> {
         let path = std::env::temp_dir().join(format!("quay-commit-trace-{}.json", Uuid::new_v4().simple()));
         std::fs::OpenOptions::new()
             .write(true)
@@ -181,21 +144,21 @@ impl TraceFile {
         Ok(TraceFile(path))
     }
 
-    /// The first hook the commit's own git ran that exited non-zero, or None. Events from git
-    /// processes a hook started carry a nested session id (`parent/child`) and are skipped.
-    fn failed_hook(&self) -> Option<String> {
+    /// The first hook that exited non-zero, run by the git Quay started or by a git at most
+    /// `nesting` levels under it, or None. Each level adds a `/child` to a git's session id, so a
+    /// hook's own git processes, one level further down, are skipped.
+    pub(super) fn failed_hook(&self, nesting: usize) -> Option<String> {
         let file = std::fs::File::open(&self.0).ok()?;
-        let mut hooks: HashMap<u64, String> = HashMap::new();
+        let mut hooks: HashMap<(String, u64), String> = HashMap::new();
         for line in BufReader::new(file).lines() {
             let Ok(line) = line else { break };
             if !line.contains("\"child_") {
                 continue;
             }
             let Ok(event) = serde_json::from_str::<Value>(&line) else { continue };
-            if event["sid"].as_str().is_none_or(|sid| sid.contains('/')) {
-                continue;
-            }
-            let Some(child) = event["child_id"].as_u64() else { continue };
+            let Some(sid) = event["sid"].as_str().filter(|sid| sid.matches('/').count() <= nesting) else { continue };
+            // Child ids count from 0 in each git process, so the session id tells them apart.
+            let Some(child) = event["child_id"].as_u64().map(|id| (sid.to_string(), id)) else { continue };
             match event["event"].as_str() {
                 Some("child_start") if event["child_class"] == "hook" => {
                     if let Some(name) = event["hook_name"].as_str() {
@@ -246,7 +209,7 @@ pub fn commit(
         let opts = OpOptions { cap_stream: true, progress_lines: false, ..OpOptions::default() };
         let finished = run_process(cmd, Some(message.as_bytes().to_vec()), &opts, cancel, channel)?;
         if !finished.status.success() {
-            if let Some(hook) = trace.failed_hook() {
+            if let Some(hook) = trace.failed_hook(0) {
                 return Err(GitError::HookFailed { hook, output: finished.output.combined });
             }
             let output = finished.output.combined.trim().to_string();

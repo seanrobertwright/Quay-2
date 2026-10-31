@@ -43,6 +43,7 @@ test("a rejected command's GitError parses into its typed kind", () => {
     paths: ["a.txt", "2"],
   });
   assert.deepEqual(parseGitError({ kind: "other", stderr: "fatal: x" }), { kind: "other", stderr: "fatal: x" });
+  assert.deepEqual(parseGitError({ kind: "conflictsRemain", count: 3 }), { kind: "conflictsRemain", count: 3 });
 });
 
 test("anything that isn't a known GitError parses to null", () => {
@@ -51,4 +52,7 @@ test("anything that isn't a known GitError parses to null", () => {
   assert.equal(parseGitError({ kind: "somethingNew" }), null);
   assert.equal(parseGitError({ kind: 3 }), null);
   assert.equal(parseGitError(Object.create({ kind: "cancelled" })), null);
+  for (const count of [undefined, "3", -1, 1.5, Number.NaN]) {
+    assert.equal(parseGitError({ kind: "conflictsRemain", count }), null, `count ${String(count)}`);
+  }
 });

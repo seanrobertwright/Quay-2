@@ -75,7 +75,8 @@ export function useLiveUpdates(
       if (plan.holdGraph) operation.current.graphHeld = true;
       if (plan.graph === "yes") operation.current.graphHeld = false;
       // The staging inspector's status (#382) and the open diff (#383) carry request ids, so a
-      // slower, older read never lands over either. The operation banner joins here with #389.
+      // slower, older read never lands over either. The operation banner (#389) reads its state each time
+      // the status is read, so `plan.banner`, which only `operation` sets, rides on `plan.status`.
       const statusRead = plan.status ? status.reload() : null;
       const diffRead = plan.diff && diff !== null ? diff.reload() : null;
       if (!plan.refs) {

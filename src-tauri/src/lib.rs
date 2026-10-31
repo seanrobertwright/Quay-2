@@ -17,7 +17,7 @@ use slices::bridge::{
 };
 use slices::git::{
     check_git_worktree_clean, create_git_worktree, git_graph_close, git_graph_more, git_graph_open, git_graph_refresh, git_graph_watch, git_refs, git_repo_fingerprint,
-    git_commit, git_commit_context, git_copy_discarded, git_discard_paths, git_discard_selection, git_file_bytes, git_file_diff, git_restore_discarded, git_speedup_apply, git_speedup_check, git_ignore_folder, git_op_cancel, git_stage_paths, git_stage_selection, git_status, git_unstage_paths, git_version_check, is_git_repo, list_git_worktrees,
+    git_commit, git_commit_context, git_copy_discarded, git_discard_paths, git_discard_selection, git_file_bytes, git_file_diff, git_restore_discarded, git_speedup_apply, git_speedup_check, git_ignore_folder, git_op_abort, git_op_cancel, git_op_continue, git_op_skip, git_operation_state, git_stage_paths, git_stage_selection, git_status, git_unstage_paths, git_version_check, is_git_repo, list_git_worktrees,
     remove_git_worktree, topos_settings_read, topos_settings_write, GitOps, StagingLocks, ToposSettingsStore,
     GraphSessions,
 };
@@ -218,6 +218,10 @@ pub fn run() {
             git_copy_discarded,
             git_commit_context,
             git_commit,
+            git_operation_state,
+            git_op_continue,
+            git_op_skip,
+            git_op_abort,
             git_speedup_check,
             git_speedup_apply,
             topos_settings_read,
