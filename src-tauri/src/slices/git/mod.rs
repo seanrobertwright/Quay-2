@@ -1,3 +1,6 @@
+pub mod checkout;
+#[cfg(test)]
+mod checkout_tests;
 pub mod commands;
 pub mod commit;
 #[cfg(test)]
@@ -38,6 +41,7 @@ mod staging_tests;
 mod test_load;
 pub mod version;
 
+pub use checkout::*;
 pub use commands::*;
 pub use commit::*;
 pub use conflict::*;

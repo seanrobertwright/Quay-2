@@ -33,7 +33,7 @@ use super::error::GitError;
 pub use lanes::{Track, TrackKind};
 pub use log::GraphOrder;
 pub use page::{Author, GraphEvent};
-pub use badges::{GitRefs, RefBadge, RefKind, WorktreeHead};
+pub use badges::{read_refs, GitRefs, RefBadge, RefKind, WorktreeHead};
 pub use session::{GraphOptions, GraphRefs, GraphSessions, Refreshed};
 pub use watch::{Dirty, RepoChanged, WatchState};
 

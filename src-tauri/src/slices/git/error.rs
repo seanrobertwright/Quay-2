@@ -32,6 +32,16 @@ pub enum GitError {
     /// The file is handed to an agent (#392), so Topos refused to write it. Nothing was written; the
     /// agent stages it, or the operator takes it back first. `agent` is untrusted display text.
     HandedOff { path: String, agent: String },
+    /// A checkout was refused because it would overwrite local changes, or untracked files, at
+    /// `paths` (relative to the worktree, at most [`super::staging::STATUS_CAP`]). Nothing changed;
+    /// the operator commits, stashes or discards them in the staging inspector first.
+    CheckoutWouldOverwrite { paths: Vec<String> },
+    /// The branch is checked out in the worktree at `worktree`, and git checks a branch out in only
+    /// one worktree at a time. Nothing changed; Topos offers to show that worktree instead.
+    BranchInOtherWorktree { worktree: String },
+    /// `name` is not a valid branch name, or names no commit, so nothing was written. `name` is
+    /// untrusted display text.
+    InvalidRefName { name: String },
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -49,6 +59,9 @@ impl std::fmt::Display for GitError {
             GitError::NoOperation => f.write_str("that operation is no longer under way"),
             GitError::ConflictsRemain { count } => write!(f, "{count} conflicted paths are not resolved and staged yet"),
             GitError::HandedOff { path, agent } => write!(f, "{path} is with {agent}; take it back first"),
+            GitError::CheckoutWouldOverwrite { paths } => write!(f, "the checkout would overwrite local changes to {}", paths.join(", ")),
+            GitError::BranchInOtherWorktree { worktree } => write!(f, "the branch is checked out in the worktree at {worktree}"),
+            GitError::InvalidRefName { name } => write!(f, "{name} is not a valid branch name or commit"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }
