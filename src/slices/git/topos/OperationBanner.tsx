@@ -1,6 +1,6 @@
 import React, { useId, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, GitMerge, Loader2, Play, SkipForward, Square, X } from "lucide-react";
-import { MessageInputs, OutputPanel } from "./CommitComposer";
+import { MessageInputs, OutputPanel } from "./CommitParts";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { confirmAbort, confirmSkip, type OpStep } from "./operation";
 import type { Operation } from "./useOperation";
