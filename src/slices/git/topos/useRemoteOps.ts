@@ -4,10 +4,12 @@ import type { ConfirmRequest } from "./ConfirmDialog";
 import { errorMessage, parseGitError } from "./gitVersion";
 import { deleteTagPrompt } from "./refWrites";
 import {
+  branchRef,
   deleteRemoteBranchPrompt,
   failureView,
   forcePushPrompt,
   gitArgv,
+  isBranchRef,
   needsTypedConfirm,
   onOpEvent,
   remoteBranchName,
@@ -117,7 +119,7 @@ function commandArgs(request: NetworkRequest): Record<string, unknown> {
 
 /** `refs/heads/topic` or `refs/tags/v1` as the branch `topic` or the tag `v1`. */
 function refWords(ref: string): string {
-  if (ref.startsWith("refs/heads/")) return `the branch ${ref.slice("refs/heads/".length)}`;
+  if (isBranchRef(ref)) return `the branch ${remoteBranchName(ref)}`;
   if (ref.startsWith("refs/tags/")) return `the tag ${ref.slice("refs/tags/".length)}`;
   return ref;
 }
@@ -309,7 +311,7 @@ export function useRemoteOps({ worktreePath, repoPath, staging, refs, onLanded, 
 
   const deleteRemoteBranch = useCallback(
     (remote: string, branch: string) =>
-      openDialog({ ...deleteRemoteBranchPrompt(remote, branch), onConfirm: () => void run({ kind: "pushDelete", remote, ref: `refs/heads/${branch}` }) }),
+      openDialog({ ...deleteRemoteBranchPrompt(remote, branch), onConfirm: () => void run({ kind: "pushDelete", remote, ref: branchRef(branch) }) }),
     [openDialog, run]
   );
 

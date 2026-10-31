@@ -208,12 +208,10 @@ fn rejected_as_non_fast_forward(root: &Path, wt: &Path, theirs: usize) -> (Strin
     git(&other, &["switch", "-q", "feat"]);
     let mut tip = String::new();
     for i in 0..theirs {
-        tip = commit_file(&other, &format!("theirs{i}.txt"), "theirs
-");
+        tip = commit_file(&other, &format!("theirs{i}.txt"), "theirs\n");
     }
     git(&other, &["push", "-q", "origin", "feat"]);
-    let ours = commit_file(wt, "ours.txt", "ours
-");
+    let ours = commit_file(wt, "ours.txt", "ours\n");
     git(wt, &["fetch", "-q", "origin"]);
     assert_eq!(push_in(wt, "feat", None, false), Err(GitError::NonFastForward { r#ref: "refs/heads/feat".into() }));
     (tip, ours)
@@ -306,7 +304,6 @@ fn a_force_push_with_the_lease_overwrites_the_remote_branch() {
     assert_eq!(rev(&root.join("origin.git"), "refs/heads/feat"), ours);
     assert!(outcome.refs.refs.iter().any(|r| r.name == "origin/feat" && r.oid == ours));
 }
-
 
 #[test]
 fn pushing_a_branch_with_an_upstream_updates_the_remote_branch() {

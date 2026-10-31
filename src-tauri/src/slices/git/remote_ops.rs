@@ -119,6 +119,23 @@ fn run_network(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Ch
     Ok(if finished.status.success() { Ok(finished.output) } else { Err(finished.output) })
 }
 
+/// Runs the `git push` `args` through [`run_network`]: what the push did, or the typed refusal
+/// the remote printed, else [`failure`].
+fn run_push(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<RemoteOutcome, GitError> {
+    if let Err(output) = run_network(worktree, args, cancel, channel)? {
+        return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
+    }
+    remote_outcome(worktree)
+}
+
+/// The full name of the local or remote branch `name`: `refs/heads/<name>`.
+fn branch_ref(name: &str) -> String {
+    format!("{HEADS}{name}")
+}
+
+/// The prefix of every full branch name.
+const HEADS: &str = "refs/heads/";
+
 /// The error a failed fetch, pull or push printed: a typed one Topos names, else `Other`.
 fn failure(output: &OpOutput) -> GitError {
     network_refusal(&output.stderr).unwrap_or_else(|| {
@@ -432,7 +449,7 @@ struct Destination {
 /// track it. Checks `branch` and `remote` first, so neither reaches git as an option.
 fn destination(worktree: &Path, branch: &str, remote: Option<&str>, set_upstream: bool) -> Result<Destination, GitError> {
     check_branch_name(worktree, branch)?;
-    rev_oid(worktree, &format!("refs/heads/{branch}"))?.ok_or_else(|| invalid_ref(branch))?;
+    rev_oid(worktree, &branch_ref(branch))?.ok_or_else(|| invalid_ref(branch))?;
     if let Some(remote) = remote {
         check_remote(worktree, remote)?;
     }
@@ -444,7 +461,7 @@ fn destination(worktree: &Path, branch: &str, remote: Option<&str>, set_upstream
         _ if set_upstream || config_true(worktree, "push.autoSetupRemote")? => {
             let only = (all.len() == 1).then(|| all[0].clone());
             let remote = remote.map(str::to_string).or(only).ok_or_else(no_upstream)?;
-            Ok(Destination { remote, remote_ref: format!("refs/heads/{branch}"), track: true })
+            Ok(Destination { remote, remote_ref: branch_ref(branch), track: true })
         }
         _ => Err(no_upstream()),
     }
@@ -453,7 +470,7 @@ fn destination(worktree: &Path, branch: &str, remote: Option<&str>, set_upstream
 /// The remote-tracking ref Topos shows for the remote branch `remote_ref` on `remote`:
 /// `refs/remotes/<remote>/<name>` for `refs/heads/<name>`, as the default fetch refspec maps it.
 fn tracking_ref(remote: &str, remote_ref: &str) -> Result<String, GitError> {
-    let name = remote_ref.strip_prefix("refs/heads/").ok_or_else(|| invalid_ref(remote_ref))?;
+    let name = remote_ref.strip_prefix(HEADS).ok_or_else(|| invalid_ref(remote_ref))?;
     Ok(format!("refs/remotes/{remote}/{name}"))
 }
 
@@ -493,7 +510,7 @@ pub fn lease_plan(worktree: &Path, branch: &str, remote: Option<&str>) -> Result
     let tracking = tracking_full.trim_start_matches("refs/remotes/").to_string();
     let unfetched = || GitError::Other { stderr: format!("Topos has no {tracking} to take a lease on; fetch first") };
     let expected_sha = rev_oid(worktree, &tracking_full)?.ok_or_else(unfetched)?;
-    let local = rev_oid(worktree, &format!("refs/heads/{branch}"))?.ok_or_else(|| invalid_ref(branch))?;
+    let local = rev_oid(worktree, &branch_ref(branch))?.ok_or_else(|| invalid_ref(branch))?;
     let not_local = format!("^{local}");
     let uncounted = || GitError::Other { stderr: format!("could not count the commits on {tracking}") };
     let out = read_git(worktree, &["rev-list", "--count", &expected_sha, &not_local])?.ok_or_else(uncounted)?;
@@ -530,7 +547,7 @@ pub fn push(
     ops.run_with(op_id, channel, |cancel| {
         let _net = locks.repo.hold(worktree, cancel, channel)?;
         let Destination { remote, remote_ref, track } = destination(worktree, branch, remote, set_upstream && lease.is_none())?;
-        let refspec = format!("refs/heads/{branch}:{remote_ref}");
+        let refspec = format!("{}:{remote_ref}", branch_ref(branch));
         let mut args = vec!["push", "--porcelain", "--progress"];
         let lease_arg;
         if let Some(expected) = lease {
@@ -544,10 +561,7 @@ pub fn push(
             args.push("--set-upstream");
         }
         args.extend(["--", remote.as_str(), refspec.as_str()]);
-        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
-            return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
-        }
-        remote_outcome(worktree)
+        run_push(worktree, &args, cancel, channel)
     })
 }
 
@@ -571,10 +585,7 @@ pub fn push_tag(
         check_remote(worktree, remote)?;
         let refspec = format!("{full}:{full}");
         let args = ["push", "--porcelain", "--progress", "--no-follow-tags", "--", remote, refspec.as_str()];
-        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
-            return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
-        }
-        remote_outcome(worktree)
+        run_push(worktree, &args, cancel, channel)
     })
 }
 
@@ -582,7 +593,7 @@ pub fn push_tag(
 /// `git check-ref-format` accepts and whose name doesn't start with `-`. Refuses anything else,
 /// so a remote delete can only ever name one branch or tag.
 fn check_branch_or_tag_ref(worktree: &Path, full_ref: &str) -> Result<(), GitError> {
-    let name = full_ref.strip_prefix("refs/heads/").or_else(|| full_ref.strip_prefix("refs/tags/")).ok_or_else(|| invalid_ref(full_ref))?;
+    let name = full_ref.strip_prefix(HEADS).or_else(|| full_ref.strip_prefix("refs/tags/")).ok_or_else(|| invalid_ref(full_ref))?;
     if name.is_empty() || name.starts_with('-') || read_git(worktree, &["check-ref-format", full_ref])?.is_none() {
         return Err(invalid_ref(full_ref));
     }
@@ -607,10 +618,7 @@ pub fn push_delete(
         check_branch_or_tag_ref(worktree, full_ref)?;
         check_remote(worktree, remote)?;
         let args = ["push", "--porcelain", "--progress", "--delete", "--", remote, full_ref];
-        if let Err(output) = run_network(worktree, &args, cancel, channel)? {
-            return Err(push_refusal(&output).unwrap_or_else(|| failure(&output)));
-        }
-        remote_outcome(worktree)
+        run_push(worktree, &args, cancel, channel)
     })
 }
 
