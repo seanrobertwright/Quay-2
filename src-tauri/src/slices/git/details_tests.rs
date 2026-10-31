@@ -206,3 +206,49 @@ fn a_parent_index_outside_the_parent_count_is_refused() {
     paths.sort();
     assert_eq!(paths, vec![("A".into(), "README.md".into()), ("A".into(), "src/lib.rs".into())]);
 }
+
+#[test]
+fn a_renamed_files_diff_is_the_rename_with_its_change_not_a_whole_file_addition() {
+    use super::diff::{read_file_diff, DiffSide, LineKind};
+    let (_root, wt) = repo_with_worktree();
+    let body: String = (1..=20).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(wt.join("notes.txt"), &body).unwrap();
+    git(&wt, &["add", "notes.txt"]);
+    git(&wt, &["commit", "-q", "-m", "notes"]);
+    git(&wt, &["mv", "notes.txt", "odd name é.txt"]);
+    std::fs::write(wt.join("odd name é.txt"), body.replace("line 3\n", "line three\n")).unwrap();
+    // A second edit in the same commit stays out of the rename's diff.
+    std::fs::write(wt.join("README.md"), "readme\nmore\n").unwrap();
+    git(&wt, &["add", "-A"]);
+    git(&wt, &["commit", "-q", "-m", "rename"]);
+    let side = DiffSide::Commit { oid: rev(&wt, "HEAD"), parent: None, old_path: Some("notes.txt".into()) };
+
+    let read = read_file_diff(&wt, 1, "odd name é.txt", &side, 3, false).expect("diff read");
+
+    assert_eq!(serde_json::to_value(&read).unwrap()["change"], "modified");
+    let changed: Vec<(LineKind, &str)> =
+        read.hunks.iter().flat_map(|h| &h.lines).filter(|l| l.kind != LineKind::Context).map(|l| (l.kind, l.text.as_str())).collect();
+    assert_eq!(changed, vec![(LineKind::Del, "line 3"), (LineKind::Add, "line three")]);
+}
+
+#[test]
+fn a_copied_files_diff_is_against_its_source_even_when_the_source_changed_too() {
+    use super::diff::{read_file_diff, DiffSide};
+    let (_root, wt) = repo_with_worktree();
+    let body: String = (1..=20).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(wt.join("notes.txt"), &body).unwrap();
+    git(&wt, &["add", "notes.txt"]);
+    git(&wt, &["commit", "-q", "-m", "notes"]);
+    std::fs::write(wt.join("copy.txt"), body.replace("line 3\n", "line three\n")).unwrap();
+    std::fs::write(wt.join("notes.txt"), body.replace("line 18\n", "line eighteen\n")).unwrap();
+    git(&wt, &["add", "-A"]);
+    git(&wt, &["commit", "-q", "-m", "copy"]);
+    let side = DiffSide::Commit { oid: rev(&wt, "HEAD"), parent: None, old_path: Some("notes.txt".into()) };
+
+    let read = read_file_diff(&wt, 1, "copy.txt", &side, 3, false).expect("diff read");
+
+    let texts: Vec<&str> = read.hunks.iter().flat_map(|h| &h.lines).map(|l| l.text.as_str()).collect();
+    assert!(texts.contains(&"line three"), "{texts:?}");
+    assert!(!texts.contains(&"line eighteen"), "the source's own edit stays out: {texts:?}");
+    assert_eq!(read.hunks.len(), 1);
+}

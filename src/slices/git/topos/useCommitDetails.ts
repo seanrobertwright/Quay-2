@@ -132,7 +132,7 @@ export function useCommitDiff(
   const [diff, setDiff] = useState<CommitDiffState>({ state: "loading" });
   const [loadedLarge, setLoadedLarge] = useState(false);
   const ids = useRef(new RequestIds());
-  const key = repoPath === null || file === null ? null : `${repoPath}\n${file.oid}\n${file.parent ?? ""}\n${file.path}`;
+  const key = repoPath === null || file === null ? null : `${repoPath}\n${file.oid}\n${file.parent ?? ""}\n${file.oldPath ?? ""}\n${file.path}`;
   const latest = useRef({ repoPath, file });
   latest.current = { repoPath, file };
 
@@ -144,7 +144,8 @@ export function useCommitDiff(
       worktreePath: repo,
       requestId: id,
       path: open.path,
-      side: { kind: "commit", oid: open.oid, parent: open.parent },
+      // A rename or copy is read as the pair, not as the new path added.
+      side: { kind: "commit", oid: open.oid, parent: open.parent, oldPath: open.oldPath },
       context: CONTEXT,
       loadLarge: large,
     }).then(

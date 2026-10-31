@@ -3,7 +3,7 @@
 // text, never markup.
 
 /** `DiffSide` from `src-tauri/src/slices/git/diff.rs`. */
-export type DiffSide = { kind: "unstaged" } | { kind: "staged" } | { kind: "commit"; oid: string; parent: string | null };
+export type DiffSide = { kind: "unstaged" } | { kind: "staged" } | { kind: "commit"; oid: string; parent: string | null; oldPath?: string | null };
 
 /** `FileChange` from `src-tauri/src/slices/git/diff.rs`. */
 export type FileChange = "modified" | "added" | "deleted" | "untracked" | "unchanged";

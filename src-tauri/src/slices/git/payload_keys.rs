@@ -354,8 +354,8 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ),
         (
             "DiffSide::Commit",
-            s(&DiffSide::Commit { oid: "abc1".into(), parent: None }),
-            json!({ "kind": "commit", "oid": "abc1", "parent": null }),
+            s(&DiffSide::Commit { oid: "abc1".into(), parent: None, old_path: None }),
+            json!({ "kind": "commit", "oid": "abc1", "parent": null, "oldPath": null }),
         ),
         ("DiffSide::Unstaged", s(&DiffSide::Unstaged), json!({ "kind": "unstaged" })),
         ("FileChange::Untracked", s(&FileChange::Untracked), json!("untracked")),
