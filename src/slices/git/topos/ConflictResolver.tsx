@@ -22,8 +22,8 @@ export interface ConflictResolverProps {
   onPath: (path: string) => void;
   onClose: () => void;
   staging: Staging;
-  /** Opens a terminal in `cwd`, or null when Topos has no way to. */
-  onOpenTerminal: ((cwd: string) => void) | null;
+  /** Opens a terminal in `cwd`; absent when Topos has no way to. */
+  onOpenTerminal?: (cwd: string) => void;
 }
 
 /**
@@ -50,7 +50,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const file = read?.state === "done" ? read.file : null;
   const parsed = useMemo(() => (file !== null && text !== null ? parseConflicts(text, file.markerSize) : null), [file, text]);
   const card = useMemo(() => (file !== null ? conflictCard(file, names, op.conflicts) : null), [file, names, op.conflicts]);
-  const handToAgent = useHandToAgent(worktreePath);
+  const handToAgent = useHandToAgent();
   const busy = staging.busy !== null;
   const saving = staging.busy?.action === "resolve";
 
@@ -112,7 +112,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
     else setConfirm({ ...choice.confirm, onConfirm: run });
   };
   const unavailable = {
-    ...(onOpenTerminal === null ? { openTerminal: "Quay can't open a terminal from here." } : {}),
+    ...(onOpenTerminal === undefined ? { openTerminal: "Quay can't open a terminal from here." } : {}),
     ...(handToAgent.unavailable !== null ? { handToAgent: handToAgent.unavailable } : {}),
   };
   const move = (direction: 1 | -1) => {

@@ -14,8 +14,7 @@ const NOT_YET: HandToAgent = {
   unavailable: "Handing a conflict to an agent isn't available in this version of Quay yet. Open a terminal and run your agent there.",
 };
 
-/** The Hand to agent action for conflicts in `worktreePath`. */
-export function useHandToAgent(worktreePath: string): HandToAgent {
-  void worktreePath;
+/** The Hand to agent action for conflicts. #392 adds the worktree it hands them to. */
+export function useHandToAgent(): HandToAgent {
   return NOT_YET;
 }

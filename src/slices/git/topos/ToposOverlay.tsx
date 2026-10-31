@@ -334,7 +334,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     onPath={setResolving}
                     onClose={closeResolver}
                     staging={staging}
-                    onOpenTerminal={onOpenTerminal ?? null}
+                    onOpenTerminal={onOpenTerminal}
                   />
                 )}
                 <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>
