@@ -9,10 +9,13 @@ use super::ref_ops::BranchDeleted;
 use super::remote_ops::{LeasePlan, RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
+use super::details::{CommitDetails, CommitFile, CommitFiles, Person, SignatureStatus, Trailer, Verification};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
+use super::graph::provenance::{Agent, AgentSource};
 use super::hand_off::HandOff;
+use crate::slices::pty::models::RunKind;
 use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
 };
@@ -469,6 +472,51 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "OpEvent::Failed",
             s(&OpEvent::Failed { error: GitError::Cancelled }),
             json!({ "event": "failed", "error": { "kind": "cancelled" } }),
+        ),
+        (
+            "CommitDetails",
+            s(&CommitDetails {
+                oid: "abc".into(),
+                parents: vec!["def".into()],
+                subject: "Fix".into(),
+                body: "Why".into(),
+                author: Person { name: "Ada".into(), email: "ada@example.invalid".into(), time_ms: 1_000 },
+                committer: Person { name: "Bob".into(), email: "bob@example.invalid".into(), time_ms: 2_000 },
+                trailers: vec![Trailer { key: "Quay-Agent".into(), value: "claude".into() }],
+                has_signature: false,
+                provenance: Some(Agent { kind: Some(RunKind::Claude), source: AgentSource::Stamp, raw: None }),
+            }),
+            json!({
+                "oid": "abc", "parents": ["def"], "subject": "Fix", "body": "Why",
+                "author": { "name": "Ada", "email": "ada@example.invalid", "timeMs": 1_000 },
+                "committer": { "name": "Bob", "email": "bob@example.invalid", "timeMs": 2_000 },
+                "trailers": [{ "key": "Quay-Agent", "value": "claude" }],
+                "hasSignature": false,
+                "provenance": { "kind": "claude", "source": "stamp" }
+            }),
+        ),
+        (
+            "CommitFiles",
+            s(&CommitFiles {
+                files: vec![CommitFile {
+                    status: "R".into(),
+                    path: "new.txt".into(),
+                    old_path: Some("old.txt".into()),
+                    additions: Some(1),
+                    deletions: None,
+                }],
+                total: 1,
+                truncated: false,
+            }),
+            json!({
+                "files": [{ "status": "R", "path": "new.txt", "oldPath": "old.txt", "additions": 1, "deletions": null }],
+                "total": 1, "truncated": false
+            }),
+        ),
+        (
+            "Verification",
+            s(&Verification { status: SignatureStatus::UnknownKey, signer: Some("Ada".into()) }),
+            json!({ "status": "unknownKey", "signer": "Ada" }),
         ),
     ]
 }
