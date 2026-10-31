@@ -8,7 +8,11 @@ import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
 import type { FindKeyEvent } from "./graphFind";
-import { refsView } from "./graphRefs";
+import { refsView, type RefBadge } from "./graphRefs";
+import { graphRefSet, showOnly, type RefSet } from "./graphFilters";
+import { highlightKinds, type HighlightKind } from "./agentHighlight";
+import { GraphFilterBar } from "./GraphFilterBar";
+import { useGraphFilters } from "./useGraphFilters";
 import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
 import { useGraphSession, type GraphOrder } from "./useGraphSession";
@@ -53,6 +57,9 @@ import {
 } from "./useCommitDetails";
 
 const NO_SELECTION: CommitSelection = { kind: "none" };
+const NO_REF_BADGES: RefBadge[] = [];
+const NO_KINDS: HighlightKind[] = [];
+const DEFAULT_REF_SET: RefSet = { kind: "branches" };
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -166,12 +173,26 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   useEffect(() => {
     if (isOpen && graphRepo !== null) recordOpen(graphRepo);
   }, [isOpen, graphRepo, shown, recordOpen]);
-  const graph = useGraphSession(graphRepo, order);
   // Refs are per repo too, so a move between its worktrees moves only the HEAD marker (#378).
   const refsReader = useGraphRefs(graphRepo, shown);
   const refs = refsReader.refs;
   const selectedPath = target?.path ?? null;
-  const refsShown = useMemo(() => refsView(refs, selectedPath), [refs, selectedPath]);
+  // The branch filter and toggles (#401), remembered per repo, and the agent highlights. They last
+  // while Topos is hidden, as the session does.
+  const graphFilters = useGraphFilters(graphRepo, refs);
+  const filterState = graphFilters.state;
+  const setFilterState = graphFilters.set;
+  const filters = filterState?.filters ?? null;
+  // A filter names the selected worktree, whose HEAD it always walks; with none, moving between
+  // worktrees keeps the session.
+  const refSet = useMemo(() => (filters === null ? null : graphRefSet(filters, selectedPath)), [filters, selectedPath]);
+  const graph = useGraphSession(graphRepo, order, refSet);
+  const tagsWalked = filters?.tags ?? false;
+  const refsShown = useMemo(() => {
+    const view = refsView(refs, selectedPath);
+    // With tags walked, no tagged commit is left out, so the footer has nothing to say.
+    return tagsWalked ? { ...view, tagOnlyNote: null } : view;
+  }, [refs, selectedPath, tagsWalked]);
   // Terminal statuses change often; the map, and so the rows, change only when the agents per
   // worktree do.
   const agentsKey = JSON.stringify(
@@ -392,11 +413,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           return deleteRemoteBranch(action.remote, action.branch);
         case "deleteTag":
           return deleteTag(action.name, deleteTagNow);
+        case "showOnly":
+          if (filterState !== null) setFilterState({ ...filterState, filters: showOnly(filterState.filters, action.ref) });
+          return;
         default:
           return runRefAction(action);
       }
     },
-    [pushTag, deleteRemoteBranch, deleteTag, deleteTagNow, runRefAction]
+    [pushTag, deleteRemoteBranch, deleteTag, deleteTagNow, runRefAction, filterState, setFilterState]
   );
   // A palette request runs once Topos shows a repo whose refs are read.
   const handledRequest = useRef(0);
@@ -576,6 +600,14 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
             {showSpeedup && watch?.state !== "gone" && (
               <SpeedupBanner speedup={speedup} onOpen={() => setSpeedupOpen(true)} />
             )}
+            {filterState !== null && watch?.state !== "gone" && (
+              <GraphFilterBar
+                state={filterState}
+                onChange={setFilterState}
+                refs={refs.state === "done" ? refs.refs.refs : NO_REF_BADGES}
+                kinds={highlightKinds([null, ...(graph.feed?.store?.agentsSeen() ?? [])])}
+              />
+            )}
             {watch?.state === "gone" ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center p-6" role="status">
                 <p className="text-sm text-white">This worktree or repository is gone.</p>
@@ -625,6 +657,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       visible={isOpen}
                       findKeysRef={findKeys}
                       repoPath={graphRepo}
+                      refSet={refSet ?? DEFAULT_REF_SET}
+                      agentKinds={filterState?.agents ?? NO_KINDS}
                     />
                   </div>
                   {commitFile && (

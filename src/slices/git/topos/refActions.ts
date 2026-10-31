@@ -4,6 +4,7 @@
 import { isSamePath } from "../../../utils/paths.ts";
 import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
+import { branchRef } from "./graphFilters.ts";
 import { folderName, type Badge, type GitRefs, type WorktreeHead } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
 import { OPERATION_NOUNS } from "./operation.ts";
@@ -27,7 +28,9 @@ export type RefAction =
   | { kind: "deleteTag"; name: string }
   | { kind: "pushTag"; remote: string; name: string }
   | { kind: "deleteRemoteBranch"; remote: string; branch: string }
-  | { kind: "copySha"; oid: string };
+  | { kind: "copySha"; oid: string }
+  /** "Show only…" (#401): filter the graph to the branch `ref`, a full branch name. */
+  | { kind: "showOnly"; ref: string };
 
 /** A context menu item. A disabled one has no action and says why. */
 export type MenuItem =
@@ -81,8 +84,20 @@ function branchWriteItems(name: string, checkedOut: { here: true } | { here: fal
   ];
 }
 
-/** The context menu of `badge`, on the commit `oid`. The selected worktree's HEAD has none. */
+/** "Show only this branch", which reopens the graph with the branch filter at `ref` alone (#401). */
+const showOnlyItem = (ref: string): MenuItem => ({ label: "Show only this branch", action: { kind: "showOnly", ref } });
+
+/**
+ * The context menu of `badge`, on the commit `oid`. The selected worktree's HEAD has none, and a
+ * branch's ends with Show only.
+ */
 export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[] {
+  const ref = branchRef(badge);
+  const items = refMenu(badge, oid, ctx);
+  return ref === null ? items : [...items, showOnlyItem(ref)];
+}
+
+function refMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[] {
   switch (badge.kind) {
     case "head":
       return badge.current ? [] : [{ label: SHOW_WORKTREE, action: { kind: "showWorktree", path: badge.path } }];

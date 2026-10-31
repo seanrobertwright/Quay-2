@@ -26,7 +26,7 @@ test("Show only on a local or remote badge filters to that one branch", () => {
   assert.equal(branchRef({ kind: "local", name: "main" }), "refs/heads/main");
   assert.equal(branchRef({ kind: "remote", name: "origin/main" }), "refs/remotes/origin/main");
   assert.equal(branchRef({ kind: "tag", name: "v1" }), null);
-  assert.equal(branchRef({ kind: "head", name: "wt", path: "C:/wt", current: true }), null);
+  assert.equal(branchRef({ kind: "head", name: "wt" }), null);
 
   const twoBranches = toggleBranch(toggleBranch(NO_FILTERS, "refs/heads/a"), "refs/heads/b");
   assert.deepEqual(showOnly(twoBranches, "refs/remotes/origin/main").branches, ["refs/remotes/origin/main"]);

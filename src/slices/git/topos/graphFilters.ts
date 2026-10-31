@@ -34,6 +34,7 @@ export const RESET: FilterState = { filters: NO_FILTERS, agents: [] };
 /** `RefSet` in `src-tauri/src/slices/git/rev_set.rs`, as `git_graph_open` and `git_log_search` take it. */
 export type RefSet =
   | { kind: "branches" }
+  | { kind: "only"; refs: string[] }
   | { kind: "filtered"; branches: string[]; remotes: boolean; tags: boolean; worktreePath: string | null };
 
 const LOCAL = "refs/heads/";

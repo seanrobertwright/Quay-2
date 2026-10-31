@@ -366,6 +366,14 @@ export class GraphStore {
     return this.agentTable[this.agentIdsByRow[row]];
   }
 
+  /**
+   * The distinct agents the loaded rows hold, in the order they first loaded, for the agent
+   * highlight's choices (#401). The table's first two entries are there before any row is.
+   */
+  agentsSeen(): readonly GraphAgent[] {
+    return this.agentTable.slice(2) as GraphAgent[];
+  }
+
   /** Epoch milliseconds. */
   authorTimeMs(row: number): number {
     return this.authorTimes[row];

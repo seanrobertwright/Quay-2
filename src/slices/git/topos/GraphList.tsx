@@ -34,6 +34,9 @@ import { movedRow, offsetShowing, selectionKey } from "./commitSelection";
 import { isFindable, isMatch, type FindKeyEvent } from "./graphFind";
 import { FindText, GraphFindBar } from "./GraphFindBar";
 import { useFindController } from "./useGraphFind";
+import { useAgentHighlight } from "./useAgentHighlight";
+import type { HighlightKind } from "./agentHighlight";
+import type { RefSet } from "./graphFilters";
 import { slotColor } from "./laneColors";
 import { menuIndexByKey, splitStrip } from "./trackStrip";
 import {
@@ -93,6 +96,10 @@ export interface GraphListProps {
   findKeysRef?: React.MutableRefObject<((e: FindKeyEvent) => boolean) | null>;
   /** The graph's repo, which the find's deep search (#400) runs in. */
   repoPath: string | null;
+  /** The graph's ref set (#401), which the find's deep search walks too. */
+  refSet: RefSet;
+  /** The agent kinds highlighted (#401); every other row dims. Empty highlights none. */
+  agentKinds: readonly HighlightKind[];
 }
 
 export interface WipRowProps {
@@ -636,6 +643,8 @@ export const GraphList: React.FC<GraphListProps> = ({
   visible,
   findKeysRef,
   repoPath,
+  refSet,
+  agentKinds,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -855,6 +864,8 @@ export const GraphList: React.FC<GraphListProps> = ({
   const selectFound = useCallback((row: number) => moveCursor(row, true), [moveCursor]);
   const refocusList = useCallback(() => scroller.current?.focus({ preventScroll: true }), []);
   const loadMoreRows = useCallback(() => onReachedRow(rowCount), [onReachedRow, rowCount]);
+  // The agent highlight (#401), one sorted row list that the find combines with by index.
+  const highlight = useAgentHighlight(store, rowCount, agentKinds);
   const {
     active: findActive,
     query: findQuery,
@@ -873,6 +884,8 @@ export const GraphList: React.FC<GraphListProps> = ({
     feedState: feed.status.state,
     loadMoreRows,
     openDetails: onSelect,
+    refs: refSet,
+    highlight,
   });
 
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
@@ -1047,7 +1060,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       const isSelected = oid === selectedOid || oid === comparedOid;
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
-      // A binary search over the matches, so a row holds no find state of its own (#399).
+      // A binary search over the bright rows, so a row holds no find or highlight state (#399, #401).
       const lit = !findActive || isMatch(findMatches, row);
       const marks = lit ? findQuery : "";
       out.push(
