@@ -9,6 +9,7 @@ use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWri
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
+use super::hand_off::HandOff;
 use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
 };
@@ -143,6 +144,16 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ("GitError::IndexLocked", s(&GitError::IndexLocked), json!({ "kind": "indexLocked" })),
         ("GitError::StagingBusy", s(&GitError::StagingBusy), json!({ "kind": "stagingBusy" })),
         ("GitError::StaleDiff", s(&GitError::StaleDiff), json!({ "kind": "staleDiff" })),
+        (
+            "GitError::HandedOff",
+            s(&GitError::HandedOff { path: "a.txt".into(), agent: "claude 1".into() }),
+            json!({ "kind": "handedOff", "path": "a.txt", "agent": "claude 1" }),
+        ),
+        (
+            "HandOff",
+            s(&HandOff { path: "a.txt".into(), terminal_id: "t1".into(), agent_name: "claude 1".into() }),
+            json!({ "path": "a.txt", "terminalId": "t1", "agentName": "claude 1" }),
+        ),
         (
             "GitError::ChangedSinceDiscard",
             s(&GitError::ChangedSinceDiscard { paths: vec!["a.txt".into()] }),

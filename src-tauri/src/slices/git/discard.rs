@@ -255,6 +255,7 @@ pub fn discard_selection(
 ) -> Result<DiscardSelectionResult, GitError> {
     let _slot = locks.begin(worktree)?;
     let path = parse_rel_path(&request.path)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     let context = token_context(&request.diff_token).ok_or(GitError::StaleDiff)?;
     let parsed = read_parsed(worktree, path, &DiffSide::Unstaged, context, false)?;
     if diff_token(context, &parsed) != request.diff_token {
@@ -379,6 +380,8 @@ pub fn restore_discarded(
     backups: &[DiscardBackup],
 ) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
+    let restored: Vec<&str> = backups.iter().map(|b| b.path.as_str()).collect();
+    locks.refuse_handed_off(worktree, Some(&restored))?;
     if backups.is_empty() {
         return Err(other("nothing to restore"));
     }
@@ -468,6 +471,11 @@ pub fn discard_paths(
     target: &DiscardTarget,
 ) -> Result<DiscardPathsResult, GitError> {
     let _slot = locks.begin(worktree)?;
+    let reached: Option<Vec<&str>> = match target {
+        DiscardTarget::All { .. } => None,
+        DiscardTarget::Paths { paths } => Some(paths.iter().map(String::as_str).collect()),
+    };
+    locks.refuse_handed_off(worktree, reached.as_deref())?;
     let (tracked, untracked) = match target {
         DiscardTarget::All { include_untracked } => unstaged_changes(worktree, None, *include_untracked)?,
         DiscardTarget::Paths { paths } => {
