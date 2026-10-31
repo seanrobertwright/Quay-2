@@ -33,33 +33,37 @@ pub struct RepoState {
     pub last_opened: i64,
     /// Whether the operator chose "Don't suggest for this repo" on the speed-up banner (#385).
     pub suppress_speedup: bool,
-    /// The branch filter (#401): full branch names, or none for every branch.
-    pub filters: Vec<String>,
+    /// The branch filter and toggles (#401), stored as the entry's own `branches`, `remotes` and
+    /// `tags` fields.
+    #[serde(flatten)]
+    pub filters: RepoFilters,
+}
+
+impl RepoState {
+    fn opened_at(last_opened: i64) -> Self {
+        Self { last_opened, suppress_speedup: false, filters: RepoFilters::default() }
+    }
+}
+
+/// A repo's branch filter and toggles, what `topos_repo_filters` returns (#401). Agent highlights
+/// and the Find text are never stored (#369).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepoFilters {
+    /// Full branch names such as `refs/heads/main`; empty for every branch.
+    pub branches: Vec<String>,
     /// The Remotes toggle: whether remote-tracking branches are walked.
     pub remotes: bool,
     /// The Tags toggle: whether tags are walked.
     pub tags: bool,
 }
 
-impl RepoState {
-    fn opened_at(last_opened: i64) -> Self {
-        Self { last_opened, suppress_speedup: false, filters: Vec::new(), remotes: true, tags: false }
+impl Default for RepoFilters {
+    /// Every branch and remote, no tags: the graph's ref set before any filter (#370), as
+    /// `NO_FILTERS` in `src/slices/git/topos/graphFilters.ts` has it.
+    fn default() -> Self {
+        Self { branches: Vec::new(), remotes: true, tags: false }
     }
-
-    fn repo_filters(&self) -> RepoFilters {
-        RepoFilters { branches: self.filters.clone(), remotes: self.remotes, tags: self.tags }
-    }
-}
-
-/// A repo's branch filter and toggles, what `topos_repo_filters` returns (#401). Agent highlights
-/// and the Find text are never stored (#369).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepoFilters {
-    /// Full branch names such as `refs/heads/main`; empty for every branch.
-    pub branches: Vec<String>,
-    pub remotes: bool,
-    pub tags: bool,
 }
 
 /// A repo's filters from `topos_settings_write`: the whole set, replacing what was stored.
@@ -68,9 +72,7 @@ pub struct RepoFilters {
 pub struct RepoFiltersPatch {
     /// A repo or worktree path; its repo's entry takes the filters.
     pub repo_path: String,
-    pub branches: Vec<String>,
-    pub remotes: bool,
-    pub tags: bool,
+    pub filters: RepoFilters,
 }
 
 /// `DiffMode` in `src/slices/git/topos/FileDiffView.tsx`.
@@ -146,15 +148,16 @@ pub fn parse_settings(text: &str) -> ToposSettings {
                 repo.suppress_speedup = true;
             }
             // A bad name is dropped alone; a toggle that isn't a boolean keeps its default.
-            if let Some(Value::Array(names)) = entry.get("filters") {
+            let filters = &mut repo.filters;
+            if let Some(Value::Array(names)) = entry.get("branches") {
                 let names = names.iter().filter_map(Value::as_str).filter(|n| check_branches(&[n.to_string()]).is_ok());
-                repo.filters = names.take(MAX_REFS).map(str::to_string).collect();
+                filters.branches = names.take(MAX_REFS).map(str::to_string).collect();
             }
             if let Some(Value::Bool(remotes)) = entry.get("remotes") {
-                repo.remotes = *remotes;
+                filters.remotes = *remotes;
             }
             if let Some(Value::Bool(tags)) = entry.get("tags") {
-                repo.tags = *tags;
+                filters.tags = *tags;
             }
         }
         cap_repos(&mut settings.repos);
@@ -334,8 +337,8 @@ impl ToposSettingsStore {
         }
         let opened = patch.opened_repo.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
         let suppressed = patch.suppress_speedup.as_deref().map(|path| repo_key(Path::new(path))).transpose()?;
-        if let Some(filters) = &patch.repo_filters {
-            check_branches(&filters.branches)?;
+        if let Some(repo_filters) = &patch.repo_filters {
+            check_branches(&repo_filters.filters.branches)?;
         }
         let filtered = patch.repo_filters.as_ref().map(|f| repo_key(Path::new(&f.repo_path))).transpose()?;
         let mut state = self.shared.state.lock();
@@ -347,12 +350,10 @@ impl ToposSettingsStore {
         if let Some(key) = suppressed {
             record_open(&mut settings.repos, key, now).suppress_speedup = true;
         }
-        if let (Some(key), Some(filters)) = (filtered, patch.repo_filters.take()) {
-            let repo = record_open(&mut settings.repos, key, now);
+        if let (Some(key), Some(RepoFiltersPatch { mut filters, .. })) = (filtered, patch.repo_filters.take()) {
             let mut seen = std::collections::HashSet::new();
-            repo.filters = filters.branches.into_iter().filter(|b| seen.insert(b.clone())).collect();
-            repo.remotes = filters.remotes;
-            repo.tags = filters.tags;
+            filters.branches.retain(|b| seen.insert(b.clone()));
+            record_open(&mut settings.repos, key, now).filters = filters;
         }
         cap_repos(&mut settings.repos);
         patch.apply_prefs(settings);
@@ -365,9 +366,9 @@ impl ToposSettingsStore {
     /// longer exists pruned (#369). A pruned entry is written back, debounced like any write.
     pub fn repo_filters(&self, path: &Path) -> Result<RepoFilters, GitError> {
         let key = repo_key(path)?;
-        let stored = self.shared.state.lock().settings.repos.get(&key).map(RepoState::repo_filters);
+        let stored = self.shared.state.lock().settings.repos.get(&key).map(|r| r.filters.clone());
         let Some(mut filters) = stored else {
-            return Ok(RepoFilters { branches: Vec::new(), remotes: true, tags: false });
+            return Ok(RepoFilters::default());
         };
         if filters.branches.is_empty() {
             return Ok(filters);
@@ -379,7 +380,7 @@ impl ToposSettingsStore {
             let mut state = self.shared.state.lock();
             if let Some(repo) = state.settings.repos.get_mut(&key) {
                 // Only names that are gone go, so a filter set meanwhile keeps its new names.
-                repo.filters.retain(|b| existing.contains(b));
+                repo.filters.branches.retain(|b| existing.contains(b));
                 state.mark_dirty(&self.shared);
             }
         }

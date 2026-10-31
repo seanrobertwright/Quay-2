@@ -20,8 +20,9 @@ function sameFilters(a: GraphFilters, b: GraphFilters): boolean {
   );
 }
 
-function store(repoPath: string, filters: GraphFilters): void {
-  const repoFilters = { repoPath, branches: [...filters.branches], remotes: filters.remotes, tags: filters.tags };
+/** Writes `filters` to `repoPath`'s topos.json entry: `RepoFiltersPatch` in `settings.rs`. */
+function persistFilters(repoPath: string, filters: GraphFilters): void {
+  const repoFilters = { repoPath, filters: { branches: [...filters.branches], remotes: filters.remotes, tags: filters.tags } };
   invoke<ToposSettings>("topos_settings_write", { patch: { repoFilters } }).catch(console.error);
 }
 
@@ -59,7 +60,7 @@ export function useGraphFilters(repoPath: string | null, refs: RefsState): Graph
       const prev = current.current;
       // Nothing is set before the stored filters arrive, so they can't overwrite a change.
       if (repoPath === null || prev === null) return;
-      if (!sameFilters(prev.filters, next.filters)) store(repoPath, next.filters);
+      if (!sameFilters(prev.filters, next.filters)) persistFilters(repoPath, next.filters);
       current.current = next;
       setLoaded({ repoPath, state: next });
     },

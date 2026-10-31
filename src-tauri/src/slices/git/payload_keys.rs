@@ -462,11 +462,9 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             s(&RepoState {
                 last_opened: 1_793_000_000_000,
                 suppress_speedup: true,
-                filters: vec!["refs/heads/main".into()],
-                remotes: false,
-                tags: true,
+                filters: RepoFilters { branches: vec!["refs/heads/main".into()], remotes: false, tags: true },
             }),
-            json!({ "lastOpened": 1_793_000_000_000_i64, "suppressSpeedup": true, "filters": ["refs/heads/main"], "remotes": false, "tags": true }),
+            json!({ "lastOpened": 1_793_000_000_000_i64, "suppressSpeedup": true, "branches": ["refs/heads/main"], "remotes": false, "tags": true }),
         ),
         (
             "RepoFilters",

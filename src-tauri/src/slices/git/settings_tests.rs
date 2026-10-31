@@ -336,13 +336,12 @@ fn a_repos_filters_round_trip_through_the_file_and_branches_that_are_gone_are_pr
 
     // Untouched, a repo's filters are the defaults: every branch, remotes shown, tags not.
     assert_eq!(store.repo_filters(&repo).unwrap(), RepoFilters { branches: vec![], remotes: true, tags: false });
+    assert_eq!(RepoFilters::default(), RepoFilters { branches: vec![], remotes: true, tags: false });
 
     store
         .write(patch(json!({ "repoFilters": {
             "repoPath": worktree.to_string_lossy(),
-            "branches": ["refs/heads/feat", "refs/heads/doomed"],
-            "remotes": false,
-            "tags": true,
+            "filters": { "branches": ["refs/heads/feat", "refs/heads/doomed"], "remotes": false, "tags": true },
         } })))
         .unwrap();
     store.flush().unwrap();
@@ -367,7 +366,7 @@ fn a_filter_naming_anything_but_full_branch_names_is_refused_whole() {
     let store = ToposSettingsStore::at(temp_path());
     for bad in ["--all", "feat", "refs/tags/v1", ""] {
         let result = store.write(patch(json!({ "repoFilters": {
-            "repoPath": worktree.to_string_lossy(), "branches": [bad], "remotes": true, "tags": false,
+            "repoPath": worktree.to_string_lossy(), "filters": { "branches": [bad], "remotes": true, "tags": false },
         } })));
         assert!(matches!(result, Err(GitError::InvalidRefName { .. })), "{bad:?}: {result:?}");
     }
@@ -381,15 +380,13 @@ fn bad_stored_filter_values_read_as_their_defaults() {
     std::fs::write(
         &path,
         r#"{ "repos": {
-            "c:/a/.git": { "lastOpened": 5, "filters": ["refs/heads/main", "--all", 7, "main"], "remotes": "no", "tags": 1 },
-            "c:/b/.git": { "lastOpened": 5, "filters": "refs/heads/main", "remotes": false, "tags": true }
+            "c:/a/.git": { "lastOpened": 5, "branches": ["refs/heads/main", "--all", 7, "main"], "remotes": "no", "tags": 1 },
+            "c:/b/.git": { "lastOpened": 5, "branches": "refs/heads/main", "remotes": false, "tags": true }
         } }"#,
     )
     .unwrap();
 
     let repos = ToposSettingsStore::at(path).read().repos;
-    let a = &repos["c:/a/.git"];
-    assert_eq!((a.filters.clone(), a.remotes, a.tags), (vec!["refs/heads/main".to_string()], true, false));
-    let b = &repos["c:/b/.git"];
-    assert_eq!((b.filters.clone(), b.remotes, b.tags), (vec![], false, true));
+    assert_eq!(repos["c:/a/.git"].filters, RepoFilters { branches: vec!["refs/heads/main".into()], remotes: true, tags: false });
+    assert_eq!(repos["c:/b/.git"].filters, RepoFilters { branches: vec![], remotes: false, tags: true });
 }
