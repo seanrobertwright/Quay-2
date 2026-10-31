@@ -113,9 +113,12 @@ export interface CommitDetails {
   provenance: GraphAgent | null;
 }
 
+/** `FileStatus` from `src-tauri/src/slices/git/details.rs`: git's status letter for a commit's file. */
+export type FileStatus = "A" | "M" | "D" | "R" | "C" | "T";
+
 /** One file of `git_commit_files`; the counts are null for a binary file. */
 export interface CommitFile {
-  status: string;
+  status: FileStatus;
   path: string;
   oldPath: string | null;
   additions: number | null;

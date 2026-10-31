@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::checkout_tests::rev;
-use super::details::{commit_details, commit_files, verify_commit, CommitFiles, SignatureStatus, Trailer, Verification};
+use super::details::{commit_details, commit_files, parse_files, verify_commit, CommitFiles, FileStatus, SignatureStatus, Trailer, Verification};
 use super::graph::provenance::AgentSource;
 use super::staging_tests::{git, repo_with_worktree};
 
@@ -121,8 +121,8 @@ fn an_ssh_signed_commit_has_a_signature_that_verifies_good_once_its_key_is_allow
 }
 
 /// The files as `(status, path, old path, additions, deletions)`.
-fn files_of(files: &CommitFiles) -> Vec<(String, String, Option<String>, Option<u32>, Option<u32>)> {
-    files.files.iter().map(|f| (f.status.clone(), f.path.clone(), f.old_path.clone(), f.additions, f.deletions)).collect()
+fn files_of(files: &CommitFiles) -> Vec<(FileStatus, String, Option<String>, Option<u32>, Option<u32>)> {
+    files.files.iter().map(|f| (f.status, f.path.clone(), f.old_path.clone(), f.additions, f.deletions)).collect()
 }
 
 #[test]
@@ -146,8 +146,8 @@ fn files_list_status_numstat_and_a_rename_with_an_odd_path() {
     assert_eq!(
         got,
         vec![
-            ("M".into(), "README.md".into(), None, Some(1), Some(0)),
-            ("R".into(), "odd name é.txt".into(), Some("notes.txt".into()), Some(1), Some(1)),
+            (FileStatus::M, "README.md".into(), None, Some(1), Some(0)),
+            (FileStatus::R, "odd name é.txt".into(), Some("notes.txt".into()), Some(1), Some(1)),
         ]
     );
     assert_eq!((files.total, files.truncated), (2, false));
@@ -162,7 +162,7 @@ fn a_binary_file_has_no_line_counts() {
 
     let files = commit_files(&wt, &rev(&wt, "HEAD"), None).expect("files read");
 
-    assert_eq!(files_of(&files), vec![("A".into(), "blob.bin".into(), None, None, None)]);
+    assert_eq!(files_of(&files), vec![(FileStatus::A, "blob.bin".into(), None, None, None)]);
 }
 
 /// `wt` with a merge of `side`, which changed `side.txt`, into `feat`, which changed `README.md`.
@@ -202,9 +202,9 @@ fn a_parent_index_outside_the_parent_count_is_refused() {
     assert!(commit_files(&wt, &root, Some(1)).is_err(), "a root commit has no parent 1");
     assert!(commit_files(&wt, "-p", None).is_err(), "an option is refused as an oid");
     let files = commit_files(&wt, &root, None).expect("a root commit diffs against the empty tree");
-    let mut paths: Vec<_> = files.files.iter().map(|f| (f.status.clone(), f.path.clone())).collect();
+    let mut paths: Vec<_> = files.files.iter().map(|f| (f.status, f.path.clone())).collect();
     paths.sort();
-    assert_eq!(paths, vec![("A".into(), "README.md".into()), ("A".into(), "src/lib.rs".into())]);
+    assert_eq!(paths, vec![(FileStatus::A, "README.md".to_string()), (FileStatus::A, "src/lib.rs".to_string())]);
 }
 
 #[test]
@@ -251,4 +251,12 @@ fn a_copied_files_diff_is_against_its_source_even_when_the_source_changed_too() 
     assert!(texts.contains(&"line three"), "{texts:?}");
     assert!(!texts.contains(&"line eighteen"), "the source's own edit stays out: {texts:?}");
     assert_eq!(read.hunks.len(), 1);
+}
+
+#[test]
+fn a_file_record_with_a_status_letter_details_mode_does_not_know_is_an_error() {
+    let known = b":100644 100644 aaaa bbbb M a.txt ";
+    assert_eq!(parse_files(known, 10).expect("M is known").files[0].status, FileStatus::M);
+    let unknown = b":100644 100644 aaaa bbbb X a.txt ";
+    assert!(parse_files(unknown, 10).is_err(), "an unknown letter is never read as a modification");
 }

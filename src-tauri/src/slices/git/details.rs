@@ -72,8 +72,10 @@ fn has_signature_header(repo: &Path, oid: &str) -> Result<bool, GitError> {
     Ok(headers.any(|line| line.starts_with(b"gpgsig ") || line.starts_with(b"gpgsig-sha256 ")))
 }
 
-fn seconds_to_ms(field: &str) -> i64 {
-    field.trim().parse::<i64>().unwrap_or(0).saturating_mul(1000)
+/// A `%at` or `%ct` field in epoch ms. A field that isn't a number is an error, never the epoch.
+fn seconds_to_ms(field: &str) -> Result<i64, GitError> {
+    let seconds = field.trim().parse::<i64>().map_err(|_| other(format!("git printed a commit time that is not a number: {field:?}")))?;
+    Ok(seconds.saturating_mul(1000))
 }
 
 /// `oid`'s details in `repo` (#397): its message split into subject and body, author and
@@ -100,8 +102,8 @@ pub fn commit_details(repo: &Path, oid: &str) -> Result<CommitDetails, GitError>
     Ok(CommitDetails {
         oid: f[0].to_string(),
         parents: f[1].split_whitespace().map(str::to_string).collect(),
-        author: Person { name: f[2].to_string(), email: f[3].to_string(), time_ms: seconds_to_ms(f[4]) },
-        committer: Person { name: f[5].to_string(), email: f[6].to_string(), time_ms: seconds_to_ms(f[7]) },
+        author: Person { name: f[2].to_string(), email: f[3].to_string(), time_ms: seconds_to_ms(f[4])? },
+        committer: Person { name: f[5].to_string(), email: f[6].to_string(), time_ms: seconds_to_ms(f[7])? },
         subject: f[8].to_string(),
         body: f[9].trim_end().to_string(),
         has_signature: has_signature_header(repo, &full)?,
@@ -156,12 +158,42 @@ pub fn verify_commit(repo: &Path, oid: &str) -> Result<Verification, GitError> {
     Ok(Verification { status: status_of(letter.trim()), signer: (!signer.is_empty()).then(|| signer.to_string()) })
 }
 
+/// git's status letter for a file a commit changed, sent as the letter itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum FileStatus {
+    /// Added.
+    A,
+    /// Modified.
+    M,
+    /// Deleted.
+    D,
+    /// Renamed.
+    R,
+    /// Copied.
+    C,
+    /// Type changed, such as a file turned into a symlink.
+    T,
+}
+
+impl FileStatus {
+    fn from_letter(letter: char) -> Result<Self, GitError> {
+        Ok(match letter {
+            'A' => Self::A,
+            'M' => Self::M,
+            'D' => Self::D,
+            'R' => Self::R,
+            'C' => Self::C,
+            'T' => Self::T,
+            _ => return Err(other(format!("git printed a file status details mode doesn't know: {letter:?}"))),
+        })
+    }
+}
+
 /// One file a commit changed against the chosen parent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitFile {
-    /// git's status letter: `A`, `M`, `D`, `R`, `C` or `T`.
-    pub status: String,
+    pub status: FileStatus,
     pub path: String,
     /// A rename's or copy's source path.
     pub old_path: Option<String>,
@@ -202,8 +234,9 @@ fn count(field: &str) -> Option<u32> {
 
 /// Parses `diff-tree -z --raw --numstat`, which prints every raw record and then every numstat
 /// record in the same order. Paths are NUL-terminated as git wrote them, so a space, tab or
-/// newline in a name survives. Keeps the first `cap` files and counts them all.
-fn parse_files(out: &[u8], cap: usize) -> CommitFiles {
+/// newline in a name survives. Keeps the first `cap` files and counts them all. A record with no
+/// status letter, or one this module doesn't know, is an error.
+pub(super) fn parse_files(out: &[u8], cap: usize) -> Result<CommitFiles, GitError> {
     let mut tokens = out.split(|&b| b == 0).map(|t| String::from_utf8_lossy(t).into_owned());
     let mut files: Vec<CommitFile> = Vec::new();
     let mut total = 0usize;
@@ -213,12 +246,13 @@ fn parse_files(out: &[u8], cap: usize) -> CommitFiles {
             continue;
         }
         if let Some(raw) = token.strip_prefix(':') {
-            let status = raw.rsplit(' ').next().unwrap_or("").chars().next().unwrap_or('M');
+            let letter = raw.rsplit(' ').next().and_then(|s| s.chars().next());
+            let status = FileStatus::from_letter(letter.ok_or_else(|| other("git printed a file record with no status"))?)?;
             let first = tokens.next().unwrap_or_default();
-            let (path, old_path) = if matches!(status, 'R' | 'C') { (tokens.next().unwrap_or_default(), Some(first)) } else { (first, None) };
+            let (path, old_path) = if matches!(status, FileStatus::R | FileStatus::C) { (tokens.next().unwrap_or_default(), Some(first)) } else { (first, None) };
             total += 1;
             if files.len() < cap {
-                files.push(CommitFile { status: status.to_string(), path, old_path, additions: None, deletions: None });
+                files.push(CommitFile { status, path, old_path, additions: None, deletions: None });
             }
         } else {
             let mut fields = token.splitn(3, '\t');
@@ -235,7 +269,7 @@ fn parse_files(out: &[u8], cap: usize) -> CommitFiles {
             numstat += 1;
         }
     }
-    CommitFiles { files, total: total as u32, truncated: total > cap }
+    Ok(CommitFiles { files, total: total as u32, truncated: total > cap })
 }
 
 /// The files `oid` changed in `repo` against its parent `parent_index` (#397): status letter,
@@ -251,7 +285,7 @@ pub fn commit_files(repo: &Path, oid: &str, parent_index: Option<u32>) -> Result
         None => args.extend(["--root", full.as_str()]),
     }
     let out = run_read(repo, args)?;
-    Ok(parse_files(&out, MAX_COMMIT_FILES))
+    parse_files(&out, MAX_COMMIT_FILES)
 }
 
 /// `oid`'s details in the repo at `repo_path`. See [`commit_details`].

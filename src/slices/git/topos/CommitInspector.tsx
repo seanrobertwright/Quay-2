@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { BadgeCheck, ChevronDown, ChevronRight, Copy, Loader2, ShieldAlert, ShieldQuestion, X } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
 import { usePopupLayer } from "../../overlay/useOverlay";
-import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type Person } from "./commitDetails";
+import { committerShown, filesNote, linkify, keyedTrailers, type CommitDetails, type CommitFile, type FileStatus, type Person } from "./commitDetails";
 import { movedRow } from "./commitSelection";
 import type { Badge } from "./graphRefs";
 import { shortOid } from "./graphStore";
@@ -41,7 +41,7 @@ export interface CommitInspectorProps {
   focusRef: React.RefObject<HTMLElement | null>;
 }
 
-const LETTER_WORDS: Record<string, string> = {
+const LETTER_WORDS: Record<FileStatus, string> = {
   A: "added",
   M: "modified",
   D: "deleted",
@@ -50,12 +50,13 @@ const LETTER_WORDS: Record<string, string> = {
   T: "type changed",
 };
 
-const LETTER_CLASS: Record<string, string> = {
+const LETTER_CLASS: Record<FileStatus, string> = {
   A: "text-[#3fb950]",
   M: "text-[#d29922]",
   D: "text-[#f85149]",
   R: "text-[#58a6ff]",
   C: "text-[#58a6ff]",
+  T: "text-[#8b949e]",
 };
 
 /** A commit body as text with only http(s) links (#368): React text children, never HTML. */
@@ -204,7 +205,7 @@ const CommitFileList: React.FC<{
   for (let i = win.start; i < win.end; i++) {
     const file = files[i];
     if (file === undefined) continue;
-    const words = LETTER_WORDS[file.status] ?? file.status;
+    const words = LETTER_WORDS[file.status];
     shown.push(
       <div
         key={file.path}
@@ -218,7 +219,7 @@ const CommitFileList: React.FC<{
         } ${openPath === file.path ? "shadow-[inset_2px_0_0_#06B6D4]" : ""}`}
         style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT }}
       >
-        <span aria-hidden="true" className={`w-3 shrink-0 text-center font-mono font-semibold ${LETTER_CLASS[file.status] ?? "text-[#8b949e]"}`}>
+        <span aria-hidden="true" className={`w-3 shrink-0 text-center font-mono font-semibold ${LETTER_CLASS[file.status]}`}>
           {file.status}
         </span>
         <span className="flex-1 min-w-0 truncate text-[#c9d1d9]">

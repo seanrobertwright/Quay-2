@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CommitDetails, CommitFiles, Verification } from "./commitDetails";
+import type { CommitDetails, CommitFiles, FileStatus, Verification } from "./commitDetails";
 import type { FileDiff } from "./diffDoc";
 import { errorMessage } from "./gitVersion";
 import { RequestIds } from "./refreshTable";
@@ -116,7 +116,7 @@ export interface OpenCommitFile {
   parentIndex: number;
   path: string;
   oldPath: string | null;
-  status: string;
+  status: FileStatus;
 }
 
 export type CommitDiffState = { state: "loading" } | { state: "done"; diff: FileDiff } | { state: "failed"; message: string };

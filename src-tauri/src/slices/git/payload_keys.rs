@@ -9,7 +9,7 @@ use super::ref_ops::BranchDeleted;
 use super::remote_ops::{LeasePlan, RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
-use super::details::{CommitDetails, CommitFile, CommitFiles, Person, SignatureStatus, Trailer, Verification};
+use super::details::{CommitDetails, CommitFile, CommitFiles, FileStatus, Person, SignatureStatus, Trailer, Verification};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
@@ -499,7 +499,7 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "CommitFiles",
             s(&CommitFiles {
                 files: vec![CommitFile {
-                    status: "R".into(),
+                    status: FileStatus::R,
                     path: "new.txt".into(),
                     old_path: Some("old.txt".into()),
                     additions: Some(1),
