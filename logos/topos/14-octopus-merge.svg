@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp14-title tp14-desc">
+  <title id="tp14-title">Topos Git Cockpit: Octopus Merge</title>
+  <desc id="tp14-desc">A nod to GitKraken’s octopus/squid roots: multiple peripheral tentacles feeding into one core.</desc>
+  <g id="tp14-icon"><path d="M 18 24 Q 36 36 48 48" fill="none" stroke="#06B6D4" stroke-width="4.5" stroke-linecap="round"/><path d="M 78 24 Q 60 36 48 48" fill="none" stroke="#8B5CF6" stroke-width="4.5" stroke-linecap="round"/><path d="M 18 72 Q 36 60 48 48" fill="none" stroke="#F59E0B" stroke-width="4.5" stroke-linecap="round"/><path d="M 78 72 Q 60 60 48 48" fill="none" stroke="#EC4899" stroke-width="4.5" stroke-linecap="round"/><circle cx="18" cy="24" r="6" fill="#06B6D4"/><circle cx="78" cy="24" r="6" fill="#8B5CF6"/><circle cx="18" cy="72" r="6" fill="#F59E0B"/><circle cx="78" cy="72" r="6" fill="#EC4899"/><circle cx="48" cy="48" r="10" fill="#10B981"/><circle cx="48" cy="48" r="5" fill="#FFFFFF"/></g>
+  <g id="tp14-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>

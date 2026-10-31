@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp17-title tp17-desc">
+  <title id="tp17-title">Topos Git Cockpit: Cherry Pick</title>
+  <desc id="tp17-desc">A highlighted diamond node plucked from a side branch and transferred cleanly into the main line.</desc>
+  <g id="tp17-icon"><line x1="26" y1="18" x2="26" y2="78" stroke="#1E293B" stroke-width="4" stroke-linecap="round"/><line x1="70" y1="18" x2="70" y2="78" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/><path d="M 70 58 C 70 42, 26 50, 26 34" fill="none" stroke="#F43F5E" stroke-width="4" stroke-dasharray="4 4"/><circle cx="26" cy="70" r="5.5" fill="#1E293B"/><circle cx="26" cy="50" r="5.5" fill="#1E293B"/><circle cx="26" cy="34" r="8" fill="#10B981"/><circle cx="26" cy="34" r="4" fill="#FFFFFF"/><circle cx="70" cy="58" r="6" fill="#94A3B8"/><rect x="42" y="38" width="12" height="12" rx="2" transform="rotate(45 48 44)" fill="#F43F5E"/></g>
+  <g id="tp17-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>

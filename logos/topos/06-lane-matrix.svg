@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-labelledby="tp06-title tp06-desc">
+  <title id="tp06-title">Topos Git Cockpit: Lane Matrix</title>
+  <desc id="tp06-desc">Three vertical GitKraken-style commit columns with staggered nodes and lane transition ribbons.</desc>
+  <g id="tp06-icon"><line x1="24" y1="14" x2="24" y2="82" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/><line x1="48" y1="14" x2="48" y2="82" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/><line x1="72" y1="14" x2="72" y2="82" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/><path d="M 24 70 C 24 54, 48 54, 48 38" fill="none" stroke="#06B6D4" stroke-width="4.5" stroke-linecap="round"/><path d="M 48 58 C 48 46, 72 46, 72 30" fill="none" stroke="#8B5CF6" stroke-width="4.5" stroke-linecap="round"/><circle cx="24" cy="70" r="7" fill="#06B6D4"/><circle cx="48" cy="38" r="8" fill="#10B981"/><circle cx="48" cy="38" r="4" fill="#FFFFFF"/><circle cx="48" cy="58" r="6" fill="#3B82F6"/><circle cx="72" cy="30" r="7" fill="#8B5CF6"/><circle cx="24" cy="22" r="5" fill="#94A3B8"/><circle cx="72" cy="72" r="5" fill="#94A3B8"/></g>
+  <g id="tp06-wordmark">
+    <text x="110" y="54" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="4" fill="#0F172A">TOPOS</text>
+    <text x="112" y="74" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Inter', Roboto, sans-serif" font-size="10.5" font-weight="700" letter-spacing="3" fill="#06B6D4">GIT COCKPIT</text>
+  </g>
+</svg>
