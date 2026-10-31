@@ -129,7 +129,7 @@ test("Reset file and taking a whole side say what they throw away", () => {
   assert.match(reset.detail, /unsaved edits/);
   assert.match(reset.detail, /Recently discarded/);
   assert.doesNotMatch(confirmReset("src/a.txt", false).detail, /unsaved/);
-  const take = confirmTakeSide("src/a.txt", { role: "Incoming", name: "feature" });
+  const take = confirmTakeSide("src/a.txt", "Incoming · feature");
   assert.equal(take.title, "Keep Incoming · feature for all of src/a.txt?");
   assert.equal(take.confirmLabel, "Keep Incoming · feature");
   assert.match(take.detail, /stages it/);

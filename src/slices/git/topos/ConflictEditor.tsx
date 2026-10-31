@@ -9,8 +9,10 @@ const ours = Annotation.define<boolean>();
 /** Marks a replacement of the whole doc from outside (a reset, a reopen), which is not an edit. */
 const external = Annotation.define<boolean>();
 
+/** git's marker length when `conflict-marker-size` isn't set; the backend always sends the file's own. */
+const DEFAULT_MARKER_SIZE = 7;
 /** The file's conflict marker size. */
-const markerSizeFacet = Facet.define<number, number>({ combine: (values) => values[0] ?? 7 });
+const markerSizeFacet = Facet.define<number, number>({ combine: (values) => values[0] ?? DEFAULT_MARKER_SIZE });
 
 /** The Result's hunks, parsed again on every change. */
 const parsedField = StateField.define<ParsedConflicts>({

@@ -87,8 +87,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
     setConfirm({ ...request, onConfirm: resolver.reset });
   };
   const askTakeSide = (side: ConflictSide) => {
-    const label = op.leftLabel !== null && op.rightLabel !== null ? (side === "left" ? op.leftLabel : op.rightLabel) : { role: side === "left" ? "Left side" : "Right side", name: "" };
-    const request = confirmTakeSide(path, label);
+    const request = confirmTakeSide(path, labels[side].text);
     setConfirm({ ...request, onConfirm: () => resolver.takeSide(side) });
   };
   const askMarkResolved = () => {

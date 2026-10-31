@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DiscardBackup } from "./discards";
-import { resolverFailure, type ResolverFailure } from "./conflicts";
+import { resolverFailure, STAGING_BUSY_MESSAGE, type ResolverFailure } from "./conflicts";
 import { RequestIds } from "./refreshTable";
+import { doneMessage } from "./stagingKeys";
 import type { WorktreeStatus } from "./stagingLists";
-import type { Staging } from "./useStaging";
+import type { BusyOp, Staging } from "./useStaging";
 
 /** `NotEditable` from `src-tauri/src/slices/git/conflict.rs`. */
 export type NotEditable =
@@ -61,13 +62,16 @@ export interface ConflictResolverState {
   failure: ResolverFailure | null;
   /** Reads the file afresh, dropping unsaved edits. */
   reopen: () => void;
-  /** Saves `text`; resolves to whether it landed. */
-  save: () => Promise<boolean>;
+  /** Saves `text`; resolves to the file as saved, or null when it didn't land. */
+  save: () => Promise<ConflictFile | null>;
   /** Puts the file back to git's markers, after the caller's confirm. */
   reset: () => void;
   /** Keeps one whole side and stages it, after the caller's confirm. */
   takeSide: (side: ConflictSide) => void;
-  /** Stages the file through the inspector's own `git add` path, saving unsaved edits first. */
+  /**
+   * Stages the file through the inspector's own `git add` path, saving unsaved edits first. The
+   * backend re-checks the token first, so bytes written since the file was read are never staged.
+   */
   markResolved: () => void;
 }
 
@@ -76,7 +80,8 @@ export interface ConflictResolverState {
  * with the Result the operator edits. Every write runs as the worktree's one staging operation and
  * hands back the token it was read with, so the backend refuses it with `ConflictStale` when git or
  * an agent changed the file meanwhile. Reset file and take-whole-side record their backups in
- * Recently discarded, as a discard does (#387). Mark resolved is the inspector's Stage.
+ * Recently discarded, as a discard does (#387). Mark resolved stages through the inspector's
+ * `git add` path, after the same token check.
  */
 export function useConflictResolver(worktreePath: string | null, path: string | null, staging: Staging): ConflictResolverState {
   const [read, setRead] = useState<ConflictRead | null>(null);
@@ -85,7 +90,7 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
   const ids = useRef(new RequestIds());
   const target = useRef({ worktreePath, path });
   target.current = { worktreePath, path };
-  const { exclusive, announce, recordDiscard, reload, run } = staging;
+  const { exclusive, announce, recordDiscard, reload } = staging;
 
   /** Whether `worktree` and `file` are still what the resolver shows. */
   const current = (worktree: string, file: string) => target.current.worktreePath === worktree && target.current.path === file;
@@ -134,89 +139,120 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
     [announce]
   );
 
-  const save = useCallback((): Promise<boolean> => {
-    if (file === null || !file.editable || text === null) return Promise.resolve(false);
+  /**
+   * Runs `command` on `name` as the worktree's one staging operation, shown busy as `action`, and
+   * resolves to `done`'s answer, or to `failed` once the failure is shown. Says so, without
+   * calling, while another operation runs.
+   */
+  const write = useCallback(
+    <T, R>(name: string, action: BusyOp["action"], command: string, args: Record<string, unknown>, done: (worktree: string, out: T) => R, failed: R): Promise<R> => {
+      const ran = exclusive({ action, target: { kind: "paths", paths: [name] } }, (worktree) => {
+        setFailure(null);
+        return invoke<T>(command, { worktreePath: worktree, path: name, ...args }).then(
+          (out) => done(worktree, out),
+          (e: unknown) => {
+            fail(worktree, name, e);
+            return failed;
+          }
+        );
+      });
+      if (ran === null) {
+        announce(STAGING_BUSY_MESSAGE);
+        return Promise.resolve(failed);
+      }
+      return ran;
+    },
+    [exclusive, announce, fail]
+  );
+
+  const save = useCallback((): Promise<ConflictFile | null> => {
+    if (file === null || !file.editable || text === null) return Promise.resolve(null);
     const { path: name, token } = file;
     const saved = text;
-    const ran = exclusive({ action: "resolve", target: { kind: "paths", paths: [name] } }, (worktree) => {
-      setFailure(null);
-      return invoke<ConflictFile>("git_conflict_save", { worktreePath: worktree, path: name, token, text: saved }).then(
-        (next) => {
-          if (current(worktree, name)) {
-            ids.current.next();
-            setRead({ state: "done", file: next });
-            // Edits made while the save ran stay; the saved text is the new baseline.
-            setText((now) => (now === saved ? next.result : now));
-          }
-          announce(`Saved ${name}`);
-          void reload();
-          return true;
-        },
-        (e: unknown) => {
-          fail(worktree, name, e);
-          return false;
+    return write<ConflictFile, ConflictFile | null>(
+      name,
+      "resolve",
+      "git_conflict_save",
+      { token, text: saved },
+      (worktree, next) => {
+        if (current(worktree, name)) {
+          ids.current.next();
+          setRead({ state: "done", file: next });
+          // Edits made while the save ran stay; the saved text is the new baseline.
+          setText((now) => (now === saved ? next.result : now));
         }
-      );
-    });
-    if (ran === null) {
-      announce("Another staging operation is still running on this worktree.");
-      return Promise.resolve(false);
-    }
-    return ran;
-  }, [file, text, exclusive, announce, reload, fail]);
+        announce(`Saved ${name}`);
+        void reload();
+        return next;
+      },
+      null
+    );
+  }, [file, text, write, announce, reload]);
 
   const reset = useCallback(() => {
     if (file === null) return;
     const { path: name, token } = file;
-    const ran = exclusive({ action: "resolve", target: { kind: "paths", paths: [name] } }, (worktree) => {
-      setFailure(null);
-      return invoke<ConflictReset>("git_conflict_reset", { worktreePath: worktree, path: name, token }).then(
-        (out) => {
-          if (current(worktree, name)) {
-            ids.current.next();
-            show(out.file);
-          }
-          recordDiscard(worktree, `${name} (Reset file)`, [out.backup]);
-          void reload();
-        },
-        (e: unknown) => fail(worktree, name, e)
-      );
-    });
-    if (ran === null) announce("Another staging operation is still running on this worktree.");
-  }, [file, exclusive, show, recordDiscard, reload, fail, announce]);
+    void write<ConflictReset, void>(
+      name,
+      "resolve",
+      "git_conflict_reset",
+      { token },
+      (worktree, out) => {
+        if (current(worktree, name)) {
+          ids.current.next();
+          show(out.file);
+        }
+        recordDiscard(worktree, `${name} (Reset file)`, [out.backup]);
+        void reload();
+      },
+      undefined
+    );
+  }, [file, write, show, recordDiscard, reload]);
 
   const takeSide = useCallback(
     (side: ConflictSide) => {
       if (file === null) return;
       const { path: name, token } = file;
-      const ran = exclusive({ action: "resolve", target: { kind: "paths", paths: [name] } }, (worktree) => {
-        setFailure(null);
-        // The status comes back with the reload below, which carries the inspector's own request id.
-        return invoke<TakeSideResult>("git_conflict_take_side", { worktreePath: worktree, requestId: 0, path: name, token, side }).then(
-          (out) => {
-            recordDiscard(worktree, `${name} (kept one side whole)`, [out.backup]);
-            void reload();
-          },
-          (e: unknown) => fail(worktree, name, e)
-        );
-      });
-      if (ran === null) announce("Another staging operation is still running on this worktree.");
+      // The status comes back with the reload below, which carries the inspector's own request id.
+      void write<TakeSideResult, void>(
+        name,
+        "resolve",
+        "git_conflict_take_side",
+        { requestId: 0, token, side },
+        (worktree, out) => {
+          recordDiscard(worktree, `${name} (kept one side whole)`, [out.backup]);
+          void reload();
+        },
+        undefined
+      );
     },
-    [file, exclusive, recordDiscard, reload, fail, announce]
+    [file, write, recordDiscard, reload]
   );
 
   const markResolved = useCallback(() => {
     if (file === null) return;
     const name = file.path;
-    const stage = () => run("stage", { kind: "paths", paths: [name] });
+    // As take-whole-side, the status comes back with the reload.
+    const stage = (token: string) =>
+      void write<WorktreeStatus, void>(
+        name,
+        "stage",
+        "git_conflict_mark_resolved",
+        { requestId: 0, token },
+        () => {
+          announce(doneMessage("stage", { kind: "paths", paths: [name] }));
+          void reload();
+        },
+        undefined
+      );
     if (!dirty) {
-      stage();
+      stage(file.token);
       return;
     }
     void save().then((saved) => {
-      if (saved) stage();
+      if (saved !== null) stage(saved.token);
     });
-  }, [file, dirty, save, run]);
+  }, [file, dirty, save, write, announce, reload]);
 
   return { read, text, setText, dirty, failure, reopen, save, reset, takeSide, markResolved };
 }

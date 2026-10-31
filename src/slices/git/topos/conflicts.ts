@@ -172,14 +172,16 @@ export function confirmReset(path: string, unsaved: boolean): ResolverConfirm {
 }
 
 /** What taking one whole side confirms, naming the side by its role and real ref. */
-export function confirmTakeSide(path: string, side: { role: string; name: string }): ResolverConfirm {
-  const name = side.name === "" ? side.role : `${side.role} · ${side.name}`;
+export function confirmTakeSide(path: string, name: string): ResolverConfirm {
   return {
     title: `Keep ${name} for all of ${path}?`,
     detail: `This replaces ${path} with ${name}'s version, dropping the other side and any edits to the Result, and stages it as resolved. The file is backed up first, and Recently discarded can restore it.`,
     confirmLabel: `Keep ${name}`,
   };
 }
+
+/** What the resolver says when another staging operation holds the worktree. */
+export const STAGING_BUSY_MESSAGE = "Another staging operation is still running on this worktree.";
 
 /** A failed resolver write, as the resolver shows it. */
 export interface ResolverFailure {
@@ -196,7 +198,7 @@ export function resolverFailure(e: unknown, path: string): ResolverFailure {
         stale: true,
       };
     case "stagingBusy":
-      return { message: "Another staging operation is still running on this worktree.", stale: false };
+      return { message: STAGING_BUSY_MESSAGE, stale: false };
     case "indexLocked":
       return { message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.", stale: false };
   }
