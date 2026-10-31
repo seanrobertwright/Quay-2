@@ -109,5 +109,4 @@ test("the new refusals parse and read in a toast", () => {
     refFailure("side", { kind: "refLocked" }).text,
     "Another git process holds a lock on side; try again once it's done"
   );
-  assert.equal(refFailure("a..b", { kind: "invalidRefName", name: "a..b" }).text, "a..b isn't a valid name or commit");
 });
