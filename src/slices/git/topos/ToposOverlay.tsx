@@ -34,6 +34,8 @@ import { checkoutBlockedBy, type RefContext } from "./refActions";
 import { ToastQueue } from "./ToastQueue";
 import type { ToposRequestKind } from "./toposPalette";
 import { useRefActions } from "./useRefActions";
+import { RemoteToolbar } from "./RemoteToolbar";
+import { useRemoteOps } from "./useRemoteOps";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -61,7 +63,12 @@ export interface ToposOverlayProps {
    * Resolves to false when the Rail doesn't list that worktree.
    */
   onShowWorktree?: (path: string) => boolean;
-  /** A palette entry's request (#393), with a count so the same request twice runs twice. */
+  /**
+   * Opens a plain shell terminal in `cwd`, types `argv` into it quoted for its shell, then Enter,
+   * for Run in terminal (#395). Resolves to false when the command can't be typed safely.
+   */
+  onRunInTerminal?: (cwd: string, argv: string[]) => Promise<boolean>;
+  /** A palette entry's request (#393, #395), with a count so the same request twice runs twice. */
   request?: { kind: ToposRequestKind; seq: number } | null;
 }
 
@@ -85,6 +92,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   onOpenTerminal,
   onNewAgent,
   onShowWorktree,
+  onRunInTerminal,
   request = null,
 }) => {
   const titleId = useId();
@@ -232,15 +240,38 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBusy }),
     [refWorktrees, selectedPath, checkoutBusy]
   );
+  // Fetch, pull and push from the toolbar and the palette (#395), sharing the toasts and dialog.
+  const remote = useRemoteOps({
+    worktreePath: graphRepo !== null ? selectedPath : null,
+    repoPath: graphRepo,
+    staging,
+    refs: refsReader,
+    onLanded: liveUpdates.committed,
+    toast: refActions.toast,
+    openDialog: refActions.openDialog,
+    onRunInTerminal,
+  });
   // A palette request runs once Topos shows a repo whose refs are read.
   const handledRequest = useRef(0);
   const { newBranch, pickCheckout } = refActions;
+  const { fetch: fetchRemote, pull: pullRemote, push: pushRemote } = remote;
   useEffect(() => {
     if (!isOpen || request === null || request.seq === handledRequest.current || refContext === null) return;
     handledRequest.current = request.seq;
-    if (request.kind === "newBranch") newBranch("HEAD");
-    else pickCheckout();
-  }, [isOpen, request, refContext, newBranch, pickCheckout]);
+    switch (request.kind) {
+      case "newBranch":
+        return newBranch("HEAD");
+      case "checkout":
+        return pickCheckout();
+      case "fetch":
+        return fetchRemote();
+      case "pull":
+        return pullRemote();
+      case "push":
+        return pushRemote();
+    }
+  }, [isOpen, request, refContext, newBranch, pickCheckout, fetchRemote, pullRemote, pushRemote]);
+  const newBranchAtHead = useCallback(() => newBranch("HEAD"), [newBranch]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.
   const speedup = useSpeedup(graphRepo);
@@ -361,6 +392,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
+            {watch?.state !== "gone" && <RemoteToolbar remote={remote} onNewBranch={newBranchAtHead} />}
             {view.warning && (
               <p
                 role="status"

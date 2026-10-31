@@ -29,7 +29,15 @@ export type GitError =
   /** Branch and tag writes (#394). */
   | { kind: "notFullyMerged"; ahead: number; tip: string }
   | { kind: "refExists"; name: string }
-  | { kind: "refLocked" };
+  | { kind: "refLocked" }
+  /** Fetch, pull and push (#395). Refs, reasons and remote lines are untrusted display text. */
+  | { kind: "nonFastForward"; ref: string }
+  | { kind: "noUpstream"; branch: string; remotes: string[] }
+  | { kind: "remoteRejected"; ref: string; reason: string; remoteLines: string[] }
+  | { kind: "authFailed" }
+  | { kind: "hostKeyUnknown" }
+  | { kind: "network" }
+  | { kind: "divergentPullNeedsStrategy" };
 
 /** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
 export function parseGitError(e: unknown): GitError | null {
@@ -43,7 +51,24 @@ export function parseGitError(e: unknown): GitError | null {
     case "conflictStale":
     case "noOperation":
     case "refLocked":
+    case "authFailed":
+    case "hostKeyUnknown":
+    case "network":
+    case "divergentPullNeedsStrategy":
       return { kind: fields.kind };
+    case "nonFastForward":
+      return { kind: "nonFastForward", ref: String(fields.ref) };
+    case "noUpstream":
+      return Array.isArray(fields.remotes)
+        ? { kind: "noUpstream", branch: String(fields.branch), remotes: fields.remotes.map(String) }
+        : null;
+    case "remoteRejected":
+      return {
+        kind: "remoteRejected",
+        ref: String(fields.ref),
+        reason: String(fields.reason),
+        remoteLines: Array.isArray(fields.remoteLines) ? fields.remoteLines.map(String) : [],
+      };
     case "conflictsRemain":
       return Number.isSafeInteger(fields.count) && (fields.count as number) >= 0
         ? { kind: "conflictsRemain", count: fields.count as number }

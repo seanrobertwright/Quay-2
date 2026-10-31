@@ -30,6 +30,7 @@ import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
 import { ToposOverlay, type ToposTarget } from "./slices/git/topos/ToposOverlay";
 import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
+import { commandLine, shellFor, typeCommand } from "./slices/terminal/typedCommand";
 import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
@@ -259,6 +260,19 @@ export function App() {
     (cwd: string) => {
       void spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "conflict" });
       setIsToposOpen(false);
+    },
+    [spawnTerminal, setIsToposOpen]
+  );
+  // Run in terminal (#395): a plain shell terminal, never an agent's, so it gets no commit
+  // stamping env, with the git command typed in for the operator to finish.
+  const runInToposTerminal = useCallback(
+    async (cwd: string, argv: string[]) => {
+      const shell = shellFor(navigator.userAgent);
+      if (commandLine(argv, shell) === null) return false;
+      const terminal = await spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "git" });
+      if (terminal === null) throw new Error("the terminal didn't start");
+      setIsToposOpen(false);
+      return typeCommand(terminal.id, argv, shell);
     },
     [spawnTerminal, setIsToposOpen]
   );
@@ -813,6 +827,7 @@ export function App() {
         onOpenTerminal={openToposTerminal}
         onNewAgent={startToposAgent}
         onShowWorktree={showToposWorktree}
+        onRunInTerminal={runInToposTerminal}
         request={toposRequest}
       />
 
