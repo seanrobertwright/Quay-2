@@ -870,7 +870,11 @@ export const GraphList: React.FC<GraphListProps> = ({
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!store) return;
     const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
-    if (row !== null) setActive({ sessionId: store.sessionId, row });
+    if (row === null) return;
+    setActive({ sessionId: store.sessionId, row });
+    // A click puts the badge cursor on the badge it hit, or on the row itself.
+    const index = badgeIndexAt(e.target);
+    setCursor(index === null ? null : { row, index });
   };
 
   const statusState = feed.status.state;
