@@ -4,6 +4,7 @@
 
 use serde_json::{json, Value};
 
+use super::checkout::RefsOutcome;
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -148,6 +149,26 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GitError::HandedOff",
             s(&GitError::HandedOff { path: "a.txt".into(), agent: "claude 1".into() }),
             json!({ "kind": "handedOff", "path": "a.txt", "agent": "claude 1" }),
+        ),
+        (
+            "GitError::CheckoutWouldOverwrite",
+            s(&GitError::CheckoutWouldOverwrite { paths: vec!["a.txt".into()] }),
+            json!({ "kind": "checkoutWouldOverwrite", "paths": ["a.txt"] }),
+        ),
+        (
+            "GitError::BranchInOtherWorktree",
+            s(&GitError::BranchInOtherWorktree { worktree: "C:/src/wt".into() }),
+            json!({ "kind": "branchInOtherWorktree", "worktree": "C:/src/wt" }),
+        ),
+        (
+            "GitError::InvalidRefName",
+            s(&GitError::InvalidRefName { name: "a..b".into() }),
+            json!({ "kind": "invalidRefName", "name": "a..b" }),
+        ),
+        (
+            "RefsOutcome",
+            s(&RefsOutcome { head: Some("abc".into()), refs: GitRefs::default() }),
+            json!({ "head": "abc", "refs": { "refs": [], "worktrees": [], "tagOnlyCount": 0 } }),
         ),
         (
             "HandOff",

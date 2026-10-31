@@ -24,7 +24,7 @@ export type StatusState =
 
 /** The staging operation running now, so its button shows busy and the others wait. */
 export interface BusyOp {
-  action: StagingAction | "discard" | "restore" | "copy" | "commit" | "operation" | "resolve";
+  action: StagingAction | "discard" | "restore" | "copy" | "commit" | "operation" | "resolve" | "refs";
   target: PathTarget;
   /** For a stage or unstage from the diff view, what part of the file it acts on. */
   selection?: Selection;

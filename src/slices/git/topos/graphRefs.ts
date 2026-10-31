@@ -37,7 +37,7 @@ export type Badge =
 const KIND_ORDER: Record<RefKind, number> = { local: 0, remote: 1, tag: 2 };
 
 /** The last segment of a folder path, the name a worktree goes by. */
-function folderName(path: string): string {
+export function folderName(path: string): string {
   const parts = path.split(/[\\/]/).filter((p) => p !== "");
   return parts[parts.length - 1] ?? path;
 }

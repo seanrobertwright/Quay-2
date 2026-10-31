@@ -16,6 +16,11 @@ export interface GraphRefsReader {
    * read failed or a newer read overtook it.
    */
   reload: () => Promise<GitRefs | null>;
+  /**
+   * Shows `refs`, which a ref operation on `repoPath` returned (#393), at once rather than after
+   * the watcher's refresh. It overtakes any read in flight.
+   */
+  accept: (repoPath: string, refs: GitRefs) => void;
 }
 
 /**
@@ -51,8 +56,12 @@ export function useGraphRefs(repoPath: string | null, readCount: number): GraphR
   }, [repoPath, readCount, read]);
 
   const reload = useCallback(() => read(repoPath), [read, repoPath]);
+  const accept = useCallback((path: string, refs: GitRefs) => {
+    ids.current.next();
+    setResult({ state: "done", repoPath: path, refs });
+  }, []);
 
   // Refs read for another repo are never handed out, not even for the render before a new read.
   const refs = result.state !== "idle" && result.repoPath !== repoPath ? ({ state: "idle" } as const) : result;
-  return { refs, reload };
+  return { refs, reload, accept };
 }

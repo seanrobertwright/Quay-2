@@ -540,7 +540,7 @@ pub async fn git_operation_state(worktree_path: String) -> Result<OpState, GitEr
 }
 
 /// Runs `run` with the app's ops and staging slots off the async runtime, since it waits on git.
-async fn in_background<T: Send + 'static>(
+pub(super) async fn in_background<T: Send + 'static>(
     app: tauri::AppHandle,
     what: &'static str,
     run: impl FnOnce(&GitOps, &StagingLocks) -> Result<T, GitError> + Send + 'static,

@@ -48,6 +48,7 @@ import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
 import { isSamePath } from "../../utils/paths";
+import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette";
 
 export interface CommandItem {
   id: string;
@@ -92,6 +93,9 @@ interface CommandPaletteProps {
   onOpenFactoryStation?: () => void;
   onOpenPraxisBuilder?: () => void;
   onOpenTopos?: () => void;
+  /** What Topos targets, which decides whether its New branch and Checkout entries show (#393). */
+  toposTarget?: { path: string } | null;
+  onToposRequest?: (kind: ToposRequestKind) => void;
   onCheckForUpdates?: () => void;
 }
 
@@ -125,6 +129,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenFactoryStation,
   onOpenPraxisBuilder,
   onOpenTopos,
+  toposTarget = null,
+  onToposRequest,
   onCheckForUpdates,
   onToggleLiveMode,
   onAddProject,
@@ -464,6 +470,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    if (onToposRequest) {
+      for (const entry of toposPaletteEntries(toposTarget)) {
+        items.push({
+          id: entry.id,
+          category: "Tools & Actions",
+          title: entry.title,
+          subtitle: entry.subtitle,
+          icon: <GitBranch className="w-4 h-4 text-[#06B6D4]" />,
+          action: () => onToposRequest(entry.request),
+        });
+      }
+    }
+
     if (onToggleLiveMode) {
       items.push({
         id: "action-toggle-gatekeeper",
@@ -589,6 +608,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenFactoryStation,
     onOpenPraxisBuilder,
     onOpenTopos,
+    toposTarget,
+    onToposRequest,
     onCheckForUpdates,
     onToggleLiveMode,
     onAddProject,
