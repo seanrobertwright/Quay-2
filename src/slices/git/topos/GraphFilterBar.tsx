@@ -2,7 +2,16 @@ import React, { useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, Filter, Highlighter, RotateCcw, X } from "lucide-react";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import type { HighlightKind } from "./agentHighlight";
-import { branchLabel, branchRef, filterChips, RESET, toggleAgent, toggleBranch, type FilterState } from "./graphFilters";
+import {
+  branchLabel,
+  branchRef,
+  filterChips,
+  isRemoteRef,
+  RESET,
+  toggleAgent,
+  toggleBranch,
+  type FilterState,
+} from "./graphFilters";
 import type { RefBadge } from "./graphRefs";
 
 /** Branches the dropdown lists at once; the search box narrows a longer list. */
@@ -65,7 +74,7 @@ const BranchesDropdown: React.FC<{ state: FilterState; onChange: (next: FilterSt
     return out.sort(
       (a, b) =>
         Number(selected.has(b)) - Number(selected.has(a)) ||
-        Number(a.startsWith("refs/remotes/")) - Number(b.startsWith("refs/remotes/")) ||
+        Number(isRemoteRef(a)) - Number(isRemoteRef(b)) ||
         a.localeCompare(b)
     );
   }, [refs, search, filters.remotes, selected]);

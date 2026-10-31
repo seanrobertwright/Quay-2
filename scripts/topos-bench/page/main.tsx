@@ -11,15 +11,12 @@ import { GraphList, type WipRowProps } from "../../../src/slices/git/topos/Graph
 import { DEFAULT_COLUMN_WIDTH } from "../../../src/slices/git/topos/graphColumn";
 import { NO_REFS } from "../../../src/slices/git/topos/graphRefs";
 import { selectCommits, selectionOids } from "../../../src/slices/git/topos/commitSelection";
-import type { RefSet } from "../../../src/slices/git/topos/graphFilters";
-import type { HighlightKind } from "../../../src/slices/git/topos/agentHighlight";
+import { DEFAULT_REF_SET, NO_AGENTS } from "../../../src/slices/git/topos/graphFilters";
 import type { BenchState } from "./benchState.ts";
 import "./bench.css";
 
 // No refs means no HEAD markers to put agents on.
 const NO_WORKTREE_AGENTS = new Map();
-const DEFAULT_REF_SET: RefSet = { kind: "branches" };
-const NO_KINDS: HighlightKind[] = [];
 const WIP: WipRowProps = {
   label: "3 changed",
   headOid: null,
@@ -175,7 +172,7 @@ function Bench() {
           repoPath={null}
           refSet={DEFAULT_REF_SET}
           // No agent highlight (#401), so the gate measures the rows as Topos opens them.
-          agentKinds={NO_KINDS}
+          agentKinds={NO_AGENTS}
         />
       ) : (
         <p role="status">Loading commits…</p>

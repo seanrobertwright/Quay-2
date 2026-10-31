@@ -9,8 +9,8 @@ import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from 
 import { GraphList } from "./GraphList";
 import type { FindKeyEvent } from "./graphFind";
 import { refsView, type RefBadge } from "./graphRefs";
-import { graphRefSet, showOnly, type RefSet } from "./graphFilters";
-import { highlightKinds, type HighlightKind } from "./agentHighlight";
+import { DEFAULT_REF_SET, graphRefSet, NO_AGENTS, showOnly } from "./graphFilters";
+import { highlightKinds } from "./agentHighlight";
 import { GraphFilterBar } from "./GraphFilterBar";
 import { useGraphFilters } from "./useGraphFilters";
 import { liveAgentsAt } from "./provenance";
@@ -58,8 +58,6 @@ import {
 
 const NO_SELECTION: CommitSelection = { kind: "none" };
 const NO_REF_BADGES: RefBadge[] = [];
-const NO_KINDS: HighlightKind[] = [];
-const DEFAULT_REF_SET: RefSet = { kind: "branches" };
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -658,7 +656,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       findKeysRef={findKeys}
                       repoPath={graphRepo}
                       refSet={refSet ?? DEFAULT_REF_SET}
-                      agentKinds={filterState?.agents ?? NO_KINDS}
+                      agentKinds={filterState?.agents ?? NO_AGENTS}
                     />
                   </div>
                   {commitFile && (

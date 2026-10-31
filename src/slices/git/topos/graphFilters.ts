@@ -28,14 +28,20 @@ export interface FilterState {
   agents: readonly HighlightKind[];
 }
 
+/** No agent kind highlighted. */
+export const NO_AGENTS: readonly HighlightKind[] = [];
+
 /** What Reset filters leaves: no filter and no highlight. */
-export const RESET: FilterState = { filters: NO_FILTERS, agents: [] };
+export const RESET: FilterState = { filters: NO_FILTERS, agents: NO_AGENTS };
 
 /** `RefSet` in `src-tauri/src/slices/git/rev_set.rs`, as `git_graph_open` and `git_log_search` take it. */
 export type RefSet =
   | { kind: "branches" }
   | { kind: "only"; refs: string[] }
   | { kind: "filtered"; branches: string[]; remotes: boolean; tags: boolean; worktreePath: string | null };
+
+/** Every branch and remote and HEAD: the ref set with no filter (#370). */
+export const DEFAULT_REF_SET: RefSet = { kind: "branches" };
 
 const LOCAL = "refs/heads/";
 const REMOTE = "refs/remotes/";
@@ -45,6 +51,11 @@ export function branchRef(badge: Pick<Badge, "kind" | "name">): string | null {
   if (badge.kind === "local") return LOCAL + badge.name;
   if (badge.kind === "remote") return REMOTE + badge.name;
   return null;
+}
+
+/** Whether `ref` is a full remote-tracking branch name such as `refs/remotes/origin/main`. */
+export function isRemoteRef(ref: string): boolean {
+  return ref.startsWith(REMOTE);
 }
 
 /** A full branch name as a badge shows it: `main`, or `origin/main` for a remote branch. */
@@ -132,7 +143,7 @@ export function filterChips({ filters, agents }: FilterState): FilterChip[] {
  * worktrees keeps the session; with any it names the selected worktree, whose HEAD is always walked.
  */
 export function graphRefSet(filters: GraphFilters, worktreePath: string | null): RefSet {
-  if (!isFiltered(filters)) return { kind: "branches" };
+  if (!isFiltered(filters)) return DEFAULT_REF_SET;
   return { kind: "filtered", branches: [...filters.branches], remotes: filters.remotes, tags: filters.tags, worktreePath };
 }
 

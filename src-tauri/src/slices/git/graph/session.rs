@@ -437,9 +437,14 @@ impl Walk {
     }
 
     /// Whether a walk that ended having sent no rows runs once more without `HEAD`. A repo whose
-    /// HEAD is unborn fails on `HEAD` before printing a row, so its branches are walked alone.
+    /// HEAD is unborn fails on `HEAD` before printing a row, so its branches are walked alone. Only
+    /// a ref set whose revisions end in an unchecked `HEAD` can fail that way.
     fn retry_without_head(&self, sent: u32, retried: &mut bool) -> bool {
-        if sent > 0 || *retried || self.refs != GraphRefs::Branches || head_is_born(&self.repo) {
+        if sent > 0 || *retried {
+            return false;
+        }
+        let unchecked_head = resolve_refs(&self.repo, &self.refs).is_ok_and(|revs| revs.unchecked_head);
+        if !unchecked_head || head_is_born(&self.repo) {
             return false;
         }
         *retried = true;
