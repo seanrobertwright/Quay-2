@@ -7,6 +7,7 @@ import { formatDateTime } from "../../../lib/dates.ts";
 import type { GitError } from "./gitVersion.ts";
 import type { GitRefs } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
+import type { Prompt } from "./refWrites.ts";
 import type { OpEvent } from "./speedup.ts";
 
 /** `FetchFrom` from `src-tauri/src/slices/git/remote_ops.rs`. */
@@ -218,7 +219,7 @@ export function gitArgv(request: NetworkRequest): string[] {
           "--force-if-includes",
           "--",
           request.remote,
-          `refs/heads/${request.branch}:${remoteRef}`,
+          `${branchRef(request.branch)}:${remoteRef}`,
         ];
       }
       return ["git", "push", ...(request.setUpstream ? ["--set-upstream"] : []), "--", request.remote, request.branch];
@@ -243,16 +244,22 @@ export interface LeasePlan {
   defaultBranch: string | null;
 }
 
-/** The words of a confirm dialog with no field. */
-export interface Prompt {
-  title: string;
-  detail: string;
-  confirmLabel: string;
+/** The prefix of every full branch name. */
+const HEADS = "refs/heads/";
+
+/** The full name of the branch `name`: `refs/heads/main` for `main`. */
+export function branchRef(name: string): string {
+  return `${HEADS}${name}`;
+}
+
+/** Whether `ref` is a full branch name, `refs/heads/<name>`. */
+export function isBranchRef(ref: string): boolean {
+  return ref.startsWith(HEADS);
 }
 
 /** The branch name of the remote branch `remoteRef`: `main` for `refs/heads/main`. */
 export function remoteBranchName(remoteRef: string): string {
-  return remoteRef.startsWith("refs/heads/") ? remoteRef.slice("refs/heads/".length) : remoteRef;
+  return isBranchRef(remoteRef) ? remoteRef.slice(HEADS.length) : remoteRef;
 }
 
 /** The first confirm of a force push of `branch`: where it goes and what it overwrites. */
