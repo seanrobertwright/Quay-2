@@ -116,6 +116,8 @@ async function replay(url: string): Promise<void> {
 function Bench() {
   const [version, setVersion] = useState(0);
   const [columnWidth, setColumnWidth] = useState(DEFAULT_COLUMN_WIDTH);
+  // The selection (#397), held here as Topos holds it, so the gate measures the list with it wired.
+  const [selectedOid, setSelectedOid] = useState<string | null>(null);
   useEffect(() => {
     // Rows are on screen in the first frame after the render that first showed them.
     if (state.firstRowsMs !== null || firstPageAt === null || !feed.store?.rowCount) return;
@@ -157,6 +159,9 @@ function Bench() {
           onRefAction={() => {}}
           onPrimary={() => {}}
           announce={() => {}}
+          selectedOid={selectedOid}
+          onSelect={setSelectedOid}
+          onInspect={() => {}}
         />
       ) : (
         <p role="status">Loading commits…</p>
