@@ -11,7 +11,7 @@ use tauri::ipc::Channel;
 use uuid::Uuid;
 
 use super::graph::{read_refs, GitRefs};
-use super::checkout::{check_branch_name, invalid_ref, outcome, refuse_option_like, resolve_commit, run_git, run_git_fed, RefsOutcome};
+use super::checkout::{check_branch_name, invalid_ref, outcome, refuse_option_like, resolve_commit, rev_oid, run_git, run_git_fed, RefsOutcome};
 use super::commit::read_git;
 use super::error::GitError;
 use super::op_runner::{GitOps, OpEvent};
@@ -38,6 +38,16 @@ pub fn branch_rename(
     })
 }
 
+/// Whether git ran but refused with stderr containing `needle`: true for that refusal, false when
+/// git succeeded. Any other failure passes through.
+fn failed_saying(ran: Result<String, GitError>, needle: &str) -> Result<bool, GitError> {
+    match ran {
+        Ok(_) => Ok(false),
+        Err(GitError::Other { stderr }) if stderr.contains(needle) => Ok(true),
+        Err(other) => Err(other),
+    }
+}
+
 /// The full name of the branch `upstream` names, `refs/remotes/<upstream>` when there is a
 /// remote-tracking branch of that name and `refs/heads/<upstream>` when there is a local one, once
 /// `check-ref-format` accepts it. Refuses one that is option-like or names no branch.
@@ -48,7 +58,7 @@ fn upstream_ref(worktree: &Path, upstream: &str) -> Result<String, GitError> {
         if read_git(worktree, &["check-ref-format", &full])?.is_none() {
             return Err(invalid_ref(upstream));
         }
-        if read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.is_some() {
+        if rev_oid(worktree, &full)?.is_some() {
             return Ok(full);
         }
     }
@@ -76,12 +86,9 @@ pub fn branch_set_upstream(
                 let set = format!("--set-upstream-to={}", upstream_ref(worktree, upstream)?);
                 run_git(worktree, &["branch", &set, "--", name], cancel, channel)?;
             }
-            None => match run_git(worktree, &["branch", "--unset-upstream", "--", name], cancel, channel) {
-                Err(GitError::Other { stderr }) if stderr.contains("has no upstream information") => {}
-                other => {
-                    other?;
-                }
-            },
+            None => {
+                failed_saying(run_git(worktree, &["branch", "--unset-upstream", "--", name], cancel, channel), "has no upstream information")?;
+            }
         }
         outcome(worktree)
     })
@@ -99,11 +106,7 @@ pub struct BranchDeleted {
 
 /// The oid the local branch `name` points at, or [`GitError::InvalidRefName`] when there is none.
 fn branch_tip(worktree: &Path, name: &str) -> Result<String, GitError> {
-    let full = format!("refs/heads/{name}");
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?
-        .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-        .filter(|oid| !oid.is_empty())
-        .ok_or_else(|| invalid_ref(name))
+    rev_oid(worktree, &format!("refs/heads/{name}"))?.ok_or_else(|| invalid_ref(name))
 }
 
 /// How many commits `tip` reaches that no branch but `name`, no remote-tracking branch, no tag and
@@ -111,9 +114,9 @@ fn branch_tip(worktree: &Path, name: &str) -> Result<String, GitError> {
 fn unique_commits(worktree: &Path, name: &str, tip: &str) -> Result<u32, GitError> {
     // `--exclude` takes `name` as a glob, which is safe: check-ref-format refuses `*`, `?` and `[`.
     let exclude = format!("--exclude={name}");
-    let out = read_git(worktree, &["rev-list", "--count", tip, "--not", &exclude, "--branches", "--remotes", "--tags", "HEAD"])?
-        .ok_or_else(|| GitError::Other { stderr: format!("could not count the commits only {name} reaches") })?;
-    String::from_utf8_lossy(&out).trim().parse().map_err(|_| GitError::Other { stderr: format!("could not count the commits only {name} reaches") })
+    let uncounted = || GitError::Other { stderr: format!("could not count the commits only {name} reaches") };
+    let out = read_git(worktree, &["rev-list", "--count", tip, "--not", &exclude, "--branches", "--remotes", "--tags", "HEAD"])?.ok_or_else(uncounted)?;
+    String::from_utf8_lossy(&out).trim().parse().map_err(|_| uncounted())
 }
 
 /// Deletes the local branch `name` with `git branch -d`, or with `force` `-D`, as the cancellable
@@ -138,13 +141,8 @@ pub fn branch_delete(
             return Err(GitError::BranchInOtherWorktree { worktree: holder.path });
         }
         let flag = if force { "-D" } else { "-d" };
-        match run_git(worktree, &["branch", flag, "--", name], cancel, channel) {
-            Err(GitError::Other { stderr }) if !force && stderr.contains("is not fully merged") => {
-                return Err(GitError::NotFullyMerged { ahead: unique_commits(worktree, name, &tip)?, tip });
-            }
-            other => {
-                other?;
-            }
+        if failed_saying(run_git(worktree, &["branch", flag, "--", name], cancel, channel), "is not fully merged")? {
+            return Err(GitError::NotFullyMerged { ahead: unique_commits(worktree, name, &tip)?, tip });
         }
         let RefsOutcome { head, refs } = outcome(worktree)?;
         Ok(BranchDeleted { tip, head, refs })
@@ -159,13 +157,13 @@ pub struct NewTag<'a> {
     pub message: Option<&'a str>,
 }
 
-/// Refuses `name` unless `git check-ref-format` accepts `refs/tags/<name>`, and it doesn't start
-/// with `-`, so it can never read as an option.
-fn check_tag_name(worktree: &Path, name: &str) -> Result<(), GitError> {
+/// `refs/tags/<name>`, once `git check-ref-format` accepts it and `name` doesn't start with `-`, so
+/// it can never read as an option. Refuses any other name.
+fn check_tag_name(worktree: &Path, name: &str) -> Result<String, GitError> {
     refuse_option_like(name)?;
     let full = format!("refs/tags/{name}");
     read_git(worktree, &["check-ref-format", &full])?.ok_or_else(|| invalid_ref(name))?;
-    Ok(())
+    Ok(full)
 }
 
 /// Creates the tag `tag.name` at the commit `tag.at` in `worktree`'s repo, as the cancellable op
@@ -209,9 +207,8 @@ pub fn tag_delete(
 ) -> Result<RefsOutcome, GitError> {
     ops.run_with(op_id, channel, |cancel| {
         let _slot = locks.begin(worktree)?;
-        check_tag_name(worktree, name)?;
-        let full = format!("refs/tags/{name}");
-        read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.ok_or_else(|| invalid_ref(name))?;
+        let full = check_tag_name(worktree, name)?;
+        rev_oid(worktree, &full)?.ok_or_else(|| invalid_ref(name))?;
         run_git(worktree, &["tag", "-d", "--", name], cancel, channel)?;
         outcome(worktree)
     })

@@ -71,7 +71,7 @@ fn renaming_a_branch_keeps_its_commit_and_returns_the_refs() {
     let outcome = rename_in(&wt, "side", "renamed").expect("side is renamed");
 
     assert_eq!(rev(&wt, "renamed"), side);
-    assert!(git(&wt, &["branch", "--list", "side"]).trim().is_empty(), "side is gone");
+    assert!(!branch_exists(&wt, "side"), "side is gone");
     assert!(outcome.refs.refs.iter().any(|r| r.name == "renamed" && r.oid == side), "the refs show the new name");
     assert!(!outcome.refs.refs.iter().any(|r| r.name == "side"), "and not the old one");
 }
@@ -209,7 +209,7 @@ fn the_current_branch_and_one_checked_out_in_another_worktree_are_never_deleted(
     assert!(branch_exists(&wt, "feat") && branch_exists(&wt, "main"));
 }
 
-/// The folder holding `ref`'s loose file in the repo `dir` belongs to, for holding its `.lock`.
+/// The git common dir of the repo `dir` belongs to, where a ref's loose file and its `.lock` live.
 fn common_dir(dir: &Path) -> std::path::PathBuf {
     let out = git(dir, &["rev-parse", "--path-format=absolute", "--git-common-dir"]);
     std::path::PathBuf::from(out.trim())

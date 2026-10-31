@@ -165,11 +165,15 @@ pub(super) fn refuse_option_like(name: &str) -> Result<(), GitError> {
 /// `--end-of-options` so it can never be taken for an option. Refuses anything that isn't a commit.
 pub(super) fn resolve_commit(worktree: &Path, at: &str) -> Result<String, GitError> {
     refuse_option_like(at)?;
-    let spec = format!("{at}^{{commit}}");
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &spec])?
+    rev_oid(worktree, &format!("{at}^{{commit}}"))?.ok_or_else(|| invalid_ref(at))
+}
+
+/// The full oid `rev` names, from `rev-parse --verify`, which reads `rev` after `--end-of-options`
+/// so it can never be taken for an option, or None when it names nothing.
+pub(super) fn rev_oid(worktree: &Path, rev: &str) -> Result<Option<String>, GitError> {
+    Ok(read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", rev])?
         .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-        .filter(|oid| !oid.is_empty())
-        .ok_or_else(|| invalid_ref(at))
+        .filter(|oid| !oid.is_empty()))
 }
 
 /// Refuses `name` unless `git check-ref-format --branch` accepts it as it is. That rejects a name
@@ -191,7 +195,7 @@ fn remote_ref(worktree: &Path, name: &str) -> Result<String, GitError> {
     if read_git(worktree, &["check-ref-format", &full])?.is_none() {
         return Err(invalid_ref(name));
     }
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.ok_or_else(|| invalid_ref(name))?;
+    rev_oid(worktree, &full)?.ok_or_else(|| invalid_ref(name))?;
     Ok(full)
 }
 
