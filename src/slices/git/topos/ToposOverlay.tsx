@@ -7,6 +7,7 @@ import type { RunKind, TerminalInfo } from "../../terminal/types";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
 import { GraphList } from "./GraphList";
+import type { FindKeyEvent } from "./graphFind";
 import { refsView } from "./graphRefs";
 import { liveAgentsAt } from "./provenance";
 import { useGraphRefs } from "./useGraphRefs";
@@ -243,6 +244,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   const commitFiles = useCommitFiles(graphRepo, shownOid, parentIndex);
   const commitDiff = useCommitDiff(graphRepo, commitFile);
   const graphFocus = useRef<(() => void) | null>(null);
+  const findKeys = useRef<((e: FindKeyEvent) => boolean) | null>(null);
   const inspectorFocus = useRef<HTMLElement | null>(null);
   const [inspectRequest, setInspectRequest] = useState(0);
   useEffect(() => {
@@ -427,6 +429,23 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
     feed !== null &&
     offerSpeedup(speedup.check, { ...feed.load(), dismissed: speedup.dismissed });
 
+  // Find's keys work anywhere in Topos while the graph shows (#399), but not in a dialog drawn over
+  // it, nor while a diff or the conflict resolver covers the graph and its find field.
+  const graphCovered = openFile !== null || commitFile !== null || resolving !== null;
+  const panel = panelProps.ref;
+  useEffect(() => {
+    const el = panel.current;
+    if (!el || graphCovered) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const surface = e.target instanceof Element ? e.target.closest('[role="dialog"], [role="alertdialog"]') : null;
+      if (surface !== el) return;
+      if (findKeys.current?.(e)) e.preventDefault();
+    };
+    el.addEventListener("keydown", onKeyDown);
+    return () => el.removeEventListener("keydown", onKeyDown);
+  }, [panel, graphCovered]);
+
   return (
     <div
       {...backdropProps}
@@ -603,6 +622,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       onAddSelection={addCommit}
                       onInspect={inspect}
                       focusRef={graphFocus}
+                      visible={isOpen}
+                      findKeysRef={findKeys}
                     />
                   </div>
                   {commitFile && (
