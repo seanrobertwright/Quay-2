@@ -49,8 +49,10 @@ fn run_git(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channe
 }
 
 /// The typed refusal in a failed `git switch`'s `LC_ALL=C` output, or None for one Topos doesn't
-/// name: the files a checkout would overwrite, tracked or untracked, which git lists one per
-/// tab-indented line under its `would be overwritten by checkout:` header.
+/// name: [`GitError::CheckoutWouldOverwrite`] with the files a checkout would overwrite, tracked or
+/// untracked, which git lists one per tab-indented line under its `would be overwritten by
+/// checkout:` header, or else [`GitError::BranchInOtherWorktree`] with the worktree git names in
+/// its `is already used by worktree at '...'` line.
 pub(super) fn refusal(output: &str) -> Option<GitError> {
     let mut paths = Vec::new();
     let mut listing = false;
@@ -110,30 +112,38 @@ fn unquote(path: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
+/// [`GitError::InvalidRefName`] for `name`.
+fn invalid_ref(name: &str) -> GitError {
+    GitError::InvalidRefName { name: name.to_string() }
+}
+
+/// Refuses `name`, a ref or commit argument, when it is empty or starts with `-`, before any git
+/// command sees it.
+fn refuse_option_like(name: &str) -> Result<(), GitError> {
+    if name.is_empty() || name.starts_with('-') {
+        return Err(invalid_ref(name));
+    }
+    Ok(())
+}
+
 /// The full oid of the commit `at` names, from `rev-parse --verify`, which reads `at` after
 /// `--end-of-options` so it can never be taken for an option. Refuses anything that isn't a commit.
 fn resolve_commit(worktree: &Path, at: &str) -> Result<String, GitError> {
-    let invalid = || GitError::InvalidRefName { name: at.to_string() };
-    if at.is_empty() || at.starts_with('-') {
-        return Err(invalid());
-    }
+    refuse_option_like(at)?;
     let spec = format!("{at}^{{commit}}");
     read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &spec])?
         .map(|out| String::from_utf8_lossy(&out).trim().to_string())
         .filter(|oid| !oid.is_empty())
-        .ok_or_else(invalid)
+        .ok_or_else(|| invalid_ref(at))
 }
 
 /// Refuses `name` unless `git check-ref-format --branch` accepts it as it is. That rejects a name
 /// starting with `-`, so it can never read as an option, and one it would expand, such as `@{-1}`.
 pub fn check_branch_name(worktree: &Path, name: &str) -> Result<(), GitError> {
-    let invalid = || GitError::InvalidRefName { name: name.to_string() };
-    if name.is_empty() || name.starts_with('-') {
-        return Err(invalid());
-    }
-    let printed = read_git(worktree, &["check-ref-format", "--branch", name])?.ok_or_else(invalid)?;
+    refuse_option_like(name)?;
+    let printed = read_git(worktree, &["check-ref-format", "--branch", name])?.ok_or_else(|| invalid_ref(name))?;
     if String::from_utf8_lossy(&printed).trim_end_matches(['\r', '\n']) != name {
-        return Err(invalid());
+        return Err(invalid_ref(name));
     }
     Ok(())
 }
@@ -141,12 +151,12 @@ pub fn check_branch_name(worktree: &Path, name: &str) -> Result<(), GitError> {
 /// The full name of the remote-tracking branch `name`, such as `refs/remotes/origin/topic`, once
 /// `check-ref-format` accepts it and it exists.
 fn remote_ref(worktree: &Path, name: &str) -> Result<String, GitError> {
-    let invalid = || GitError::InvalidRefName { name: name.to_string() };
+    refuse_option_like(name)?;
     let full = format!("refs/remotes/{name}");
-    if name.is_empty() || name.starts_with('-') || read_git(worktree, &["check-ref-format", &full])?.is_none() {
-        return Err(invalid());
+    if read_git(worktree, &["check-ref-format", &full])?.is_none() {
+        return Err(invalid_ref(name));
     }
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.ok_or_else(invalid)?;
+    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.ok_or_else(|| invalid_ref(name))?;
     Ok(full)
 }
 
@@ -226,19 +236,26 @@ pub fn checkout(
     })
 }
 
-/// Creates the branch `name` at the commit `at` in `worktree`'s repo, and with `checkout` switches
-/// `worktree` to it, as the cancellable op `op_id` in the worktree's staging slot.
-#[allow(clippy::too_many_arguments)]
+/// A branch to create: `name`, at the commit `at`, switched to when `checkout` is set.
+#[derive(Debug, Clone, Copy)]
+pub struct NewBranch<'a> {
+    pub name: &'a str,
+    pub at: &'a str,
+    pub checkout: bool,
+}
+
+/// Creates the branch `branch.name` at the commit `branch.at` in `worktree`'s repo, and with
+/// `branch.checkout` switches `worktree` to it, as the cancellable op `op_id` in the worktree's
+/// staging slot.
 pub fn branch_create(
     ops: &GitOps,
     locks: &StagingLocks,
     worktree: &Path,
     op_id: Uuid,
-    name: &str,
-    at: &str,
-    checkout: bool,
+    branch: NewBranch<'_>,
     channel: &Channel<OpEvent>,
 ) -> Result<RefsOutcome, GitError> {
+    let NewBranch { name, at, checkout } = branch;
     ops.run_with(op_id, channel, |cancel| {
         let _slot = locks.begin(worktree)?;
         check_branch_name(worktree, name)?;
@@ -279,7 +296,7 @@ pub async fn git_branch_create(
     app: tauri::AppHandle,
 ) -> Result<RefsOutcome, GitError> {
     in_background(app, "create the branch", move |ops, locks| {
-        branch_create(ops, locks, Path::new(&worktree_path), op_id, &name, &at, checkout, &on_event)
+        branch_create(ops, locks, Path::new(&worktree_path), op_id, NewBranch { name: &name, at: &at, checkout }, &on_event)
     })
     .await
 }

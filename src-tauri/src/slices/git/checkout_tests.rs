@@ -8,7 +8,7 @@ use serde_json::Value;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use uuid::Uuid;
 
-use super::checkout::{branch_create, checkout, CheckoutTarget, RefsOutcome};
+use super::checkout::{branch_create, checkout, CheckoutTarget, NewBranch, RefsOutcome};
 use super::error::GitError;
 use super::op_runner::{GitOps, OpEvent};
 use super::staging::StagingLocks;
@@ -32,7 +32,7 @@ fn checkout_in(wt: &Path, target: CheckoutTarget) -> Result<RefsOutcome, GitErro
 }
 
 fn create_in(wt: &Path, name: &str, at: &str, then_checkout: bool) -> Result<RefsOutcome, GitError> {
-    branch_create(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), name, at, then_checkout, &test_channel())
+    branch_create(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), NewBranch { name, at, checkout: then_checkout }, &test_channel())
 }
 
 fn rev(dir: &Path, name: &str) -> String {
