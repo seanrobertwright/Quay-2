@@ -159,7 +159,7 @@ pub(super) fn other(stderr: impl Into<String>) -> GitError {
 }
 
 /// What `git <args>` prints in `worktree`, or its stderr as the error when it fails.
-pub(super) fn run_read<const N: usize>(worktree: &Path, args: [&str; N]) -> Result<Vec<u8>, GitError> {
+pub(super) fn run_read<'a>(worktree: &Path, args: impl IntoIterator<Item = &'a str>) -> Result<Vec<u8>, GitError> {
     let out = worktree_git(worktree)
         .args(args)
         .stdin(Stdio::null())

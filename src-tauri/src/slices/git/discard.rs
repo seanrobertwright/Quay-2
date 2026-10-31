@@ -13,7 +13,7 @@ use std::process::Stdio;
 use serde::{Deserialize, Serialize};
 
 use super::diff::{
-    changed_lines, diff_token, header_lines, other, parse_blob_oid, read_file_diff, read_parsed, reduced_patch, token_context, DiffSide,
+    changed_lines, diff_token, header_lines, other, parse_blob_oid, read_file_diff, read_parsed, reduced_patch, run_read, token_context, DiffSide,
     FileDiff, Selection,
 };
 use super::error::GitError;
@@ -127,10 +127,19 @@ fn quoted_line(path: &str, out: &mut Vec<u8>) {
     out.extend_from_slice(b"\"\n");
 }
 
+/// Whether [`hash_files`] stores the blobs it hashes or only names them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Blobs {
+    /// Stores them in the object database (`-w`), as a backup.
+    Store,
+    /// Only computes their ids, to compare with a backup's.
+    IdsOnly,
+}
+
 /// The blob id of each of `paths` in `worktree` as its bytes stand on disk (`--no-filters`), or
-/// None for a path with no file. With `write` the blobs are stored in the object database. A
-/// symlink is refused, since its bytes on disk are not what git would restore.
-fn hash_files(worktree: &Path, paths: &[&str], write: bool) -> Result<Vec<Option<String>>, GitError> {
+/// None for a path with no file. With [`Blobs::Store`] the blobs are stored in the object database.
+/// A symlink is refused, since its bytes on disk are not what git would restore.
+fn hash_files(worktree: &Path, paths: &[&str], blobs: Blobs) -> Result<Vec<Option<String>>, GitError> {
     let mut present = Vec::new();
     let mut input = Vec::new();
     for (i, path) in paths.iter().enumerate() {
@@ -150,7 +159,7 @@ fn hash_files(worktree: &Path, paths: &[&str], write: bool) -> Result<Vec<Option
         return Ok(out);
     }
     let mut args = vec!["hash-object"];
-    if write {
+    if blobs == Blobs::Store {
         args.push("-w");
     }
     args.extend(["--no-filters", "--stdin-paths"]);
@@ -168,12 +177,12 @@ fn hash_files(worktree: &Path, paths: &[&str], write: bool) -> Result<Vec<Option
 /// Stores the bytes of `paths` as blobs before a discard, and fails, so that nothing is discarded,
 /// when any of them can't be stored.
 fn back_up(worktree: &Path, paths: &[&str]) -> Result<Vec<Option<String>>, GitError> {
-    hash_files(worktree, paths, true).map_err(|e| other(format!("could not back up the files, so nothing was discarded: {e}")))
+    hash_files(worktree, paths, Blobs::Store).map_err(|e| other(format!("could not back up the files, so nothing was discarded: {e}")))
 }
 
 /// The backups of `paths`, from the blobs stored before the discard and the files as they are now.
 fn backups(worktree: &Path, paths: &[&str], blobs: Vec<Option<String>>) -> Result<Vec<DiscardBackup>, GitError> {
-    let after = hash_files(worktree, paths, false)?;
+    let after = hash_files(worktree, paths, Blobs::IdsOnly)?;
     Ok(paths
         .iter()
         .zip(blobs)
@@ -339,15 +348,7 @@ fn write_file(target: &Path, bytes: &[u8]) -> Result<(), GitError> {
 
 /// The bytes of the blob `oid`.
 fn blob_bytes(worktree: &Path, oid: &str) -> Result<Vec<u8>, GitError> {
-    let out = worktree_git(worktree)
-        .args(["cat-file", "blob", parse_blob_oid(oid)?])
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| other(format!("could not run git: {e}")))?;
-    if !out.status.success() {
-        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-    }
-    Ok(out.stdout)
+    run_read(worktree, ["cat-file", "blob", parse_blob_oid(oid)?])
 }
 
 /// Puts back what the discards in `backups` took (#387), in the worktree's staging slot, and
@@ -374,7 +375,7 @@ pub fn restore_discarded(
         targets.push(inside_worktree(worktree, &backup.path)?);
     }
     let paths: Vec<&str> = backups.iter().map(|b| b.path.as_str()).collect();
-    let now = hash_files(worktree, &paths, false)?;
+    let now = hash_files(worktree, &paths, Blobs::IdsOnly)?;
     let changed: Vec<String> = backups.iter().zip(&now).filter(|(b, now)| b.after != **now).map(|(b, _)| b.path.clone()).collect();
     if !changed.is_empty() {
         return Err(GitError::ChangedSinceDiscard { paths: changed });
@@ -415,18 +416,15 @@ pub struct DiscardPathsResult {
 /// an unmerged path and an intent-to-add entry are left out. With `untracked`, each untracked file
 /// is listed on its own (`-uall`), never an ignored one.
 fn unstaged_changes(worktree: &Path, pathspecs: Option<&[&str]>, untracked: bool) -> Result<(Vec<String>, Vec<String>), GitError> {
-    let mut git = worktree_git(worktree);
-    git.args(["--no-optional-locks", "status", "--porcelain=v2", "-z", "--no-renames"]);
-    git.arg(if untracked { "-uall" } else { "-uno" });
+    let mut args = vec!["--no-optional-locks", "status", "--porcelain=v2", "-z", "--no-renames"];
+    args.push(if untracked { "-uall" } else { "-uno" });
     if let Some(specs) = pathspecs {
-        git.arg("--").args(specs);
+        args.push("--");
+        args.extend(specs);
     }
-    let out = git.stdin(Stdio::null()).output().map_err(|e| other(format!("could not run git: {e}")))?;
-    if !out.status.success() {
-        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
-    }
+    let out = run_read(worktree, args)?;
     let (mut tracked, mut new) = (Vec::new(), Vec::new());
-    for record in out.stdout.split(|&b| b == 0) {
+    for record in out.split(|&b| b == 0) {
         let text = String::from_utf8_lossy(record);
         if let Some(path) = text.strip_prefix("? ") {
             new.push(path.to_string());
