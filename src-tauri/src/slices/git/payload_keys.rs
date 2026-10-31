@@ -5,6 +5,7 @@
 use serde_json::{json, Value};
 
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
+use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
 use super::graph::{
     Author, Dirty, GitRefs, GraphEvent, RefBadge, RefKind, Refreshed, RepoChanged, Track, TrackKind, WatchState, WorktreeHead,
@@ -139,6 +140,27 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
         ("GitError::IndexLocked", s(&GitError::IndexLocked), json!({ "kind": "indexLocked" })),
         ("GitError::StagingBusy", s(&GitError::StagingBusy), json!({ "kind": "stagingBusy" })),
         ("GitError::StaleDiff", s(&GitError::StaleDiff), json!({ "kind": "staleDiff" })),
+        (
+            "GitError::ChangedSinceDiscard",
+            s(&GitError::ChangedSinceDiscard { paths: vec!["a.txt".into()] }),
+            json!({ "kind": "changedSinceDiscard", "paths": ["a.txt"] }),
+        ),
+        (
+            "DiscardPathsResult",
+            s(&DiscardPathsResult {
+                backups: vec![DiscardBackup { path: "a.txt".into(), blob: Some("b1".into()), after: None }],
+                status: WorktreeStatus { request_id: 2, entries: vec![], total: 0, truncated: false },
+            }),
+            json!({
+                "backups": [{ "path": "a.txt", "blob": "b1", "after": null }],
+                "status": { "requestId": 2, "entries": [], "total": 0, "truncated": false }
+            }),
+        ),
+        (
+            "CopyResult",
+            s(&CopyResult { paths: vec!["a (discarded).txt".into()], status: WorktreeStatus { request_id: 3, entries: vec![], total: 0, truncated: false } }),
+            json!({ "paths": ["a (discarded).txt"], "status": { "requestId": 3, "entries": [], "total": 0, "truncated": false } }),
+        ),
         (
             "DiffSide::Commit",
             s(&DiffSide::Commit { oid: "abc1".into(), parent: None }),

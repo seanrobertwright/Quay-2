@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::diff::{read_file_diff, DiffSide, LineRef, Selection};
-use super::discard::{discard_selection, restore_discarded, DiscardBackup, DiscardRequest, RecycleBin};
+use super::discard::{copy_discarded, discard_paths, discard_selection, restore_discarded, DiscardBackup, DiscardRequest, DiscardTarget, RecycleBin};
 use super::error::GitError;
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
@@ -205,6 +205,99 @@ fn discarding_an_untracked_file_moves_it_to_the_recycle_bin_and_undo_brings_it_b
     let _ = std::fs::remove_dir_all(root);
 }
 
+fn paths(list: &[&str]) -> DiscardTarget {
+    DiscardTarget::Paths { paths: list.iter().map(|p| p.to_string()).collect() }
+}
+
+/// The index's version of `path`, as `git show :path` prints it.
+fn index_text(wt: &Path, path: &str) -> String {
+    git(wt, &["show", &format!(":{path}")])
+}
+
+#[test]
+fn discard_all_restores_every_tracked_change_and_leaves_untracked_files_unless_asked() {
+    let (root, wt) = repo_with_worktree();
+    std::fs::write(wt.join("README.md"), "staged\n").unwrap();
+    git(&wt, &["add", "README.md"]);
+    std::fs::write(wt.join("README.md"), "staged, then changed\n").unwrap();
+    std::fs::remove_file(wt.join("src/lib.rs")).unwrap();
+    std::fs::write(wt.join("new.txt"), "untracked\n").unwrap();
+
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_paths(&locks, &bin, &wt, 4, &DiscardTarget::All { include_untracked: false }).unwrap();
+    assert_eq!(out.status.request_id, 4);
+    // The staged change stays staged and the worktree matches it; the untracked file stays.
+    assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "staged\n");
+    assert_eq!(index_text(&wt, "README.md"), "staged\n");
+    assert_eq!(std::fs::read_to_string(wt.join("src/lib.rs")).unwrap(), "fn main() {}\n");
+    assert_eq!(std::fs::read_to_string(wt.join("new.txt")).unwrap(), "untracked\n");
+    assert!(bin.names().is_empty());
+    let mut kept: Vec<(String, Option<Vec<u8>>)> =
+        out.backups.iter().map(|b| (b.path.clone(), b.blob.as_deref().map(|o| blob_bytes(&wt, o)))).collect();
+    kept.sort();
+    assert_eq!(kept, [("README.md".into(), Some(b"staged, then changed\n".to_vec())), ("src/lib.rs".into(), None)]);
+
+    // Undo puts both back: the edit, and the deletion.
+    restore_discarded(&locks, &bin, &wt, 5, &out.backups).unwrap();
+    assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "staged, then changed\n");
+    assert!(!wt.join("src/lib.rs").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn discard_all_with_untracked_files_acts_beyond_the_status_cap() {
+    let (root, wt) = repo_with_worktree();
+    std::fs::create_dir_all(wt.join("many")).unwrap();
+    for i in 0..10_002 {
+        std::fs::write(wt.join(format!("many/f{i:05}.txt")), format!("{i}")).unwrap();
+    }
+    std::fs::write(wt.join("README.md"), "changed\n").unwrap();
+    std::fs::write(wt.join(".gitignore"), "*.log\n").unwrap();
+    git(&wt, &["add", ".gitignore"]);
+    git(&wt, &["commit", "-q", "-m", "ignore logs"]);
+    std::fs::write(wt.join("debug.log"), "ignored\n").unwrap();
+
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_paths(&locks, &bin, &wt, 1, &DiscardTarget::All { include_untracked: true }).unwrap();
+    assert!(out.status.entries.is_empty(), "{:?}", &out.status.entries[..1]);
+    assert_eq!(out.backups.len(), 10_003);
+    assert_eq!(bin.names().len(), 10_002);
+    // The emptied folder goes; an ignored file is never touched.
+    assert!(!wt.join("many").exists());
+    assert_eq!(std::fs::read_to_string(wt.join("debug.log")).unwrap(), "ignored\n");
+    let last = out.backups.iter().find(|b| b.path == "many/f10001.txt").unwrap();
+    assert_eq!(blob_bytes(&wt, last.blob.as_deref().unwrap()), b"10001");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn discarding_an_untracked_folder_bins_its_files_and_keeps_ignored_ones() {
+    let (root, wt) = repo_with_worktree();
+    std::fs::write(wt.join(".gitignore"), "*.log\n").unwrap();
+    git(&wt, &["add", ".gitignore"]);
+    git(&wt, &["commit", "-q", "-m", "ignore logs"]);
+    std::fs::create_dir_all(wt.join("notes/deep")).unwrap();
+    std::fs::write(wt.join("notes/a.md"), "a\n").unwrap();
+    std::fs::write(wt.join("notes/deep/b.md"), "b\n").unwrap();
+    std::fs::write(wt.join("notes/run.log"), "ignored\n").unwrap();
+    std::fs::write(wt.join("other.md"), "other\n").unwrap();
+
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_paths(&locks, &bin, &wt, 1, &paths(&["notes"])).unwrap();
+    assert_eq!(bin.names(), ["a.md", "b.md"]);
+    assert!(!wt.join("notes/deep").exists());
+    assert_eq!(std::fs::read_to_string(wt.join("notes/run.log")).unwrap(), "ignored\n");
+    assert!(wt.join("other.md").exists());
+    assert_eq!(out.backups.len(), 2);
+
+    restore_discarded(&locks, &bin, &wt, 1, &out.backups).unwrap();
+    assert_eq!(std::fs::read_to_string(wt.join("notes/deep/b.md")).unwrap(), "b\n");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// Makes storing the blob of `bytes` fail: a file where its fan-out folder under `objects/` goes,
 /// so git can't write the object while everything else it does still works.
 fn block_blob(wt: &Path, bytes: &[u8]) {
@@ -253,5 +346,97 @@ fn discarding_a_deleted_file_brings_it_back_and_undo_deletes_it_again_through_th
     restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
     assert!(!wt.join("README.md").exists());
     assert_eq!(bin.names(), ["README.md"]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_stale_diff_discards_nothing() {
+    let (root, wt, changed) = two_hunks();
+    let stale = token(&wt, "README.md");
+    let edited = changed.replace("line 6\n", "line six\n");
+    std::fs::write(wt.join("README.md"), &edited).unwrap();
+
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    for selection in [Selection::Hunks { hunks: vec![0] }, Selection::File] {
+        assert_eq!(
+            discard_selection(&locks, &bin, &wt, 1, 2, &discard("README.md", &stale, selection)),
+            Err(GitError::StaleDiff)
+        );
+    }
+    assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), edited);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn discarding_some_lines_of_an_untracked_file_keeps_the_rest_of_it() {
+    let (root, wt) = repo_with_worktree();
+    std::fs::write(wt.join("new.txt"), "keep\ndrop\nkeep too\n").unwrap();
+    let diff = read_file_diff(&wt, 1, "new.txt", &DiffSide::Unstaged, 3, false).unwrap();
+    assert_eq!(diff.hunks[0].lines[1].text, "drop");
+
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let lines = Selection::Lines { lines: vec![LineRef { hunk: 0, line: 1 }] };
+    let out = discard_selection(&locks, &bin, &wt, 1, 2, &discard("new.txt", &diff.diff_token, lines)).unwrap();
+    assert_eq!(std::fs::read_to_string(wt.join("new.txt")).unwrap(), "keep\nkeep too\n");
+    assert!(bin.names().is_empty());
+    // It stays untracked: discarding lines never touches the index.
+    assert_eq!(out.status.entries.iter().map(|e| e.xy.as_str()).collect::<Vec<_>>(), ["??"]);
+    restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
+    assert_eq!(std::fs::read_to_string(wt.join("new.txt")).unwrap(), "keep\ndrop\nkeep too\n");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_restore_or_copy_only_writes_inside_the_worktree() {
+    let (root, wt, _) = two_hunks();
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_selection(&locks, &bin, &wt, 1, 2, &discard("README.md", &token(&wt, "README.md"), Selection::File)).unwrap();
+    let outside = root.join("outside.txt");
+    let absolute = outside.to_string_lossy().into_owned();
+    for bad in ["../outside.txt", "a/../../outside.txt", absolute.as_str(), "/etc/passwd", "C:/Windows/x.txt", ".git/config", ".GIT/hooks/pre-commit", ""] {
+        let backup = DiscardBackup { path: bad.into(), ..out.backup.clone() };
+        assert!(matches!(restore_discarded(&locks, &bin, &wt, 1, &[backup.clone()]), Err(GitError::Other { .. })), "{bad:?} restored");
+        assert!(matches!(copy_discarded(&locks, &wt, 1, &[backup]), Err(GitError::Other { .. })), "{bad:?} copied");
+    }
+    assert!(!outside.exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_restore_through_a_symlinked_folder_that_leaves_the_worktree_is_refused() {
+    let (root, wt, _) = two_hunks();
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_selection(&locks, &bin, &wt, 1, 2, &discard("README.md", &token(&wt, "README.md"), Selection::File)).unwrap();
+    std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+    std::os::unix::fs::symlink(root.join("elsewhere"), wt.join("link")).unwrap();
+    let backup = DiscardBackup { path: "link/README.md".into(), blob: out.backup.blob.clone(), after: None };
+    assert!(matches!(restore_discarded(&locks, &bin, &wt, 1, &[backup]), Err(GitError::Other { .. })));
+    assert!(!root.join("elsewhere/README.md").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn copying_a_discard_writes_its_bytes_to_a_new_file_beside_the_changed_one() {
+    let (root, wt, changed) = two_hunks();
+    let locks = StagingLocks::default();
+    let bin = TestBin::new(&root);
+    let out = discard_selection(&locks, &bin, &wt, 1, 2, &discard("README.md", &token(&wt, "README.md"), Selection::File)).unwrap();
+    std::fs::write(wt.join("README.md"), "edited after the discard\n").unwrap();
+    assert!(restore_discarded(&locks, &bin, &wt, 1, &[out.backup.clone()]).is_err());
+
+    let copied = copy_discarded(&locks, &wt, 7, &[out.backup.clone()]).unwrap();
+    assert_eq!(copied.paths, ["README (discarded).md"]);
+    assert_eq!(copied.status.request_id, 7);
+    assert_eq!(std::fs::read_to_string(wt.join("README (discarded).md")).unwrap(), changed);
+    // The changed file is left alone, and a second copy never overwrites the first.
+    assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "edited after the discard\n");
+    let again = copy_discarded(&locks, &wt, 8, &[out.backup]).unwrap();
+    assert_eq!(again.paths, ["README (discarded 2).md"]);
+    assert_eq!(std::fs::read_to_string(wt.join("README (discarded).md")).unwrap(), changed);
     let _ = std::fs::remove_dir_all(root);
 }

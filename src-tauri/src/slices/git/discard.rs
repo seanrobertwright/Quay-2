@@ -389,3 +389,194 @@ pub fn restore_discarded(
     }
     read_status(worktree, request_id, None)
 }
+
+/// What a discard from the lists acts on.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DiscardTarget {
+    /// Every unstaged change, and every untracked file only with `include_untracked`.
+    All { include_untracked: bool },
+    /// The listed files and folders, untracked ones included.
+    Paths { paths: Vec<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardPathsResult {
+    pub backups: Vec<DiscardBackup>,
+    pub status: WorktreeStatus,
+}
+
+/// Every unstaged change `git status` reports under `pathspecs` (everywhere when None), uncapped,
+/// as (tracked, untracked). Tracked paths are files changed or deleted in the worktree; a submodule,
+/// an unmerged path and an intent-to-add entry are left out. With `untracked`, each untracked file
+/// is listed on its own (`-uall`), never an ignored one.
+fn unstaged_changes(worktree: &Path, pathspecs: Option<&[&str]>, untracked: bool) -> Result<(Vec<String>, Vec<String>), GitError> {
+    let mut git = worktree_git(worktree);
+    git.args(["--no-optional-locks", "status", "--porcelain=v2", "-z", "--no-renames"]);
+    git.arg(if untracked { "-uall" } else { "-uno" });
+    if let Some(specs) = pathspecs {
+        git.arg("--").args(specs);
+    }
+    let out = git.stdin(Stdio::null()).output().map_err(|e| other(format!("could not run git: {e}")))?;
+    if !out.status.success() {
+        return Err(other(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+    }
+    let (mut tracked, mut new) = (Vec::new(), Vec::new());
+    for record in out.stdout.split(|&b| b == 0) {
+        let text = String::from_utf8_lossy(record);
+        if let Some(path) = text.strip_prefix("? ") {
+            new.push(path.to_string());
+            continue;
+        }
+        // `1 XY sub mH mI mW hH hI path`
+        let fields: Vec<&str> = text.splitn(9, ' ').collect();
+        if let ["1", xy, sub, _, _, _, _, _, path] = fields.as_slice() {
+            if sub.starts_with('N') && matches!(xy.as_bytes().get(1), Some(b'M' | b'D' | b'T')) {
+                tracked.push(path.to_string());
+            }
+        }
+    }
+    Ok((tracked, new))
+}
+
+/// Discards `target` from the lists (#366, #387), in the worktree's staging slot, and returns the
+/// backups and the post-write status. Tracked files go back to the index's bytes and untracked
+/// files go to the Recycle Bin, after every one of them is backed up. `All` acts on every change,
+/// including those past the status cap, and on untracked files only with `include_untracked`.
+pub fn discard_paths(
+    locks: &StagingLocks,
+    bin: &dyn RecycleBin,
+    worktree: &Path,
+    request_id: u32,
+    target: &DiscardTarget,
+) -> Result<DiscardPathsResult, GitError> {
+    let _slot = locks.begin(worktree)?;
+    let (tracked, untracked) = match target {
+        DiscardTarget::All { include_untracked } => unstaged_changes(worktree, None, *include_untracked)?,
+        DiscardTarget::Paths { paths } => {
+            if paths.is_empty() {
+                return Err(other("no paths to discard"));
+            }
+            let specs = paths.iter().map(|p| parse_rel_path(p)).collect::<Result<Vec<_>, _>>()?;
+            unstaged_changes(worktree, Some(&specs), true)?
+        }
+    };
+    let tracked: Vec<&str> = tracked.iter().map(String::as_str).collect();
+    let untracked: Vec<&str> = untracked.iter().map(String::as_str).collect();
+    let backups = if tracked.is_empty() && untracked.is_empty() { Vec::new() } else { discard_files(bin, worktree, &tracked, &untracked)? };
+    Ok(DiscardPathsResult { backups, status: read_status(worktree, request_id, None)? })
+}
+
+/// The new files a copy wrote, and the post-write status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyResult {
+    pub paths: Vec<String>,
+    pub status: WorktreeStatus,
+}
+
+/// The first free name beside `target` for a copy of its discarded bytes: `name (discarded).ext`,
+/// then `name (discarded 2).ext` and so on, with the file created so no other writer can take it.
+fn create_copy(target: &Path, bytes: &[u8]) -> Result<PathBuf, GitError> {
+    let stem = target.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = target.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for n in 1..=1000u32 {
+        let suffix = if n == 1 { " (discarded)".to_string() } else { format!(" (discarded {n})") };
+        let copy = target.with_file_name(format!("{stem}{suffix}{ext}"));
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&copy) {
+            Ok(mut file) => {
+                file.write_all(bytes).map_err(|e| other(format!("could not write {}: {e}", copy.display())))?;
+                return Ok(copy);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(other(format!("could not create {}: {e}", copy.display()))),
+        }
+    }
+    Err(other(format!("no free name for a copy of {}", target.display())))
+}
+
+/// Writes the backed-up bytes of each of `backups` to a new file beside the original (#387), for a
+/// discard whose file changed since, so neither version is lost. Each path must stay inside the
+/// worktree, and no existing file is overwritten. A backup of a deleted file has no bytes and is
+/// skipped. Returns the new files' paths and the post-write status, in the worktree's staging slot.
+pub fn copy_discarded(locks: &StagingLocks, worktree: &Path, request_id: u32, backups: &[DiscardBackup]) -> Result<CopyResult, GitError> {
+    let _slot = locks.begin(worktree)?;
+    let mut checked = Vec::new();
+    for backup in backups {
+        let target = inside_worktree(worktree, &backup.path)?;
+        if let Some(blob) = &backup.blob {
+            checked.push((backup.path.as_str(), target, parse_blob_oid(blob)?));
+        }
+    }
+    if checked.is_empty() {
+        return Err(other("nothing to copy: the discard left no bytes to keep"));
+    }
+    let mut paths = Vec::new();
+    for (path, target, blob) in checked {
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| other(format!("could not create the folder for {path}: {e}")))?;
+        }
+        let copy = create_copy(&target, &blob_bytes(worktree, blob)?)?;
+        let name = copy.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        paths.push(match path.rsplit_once('/') {
+            Some((folder, _)) => format!("{folder}/{name}"),
+            None => name,
+        });
+    }
+    Ok(CopyResult { paths, status: read_status(worktree, request_id, None)? })
+}
+
+/// Discards part or all of one file's unstaged diff and returns the backup, the file's new diff and
+/// the post-write status. See [`discard_selection`]; the diff view confirms a whole file first.
+#[tauri::command]
+pub async fn git_discard_selection(
+    worktree_path: String,
+    request_id: u32,
+    diff_request_id: u32,
+    request: DiscardRequest,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<DiscardSelectionResult, GitError> {
+    let locks = locks.inner();
+    // A held index.lock keeps it waiting between tries, so keep it off the async runtime's threads.
+    tokio::task::block_in_place(|| {
+        discard_selection(locks, &SystemRecycleBin, Path::new(&worktree_path), request_id, diff_request_id, &request)
+    })
+}
+
+/// Discards `target` from the lists and returns the backups and the post-write status. See
+/// [`discard_paths`]; the inspector confirms first.
+#[tauri::command]
+pub async fn git_discard_paths(
+    worktree_path: String,
+    request_id: u32,
+    target: DiscardTarget,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<DiscardPathsResult, GitError> {
+    let locks = locks.inner();
+    tokio::task::block_in_place(|| discard_paths(locks, &SystemRecycleBin, Path::new(&worktree_path), request_id, &target))
+}
+
+/// Puts back what a discard took and returns the post-write status. See [`restore_discarded`].
+#[tauri::command]
+pub async fn git_restore_discarded(
+    worktree_path: String,
+    request_id: u32,
+    backups: Vec<DiscardBackup>,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<WorktreeStatus, GitError> {
+    let locks = locks.inner();
+    tokio::task::block_in_place(|| restore_discarded(locks, &SystemRecycleBin, Path::new(&worktree_path), request_id, &backups))
+}
+
+/// Copies what a discard took to new files beside the originals. See [`copy_discarded`].
+#[tauri::command]
+pub async fn git_copy_discarded(
+    worktree_path: String,
+    request_id: u32,
+    backups: Vec<DiscardBackup>,
+    locks: tauri::State<'_, StagingLocks>,
+) -> Result<CopyResult, GitError> {
+    let locks = locks.inner();
+    tokio::task::block_in_place(|| copy_discarded(locks, Path::new(&worktree_path), request_id, &backups))
+}
