@@ -31,9 +31,19 @@ const ctx: RefContext = {
 const shown = (items: ReturnType<typeof badgeMenu>) =>
   items.map((i) => (i.action === null ? `${i.label} (disabled: ${i.disabledReason})` : i.label));
 
+test("a local or remote branch's menu ends with Show only, which filters the graph to it", () => {
+  const local = badgeMenu({ kind: "local", name: "side" }, A, ctx);
+  assert.deepEqual(local[local.length - 1], { label: "Show only this branch", action: { kind: "showOnly", ref: "refs/heads/side" } });
+  const remote = badgeMenu({ kind: "remote", name: "origin/topic" }, A, ctx);
+  assert.deepEqual(remote[remote.length - 1].action, { kind: "showOnly", ref: "refs/remotes/origin/topic" });
+  const held = badgeMenu({ kind: "local", name: "main" }, A, ctx);
+  assert.deepEqual(held[held.length - 1].action, { kind: "showOnly", ref: "refs/heads/main" }, "even while checked out elsewhere");
+  assert.ok(!badgeMenu({ kind: "tag", name: "v1" }, A, ctx).some((i) => i.label === "Show only this branch"));
+});
+
 test("a local branch's menu checks it out and creates a branch at its commit", () => {
   const menu = badgeMenu({ kind: "local", name: "side" }, A, ctx);
-  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Rename…", "Set upstream…", "Delete…"]);
+  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Rename…", "Set upstream…", "Delete…", "Show only this branch"]);
   assert.deepEqual(menu[0].action, { kind: "checkout", target: { kind: "branch", name: "side" } });
   assert.deepEqual(menu[1].action, { kind: "createBranch", at: A });
   assert.deepEqual(menu[2].action, { kind: "renameBranch", name: "side" });
@@ -50,6 +60,7 @@ test("a branch checked out in another worktree can't be checked out, and offers 
     "Rename…",
     "Set upstream…",
     "Delete… (disabled: Checked out in worktree repo)",
+    "Show only this branch",
   ]);
   assert.deepEqual(menu[1].action, { kind: "showWorktree", path: "C:/src/repo" });
 });
@@ -62,6 +73,7 @@ test("the branch the selected worktree has checked out is already checked out", 
     "Rename…",
     "Set upstream…",
     "Delete… (disabled: Checked out here)",
+    "Show only this branch",
   ]);
 });
 
@@ -78,10 +90,10 @@ test("a remote branch checks out its tracking branch, and a tag checks out detac
 
 test("a remote branch is deleted on its remote, after its own confirm", () => {
   const menu = badgeMenu({ kind: "remote", name: "origin/topic" }, A, ctx);
-  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Delete from origin…"]);
+  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Delete from origin…", "Show only this branch"]);
   assert.deepEqual(menu[2].action, { kind: "deleteRemoteBranch", remote: "origin", branch: "topic" });
-  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "origin/HEAD" }, A, ctx)), ["Checkout", "Create branch here…"], "a remote's HEAD isn't a branch to delete");
-  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "gone/topic" }, A, ctx)), ["Checkout", "Create branch here…"], "nor is one of a remote the repo no longer has");
+  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "origin/HEAD" }, A, ctx)), ["Checkout", "Create branch here…", "Show only this branch"], "a remote's HEAD isn't a branch to delete");
+  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "gone/topic" }, A, ctx)), ["Checkout", "Create branch here…", "Show only this branch"], "nor is one of a remote the repo no longer has");
 });
 
 test("a tag is pushed to a remote only from its own menu item, one per remote", () => {
@@ -126,7 +138,7 @@ test("while an operation is under way every checkout is disabled with the reason
   assert.equal(shown(badgeMenu({ kind: "remote", name: "origin/topic" }, A, busy))[0], why);
   assert.equal(shown(commitMenu(A, busy))[2], "Checkout detached (disabled: Finish or abort the merge first)");
   assert.equal(shown(badgeMenu({ kind: "local", name: "side" }, A, busy))[1], "Create branch here…", "creating stays");
-  assert.deepEqual(shown(badgeMenu({ kind: "local", name: "side" }, A, busy)).slice(2), ["Rename…", "Set upstream…", "Delete…"], "and so do the other branch writes");
+  assert.deepEqual(shown(badgeMenu({ kind: "local", name: "side" }, A, busy)).slice(2), ["Rename…", "Set upstream…", "Delete…", "Show only this branch"], "and so do the other branch writes");
 });
 
 test("double-click or Enter checks out a local or remote badge, and only says why when it can't", () => {

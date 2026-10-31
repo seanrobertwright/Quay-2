@@ -3,6 +3,7 @@
 // ref set instead of Find's scan of the loaded rows.
 
 import { errorMessage, type GitError } from "./gitVersion.ts";
+import type { RefSet } from "./graphFilters.ts";
 
 /** What a deep search matches; the Rust `SearchKind`. */
 export type SearchKind = "message" | "author" | "path" | "code";
@@ -35,8 +36,8 @@ export function parseSearch(text: string, allHistory: boolean): SearchInput {
   return allHistory ? { mode: "deep", kind: "message", text: text.trim() } : { mode: "find", text };
 }
 
-/** The refs a deep search walks: the graph's current ref set; the Rust `SearchRefs`. */
-export type SearchRefs = { kind: "branches" } | { kind: "only"; refs: string[] };
+/** The refs a deep search walks: the graph's current ref set (#401); the Rust `SearchRefs`. */
+export type SearchRefs = RefSet;
 
 /** `SearchQuery` for `git_log_search`. */
 export interface SearchQuery {

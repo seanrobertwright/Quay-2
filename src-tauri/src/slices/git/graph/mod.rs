@@ -4,6 +4,8 @@
 mod bench_dump;
 mod badges;
 mod cat_file;
+#[cfg(test)]
+mod filter_tests;
 mod lanes;
 mod log;
 mod page;

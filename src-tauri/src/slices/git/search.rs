@@ -18,18 +18,16 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::State;
 
-use super::checkout::{invalid_ref, refuse_option_like, rev_oid};
-use super::commit::read_git;
+use super::checkout::rev_oid;
 use super::error::GitError;
 use super::op_runner::headless_git;
+use super::rev_set;
 use crate::spawn::ProcessTree;
 
 /// Matches a search sends before it waits for Load more.
 pub const RESULT_CAP: u32 = 1_000;
 /// The longest search text taken, in bytes.
 pub const MAX_SEARCH_TEXT: usize = 1_024;
-/// The most refs a reduced ref set names.
-pub const MAX_SEARCH_REFS: usize = 1_000;
 /// Oids per `Matches` event at most; a part-filled batch goes as soon as git pauses.
 const BATCH_OIDS: usize = 256;
 /// How much of git's stderr a failure keeps.
@@ -49,16 +47,8 @@ pub enum SearchKind {
     Code,
 }
 
-/// The refs a search walks from, the graph's current ref set.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
-pub enum SearchRefs {
-    /// Every local branch, every remote-tracking branch and HEAD, as the graph walks (#370).
-    #[default]
-    Branches,
-    /// Only these refs: each a full name such as `refs/heads/main`, or `HEAD`.
-    Only { refs: Vec<String> },
-}
+/// The refs a search walks from: the graph's current ref set, filters and all (#401).
+pub use super::rev_set::RefSet as SearchRefs;
 
 /// `SearchQuery` from `git_log_search`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -143,35 +133,12 @@ fn parse_text(text: &str) -> Result<&str, GitError> {
     Ok(text)
 }
 
-/// The revisions `refs` names in `repo`, each checked: a reduced set names only `HEAD` or full
-/// ref names that `check-ref-format` accepts and that exist, and none can read as an option.
+/// The revisions `refs` names in `repo`, each checked as [`super::rev_set`] says. An unborn HEAD
+/// names no commit, so the walk goes without it, as the graph's does.
 fn rev_args(repo: &Path, refs: &SearchRefs) -> Result<Vec<String>, GitError> {
-    match refs {
-        SearchRefs::Branches => {
-            let mut revs = vec!["--branches".to_string(), "--remotes".to_string()];
-            // An unborn HEAD names no commit; the walk goes without it, as the graph's does.
-            if rev_oid(repo, "HEAD^{commit}")?.is_some() {
-                revs.push("HEAD".into());
-            }
-            Ok(revs)
-        }
-        SearchRefs::Only { refs } => {
-            if refs.is_empty() || refs.len() > MAX_SEARCH_REFS {
-                return Err(GitError::Other { stderr: format!("a search names between 1 and {MAX_SEARCH_REFS} refs") });
-            }
-            for name in refs {
-                refuse_option_like(name)?;
-                if name != "HEAD" {
-                    let formatted = name.starts_with("refs/") && read_git(repo, &["check-ref-format", name])?.is_some();
-                    if !formatted {
-                        return Err(invalid_ref(name));
-                    }
-                }
-                rev_oid(repo, &format!("{name}^{{commit}}"))?.ok_or_else(|| invalid_ref(name))?;
-            }
-            Ok(refs.clone())
-        }
-    }
+    let revs = rev_set::resolve(repo, refs)?;
+    let revs = if revs.unchecked_head && rev_oid(repo, "HEAD^{commit}")?.is_none() { revs.without_head() } else { revs };
+    Ok(revs.args)
 }
 
 impl GitSearches {

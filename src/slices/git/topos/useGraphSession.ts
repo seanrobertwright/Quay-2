@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { GraphFeed, SOFT_CAP, type WatchState } from "./graphFeed";
 import { errorMessage } from "./gitVersion";
+import type { RefSet } from "./graphFilters";
 import { SLOW_FIRST_ROWS_MS } from "./speedup";
 
 export interface GraphSession {
@@ -36,12 +37,15 @@ function inOrder<T>(call: () => Promise<T>): Promise<T> {
 export type GraphOrder = "date" | "topo";
 
 /**
- * The graph session for `repoPath` in `order` (#374, #375). A new path or order closes the old
- * session and opens one; while both stay the same the session lives on, including while Topos is
- * hidden.
+ * The graph session for `repoPath` in `order` over `refs`, its ref set (#374, #375, #401). A new
+ * path, order or ref set closes the old session and opens one, never splicing into it; while all
+ * three stay the same the session lives on, including while Topos is hidden. A null `refs`, while
+ * the repo's filters are still being read, opens nothing yet.
  */
-export function useGraphSession(repoPath: string | null, order: GraphOrder): GraphSession {
-  const [opened, setOpened] = useState<{ repoPath: string; order: GraphOrder; feed: GraphFeed } | null>(null);
+export function useGraphSession(repoPath: string | null, order: GraphOrder, refs: RefSet | null): GraphSession {
+  // Compared by value, so an equal ref set built again keeps the session.
+  const refsKey = refs === null ? null : JSON.stringify(refs);
+  const [opened, setOpened] = useState<{ repoPath: string; order: GraphOrder; refsKey: string; feed: GraphFeed } | null>(null);
   const [version, setVersion] = useState(0);
   const frame = useRef<number | null>(null);
   // The feed on screen, so a late answer for a replaced feed changes nothing.
@@ -57,14 +61,14 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
   }, []);
 
   useEffect(() => {
-    if (repoPath === null) {
+    if (repoPath === null || refsKey === null) {
       current.current = null;
       setOpened(null);
       return;
     }
     const feed = new GraphFeed();
     current.current = feed;
-    setOpened({ repoPath, order, feed });
+    setOpened({ repoPath, order, refsKey, feed });
     let openedId: number | null = null;
     const close = (sessionId: number) =>
       inOrder(() => invoke("git_graph_close", { sessionId })).catch(console.error);
@@ -92,7 +96,7 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     inOrder(() =>
       invoke<number>("git_graph_open", {
         repoPath,
-        options: { order, refs: { kind: "branches" }, softCap: SOFT_CAP },
+        options: { order, refs: JSON.parse(refsKey) as RefSet, softCap: SOFT_CAP },
         onEvent: channel,
       })
     ).then(
@@ -115,7 +119,7 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
         if (sessionId !== null) await invoke("git_graph_close", { sessionId });
       }).catch(console.error);
     };
-  }, [repoPath, order, bump]);
+  }, [repoPath, order, refsKey, bump]);
 
   useEffect(
     () => () => {
@@ -124,9 +128,10 @@ export function useGraphSession(repoPath: string | null, order: GraphOrder): Gra
     []
   );
 
-  // A feed opened for another path or order is never handed out, not even for the render before
-  // the effect above replaces it.
-  const feed = opened !== null && opened.repoPath === repoPath && opened.order === order ? opened.feed : null;
+  // A feed opened for another path, order or ref set is never handed out, not even for the render
+  // before the effect above replaces it.
+  const feed =
+    opened !== null && opened.repoPath === repoPath && opened.order === order && opened.refsKey === refsKey ? opened.feed : null;
 
   const reachedRow = useCallback(
     (windowEnd: number) => {

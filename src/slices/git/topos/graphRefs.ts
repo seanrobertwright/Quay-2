@@ -25,7 +25,7 @@ export interface WorktreeHead {
 export interface GitRefs {
   refs: RefBadge[];
   worktrees: WorktreeHead[];
-  /** Commits only a tag reaches, which the graph leaves out (#370). */
+  /** Commits only a tag reaches, which the graph leaves out unless the Tags toggle is on (#370, #401). */
   tagOnlyCount: number;
 }
 

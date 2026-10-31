@@ -36,6 +36,8 @@ const MAX_AGENTS = 0xffff;
 /** An unknown stamp without its value, kept at a fixed index so a full table can still name it. */
 const UNKNOWN_STAMP: GraphAgent = { kind: null, source: "stamp" };
 const UNKNOWN_STAMP_ID = 1;
+/** The first table index an agent read from a row takes; every entry from it on is non-null. */
+const FIRST_READ_ID = UNKNOWN_STAMP_ID + 1;
 
 function agentKey(a: GraphAgent): string {
   return JSON.stringify([a.kind, a.source, a.raw ?? null]);
@@ -364,6 +366,14 @@ export class GraphStore {
   /** The agent that made the commit at `row`, or null for a human commit (#381). */
   agent(row: number): GraphAgent | null {
     return this.agentTable[this.agentIdsByRow[row]];
+  }
+
+  /**
+   * The distinct agents the loaded rows hold, in the order they first loaded, for the agent
+   * highlight's choices (#401). The entries before `FIRST_READ_ID` are there before any row is.
+   */
+  agentsSeen(): readonly GraphAgent[] {
+    return this.agentTable.slice(FIRST_READ_ID) as GraphAgent[];
   }
 
   /** Epoch milliseconds. */

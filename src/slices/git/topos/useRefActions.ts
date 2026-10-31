@@ -394,6 +394,9 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
         case "deleteRemoteBranch":
           // Network operations, which Topos's toolbar runs; see ToposOverlay.
           return;
+        case "showOnly":
+          // A filter, which Topos's filter bar owns; see ToposOverlay.
+          return;
         case "copySha":
           navigator.clipboard.writeText(action.oid).then(
             () => toast({ tone: "done", text: `Copied ${shortOid(action.oid)}` }),

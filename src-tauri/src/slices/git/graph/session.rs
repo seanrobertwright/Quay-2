@@ -27,6 +27,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use super::super::error::GitError;
 use super::cat_file::{CatFileBatch, GitObject};
 use super::lanes::{LaneCheckpoint, LanePass};
+use super::super::rev_set::{check as check_refs, resolve as resolve_refs};
 use super::log::{log_command, GraphOrder, LogReader, LogRecord};
 use super::page::{encode_page, AuthorTable, GraphEvent};
 use super::refs::read_branch_tips;
@@ -55,17 +56,11 @@ pub const SPLICE_SEARCH_ROWS: u32 = 20_000;
 /// the top than the search reads, so it resets anyway; the bound keeps their memory small.
 const CHECKPOINTED_ROWS: u32 = 2 * SPLICE_SEARCH_ROWS;
 
-/// Which refs the walk starts from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum GraphRefs {
-    /// Every local branch, every remote-tracking branch and HEAD; never tags (#370).
-    #[default]
-    Branches,
-}
+/// Which refs the walk starts from: the graph's ref set, which a deep search shares (#401).
+pub use super::super::rev_set::RefSet as GraphRefs;
 
 /// `GraphOptions` from `git_graph_open`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct GraphOptions {
     pub order: GraphOrder,
@@ -172,6 +167,7 @@ impl GraphSessions {
     /// Closes any live session and starts one on `repo` that sends to `channel`. Returns its id.
     pub fn open(&self, repo: &Path, options: GraphOptions, channel: Channel<InvokeResponseBody>) -> Result<u32, GitError> {
         let soft_cap = parse_rows("softCap", options.soft_cap.unwrap_or(DEFAULT_SOFT_CAP))?;
+        check_refs(&options.refs)?;
         if !repo.is_absolute() || !repo.is_dir() {
             return Err(GitError::Other { stderr: format!("{} is not a folder", repo.display()) });
         }
@@ -188,6 +184,7 @@ impl GraphSessions {
             id,
             repo: repo.to_path_buf(),
             order: options.order,
+            refs: options.refs,
             control: control.clone(),
             children: children.clone(),
             channel: channel.clone(),
@@ -310,6 +307,8 @@ struct Walk {
     id: u32,
     repo: PathBuf,
     order: GraphOrder,
+    /// The ref set every `git log` of the session walks, its refreshes' too.
+    refs: GraphRefs,
     control: Arc<Control>,
     children: Slots,
     channel: Channel<InvokeResponseBody>,
@@ -322,6 +321,15 @@ struct Stream {
     rx: Receiver<std::io::Result<LogRecord>>,
     parser: JoinHandle<()>,
     stderr: JoinHandle<String>,
+}
+
+impl Stream {
+    /// A stream that ends at once, for a ref set naming nothing. With no process in its slot, it
+    /// finishes as a success.
+    fn empty(slot: usize) -> Stream {
+        let (_, rx) = sync_channel(0);
+        Stream { slot, rx, parser: std::thread::spawn(|| ()), stderr: std::thread::spawn(String::new) }
+    }
 }
 
 /// How one `git log` run ended.
@@ -429,18 +437,29 @@ impl Walk {
     }
 
     /// Whether a walk that ended having sent no rows runs once more without `HEAD`. A repo whose
-    /// HEAD is unborn fails on `HEAD` before printing a row, so its branches are walked alone.
+    /// HEAD is unborn fails on `HEAD` before printing a row, so its branches are walked alone. Only
+    /// a ref set whose revisions end in an unchecked `HEAD` can fail that way.
     fn retry_without_head(&self, sent: u32, retried: &mut bool) -> bool {
-        if sent > 0 || *retried || head_is_born(&self.repo) {
+        if sent > 0 || *retried {
+            return false;
+        }
+        let unchecked_head = resolve_refs(&self.repo, &self.refs).is_ok_and(|revs| revs.unchecked_head);
+        if !unchecked_head || head_is_born(&self.repo) {
             return false;
         }
         *retried = true;
         true
     }
 
-    /// Starts a `git log` whose process lives in slot `slot`.
+    /// Starts a `git log` over the session's ref set, resolved afresh, whose process lives in slot
+    /// `slot`. A ref set that resolves to no revisions walks nothing.
     fn start(&self, with_head: bool, slot: usize) -> Result<Stream, GitError> {
-        let mut child = log_command(&self.repo, self.order, with_head)
+        let revs = resolve_refs(&self.repo, &self.refs)?;
+        let revs = if with_head { revs } else { revs.without_head() };
+        if revs.args.is_empty() {
+            return Ok(Stream::empty(slot));
+        }
+        let mut child = log_command(&self.repo, self.order, &revs.args)
             .spawn()
             .map_err(|e| GitError::Other { stderr: format!("could not run git log: {e}") })?;
         let (Some(stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {

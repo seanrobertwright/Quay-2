@@ -11,9 +11,8 @@ import type { DeepSearchBarProps, GraphFindBarProps } from "./GraphFindBar";
 import type { GraphStore } from "./graphStore";
 import { deepCounter, parseSearch, ResultRoute, type FeedState, type SearchQuery } from "./deepSearch";
 import { useDeepSearch, useResultRows } from "./useDeepSearch";
-
-/** The graph's ref set (#370), which a deep search walks too. */
-const GRAPH_REFS = { kind: "branches" } as const;
+import { brightRows, type Highlight } from "./agentHighlight";
+import type { RefSet } from "./graphFilters";
 
 /** How long typing pauses before a query runs. */
 const DEBOUNCE_MS = 150;
@@ -105,8 +104,8 @@ interface FindMode {
   matches: Int32Array;
   /** What a step walks: these rows, the typed text's once it settles, or nothing. */
   steps: Int32Array | "settle" | null;
-  /** The counter's text, before the bar's open and non-blank check. */
-  counter: (cursorRow: number | null) => string;
+  /** The counter's text for the bright rows `bright`, before the bar's open and non-blank check. */
+  counter: (cursorRow: number | null, bright: Int32Array) => string;
 }
 
 const NO_MODE: FindMode = { active: false, query: "", matches: NO_MATCHES, steps: null, counter: () => "" };
@@ -133,14 +132,18 @@ export interface FindControllerOptions {
   loadMoreRows: () => void;
   /** Opens only the details of a result the graph will never load. */
   openDetails: (oid: string) => void;
+  /** The graph's ref set (#401), which a deep search walks too. */
+  refs: RefSet;
+  /** The agent highlight (#401): with Find, a row stays bright only when it matches both. */
+  highlight: Highlight;
 }
 
 export interface FindController {
-  /** Whether a find or a deep search is lighting its matches and dimming the other rows. */
+  /** Whether a find, a deep search or an agent highlight is lighting rows and dimming the rest. */
   active: boolean;
   /** The text whose runs the rows mark, or "" for none; a deep search marks none. */
   query: string;
-  /** The matching rows, ascending; they apply only while `query` isn't "". */
+  /** The bright rows, ascending: the find's, the highlight's, or those matching both. */
   matches: Int32Array;
   /** The find bar's props while the find is open, otherwise null. */
   bar: GraphFindBarProps | null;
@@ -164,6 +167,8 @@ export function useFindController({
   feedState,
   loadMoreRows,
   openDetails,
+  refs,
+  highlight,
 }: FindControllerOptions): FindController {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -176,8 +181,8 @@ export function useFindController({
   const deepKind = input.mode === "deep" ? input.kind : null;
   const deepText = input.mode === "deep" ? input.text : "";
   const deepQuery = useMemo<SearchQuery | null>(
-    () => (deepKind === null || deepText === "" ? null : { kind: deepKind, text: deepText, refs: GRAPH_REFS }),
-    [deepKind, deepText]
+    () => (deepKind === null || deepText === "" ? null : { kind: deepKind, text: deepText, refs }),
+    [deepKind, deepText, refs]
   );
   const deep = useDeepSearch(repoPath, deepQuery);
   const deepState = deepQuery === null ? null : deep.state;
@@ -194,7 +199,7 @@ export function useFindController({
       query: "",
       matches: deepRows.matches,
       steps: deepRows.matches,
-      counter: (row) => deepCounter(status, oids.length, deepRows.matches, row),
+      counter: (row, bright) => deepCounter(status, oids.length, bright, row),
     };
   } else if (input.mode === "find") {
     mode = {
@@ -202,10 +207,19 @@ export function useFindController({
       query: findQuery,
       matches: found.matches,
       steps: findQuery === "" ? "settle" : found.matches,
-      counter: (row) => findCounter(findQuery === "" ? NO_MATCHES : found.matches, row, findQuery === "" || found.scanning),
+      counter: (row, bright) => findCounter(findQuery === "" ? NO_MATCHES : bright, row, findQuery === "" || found.scanning),
     };
   }
-  const { active, query, matches, steps } = mode;
+  // The find's and the highlight's rows combine by index; the counter and steps count only the
+  // bright rows (#368).
+  const findMatches = mode.matches;
+  const bright = useMemo(
+    () => brightRows({ active: mode.active, matches: findMatches }, highlight),
+    [mode.active, findMatches, highlight]
+  );
+  const { active, matches } = bright;
+  const query = mode.query;
+  const steps = mode.steps instanceof Int32Array ? matches : mode.steps;
 
   const refocusRef = useRef(refocus);
   refocusRef.current = refocus;
@@ -310,7 +324,7 @@ export function useFindController({
     return rows;
   }, [store, deepQuery, deepRows.matches]);
 
-  const counter = open && text.trim() !== "" ? mode.counter(cursorRow) : "";
+  const counter = open && text.trim() !== "" ? mode.counter(cursorRow, matches) : "";
   const deepBar: DeepSearchBarProps | null =
     input.mode === "deep"
       ? {

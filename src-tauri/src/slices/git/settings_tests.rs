@@ -325,3 +325,68 @@ fn only_a_true_suppress_speedup_turns_the_banner_away() {
         [("c:/a/.git".into(), true), ("c:/b/.git".into(), false), ("c:/c/.git".into(), false), ("c:/d/.git".into(), false)]
     );
 }
+
+#[test]
+fn a_repos_filters_round_trip_through_the_file_and_branches_that_are_gone_are_pruned_on_open() {
+    let (root, worktree) = repo_with_worktree();
+    let repo = root.join("repo");
+    super::staging_tests::git(&repo, &["branch", "doomed"]);
+    let path = temp_path();
+    let store = ToposSettingsStore::at(path.clone());
+
+    // Untouched, a repo's filters are the defaults: every branch, remotes shown, tags not.
+    assert_eq!(store.repo_filters(&repo).unwrap(), RepoFilters { branches: vec![], remotes: true, tags: false });
+    assert_eq!(RepoFilters::default(), RepoFilters { branches: vec![], remotes: true, tags: false });
+
+    store
+        .write(patch(json!({ "repoFilters": {
+            "repoPath": worktree.to_string_lossy(),
+            "filters": { "branches": ["refs/heads/feat", "refs/heads/doomed"], "remotes": false, "tags": true },
+        } })))
+        .unwrap();
+    store.flush().unwrap();
+    // A worktree and its repo share one entry, so the root reads what the worktree wrote.
+    let reopened = ToposSettingsStore::at(path.clone());
+    assert_eq!(
+        reopened.repo_filters(&repo).unwrap(),
+        RepoFilters { branches: vec!["refs/heads/feat".into(), "refs/heads/doomed".into()], remotes: false, tags: true }
+    );
+
+    super::staging_tests::git(&repo, &["branch", "-D", "doomed"]);
+    let pruned = RepoFilters { branches: vec!["refs/heads/feat".into()], remotes: false, tags: true };
+    assert_eq!(reopened.repo_filters(&worktree).unwrap(), pruned);
+    reopened.flush().unwrap();
+    assert_eq!(ToposSettingsStore::at(path).repo_filters(&repo).unwrap(), pruned, "the pruning is written back");
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn a_filter_naming_anything_but_full_branch_names_is_refused_whole() {
+    let (root, worktree) = repo_with_worktree();
+    let store = ToposSettingsStore::at(temp_path());
+    for bad in ["--all", "feat", "refs/tags/v1", ""] {
+        let result = store.write(patch(json!({ "repoFilters": {
+            "repoPath": worktree.to_string_lossy(), "filters": { "branches": [bad], "remotes": true, "tags": false },
+        } })));
+        assert!(matches!(result, Err(GitError::InvalidRefName { .. })), "{bad:?}: {result:?}");
+    }
+    assert_eq!(store.read().repos, BTreeMap::new());
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn bad_stored_filter_values_read_as_their_defaults() {
+    let path = temp_path();
+    std::fs::write(
+        &path,
+        r#"{ "repos": {
+            "c:/a/.git": { "lastOpened": 5, "branches": ["refs/heads/main", "--all", 7, "main"], "remotes": "no", "tags": 1 },
+            "c:/b/.git": { "lastOpened": 5, "branches": "refs/heads/main", "remotes": false, "tags": true }
+        } }"#,
+    )
+    .unwrap();
+
+    let repos = ToposSettingsStore::at(path).read().repos;
+    assert_eq!(repos["c:/a/.git"].filters, RepoFilters { branches: vec!["refs/heads/main".into()], remotes: true, tags: false });
+    assert_eq!(repos["c:/b/.git"].filters, RepoFilters { branches: vec![], remotes: false, tags: true });
+}

@@ -177,6 +177,32 @@ fn refs_limit_the_search_to_the_commits_they_reach() {
 }
 
 #[test]
+fn a_filtered_search_walks_the_graphs_reduced_ref_set_and_the_selected_head() {
+    let (_root, wt) = repo_with_worktree();
+    let on_feat = commit(&wt, "a.txt", "a
+", "needle on feat", ANN);
+    git(&wt, &["switch", "-q", "-c", "other", "HEAD~1"]);
+    let on_other = commit(&wt, "c.txt", "c
+", "needle on other", ANN);
+    git(&wt, &["switch", "-q", "-c", "side", "HEAD~1"]);
+    let on_side = commit(&wt, "b.txt", "b
+", "needle on side", ANN);
+
+    let refs = SearchRefs::Filtered {
+        branches: vec!["refs/heads/feat".into()],
+        remotes: true,
+        tags: false,
+        worktree_path: Some(wt.to_string_lossy().into_owned()),
+    };
+    let mut found = search(&wt, SearchQuery { kind: SearchKind::Message, text: "needle".into(), refs }).0;
+    found.sort();
+    let mut expected = vec![on_feat, on_side];
+    expected.sort();
+    assert_eq!(found, expected, "feat from the filter, side from the worktree's HEAD");
+    assert!(!found.contains(&on_other));
+}
+
+#[test]
 fn a_ref_that_is_option_like_short_or_missing_is_refused_before_git_runs() {
     let (_root, wt) = repo_with_worktree();
     for bad in ["--all", "feat", "refs/heads/nope", "refs/heads/a..b", ""] {
