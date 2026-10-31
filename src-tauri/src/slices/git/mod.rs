@@ -20,6 +20,8 @@ mod speedup_tests;
 pub mod staging;
 #[cfg(test)]
 mod staging_tests;
+#[cfg(test)]
+mod test_load;
 pub mod version;
 
 pub use commands::*;

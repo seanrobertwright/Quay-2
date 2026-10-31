@@ -247,6 +247,7 @@ fn discard_all_restores_every_tracked_change_and_leaves_untracked_files_unless_a
 
 #[test]
 fn discard_all_with_untracked_files_acts_beyond_the_status_cap() {
+    let _heavy = crate::slices::git::test_load::heavy();
     let (root, wt) = repo_with_worktree();
     std::fs::create_dir_all(wt.join("many")).unwrap();
     for i in 0..10_002 {
