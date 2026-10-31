@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeft, Columns2, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
+import { ArrowLeft, Columns2, Loader2, Minus, Plus, RefreshCw, X } from "lucide-react";
 import { usePopupLayer } from "../../overlay/useOverlay";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { DiscardButton } from "./DiscardButton";
 import { DiffEditor, type HunkAction, type LineGutter } from "./DiffEditor";
 import { confirmDiscardFile } from "./discards";
 import { splitDoc, unifiedDoc, type DiffDoc, type FileDiff } from "./diffDoc";
@@ -312,17 +313,15 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] shrink-0">{words.name}</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {diff && body !== "unchanged" && canDiscard && (
-            <button
-              type="button"
+            <DiscardButton
+              busy={busySelection("file", true)}
               disabled={busy !== null}
-              aria-busy={busySelection("file", true) || undefined}
               onClick={askDiscardFile}
               title="Discard the file's unstaged changes, after a backup"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#f85149]/40 text-[11px] text-[#ff7b72] hover:bg-[#f85149]/10 disabled:opacity-50 shrink-0"
+              className="px-2 text-[11px] shrink-0"
             >
-              {busySelection("file", true) ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Undo2 className="w-3 h-3" aria-hidden="true" />}
               Discard file
-            </button>
+            </DiscardButton>
           )}
           {diff && body !== "unchanged" && actionButton({ kind: "file" }, `${words.verb} file`, `${words.verb} the whole file`)}
           <button
@@ -456,17 +455,15 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               {linesLabel(direction, effective.keys.size)}
             </button>
             {canDiscard && (
-              <button
-                type="button"
+              <DiscardButton
+                busy={discardLinesBusy}
                 disabled={busy !== null}
-                aria-busy={discardLinesBusy || undefined}
                 onClick={discardLines}
                 title="Discard these lines from the file, after a backup"
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#f85149]/40 text-[#ff7b72] hover:bg-[#f85149]/10 disabled:opacity-50 whitespace-nowrap"
+                className="px-2 whitespace-nowrap"
               >
-                {discardLinesBusy ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Undo2 className="w-3 h-3" aria-hidden="true" />}
                 Discard {lineCount(discardEffective.keys.size)}
-              </button>
+              </DiscardButton>
             )}
             <button
               type="button"

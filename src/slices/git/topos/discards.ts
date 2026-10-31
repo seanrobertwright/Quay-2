@@ -99,11 +99,11 @@ export function selectionLabel(path: string, selection: Selection): string {
   }
 }
 
-/** What a discard from the lists took. `folder` says the one path is an untracked folder. */
-export function targetLabel(target: DiscardTarget, folder: boolean): string {
+/** What a discard from the lists took; `kind` is the kind of the one path's row, if it has one. */
+export function targetLabel(target: DiscardTarget, kind?: EntryKind): string {
   if (target.kind === "all") return target.includeUntracked ? "all unstaged changes and untracked files" : "all unstaged changes";
   if (target.paths.length !== 1) return `${target.paths.length.toLocaleString("en-US")} paths`;
-  return folder ? `${target.paths[0]}/` : target.paths[0];
+  return kind === "untrackedFolder" ? `${target.paths[0]}/` : target.paths[0];
 }
 
 /** What the live region and the toast say once a discard of `label` backed up `files` files. */

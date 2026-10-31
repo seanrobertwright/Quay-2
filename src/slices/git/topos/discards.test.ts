@@ -20,10 +20,10 @@ test("a discard is named by what it took", () => {
     selectionLabel("a.txt", { kind: "lines", lines: [{ hunk: 0, line: 1 }, { hunk: 0, line: 2 }, { hunk: 1, line: 0 }] }),
     "3 lines of a.txt"
   );
-  assert.equal(targetLabel({ kind: "paths", paths: ["notes"] }, true), "notes/");
-  assert.equal(targetLabel({ kind: "paths", paths: ["README.md"] }, false), "README.md");
-  assert.equal(targetLabel({ kind: "all", includeUntracked: false }, false), "all unstaged changes");
-  assert.equal(targetLabel({ kind: "all", includeUntracked: true }, false), "all unstaged changes and untracked files");
+  assert.equal(targetLabel({ kind: "paths", paths: ["notes"] }, "untrackedFolder"), "notes/");
+  assert.equal(targetLabel({ kind: "paths", paths: ["README.md"] }, "tracked"), "README.md");
+  assert.equal(targetLabel({ kind: "all", includeUntracked: false }), "all unstaged changes");
+  assert.equal(targetLabel({ kind: "all", includeUntracked: true }), "all unstaged changes and untracked files");
   assert.equal(
     discardedMessage("hunk 2 of src/lib.rs", 1),
     "Discarded hunk 2 of src/lib.rs. Undo within 10 seconds, or restore it from Recently discarded."

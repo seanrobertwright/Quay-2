@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { DiscardButton } from "./DiscardButton";
 import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import {
@@ -464,7 +465,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const askDiscard = (row: ListRow) => {
     const kind = row.change?.kind ?? "tracked";
     const target = { kind: "paths" as const, paths: [row.path] };
-    setConfirm({ ...confirmDiscardFile(row.path, kind), onConfirm: () => discard(target, targetLabel(target, kind === "untrackedFolder")) });
+    setConfirm({ ...confirmDiscardFile(row.path, kind), onConfirm: () => discard(target, targetLabel(target, kind)) });
   };
   const askDiscardAll = () => {
     const total = status.state === "done" ? status.status.total : 0;
@@ -472,7 +473,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
       ...confirmDiscardAll(total),
       onConfirm: (includeUntracked) => {
         const target = { kind: "all" as const, includeUntracked };
-        discard(target, targetLabel(target, false));
+        discard(target, targetLabel(target));
       },
     });
   };
@@ -497,17 +498,15 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           <span className="ml-1.5 normal-case font-normal tabular-nums">{count.toLocaleString()}</span>
         </h4>
         {side === "unstaged" && (
-          <button
-            type="button"
+          <DiscardButton
+            busy={isBusy("discard")}
             disabled={busy !== null || count === 0}
-            aria-busy={isBusy("discard") || undefined}
             onClick={askDiscardAll}
             title="Discard every unstaged change, after a backup"
-            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#f85149]/40 text-[11px] text-[#ff7b72] hover:bg-[#f85149]/10 disabled:opacity-50 shrink-0"
+            className="ml-auto px-1.5 text-[11px] shrink-0"
           >
-            {isBusy("discard") ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <Undo2 className="w-3 h-3" aria-hidden="true" />}
             {isBusy("discard") ? "Discarding…" : "Discard all"}
-          </button>
+          </DiscardButton>
         )}
         {side === "unstaged" && ignoreFolder !== null && (
           <button
