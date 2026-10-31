@@ -1,6 +1,8 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, X } from "lucide-react";
+import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { DiscardButton } from "./DiscardButton";
+import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import {
   BUSY_MESSAGE,
@@ -98,6 +100,12 @@ function opensDiff(row: ListRow): boolean {
   return row.type === "change" && (row.change?.kind === "tracked" || row.change?.kind === "untracked");
 }
 
+/** Whether `row` can be discarded on its own: a tracked or untracked file, or an untracked folder. */
+function discardable(row: ListRow): boolean {
+  const kind = row.change?.kind;
+  return row.type === "change" && (kind === "tracked" || kind === "untracked" || kind === "untrackedFolder");
+}
+
 function isBusyFor(busy: BusyOp | null, row: ListRow): boolean {
   return busy !== null && busy.target.kind === "paths" && busy.target.paths.includes(row.path);
 }
@@ -108,6 +116,8 @@ interface ChangeListProps {
   busy: BusyOp | null;
   /** Stages a row from Unstaged, or unstages one from Staged. */
   onAct: (row: ListRow) => void;
+  /** Asks to discard a row's unstaged changes; only the Unstaged list has it. */
+  onDiscard?: (row: ListRow) => void;
   /** Enter on a folder: collapses or expands it. */
   onOpen: (row: ListRow) => void;
   announce: (text: string) => void;
@@ -125,7 +135,7 @@ interface ChangeListProps {
  * DOM, so a list of 10,000 changes renders a few dozen. ↑/↓ move the active row, Enter opens a
  * folder, and `s` or `u` acts on the active row.
  */
-const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen, announce, hintId, onActive, onOpenFile, openPath }) => {
+const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onDiscard, onOpen, announce, hintId, onActive, onOpenFile, openPath }) => {
   const scroller = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(0);
   const [height, setHeight] = useState(0);
@@ -259,6 +269,22 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
               , {row.type === "dir" ? "folder" : words}
               {row.expanded === undefined ? "" : row.expanded ? ", expanded" : ", collapsed"}
             </span>
+            {!rowBusy && onDiscard && discardable(row) && (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Discard ${row.path}${isFolderRow(row) ? "/" : ""}`}
+                title={`Discard ${row.path}${isFolderRow(row) ? "/" : ""}`}
+                disabled={busy !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDiscard(row);
+                }}
+                className="shrink-0 p-0.5 rounded text-[#8b949e] opacity-0 group-hover/row:opacity-100 hover:text-[#ff7b72] hover:bg-[#30363d] disabled:opacity-40"
+              >
+                <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            )}
             {rowBusy ? (
               <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-[#8b949e]" aria-label="Working" />
             ) : (
@@ -309,6 +335,45 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
   );
 };
 
+const DISCARD_STATE: Record<DiscardEntry["state"], string> = {
+  discarded: "",
+  restored: "Restored",
+  changed: "Changed since the discard",
+  copied: "Copied",
+};
+
+/** One discard in Recently discarded: Restore, or Copy to a new file once the file has changed since. */
+const DiscardRow: React.FC<{
+  entry: DiscardEntry;
+  busy: boolean;
+  onRestore: (entry: DiscardEntry) => void;
+  onCopy: (entry: DiscardEntry) => void;
+}> = ({ entry, busy, onRestore, onCopy }) => {
+  const note =
+    entry.state === "copied" ? `Copied to ${entry.copiedTo.join(", ")}` : entry.state === "changed" ? `${DISCARD_STATE.changed}: ${entry.changedPaths.join(", ")}` : DISCARD_STATE[entry.state];
+  const button = "shrink-0 px-1.5 py-0.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50";
+  return (
+    <li className="px-3 py-1 flex items-center gap-2 text-xs">
+      <span className="flex-1 min-w-0">
+        <span className="block truncate text-[#c9d1d9]" title={entry.label}>
+          {entry.label}
+        </span>
+        {note && <span className="block truncate text-[11px] text-[#8b949e]" title={note}>{note}</span>}
+      </span>
+      {entry.state === "discarded" && (
+        <button type="button" disabled={busy} onClick={() => onRestore(entry)} aria-label={`Restore ${entry.label}`} className={button}>
+          Restore
+        </button>
+      )}
+      {entry.state === "changed" && (
+        <button type="button" disabled={busy} onClick={() => onCopy(entry)} aria-label={`Copy ${entry.label} to a new file`} className={button}>
+          Copy to a new file
+        </button>
+      )}
+    </li>
+  );
+};
+
 export interface StagingInspectorProps {
   id: string;
   staging: Staging;
@@ -348,7 +413,9 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const [collapsed, setCollapsed] = useState<Record<Side, ReadonlySet<string>>>({ unstaged: new Set(), staged: new Set() });
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
-  const { status, busy, failure, announce, run, folders, toggleFolder } = staging;
+  const { status, busy, failure, announce, run, folders, toggleFolder, discard, discards, undo, dismissUndo, restore, copyDiscard } = staging;
+  const [showDiscards, setShowDiscards] = useState(false);
+  const discardsId = useId();
 
   const lists = useMemo(() => (status.state === "done" ? splitStatus(status.status.entries) : null), [status]);
   const unstagedRows = useMemo(
@@ -395,6 +462,22 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
       onConfirm: () => run("ignore", { kind: "paths", paths: [folder] }),
     });
 
+  const askDiscard = (row: ListRow) => {
+    const kind = row.change?.kind ?? "tracked";
+    const target = { kind: "paths" as const, paths: [row.path] };
+    setConfirm({ ...confirmDiscardFile(row.path, kind), onConfirm: () => discard(target, targetLabel(target, kind)) });
+  };
+  const askDiscardAll = () => {
+    if (status.state !== "done") return;
+    setConfirm({
+      ...confirmDiscardAll(status.status),
+      onConfirm: (includeUntracked) => {
+        const target = { kind: "all" as const, includeUntracked };
+        discard(target, targetLabel(target));
+      },
+    });
+  };
+
   const isBusy = (action: BusyOp["action"]) => busy !== null && busy.action === action && busy.target.kind === "all";
   const note = status.state === "done" ? capNote(status.status) : null;
 
@@ -414,13 +497,24 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           {heading}
           <span className="ml-1.5 normal-case font-normal tabular-nums">{count.toLocaleString()}</span>
         </h4>
+        {side === "unstaged" && (
+          <DiscardButton
+            busy={isBusy("discard")}
+            disabled={busy !== null || count === 0}
+            onClick={askDiscardAll}
+            title="Discard every unstaged change, after a backup"
+            className="ml-auto px-1.5 text-[11px] shrink-0"
+          >
+            {isBusy("discard") ? "Discarding…" : "Discard all"}
+          </DiscardButton>
+        )}
         {side === "unstaged" && ignoreFolder !== null && (
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => askIgnore(ignoreFolder)}
             title={`Add ${ignoreFolder}/ to .gitignore`}
-            className="ml-auto inline-flex items-center gap-1 min-w-0 max-w-[45%] px-1.5 py-0.5 rounded border border-[#30363d] text-[11px] text-[#8b949e] hover:text-white hover:bg-[#21262d] disabled:opacity-50"
+            className="inline-flex items-center gap-1 min-w-0 max-w-[35%] px-1.5 py-0.5 rounded border border-[#30363d] text-[11px] text-[#8b949e] hover:text-white hover:bg-[#21262d] disabled:opacity-50"
           >
             <EyeOff className="w-3 h-3 shrink-0" aria-hidden="true" />
             <span className="truncate">Ignore {ignoreFolder}/</span>
@@ -431,7 +525,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           disabled={busy !== null || count === 0}
           aria-busy={busyAll}
           onClick={() => run(all, { kind: "all" })}
-          className={`${side === "unstaged" && ignoreFolder !== null ? "" : "ml-auto "}inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${allClass} disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`${side === "unstaged" ? "" : "ml-auto "}inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold shrink-0 ${allClass} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {busyAll && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}
           {busyAll ? allBusy : allLabel}
@@ -545,6 +639,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
             rows={unstagedRows}
             busy={busy}
             onAct={act("unstaged")}
+            onDiscard={askDiscard}
             onOpen={onOpen("unstaged")}
             announce={announce}
             hintId={hintId}
@@ -564,6 +659,48 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
             onOpenFile={(row) => onOpenFile({ path: row.path, side: "staged" })}
             openPath={openFile?.side === "staged" ? openFile.path : null}
           />
+        </div>
+      )}
+      {discards.length > 0 && (
+        <section aria-label="Recently discarded" className="shrink-0 border-t border-[#30363d]">
+          <h4>
+            <button
+              type="button"
+              aria-expanded={showDiscards}
+              aria-controls={discardsId}
+              onClick={() => setShowDiscards(!showDiscards)}
+              className="w-full h-8 px-3 flex items-center gap-1.5 bg-[#161b22] text-[11px] font-semibold uppercase tracking-wide text-[#8b949e] hover:text-white"
+            >
+              {showDiscards ? <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />}
+              Recently discarded
+              <span className="ml-1 normal-case font-normal tabular-nums">{discards.length.toLocaleString()}</span>
+            </button>
+          </h4>
+          {showDiscards && (
+            <ul id={discardsId} className="max-h-48 overflow-y-auto py-1">
+              {discards.map((entry) => (
+                <DiscardRow key={entry.id} entry={entry} busy={busy !== null} onRestore={restore} onCopy={copyDiscard} />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      {undo && (
+        <div role="status" className="absolute left-3 right-3 bottom-3 z-30 flex items-center gap-2 px-3 py-2 rounded-md border border-[#30363d] bg-[#161b22] shadow-lg text-xs">
+          <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={undo.label}>
+            Discarded {undo.label}
+          </span>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => restore(undo)}
+            className="shrink-0 px-2 py-0.5 rounded border border-[#06B6D4]/60 bg-[#06B6D4]/10 text-white hover:bg-[#06B6D4]/20 disabled:opacity-50"
+          >
+            Undo
+          </button>
+          <button type="button" onClick={dismissUndo} aria-label="Dismiss" className="shrink-0 p-0.5 rounded text-[#8b949e] hover:text-white">
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
         </div>
       )}
       <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />

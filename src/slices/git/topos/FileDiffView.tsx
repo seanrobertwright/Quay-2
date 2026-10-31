@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeft, Columns2, Loader2, Minus, Plus, RefreshCw, X } from "lucide-react";
 import { usePopupLayer } from "../../overlay/useOverlay";
+import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
+import { DiscardButton } from "./DiscardButton";
 import { DiffEditor, type HunkAction, type LineGutter } from "./DiffEditor";
+import { confirmDiscardFile } from "./discards";
 import { splitDoc, unifiedDoc, type DiffDoc, type FileDiff } from "./diffDoc";
 import { diffBody, imageMime, modeLabel, previewSources, sizeLabel, type ByteSource, type Selection } from "./diffView";
 import { errorMessage } from "./gitVersion";
@@ -12,6 +15,7 @@ import {
   emptySelection,
   keyStep,
   lineAnnouncement,
+  lineCount,
   lineKey,
   linesLabel,
   NO_NEWLINE_TIP,
@@ -138,7 +142,9 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   const root = useRef<HTMLElement>(null);
   usePopupLayer(visible, onBack, root);
   const words = SIDE_WORDS[file.side];
-  const { diff: state, loadedLarge, loadLarge, act } = reader;
+  const { diff: state, loadedLarge, loadLarge, act, discard } = reader;
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const canDiscard = file.side === "unstaged";
   const diff: FileDiff | null = state.state === "done" ? state.diff : null;
   const body = diff ? diffBody(diff) : null;
   // A loaded too-large diff shows in unified view only.
@@ -148,20 +154,28 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   const [scrollTop, setScrollTop] = useState<{ pane: "left" | "right"; top: number } | null>(null);
 
   const ownBusy = busy !== null && busy.target.kind === "paths" && busy.target.paths[0] === file.path ? busy : null;
-  const busySelection = (s: Selection["kind"]) => ownBusy?.selection?.kind === s;
-  const busyHunk = ownBusy?.selection?.kind === "hunks" ? (ownBusy.selection.hunks[0] ?? null) : null;
-  const hunkAction = useMemo<HunkAction | null>(
-    () =>
-      diff && !diff.binary && !diff.submodule
-        ? {
-            label: `${words.verb} hunk`,
-            busyHunk,
-            disabled: busy !== null,
-            onAct: (hunk) => act({ kind: "hunks", hunks: [hunk] }),
-          }
-        : null,
-    [diff, words.verb, busyHunk, busy, act]
-  );
+  const discarding = ownBusy?.action === "discard";
+  const busySelection = (s: Selection["kind"], discards = false) => ownBusy?.selection?.kind === s && discarding === discards;
+  const busyHunkOf = (discards: boolean) =>
+    ownBusy?.selection?.kind === "hunks" && discarding === discards ? (ownBusy.selection.hunks[0] ?? null) : null;
+  const busyHunk = busyHunkOf(false);
+  const busyDiscardHunk = busyHunkOf(true);
+  const hunkActions = useMemo<HunkAction[]>(() => {
+    if (!diff || diff.binary || diff.submodule) return [];
+    const actions: HunkAction[] = [
+      { label: `${words.verb} hunk`, busyHunk, disabled: busy !== null, onAct: (hunk) => act({ kind: "hunks", hunks: [hunk] }) },
+    ];
+    // A discarded hunk is backed up first and offered for Undo, so it needs no confirmation.
+    if (canDiscard) {
+      actions.push({
+        label: "Discard hunk",
+        busyHunk: busyDiscardHunk,
+        disabled: busy !== null,
+        onAct: (hunk) => discard({ kind: "hunks", hunks: [hunk] }),
+      });
+    }
+    return actions;
+  }, [diff, words.verb, busyHunk, busyDiscardHunk, busy, act, canDiscard, discard]);
 
   // The selection belongs to the diff it was made on, so a new token starts it empty.
   const token = diff?.diffToken ?? null;
@@ -170,7 +184,10 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   const direction: StageDirection = file.side === "unstaged" ? "stage" : "unstage";
   const selectable = diff !== null && body === "text";
   const effective = useMemo(() => effectiveOf(diff, sel, direction), [diff, sel, direction]);
-  const linesBusy = ownBusy?.selection?.kind === "lines";
+  // A discard reverse-applies, so its no-newline pairs follow the unstage rules.
+  const discardEffective = useMemo(() => effectiveOf(diff, sel, "unstage"), [diff, sel]);
+  const linesBusy = ownBusy?.selection?.kind === "lines" && !discarding;
+  const discardLinesBusy = ownBusy?.selection?.kind === "lines" && discarding;
   const hintId = useId();
 
   // The gesture handlers outlive renders, so they read the newest of these through a ref.
@@ -189,6 +206,19 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
     const keys = effectiveOf(live.current.diff, s, live.current.direction).keys;
     if (keys.size > 0) run({ kind: "lines", lines: selectedRefs(keys) });
   }, []);
+
+  const discardLines = useCallback(() => {
+    const { sel: s, busy: running, announce: say } = live.current;
+    if (running !== null) return say(BUSY_MESSAGE);
+    const keys = effectiveOf(live.current.diff, s, "unstage").keys;
+    if (keys.size > 0) discard({ kind: "lines", lines: selectedRefs(keys) });
+  }, [discard]);
+
+  const askDiscardFile = () => {
+    if (!diff) return;
+    const text = confirmDiscardFile(file.path, diff.change === "untracked" ? "untracked" : "tracked");
+    setConfirm({ ...text, onConfirm: () => discard({ kind: "file" }) });
+  };
 
   const clear = useCallback(() => {
     put({ ...emptySelection, cursor: live.current.sel.cursor });
@@ -282,6 +312,17 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         </h3>
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] shrink-0">{words.name}</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
+          {diff && body !== "unchanged" && canDiscard && (
+            <DiscardButton
+              busy={busySelection("file", true)}
+              disabled={busy !== null}
+              onClick={askDiscardFile}
+              title="Discard the file's unstaged changes, after a backup"
+              className="px-2 text-[11px] shrink-0"
+            >
+              Discard file
+            </DiscardButton>
+          )}
           {diff && body !== "unchanged" && actionButton({ kind: "file" }, `${words.verb} file`, `${words.verb} the whole file`)}
           <button
             type="button"
@@ -361,7 +402,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
             doc={unified}
             hunks={diff.hunks}
             numbers="both"
-            action={hunkAction}
+            actions={hunkActions}
             ariaLabel={`${words.name} diff of ${file.path}`}
             ariaDescribedBy={hintId}
             lines={lineGutter}
@@ -372,7 +413,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               doc={split.left}
               hunks={diff.hunks}
               numbers="old"
-              action={hunkAction}
+              actions={hunkActions}
               ariaLabel={`Old side of ${file.path}`}
               ariaDescribedBy={hintId}
               lines={lineGutter}
@@ -383,7 +424,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               doc={split.right}
               hunks={diff.hunks}
               numbers="new"
-              action={null}
+              actions={[]}
               ariaLabel={`New side of ${file.path}`}
               ariaDescribedBy={hintId}
               lines={lineGutter}
@@ -413,6 +454,17 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               {linesBusy ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <ActionIcon className="w-3 h-3" aria-hidden="true" />}
               {linesLabel(direction, effective.keys.size)}
             </button>
+            {canDiscard && (
+              <DiscardButton
+                busy={discardLinesBusy}
+                disabled={busy !== null}
+                onClick={discardLines}
+                title="Discard these lines from the file, after a backup"
+                className="px-2 whitespace-nowrap"
+              >
+                Discard {lineCount(discardEffective.keys.size)}
+              </DiscardButton>
+            )}
             <button
               type="button"
               onClick={clear}
@@ -428,6 +480,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           {SELECT_HINT}
         </p>
       </div>
+      <ConfirmDialog request={confirm} onCancel={() => setConfirm(null)} />
     </section>
   );
 };

@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "./gitVersion";
 import { RequestIds } from "./refreshTable";
 import type { DiffSide, FileDiff } from "./diffDoc";
+import {
+  discardedMessage,
+  discardLog,
+  restoreOutcome,
+  selectionLabel,
+  UNDO_MS,
+  type DiscardBackup,
+  type DiscardEntry,
+  type DiscardTarget,
+} from "./discards";
 import { selectionDoneMessage, type Selection } from "./diffView";
 import { doneMessage, failureView, type StageDirection, type StagingAction } from "./stagingKeys";
 import { splitStatus, type FolderListing, type PathTarget, type WorktreeStatus } from "./stagingLists";
@@ -14,7 +24,7 @@ export type StatusState =
 
 /** The staging operation running now, so its button shows busy and the others wait. */
 export interface BusyOp {
-  action: StagingAction;
+  action: StagingAction | "discard" | "restore" | "copy";
   target: PathTarget;
   /** For a stage or unstage from the diff view, what part of the file it acts on. */
   selection?: Selection;
@@ -32,6 +42,33 @@ export interface StageRequest {
 /** `StageResult` from `src-tauri/src/slices/git/diff.rs`. */
 export interface StageResult {
   diff: FileDiff;
+  status: WorktreeStatus;
+}
+
+/** `DiscardRequest` from `src-tauri/src/slices/git/discard.rs`: always the unstaged side. */
+export interface DiscardRequest {
+  path: string;
+  diffToken: string;
+  selection: Selection;
+  loadLarge: boolean;
+}
+
+/** `DiscardSelectionResult` from `src-tauri/src/slices/git/discard.rs`. */
+interface DiscardSelectionResult {
+  backup: DiscardBackup;
+  diff: FileDiff;
+  status: WorktreeStatus;
+}
+
+/** `DiscardPathsResult` from `src-tauri/src/slices/git/discard.rs`. */
+interface DiscardPathsResult {
+  backups: DiscardBackup[];
+  status: WorktreeStatus;
+}
+
+/** `CopyResult` from `src-tauri/src/slices/git/discard.rs`. */
+interface CopyResult {
+  paths: string[];
   status: WorktreeStatus;
 }
 
@@ -65,10 +102,28 @@ export interface Staging {
    * `diffRequestId`, is the caller's.
    */
   stageSelection: (action: StageDirection, request: StageRequest, diffRequestId: number) => Promise<SelectionOutcome>;
+  /** Discards `target` from the lists (#387), after the inspector's confirmation. */
+  discard: (target: DiscardTarget, label: string) => void;
+  /**
+   * Discards part or all of one file from the diff view, as one of this worktree's staging
+   * operations. The new diff, which answers `diffRequestId`, is the caller's.
+   */
+  discardSelection: (request: DiscardRequest, diffRequestId: number) => Promise<SelectionOutcome>;
+  /** This worktree's discards this session, newest first. */
+  discards: readonly DiscardEntry[];
+  /** The discard the Undo toast offers, for `UNDO_MS` after it lands. */
+  undo: DiscardEntry | null;
+  dismissUndo: () => void;
+  /** Puts back what `entry` took, unless its files changed since. */
+  restore: (entry: DiscardEntry) => void;
+  /** Writes what `entry` took to new files beside the originals. */
+  copyDiscard: (entry: DiscardEntry) => void;
   /** The untracked folders the operator expanded, each with its capped `status -uall`. */
   folders: ReadonlyMap<string, FolderListing>;
   toggleFolder: (folder: string) => void;
 }
+
+const NO_DISCARDS: readonly DiscardEntry[] = [];
 
 const COMMANDS: Record<StagingAction, string> = {
   stage: "git_stage_paths",
@@ -90,6 +145,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
   const [failure, setFailure] = useState<StagingFailure | null>(null);
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
   const [folders, setFolders] = useState<ReadonlyMap<string, FolderListing>>(new Map());
+  const [undo, setUndo] = useState<{ worktree: string; entry: DiscardEntry } | null>(null);
   const ids = useRef(new RequestIds());
   const running = useRef(false);
   const path = useRef(worktreePath);
@@ -159,7 +215,20 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     folderIds.current = new Map();
     setFolders(new Map());
     setFailure(null);
+    setUndo(null);
   }, [worktreePath]);
+
+  // The toast goes after `UNDO_MS`; a newer discard restarts the wait.
+  useEffect(() => {
+    if (undo === null) return;
+    const timer = window.setTimeout(() => setUndo(null), UNDO_MS);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+
+  const discards = useSyncExternalStore(
+    (listener) => discardLog.subscribe(listener),
+    () => (worktreePath === null ? NO_DISCARDS : discardLog.entries(worktreePath))
+  );
 
   useEffect(() => {
     void read(worktreePath);
@@ -167,57 +236,60 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
 
   const reload = useCallback(() => read(path.current), [read]);
 
+  /**
+   * Runs `call` as this worktree's one staging operation, with `op` shown busy until it settles.
+   * It does nothing and returns null when no worktree is open or another operation is running.
+   * `call` gets the worktree and the request id the status it brings back answers.
+   */
+  const inSlot = useCallback(<T>(op: BusyOp, call: (worktree: string, id: number) => Promise<T>): Promise<T> | null => {
+    const worktree = path.current;
+    if (worktree === null || running.current) return null;
+    running.current = true;
+    setBusy(op);
+    setFailure(null);
+    return call(worktree, ids.current.next()).finally(() => {
+      running.current = false;
+      setBusy(null);
+    });
+  }, []);
+
+  /** Shows a failed operation on `worktree`, if it is still the one open, and says so. */
+  const report = useCallback(
+    (worktree: string, message: string, retry: (() => void) | null) => {
+      if (path.current === worktree) setFailure({ message, retry });
+      announce(message);
+    },
+    [announce]
+  );
+
   const run = useCallback(
     (action: StagingAction, target: PathTarget) => {
-      const worktree = path.current;
-      if (worktree === null || running.current) return;
-      running.current = true;
-      setBusy({ action, target });
-      setFailure(null);
-      const id = ids.current.next();
-      const args =
-        action === "ignore"
-          ? { worktreePath: worktree, requestId: id, folder: target.kind === "paths" ? target.paths[0] : "" }
-          : { worktreePath: worktree, requestId: id, target };
-      invoke<WorktreeStatus>(COMMANDS[action], args)
-        .then(
+      void inSlot({ action, target }, (worktree, id) => {
+        const args =
+          action === "ignore"
+            ? { worktreePath: worktree, requestId: id, folder: target.kind === "paths" ? target.paths[0] : "" }
+            : { worktreePath: worktree, requestId: id, target };
+        return invoke<WorktreeStatus>(COMMANDS[action], args).then(
           (next) => {
             accept(worktree, id, next);
             announce(doneMessage(action, target));
           },
           (e: unknown) => {
             const view = failureView(e);
-            if (path.current === worktree) {
-              setFailure({ message: view.message, retry: view.retry ? () => run(action, target) : null });
-            }
-            announce(view.message);
+            report(worktree, view.message, view.retry ? () => run(action, target) : null);
           }
-        )
-        .finally(() => {
-          running.current = false;
-          setBusy(null);
-        });
+        );
+      });
     },
-    [accept, announce]
+    [accept, announce, inSlot, report]
   );
 
   const stageSelection = useCallback(
     (action: StageDirection, request: StageRequest, diffRequestId: number): Promise<SelectionOutcome> => {
-      const worktree = path.current;
-      if (worktree === null || running.current) return Promise.resolve({ kind: "skipped" });
-      running.current = true;
       const target: PathTarget = { kind: "paths", paths: [request.path] };
-      setBusy({ action, target, selection: request.selection });
-      setFailure(null);
-      const id = ids.current.next();
       const retry = () => void stageSelection(action, request, diffRequestId);
-      return invoke<StageResult>("git_stage_selection", {
-        worktreePath: worktree,
-        requestId: id,
-        diffRequestId,
-        request,
-      })
-        .then(
+      const ran = inSlot({ action, target, selection: request.selection }, (worktree, id) =>
+        invoke<StageResult>("git_stage_selection", { worktreePath: worktree, requestId: id, diffRequestId, request }).then(
           (out): SelectionOutcome => {
             accept(worktree, id, out.status);
             announce(selectionDoneMessage(action, request.path, request.selection));
@@ -225,18 +297,109 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
           },
           (e: unknown): SelectionOutcome => {
             const view = failureView(e);
-            if (path.current === worktree) setFailure({ message: view.message, retry: view.retry ? retry : null });
-            announce(view.message);
+            report(worktree, view.message, view.retry ? retry : null);
             return { kind: "failed", stale: view.stale };
           }
         )
-        .finally(() => {
-          running.current = false;
-          setBusy(null);
-        });
+      );
+      return ran ?? Promise.resolve({ kind: "skipped" });
     },
-    [accept, announce]
+    [accept, announce, inSlot, report]
   );
+
+  /** Records a discard that backed up `backups`, offers its Undo, and says so. */
+  const recordDiscard = useCallback(
+    (worktree: string, label: string, backups: DiscardBackup[]) => {
+      const entry = discardLog.add(worktree, label, backups);
+      if (entry !== null && path.current === worktree) setUndo({ worktree, entry });
+      announce(discardedMessage(label, backups.length));
+    },
+    [announce]
+  );
+
+  const discard = useCallback(
+    (target: DiscardTarget, label: string) => {
+      void inSlot({ action: "discard", target: target.kind === "all" ? { kind: "all" } : target }, (worktree, id) =>
+        invoke<DiscardPathsResult>("git_discard_paths", { worktreePath: worktree, requestId: id, target }).then(
+          (out) => {
+            accept(worktree, id, out.status);
+            recordDiscard(worktree, label, out.backups);
+          },
+          (e: unknown) => {
+            const view = failureView(e);
+            report(worktree, view.message, view.retry ? () => discard(target, label) : null);
+          }
+        )
+      );
+    },
+    [accept, inSlot, recordDiscard, report]
+  );
+
+  const discardSelection = useCallback(
+    (request: DiscardRequest, diffRequestId: number): Promise<SelectionOutcome> => {
+      const label = selectionLabel(request.path, request.selection);
+      const op: BusyOp = { action: "discard", target: { kind: "paths", paths: [request.path] }, selection: request.selection };
+      const ran = inSlot(op, (worktree, id) =>
+        invoke<DiscardSelectionResult>("git_discard_selection", { worktreePath: worktree, requestId: id, diffRequestId, request }).then(
+          (out): SelectionOutcome => {
+            accept(worktree, id, out.status);
+            recordDiscard(worktree, label, [out.backup]);
+            return { kind: "done", diff: out.diff };
+          },
+          (e: unknown): SelectionOutcome => {
+            const view = failureView(e);
+            report(worktree, view.message, null);
+            return { kind: "failed", stale: view.stale };
+          }
+        )
+      );
+      return ran ?? Promise.resolve({ kind: "skipped" });
+    },
+    [accept, inSlot, recordDiscard, report]
+  );
+
+  const restore = useCallback(
+    (entry: DiscardEntry) => {
+      void inSlot({ action: "restore", target: { kind: "paths", paths: entry.backups.map((b) => b.path) } }, (worktree, id) => {
+        setUndo(null);
+        return invoke<WorktreeStatus>("git_restore_discarded", { worktreePath: worktree, requestId: id, backups: entry.backups }).then(
+          (next) => {
+            accept(worktree, id, next);
+            discardLog.update(worktree, entry.id, { state: "restored" });
+            announce(`Restored ${entry.label}`);
+          },
+          (e: unknown) => {
+            const out = restoreOutcome(e);
+            if (out.kind === "changed") {
+              discardLog.update(worktree, entry.id, { state: "changed", changedPaths: out.paths });
+              announce(`${out.paths.join(", ")} changed since the discard, so nothing was restored. Copy it to a new file from Recently discarded.`);
+            } else {
+              report(worktree, out.message, null);
+            }
+          }
+        );
+      });
+    },
+    [accept, announce, inSlot, report]
+  );
+
+  const copyDiscard = useCallback(
+    (entry: DiscardEntry) => {
+      void inSlot({ action: "copy", target: { kind: "paths", paths: entry.backups.map((b) => b.path) } }, (worktree, id) =>
+        invoke<CopyResult>("git_copy_discarded", { worktreePath: worktree, requestId: id, backups: entry.backups }).then(
+          (out) => {
+            accept(worktree, id, out.status);
+            discardLog.update(worktree, entry.id, { state: "copied", copiedTo: out.paths });
+            announce(`Copied ${entry.label} to ${out.paths.join(", ")}`);
+          },
+          (e: unknown) => report(worktree, failureView(e).message, null)
+        )
+      );
+    },
+    [accept, announce, inSlot, report]
+  );
+
+  const dismissUndo = useCallback(() => setUndo(null), []);
 
   const toggleFolder = useCallback(
     (folder: string) => {
@@ -265,5 +428,24 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
 
   // Status read for another worktree is never handed out, not even for the render before a new read.
   const shown = status.state !== "idle" && status.worktreePath !== worktreePath ? ({ state: "idle" } as const) : status;
-  return { status: shown, reload, busy, failure, announcement, announce, run, stageSelection, folders, toggleFolder };
+  const shownUndo = undo !== null && undo.worktree === worktreePath ? undo.entry : null;
+  return {
+    status: shown,
+    reload,
+    busy,
+    failure,
+    announcement,
+    announce,
+    run,
+    stageSelection,
+    discard,
+    discardSelection,
+    discards,
+    undo: shownUndo,
+    dismissUndo,
+    restore,
+    copyDiscard,
+    folders,
+    toggleFolder,
+  };
 }

@@ -58,6 +58,7 @@ fn only(refs: bool, head: bool, index: bool, worktree: bool, operation: bool) ->
 
 #[test]
 fn a_commit_dirties_refs_and_names_the_repo_and_worktree() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let (sessions, id, changes, _rx) = watched(&repo);
     assert_eq!(sessions.watch(id, &repo, false).unwrap(), WatchState::Live);
@@ -74,6 +75,7 @@ fn a_commit_dirties_refs_and_names_the_repo_and_worktree() {
 
 #[test]
 fn a_checkout_dirties_head_staging_dirties_the_index_and_files_count_only_while_visible() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let (sessions, id, changes, _rx) = watched(&repo);
     assert_eq!(sessions.watch(id, &repo, false).unwrap(), WatchState::Live);
@@ -102,6 +104,7 @@ fn a_checkout_dirties_head_staging_dirties_the_index_and_files_count_only_while_
 
 #[test]
 fn a_burst_of_ref_updates_is_one_or_two_changes_and_steady_events_still_send_each_second() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let (sessions, id, changes, _rx) = watched(&repo);
     assert_eq!(sessions.watch(id, &repo, true).unwrap(), WatchState::Live);
@@ -138,6 +141,7 @@ fn a_burst_of_ref_updates_is_one_or_two_changes_and_steady_events_still_send_eac
 
 #[test]
 fn an_operation_dirties_operation_and_holds_while_its_directory_exists() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let (sessions, id, changes, _rx) = watched(&repo);
     assert_eq!(sessions.watch(id, &repo, false).unwrap(), WatchState::Live);
@@ -167,6 +171,7 @@ fn an_operation_dirties_operation_and_holds_while_its_directory_exists() {
 
 #[test]
 fn a_linked_worktree_follows_its_own_git_dir_and_sees_other_heads_as_refs() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let wt = repo.parent().unwrap().join("wt");
     git(&repo, &["worktree", "add", "-q", "-b", "feat", &wt.to_string_lossy()]);
@@ -192,6 +197,7 @@ fn a_linked_worktree_follows_its_own_git_dir_and_sees_other_heads_as_refs() {
 
 #[test]
 fn a_removed_worktree_says_gone_and_a_watch_that_cannot_start_says_off() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let wt = repo.parent().unwrap().join("wt");
     git(&repo, &["worktree", "add", "-q", "-b", "feat", &wt.to_string_lossy()]);
@@ -226,6 +232,7 @@ fn a_removed_worktree_says_gone_and_a_watch_that_cannot_start_says_off() {
 
 #[test]
 fn the_fingerprint_changes_with_refs_head_and_index_and_only_then() {
+    let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let print = || super::watch::fingerprint(&repo).unwrap();
     let first = print();

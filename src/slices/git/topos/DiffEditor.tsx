@@ -5,7 +5,7 @@ import type { DiffDoc, DocLine, Hunk } from "./diffDoc";
 import { changedAt, lineKey, NO_NEWLINE_TIP, rowOf, type LineRef } from "./lineSelection";
 import { diffKeyAction, type DiffKeyAction } from "./stagingKeys";
 
-/** The hunk header's button: Stage hunk or Unstage hunk. */
+/** A hunk header's button: Stage hunk, Unstage hunk or Discard hunk. */
 export interface HunkAction {
   label: string;
   /** The hunk whose operation is running, which shows busy. */
@@ -39,8 +39,8 @@ export interface DiffEditorProps {
   hunks: Hunk[];
   /** Which line numbers the gutter shows: both for unified, one side for each split pane. */
   numbers: "both" | "old" | "new";
-  /** Null shows the hunk headers without a button, as the split view's right pane does. */
-  action: HunkAction | null;
+  /** The hunk headers' buttons, in order; none, as in the split view's right pane, shows them bare. */
+  actions: readonly HunkAction[];
   ariaLabel: string;
   /** The id of the text that says which keys select lines. */
   ariaDescribedBy?: string;
@@ -152,7 +152,7 @@ class HunkHeader extends WidgetType {
   constructor(
     readonly index: number,
     readonly text: string,
-    readonly action: { label: string; busy: boolean; disabled: boolean; onAct: (hunk: number) => void } | null
+    readonly actions: { label: string; busy: boolean; disabled: boolean; onAct: (hunk: number) => void }[]
   ) {
     super();
   }
@@ -160,9 +160,10 @@ class HunkHeader extends WidgetType {
     return (
       other.index === this.index &&
       other.text === this.text &&
-      other.action?.label === this.action?.label &&
-      other.action?.busy === this.action?.busy &&
-      other.action?.disabled === this.action?.disabled
+      other.actions.length === this.actions.length &&
+      other.actions.every(
+        (a, i) => a.label === this.actions[i].label && a.busy === this.actions[i].busy && a.disabled === this.actions[i].disabled
+      )
     );
   }
   toDOM() {
@@ -172,8 +173,7 @@ class HunkHeader extends WidgetType {
     label.className = "cm-hunk-text";
     label.textContent = this.text;
     row.append(label);
-    const action = this.action;
-    if (action) {
+    for (const action of this.actions) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "cm-hunk-action";
@@ -203,7 +203,7 @@ const LINE_CLASS: Record<DocLine["kind"], string | null> = {
 };
 
 function decorations(
-  view: { doc: DiffDoc; hunks: Hunk[]; action: HunkAction | null; lines: LineGutter | null },
+  view: { doc: DiffDoc; hunks: Hunk[]; actions: readonly HunkAction[]; lines: LineGutter | null },
   state: EditorState
 ): Extension {
   const ranges: Range<Decoration>[] = [];
@@ -228,11 +228,10 @@ function decorations(
     const h = view.hunks[index];
     if (h === undefined || start >= state.doc.lines) return;
     const text = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@${h.heading ? ` ${h.heading}` : ""}`;
-    const a = view.action;
     const widget = new HunkHeader(
       index,
       text,
-      a && { label: a.label, busy: a.busyHunk === index, disabled: a.disabled, onAct: a.onAct }
+      view.actions.map((a) => ({ label: a.label, busy: a.busyHunk === index, disabled: a.disabled, onAct: a.onAct }))
     );
     ranges.push(Decoration.widget({ widget, block: true, side: -1 }).range(state.doc.line(start + 1).from));
   });
@@ -303,7 +302,7 @@ const SELECT_KEYS = "ArrowUp ArrowDown Shift+ArrowUp Shift+ArrowDown Space N P S
 
 /**
  * One read-only CodeMirror 6 view of a diff doc: line numbers, add and delete backgrounds, and a
- * header over each hunk with its Stage or Unstage hunk button. With `lines` it adds a selection
+ * header over each hunk with its Stage or Unstage hunk button, and Discard hunk on the unstaged side. With `lines` it adds a selection
  * gutter and the diff keys (#386), which go ahead of CodeMirror's own. The view is rebuilt when the
  * doc changes; a change of busy state or of the selection only swaps its decorations.
  */
@@ -311,7 +310,7 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
   doc,
   hunks,
   numbers,
-  action,
+  actions,
   ariaLabel,
   ariaDescribedBy,
   lines,
@@ -375,12 +374,12 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
   useEffect(() => {
     const v = view.current;
     if (!v) return;
-    const effects: StateEffect<unknown>[] = [decos.current.reconfigure(decorations({ doc, hunks, action, lines }, v.state))];
+    const effects: StateEffect<unknown>[] = [decos.current.reconfigure(decorations({ doc, hunks, actions, lines }, v.state))];
     // The keys move the cursor; keep it in view in the pane they were pressed in.
     const row = lines?.cursor ? rowOf(doc, lines.cursor) : -1;
     if (row >= 0 && v.hasFocus) effects.push(EditorView.scrollIntoView(v.state.doc.line(row + 1).from, { y: "nearest" }));
     v.dispatch({ effects });
-  }, [doc, hunks, action, lines]);
+  }, [doc, hunks, actions, lines]);
 
   useEffect(() => {
     const v = view.current;

@@ -27,6 +27,8 @@ export interface FileDiffReader {
   loadLarge: () => void;
   /** Stages from the unstaged side, or unstages from the staged side, part of the file. */
   act: (selection: Selection) => void;
+  /** Discards part or all of the file's unstaged diff, after a backup (#387). */
+  discard: (selection: Selection) => void;
 }
 
 /** The context lines every diff is read with. */
@@ -35,7 +37,7 @@ const CONTEXT = 3;
 /**
  * The open file's diff (#383). It is read when the file opens, on `reload` (the refresh table's
  * `worktree` and `index` bits), and after each stage or unstage, whose answer carries the new
- * diff. Every read carries a request id from one `RequestIds`, so an older answer never lands over
+ * diff, and after each discard. Every read carries a request id from one `RequestIds`, so an older answer never lands over
  * a newer one. A `StaleDiff` reloads the diff; nothing is replayed.
  */
 export function useFileDiff(worktreePath: string | null, file: OpenFile | null, staging: Staging): FileDiffReader {
@@ -45,7 +47,7 @@ export function useFileDiff(worktreePath: string | null, file: OpenFile | null, 
   // The handlers below outlive renders, so they read the newest of these through a ref.
   const latest = useRef({ worktreePath, file, loadedLarge });
   latest.current = { worktreePath, file, loadedLarge };
-  const { stageSelection } = staging;
+  const { stageSelection, discardSelection } = staging;
 
   const isCurrent = (worktree: string, open: OpenFile) =>
     latest.current.worktreePath === worktree &&
@@ -110,5 +112,21 @@ export function useFileDiff(worktreePath: string | null, file: OpenFile | null, 
     [diff, read, stageSelection]
   );
 
-  return { diff, reload: read, loadedLarge, loadLarge, act };
+  const discard = useCallback(
+    (selection: Selection) => {
+      const { worktreePath: worktree, file: open, loadedLarge: large } = latest.current;
+      if (worktree === null || open === null || open.side !== "unstaged" || diff.state !== "done") return;
+      const id = ids.current.next();
+      void discardSelection({ path: open.path, diffToken: diff.diff.diffToken, selection, loadLarge: large }, id).then((out) => {
+        if (out.kind === "done") {
+          if (ids.current.isLatest(id) && isCurrent(worktree, open)) setDiff({ state: "done", diff: out.diff });
+        } else if (out.kind === "failed" && out.stale) {
+          void read();
+        }
+      });
+    },
+    [diff, read, discardSelection]
+  );
+
+  return { diff, reload: read, loadedLarge, loadLarge, act, discard };
 }
