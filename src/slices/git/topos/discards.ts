@@ -41,7 +41,7 @@ export interface DiscardEntry {
 
 const NO_ENTRIES: readonly DiscardEntry[] = [];
 
-export type DiscardUpdate =Partial<Pick<DiscardEntry, "state" | "changedPaths" | "copiedTo">>;
+export type DiscardUpdate = Partial<Pick<DiscardEntry, "state" | "changedPaths" | "copiedTo">>;
 
 /**
  * The session's discards, per worktree, newest first. It outlives Topos closing and opening, so
