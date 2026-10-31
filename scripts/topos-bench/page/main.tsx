@@ -166,6 +166,7 @@ function Bench() {
           comparedOid={comparedOid}
           onAddSelection={(oid) => dispatchSelection({ kind: "add", oid })}
           onInspect={() => {}}
+          visible
         />
       ) : (
         <p role="status">Loading commits…</p>
