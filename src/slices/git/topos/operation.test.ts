@@ -74,6 +74,14 @@ test("Skip is offered for a rebase, cherry-pick or revert, never a merge", () =>
   assert.deepEqual([skips("rebase"), skips("cherryPick"), skips("revert"), skips("merge")], [true, true, true, false]);
 });
 
+test("the title names a cherry-pick or a revert in progress", () => {
+  const title = (kind: OpState["kind"]) => {
+    const view = bannerView({ ...PICK, kind }, { running: false });
+    return view?.kind === "operation" ? view.title : null;
+  };
+  assert.deepEqual([title("cherryPick"), title("revert")], ["Cherry-pick in progress", "Revert in progress"]);
+});
+
 test("a conflict with no state file offers resolve-and-stage only", () => {
   const view = bannerView(state({ conflicts: [README_CONFLICT], conflictsTotal: 1 }), { running: false });
   assert.deepEqual(view, {
@@ -104,6 +112,7 @@ test("Abort confirms, naming the operation, where HEAD goes back to and what is 
   });
   // A subject is untrusted text, kept as it is for the dialog to render as text.
   assert.equal(confirmAbort(PICK)?.title, "Abort the cherry-pick of “Add <b>bold</b> & more”?");
+  assert.equal(confirmAbort({ ...PICK, kind: "revert" })?.confirmLabel, "Abort revert");
   assert.equal(confirmAbort(state({})), null);
 });
 

@@ -33,7 +33,7 @@ export interface OpState {
   rightLabel: SideLabel | null;
   /** The message Continue commits, or null when git takes it from elsewhere. */
   message: string | null;
-  /** At most 10,000 conflicts. */
+  /** At most `STATUS_CAP` (`staging.rs`) conflicts; `conflictsTotal` counts them all. */
   conflicts: Conflict[];
   conflictsTotal: number;
 }
@@ -63,12 +63,13 @@ export type BannerView =
   /** Unmerged entries with no state file, such as after a conflicted `git stash pop`. */
   | { kind: "conflictsOnly"; title: string; detail: string };
 
-const TITLE: Record<Underway, string> = {
-  merge: "Merge in progress",
-  rebase: "Rebase in progress",
-  cherryPick: "Cherry-pick in progress",
-  revert: "Revert in progress",
-};
+/** Each operation's name in a sentence. */
+const NOUN: Record<Underway, string> = { merge: "merge", rebase: "rebase", cherryPick: "cherry-pick", revert: "revert" };
+
+/** `kind`'s noun, capitalised to start a sentence. */
+function capitalNoun(kind: Underway): string {
+  return NOUN[kind][0].toUpperCase() + NOUN[kind].slice(1);
+}
 
 /** What each side is, in words, before git's name for it. */
 const SIDE_WORDS: Record<Underway, { left: string; right: string }> = {
@@ -117,7 +118,7 @@ export function bannerView(state: OpState, { running, summary }: BannerOptions):
   return {
     kind: "operation",
     operation: state.kind,
-    title: `${TITLE[state.kind]}${step}`,
+    title: `${capitalNoun(state.kind)} in progress${step}`,
     left: side(state.leftLabel, words.left, "ours"),
     right: side(state.rightLabel, words.right, "theirs"),
     canContinue: blockedBy === null && !running,
@@ -165,7 +166,7 @@ export function confirmAbort(state: OpState): StepConfirm | null {
     }
     case "cherryPick":
     case "revert": {
-      const noun = state.kind === "cherryPick" ? "cherry-pick" : "revert";
+      const noun = NOUN[state.kind];
       return {
         title: `Abort the ${noun} of “${commit}”?`,
         detail: `${head} goes back to where it was before the ${noun}. Your resolutions, and any commits this ${noun} already made, are lost.`,
@@ -230,13 +231,11 @@ export function stepFailure(step: OpStep, e: unknown): StepFailure {
   }
 }
 
-const NOUN: Record<Underway, string> = { merge: "merge", rebase: "rebase", cherryPick: "cherry-pick", revert: "revert" };
-
 /** What a step on `before` announces once it lands with the operation standing as `after`. */
 export function stepDoneMessage(step: OpStep, before: OpState, after: OpState): string {
   if (before.kind === "none") return "Nothing was under way";
   const noun = NOUN[before.kind];
-  const Noun = noun[0].toUpperCase() + noun.slice(1);
+  const Noun = capitalNoun(before.kind);
   const skipped = step === "skip" ? "Skipped the commit; " : "";
   if (after.kind === "none") {
     if (step === "abort") return `${Noun} aborted`;
