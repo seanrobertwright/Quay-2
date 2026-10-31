@@ -1,25 +1,37 @@
-import React, { useId, useRef } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
 
 export interface ConfirmRequest {
   title: string;
   detail: string;
   confirmLabel: string;
-  onConfirm: () => void;
+  /** A checkbox that widens what the confirm does; it starts as `initial`. */
+  checkbox?: { label: string; initial: boolean };
+  /** Runs on confirm, with the checkbox's state (false when there is none). */
+  onConfirm: (checked: boolean) => void;
 }
 
 /**
  * Topos's own confirm dialog (#366), since Quay has no shared one: `role="alertdialog"` with focus
- * trapped between its buttons and starting on Cancel. Escape cancels it before it closes Topos.
+ * trapped inside it and starting on Cancel, the safe choice. Escape cancels it before it closes
+ * Topos.
  */
 export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel: () => void }> = ({ request, onCancel }) => {
   const titleId = useId();
   const detailId = useId();
+  const checkboxId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   const open = request !== null;
+  const [checked, setChecked] = useState(false);
   usePopupLayer(open, onCancel, panel);
-  // Cancel comes first, so focus starts on it.
   useDialogFocus(open, panel);
+  // The checkbox comes before the buttons, so focus is moved to Cancel once the dialog opens.
+  useEffect(() => {
+    if (open) cancel.current?.focus();
+  }, [open]);
+  const initial = request?.checkbox?.initial ?? false;
+  useEffect(() => setChecked(initial), [request, initial]);
 
   if (request === null) return null;
 
@@ -39,8 +51,15 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
         <p id={detailId} className="text-xs text-[#8b949e] break-words">
           {request.detail}
         </p>
+        {request.checkbox && (
+          <div className="flex items-center gap-2 text-xs text-[#c9d1d9]">
+            <input id={checkboxId} type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="accent-[#f85149]" />
+            <label htmlFor={checkboxId}>{request.checkbox.label}</label>
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <button
+            ref={cancel}
             type="button"
             onClick={onCancel}
             className="px-3 py-1.5 rounded-md text-xs text-[#c9d1d9] hover:bg-[#21262d] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
@@ -50,8 +69,9 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
           <button
             type="button"
             onClick={() => {
+              const confirmed = request.checkbox ? checked : false;
               onCancel();
-              request.onConfirm();
+              request.onConfirm(confirmed);
             }}
             className="px-3 py-1.5 rounded-md text-xs font-semibold bg-[#238636] hover:bg-[#2ea043] text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
           >
