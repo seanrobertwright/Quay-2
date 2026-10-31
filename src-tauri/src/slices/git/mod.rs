@@ -33,6 +33,7 @@ pub mod operation;
 pub mod ref_ops;
 pub mod remote_ops;
 pub mod repo_lock;
+pub mod rev_set;
 #[cfg(test)]
 mod remote_ops_tests;
 #[cfg(test)]

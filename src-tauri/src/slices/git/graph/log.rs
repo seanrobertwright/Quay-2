@@ -27,10 +27,9 @@ const LOG_FORMAT: &str = "--format=%H%x00%P%x00%aN%x00%aE%x00%at%x00%ct%x00%s%x0
 /// NUL-terminated fields per record.
 const FIELDS: usize = 9;
 
-/// The `git log` for a session in `repo`. `with_head` adds `HEAD` to the rev set; a repo whose HEAD
-/// is unborn walks without it. The rev set never names `--tags` (#370) or `--all`, which would pull
-/// in stash and notes refs.
-pub fn log_command(repo: &Path, order: GraphOrder, with_head: bool) -> Command {
+/// The `git log` for a session in `repo` over `revs`, the session's checked ref set (#401), each its
+/// own argument. The rev set never names `--all`, which would pull in stash and notes refs.
+pub fn log_command(repo: &Path, order: GraphOrder, revs: &[String]) -> Command {
     let mut cmd = super::super::op_runner::headless_git();
     cmd.arg("-C")
         .arg(repo)
@@ -39,10 +38,8 @@ pub fn log_command(repo: &Path, order: GraphOrder, with_head: bool) -> Command {
             GraphOrder::Date => "--date-order",
             GraphOrder::Topo => "--topo-order",
         })
-        .args(["-z", LOG_FORMAT, "--branches", "--remotes"]);
-    if with_head {
-        cmd.arg("HEAD");
-    }
+        .args(["-z", LOG_FORMAT])
+        .args(revs);
     cmd.arg("--").stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd
 }

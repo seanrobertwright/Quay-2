@@ -30,7 +30,7 @@ pub(super) fn temp_dir() -> PathBuf {
 /// - `refs/remotes/origin/main` at `main`'s tip and `refs/remotes/origin/wip`, one commit on top;
 /// - tag `old`, one commit reachable from no branch;
 /// - `refs/stash` and `refs/notes/commits`, one commit each, which a rev set using `--all` shows.
-fn repo_with_history(commits: usize) -> PathBuf {
+pub(super) fn repo_with_history(commits: usize) -> PathBuf {
     let repo = temp_dir();
     git(&repo, &["init", "-q", "-b", "main"]);
     let mut stream = String::new();
@@ -153,7 +153,7 @@ fn decode(bytes: &[u8]) -> Msg {
 pub(super) const WAIT: Duration = Duration::from_secs(30);
 
 /// Collects rows until an event other than `Started` arrives, and returns the rows and that event.
-fn rows_until_event(rx: &Receiver<Msg>, session: u32, rows: &mut Vec<String>, pages: &mut Vec<u32>) -> Value {
+pub(super) fn rows_until_event(rx: &Receiver<Msg>, session: u32, rows: &mut Vec<String>, pages: &mut Vec<u32>) -> Value {
     loop {
         match rx.recv_timeout(WAIT).expect("the session keeps talking") {
             Msg::Rows { session: s, page, first_row, oids, .. } => {
