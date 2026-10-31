@@ -8,6 +8,7 @@ use super::checkout::RefsOutcome;
 use super::ref_ops::BranchDeleted;
 use super::remote_ops::{LeasePlan, RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
+use super::compare::{ComparedCommit, CompareFiles, CompareOrder};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::details::{CommitDetails, CommitFile, CommitFiles, FileStatus, Person, SignatureStatus, Trailer, Verification};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -511,6 +512,29 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             json!({
                 "files": [{ "status": "R", "path": "new.txt", "oldPath": "old.txt", "additions": 1, "deletions": null }],
                 "total": 1, "truncated": false
+            }),
+        ),
+        (
+            "CompareOrder",
+            s(&CompareOrder {
+                older: ComparedCommit { oid: "aaa".into(), subject: "Older".into() },
+                newer: ComparedCommit { oid: "bbb".into(), subject: "Newer".into() },
+            }),
+            json!({ "older": { "oid": "aaa", "subject": "Older" }, "newer": { "oid": "bbb", "subject": "Newer" } }),
+        ),
+        (
+            "CompareFiles",
+            s(&CompareFiles {
+                files: CommitFiles {
+                    files: vec![CommitFile { status: FileStatus::A, path: "a.txt".into(), old_path: None, additions: Some(2), deletions: Some(0) }],
+                    total: 1,
+                    truncated: false,
+                },
+                ahead: Some(3),
+            }),
+            json!({
+                "files": [{ "status": "A", "path": "a.txt", "oldPath": null, "additions": 2, "deletions": 0 }],
+                "total": 1, "truncated": false, "ahead": 3
             }),
         ),
         (

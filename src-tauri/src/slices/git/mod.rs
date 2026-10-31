@@ -3,6 +3,9 @@ pub mod checkout;
 mod checkout_tests;
 pub mod commands;
 pub mod commit;
+pub mod compare;
+#[cfg(test)]
+mod compare_tests;
 #[cfg(test)]
 mod commit_tests;
 pub mod conflict;
@@ -56,6 +59,7 @@ pub use ref_ops::*;
 pub use remote_ops::*;
 pub use commands::*;
 pub use commit::*;
+pub use compare::*;
 pub use conflict::*;
 pub use details::*;
 pub use diff::*;

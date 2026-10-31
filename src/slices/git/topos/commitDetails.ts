@@ -131,6 +131,32 @@ export interface CommitFiles {
   truncated: boolean;
 }
 
+/**
+ * `git_compare_files` (#398): the files that differ from one commit to another, with the number of
+ * commits between them when one is an ancestor of the other, or null when neither is.
+ */
+export interface CompareFiles extends CommitFiles {
+  ahead: number | null;
+}
+
+/** One commit of a compared pair, as `git_compare_order` returns it. */
+export interface ComparedCommit {
+  oid: string;
+  subject: string;
+}
+
+/** `git_compare_order` (#398): the pair ordered by the rule, the ancestor or else the earlier committer date first. */
+export interface CompareOrder {
+  older: ComparedCommit;
+  newer: ComparedCommit;
+}
+
+/** A compared pair in the direction it is diffed: the files from `from` to `to`. */
+export interface ComparedPair {
+  from: ComparedCommit;
+  to: ComparedCommit;
+}
+
 /** `git_verify_commit`. */
 export interface Verification {
   status: "good" | "bad" | "unknownKey" | "none";

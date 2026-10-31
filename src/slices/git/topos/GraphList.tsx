@@ -72,6 +72,10 @@ export interface GraphListProps {
   selectedOid: string | null;
   /** The operator selected a commit, by click or key. */
   onSelect: (oid: string) => void;
+  /** The second commit selected to compare (#398), or null; its row is selected too. */
+  comparedOid: string | null;
+  /** A Ctrl- or Shift-click, or Ctrl+Space or Shift+Space on the cursor row, adds a commit to compare. */
+  onAddSelection: (oid: string) => void;
   /** Enter on the selected commit: focus moves to the inspector. */
   onInspect: () => void;
   /** Set to a function that puts focus back on the list, for the inspector's Escape. */
@@ -608,6 +612,8 @@ export const GraphList: React.FC<GraphListProps> = ({
   announce,
   selectedOid,
   onSelect,
+  comparedOid,
+  onAddSelection,
   onInspect,
   focusRef,
 }) => {
@@ -769,14 +775,17 @@ export const GraphList: React.FC<GraphListProps> = ({
     [store, scrollToOffset, onSelect]
   );
 
-  /** Selects `row` (#397) and scrolls it into view, keeping the content offset the truth (#377). */
-  const selectRow = useCallback(
-    (row: number) => {
+  /**
+   * Moves the cursor to `row` and scrolls it into view, keeping the content offset the truth
+   * (#377), and selects it (#397) unless `select` is false, as for Ctrl with a move key (#398).
+   */
+  const moveCursor = useCallback(
+    (row: number, select: boolean) => {
       const el = scroller.current;
       if (!el || !store) return;
       scrollToOffset(offsetShowing(offset.current, row, el.clientHeight));
       setActive({ sessionId: store.sessionId, row });
-      onSelect(store.oid(row));
+      if (select) onSelect(store.oid(row));
     },
     [store, scrollToOffset, onSelect]
   );
@@ -817,9 +826,9 @@ export const GraphList: React.FC<GraphListProps> = ({
     active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null,
     win
   );
-  // The selected row (#397): the active row once the operator has picked one, never the window
-  // edge `aria-activedescendant` falls back to.
-  const selectedRow = active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null;
+  // The cursor row: the active row once the operator has picked one, never the window edge
+  // `aria-activedescendant` falls back to. A move selects it; Ctrl with a move key doesn't (#398).
+  const cursorRow = active !== null && store !== null && active.sessionId === store.sessionId ? active.row : null;
   const hovered = hover !== null && hover >= win.start && hover < win.end ? hover : null;
   const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
 
@@ -888,28 +897,36 @@ export const GraphList: React.FC<GraphListProps> = ({
     if (badge) onPrimary(primaryAction(badge, refContext));
   };
 
-  /** Moves, copies or inspects the selection by key (#397); returns whether it did. */
+  /**
+   * Moves, copies or inspects the selection by key (#397), or moves the cursor and adds its commit
+   * as the second one to compare (#398); returns whether it did.
+   */
   const onSelectionKey = (e: React.KeyboardEvent<HTMLDivElement>): boolean => {
     const key = selectionKey(e, false);
     if (key === null || !store) return false;
     switch (key.kind) {
-      case "move": {
+      case "move":
+      case "cursor": {
         const viewport = e.currentTarget.clientHeight;
-        const row = movedRow(selectedRow, key.step, {
+        const row = movedRow(cursorRow, key.step, {
           rowCount,
           pageRows: Math.floor(viewport / ROW_HEIGHT),
           firstVisible: Math.ceil(offset.current / ROW_HEIGHT),
         });
         if (row === null) return false;
-        selectRow(row);
+        moveCursor(row, key.kind === "move");
         return true;
       }
+      case "add":
+        if (cursorRow === null) return false;
+        onAddSelection(store.oid(cursorRow));
+        return true;
       case "copy":
-        if (selectedRow === null) return false;
-        onRefAction({ kind: "copySha", oid: store.oid(selectedRow) });
+        if (cursorRow === null) return false;
+        onRefAction({ kind: "copySha", oid: store.oid(cursorRow) });
         return true;
       case "inspect":
-        if (selectedRow === null) return false;
+        if (cursorRow === null) return false;
         onInspect();
         return true;
     }
@@ -964,7 +981,9 @@ export const GraphList: React.FC<GraphListProps> = ({
     const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
     if (row === null) return;
     setActive({ sessionId: store.sessionId, row });
-    onSelect(store.oid(row));
+    // Ctrl- or Shift-click adds a second commit to compare (#398); a plain click selects one.
+    if (e.ctrlKey || e.metaKey || e.shiftKey) onAddSelection(store.oid(row));
+    else onSelect(store.oid(row));
     // A click puts the badge cursor on the badge it hit, or on the row itself.
     const index = badgeIndexAt(e.target);
     setCursor(index === null ? null : { row, index });
@@ -979,8 +998,8 @@ export const GraphList: React.FC<GraphListProps> = ({
       const agent = store.agent(row);
       const subject = store.subject(row);
       const isActive = row === activeRow;
-      const isSelected = row === selectedRow;
       const oid = store.oid(row);
+      const isSelected = oid === selectedOid || oid === comparedOid;
       const rowBadges = refs.badges.get(oid);
       const holdsCurrentHead = rowBadges?.some(isCurrentHead) ?? false;
       out.push(
@@ -1014,7 +1033,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, selectedRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
+  }, [store, win, activeRow, selectedOid, comparedOid, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1053,6 +1072,7 @@ export const GraphList: React.FC<GraphListProps> = ({
           onContextMenu={onContextMenu}
           role="listbox"
           aria-label="Commits"
+          aria-multiselectable="true"
           aria-busy={status.state === "loading"}
           aria-activedescendant={activeRow === null ? undefined : `${idPrefix}-row-${activeRow}`}
           tabIndex={0}

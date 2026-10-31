@@ -1,11 +1,22 @@
-// Moving the commit selection by key (#368, #397): one selected commit, moved by the arrows,
-// PageUp/PageDown and Home/End, with Ctrl+C copying its SHA and Enter moving to the inspector.
+// Moving the commit selection by key (#368, #397, #398): a selected commit moved by the arrows,
+// PageUp/PageDown and Home/End, with Ctrl+C copying its SHA and Enter moving to the inspector, and
+// a second commit to compare picked with Ctrl and those keys, then Ctrl+Space or Shift+Space.
 
+import type { CompareOrder, ComparedPair } from "./commitDetails.ts";
 import { ROW_HEIGHT } from "./graphWindow.ts";
 
 export type SelectionStep = "up" | "down" | "pageUp" | "pageDown" | "home" | "end";
 
-export type SelectionKey = { kind: "move"; step: SelectionStep } | { kind: "copy" } | { kind: "inspect" };
+/**
+ * `move` selects the row it lands on; `cursor` moves the active row without selecting, and `add`
+ * adds the active row as the second commit to compare.
+ */
+export type SelectionKey =
+  | { kind: "move"; step: SelectionStep }
+  | { kind: "cursor"; step: SelectionStep }
+  | { kind: "add" }
+  | { kind: "copy" }
+  | { kind: "inspect" };
 
 interface KeyPress {
   key: string;
@@ -26,13 +37,20 @@ const STEPS: Record<string, SelectionStep> = {
 
 /**
  * What a key on the commit list does to the selection, or null for a key it leaves alone. Moves
- * take no modifier, since Shift and Ctrl with a click or a move are kept for selecting two commits.
- * Ctrl+C (Cmd+C on a Mac) copies. Nothing applies in a text field.
+ * take no modifier. Ctrl (Cmd on a Mac) with a move key moves the cursor without selecting, and
+ * Ctrl+Space or Shift+Space adds the cursor's commit as the second one, as a Ctrl- or Shift-click
+ * does. Ctrl+C copies. Nothing applies in a text field.
  */
 export function selectionKey(e: KeyPress, inTextField: boolean): SelectionKey | null {
   if (inTextField || e.altKey) return null;
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "c") return { kind: "copy" };
-  if (e.ctrlKey || e.metaKey || e.shiftKey) return null;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && !e.shiftKey && e.key.toLowerCase() === "c") return { kind: "copy" };
+  if (e.key === " " && ctrl !== e.shiftKey) return { kind: "add" };
+  if (ctrl && !e.shiftKey) {
+    const step = STEPS[e.key];
+    return step === undefined ? null : { kind: "cursor", step };
+  }
+  if (ctrl || e.shiftKey) return null;
   if (e.key === "Enter") return { kind: "inspect" };
   const step = STEPS[e.key];
   return step === undefined ? null : { kind: "move", step };
@@ -79,4 +97,81 @@ export function offsetShowing(offset: number, row: number, viewport: number): nu
   if (top < offset) return top;
   if (bottom > offset + viewport) return bottom - viewport;
   return offset;
+}
+
+/**
+ * The commits selected in the graph (#368, #398): none, one, or two to compare. The type allows
+ * no more than two. `swapped` says the operator reversed the pair the older/newer rule ordered.
+ */
+export type CommitSelection =
+  | { kind: "none" }
+  | { kind: "one"; oid: string }
+  | { kind: "two"; first: string; second: string; swapped: boolean };
+
+/**
+ * What changes the selection: `pick` is a plain click or a move, `add` a Ctrl- or Shift-click or
+ * its key, `swap` the Swap button, `clear` a new repo.
+ */
+export type SelectionAction = { kind: "pick"; oid: string } | { kind: "add"; oid: string } | { kind: "swap" } | { kind: "clear" };
+
+/**
+ * The selection after `action`. A pick selects that one commit. An add makes a second commit, and
+ * a third replaces the second, so at most two are ever selected; adding a commit already selected
+ * changes nothing. A new pair starts in the rule's order, and Swap flips it.
+ */
+export function selectCommits(state: CommitSelection, action: SelectionAction): CommitSelection {
+  switch (action.kind) {
+    case "clear":
+      return { kind: "none" };
+    case "pick":
+      return { kind: "one", oid: action.oid };
+    case "swap":
+      return state.kind === "two" ? { ...state, swapped: !state.swapped } : state;
+    case "add":
+      switch (state.kind) {
+        case "none":
+          return { kind: "one", oid: action.oid };
+        case "one":
+          return state.oid === action.oid ? state : { kind: "two", first: state.oid, second: action.oid, swapped: false };
+        case "two":
+          if (action.oid === state.first || action.oid === state.second) return state;
+          return { kind: "two", first: state.first, second: action.oid, swapped: false };
+      }
+  }
+}
+
+/**
+ * The graph's two selection marks: `selectedOid` is the one commit or a pair's first, and
+ * `comparedOid` a pair's second, or null with fewer than two selected.
+ */
+export function selectionOids(state: CommitSelection): { selectedOid: string | null; comparedOid: string | null } {
+  switch (state.kind) {
+    case "none":
+      return { selectedOid: null, comparedOid: null };
+    case "one":
+      return { selectedOid: state.oid, comparedOid: null };
+    case "two":
+      return { selectedOid: state.first, comparedOid: state.second };
+  }
+}
+
+/** The direction a pair is diffed in: older to newer, or newer to older once swapped. */
+export function comparedPair(order: CompareOrder, swapped: boolean): ComparedPair {
+  return swapped ? { from: order.newer, to: order.older } : { from: order.older, to: order.newer };
+}
+
+/** The cache key of a pair diffed from `from` to `to`, read back by `pairOfKey`. */
+export function pairKey(from: string, to: string): string {
+  return `${from}..${to}`;
+}
+
+/** The key two commits share whichever was picked first, for the order read. */
+export function unorderedPairKey(a: string, b: string): string {
+  return a <= b ? pairKey(a, b) : pairKey(b, a);
+}
+
+/** The two oids of a `pairKey`, the `from` first. */
+export function pairOfKey(key: string): [string, string] {
+  const at = key.indexOf("..");
+  return [key.slice(0, at), key.slice(at + 2)];
 }
