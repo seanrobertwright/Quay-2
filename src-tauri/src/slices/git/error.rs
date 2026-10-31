@@ -18,6 +18,9 @@ pub enum GitError {
     /// A file changed since it was discarded, so restoring its backup would overwrite the newer
     /// bytes. Nothing was restored; the backup can still be copied to a new file.
     ChangedSinceDiscard { paths: Vec<String> },
+    /// A commit hook, such as `pre-commit` or `commit-msg`, exited non-zero, so nothing was
+    /// committed. `output` is the last 64 KiB of what the commit printed, hook output included.
+    HookFailed { hook: String, output: String },
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -30,6 +33,7 @@ impl std::fmt::Display for GitError {
             GitError::StagingBusy => f.write_str("a staging operation is already running on this worktree"),
             GitError::StaleDiff => f.write_str("the file changed since its diff was read"),
             GitError::ChangedSinceDiscard { paths } => write!(f, "changed since the discard: {}", paths.join(", ")),
+            GitError::HookFailed { hook, .. } => write!(f, "the {hook} hook failed"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }

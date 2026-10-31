@@ -5,6 +5,7 @@ import { isSamePath } from "../../../utils/paths";
 import type { GitRefs } from "./graphRefs";
 import {
   ALL_DIRTY,
+  COMMIT_DIRTY,
   graphNeeded,
   planRefresh,
   RefreshQueue,
@@ -15,6 +16,14 @@ import {
 } from "./refreshTable";
 import type { GraphSession } from "./useGraphSession";
 import type { GraphRefsReader } from "./useGraphRefs";
+
+/** What `useLiveUpdates` hands back. */
+export interface LiveUpdates {
+  /** Retries a watch that is off, for the marker's Retry. */
+  retry: () => void;
+  /** Refreshes after a Topos commit that made `newHeadOid` HEAD. */
+  committed: (newHeadOid: string) => void;
+}
 
 /** What the refresh table refetches for the selected worktree's status. */
 export interface StatusReloader {
@@ -37,7 +46,8 @@ function headOf(refs: GitRefs, worktreePath: string): string | null {
  * Keeps Topos current by itself (#354, #379). It points the graph session's watch at the selected
  * worktree, watching files only while Topos is `visible`, and runs the refresh table on each
  * `git-repo-changed` for it, one refresh at a time. While live updates are off it compares a
- * fingerprint of the repo on window focus and on show instead. Returns Retry for the marker.
+ * fingerprint of the repo on window focus and on show instead. Returns Retry for the marker, and the
+ * refresh a Topos commit asks for.
  */
 export function useLiveUpdates(
   target: LiveUpdatesTarget | null,
@@ -47,7 +57,7 @@ export function useLiveUpdates(
   status: StatusReloader,
   /** The open file's diff, or null when none is open. */
   diff: StatusReloader | null
-): () => void {
+): LiveUpdates {
   const sessionId = graph.feed?.sessionId ?? null;
   const watchState = graph.feed?.watch?.state ?? null;
   // The handlers below outlive renders, so they read the newest of these through refs.
@@ -57,7 +67,7 @@ export function useLiveUpdates(
 
   const queue = useRef<RefreshQueue | null>(null);
   if (queue.current === null) {
-    queue.current = new RefreshQueue(async (dirty: Dirty) => {
+    queue.current = new RefreshQueue(async (dirty: Dirty, newHeadOid: string | null) => {
       const { graph, refs, status, diff, target } = latest.current;
       const store = graph.feed?.store ?? null;
       if (target === null || store === null) return;
@@ -74,15 +84,18 @@ export function useLiveUpdates(
       }
       const before = refs.refs.state === "done" ? tipOids(refs.refs.refs) : null;
       const after = await refs.reload();
+      const isLoaded = (oid: string) => store.rowOf(oid) !== -1;
       const run =
         plan.graph === "yes" ||
-        (after !== null &&
-          graphNeeded(plan.graph, {
-            tipsBefore: before,
-            tipsAfter: tipOids(after),
-            headOid: headOf(after, target.worktreePath),
-            isLoaded: (oid) => store.rowOf(oid) !== -1,
-          }));
+        (after !== null
+          ? graphNeeded(plan.graph, {
+              tipsBefore: before,
+              tipsAfter: tipOids(after),
+              headOid: headOf(after, target.worktreePath),
+              newHeadOid,
+              isLoaded,
+            })
+          : plan.graph !== "no" && newHeadOid !== null && !isLoaded(newHeadOid));
       if (run) await graph.refresh();
       await Promise.all([statusRead, diffRead]);
     });
@@ -147,5 +160,8 @@ export function useLiveUpdates(
     return () => window.removeEventListener("focus", checkFingerprint);
   }, [watchState, visible, checkFingerprint]);
 
-  return watch;
+  // A Topos commit refreshes at once with its new HEAD, rather than waiting for the watcher.
+  const committed = useCallback((newHeadOid: string) => queue.current?.request(COMMIT_DIRTY, newHeadOid), []);
+
+  return { retry: watch, committed };
 }

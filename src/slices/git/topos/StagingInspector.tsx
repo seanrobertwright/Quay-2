@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
+import { CommitComposer } from "./CommitComposer";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { DiscardButton } from "./DiscardButton";
 import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
@@ -16,6 +17,7 @@ import {
 } from "./stagingKeys";
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { OpenFile } from "./useFileDiff";
+import type { Commit } from "./useCommit";
 import type { BusyOp, Staging } from "./useStaging";
 
 /** Each status letter as words, for the row's title and its spoken name. */
@@ -388,11 +390,14 @@ export interface StagingInspectorProps {
   /** The file whose diff is open, if any. */
   openFile: OpenFile | null;
   onOpenFile: (file: OpenFile) => void;
+  /** The commit composer pinned at the bottom (#388). */
+  commit: Commit;
 }
 
 /**
  * The staging inspector (#366, #382): a right-hand column, resizable from its left edge, holding
- * Unstaged with Stage all over Staged with Unstage all. Lists are flat by default with a tree
+ * Unstaged with Stage all over Staged with Unstage all, with the commit composer pinned at the
+ * bottom. Lists are flat by default with a tree
  * toggle. Every result comes from git's answer, never from a guess, and every action is announced
  * in a live region.
  */
@@ -407,6 +412,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   onClose,
   openFile,
   onOpenFile,
+  commit,
 }) => {
   const titleId = useId();
   const hintId = useId();
@@ -685,6 +691,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
           )}
         </section>
       )}
+      <CommitComposer commit={commit} stagingBusy={busy !== null && busy.action !== "commit"} />
       {undo && (
         <div role="status" className="absolute left-3 right-3 bottom-3 z-30 flex items-center gap-2 px-3 py-2 rounded-md border border-[#30363d] bg-[#161b22] shadow-lg text-xs">
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={undo.label}>

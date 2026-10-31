@@ -17,6 +17,7 @@ import { StagingInspector } from "./StagingInspector";
 import { wipLabel } from "./stagingKeys";
 import { otherSide, splitStatus, type ListMode } from "./stagingLists";
 import { useFileDiff, type OpenFile } from "./useFileDiff";
+import { useCommit } from "./useCommit";
 import { useStaging } from "./useStaging";
 import { useToposSettings } from "./useToposSettings";
 import { offerSpeedup } from "./speedup";
@@ -135,7 +136,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   useEffect(() => setOpenFile(null), [selectedPath]);
   const fileDiff = useFileDiff(graphRepo !== null ? selectedPath : null, openFile, staging);
-  const retryLiveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
+  const liveUpdates = useLiveUpdates(liveTarget, isOpen, graph, refsReader, staging, openFile ? fileDiff : null);
+  // The composer commits on the selected worktree, and hands its new HEAD to the refresh table (#388).
+  const commit = useCommit(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
   const otherSideHasChanges = useMemo(() => {
     if (openFile === null || staging.status.state !== "done") return false;
     return splitStatus(staging.status.status.entries)[otherSide(openFile.side)].some((c) => c.path === openFile.path);
@@ -206,7 +209,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
               Live updates off; the view may be stale
               <button
                 type="button"
-                onClick={retryLiveUpdates}
+                onClick={liveUpdates.retry}
                 className="ml-1 inline-flex items-center gap-1 px-1.5 rounded border border-[#d29922]/40 hover:bg-[#d29922]/20 text-[#e3b341]"
               >
                 <RefreshCw className="w-3 h-3" aria-hidden="true" />
@@ -347,6 +350,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     onClose={() => setInspectorOpen(false)}
                     openFile={openFile}
                     onOpenFile={setOpenFile}
+                    commit={commit}
                   />
                 )}
               </div>
@@ -363,7 +367,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
           onClose={() => setSpeedupOpen(false)}
           fallbackFocus={panelProps.ref}
         />
-        {/* The staging inspector's and the diff view's one live region, here so it stays while
+        {/* The staging inspector's, the commit composer's and the diff view's one live region, here so it stays while
             either is shown. Keyed by the count, so the same sentence twice in a row is announced twice. */}
         <div role="status" aria-live="polite" className="sr-only">
           <span key={staging.announcement.seq}>{staging.announcement.text}</span>

@@ -1,7 +1,7 @@
 // The staging inspector's keys and words (#366, #382): what a key does in the Unstaged and Staged
 // lists, and the sentences the inspector shows and announces.
 
-import { errorMessage } from "./gitVersion.ts";
+import { errorMessage, parseGitError } from "./gitVersion.ts";
 import { STATUS_CAP, type PathTarget } from "./stagingLists.ts";
 
 export type ListAction = "up" | "down" | "open" | "stage" | "unstage";
@@ -110,23 +110,21 @@ export interface FailureView {
 
 /** What the inspector shows for a rejected staging command. */
 export function failureView(e: unknown): FailureView {
-  if (typeof e === "object" && e !== null && Object.prototype.hasOwnProperty.call(e, "kind")) {
-    switch ((e as { kind: unknown }).kind) {
-      case "indexLocked":
-        return {
-          message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.",
-          retry: true,
-          stale: false,
-        };
-      case "stagingBusy":
-        return { message: "Another staging operation is still running on this worktree.", retry: false, stale: false };
-      case "staleDiff":
-        return {
-          message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
-          retry: false,
-          stale: true,
-        };
-    }
+  switch (parseGitError(e)?.kind) {
+    case "indexLocked":
+      return {
+        message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.",
+        retry: true,
+        stale: false,
+      };
+    case "stagingBusy":
+      return { message: "Another staging operation is still running on this worktree.", retry: false, stale: false };
+    case "staleDiff":
+      return {
+        message: "The file changed since its diff was read, so nothing was staged or unstaged. The diff was reloaded.",
+        retry: false,
+        stale: true,
+      };
   }
   return { message: errorMessage(e), retry: false, stale: false };
 }

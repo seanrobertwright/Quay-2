@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  COMMIT_DIRTY,
   graphNeeded,
   planRefresh,
   RefreshQueue,
@@ -188,4 +189,46 @@ test("only the newest request's answer counts", () => {
   const second = ids.next();
   assert.equal(ids.isLatest(first), false, "an older response is dropped");
   assert.equal(ids.isLatest(second), true);
+});
+
+test("a commit from Topos refreshes the status, refs, banner and open diff, and the graph if its new HEAD isn't loaded", () => {
+  assert.deepEqual(planRefresh(COMMIT_DIRTY, { inOperation: false, graphHeld: false }), {
+    status: true,
+    diff: true,
+    refs: true,
+    banner: true,
+    graph: "ifHeadNotLoadedOrTipsChanged",
+    holdGraph: false,
+  });
+});
+
+test("the new HEAD a commit returned re-runs the graph when it isn't a loaded row, even before refs say so", () => {
+  const tips = new Set(["a"]);
+  const facts = { tipsBefore: tips, tipsAfter: tips, headOid: null, isLoaded: (oid: string) => oid === "a" };
+  assert.equal(graphNeeded("ifHeadNotLoadedOrTipsChanged", facts), false);
+  assert.equal(graphNeeded("ifHeadNotLoadedOrTipsChanged", { ...facts, newHeadOid: "n" }), true);
+  assert.equal(graphNeeded("ifHeadNotLoadedOrTipsChanged", { ...facts, newHeadOid: "a" }), false, "already a loaded row");
+  assert.equal(graphNeeded("no", { ...facts, newHeadOid: "n" }), false, "a held graph stays held");
+});
+
+test("a commit's new HEAD rides along with its refresh, and a later one replaces it", async () => {
+  const runs: { dirty: Dirty; newHeadOid: string | null; finish: () => void }[] = [];
+  const queue = new RefreshQueue(
+    (d, newHeadOid) =>
+      new Promise<void>((resolve) => {
+        runs.push({ dirty: d, newHeadOid, finish: resolve });
+      })
+  );
+  queue.request(COMMIT_DIRTY, "first");
+  assert.equal(runs[0].newHeadOid, "first");
+  queue.request(dirty({ worktree: true }));
+  queue.request(COMMIT_DIRTY, "second");
+  queue.request(dirty({ index: true }));
+  runs[0].finish();
+  await tick();
+  assert.equal(runs[1].newHeadOid, "second");
+  runs[1].finish();
+  await tick();
+  queue.request(dirty({ worktree: true }));
+  assert.equal(runs[2].newHeadOid, null, "a watcher refresh carries none");
 });

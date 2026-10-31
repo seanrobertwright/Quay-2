@@ -24,7 +24,7 @@ export type StatusState =
 
 /** The staging operation running now, so its button shows busy and the others wait. */
 export interface BusyOp {
-  action: StagingAction | "discard" | "restore" | "copy";
+  action: StagingAction | "discard" | "restore" | "copy" | "commit";
   target: PathTarget;
   /** For a stage or unstage from the diff view, what part of the file it acts on. */
   selection?: Selection;
@@ -118,6 +118,11 @@ export interface Staging {
   restore: (entry: DiscardEntry) => void;
   /** Writes what `entry` took to new files beside the originals. */
   copyDiscard: (entry: DiscardEntry) => void;
+  /**
+   * Runs `call` as this worktree's one staging operation, with `op` shown busy until it settles,
+   * as a commit does (#388). Returns null, without calling, while another operation runs.
+   */
+  exclusive: <T>(op: BusyOp, call: (worktree: string) => Promise<T>) => Promise<T> | null;
   /** The untracked folders the operator expanded, each with its capped `status -uall`. */
   folders: ReadonlyMap<string, FolderListing>;
   toggleFolder: (folder: string) => void;
@@ -445,6 +450,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     dismissUndo,
     restore,
     copyDiscard,
+    exclusive: inSlot,
     folders,
     toggleFolder,
   };
