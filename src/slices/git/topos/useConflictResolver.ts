@@ -176,7 +176,7 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
             ids.current.next();
             show(out.file);
           }
-          recordDiscard(worktree, `Reset ${name}`, [out.backup]);
+          recordDiscard(worktree, `${name} (Reset file)`, [out.backup]);
           void reload();
         },
         (e: unknown) => fail(worktree, name, e)
@@ -194,7 +194,7 @@ export function useConflictResolver(worktreePath: string | null, path: string | 
         // The status comes back with the reload below, which carries the inspector's own request id.
         return invoke<TakeSideResult>("git_conflict_take_side", { worktreePath: worktree, requestId: 0, path: name, token, side }).then(
           (out) => {
-            recordDiscard(worktree, `Kept the ${side} side of ${name}`, [out.backup]);
+            recordDiscard(worktree, `${name} (kept one side whole)`, [out.backup]);
             void reload();
           },
           (e: unknown) => fail(worktree, name, e)
