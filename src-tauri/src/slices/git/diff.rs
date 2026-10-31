@@ -154,12 +154,12 @@ pub(super) struct ParsedDiff {
     hash: u64,
 }
 
-fn other(stderr: impl Into<String>) -> GitError {
+pub(super) fn other(stderr: impl Into<String>) -> GitError {
     GitError::Other { stderr: stderr.into() }
 }
 
 /// What `git <args>` prints in `worktree`, or its stderr as the error when it fails.
-fn run_read<const N: usize>(worktree: &Path, args: [&str; N]) -> Result<Vec<u8>, GitError> {
+pub(super) fn run_read<const N: usize>(worktree: &Path, args: [&str; N]) -> Result<Vec<u8>, GitError> {
     let out = worktree_git(worktree)
         .args(args)
         .stdin(Stdio::null())
@@ -387,7 +387,7 @@ fn read_untracked(worktree: &Path, path: &str, unified: &str, cap: bool) -> Resu
 }
 
 /// The token pinning what `parsed` was read with and from.
-fn diff_token(context: u32, parsed: &ParsedDiff) -> String {
+pub(super) fn diff_token(context: u32, parsed: &ParsedDiff) -> String {
     format!("{context}.{}.{:016x}", parsed.old_oid.as_deref().unwrap_or("0"), parsed.hash)
 }
 
@@ -543,7 +543,7 @@ fn after_last_line() -> GitError {
 /// addition becomes context and an unpicked deletion is dropped. Every kept byte is copied as git
 /// wrote it. A selection that would keep a line after a side's no-newline marker is refused, since
 /// `git apply` would join that line onto the last one.
-fn reduced_patch(
+pub(super) fn reduced_patch(
     parsed: &ParsedDiff,
     (minus, plus): (&[u8], &[u8]),
     picked: impl Fn(usize, usize) -> bool,
@@ -636,7 +636,7 @@ fn other_side_header(line: &[u8]) -> Option<Vec<u8>> {
 /// The `---` and `+++` lines of `parsed`'s file header. A side that is `/dev/null`, as for a file
 /// being created or deleted, takes the other side's name, so the patch modifies the index entry
 /// (an empty one for a new file) rather than creating or deleting it.
-fn header_lines(parsed: &ParsedDiff) -> Result<(Vec<u8>, Vec<u8>), GitError> {
+pub(super) fn header_lines(parsed: &ParsedDiff) -> Result<(Vec<u8>, Vec<u8>), GitError> {
     let (Some(minus), Some(plus)) = (parsed.minus.as_deref(), parsed.plus.as_deref()) else {
         return Err(other("the diff has no hunks"));
     };
@@ -651,7 +651,7 @@ fn header_lines(parsed: &ParsedDiff) -> Result<(Vec<u8>, Vec<u8>), GitError> {
 
 /// The changed lines `refs` names in `parsed`, as (hunk, line) indexes, or None when one is out
 /// of range or a context line.
-fn changed_lines(parsed: &ParsedDiff, refs: &[LineRef]) -> Option<Vec<(usize, usize)>> {
+pub(super) fn changed_lines(parsed: &ParsedDiff, refs: &[LineRef]) -> Option<Vec<(usize, usize)>> {
     refs.iter()
         .map(|r| {
             let (h, l) = (r.hunk as usize, r.line as usize);
@@ -851,7 +851,7 @@ pub enum ByteSource {
 }
 
 /// A full hex oid, never a ref or an option.
-fn parse_blob_oid(oid: &str) -> Result<&str, GitError> {
+pub(super) fn parse_blob_oid(oid: &str) -> Result<&str, GitError> {
     if matches!(oid.len(), 40 | 64) && oid.bytes().all(|b| b.is_ascii_hexdigit()) {
         Ok(oid)
     } else {

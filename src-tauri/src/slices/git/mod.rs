@@ -1,5 +1,8 @@
 pub mod commands;
 pub mod diff;
+pub mod discard;
+#[cfg(test)]
+mod discard_tests;
 #[cfg(test)]
 mod diff_tests;
 pub mod error;
@@ -21,6 +24,7 @@ pub mod version;
 
 pub use commands::*;
 pub use diff::*;
+pub use discard::*;
 pub use error::*;
 pub use graph::*;
 pub use models::*;

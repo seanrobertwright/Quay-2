@@ -243,7 +243,7 @@ fn parse_paths(paths: &[String]) -> Result<Vec<&str>, GitError> {
 /// `--pathspec-from-file=- --pathspec-file-nul`, so no list of paths outgrows a command line.
 /// While another process holds `index.lock` it tries again, [`INDEX_LOCK_ATTEMPTS`] times in all,
 /// and then reports [`GitError::IndexLocked`]. It never touches the lock itself.
-fn run_write(worktree: &Path, args: &[&str], pathspecs: Option<&[&str]>) -> Result<(), GitError> {
+pub(super) fn run_write(worktree: &Path, args: &[&str], pathspecs: Option<&[&str]>) -> Result<(), GitError> {
     match pathspecs {
         None => run_write_input(worktree, args, None),
         Some(specs) => {
