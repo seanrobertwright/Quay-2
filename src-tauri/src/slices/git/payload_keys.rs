@@ -4,6 +4,7 @@
 
 use serde_json::{json, Value};
 
+use super::commit::{CommitContext, HeadCommit, Operation};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
 use super::discard::{CopyResult, DiscardBackup, DiscardPathsResult};
 use super::error::GitError;
@@ -144,6 +145,26 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GitError::ChangedSinceDiscard",
             s(&GitError::ChangedSinceDiscard { paths: vec!["a.txt".into()] }),
             json!({ "kind": "changedSinceDiscard", "paths": ["a.txt"] }),
+        ),
+        (
+            "GitError::HookFailed",
+            s(&GitError::HookFailed { hook: "pre-commit".into(), output: "lint failed\n".into() }),
+            json!({ "kind": "hookFailed", "hook": "pre-commit", "output": "lint failed\n" }),
+        ),
+        (
+            "CommitContext",
+            s(&CommitContext {
+                operation: Operation::CherryPick,
+                merge_message: Some("Merge branch 'main'\n".into()),
+                branch: None,
+                head: Some(HeadCommit { oid: "abc".into(), message: "init\n".into(), on_upstream: true }),
+            }),
+            json!({
+                "operation": "cherryPick",
+                "mergeMessage": "Merge branch 'main'\n",
+                "branch": null,
+                "head": { "oid": "abc", "message": "init\n", "onUpstream": true },
+            }),
         ),
         (
             "DiscardPathsResult",

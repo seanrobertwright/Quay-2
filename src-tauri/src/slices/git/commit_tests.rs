@@ -253,6 +253,101 @@ fn in_a_merge_the_context_prefills_merge_msg_and_committing_it_concludes_the_mer
 }
 
 #[test]
+fn the_context_gives_amend_heads_message_and_says_when_head_is_on_its_upstream() {
+    let (root, wt) = repo_with_worktree();
+    let no_upstream = read_commit_context(&wt).unwrap().head.unwrap();
+    assert_eq!(no_upstream.message, "init\n");
+    assert_eq!(no_upstream.oid, head_oid(&wt));
+    assert!(!no_upstream.on_upstream, "with no upstream, HEAD isn't on one");
+
+    // `feat` starts where `main` is, so with `main` as its upstream HEAD is already there.
+    git(&wt, &["branch", "--set-upstream-to=main"]);
+    assert!(read_commit_context(&wt).unwrap().head.unwrap().on_upstream);
+
+    std::fs::write(wt.join("README.md"), "changed\n").unwrap();
+    git(&wt, &["commit", "-q", "-am", "Local only\n\nWith a body."]);
+    let ahead = read_commit_context(&wt).unwrap().head.unwrap();
+    assert_eq!(ahead.message, "Local only\n\nWith a body.\n");
+    assert!(!ahead.on_upstream, "a commit not yet on the upstream");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn the_context_names_a_detached_head_and_each_operation_the_banner_continues() {
+    let (root, wt) = repo_with_worktree();
+    let context = read_commit_context(&wt).unwrap();
+    assert_eq!((context.operation, context.branch.as_deref(), context.merge_message), (Operation::None, Some("feat"), None));
+
+    git(&wt, &["checkout", "-q", "--detach"]);
+    let detached = read_commit_context(&wt).unwrap();
+    assert_eq!(detached.branch, None);
+    assert!(detached.head.is_some());
+
+    // The per-worktree git dir holds each operation's state.
+    let git_dir = PathBuf::from(git(&wt, &["rev-parse", "--absolute-git-dir"]).trim());
+    let oid = head_oid(&wt);
+    for (state, operation) in [("CHERRY_PICK_HEAD", Operation::CherryPick), ("REVERT_HEAD", Operation::Revert)] {
+        std::fs::write(git_dir.join(state), format!("{oid}\n")).unwrap();
+        assert_eq!(read_commit_context(&wt).unwrap().operation, operation, "{state}");
+        std::fs::remove_file(git_dir.join(state)).unwrap();
+    }
+    std::fs::create_dir_all(git_dir.join("rebase-merge")).unwrap();
+    assert_eq!(read_commit_context(&wt).unwrap().operation, Operation::Rebase);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Names the worktree [`commit_with_the_inherited_env`] commits in, when this test binary runs it
+/// as a child process.
+const CHILD_WORKTREE_VAR: &str = "QUAY_TEST_TOPOS_COMMIT_WORKTREE";
+
+/// Commits in the worktree [`CHILD_WORKTREE_VAR`] names through `commit`, with whatever env this
+/// process was started with. It does nothing in a normal run, where the variable is unset.
+#[test]
+#[ignore = "run as a child process by a_topos_commit_carries_no_quay_agent_trailer_even_from_an_agent_terminals_env"]
+fn commit_with_the_inherited_env() {
+    let Some(wt) = std::env::var_os(CHILD_WORKTREE_VAR) else { return };
+    commit_in(Path::new(&wt), &request("From Topos")).unwrap();
+}
+
+fn stamps(message: &str) -> Vec<&str> {
+    message.lines().filter(|l| l.starts_with("Quay-Agent:")).collect()
+}
+
+#[test]
+fn a_topos_commit_carries_no_quay_agent_trailer_even_from_an_agent_terminals_env() {
+    use crate::slices::pty::commit_stamp::{install_hooks, stamping_env};
+    use crate::slices::pty::models::RunKind;
+
+    let (root, wt) = staged_change();
+    // Stamping on: the env an agent terminal gets, as if Quay itself had been started from one.
+    let hooks = install_hooks(&root.join("app-data")).unwrap();
+    let env = stamping_env(None, &hooks, RunKind::Claude).unwrap();
+
+    // The env is live: a plain git under it stamps the commit.
+    let mut plain = crate::spawn::hidden_command("git");
+    plain.current_dir(&wt).env_remove("GIT_CONFIG_COUNT").envs(env.iter().map(|(k, v)| (k, v)));
+    let out = plain.args(["commit", "-q", "-m", "From an agent"]).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(stamps(&head_message(&wt)), ["Quay-Agent: claude"]);
+
+    // A Topos commit, from a process with the same env, is a human commit.
+    std::fs::write(wt.join("README.md"), "from topos\n").unwrap();
+    git(&wt, &["add", "README.md"]);
+    let mut child = crate::spawn::hidden_command(std::env::current_exe().unwrap());
+    child
+        .args(["--exact", "slices::git::commit_tests::commit_with_the_inherited_env", "--ignored", "--test-threads=1"])
+        .env_remove("GIT_CONFIG_COUNT")
+        .envs(env.iter().map(|(k, v)| (k, v)))
+        .env(CHILD_WORKTREE_VAR, &wt);
+    let out = child.output().unwrap();
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && printed.contains("1 passed"), "the child commit failed:\n{printed}\n{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(head_message(&wt), "From Topos\n\n");
+    assert!(stamps(&head_message(&wt)).is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn a_failure_that_is_not_a_hook_is_other_with_gits_words() {
     let (root, wt) = repo_with_worktree();
     let err = commit_in(&wt, &request("Nothing staged")).unwrap_err();

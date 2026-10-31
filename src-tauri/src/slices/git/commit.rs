@@ -257,3 +257,30 @@ pub fn commit(
         head_oid(worktree)
     })
 }
+
+/// What the composer needs to know about `worktree_path`. See [`read_commit_context`].
+#[tauri::command]
+pub async fn git_commit_context(worktree_path: String) -> Result<CommitContext, GitError> {
+    tokio::task::spawn_blocking(move || read_commit_context(Path::new(&worktree_path)))
+        .await
+        .map_err(|e| GitError::Other { stderr: format!("could not read the commit context: {e}") })?
+}
+
+/// Commits what is staged in `worktree_path` as op `op_id`, which `git_op_cancel` stops while a
+/// hook runs, and returns the new HEAD's oid. See [`commit`]. An `opId` that isn't a UUID is
+/// rejected before this runs.
+#[tauri::command]
+pub async fn git_commit(
+    worktree_path: String,
+    request: CommitRequest,
+    op_id: Uuid,
+    on_event: Channel<OpEvent>,
+    app: tauri::AppHandle,
+) -> Result<String, GitError> {
+    use tauri::Manager;
+    tokio::task::spawn_blocking(move || {
+        commit(&app.state::<GitOps>(), &app.state::<StagingLocks>(), Path::new(&worktree_path), op_id, &request, &on_event)
+    })
+    .await
+    .map_err(|e| GitError::Other { stderr: format!("could not commit: {e}") })?
+}

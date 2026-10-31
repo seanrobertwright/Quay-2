@@ -398,9 +398,11 @@ pub fn git_op_cancel(op_id: Uuid, ops: State<'_, GitOps>) {
 }
 
 /// A git command that can never stop to ask on a terminal. Every Topos git process starts here.
+/// It never carries an agent terminal's commit stamping, so what Topos commits is unstamped.
 pub fn headless_git() -> Command {
     let mut cmd = crate::spawn::hidden_command("git");
     cmd.env("GIT_TERMINAL_PROMPT", "0").stdin(Stdio::null());
+    crate::slices::pty::commit_stamp::unstamp(&mut cmd);
     cmd
 }
 

@@ -42,6 +42,23 @@ pub fn apply(cmd: &mut CommandBuilder, kind: RunKind, hooks_dir: Option<&Path>) 
     }
 }
 
+/// Keeps the stamping env out of `cmd`, a git that Quay runs itself, such as a Topos commit:
+/// a commit Quay makes for the operator is a human commit (#353, #366). Quay's own process has
+/// that env only when it was started from an agent terminal. The agent kind is removed, and each
+/// of Quay's `core.hooksPath` entries is renamed to a key git ignores, the same way the forwarders
+/// do it, so the operator's own `GIT_CONFIG_*` entries and the repo's hooks still apply.
+pub(crate) fn unstamp(cmd: &mut std::process::Command) {
+    cmd.env_remove(KIND_VAR);
+    let count = std::env::var("GIT_CONFIG_COUNT").ok().and_then(|n| n.trim().parse::<u32>().ok()).unwrap_or(0);
+    for i in 0..count {
+        let key = std::env::var(format!("GIT_CONFIG_KEY_{i}")).unwrap_or_default();
+        let value = std::env::var(format!("GIT_CONFIG_VALUE_{i}")).unwrap_or_default();
+        if key.eq_ignore_ascii_case("core.hooksPath") && value.contains(&format!("/{HOOKS_FOLDER}/")) {
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), "quay.forwardedhookspath");
+        }
+    }
+}
+
 /// Names the agent kind for the `prepare-commit-msg` forwarder.
 pub(crate) const KIND_VAR: &str = "QUAY_AGENT_KIND";
 
