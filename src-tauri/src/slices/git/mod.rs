@@ -12,6 +12,9 @@ pub mod error;
 pub mod graph;
 pub mod models;
 pub mod op_runner;
+pub mod operation;
+#[cfg(test)]
+mod operation_tests;
 #[cfg(test)]
 mod payload_keys;
 pub mod settings;
@@ -35,6 +38,7 @@ pub use error::*;
 pub use graph::*;
 pub use models::*;
 pub use op_runner::*;
+pub use operation::*;
 pub use settings::*;
 pub use speedup::*;
 pub use staging::*;
