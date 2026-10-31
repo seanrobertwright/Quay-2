@@ -8,6 +8,8 @@ export interface DialogValues {
   text: string;
   /** The chosen option's value, or "" when there is no choice. */
   choice: string;
+  /** The message field's value, or "" when there is none. */
+  message: string;
 }
 
 export interface ConfirmRequest {
@@ -18,6 +20,8 @@ export interface ConfirmRequest {
   checkbox?: { label: string; initial: boolean };
   /** A text field, such as a new branch's name. Focus starts in it rather than on Cancel. */
   field?: { label: string; initial: string };
+  /** A multi-line field under the text field, such as a tag's optional message. */
+  message?: { label: string };
   /** A choice among `options`, such as the branch to check out. Focus starts on it. */
   choice?: { label: string; options: { value: string; label: string }[] };
   /** Runs on confirm, after the dialog closes, with the checkbox's state (false when there is none). */
@@ -30,7 +34,7 @@ export interface ConfirmRequest {
 }
 
 /**
- * Topos's own dialog (#366, #393), since Quay has no shared one: `role="alertdialog"` with focus
+ * Topos's own dialog (#366, #393, #394), since Quay has no shared one: `role="alertdialog"` with focus
  * trapped inside it and starting on Cancel, the safe choice, or in its text field or choice when
  * it asks for one. Escape cancels it before it closes Topos, and on close focus goes back to what
  * opened it.
@@ -41,6 +45,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const checkboxId = useId();
   const fieldId = useId();
   const choiceId = useId();
+  const messageId = useId();
   const errorId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -50,6 +55,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const [checked, setChecked] = useState(false);
   const [text, setText] = useState("");
   const [choice, setChoice] = useState("");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   // While a submit runs, Cancel and Escape wait for it, so its refusal has somewhere to show.
@@ -72,6 +78,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   useEffect(() => {
     setText(request?.field?.initial ?? "");
     setChoice(request?.choice?.options[0]?.value ?? "");
+    setMessage("");
     setError(null);
     setPending(false);
   }, [request]);
@@ -84,7 +91,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
       if (pending) return;
       setPending(true);
       setError(null);
-      void request.onSubmit({ checked: confirmed, text, choice }).then(
+      void request.onSubmit({ checked: confirmed, text, choice, message }).then(
         (reason) => {
           setPending(false);
           if (reason === null) onCancel();
@@ -139,6 +146,21 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
                 confirm();
               }}
               className="px-2 py-1 rounded border border-[#30363d] bg-[#0d1117] text-xs text-white font-mono focus:outline-none focus:border-[#06B6D4]"
+            />
+          </div>
+        )}
+        {request.message && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={messageId} className="text-xs text-[#c9d1d9]">
+              {request.message.label}
+            </label>
+            <textarea
+              id={messageId}
+              value={message}
+              rows={4}
+              spellCheck={false}
+              onChange={(e) => setMessage(e.target.value)}
+              className="px-2 py-1 rounded border border-[#30363d] bg-[#0d1117] text-xs text-white font-mono resize-y focus:outline-none focus:border-[#06B6D4]"
             />
           </div>
         )}

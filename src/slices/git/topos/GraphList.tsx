@@ -836,6 +836,9 @@ export const GraphList: React.FC<GraphListProps> = ({
       case "createBranch":
         onRefAction({ kind: "createBranch", at: oid });
         return true;
+      case "createTag":
+        onRefAction({ kind: "createTag", at: oid });
+        return true;
       case "checkout": {
         const badge = cursorIndex === null ? undefined : badges[cursorIndex];
         if (!badge) return false;

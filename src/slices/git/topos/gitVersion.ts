@@ -25,7 +25,11 @@ export type GitError =
   /** Ref operations (#393). Paths, worktrees and names are untrusted display text. */
   | { kind: "checkoutWouldOverwrite"; paths: string[] }
   | { kind: "branchInOtherWorktree"; worktree: string }
-  | { kind: "invalidRefName"; name: string };
+  | { kind: "invalidRefName"; name: string }
+  /** Branch and tag writes (#394). */
+  | { kind: "notFullyMerged"; ahead: number; tip: string }
+  | { kind: "refExists"; name: string }
+  | { kind: "refLocked" };
 
 /** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
 export function parseGitError(e: unknown): GitError | null {
@@ -38,6 +42,7 @@ export function parseGitError(e: unknown): GitError | null {
     case "staleDiff":
     case "conflictStale":
     case "noOperation":
+    case "refLocked":
       return { kind: fields.kind };
     case "conflictsRemain":
       return Number.isSafeInteger(fields.count) && (fields.count as number) >= 0
@@ -57,6 +62,12 @@ export function parseGitError(e: unknown): GitError | null {
       return { kind: "branchInOtherWorktree", worktree: String(fields.worktree) };
     case "invalidRefName":
       return { kind: "invalidRefName", name: String(fields.name) };
+    case "refExists":
+      return { kind: "refExists", name: String(fields.name) };
+    case "notFullyMerged":
+      return Number.isSafeInteger(fields.ahead) && (fields.ahead as number) >= 0
+        ? { kind: "notFullyMerged", ahead: fields.ahead as number, tip: String(fields.tip) }
+        : null;
     default:
       return null;
   }

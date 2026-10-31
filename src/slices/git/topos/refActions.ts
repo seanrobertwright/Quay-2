@@ -1,5 +1,5 @@
-// What Topos offers on a ref badge and a commit row (#367, #393): the context menus' items, what a
-// double-click or Enter on a badge checks out, and the graph's keys for them.
+// What Topos offers on a ref badge and a commit row (#367, #393, #394): the context menus' items,
+// what a double-click or Enter on a badge checks out, and the graph's keys for them.
 
 import { isSamePath } from "../../../utils/paths.ts";
 import type { Operation } from "./composer.ts";
@@ -20,6 +20,10 @@ export type RefAction =
   | { kind: "showWorktree"; path: string }
   | { kind: "createBranch"; at: string }
   | { kind: "createTag"; at: string }
+  | { kind: "renameBranch"; name: string }
+  | { kind: "setUpstream"; name: string }
+  | { kind: "deleteBranch"; name: string }
+  | { kind: "deleteTag"; name: string }
   | { kind: "copySha"; oid: string };
 
 /** A context menu item. A disabled one has no action and says why. */
@@ -35,9 +39,6 @@ export interface RefContext {
   /** Why no checkout can run now, such as an operation under way, or null when one can. */
   busy: string | null;
 }
-
-/** Why "Create tag here…" waits: tags come with their own ticket. */
-const TAGS_LATER = "Tags arrive in a later version";
 
 /** The label of the item, and the toast button, that retargets the Rail to another worktree. */
 export const SHOW_WORKTREE = "Show that worktree";
@@ -59,6 +60,22 @@ function checkoutItem(label: string, target: CheckoutTarget, ctx: RefContext): M
 
 const createBranchItem = (at: string): MenuItem => ({ label: "Create branch here…", action: { kind: "createBranch", at } });
 
+/**
+ * Rename, Set upstream and Delete for the local branch `name`. A branch checked out in any
+ * worktree, `here` the selected one, is never deleted (#367).
+ */
+function branchWriteItems(name: string, checkedOut: { here: true } | { here: false; holder: string } | null): MenuItem[] {
+  const del: MenuItem =
+    checkedOut === null
+      ? { label: "Delete…", action: { kind: "deleteBranch", name } }
+      : { label: "Delete…", action: null, disabledReason: checkedOut.here ? "Checked out here" : heldBy(checkedOut.holder) };
+  return [
+    { label: "Rename…", action: { kind: "renameBranch", name } },
+    { label: "Set upstream…", action: { kind: "setUpstream", name } },
+    del,
+  ];
+}
+
 /** The context menu of `badge`, on the commit `oid`. The selected worktree's HEAD has none. */
 export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[] {
   switch (badge.kind) {
@@ -68,21 +85,30 @@ export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[
       const where = localBranchAt(badge.name, ctx);
       switch (where.at) {
         case "free":
-          return [checkoutItem("Checkout", { kind: "branch", name: badge.name }, ctx), createBranchItem(oid)];
+          return [checkoutItem("Checkout", { kind: "branch", name: badge.name }, ctx), createBranchItem(oid), ...branchWriteItems(badge.name, null)];
         case "here":
-          return [{ label: "Checkout", action: null, disabledReason: "Already checked out here" }, createBranchItem(oid)];
+          return [
+            { label: "Checkout", action: null, disabledReason: "Already checked out here" },
+            createBranchItem(oid),
+            ...branchWriteItems(badge.name, { here: true }),
+          ];
         case "elsewhere":
           return [
             { label: "Checkout", action: null, disabledReason: heldBy(where.holder) },
             { label: SHOW_WORKTREE, action: { kind: "showWorktree", path: where.holder } },
             createBranchItem(oid),
+            ...branchWriteItems(badge.name, { here: false, holder: where.holder }),
           ];
       }
     }
     case "remote":
       return [checkoutItem("Checkout", { kind: "remote", name: badge.name }, ctx), createBranchItem(oid)];
     case "tag":
-      return [checkoutItem("Checkout detached", { kind: "detached", at: oid }, ctx), createBranchItem(oid)];
+      return [
+        checkoutItem("Checkout detached", { kind: "detached", at: oid }, ctx),
+        createBranchItem(oid),
+        { label: "Delete tag…", action: { kind: "deleteTag", name: badge.name } },
+      ];
   }
 }
 
@@ -90,7 +116,7 @@ export function badgeMenu(badge: Badge, oid: string, ctx: RefContext): MenuItem[
 export function commitMenu(oid: string, ctx: RefContext): MenuItem[] {
   return [
     createBranchItem(oid),
-    { label: "Create tag here…", action: null, disabledReason: TAGS_LATER },
+    { label: "Create tag here…", action: { kind: "createTag", at: oid } },
     checkoutItem("Checkout detached", { kind: "detached", at: oid }, ctx),
     { label: "Copy SHA", action: { kind: "copySha", oid } },
   ];
@@ -167,7 +193,7 @@ export function newBranchRefusal(name: string, checkout: boolean, busy: string |
 }
 
 /** The graph keys of #367, which act on the selected row or the badge the cursor is on. */
-export type GraphKey = "createBranch" | "checkout" | "menu" | "nextBadge" | "previousBadge";
+export type GraphKey = "createBranch" | "createTag" | "checkout" | "menu" | "nextBadge" | "previousBadge";
 
 /** The graph key `e` is, or null. No chord with Ctrl, Alt or Meta, and nothing in a text field. */
 export function graphKey(
@@ -180,6 +206,9 @@ export function graphKey(
     case "b":
     case "B":
       return "createBranch";
+    case "t":
+    case "T":
+      return "createTag";
     case "Enter":
       return "checkout";
     case "ArrowRight":
@@ -217,7 +246,7 @@ export interface RefFailure {
 /** The files a toast lists before counting the rest. */
 const LISTED_PATHS = 5;
 
-/** The toast for `e`, a refused checkout or create of `what`. */
+/** The toast for `e`, a refused ref operation on `what`. */
 export function refFailure(what: string, e: unknown): RefFailure {
   const error = parseGitError(e);
   const plain = (text: string): RefFailure => ({ text, lines: [], worktree: null, openInspector: false });
@@ -236,7 +265,11 @@ export function refFailure(what: string, e: unknown): RefFailure {
     case "branchInOtherWorktree":
       return { ...plain(`${what} is checked out in worktree ${folderName(error.worktree)}`), worktree: error.worktree };
     case "invalidRefName":
-      return plain(`${error.name} isn't a valid branch name or commit`);
+      return plain(`${error.name} isn't a valid name or commit`);
+    case "refExists":
+      return plain(`${error.name} already exists`);
+    case "refLocked":
+      return plain(`Another git process holds a lock on ${what}; try again once it's done`);
     case "stagingBusy":
       return plain("Another git operation is running in this worktree; try again once it's done");
     default:
