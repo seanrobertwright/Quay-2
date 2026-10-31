@@ -16,7 +16,12 @@ export interface Toast {
   /** Lines under the text, such as the files a checkout would overwrite. */
   lines?: string[];
   action?: ToastAction;
+  /** How long a success stays before it fades, when not the default. */
+  ttlMs?: number;
 }
+
+/** How long the toast that offers Restore after a branch delete stays (#367). */
+export const RESTORE_MS = 10_000;
 
 /** The most toasts shown at once. */
 export const MAX_TOASTS = 4;

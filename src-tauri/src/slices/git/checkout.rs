@@ -34,11 +34,22 @@ pub struct RefsOutcome {
 /// Runs `git <args>` in `worktree` through the op runner as part of the op whose cancel flag is
 /// `cancel`, with `LC_ALL=C` so its refusals can be matched. Returns git's combined output when it
 /// exits 0, and the error [`refusal`] reads from it otherwise.
-fn run_git(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<String, GitError> {
+pub(super) fn run_git(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channel<OpEvent>) -> Result<String, GitError> {
+    run_git_fed(worktree, args, None, cancel, channel)
+}
+
+/// [`run_git`] with `input` on git's stdin, such as a tag message for `-F -`.
+pub(super) fn run_git_fed(
+    worktree: &Path,
+    args: &[&str],
+    input: Option<Vec<u8>>,
+    cancel: &AtomicBool,
+    channel: &Channel<OpEvent>,
+) -> Result<String, GitError> {
     let mut cmd = headless_git();
     cmd.current_dir(worktree).args(args);
     let opts = OpOptions { c_locale: true, cap_stream: true, progress_lines: false, ..OpOptions::default() };
-    let finished = run_process(cmd, None, &opts, cancel, channel)?;
+    let finished = run_process(cmd, input, &opts, cancel, channel)?;
     if finished.status.success() {
         return Ok(finished.output.combined);
     }
@@ -48,11 +59,12 @@ fn run_git(worktree: &Path, args: &[&str], cancel: &AtomicBool, channel: &Channe
     }))
 }
 
-/// The typed refusal in a failed `git switch`'s `LC_ALL=C` output, or None for one Topos doesn't
+/// The typed refusal in a failed ref command's `LC_ALL=C` output, or None for one Topos doesn't
 /// name: [`GitError::CheckoutWouldOverwrite`] with the files a checkout would overwrite, tracked or
 /// untracked, which git lists one per tab-indented line under its `would be overwritten by
 /// checkout:` header, or else [`GitError::BranchInOtherWorktree`] with the worktree git names in
-/// its `is already used by worktree at '...'` line.
+/// its `is already used by worktree at '...'` line, or else [`GitError::RefExists`] for a branch or
+/// tag that already exists, or else [`GitError::RefLocked`] when another process holds a ref lock.
 pub(super) fn refusal(output: &str) -> Option<GitError> {
     let mut paths = Vec::new();
     let mut listing = false;
@@ -72,8 +84,31 @@ pub(super) fn refusal(output: &str) -> Option<GitError> {
     }
     // git checks a branch out in one worktree at a time, and Topos never passes
     // `--ignore-other-worktrees`, so git's own refusal is what enforces it.
-    let worktree = output.lines().find_map(|line| line.split_once("is already used by worktree at '")?.1.strip_suffix('\''))?;
-    Some(GitError::BranchInOtherWorktree { worktree: worktree.to_string() })
+    if let Some(worktree) = output.lines().find_map(|line| line.split_once("is already used by worktree at '")?.1.strip_suffix('\'')) {
+        return Some(GitError::BranchInOtherWorktree { worktree: worktree.to_string() });
+    }
+    if let Some(name) = output.lines().find_map(existing_ref) {
+        return Some(GitError::RefExists { name: name.to_string() });
+    }
+    output.lines().any(is_ref_lock_failure).then_some(GitError::RefLocked)
+}
+
+/// The name in git's `a branch named '<name>' already exists` or `tag '<name>' already exists`.
+fn existing_ref(line: &str) -> Option<&str> {
+    let rest = line.strip_suffix("' already exists")?;
+    rest.split_once("a branch named '").or_else(|| rest.split_once("tag '")).map(|(_, name)| name)
+}
+
+/// Whether `line` is git failing to take a ref's lock: `cannot lock ref '...'`, or `Unable to
+/// create '<path>.lock': File exists` for a lock other than the index's, which is
+/// [`GitError::IndexLocked`]'s.
+fn is_ref_lock_failure(line: &str) -> bool {
+    if line.contains("cannot lock ref '") {
+        return true;
+    }
+    line.split_once("Unable to create '")
+        .and_then(|(_, rest)| rest.split_once(".lock': File exists"))
+        .is_some_and(|(path, _)| !path.ends_with("index"))
 }
 
 /// A path as git prints it, without the C-style quoting `core.quotePath` adds to one holding a
@@ -113,13 +148,13 @@ fn unquote(path: &str) -> String {
 }
 
 /// [`GitError::InvalidRefName`] for `name`.
-fn invalid_ref(name: &str) -> GitError {
+pub(super) fn invalid_ref(name: &str) -> GitError {
     GitError::InvalidRefName { name: name.to_string() }
 }
 
 /// Refuses `name`, a ref or commit argument, when it is empty or starts with `-`, before any git
 /// command sees it.
-fn refuse_option_like(name: &str) -> Result<(), GitError> {
+pub(super) fn refuse_option_like(name: &str) -> Result<(), GitError> {
     if name.is_empty() || name.starts_with('-') {
         return Err(invalid_ref(name));
     }
@@ -128,13 +163,17 @@ fn refuse_option_like(name: &str) -> Result<(), GitError> {
 
 /// The full oid of the commit `at` names, from `rev-parse --verify`, which reads `at` after
 /// `--end-of-options` so it can never be taken for an option. Refuses anything that isn't a commit.
-fn resolve_commit(worktree: &Path, at: &str) -> Result<String, GitError> {
+pub(super) fn resolve_commit(worktree: &Path, at: &str) -> Result<String, GitError> {
     refuse_option_like(at)?;
-    let spec = format!("{at}^{{commit}}");
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &spec])?
+    rev_oid(worktree, &format!("{at}^{{commit}}"))?.ok_or_else(|| invalid_ref(at))
+}
+
+/// The full oid `rev` names, from `rev-parse --verify`, which reads `rev` after `--end-of-options`
+/// so it can never be taken for an option, or None when it names nothing.
+pub(super) fn rev_oid(worktree: &Path, rev: &str) -> Result<Option<String>, GitError> {
+    Ok(read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", rev])?
         .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-        .filter(|oid| !oid.is_empty())
-        .ok_or_else(|| invalid_ref(at))
+        .filter(|oid| !oid.is_empty()))
 }
 
 /// Refuses `name` unless `git check-ref-format --branch` accepts it as it is. That rejects a name
@@ -156,7 +195,7 @@ fn remote_ref(worktree: &Path, name: &str) -> Result<String, GitError> {
     if read_git(worktree, &["check-ref-format", &full])?.is_none() {
         return Err(invalid_ref(name));
     }
-    read_git(worktree, &["rev-parse", "--verify", "--quiet", "--end-of-options", &full])?.ok_or_else(|| invalid_ref(name))?;
+    rev_oid(worktree, &full)?.ok_or_else(|| invalid_ref(name))?;
     Ok(full)
 }
 
@@ -192,7 +231,7 @@ fn local_name_for(worktree: &Path, name: &str) -> Result<String, GitError> {
 }
 
 /// HEAD and the refs of `worktree`, read after a write.
-fn outcome(worktree: &Path) -> Result<RefsOutcome, GitError> {
+pub(super) fn outcome(worktree: &Path) -> Result<RefsOutcome, GitError> {
     Ok(RefsOutcome { head: head_oid(worktree).ok(), refs: read_refs(worktree)? })
 }
 

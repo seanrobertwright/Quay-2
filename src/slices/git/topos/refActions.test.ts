@@ -32,9 +32,12 @@ const shown = (items: ReturnType<typeof badgeMenu>) =>
 
 test("a local branch's menu checks it out and creates a branch at its commit", () => {
   const menu = badgeMenu({ kind: "local", name: "side" }, A, ctx);
-  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…"]);
+  assert.deepEqual(shown(menu), ["Checkout", "Create branch here…", "Rename…", "Set upstream…", "Delete…"]);
   assert.deepEqual(menu[0].action, { kind: "checkout", target: { kind: "branch", name: "side" } });
   assert.deepEqual(menu[1].action, { kind: "createBranch", at: A });
+  assert.deepEqual(menu[2].action, { kind: "renameBranch", name: "side" });
+  assert.deepEqual(menu[3].action, { kind: "setUpstream", name: "side" });
+  assert.deepEqual(menu[4].action, { kind: "deleteBranch", name: "side" });
 });
 
 test("a branch checked out in another worktree can't be checked out, and offers that worktree", () => {
@@ -43,13 +46,22 @@ test("a branch checked out in another worktree can't be checked out, and offers 
     "Checkout (disabled: Checked out in worktree repo)",
     "Show that worktree",
     "Create branch here…",
+    "Rename…",
+    "Set upstream…",
+    "Delete… (disabled: Checked out in worktree repo)",
   ]);
   assert.deepEqual(menu[1].action, { kind: "showWorktree", path: "C:/src/repo" });
 });
 
 test("the branch the selected worktree has checked out is already checked out", () => {
   const menu = badgeMenu({ kind: "local", name: "feat" }, A, { ...ctx, selectedPath: "c:\\src\\repo-feat\\" });
-  assert.deepEqual(shown(menu), ["Checkout (disabled: Already checked out here)", "Create branch here…"]);
+  assert.deepEqual(shown(menu), [
+    "Checkout (disabled: Already checked out here)",
+    "Create branch here…",
+    "Rename…",
+    "Set upstream…",
+    "Delete… (disabled: Checked out here)",
+  ]);
 });
 
 test("a remote branch checks out its tracking branch, and a tag checks out detached", () => {
@@ -58,8 +70,10 @@ test("a remote branch checks out its tracking branch, and a tag checks out detac
     target: { kind: "remote", name: "origin/topic" },
   });
   const tag = badgeMenu({ kind: "tag", name: "v1" }, A, ctx);
-  assert.deepEqual(shown(tag), ["Checkout detached", "Create branch here…"]);
+  assert.deepEqual(shown(tag), ["Checkout detached", "Create branch here…", "Delete tag…"]);
   assert.deepEqual(tag[0].action, { kind: "checkout", target: { kind: "detached", at: A } });
+  assert.deepEqual(tag[2].action, { kind: "deleteTag", name: "v1" });
+  assert.deepEqual(shown(badgeMenu({ kind: "remote", name: "origin/topic" }, A, ctx)), ["Checkout", "Create branch here…"], "a remote branch is deleted on its remote, not here");
 });
 
 test("another worktree's HEAD offers that worktree; the selected one's has no menu of its own", () => {
@@ -69,14 +83,10 @@ test("another worktree's HEAD offers that worktree; the selected one's has no me
   assert.deepEqual(badgeMenu({ kind: "head", name: "repo-feat", path: "C:/src/repo-feat", current: true }, A, ctx), []);
 });
 
-test("the commit row offers create branch, create tag (not yet), checkout detached and copy SHA", () => {
+test("the commit row offers create branch, create tag, checkout detached and copy SHA", () => {
   const menu = commitMenu(A, ctx);
-  assert.deepEqual(shown(menu), [
-    "Create branch here…",
-    "Create tag here… (disabled: Tags arrive in a later version)",
-    "Checkout detached",
-    "Copy SHA",
-  ]);
+  assert.deepEqual(shown(menu), ["Create branch here…", "Create tag here…", "Checkout detached", "Copy SHA"]);
+  assert.deepEqual(menu[1].action, { kind: "createTag", at: A });
   assert.deepEqual(menu[2].action, { kind: "checkout", target: { kind: "detached", at: A } });
   assert.deepEqual(menu[3].action, { kind: "copySha", oid: A });
 });
@@ -88,6 +98,7 @@ test("while an operation is under way every checkout is disabled with the reason
   assert.equal(shown(badgeMenu({ kind: "remote", name: "origin/topic" }, A, busy))[0], why);
   assert.equal(shown(commitMenu(A, busy))[2], "Checkout detached (disabled: Finish or abort the merge first)");
   assert.equal(shown(badgeMenu({ kind: "local", name: "side" }, A, busy))[1], "Create branch here…", "creating stays");
+  assert.deepEqual(shown(badgeMenu({ kind: "local", name: "side" }, A, busy)).slice(2), ["Rename…", "Set upstream…", "Delete…"], "and so do the other branch writes");
 });
 
 test("double-click or Enter checks out a local or remote badge, and only says why when it can't", () => {
@@ -123,19 +134,20 @@ test("a tag and the selected worktree's HEAD have no double-click action; anothe
 
 const plain = { ctrlKey: false, altKey: false, metaKey: false, shiftKey: false };
 
-test("in the graph, b creates a branch, Enter checks out, and Shift+F10 or the menu key opens the menu", () => {
-  const keys = ["b", "B", "Enter", "ContextMenu", "ArrowRight", "ArrowLeft", "t", "x", "F10"].map((key) =>
+test("in the graph, b creates a branch, t a tag, Enter checks out, and Shift+F10 or the menu key opens the menu", () => {
+  const keys = ["b", "B", "t", "T", "Enter", "ContextMenu", "ArrowRight", "ArrowLeft", "x", "F10"].map((key) =>
     graphKey({ key, ...plain }, false)
   );
-  assert.deepEqual(keys, ["createBranch", "createBranch", "checkout", "menu", "nextBadge", "previousBadge", null, null, null]);
+  assert.deepEqual(keys, ["createBranch", "createBranch", "createTag", "createTag", "checkout", "menu", "nextBadge", "previousBadge", null, null]);
   assert.equal(graphKey({ key: "F10", ...plain, shiftKey: true }, false), "menu");
 });
 
 test("graph keys never act in a text field or with Ctrl, Alt or Meta", () => {
   assert.equal(graphKey({ key: "b", ...plain }, true), null);
+  assert.equal(graphKey({ key: "t", ...plain }, true), null);
   assert.equal(graphKey({ key: "Enter", ...plain }, true), null);
   for (const mod of ["ctrlKey", "altKey", "metaKey"] as const) {
-    for (const key of ["b", "Enter", "ContextMenu", "ArrowRight"]) {
+    for (const key of ["b", "t", "Enter", "ContextMenu", "ArrowRight"]) {
       assert.equal(graphKey({ key, ...plain, [mod]: true }, false), null, `${mod}+${key}`);
     }
   }
@@ -174,7 +186,7 @@ test("a branch in another worktree names it and offers it; a bad name and git's 
     worktree: "C:/src/repo",
     openInspector: false,
   });
-  assert.equal(refFailure("a..b", { kind: "invalidRefName", name: "a..b" }).text, "a..b isn't a valid branch name or commit");
+  assert.equal(refFailure("a..b", { kind: "invalidRefName", name: "a..b" }).text, "a..b isn't a valid name or commit");
   assert.equal(refFailure("x", { kind: "other", stderr: "fatal: a branch named 'x' already exists" }).text, "fatal: a branch named 'x' already exists");
   assert.equal(refFailure("x", { kind: "stagingBusy" }).text, "Another git operation is running in this worktree; try again once it's done");
 });

@@ -37,8 +37,21 @@ pub enum GitError {
     /// the operator commits, stashes or discards them in the staging inspector first.
     CheckoutWouldOverwrite { paths: Vec<String> },
     /// The branch is checked out in the worktree at `worktree`, and git checks a branch out in only
-    /// one worktree at a time. Nothing changed; Topos offers to show that worktree instead.
+    /// one worktree at a time, so it can't be checked out elsewhere, and Topos never deletes it.
+    /// For a delete, `worktree` can be the one the command ran in. Nothing changed; Topos offers to
+    /// show that worktree instead.
     BranchInOtherWorktree { worktree: String },
+    /// `git branch -d` refused to delete a branch that isn't merged. `ahead` commits are reachable
+    /// from its `tip` and from no other branch, remote-tracking branch, tag or HEAD, so deleting it
+    /// anyway (`-D`) leaves them reachable only from the Restore toast and the reflog.
+    NotFullyMerged { ahead: u32, tip: String },
+    /// A branch or tag named `name` already exists, so nothing was written. `name` is untrusted
+    /// display text.
+    RefExists { name: String },
+    /// Another git process holds the lock on a ref the operation writes (`<ref>.lock`, or
+    /// `packed-refs.lock`). Topos never deletes the lock; nothing was written, and the operator
+    /// retries once the other process is done.
+    RefLocked,
     /// `name` is not a valid branch name, or names no commit, so nothing was written. `name` is
     /// untrusted display text.
     InvalidRefName { name: String },
@@ -61,6 +74,9 @@ impl std::fmt::Display for GitError {
             GitError::HandedOff { path, agent } => write!(f, "{path} is with {agent}; take it back first"),
             GitError::CheckoutWouldOverwrite { paths } => write!(f, "the checkout would overwrite local changes to {}", paths.join(", ")),
             GitError::BranchInOtherWorktree { worktree } => write!(f, "the branch is checked out in the worktree at {worktree}"),
+            GitError::NotFullyMerged { ahead, tip } => write!(f, "the branch is not fully merged: {ahead} commits up to {tip} are on no other ref"),
+            GitError::RefExists { name } => write!(f, "{name} already exists"),
+            GitError::RefLocked => f.write_str("another git process holds a ref lock"),
             GitError::InvalidRefName { name } => write!(f, "{name} is not a valid branch name or commit"),
             GitError::Other { stderr } => f.write_str(stderr),
         }

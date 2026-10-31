@@ -2,14 +2,14 @@ import React, { useEffect } from "react";
 import { CheckCircle2, AlertTriangle, X } from "lucide-react";
 import type { Toast } from "./toasts";
 
-/** How long a success stays before it fades; a failure stays until dismissed. */
+/** How long a success stays before it fades, unless it sets its own; a failure stays until dismissed. */
 const DONE_MS = 6000;
 
-/** One toast; a success dismisses itself after [`DONE_MS`]. */
+/** One toast; a success dismisses itself after its `ttlMs`, or [`DONE_MS`]. */
 const ToastCard: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = ({ toast, onDismiss }) => {
   useEffect(() => {
     if (toast.tone !== "done") return;
-    const timer = window.setTimeout(() => onDismiss(toast.id), DONE_MS);
+    const timer = window.setTimeout(() => onDismiss(toast.id), toast.ttlMs ?? DONE_MS);
     return () => window.clearTimeout(timer);
   }, [toast, onDismiss]);
   const failed = toast.tone === "failed";
@@ -59,7 +59,7 @@ const ToastCard: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
 };
 
 /**
- * Topos's toast queue (#367, #393): the results of checkouts and creates, bottom right, newest
+ * Topos's toast queue (#367, #393, #394): the results of ref operations, bottom right, newest
  * last. The list sits in a `role="status"` live region, so each toast is announced as it arrives.
  */
 export const ToastQueue: React.FC<{ toasts: readonly Toast[]; onDismiss: (id: number) => void }> = ({ toasts, onDismiss }) => (

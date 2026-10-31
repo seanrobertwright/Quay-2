@@ -5,6 +5,7 @@
 use serde_json::{json, Value};
 
 use super::checkout::RefsOutcome;
+use super::ref_ops::BranchDeleted;
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -164,6 +165,18 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "GitError::InvalidRefName",
             s(&GitError::InvalidRefName { name: "a..b".into() }),
             json!({ "kind": "invalidRefName", "name": "a..b" }),
+        ),
+        (
+            "GitError::NotFullyMerged",
+            s(&GitError::NotFullyMerged { ahead: 2, tip: "abc".into() }),
+            json!({ "kind": "notFullyMerged", "ahead": 2, "tip": "abc" }),
+        ),
+        ("GitError::RefExists", s(&GitError::RefExists { name: "v1".into() }), json!({ "kind": "refExists", "name": "v1" })),
+        ("GitError::RefLocked", s(&GitError::RefLocked), json!({ "kind": "refLocked" })),
+        (
+            "BranchDeleted",
+            s(&BranchDeleted { tip: "abc".into(), head: Some("def".into()), refs: GitRefs::default() }),
+            json!({ "tip": "abc", "head": "def", "refs": { "refs": [], "worktrees": [], "tagOnlyCount": 0 } }),
         ),
         (
             "RefsOutcome",

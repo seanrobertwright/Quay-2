@@ -24,6 +24,9 @@ pub mod graph;
 pub mod models;
 pub mod op_runner;
 pub mod operation;
+pub mod ref_ops;
+#[cfg(test)]
+mod ref_ops_tests;
 #[cfg(test)]
 mod operation_tests;
 #[cfg(test)]
@@ -42,6 +45,7 @@ mod test_load;
 pub mod version;
 
 pub use checkout::*;
+pub use ref_ops::*;
 pub use commands::*;
 pub use commit::*;
 pub use conflict::*;

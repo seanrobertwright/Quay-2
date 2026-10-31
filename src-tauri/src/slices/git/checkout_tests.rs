@@ -15,7 +15,7 @@ use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
 
 /// A channel that keeps every event it is sent, as the JSON the frontend would receive.
-fn test_channel() -> Channel<OpEvent> {
+pub(super) fn test_channel() -> Channel<OpEvent> {
     let events = Arc::new(Mutex::new(Vec::<Value>::new()));
     Channel::new(move |body| {
         let json = match body {
@@ -35,12 +35,12 @@ fn create_in(wt: &Path, name: &str, at: &str, then_checkout: bool) -> Result<Ref
     branch_create(&GitOps::default(), &StagingLocks::default(), wt, Uuid::new_v4(), NewBranch { name, at, checkout: then_checkout }, &test_channel())
 }
 
-fn rev(dir: &Path, name: &str) -> String {
+pub(super) fn rev(dir: &Path, name: &str) -> String {
     git(dir, &["rev-parse", name]).trim().to_string()
 }
 
 /// The branch `dir` has checked out, or None when its HEAD is detached.
-fn current_branch(dir: &Path) -> Option<String> {
+pub(super) fn current_branch(dir: &Path) -> Option<String> {
     let out = crate::spawn::hidden_command("git").current_dir(dir).args(["symbolic-ref", "--quiet", "--short", "HEAD"]).output().unwrap();
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -85,7 +85,7 @@ fn checking_out_a_commit_detaches_head_there() {
 
 /// A bare repo as `origin` of the repo `wt` belongs to, holding `topic` one commit past `main`,
 /// fetched so `origin/topic` exists. Returns `origin/topic`'s oid.
-fn with_remote_topic(root: &Path, wt: &Path) -> String {
+pub(super) fn with_remote_topic(root: &Path, wt: &Path) -> String {
     let bare = root.join("origin.git");
     git(root, &["init", "-q", "--bare", &bare.to_string_lossy()]);
     git(wt, &["remote", "add", "origin", &bare.to_string_lossy()]);
@@ -99,7 +99,7 @@ fn with_remote_topic(root: &Path, wt: &Path) -> String {
     rev(wt, "origin/topic")
 }
 
-fn upstream_of(dir: &Path, branch: &str) -> String {
+pub(super) fn upstream_of(dir: &Path, branch: &str) -> String {
     git(dir, &["rev-parse", "--abbrev-ref", &format!("{branch}@{{upstream}}")]).trim().to_string()
 }
 
@@ -154,7 +154,7 @@ fn local_changes_git_can_carry_over_move_to_the_new_branch() {
     assert_eq!(std::fs::read_to_string(wt.join("src/lib.rs")).unwrap(), "fn mine() {}\n");
 }
 
-fn same_folder(a: &str, b: &Path) -> bool {
+pub(super) fn same_folder(a: &str, b: &Path) -> bool {
     Path::new(a).canonicalize().unwrap() == b.canonicalize().unwrap()
 }
 
@@ -213,7 +213,7 @@ fn creating_a_branch_with_checkout_switches_to_it() {
 
 /// Every ref in the repo `dir` belongs to, with its oid, and the oid HEAD names, so a test can
 /// show that nothing was written.
-fn snapshot(dir: &Path) -> (String, String) {
+pub(super) fn snapshot(dir: &Path) -> (String, String) {
     (git(dir, &["for-each-ref", "--format=%(objectname) %(refname)"]), rev(dir, "HEAD"))
 }
 
