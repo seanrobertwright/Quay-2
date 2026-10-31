@@ -2,7 +2,7 @@
 // splits into summary and description, what the composer offers in each state of the worktree,
 // the per-worktree draft, and the sentences it shows and announces.
 
-import { errorMessage } from "./gitVersion.ts";
+import { errorMessage, parseGitError } from "./gitVersion.ts";
 import type { KeyPress } from "./stagingKeys.ts";
 
 /** Past this many characters the summary counter turns amber. A hint only. */
@@ -152,20 +152,12 @@ export interface CommitFailure {
   output: string | null;
 }
 
-/** The `kind` of a `GitError` from the backend, or null when `e` isn't one. */
-function errorKind(e: unknown): string | null {
-  if (typeof e !== "object" || e === null || !Object.prototype.hasOwnProperty.call(e, "kind")) return null;
-  const kind = (e as { kind: unknown }).kind;
-  return typeof kind === "string" ? kind : null;
-}
-
 /** How `e`, a rejected `git_commit`, shows in the composer. The message is always kept. */
 export function commitFailure(e: unknown): CommitFailure {
-  switch (errorKind(e)) {
-    case "hookFailed": {
-      const { hook, output } = e as { hook: unknown; output: unknown };
-      return { message: `The ${String(hook)} hook failed, so nothing was committed. Your message is kept.`, output: String(output) };
-    }
+  const error = parseGitError(e);
+  switch (error?.kind) {
+    case "hookFailed":
+      return { message: `The ${error.hook} hook failed, so nothing was committed. Your message is kept.`, output: error.output };
     case "cancelled":
       return { message: "Commit cancelled. The hook was stopped and nothing was committed.", output: null };
     case "stagingBusy":

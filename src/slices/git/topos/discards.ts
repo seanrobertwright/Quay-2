@@ -2,6 +2,7 @@
 // and the words the inspector and the diff view use for a discard.
 
 import type { Selection } from "./diffView.ts";
+import { parseGitError } from "./gitVersion.ts";
 import { lineCount } from "./lineSelection.ts";
 import { failureView } from "./stagingKeys.ts";
 import { splitStatus, type EntryKind, type WorktreeStatus } from "./stagingLists.ts";
@@ -160,9 +161,7 @@ export function confirmDiscardAll(status: WorktreeStatus): DiscardConfirm & { ch
 export type RestoreOutcome = { kind: "changed"; paths: string[] } | { kind: "failed"; message: string };
 
 export function restoreOutcome(e: unknown): RestoreOutcome {
-  if (typeof e === "object" && e !== null && Object.prototype.hasOwnProperty.call(e, "kind") && (e as { kind: unknown }).kind === "changedSinceDiscard") {
-    const paths = (e as { paths?: unknown }).paths;
-    return { kind: "changed", paths: Array.isArray(paths) ? paths.map(String) : [] };
-  }
+  const error = parseGitError(e);
+  if (error?.kind === "changedSinceDiscard") return { kind: "changed", paths: error.paths };
   return { kind: "failed", message: failureView(e).message };
 }

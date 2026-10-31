@@ -8,12 +8,36 @@ export type GitVersionStatus =
   | { status: "tooOld"; found: string }
   | { status: "unknown"; raw: string };
 
-/** `GitError` from `src-tauri/src/slices/git/error.rs`; later tickets add kinds. */
+/** `GitError` from `src-tauri/src/slices/git/error.rs`. */
 export type GitError =
   | { kind: "other"; stderr: string }
   | { kind: "cancelled" }
   | { kind: "indexLocked" }
-  | { kind: "stagingBusy" };
+  | { kind: "stagingBusy" }
+  | { kind: "staleDiff" }
+  | { kind: "changedSinceDiscard"; paths: string[] }
+  | { kind: "hookFailed"; hook: string; output: string };
+
+/** `e`, a rejected git command, as a `GitError`, or null when it isn't one of the known kinds. */
+export function parseGitError(e: unknown): GitError | null {
+  if (typeof e !== "object" || e === null || !Object.prototype.hasOwnProperty.call(e, "kind")) return null;
+  const fields = e as Record<string, unknown>;
+  switch (fields.kind) {
+    case "cancelled":
+    case "indexLocked":
+    case "stagingBusy":
+    case "staleDiff":
+      return { kind: fields.kind };
+    case "other":
+      return { kind: "other", stderr: String(fields.stderr) };
+    case "changedSinceDiscard":
+      return { kind: "changedSinceDiscard", paths: Array.isArray(fields.paths) ? fields.paths.map(String) : [] };
+    case "hookFailed":
+      return { kind: "hookFailed", hook: String(fields.hook), output: String(fields.output) };
+    default:
+      return null;
+  }
+}
 
 /** The text to show for a rejected git command: a `GitError`'s stderr, or whatever was thrown. */
 export function errorMessage(e: unknown): string {
