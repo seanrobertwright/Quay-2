@@ -1,11 +1,27 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeft, Columns2, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeft, Columns2, Loader2, Minus, Plus, RefreshCw, X } from "lucide-react";
 import { usePopupLayer } from "../../overlay/useOverlay";
-import { DiffEditor, type HunkAction } from "./DiffEditor";
-import { splitDoc, unifiedDoc, type FileDiff } from "./diffDoc";
+import { DiffEditor, type HunkAction, type LineGutter } from "./DiffEditor";
+import { splitDoc, unifiedDoc, type DiffDoc, type FileDiff } from "./diffDoc";
 import { diffBody, imageMime, modeLabel, previewSources, sizeLabel, type ByteSource, type Selection } from "./diffView";
 import { errorMessage } from "./gitVersion";
+import {
+  clickRow,
+  dragRows,
+  emptySelection,
+  keyStep,
+  lineAnnouncement,
+  lineKey,
+  linesLabel,
+  NO_NEWLINE_TIP,
+  selectedRefs,
+  selectionCount,
+  withNoNewlinePairs,
+  type EffectiveSelection,
+  type LineSelection,
+} from "./lineSelection";
+import { BUSY_MESSAGE, type DiffKeyAction, type StageDirection } from "./stagingKeys";
 import type { Side } from "./stagingLists";
 import type { FileDiffReader, OpenFile } from "./useFileDiff";
 import type { BusyOp } from "./useStaging";
@@ -84,13 +100,27 @@ export interface FileDiffViewProps {
   onBack: () => void;
   /** Whether Topos shows, so Escape returns to the graph only then. */
   visible: boolean;
+  /** Says `text` in Topos's live region. */
+  announce: (text: string) => void;
 }
+
+const NO_SELECTION: EffectiveSelection = { keys: new Set(), auto: new Set() };
+
+/** The lines a stage or unstage of `s` acts on in `diff`. */
+function effectiveOf(diff: FileDiff | null, s: LineSelection, direction: StageDirection): EffectiveSelection {
+  return diff ? withNoNewlinePairs(diff.hunks, s.picked, direction) : NO_SELECTION;
+}
+
+const SELECT_HINT =
+  "↑ and ↓ move between changed lines, Shift with them extends the selection, Space selects a line, n and p jump between hunks, s stages and u unstages.";
 
 /**
  * A file's diff in place of the graph (#366, #383): read-only CodeMirror 6, unified by default
  * with a Split toggle, a Stage or Unstage hunk button on each hunk header, and the mode change on
- * its own row with its own button. Binary files, submodules and too-large diffs act only whole;
- * images up to 5 MB show before and after. Escape or "Back to graph" returns to the graph.
+ * its own row with its own button. Changed lines are selected across hunks from the gutter or the
+ * keys, and a floating bar stages or unstages them (#386); the selection is dropped whenever the
+ * diff's token changes. Binary files, submodules and too-large diffs act only whole; images up to
+ * 5 MB show before and after. Escape or "Back to graph" returns to the graph.
  */
 export const FileDiffView: React.FC<FileDiffViewProps> = ({
   worktreePath,
@@ -103,6 +133,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
   onOpenOtherSide,
   onBack,
   visible,
+  announce,
 }) => {
   const root = useRef<HTMLElement>(null);
   usePopupLayer(visible, onBack, root);
@@ -130,6 +161,86 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           }
         : null,
     [diff, words.verb, busyHunk, busy, act]
+  );
+
+  // The selection belongs to the diff it was made on, so a new token starts it empty.
+  const token = diff?.diffToken ?? null;
+  const [held, setHeld] = useState<{ token: string | null; sel: LineSelection }>({ token: null, sel: emptySelection });
+  const sel = held.token === token ? held.sel : emptySelection;
+  const direction: StageDirection = file.side === "unstaged" ? "stage" : "unstage";
+  const selectable = diff !== null && body === "text";
+  const effective = useMemo(() => effectiveOf(diff, sel, direction), [diff, sel, direction]);
+  const linesBusy = ownBusy?.selection?.kind === "lines";
+  const hintId = useId();
+
+  // The gesture handlers outlive renders, so they read the newest of these through a ref.
+  const live = useRef({ sel, diff, direction, busy, act, announce, token });
+  live.current = { sel, diff, direction, busy, act, announce, token };
+  const dragBase = useRef<LineSelection>(emptySelection);
+
+  const put = useCallback((next: LineSelection) => {
+    live.current.sel = next;
+    setHeld({ token: live.current.token, sel: next });
+  }, []);
+
+  const stageLines = useCallback(() => {
+    const { sel: s, act: run, busy: running, announce: say } = live.current;
+    if (running !== null) return say(BUSY_MESSAGE);
+    const keys = effectiveOf(live.current.diff, s, live.current.direction).keys;
+    if (keys.size > 0) run({ kind: "lines", lines: selectedRefs(keys) });
+  }, []);
+
+  const clear = useCallback(() => {
+    put({ ...emptySelection, cursor: live.current.sel.cursor });
+    live.current.announce("Selection cleared");
+  }, [put]);
+
+  const onKey = useCallback(
+    (doc: DiffDoc, action: DiffKeyAction) => {
+      const { sel: s, diff: d, direction: dir, busy: running, act: run, announce: say } = live.current;
+      if (d === null) return;
+      if (action === "stage" || action === "unstage") {
+        if (action !== dir) {
+          return say(dir === "stage" ? "These changes are unstaged: press s to stage them" : "These changes are staged: press u to unstage them");
+        }
+        if (running !== null) return say(BUSY_MESSAGE);
+        if (effectiveOf(d, s, dir).keys.size > 0) return stageLines();
+        if (s.cursor !== null) return run({ kind: "hunks", hunks: [s.cursor.hunk] });
+        return say("Select lines first: move with ↑ and ↓ and press Space");
+      }
+      const next = keyStep(s, doc, action);
+      put(next);
+      if (next.cursor === null) return;
+      const eff = effectiveOf(d, next, dir);
+      const selected = eff.keys.has(lineKey(next.cursor));
+      const prefix =
+        action === "nextHunk" || action === "prevHunk" ? `Hunk ${next.cursor.hunk + 1} of ${d.hunks.length}` : undefined;
+      const line = lineAnnouncement(d.hunks, next.cursor, selected, prefix);
+      const changed = action === "toggle" || action === "extendUp" || action === "extendDown";
+      say(changed ? `${line}. ${selectionCount(eff.keys.size, eff.auto.size)}` : line);
+    },
+    [put, stageLines]
+  );
+
+  const onPress = useCallback(
+    (doc: DiffDoc, row: number, shift: boolean) => {
+      dragBase.current = live.current.sel;
+      put(clickRow(live.current.sel, doc, row, shift));
+    },
+    [put]
+  );
+  const onDrag = useCallback((doc: DiffDoc, from: number, to: number) => put(dragRows(dragBase.current, doc, from, to)), [put]);
+  const onRelease = useCallback(() => {
+    const eff = effectiveOf(live.current.diff, live.current.sel, live.current.direction);
+    live.current.announce(selectionCount(eff.keys.size, eff.auto.size));
+  }, []);
+
+  const lineGutter = useMemo<LineGutter | null>(
+    () =>
+      selectable
+        ? { keys: effective.keys, auto: effective.auto, cursor: sel.cursor, onPress, onDrag, onRelease, onKey }
+        : null,
+    [selectable, effective, sel.cursor, onPress, onDrag, onRelease, onKey]
   );
 
   const ActionIcon = words.icon;
@@ -199,7 +310,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
           {sources.after && <PreviewImage worktreePath={worktreePath} path={file.path} source={sources.after} mime={mime!} label={`After (${sideLabel[1]})`} />}
         </div>
       )}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 flex flex-col">
         {state.state === "loading" ? (
           <p role="status" className="p-4 text-xs text-[#8b949e]">
             Reading the diff…
@@ -246,7 +357,15 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
             </button>
           </div>
         ) : unified && diff ? (
-          <DiffEditor doc={unified} hunks={diff.hunks} numbers="both" action={hunkAction} ariaLabel={`${words.name} diff of ${file.path}`} />
+          <DiffEditor
+            doc={unified}
+            hunks={diff.hunks}
+            numbers="both"
+            action={hunkAction}
+            ariaLabel={`${words.name} diff of ${file.path}`}
+            ariaDescribedBy={hintId}
+            lines={lineGutter}
+          />
         ) : split && diff ? (
           <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-[#30363d]">
             <DiffEditor
@@ -255,6 +374,8 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               numbers="old"
               action={hunkAction}
               ariaLabel={`Old side of ${file.path}`}
+              ariaDescribedBy={hintId}
+              lines={lineGutter}
               onScroll={(top) => setScrollTop({ pane: "left", top })}
               scrollTop={scrollTop?.pane === "right" ? scrollTop.top : undefined}
             />
@@ -264,11 +385,48 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
               numbers="new"
               action={null}
               ariaLabel={`New side of ${file.path}`}
+              ariaDescribedBy={hintId}
+              lines={lineGutter}
               onScroll={(top) => setScrollTop({ pane: "right", top })}
               scrollTop={scrollTop?.pane === "left" ? scrollTop.top : undefined}
             />
           </div>
         ) : null}
+        {selectable && effective.keys.size > 0 && (
+          <div
+            role="group"
+            aria-label="Selected lines"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-2 py-1.5 rounded-md border border-[#30363d] bg-[#161b22] shadow-lg text-[11px]"
+          >
+            {effective.auto.size > 0 && (
+              <span title={NO_NEWLINE_TIP} className="text-[#d29922] whitespace-nowrap">
+                {effective.auto.size.toLocaleString("en-US")} added for no newline at end of file
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={busy !== null}
+              aria-busy={linesBusy || undefined}
+              onClick={stageLines}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#06B6D4]/60 bg-[#06B6D4]/10 text-white hover:bg-[#06B6D4]/20 disabled:opacity-50 whitespace-nowrap"
+            >
+              {linesBusy ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : <ActionIcon className="w-3 h-3" aria-hidden="true" />}
+              {linesLabel(direction, effective.keys.size)}
+            </button>
+            <button
+              type="button"
+              onClick={clear}
+              aria-label="Clear the line selection"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] whitespace-nowrap"
+            >
+              <X className="w-3 h-3" aria-hidden="true" />
+              Clear
+            </button>
+          </div>
+        )}
+        <p id={hintId} className="sr-only">
+          {SELECT_HINT}
+        </p>
       </div>
     </section>
   );

@@ -67,4 +67,7 @@ test("a finished selection stage is announced by what it staged", () => {
   assert.equal(selectionDoneMessage("stage", "a.txt", { kind: "hunks", hunks: [1] }), "Staged hunk 2 of a.txt");
   assert.equal(selectionDoneMessage("unstage", "a.txt", { kind: "modeChange" }), "Unstaged the mode change of a.txt");
   assert.equal(selectionDoneMessage("stage", "a.txt", { kind: "file" }), "Staged a.txt");
+  const line = (n: number) => ({ hunk: 0, line: n });
+  assert.equal(selectionDoneMessage("stage", "a.txt", { kind: "lines", lines: [line(1)] }), "Staged 1 line of a.txt");
+  assert.equal(selectionDoneMessage("unstage", "a.txt", { kind: "lines", lines: [line(1), line(4)] }), "Unstaged 2 lines of a.txt");
 });

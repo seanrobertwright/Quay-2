@@ -1,5 +1,5 @@
-//! One file's diff for the staging inspector's diff view (#383), and staging it by hunk or mode
-//! change (#350, #366).
+//! One file's diff for the staging inspector's diff view (#383), and staging it by hunk, line or
+//! mode change (#350, #366, #386).
 //!
 //! Diffs come from the plumbing `git add -p` reads: `diff-files` for the unstaged side,
 //! `diff-index --cached` for the staged side and `diff-tree -p` for a commit, each with
@@ -376,6 +376,9 @@ fn is_untracked_file(worktree: &Path, path: &str) -> Result<bool, GitError> {
 fn read_untracked(worktree: &Path, path: &str, unified: &str, cap: bool) -> Result<ParsedDiff, GitError> {
     let mut git = worktree_git(worktree);
     git.args(["--no-optional-locks", "diff", "--no-index", "-p", "--full-index", "--no-ext-diff", "--no-color", unified]);
+    // Porcelain `diff` reads `diff.noprefix` and `diff.mnemonicPrefix`; a partial stage rebuilds
+    // its header from these names, so they are pinned to what the plumbing prints.
+    git.args(["--src-prefix=a/", "--dst-prefix=b/"]);
     git.args(["--", "/dev/null", path]);
     // `--no-index` exits 1 when the files differ.
     let mut parsed = run_diff(git, cap, &[0, 1])?;
@@ -475,6 +478,16 @@ pub enum Selection {
     Hunks { hunks: Vec<u32> },
     /// Only the mode change.
     ModeChange,
+    /// These changed lines, across any of the file's hunks.
+    Lines { lines: Vec<LineRef> },
+}
+
+/// One line of a diff: its hunk's index and its index among that hunk's lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineRef {
+    pub hunk: u32,
+    pub line: u32,
 }
 
 /// A stage from the unstaged side or an unstage from the staged side.
@@ -506,20 +519,90 @@ fn push_line(patch: &mut Vec<u8>, line: &[u8]) {
     }
 }
 
-/// The patch of only the `selected` hunks of `parsed`, by the `git add -p` rules: the file header
-/// without its mode lines, then each selected hunk with the side it does not apply to renumbered
-/// for the hunks left out above it. `reverse` builds it for `git apply -R`, which matches each
-/// hunk's new side against the index. Every body byte is copied as git wrote it.
-fn hunks_patch(parsed: &ParsedDiff, selected: &[usize], reverse: bool) -> Option<Vec<u8>> {
+/// Which sides of a hunk a body line counts on, as (old, new).
+fn sides(marker: u8) -> (bool, bool) {
+    match marker {
+        b'+' => (false, true),
+        b'-' => (true, false),
+        _ => (true, true),
+    }
+}
+
+/// Refuses a selection that keeps a line after a side's last line has ended without a newline.
+fn after_last_line() -> GitError {
+    other("that selection keeps a line after a last line with no newline; select the lines that give it one too")
+}
+
+/// The patch of only the picked lines of `parsed`, by the `git add -p` rules. `picked(hunk, line)`
+/// says whether a changed line is in the selection; a hunk with none picked is left out. The file
+/// header comes first without its mode lines, with `minus` and `plus` as its `---` and `+++` lines.
+/// Within a hunk an unpicked line that the patch's preimage holds becomes context and any other
+/// unpicked line is dropped, as is a `\ No newline at end of file` after a dropped line. Each
+/// hunk's preimage start is kept and its other start is renumbered for what was left out above it.
+/// `reverse` builds it for `git apply -R`, whose preimage is the hunk's new side: there an unpicked
+/// addition becomes context and an unpicked deletion is dropped. Every kept byte is copied as git
+/// wrote it. A selection that would keep a line after a side's no-newline marker is refused, since
+/// `git apply` would join that line onto the last one.
+fn reduced_patch(
+    parsed: &ParsedDiff,
+    (minus, plus): (&[u8], &[u8]),
+    picked: impl Fn(usize, usize) -> bool,
+    reverse: bool,
+) -> Result<Vec<u8>, GitError> {
     let mut patch = Vec::new();
-    push_line(&mut patch, parsed.diff_git.as_deref()?);
-    push_line(&mut patch, parsed.minus.as_deref()?);
-    push_line(&mut patch, parsed.plus.as_deref()?);
-    // What the hunks left out above this one shift the lines by.
+    push_line(&mut patch, parsed.diff_git.as_deref().ok_or_else(|| other("the diff has no file header"))?);
+    push_line(&mut patch, minus);
+    push_line(&mut patch, plus);
+    // How far the lines left out above this hunk shift its other side.
     let mut skipped: i64 = 0;
     for (i, h) in parsed.hunks.iter().enumerate() {
+        let mut body = Vec::new();
+        let (mut old_lines, mut new_lines) = (0i64, 0i64);
+        let mut any = false;
+        // The marker of the line last kept, or None when the line before was dropped.
+        let mut prev: Option<u8> = None;
+        // Which sides have ended at a no-newline marker.
+        let (mut old_ended, mut new_ended) = (false, false);
+        for (j, line) in h.body.iter().enumerate() {
+            let kept = match line.first().copied() {
+                Some(b'\\') => {
+                    if let Some(m) = prev {
+                        push_line(&mut body, line);
+                        let (old, new) = sides(m);
+                        old_ended |= old;
+                        new_ended |= new;
+                    }
+                    continue;
+                }
+                Some(m @ (b'+' | b'-')) if picked(i, j) => {
+                    any = true;
+                    push_line(&mut body, line);
+                    Some(m)
+                }
+                // The preimage holds this unpicked line, so it stays as context.
+                Some(m @ (b'+' | b'-')) if (m == b'+') == reverse => {
+                    body.push(b' ');
+                    push_line(&mut body, &line[1..]);
+                    Some(b' ')
+                }
+                Some(b'+' | b'-') => None,
+                _ => {
+                    push_line(&mut body, line);
+                    Some(b' ')
+                }
+            };
+            if let Some(m) = kept {
+                let (old, new) = sides(m);
+                if (old && old_ended) || (new && new_ended) {
+                    return Err(after_last_line());
+                }
+                old_lines += i64::from(old);
+                new_lines += i64::from(new);
+            }
+            prev = kept;
+        }
         let delta = i64::from(h.new_lines) - i64::from(h.old_lines);
-        if !selected.contains(&i) {
+        if !any {
             skipped += delta;
             continue;
         }
@@ -528,14 +611,53 @@ fn hunks_patch(parsed: &ParsedDiff, selected: &[usize], reverse: bool) -> Option
         } else {
             (i64::from(h.old_start), i64::from(h.new_start) - skipped)
         };
-        patch.extend_from_slice(format!("@@ -{old_start},{} +{new_start},{} @@", h.old_lines, h.new_lines).as_bytes());
+        skipped += delta - (new_lines - old_lines);
+        patch.extend_from_slice(format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@").as_bytes());
         patch.extend_from_slice(&h.heading);
         patch.push(b'\n');
-        for line in &h.body {
-            push_line(&mut patch, line);
-        }
+        patch.extend_from_slice(&body);
     }
-    Some(patch)
+    Ok(patch)
+}
+
+/// `+++ b/path` as `--- a/path`, or `--- a/path` as `+++ b/path`, keeping git's quoting.
+fn other_side_header(line: &[u8]) -> Option<Vec<u8>> {
+    let (marker, prefix): (&[u8], &[u8]) = match line.get(..4)? {
+        b"+++ " => (b"--- ", b"a/"),
+        b"--- " => (b"+++ ", b"b/"),
+        _ => return None,
+    };
+    let rest = &line[4..];
+    let quote = if rest.first() == Some(&b'"') { &b"\""[..] } else { &b""[..] };
+    let name = rest[quote.len()..].strip_prefix(if marker == b"--- " { b"b/" } else { b"a/" })?;
+    Some([marker, quote, prefix, name].concat())
+}
+
+/// The `---` and `+++` lines of `parsed`'s file header. A side that is `/dev/null`, as for a file
+/// being created or deleted, takes the other side's name, so the patch modifies the index entry
+/// (an empty one for a new file) rather than creating or deleting it.
+fn header_lines(parsed: &ParsedDiff) -> Result<(Vec<u8>, Vec<u8>), GitError> {
+    let (Some(minus), Some(plus)) = (parsed.minus.as_deref(), parsed.plus.as_deref()) else {
+        return Err(other("the diff has no hunks"));
+    };
+    let null = |line: &[u8]| strip_eol(line).ends_with(b" /dev/null");
+    let unnamed = || other("the diff's file header has no name to stage against");
+    match (null(minus), null(plus)) {
+        (true, false) => Ok((other_side_header(plus).ok_or_else(unnamed)?, plus.to_vec())),
+        (false, true) => Ok((minus.to_vec(), other_side_header(minus).ok_or_else(unnamed)?)),
+        _ => Ok((minus.to_vec(), plus.to_vec())),
+    }
+}
+
+/// The changed lines `refs` names in `parsed`, as (hunk, line) indexes, or None when one is out
+/// of range or a context line.
+fn changed_lines(parsed: &ParsedDiff, refs: &[LineRef]) -> Option<Vec<(usize, usize)>> {
+    refs.iter()
+        .map(|r| {
+            let (h, l) = (r.hunk as usize, r.line as usize);
+            matches!(parsed.hunks.get(h)?.body.get(l)?.first(), Some(b'+' | b'-')).then_some((h, l))
+        })
+        .collect()
 }
 
 /// The patch of only `parsed`'s mode change.
@@ -564,13 +686,83 @@ fn apply_cached(worktree: &Path, patch: &[u8], reverse: bool, context: u32) -> R
     run_write_input(worktree, &args, Some(patch))
 }
 
+/// Whether `picked` holds every changed line of `parsed`.
+fn picks_every_change(parsed: &ParsedDiff, picked: &[(usize, usize)]) -> bool {
+    parsed.hunks.iter().enumerate().all(|(h, hunk)| {
+        hunk.body
+            .iter()
+            .enumerate()
+            .all(|(l, line)| !matches!(line.first(), Some(b'+' | b'-')) || picked.contains(&(h, l)))
+    })
+}
+
+/// Stages part of an untracked file (#366). `git add -N` makes the empty intent-to-add entry that
+/// `patch`, a modification of an empty file, applies to with `git apply --cached`. If the apply
+/// fails, the entry is rolled back with [`roll_back_intent_to_add`], so it goes only while it is
+/// still that empty entry. This is the only place Topos runs `git add -N`.
+pub(super) fn stage_new_file_lines(worktree: &Path, path: &str, patch: &[u8], context: u32) -> Result<(), GitError> {
+    run_write_input(worktree, &["add", "-N", "--", path], None)?;
+    let Err(failed) = apply_cached(worktree, patch, false, context) else {
+        return Ok(());
+    };
+    match roll_back_intent_to_add(worktree, path) {
+        Ok(_) => Err(failed),
+        Err(rollback) => Err(other(format!("{failed}; then the intent-to-add entry for {path} could not be removed: {rollback}"))),
+    }
+}
+
+/// Whether `path`'s index entry is an intent-to-add entry: porcelain v2 shows it with no index
+/// change (`.` for X) and no index mode (`000000`), where any staged content, even an empty file,
+/// has a mode.
+fn is_intent_to_add(worktree: &Path, path: &str) -> Result<bool, GitError> {
+    let out = run_read(
+        worktree,
+        ["--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=no", "--ignore-submodules=all", "--", path],
+    )?;
+    Ok(out.split(|&b| b == 0).any(|record| {
+        // `1 XY sub mH mI mW hH hI path`
+        let fields: Vec<&[u8]> = record.splitn(9, |&b| b == b' ').collect();
+        matches!(fields.as_slice(), [b"1", xy, _, _, b"000000", _, _, _, p] if xy.first() == Some(&b'.') && *p == path.as_bytes())
+    }))
+}
+
+/// Takes `path` out of the index with `git rm --cached` if its entry is still the empty
+/// intent-to-add entry, and says whether it did. A real staged change, an empty file included, is
+/// left alone, and `git rm --cached` without `-f` refuses staged content besides.
+pub(super) fn roll_back_intent_to_add(worktree: &Path, path: &str) -> Result<bool, GitError> {
+    if !is_intent_to_add(worktree, path)? {
+        return Ok(false);
+    }
+    run_write_input(worktree, &["rm", "--cached", "-q", "--", path], None)?;
+    Ok(true)
+}
+
+/// After an unstage, takes `path` out of the index when its entry is left empty and HEAD lacks
+/// the path (#366), so a new file whose last staged line went is untracked again.
+fn drop_empty_new_entry(worktree: &Path, path: &str) -> Result<(), GitError> {
+    if has_head(worktree) && !run_read(worktree, ["ls-tree", "-z", "HEAD", "--", path])?.is_empty() {
+        return Ok(());
+    }
+    // `mode oid stage\tpath`
+    let entry = run_read(worktree, ["--no-optional-locks", "ls-files", "-s", "-z", "--", path])?;
+    let empty = run_read(worktree, ["hash-object", "-t", "blob", "--stdin"])?;
+    if entry.split(|&b| b == b' ').nth(1) == Some(empty.trim_ascii()) {
+        // The entry is empty and HEAD lacks the path, so the `-f` loses no staged content.
+        run_write_input(worktree, &["rm", "--cached", "-f", "-q", "--", path], None)?;
+    }
+    Ok(())
+}
+
 /// Stages (from the unstaged side) or unstages (from the staged side) `request.selection` of one
 /// file (#350, #383), in the worktree's staging slot. It re-reads the diff first and refuses with
 /// [`GitError::StaleDiff`] when the token no longer matches, so a patch is never applied to an
-/// index that moved. Hunks and mode changes go through a reduced patch and `git apply --cached`;
-/// a whole file, and any change to a binary file or a submodule, goes through `git add` or
-/// `git reset`. A hunk of a file being created or deleted is the whole file. Returns the file's
-/// new diff, answering `diff_request_id`, and the post-write status, answering `request_id`.
+/// index that moved. Hunks, lines and mode changes go through a reduced patch and
+/// `git apply --cached`; a whole file, and any change to a binary file or a submodule, goes through
+/// `git add` or `git reset`. A hunk of a file being created or deleted is the whole file, and so is
+/// every line of one being staged. Some lines of an untracked file stage through
+/// [`stage_new_file_lines`]; a staged deletion unstages whole. An unstage of lines that leaves an
+/// empty entry for a path HEAD lacks removes that entry. Returns the file's new diff, answering
+/// `diff_request_id`, and the post-write status, answering `request_id`.
 pub fn stage_selection(
     locks: &StagingLocks,
     worktree: &Path,
@@ -609,8 +801,35 @@ pub fn stage_selection(
             if parsed.new_file || parsed.deleted_file {
                 write_whole()?;
             } else {
-                let patch = hunks_patch(&parsed, &selected, reverse).ok_or_else(|| other(format!("{path} has no hunks")))?;
+                let (minus, plus) = header_lines(&parsed)?;
+                let patch = reduced_patch(&parsed, (&minus, &plus), |h, _| selected.contains(&h), reverse)?;
                 apply_cached(worktree, &patch, reverse, context)?;
+            }
+        }
+        Selection::Lines { lines } => {
+            if parsed.binary || parsed.submodule {
+                return Err(other(format!("{path} is staged only as a whole file")));
+            }
+            let picked = changed_lines(&parsed, lines)
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| other(format!("no such changed line in {path}")))?;
+            let creates_or_deletes = parsed.untracked || parsed.new_file || parsed.deleted_file;
+            // Every line of a file being created or deleted stages it whole, with no `git add -N`.
+            // A staged deletion has no index entry for a patch to apply to, so it unstages whole.
+            let stage_whole = !reverse && creates_or_deletes && picks_every_change(&parsed, &picked);
+            if stage_whole || (reverse && parsed.deleted_file) {
+                write_whole()?;
+            } else {
+                let (minus, plus) = header_lines(&parsed)?;
+                let patch = reduced_patch(&parsed, (&minus, &plus), |h, l| picked.contains(&(h, l)), reverse)?;
+                if parsed.untracked {
+                    stage_new_file_lines(worktree, path, &patch, context)?;
+                } else {
+                    apply_cached(worktree, &patch, reverse, context)?;
+                }
+                if reverse {
+                    drop_empty_new_entry(worktree, path)?;
+                }
             }
         }
     }

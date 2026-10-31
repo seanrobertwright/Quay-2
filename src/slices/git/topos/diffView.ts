@@ -2,10 +2,15 @@
 // preview's sources, and the sentences its actions announce.
 
 import type { DiffSide, FileDiff } from "./diffDoc.ts";
+import { lineCount, type LineRef } from "./lineSelection.ts";
 import type { StageDirection } from "./stagingKeys.ts";
 
 /** `Selection` from `src-tauri/src/slices/git/diff.rs`. */
-export type Selection = { kind: "file" } | { kind: "hunks"; hunks: number[] } | { kind: "modeChange" };
+export type Selection =
+  | { kind: "file" }
+  | { kind: "hunks"; hunks: number[] }
+  | { kind: "modeChange" }
+  | { kind: "lines"; lines: LineRef[] };
 
 /** `ByteSource` from `src-tauri/src/slices/git/diff.rs`. */
 export type ByteSource = { kind: "blob"; oid: string } | { kind: "worktree" };
@@ -79,5 +84,7 @@ export function selectionDoneMessage(action: StageDirection, path: string, selec
       return selection.hunks.length === 1
         ? `${verb} hunk ${selection.hunks[0] + 1} of ${path}`
         : `${verb} ${selection.hunks.length} hunks of ${path}`;
+    case "lines":
+      return `${verb} ${lineCount(selection.lines.length)} of ${path}`;
   }
 }

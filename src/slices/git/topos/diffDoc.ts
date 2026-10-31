@@ -46,6 +46,8 @@ export interface DocLine {
   newNo: number | null;
   /** The index of the hunk the line belongs to. */
   hunk: number;
+  /** The line's index in its hunk's `lines`, or null for filler. */
+  line: number | null;
 }
 
 export interface DiffDoc {
@@ -72,22 +74,22 @@ export function unifiedDoc(diff: FileDiff): DiffDoc {
     hunkStarts.push(lines.length);
     let oldNo = h.oldStart;
     let newNo = h.newStart;
-    for (const l of h.lines) {
+    h.lines.forEach((l, line) => {
       texts.push(shown(l.kind, l.text));
       switch (l.kind) {
         case "context":
-          lines.push({ kind: l.kind, oldNo: oldNo++, newNo: newNo++, hunk });
+          lines.push({ kind: l.kind, oldNo: oldNo++, newNo: newNo++, hunk, line });
           break;
         case "del":
-          lines.push({ kind: l.kind, oldNo: oldNo++, newNo: null, hunk });
+          lines.push({ kind: l.kind, oldNo: oldNo++, newNo: null, hunk, line });
           break;
         case "add":
-          lines.push({ kind: l.kind, oldNo: null, newNo: newNo++, hunk });
+          lines.push({ kind: l.kind, oldNo: null, newNo: newNo++, hunk, line });
           break;
         case "noNewline":
-          lines.push({ kind: l.kind, oldNo: null, newNo: null, hunk });
+          lines.push({ kind: l.kind, oldNo: null, newNo: null, hunk, line });
       }
-    }
+    });
   });
   return { text: texts.join("\n"), lines, hunkStarts };
 }
@@ -108,7 +110,7 @@ export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc } {
   const hunkStarts: number[] = [];
   diff.hunks.forEach((h, hunk) => {
     hunkStarts.push(left.length);
-    const filler = (): Row => ({ text: "", line: { kind: "filler", oldNo: null, newNo: null, hunk } });
+    const filler = (): Row => ({ text: "", line: { kind: "filler", oldNo: null, newNo: null, hunk, line: null } });
     let dels: Row[] = [];
     let adds: Row[] = [];
     const flush = () => {
@@ -122,24 +124,24 @@ export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc } {
     let oldNo = h.oldStart;
     let newNo = h.newStart;
     let last: LineKind | null = null;
-    for (const l of h.lines) {
+    h.lines.forEach((l, line) => {
       const text = shown(l.kind, l.text);
       switch (l.kind) {
         case "context":
           flush();
-          left.push({ text, line: { kind: l.kind, oldNo: oldNo++, newNo, hunk } });
-          right.push({ text, line: { kind: l.kind, oldNo: oldNo - 1, newNo: newNo++, hunk } });
+          left.push({ text, line: { kind: l.kind, oldNo: oldNo++, newNo, hunk, line } });
+          right.push({ text, line: { kind: l.kind, oldNo: oldNo - 1, newNo: newNo++, hunk, line } });
           break;
         case "del":
           // A deletion after additions starts a new pair of runs.
           if (adds.length > 0) flush();
-          dels.push({ text, line: { kind: l.kind, oldNo: oldNo++, newNo: null, hunk } });
+          dels.push({ text, line: { kind: l.kind, oldNo: oldNo++, newNo: null, hunk, line } });
           break;
         case "add":
-          adds.push({ text, line: { kind: l.kind, oldNo: null, newNo: newNo++, hunk } });
+          adds.push({ text, line: { kind: l.kind, oldNo: null, newNo: newNo++, hunk, line } });
           break;
         case "noNewline": {
-          const row = { text, line: { kind: l.kind, oldNo: null, newNo: null, hunk } };
+          const row = { text, line: { kind: l.kind, oldNo: null, newNo: null, hunk, line } };
           if (last === "del") dels.push(row);
           else if (last === "add") adds.push(row);
           else {
@@ -150,7 +152,7 @@ export function splitDoc(diff: FileDiff): { left: DiffDoc; right: DiffDoc } {
         }
       }
       if (l.kind !== "noNewline") last = l.kind;
-    }
+    });
     flush();
   });
   const doc = (rows: Row[]): DiffDoc => ({ text: rows.map((r) => r.text).join("\n"), lines: rows.map((r) => r.line), hunkStarts });
