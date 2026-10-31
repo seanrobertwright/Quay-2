@@ -275,6 +275,11 @@ impl Walk {
         let _ = self.channel.send(event);
     }
 
+    /// Ends the search as cancelled.
+    fn send_cancelled(&self) {
+        self.send(SearchEvent::Failed { search_id: self.id, error: GitError::Cancelled });
+    }
+
     fn cancelled(&self) -> bool {
         self.control.lock().cancelled
     }
@@ -342,15 +347,13 @@ impl Walk {
             }
         }
         if self.cancelled() {
-            self.send(SearchEvent::Failed { search_id: self.id, error: GitError::Cancelled });
-            return;
+            return self.send_cancelled();
         }
         self.flush(&mut batch);
         let status = self.tree.lock().unwrap_or_else(|p| p.into_inner()).take().map(|mut tree| tree.child().wait());
         let stderr = stderr.and_then(|t| t.join().ok()).unwrap_or_default();
         if self.cancelled() {
-            self.send(SearchEvent::Failed { search_id: self.id, error: GitError::Cancelled });
-            return;
+            return self.send_cancelled();
         }
         match status {
             Some(Ok(status)) if status.success() => self.send(SearchEvent::Done { search_id: self.id, total }),
@@ -359,7 +362,7 @@ impl Walk {
                 error: GitError::Other { stderr: if stderr.trim().is_empty() { format!("git exited with {status}") } else { stderr } },
             }),
             Some(Err(e)) => self.send(SearchEvent::Failed { search_id: self.id, error: GitError::Other { stderr: format!("could not wait for git: {e}") } }),
-            None => self.send(SearchEvent::Failed { search_id: self.id, error: GitError::Cancelled }),
+            None => self.send_cancelled(),
         }
     }
 }
