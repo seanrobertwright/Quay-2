@@ -58,6 +58,10 @@ interface RefCommand<T extends RefsOutcome> {
 export interface RefActions {
   toasts: readonly Toast[];
   dismiss: (id: number) => void;
+  /** Adds a toast to Topos's one queue, for the network operations too (#395). */
+  toast: (toast: Omit<Toast, "id">) => void;
+  /** Opens Topos's one dialog, for the network operations too (#395). */
+  openDialog: (request: ConfirmRequest) => void;
   /** The open ref dialog (New branch, Checkout, New tag, Rename, Set upstream, a delete), or null. */
   dialog: ConfirmRequest | null;
   closeDialog: () => void;
@@ -401,5 +405,5 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
 
   const closeDialog = useCallback(() => setDialog(null), []);
 
-  return { toasts, dismiss, dialog, closeDialog, run, runPrimary, newBranch, pickCheckout };
+  return { toasts, dismiss, toast, openDialog: setDialog, dialog, closeDialog, run, runPrimary, newBranch, pickCheckout };
 }

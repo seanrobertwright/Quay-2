@@ -10,10 +10,13 @@ const MS_PER_DAY: i64 = 86_400_000;
 
 /// Milliseconds since the Unix epoch, now. Returns 0 if the system clock is before 1970.
 pub fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    system_time_ms(SystemTime::now())
+}
+
+/// Milliseconds since the Unix epoch at `time`, such as a file's mtime. Returns 0 for a time
+/// before 1970.
+pub fn system_time_ms(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 /// Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's algorithm).

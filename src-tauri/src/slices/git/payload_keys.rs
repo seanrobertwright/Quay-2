@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 
 use super::checkout::RefsOutcome;
 use super::ref_ops::BranchDeleted;
+use super::remote_ops::{RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -182,6 +183,36 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             "RefsOutcome",
             s(&RefsOutcome { head: Some("abc".into()), refs: GitRefs::default() }),
             json!({ "head": "abc", "refs": { "refs": [], "worktrees": [], "tagOnlyCount": 0 } }),
+        ),
+        ("GitError::NonFastForward", s(&GitError::NonFastForward { r#ref: "refs/heads/main".into() }), json!({ "kind": "nonFastForward", "ref": "refs/heads/main" })),
+        (
+            "GitError::NoUpstream",
+            s(&GitError::NoUpstream { branch: "feat".into(), remotes: vec!["origin".into()] }),
+            json!({ "kind": "noUpstream", "branch": "feat", "remotes": ["origin"] }),
+        ),
+        (
+            "GitError::RemoteRejected",
+            s(&GitError::RemoteRejected { r#ref: "refs/heads/main".into(), reason: "pre-receive hook declined".into(), remote_lines: vec!["no".into()] }),
+            json!({ "kind": "remoteRejected", "ref": "refs/heads/main", "reason": "pre-receive hook declined", "remoteLines": ["no"] }),
+        ),
+        ("GitError::AuthFailed", s(&GitError::AuthFailed), json!({ "kind": "authFailed" })),
+        ("GitError::HostKeyUnknown", s(&GitError::HostKeyUnknown), json!({ "kind": "hostKeyUnknown" })),
+        ("GitError::Network", s(&GitError::Network), json!({ "kind": "network" })),
+        ("GitError::DivergentPullNeedsStrategy", s(&GitError::DivergentPullNeedsStrategy), json!({ "kind": "divergentPullNeedsStrategy" })),
+        (
+            "RemoteOutcome",
+            s(&RemoteOutcome {
+                head: Some("abc".into()),
+                refs: GitRefs::default(),
+                conflicts: false,
+                sync: SyncStatus { branch: Some("main".into()), upstream: Some("origin/main".into()), ahead: 1, behind: 2, fetched_at_ms: Some(5) },
+            }),
+            json!({
+                "head": "abc",
+                "refs": { "refs": [], "worktrees": [], "tagOnlyCount": 0 },
+                "conflicts": false,
+                "sync": { "branch": "main", "upstream": "origin/main", "ahead": 1, "behind": 2, "fetchedAtMs": 5 }
+            }),
         ),
         (
             "HandOff",

@@ -38,11 +38,15 @@ pub struct OpOptions {
     /// prints no progress, such as a commit whose hooks print `lint: 2 problems`, turns it off so
     /// every line stays output.
     pub progress_lines: bool,
+    /// Replace the `user:password@` of any URL in git's output with `***@` before it is streamed
+    /// or captured, for the network operations, so a credential in a remote URL never reaches the
+    /// output panel.
+    pub redact_credentials: bool,
 }
 
 impl Default for OpOptions {
     fn default() -> Self {
-        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false, cap_stream: false, progress_lines: true }
+        Self { stall_after: STALL_AFTER, c_locale: false, progress_at_once: false, cap_stream: false, progress_lines: true, redact_credentials: false }
     }
 }
 
@@ -133,10 +137,18 @@ struct Sink<'a> {
     allowance: Option<usize>,
     noticed: bool,
     progress_lines: bool,
+    redact_credentials: bool,
 }
 
 impl Sink<'_> {
     fn output(&mut self, stream: Stream, text: &str) {
+        let redacted;
+        let text = if self.redact_credentials {
+            redacted = redact_credentials(text);
+            redacted.as_str()
+        } else {
+            text
+        };
         match stream {
             Stream::Stdout => push_capped(&mut self.output.stdout, text),
             Stream::Stderr => push_capped(&mut self.output.stderr, text),
@@ -161,6 +173,28 @@ impl Sink<'_> {
             let _ = self.channel.send(OpEvent::Output { chunk: stream_cap_notice() });
         }
     }
+}
+
+/// `text` with the `user:password@` or `token@` of every `scheme://` URL in it replaced by `***@`.
+/// A URL split across two chunks of output can slip through; git itself already strips the
+/// password from the URLs it prints, so this is the second line of defence.
+pub fn redact_credentials(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("://") {
+        let (before, after) = rest.split_at(at + 3);
+        out.push_str(before);
+        let authority_end = after.find(|c: char| matches!(c, '/' | '\'' | '"') || c.is_whitespace()).unwrap_or(after.len());
+        match after[..authority_end].rfind('@') {
+            Some(userinfo_end) => {
+                out.push_str("***");
+                rest = &after[userinfo_end..];
+            }
+            None => rest = after,
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Which pipe a chunk of git's output came from.
@@ -254,7 +288,7 @@ pub(super) fn run_process(
         pump(err, Stream::Stderr, tx);
     }
 
-    let mut sink = Sink { channel, output: OpOutput::default(), allowance: opts.cap_stream.then_some(MAX_CAPTURE_BYTES), noticed: false, progress_lines: opts.progress_lines };
+    let mut sink = Sink { channel, output: OpOutput::default(), allowance: opts.cap_stream.then_some(MAX_CAPTURE_BYTES), noticed: false, progress_lines: opts.progress_lines, redact_credentials: opts.redact_credentials };
     let mut stderr_line = Vec::new();
     let mut last_heard = Instant::now();
     let mut stalled = false;
@@ -442,6 +476,21 @@ mod tests {
     /// shell, so a test sees what git's children see.
     fn alias_args(def: &str) -> [&str; 3] {
         ["-c", def, "probe"]
+    }
+
+    #[test]
+    fn credentials_in_urls_are_redacted() {
+        assert_eq!(
+            redact_credentials("fatal: unable to access 'https://me:s3cret@example.invalid/r.git/': 403
+To ssh://git@host/x
+"),
+            "fatal: unable to access 'https://***@example.invalid/r.git/': 403
+To ssh://***@host/x
+"
+        );
+        assert_eq!(redact_credentials("To ../origin.git
+see https://git-scm.com/docs"), "To ../origin.git
+see https://git-scm.com/docs");
     }
 
     #[test]
