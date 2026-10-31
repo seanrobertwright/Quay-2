@@ -44,7 +44,7 @@ fn parse_message(message: &str) -> Result<&str, GitError> {
         return Err(GitError::Other { stderr: "the commit message holds a NUL character".into() });
     }
     if message.len() > MAX_MESSAGE_BYTES {
-        return Err(GitError::Other { stderr: "the commit message is longer than 1 MiB".into() });
+        return Err(GitError::Other { stderr: format!("the commit message is longer than {} MiB", MAX_MESSAGE_BYTES / (1024 * 1024)) });
     }
     Ok(message)
 }

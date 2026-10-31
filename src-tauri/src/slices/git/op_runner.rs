@@ -32,7 +32,7 @@ pub struct OpOptions {
     /// default two seconds.
     pub progress_at_once: bool,
     /// Stream at most [`MAX_CAPTURE_BYTES`] of output as [`OpEvent::Output`]. Past it the op sends
-    /// [`STREAM_CAP_NOTICE`] once, and the rest is only captured. Off streams everything.
+    /// [`stream_cap_notice`] once, and the rest is only captured. Off streams everything.
     pub cap_stream: bool,
     /// Read git's stderr for `--progress` lines and send them as [`OpEvent::Progress`]. An op that
     /// prints no progress, such as a commit whose hooks print `lint: 2 problems`, turns it off so
@@ -102,7 +102,9 @@ pub struct OpOutput {
 }
 
 /// The notice an op sends once, in place of its output past [`OpOptions::cap_stream`]'s cap.
-pub const STREAM_CAP_NOTICE: &str = "\n[Quay: output past 64 KiB is not shown]\n";
+pub fn stream_cap_notice() -> String {
+    format!("\n[Quay: output past {} KiB is not shown]\n", MAX_CAPTURE_BYTES / 1024)
+}
 
 /// A process that ran to the end: how it exited and what it printed.
 pub(super) struct Finished {
@@ -156,7 +158,7 @@ impl Sink<'_> {
         }
         if chunk.len() < text.len() && !self.noticed {
             self.noticed = true;
-            let _ = self.channel.send(OpEvent::Output { chunk: STREAM_CAP_NOTICE.to_string() });
+            let _ = self.channel.send(OpEvent::Output { chunk: stream_cap_notice() });
         }
     }
 }

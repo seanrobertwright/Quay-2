@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::commit::{commit, read_commit_context, CommitRequest, Operation};
 use super::error::GitError;
-use super::op_runner::{GitOps, OpEvent};
+use super::op_runner::{stream_cap_notice, GitOps, OpEvent};
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
 
@@ -155,9 +155,10 @@ fn hook_output_is_capped_at_64_kib_both_as_it_streams_and_in_hook_failed() {
     assert!(output.ends_with("29999\n30000\nlast-line\n"), "the newest output is kept");
 
     let streamed = streamed_output(&events.lock().unwrap());
-    let notice = "\n[Quay: output past 64 KiB is not shown]\n";
+    let notice = stream_cap_notice();
+    assert_eq!(notice, "\n[Quay: output past 64 KiB is not shown]\n", "the notice names the spec's 64 KiB");
     assert!(streamed.starts_with("1\n2\n3\n"), "the oldest output streams first");
-    assert!(streamed.ends_with(notice), "the stream ends in the notice: {:?}", &streamed[streamed.len().saturating_sub(80)..]);
+    assert!(streamed.ends_with(&notice), "the stream ends in the notice: {:?}", &streamed[streamed.len().saturating_sub(80)..]);
     assert_eq!(streamed.len(), 64 * 1024 + notice.len());
     let _ = std::fs::remove_dir_all(root);
 }
