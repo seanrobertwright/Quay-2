@@ -32,7 +32,9 @@ export function parseGitError(e: unknown): GitError | null {
     case "noOperation":
       return { kind: fields.kind };
     case "conflictsRemain":
-      return { kind: "conflictsRemain", count: Number(fields.count) };
+      return Number.isSafeInteger(fields.count) && (fields.count as number) >= 0
+        ? { kind: "conflictsRemain", count: fields.count as number }
+        : null;
     case "other":
       return { kind: "other", stderr: String(fields.stderr) };
     case "changedSinceDiscard":
