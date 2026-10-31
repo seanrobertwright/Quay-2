@@ -468,9 +468,9 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     setConfirm({ ...confirmDiscardFile(row.path, kind), onConfirm: () => discard(target, targetLabel(target, kind)) });
   };
   const askDiscardAll = () => {
-    const total = status.state === "done" ? status.status.total : 0;
+    if (status.state !== "done") return;
     setConfirm({
-      ...confirmDiscardAll(total),
+      ...confirmDiscardAll(status.status),
       onConfirm: (includeUntracked) => {
         const target = { kind: "all" as const, includeUntracked };
         discard(target, targetLabel(target));

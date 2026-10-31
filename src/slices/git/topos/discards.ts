@@ -4,7 +4,7 @@
 import type { Selection } from "./diffView.ts";
 import { lineCount } from "./lineSelection.ts";
 import { failureView } from "./stagingKeys.ts";
-import type { EntryKind } from "./stagingLists.ts";
+import { splitStatus, type EntryKind, type WorktreeStatus } from "./stagingLists.ts";
 
 /** `DiscardBackup` from `src-tauri/src/slices/git/discard.rs`: what one discard did to one file. */
 export interface DiscardBackup {
@@ -140,13 +140,17 @@ export function confirmDiscardFile(path: string, kind: EntryKind): DiscardConfir
   };
 }
 
-/** The confirm dialog for Discard all, whose checkbox adds untracked files and starts unticked. */
-export function confirmDiscardAll(total: number): DiscardConfirm & { checkbox: { label: string; initial: boolean } } {
+/**
+ * The confirm dialog for Discard all, whose checkbox adds untracked files and starts unticked. It
+ * counts the tracked files with unstaged changes in `status`; past the cap it can't count the rest.
+ */
+export function confirmDiscardAll(status: WorktreeStatus): DiscardConfirm & { checkbox: { label: string; initial: boolean } } {
+  const tracked = splitStatus(status.entries).unstaged.filter((c) => c.kind === "tracked").length;
+  const files = `${tracked.toLocaleString("en-US")} tracked ${tracked === 1 ? "file" : "files"}`;
+  const count = status.truncated ? `${files} in the list, and any past the list's cap` : files;
   return {
     title: "Discard all unstaged changes?",
-    detail: `Every unstaged change to a tracked file goes back to the staged or committed version, ${total.toLocaleString(
-      "en-US"
-    )} changes in all, including any past the list's cap. Staged changes stay. ${KEPT}`,
+    detail: `Every unstaged change to a tracked file goes back to the staged or committed version: ${count}. Staged changes stay. ${KEPT}`,
     confirmLabel: "Discard all",
     checkbox: { label: "Also move untracked files to the Recycle Bin", initial: false },
   };

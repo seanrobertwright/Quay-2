@@ -11,6 +11,11 @@ import {
   targetLabel,
   type DiscardBackup,
 } from "./discards.ts";
+import type { StatusEntry, WorktreeStatus } from "./stagingLists.ts";
+
+function status(entries: StatusEntry[], total: number, truncated: boolean): WorktreeStatus {
+  return { requestId: 1, entries, total, truncated };
+}
 
 test("a discard is named by what it took", () => {
   assert.equal(selectionLabel("src/lib.rs", { kind: "file" }), "src/lib.rs");
@@ -46,11 +51,27 @@ test("a whole file always confirms, naming where an untracked file goes", () => 
 });
 
 test("Discard all confirms, with untracked files only behind an unticked checkbox", () => {
-  const all = confirmDiscardAll(12_345);
+  const all = confirmDiscardAll(status([], 12_345, true));
   assert.equal(all.title, "Discard all unstaged changes?");
-  assert.match(all.detail, /12,345 changes/);
   assert.equal(all.checkbox.label, "Also move untracked files to the Recycle Bin");
   assert.equal(all.checkbox.initial, false);
+});
+
+test("Discard all counts only the tracked files it will reset, and names the cap only past it", () => {
+  // Seen live: two untracked files and a staged-only file were counted as changes to tracked files.
+  const entries: StatusEntry[] = [
+    { path: "a.txt", xy: ".M", kind: "tracked" },
+    { path: "b.txt", xy: "MM", kind: "tracked" },
+    { path: "staged.txt", xy: "M.", kind: "tracked" },
+    { path: "u.txt", xy: "??", kind: "untracked" },
+    { path: "new/", xy: "??", kind: "untrackedFolder" },
+  ];
+  const within = confirmDiscardAll(status(entries, entries.length, false)).detail;
+  assert.match(within, /2 tracked files/);
+  assert.doesNotMatch(within, /5|cap/);
+
+  const past = confirmDiscardAll(status(entries, 12_345, true)).detail;
+  assert.match(past, /2 tracked files in the list, and any past the list's cap/);
 });
 
 test("a restore refused for files that changed since offers Copy to a new file", () => {
