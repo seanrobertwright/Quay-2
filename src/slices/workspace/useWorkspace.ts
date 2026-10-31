@@ -1117,8 +1117,8 @@ export function useWorkspace() {
     setZoomedFromLayout(null);
   }, [layout, visibleTerminals, activeTerminalId]);
 
-  // Spawn terminal
-  const spawnTerminal = async (request: SpawnTerminalRequest) => {
+  // Spawn terminal. Resolves with the new terminal, or null when it couldn't start.
+  const spawnTerminal = async (request: SpawnTerminalRequest): Promise<TerminalInfo | null> => {
     try {
       const dims = getGlobalTerminalDimensions();
       const enrichedRequest: SpawnTerminalRequest = {
@@ -1178,8 +1178,10 @@ export function useWorkspace() {
           new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
         );
       }, 250);
+      return newTerm;
     } catch (err) {
       console.error("Failed to spawn terminal:", err);
+      return null;
     }
   };
 

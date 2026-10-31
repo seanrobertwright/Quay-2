@@ -7,6 +7,9 @@ pub mod conflict;
 mod conflict_card_tests;
 #[cfg(test)]
 mod conflict_tests;
+pub mod hand_off;
+#[cfg(test)]
+mod hand_off_tests;
 pub mod diff;
 pub mod discard;
 #[cfg(test)]
@@ -41,6 +44,7 @@ pub use conflict::*;
 pub use diff::*;
 pub use discard::*;
 pub use error::*;
+pub use hand_off::*;
 pub use graph::*;
 pub use models::*;
 pub use op_runner::*;

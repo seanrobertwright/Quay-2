@@ -19,7 +19,7 @@ fn git_stops(dir: &Path, args: &[&str]) {
 
 /// `file` committed as `base` on `main`, changed to `ours` on `feat` (the worktree) and to `theirs`
 /// on `main`, then `main` merged into `feat`, which stops on the conflict. Returns (root, worktree).
-fn merge_conflict(file: &str, base: &[u8], ours: &[u8], theirs: &[u8]) -> (PathBuf, PathBuf) {
+pub(super) fn merge_conflict(file: &str, base: &[u8], ours: &[u8], theirs: &[u8]) -> (PathBuf, PathBuf) {
     merge_conflict_with("", file, base, ours, theirs)
 }
 

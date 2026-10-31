@@ -772,6 +772,7 @@ pub fn stage_selection(
 ) -> Result<StageResult, GitError> {
     let _slot = locks.begin(worktree)?;
     let path = parse_rel_path(&request.path)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     let reverse = match request.side {
         DiffSide::Unstaged => false,
         DiffSide::Staged => true,

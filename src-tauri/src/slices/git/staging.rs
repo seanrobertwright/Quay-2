@@ -16,6 +16,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::error::GitError;
+use super::hand_off::HandOffs;
 use super::op_runner::headless_git;
 
 /// The most status entries one read returns (#366). The inspector shows "Showing the first 10,000
@@ -81,6 +82,8 @@ pub enum PathTarget {
 #[derive(Default)]
 pub struct StagingLocks {
     busy: Mutex<HashSet<String>>,
+    /// The conflicted files handed to an agent, which every write here refuses (#392).
+    pub(super) hand_offs: HandOffs,
 }
 
 /// Holds a worktree's staging slot until it drops.
@@ -96,7 +99,7 @@ impl Drop for StagingGuard<'_> {
 }
 
 /// One spelling for each worktree folder, so two spellings of it share a slot.
-fn worktree_key(worktree: &Path) -> String {
+pub(super) fn worktree_key(worktree: &Path) -> String {
     let path = worktree.canonicalize().unwrap_or_else(|_| worktree.to_path_buf());
     let key = path.to_string_lossy().into_owned();
     if cfg!(windows) {
@@ -115,6 +118,23 @@ impl StagingLocks {
             return Err(GitError::StagingBusy);
         }
         Ok(StagingGuard { locks: self, key })
+    }
+
+    /// Refuses with [`GitError::HandedOff`] when an agent holds a conflicted file in `worktree`
+    /// that a write to `paths`, files or folders, would reach; with `None` the write reaches every
+    /// file. See [`super::hand_off`].
+    pub fn refuse_handed_off(&self, worktree: &Path, paths: Option<&[&str]>) -> Result<(), GitError> {
+        self.hand_offs.refuse(worktree, paths)
+    }
+}
+
+impl PathTarget {
+    /// The listed paths, or None for every change.
+    pub(super) fn paths(&self) -> Option<Vec<&str>> {
+        match self {
+            PathTarget::All => None,
+            PathTarget::Paths { paths } => Some(paths.iter().map(String::as_str).collect()),
+        }
     }
 }
 
@@ -293,6 +313,7 @@ pub(super) fn run_write_input(worktree: &Path, args: &[&str], input: Option<&[u8
 /// change, including those past the status cap.
 pub fn stage_paths(locks: &StagingLocks, worktree: &Path, request_id: u32, target: &PathTarget) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, target.paths().as_deref())?;
     write_stage(worktree, target)?;
     read_status(worktree, request_id, None)
 }
@@ -321,6 +342,7 @@ pub(super) fn has_head(worktree: &Path) -> bool {
 /// `All` unstages every change, including those past the status cap.
 pub fn unstage_paths(locks: &StagingLocks, worktree: &Path, request_id: u32, target: &PathTarget) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, target.paths().as_deref())?;
     write_unstage(worktree, target)?;
     read_status(worktree, request_id, None)
 }

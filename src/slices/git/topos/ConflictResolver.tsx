@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, RotateCcw, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, RotateCcw, Save, Undo2 } from "lucide-react";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { ResultEditor, SidePane, goToHunk } from "./ConflictEditor";
 import { confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, unresolvedLabel } from "./conflicts";
 import { CONFLICT_WORDS, type OpState } from "./operation";
 import { conflictCard, type CardChoice } from "./conflictCards";
+import { HeldBadge } from "./HeldBadge";
 import { SidePickerCard } from "./SidePickerCard";
 import { useConflictResolver, type ConflictSide } from "./useConflictResolver";
-import { useHandToAgent } from "./useHandToAgent";
+import type { HandToAgent } from "./useHandToAgent";
 import type { Staging } from "./useStaging";
 
 /** The most rows the file list renders; a note counts the rest. */
@@ -24,6 +25,8 @@ export interface ConflictResolverProps {
   staging: Staging;
   /** Opens a terminal in `cwd`; absent when Topos has no way to. */
   onOpenTerminal?: (cwd: string) => void;
+  /** Hands files to an agent, and which files an agent holds, which the resolver doesn't write. */
+  handToAgent: HandToAgent;
 }
 
 /**
@@ -33,9 +36,11 @@ export interface ConflictResolverProps {
  * boxes, a navigator counts what is unresolved, and Save, Mark resolved, Reset file and keeping a
  * whole side each run as the worktree's one staging operation. The ones that drop the operator's
  * work confirm first, with focus on Cancel. A file it can't edit as text gets a side-picker card
- * (#391) instead of the panes. Every text here is untrusted and shown only as text.
+ * (#391) instead of the panes. Hand to agent passes the file to an agent terminal (#392); while the
+ * agent holds it, every control that writes is disabled, the backend refuses those writes too, and
+ * Take back returns it. Every text here is untrusted and shown only as text.
  */
-export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging, onOpenTerminal }) => {
+export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath, op, path, onPath, onClose, staging, onOpenTerminal, handToAgent }) => {
   const titleId = useId();
   const listId = useId();
   const resolver = useConflictResolver(worktreePath, path, staging);
@@ -50,7 +55,8 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
   const file = read?.state === "done" ? read.file : null;
   const parsed = useMemo(() => (file !== null && text !== null ? parseConflicts(text, file.markerSize) : null), [file, text]);
   const card = useMemo(() => (file !== null ? conflictCard(file, names, op.conflicts) : null), [file, names, op.conflicts]);
-  const handToAgent = useHandToAgent();
+  const held = handToAgent.held.get(path) ?? null;
+  const heldWords = held === null ? null : `With ${held.agentName}. Take it back to change it here.`;
   const busy = staging.busy !== null;
   const saving = staging.busy?.action === "resolve";
 
@@ -105,16 +111,30 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
         case "openTerminal":
           return onOpenTerminal?.(worktreePath);
         case "handToAgent":
-          return handToAgent.hand?.([path]);
+          return askHand();
       }
     };
     if (choice.confirm === null) run();
     else setConfirm({ ...choice.confirm, onConfirm: run });
   };
+  /** Opens the agent picker for this file, after a confirm when it would drop unsaved edits. */
+  const askHand = () =>
+    leaving(`Hand ${path} to an agent?`, () => {
+      if (dirty) resolver.reopen();
+      handToAgent.hand?.([path]);
+    });
+  const takeBack = () => {
+    handToAgent.takeBack(path);
+    // The agent may have changed the file meanwhile.
+    resolver.reopen();
+  };
+  const handWhy = heldWords ?? handToAgent.unavailable;
   const unavailable = {
     ...(onOpenTerminal === undefined ? { openTerminal: "Quay can't open a terminal from here." } : {}),
-    ...(handToAgent.unavailable !== null ? { handToAgent: handToAgent.unavailable } : {}),
+    ...(handWhy !== null ? { handToAgent: handWhy } : {}),
+    ...(heldWords !== null ? { stage: heldWords, takeSide: heldWords, remove: heldWords } : {}),
   };
+  const locked = busy || held !== null;
   const move = (direction: 1 | -1) => {
     if (view.current === null) return;
     const index = goToHunk(view.current, direction);
@@ -155,6 +175,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                   {c.path}
                   <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
                 </span>
+                <HeldBadge held={handToAgent.held.get(c.path)} />
               </button>
             </li>
           ))}
@@ -183,31 +204,31 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {file?.editable && (
-              <button type="button" onClick={() => void resolver.save()} disabled={!dirty || busy} aria-busy={saving} className={buttonClass}>
+              <button type="button" onClick={() => void resolver.save()} disabled={!dirty || locked} aria-busy={saving} className={buttonClass}>
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : <Save className="w-3.5 h-3.5" aria-hidden="true" />}
                 Save
               </button>
             )}
             {file?.editable && (
               <>
-                <button type="button" onClick={() => askTakeSide("left")} disabled={busy} title={labels.left.tooltip} className={buttonClass}>
+                <button type="button" onClick={() => askTakeSide("left")} disabled={locked} title={labels.left.tooltip} className={buttonClass}>
                   Keep {labels.left.text} whole
                 </button>
-                <button type="button" onClick={() => askTakeSide("right")} disabled={busy} title={labels.right.tooltip} className={buttonClass}>
+                <button type="button" onClick={() => askTakeSide("right")} disabled={locked} title={labels.right.tooltip} className={buttonClass}>
                   Keep {labels.right.text} whole
                 </button>
               </>
             )}
             {file?.editable && (
               <>
-                <button type="button" onClick={askReset} disabled={busy} title="Put the file back to git's conflict markers (git checkout -m)" className={buttonClass}>
+                <button type="button" onClick={askReset} disabled={locked} title="Put the file back to git's conflict markers (git checkout -m)" className={buttonClass}>
                   <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                   Reset file
                 </button>
                 <button
                   type="button"
                   onClick={askMarkResolved}
-                  disabled={busy}
+                  disabled={locked}
                   title="Stage the file as resolved (git add), saving it first"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-[#238636] hover:bg-[#2ea043] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -216,8 +237,37 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                 </button>
               </>
             )}
+            {file?.editable && held === null && (
+              <button
+                type="button"
+                onClick={askHand}
+                disabled={handToAgent.hand === null}
+                title={handToAgent.unavailable ?? "Ask an agent terminal in this worktree to resolve and stage this file"}
+                className={buttonClass}
+              >
+                <Bot className="w-3.5 h-3.5" aria-hidden="true" />
+                Hand to agent
+              </button>
+            )}
           </div>
         </div>
+
+        {held !== null && (
+          <div role="status" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#d2a8ff] bg-[#8957e5]/10 border-b border-[#8957e5]/30">
+            <Bot className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0 break-words">
+              With {held.agentName}. Read-only here until {held.agentName} stages it or you take it back.
+            </span>
+            <button type="button" onClick={() => leaving(`Reopen ${path}?`, resolver.reopen)} className={buttonClass}>
+              <RefreshCw className="w-3 h-3" aria-hidden="true" />
+              Reopen
+            </button>
+            <button type="button" onClick={takeBack} className={buttonClass}>
+              <Undo2 className="w-3 h-3" aria-hidden="true" />
+              Take back
+            </button>
+          </div>
+        )}
 
         {failure && (
           <div role="alert" className="px-3 py-1.5 shrink-0 flex items-center gap-2 text-[11px] text-[#ff7b72] bg-[#f85149]/10 border-b border-[#f85149]/30">
@@ -277,8 +327,8 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
                 text={text}
                 markerSize={read.file.markerSize}
                 names={names}
-                ariaLabel={`Result for ${path}, editable`}
-                readOnly={busy}
+                ariaLabel={`Result for ${path}, ${held !== null ? `read-only while with ${held.agentName}` : "editable"}`}
+                readOnly={locked}
                 onChange={setText}
                 onView={onView}
               />

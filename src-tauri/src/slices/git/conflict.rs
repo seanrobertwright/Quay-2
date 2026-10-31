@@ -349,6 +349,7 @@ fn recheck(worktree: &Path, path: &str, token: &str) -> Result<ConflictFile, Git
 /// the old file or the new one, never half of it.
 pub fn save_conflict(locks: &StagingLocks, worktree: &Path, path: &str, token: &str, text: &str) -> Result<ConflictFile, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     let target = inside_worktree(worktree, path)?;
     let opened = recheck(worktree, path, token)?;
     if !opened.editable {
@@ -386,6 +387,7 @@ pub struct ConflictReset {
 /// matches. Returns the file opened afresh and the backup.
 pub fn reset_conflict(locks: &StagingLocks, worktree: &Path, path: &str, token: &str) -> Result<ConflictReset, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     let blob = back_up_conflict(worktree, path)?;
@@ -425,6 +427,7 @@ pub fn take_side(
     side: ConflictSide,
 ) -> Result<ConflictWriteResult, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     let (index, word, flag) = match side {
@@ -450,6 +453,7 @@ pub fn take_side(
 /// backup and the status answering `request_id`.
 pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<ConflictWriteResult, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     refuse_submodule(path, &read_stages(worktree, path)?.ok_or(GitError::ConflictStale)?)?;
@@ -466,6 +470,7 @@ pub fn remove_conflict(locks: &StagingLocks, worktree: &Path, request_id: u32, p
 /// resolver last read the file are never staged unseen. Returns the status answering `request_id`.
 pub fn mark_resolved(locks: &StagingLocks, worktree: &Path, request_id: u32, path: &str, token: &str) -> Result<WorktreeStatus, GitError> {
     let _slot = locks.begin(worktree)?;
+    locks.refuse_handed_off(worktree, Some(&[path]))?;
     link_inside_worktree(worktree, path)?;
     recheck(worktree, path, token)?;
     write_stage(worktree, &PathTarget::Paths { paths: vec![path.to_string()] })?;

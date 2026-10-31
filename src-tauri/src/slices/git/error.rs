@@ -29,6 +29,9 @@ pub enum GitError {
     NoOperation,
     /// Continue was asked for while `count` paths still have unmerged entries. Nothing was run.
     ConflictsRemain { count: u32 },
+    /// The file is handed to an agent (#392), so Topos refused to write it. Nothing was written; the
+    /// agent stages it, or the operator takes it back first. `agent` is untrusted display text.
+    HandedOff { path: String, agent: String },
     /// git's stderr, or the reason it could not be run.
     Other { stderr: String },
 }
@@ -45,6 +48,7 @@ impl std::fmt::Display for GitError {
             GitError::HookFailed { hook, .. } => write!(f, "the {hook} hook failed"),
             GitError::NoOperation => f.write_str("that operation is no longer under way"),
             GitError::ConflictsRemain { count } => write!(f, "{count} conflicted paths are not resolved and staged yet"),
+            GitError::HandedOff { path, agent } => write!(f, "{path} is with {agent}; take it back first"),
             GitError::Other { stderr } => f.write_str(stderr),
         }
     }

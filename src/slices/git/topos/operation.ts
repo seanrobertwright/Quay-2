@@ -64,11 +64,11 @@ export type BannerView =
   | { kind: "conflictsOnly"; title: string; detail: string };
 
 /** Each operation's name in a sentence. */
-const NOUN: Record<Underway, string> = { merge: "merge", rebase: "rebase", cherryPick: "cherry-pick", revert: "revert" };
+export const OPERATION_NOUNS: Record<Underway, string> = { merge: "merge", rebase: "rebase", cherryPick: "cherry-pick", revert: "revert" };
 
 /** `kind`'s noun, capitalised to start a sentence. */
 function capitalNoun(kind: Underway): string {
-  return NOUN[kind][0].toUpperCase() + NOUN[kind].slice(1);
+  return OPERATION_NOUNS[kind][0].toUpperCase() + OPERATION_NOUNS[kind].slice(1);
 }
 
 /** What each side is, in words, before git's name for it. */
@@ -166,7 +166,7 @@ export function confirmAbort(state: OpState): StepConfirm | null {
     }
     case "cherryPick":
     case "revert": {
-      const noun = NOUN[state.kind];
+      const noun = OPERATION_NOUNS[state.kind];
       return {
         title: `Abort the ${noun} of “${commit}”?`,
         detail: `${head} goes back to where it was before the ${noun}. Your resolutions, and any commits this ${noun} already made, are lost.`,
@@ -234,7 +234,7 @@ export function stepFailure(step: OpStep, e: unknown): StepFailure {
 /** What a step on `before` announces once it lands with the operation standing as `after`. */
 export function stepDoneMessage(step: OpStep, before: OpState, after: OpState): string {
   if (before.kind === "none") return "Nothing was under way";
-  const noun = NOUN[before.kind];
+  const noun = OPERATION_NOUNS[before.kind];
   const Noun = capitalNoun(before.kind);
   const skipped = step === "skip" ? "Skipped the commit; " : "";
   if (after.kind === "none") {

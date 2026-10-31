@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
 import { CommitComposer } from "./CommitComposer";
+import { HeldBadge } from "./HeldBadge";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { DiscardButton } from "./DiscardButton";
 import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry } from "./discards";
@@ -19,6 +20,7 @@ import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type P
 import type { OpenFile } from "./useFileDiff";
 import type { Commit } from "./useCommit";
 import { CONFLICT_WORDS, type OpState } from "./operation";
+import type { HandToAgent } from "./useHandToAgent";
 import type { BusyOp, Staging } from "./useStaging";
 
 /** Each status letter as words, for the row's title and its spoken name. */
@@ -399,6 +401,8 @@ export interface StagingInspectorProps {
   onGoToContinue: () => void;
   /** Opens a conflicted file in the three-pane resolver (#390), or its side-picker card (#391). */
   onResolve: (path: string) => void;
+  /** The conflicted files an agent holds (#392), and taking one back. */
+  handOffs: Pick<HandToAgent, "held" | "takeBack">;
 }
 
 /** The most rows the Conflicts list renders; a note counts the rest. */
@@ -409,15 +413,18 @@ interface ConflictListProps {
   busy: BusyOp | null;
   onStage: (path: string) => void;
   onResolve: (path: string) => void;
+  /** The files an agent holds (#392), and taking one back. */
+  handOffs: Pick<HandToAgent, "held" | "takeBack">;
 }
 
 /**
  * The inspector's Conflicts list (#366, #389), shown only while unmerged entries exist: each path
  * with what happened to it on each side, Resolve to open it in the three-pane resolver (#390), or
  * in a side-picker card when it can't be edited as text (#391), and Stage to mark it resolved once
- * its file is fixed.
+ * its file is fixed. A file handed to an agent (#392) says which agent has it and offers Take back
+ * in place of Stage.
  */
-const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolve }) => {
+const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolve, handOffs }) => {
   const headingId = useId();
   const shown = op.conflicts.slice(0, CONFLICT_ROWS);
   const more = op.conflictsTotal - shown.length;
@@ -430,7 +437,9 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolv
         </h4>
       </div>
       <ul className="overflow-y-auto min-h-0 py-0.5">
-        {shown.map((c) => (
+        {shown.map((c) => {
+          const held = handOffs.held.get(c.path);
+          return (
           <li key={c.path} className="h-7 px-3 flex items-center gap-2 text-xs">
             <span className="w-5 shrink-0 font-mono text-[11px] text-[#f85149]" aria-hidden="true">
               {c.xy}
@@ -439,6 +448,7 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolv
               {c.path}
               <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
             </span>
+            <HeldBadge held={held} />
             <button
               type="button"
               onClick={() => onResolve(c.path)}
@@ -447,17 +457,29 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolv
             >
               Resolve
             </button>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => onStage(c.path)}
-              aria-label={`Stage ${c.path} to mark it resolved`}
-              className="shrink-0 px-1.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
-            >
-              Stage
-            </button>
+            {held ? (
+              <button
+                type="button"
+                onClick={() => handOffs.takeBack(c.path)}
+                aria-label={`Take ${c.path} back from ${held.agentName}`}
+                className="shrink-0 px-1.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d]"
+              >
+                Take back
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => onStage(c.path)}
+                aria-label={`Stage ${c.path} to mark it resolved`}
+                className="shrink-0 px-1.5 rounded border border-[#30363d] text-[11px] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+              >
+                Stage
+              </button>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ul>
       {more > 0 && <p className="px-3 py-1 text-[11px] text-[#8b949e]">and {more.toLocaleString()} more conflicted files</p>}
     </section>
@@ -486,6 +508,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   conflicts,
   onGoToContinue,
   onResolve,
+  handOffs,
 }) => {
   const titleId = useId();
   const hintId = useId();
@@ -718,7 +741,15 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
-          {showConflicts && <ConflictList op={conflicts} busy={busy} onStage={(path) => run("stage", { kind: "paths", paths: [path] })} onResolve={onResolve} />}
+          {showConflicts && (
+            <ConflictList
+              op={conflicts}
+              busy={busy}
+              onStage={(path) => run("stage", { kind: "paths", paths: [path] })}
+              onResolve={onResolve}
+              handOffs={handOffs}
+            />
+          )}
           {sectionHeader("unstaged", lists?.unstaged.length ?? 0)}
           <ChangeList
             side="unstaged"
