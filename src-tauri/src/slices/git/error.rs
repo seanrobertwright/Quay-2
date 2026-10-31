@@ -58,6 +58,10 @@ pub enum GitError {
     /// A push was refused because the remote branch has commits the local one lacks, so it isn't a
     /// fast-forward. Topos offers Pull. `ref` is the remote ref, untrusted display text.
     NonFastForward { r#ref: String },
+    /// A force push with lease was refused because the remote branch `ref` isn't where the lease
+    /// says: the remote moved since the last fetch, or a fetch moved the remote-tracking branch
+    /// since the confirm. Nothing was overwritten. `ref` is the remote ref, untrusted display text.
+    LeaseRefused { r#ref: String },
     /// The branch has no upstream to push to or pull from, and `push.autoSetupRemote` doesn't set
     /// one. `remotes` are the repo's remotes, which "Push and set upstream" picks among.
     NoUpstream { branch: String, remotes: Vec<String> },
@@ -97,6 +101,7 @@ impl std::fmt::Display for GitError {
             GitError::RefLocked => f.write_str("another git process holds a ref lock"),
             GitError::InvalidRefName { name } => write!(f, "{name} is not a valid branch name or commit"),
             GitError::NonFastForward { r#ref } => write!(f, "{} on the remote has commits this branch lacks", r#ref),
+            GitError::LeaseRefused { r#ref } => write!(f, "{} on the remote isn't where the force push's lease says", r#ref),
             GitError::NoUpstream { branch, .. } => write!(f, "{branch} has no upstream branch"),
             GitError::RemoteRejected { r#ref, reason, .. } => write!(f, "the remote rejected {}: {reason}", r#ref),
             GitError::AuthFailed => f.write_str("the remote wanted a credential git could not supply"),

@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use super::checkout::RefsOutcome;
 use super::ref_ops::BranchDeleted;
-use super::remote_ops::{RemoteOutcome, SyncStatus};
+use super::remote_ops::{LeasePlan, RemoteOutcome, SyncStatus};
 use super::commit::{CommitContext, HeadCommit, Operation};
 use super::conflict::{ConflictFile, ConflictReset, Eol, NotEditable, ConflictWriteResult};
 use super::diff::{DiffLine, DiffSide, FileChange, FileDiff, Hunk, LineKind, ModeChange, StageResult};
@@ -195,6 +195,19 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
             s(&GitError::RemoteRejected { r#ref: "refs/heads/main".into(), reason: "pre-receive hook declined".into(), remote_lines: vec!["no".into()] }),
             json!({ "kind": "remoteRejected", "ref": "refs/heads/main", "reason": "pre-receive hook declined", "remoteLines": ["no"] }),
         ),
+        ("GitError::LeaseRefused", s(&GitError::LeaseRefused { r#ref: "refs/heads/main".into() }), json!({ "kind": "leaseRefused", "ref": "refs/heads/main" })),
+        (
+            "LeasePlan",
+            s(&LeasePlan {
+                remote: "origin".into(),
+                remote_ref: "refs/heads/main".into(),
+                tracking: "origin/main".into(),
+                expected_sha: "abc".into(),
+                overwrites: 2,
+                default_branch: Some("main".into()),
+            }),
+            json!({ "remote": "origin", "remoteRef": "refs/heads/main", "tracking": "origin/main", "expectedSha": "abc", "overwrites": 2, "defaultBranch": "main" }),
+        ),
         ("GitError::AuthFailed", s(&GitError::AuthFailed), json!({ "kind": "authFailed" })),
         ("GitError::HostKeyUnknown", s(&GitError::HostKeyUnknown), json!({ "kind": "hostKeyUnknown" })),
         ("GitError::Network", s(&GitError::Network), json!({ "kind": "network" })),
@@ -205,13 +218,13 @@ fn fixtures() -> Vec<(&'static str, Value, Value)> {
                 head: Some("abc".into()),
                 refs: GitRefs::default(),
                 conflicts: false,
-                sync: SyncStatus { branch: Some("main".into()), upstream: Some("origin/main".into()), ahead: 1, behind: 2, fetched_at_ms: Some(5) },
+                sync: SyncStatus { branch: Some("main".into()), upstream: Some("origin/main".into()), ahead: 1, behind: 2, fetched_at_ms: Some(5), remotes: vec!["origin".into()] },
             }),
             json!({
                 "head": "abc",
                 "refs": { "refs": [], "worktrees": [], "tagOnlyCount": 0 },
                 "conflicts": false,
-                "sync": { "branch": "main", "upstream": "origin/main", "ahead": 1, "behind": 2, "fetchedAtMs": 5 }
+                "sync": { "branch": "main", "upstream": "origin/main", "ahead": 1, "behind": 2, "fetchedAtMs": 5, "remotes": ["origin"] }
             }),
         ),
         (
