@@ -20,6 +20,7 @@ import { useFileDiff, type OpenFile } from "./useFileDiff";
 import { useCommit } from "./useCommit";
 import { useOperation } from "./useOperation";
 import { OperationBanner } from "./OperationBanner";
+import { ConflictResolver } from "./ConflictResolver";
 import { useStaging } from "./useStaging";
 import { useToposSettings } from "./useToposSettings";
 import { offerSpeedup } from "./speedup";
@@ -143,6 +144,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
   const commit = useCommit(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
   // The operation under way and its banner (#389), whose steps hand HEAD to the refresh table too.
   const operation = useOperation(graphRepo !== null ? selectedPath : null, staging, liveUpdates.committed);
+  // The conflicted file open in the three-pane resolver (#390), in place of the graph and inspector.
+  const [resolving, setResolving] = useState<string | null>(null);
+  useEffect(() => setResolving(null), [selectedPath]);
+  const closeResolver = useCallback(() => setResolving(null), []);
   const continueRef = useRef<HTMLButtonElement>(null);
   const goToContinue = useCallback(() => continueRef.current?.focus(), []);
   const otherSideHasChanges = useMemo(() => {
@@ -317,8 +322,19 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                 </p>
               </div>
             ) : graph.feed ? (
-              <div className="flex-1 flex min-h-0">
-                <div className="relative flex-1 min-w-0 flex flex-col">
+              <div className="relative flex-1 flex min-h-0">
+                {resolving !== null && operation.op !== null && (
+                  <ConflictResolver
+                    key={target.path}
+                    worktreePath={target.path}
+                    op={operation.op}
+                    path={resolving}
+                    onPath={setResolving}
+                    onClose={closeResolver}
+                    staging={staging}
+                  />
+                )}
+                <div className="relative flex-1 min-w-0 flex flex-col" inert={resolving !== null}>
                   {/* The graph stays mounted under an open diff, keeping its scroll and selection. Its own
                       stacking context keeps its raised parts, such as the column handle, under the diff. */}
                   <div className="isolate flex-1 min-h-0 flex flex-col" inert={openFile !== null}>
@@ -352,6 +368,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                   )}
                 </div>
                 {inspectorOpen && (
+                  // Under the resolver, the inspector keeps its state but takes no focus.
+                  <div className="contents" inert={resolving !== null}>
                   <StagingInspector
                     id={inspectorId}
                     staging={staging}
@@ -366,7 +384,9 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                     commit={commit}
                     conflicts={operation.op}
                     onGoToContinue={goToContinue}
+                    onResolve={setResolving}
                   />
+                  </div>
                 )}
               </div>
             ) : (

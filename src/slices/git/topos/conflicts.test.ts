@@ -1,7 +1,8 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { confirmMarkResolved, confirmReset, confirmTakeSide, parseConflicts, takeHunk, unresolvedLabel } from "./conflicts.ts";
+import { confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, resolverFailure, takeHunk, unresolvedLabel } from "./conflicts.ts";
+import type { OpState } from "./operation.ts";
 
 const MERGED = "one\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nthree\n";
 
@@ -132,4 +133,36 @@ test("Reset file and taking a whole side say what they throw away", () => {
   assert.equal(take.title, "Keep Incoming · feature for all of src/a.txt?");
   assert.equal(take.confirmLabel, "Keep Incoming · feature");
   assert.match(take.detail, /stages it/);
+});
+
+test("a stale write says the file changed outside and that nothing was written", () => {
+  const stale = resolverFailure({ kind: "conflictStale" }, "a.txt");
+  assert.equal(stale.stale, true);
+  assert.match(stale.message, /a\.txt changed since it was opened/);
+  assert.match(stale.message, /nothing was written/i);
+  assert.deepEqual(resolverFailure({ kind: "other", stderr: "boom" }, "a.txt"), { stale: false, message: "boom" });
+  assert.equal(resolverFailure({ kind: "stagingBusy" }, "a.txt").stale, false);
+});
+
+test("the panes are labelled by role and real ref, with ours and theirs only in the tooltips", () => {
+  const rebase: OpState = {
+    kind: "rebase",
+    step: 1,
+    total: 2,
+    leftLabel: { role: "Onto", name: "main @abc1234" },
+    rightLabel: { role: "Replaying", name: "Fix it" },
+    message: null,
+    conflicts: [],
+    conflictsTotal: 1,
+  };
+  const labels = paneLabels(rebase);
+  assert.deepEqual([labels.left.text, labels.right.text], ["Onto · main @abc1234", "Replaying · Fix it"]);
+  assert.doesNotMatch(`${labels.left.text} ${labels.right.text}`, /ours|theirs/i);
+  assert.match(labels.left.tooltip, /“ours”/);
+  assert.match(labels.right.tooltip, /“theirs”/);
+
+  const none: OpState = { kind: "none", leftLabel: null, rightLabel: null, message: null, conflicts: [], conflictsTotal: 1 };
+  const plain = paneLabels(none);
+  assert.deepEqual([plain.left.text, plain.right.text], ["Left side", "Right side"]);
+  assert.match(plain.right.tooltip, /“theirs”/);
 });

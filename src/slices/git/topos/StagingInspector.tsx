@@ -397,6 +397,8 @@ export interface StagingInspectorProps {
   conflicts: OpState | null;
   /** Moves focus to the operation banner's Continue. */
   onGoToContinue: () => void;
+  /** Opens a conflicted file in the three-pane resolver (#390). */
+  onResolve: (path: string) => void;
 }
 
 /** The most rows the Conflicts list renders; a note counts the rest. */
@@ -406,13 +408,15 @@ interface ConflictListProps {
   op: OpState;
   busy: BusyOp | null;
   onStage: (path: string) => void;
+  onResolve: (path: string) => void;
 }
 
 /**
  * The inspector's Conflicts list (#366, #389), shown only while unmerged entries exist: each path
- * with what happened to it on each side, and Stage to mark it resolved once its file is fixed.
+ * with what happened to it on each side, Resolve to open it in the three-pane resolver (#390), and
+ * Stage to mark it resolved once its file is fixed.
  */
-const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage }) => {
+const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolve }) => {
   const headingId = useId();
   const shown = op.conflicts.slice(0, CONFLICT_ROWS);
   const more = op.conflictsTotal - shown.length;
@@ -434,6 +438,14 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage }) => {
               {c.path}
               <span className="sr-only">, {CONFLICT_WORDS[c.kind]}</span>
             </span>
+            <button
+              type="button"
+              onClick={() => onResolve(c.path)}
+              aria-label={`Resolve ${c.path}`}
+              className="shrink-0 px-1.5 rounded border border-[#06B6D4]/50 text-[11px] text-[#c9d1d9] hover:bg-[#06B6D4]/15"
+            >
+              Resolve
+            </button>
             <button
               type="button"
               disabled={busy !== null}
@@ -472,6 +484,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   commit,
   conflicts,
   onGoToContinue,
+  onResolve,
 }) => {
   const titleId = useId();
   const hintId = useId();
@@ -704,7 +717,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col">
-          {showConflicts && <ConflictList op={conflicts} busy={busy} onStage={(path) => run("stage", { kind: "paths", paths: [path] })} />}
+          {showConflicts && <ConflictList op={conflicts} busy={busy} onStage={(path) => run("stage", { kind: "paths", paths: [path] })} onResolve={onResolve} />}
           {sectionHeader("unstaged", lists?.unstaged.length ?? 0)}
           <ChangeList
             side="unstaged"

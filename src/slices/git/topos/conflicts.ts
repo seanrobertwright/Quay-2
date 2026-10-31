@@ -3,6 +3,9 @@
 // "n unresolved" navigator and the check that no markers remain before Mark resolved. Rust never
 // parses markers. The text is the file's own, untrusted content: it is only ever shown as text.
 
+import { errorMessage, parseGitError } from "./gitVersion.ts";
+import { bannerView, type OpState, type SideView } from "./operation.ts";
+
 /** One conflict hunk, as character offsets into the text it was parsed from. */
 export interface ConflictHunk {
   /** Where its opening marker line starts. */
@@ -122,10 +125,14 @@ export function parseConflicts(text: string, markerSize: number): ParsedConflict
 /** Which side, or both, a hunk's box keeps. */
 export type HunkChoice = "left" | "right" | "both";
 
+/** The text `choice` keeps of `hunk`: one side, or both with left first. */
+export function keptText(hunk: ConflictHunk, choice: HunkChoice): string {
+  return choice === "left" ? hunk.left : choice === "right" ? hunk.right : hunk.left + hunk.right;
+}
+
 /** `text` with `hunk`, parsed from it, replaced by the side `choice` keeps; both is left, then right. */
 export function takeHunk(text: string, hunk: ConflictHunk, choice: HunkChoice): string {
-  const kept = choice === "left" ? hunk.left : choice === "right" ? hunk.right : hunk.left + hunk.right;
-  return text.slice(0, hunk.from) + kept + text.slice(hunk.to);
+  return text.slice(0, hunk.from) + keptText(hunk, choice) + text.slice(hunk.to);
 }
 
 /** The navigator's words for what is left to resolve. */
@@ -171,5 +178,40 @@ export function confirmTakeSide(path: string, side: { role: string; name: string
     title: `Keep ${name} for all of ${path}?`,
     detail: `This replaces ${path} with ${name}'s version, dropping the other side and any edits to the Result, and stages it as resolved. The file is backed up first, and Recently discarded can restore it.`,
     confirmLabel: `Keep ${name}`,
+  };
+}
+
+/** A failed resolver write, as the resolver shows it. */
+export interface ResolverFailure {
+  message: string;
+  /** Whether git or an agent changed the file since it was opened, so it must be reopened. */
+  stale: boolean;
+}
+
+export function resolverFailure(e: unknown, path: string): ResolverFailure {
+  switch (parseGitError(e)?.kind) {
+    case "conflictStale":
+      return {
+        message: `${path} changed since it was opened, by git or an agent, so nothing was written. Reopen it to see what it holds now.`,
+        stale: true,
+      };
+    case "stagingBusy":
+      return { message: "Another staging operation is still running on this worktree.", stale: false };
+    case "indexLocked":
+      return { message: "Another git process is holding index.lock. Quay never deletes it; retry once that process is done.", stale: false };
+  }
+  return { message: errorMessage(e), stale: false };
+}
+
+/**
+ * The labels over the two sides: role and real ref as the banner names them, with git's "ours" and
+ * "theirs" only in the tooltips. A conflict with no operation under way has no roles to name.
+ */
+export function paneLabels(op: OpState): { left: SideView; right: SideView } {
+  const view = bannerView(op, { running: false });
+  if (view?.kind === "operation") return { left: view.left, right: view.right };
+  return {
+    left: { text: "Left side", tooltip: "The version already on this branch. git calls this side “ours”." },
+    right: { text: "Right side", tooltip: "The version coming in. git calls this side “theirs”." },
   };
 }

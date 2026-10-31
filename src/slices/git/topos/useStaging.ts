@@ -24,7 +24,7 @@ export type StatusState =
 
 /** The staging operation running now, so its button shows busy and the others wait. */
 export interface BusyOp {
-  action: StagingAction | "discard" | "restore" | "copy" | "commit" | "operation";
+  action: StagingAction | "discard" | "restore" | "copy" | "commit" | "operation" | "resolve";
   target: PathTarget;
   /** For a stage or unstage from the diff view, what part of the file it acts on. */
   selection?: Selection;
@@ -109,6 +109,11 @@ export interface Staging {
    * operations. The new diff, which answers `diffRequestId`, is the caller's.
    */
   discardSelection: (request: DiscardRequest, diffRequestId: number) => Promise<SelectionOutcome>;
+  /**
+   * Records backups another operation took, such as the resolver's Reset file (#390), in Recently
+   * discarded with an Undo toast, and says so.
+   */
+  recordDiscard: (worktree: string, label: string, backups: DiscardBackup[]) => void;
   /** This worktree's discards this session, newest first. */
   discards: readonly DiscardEntry[];
   /** The discard the Undo toast offers, for `UNDO_MS` after it lands. */
@@ -445,6 +450,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     stageSelection,
     discard,
     discardSelection,
+    recordDiscard,
     discards,
     undo: shownUndo,
     dismissUndo,
