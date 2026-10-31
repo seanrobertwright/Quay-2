@@ -88,17 +88,16 @@ test("the inspector opens 400 px wide and its handle resizes it within bounds", 
   assert.equal(inspectorWidthByKey(400, "s", false), null);
 });
 
-test("the diff answers ↑/↓, Shift+↑/↓, Space, n/p and s/u, never in a text field or with a chord", () => {
-  const press = (key: string, shiftKey = false) => diffKeyAction({ key, ...plain, shiftKey }, false);
+test("the diff answers ↑/↓, Shift+↑/↓, Space, n/p and s/u, never with a chord", () => {
+  const press = (key: string, shiftKey = false) => diffKeyAction({ key, ...plain, shiftKey });
   assert.deepEqual(
     [press("ArrowUp"), press("ArrowDown"), press("ArrowUp", true), press("ArrowDown", true), press(" ")],
     ["up", "down", "extendUp", "extendDown", "toggle"]
   );
   assert.deepEqual([press("n"), press("p"), press("s"), press("u"), press("x"), press("Tab")], ["nextHunk", "prevHunk", "stage", "unstage", null, null]);
-  assert.equal(diffKeyAction({ key: "s", ...plain }, true), null);
   for (const mod of ["ctrlKey", "altKey", "metaKey"] as const) {
     for (const key of ["b", "k", "s", "u", "n", "1", " ", "ArrowDown"]) {
-      assert.equal(diffKeyAction({ key, ...plain, [mod]: true }, false), null, `${mod}+${key}`);
+      assert.equal(diffKeyAction({ key, ...plain, [mod]: true }), null, `${mod}+${key}`);
     }
   }
 });

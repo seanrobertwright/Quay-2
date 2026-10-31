@@ -347,7 +347,7 @@ export const DiffEditor: React.FC<DiffEditorProps> = ({
           EditorView.domEventHandlers({
             keydown(e) {
               const sel = latest.current.lines;
-              const act = sel ? diffKeyAction(e, false) : null;
+              const act = sel ? diffKeyAction(e) : null;
               if (!sel || act === null) return false;
               e.preventDefault();
               sel.onKey(doc, act);

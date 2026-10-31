@@ -21,7 +21,7 @@ import {
   type EffectiveSelection,
   type LineSelection,
 } from "./lineSelection";
-import type { DiffKeyAction, StageDirection } from "./stagingKeys";
+import { BUSY_MESSAGE, type DiffKeyAction, type StageDirection } from "./stagingKeys";
 import type { Side } from "./stagingLists";
 import type { FileDiffReader, OpenFile } from "./useFileDiff";
 import type { BusyOp } from "./useStaging";
@@ -185,7 +185,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
 
   const stageLines = useCallback(() => {
     const { sel: s, act: run, busy: running, announce: say } = live.current;
-    if (running !== null) return say("Wait for the running staging operation to finish");
+    if (running !== null) return say(BUSY_MESSAGE);
     const keys = effectiveOf(live.current.diff, s, live.current.direction).keys;
     if (keys.size > 0) run({ kind: "lines", lines: selectedRefs(keys) });
   }, []);
@@ -203,7 +203,7 @@ export const FileDiffView: React.FC<FileDiffViewProps> = ({
         if (action !== dir) {
           return say(dir === "stage" ? "These changes are unstaged: press s to stage them" : "These changes are staged: press u to unstage them");
         }
-        if (running !== null) return say("Wait for the running staging operation to finish");
+        if (running !== null) return say(BUSY_MESSAGE);
         if (effectiveOf(d, s, dir).keys.size > 0) return stageLines();
         if (s.cursor !== null) return run({ kind: "hunks", hunks: [s.cursor.hunk] });
         return say("Select lines first: move with ↑ and ↓ and press Space");

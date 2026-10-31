@@ -45,11 +45,11 @@ export type DiffKeyAction = "up" | "down" | "extendUp" | "extendDown" | "toggle"
 /**
  * What `e` does in the diff view (#366, #386): ↑/↓ move between changed lines and Shift+↑/↓
  * extend the selection, Space selects or deselects the line, `n`/`p` jump to the next or previous
- * hunk, and `s`/`u` stage or unstage. As in the lists, nothing acts in a text field and no chord
- * with Ctrl, Alt or Meta is taken.
+ * hunk, and `s`/`u` stage or unstage. As in the lists, no chord with Ctrl, Alt or Meta is taken.
+ * The diff is read-only, so it has no text field to stand aside for.
  */
-export function diffKeyAction(e: KeyPress, inTextField: boolean): DiffKeyAction | null {
-  if (inTextField || e.ctrlKey || e.altKey || e.metaKey) return null;
+export function diffKeyAction(e: KeyPress): DiffKeyAction | null {
+  if (e.ctrlKey || e.altKey || e.metaKey) return null;
   switch (e.key) {
     case "ArrowUp":
       return e.shiftKey ? "extendUp" : "up";
@@ -73,6 +73,9 @@ export function diffKeyAction(e: KeyPress, inTextField: boolean): DiffKeyAction 
       return null;
   }
 }
+
+/** What a stage or unstage key announces while another staging operation runs. */
+export const BUSY_MESSAGE = "Wait for the running staging operation to finish";
 
 /** The WIP row's text: every change, including those past the status cap. */
 export function wipLabel(total: number): string {

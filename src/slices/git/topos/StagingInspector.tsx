@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, Re
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import {
+  BUSY_MESSAGE,
   capNote,
   clampInspectorWidth,
   inspectorWidthByKey,
@@ -181,7 +182,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onOpen
           return;
         }
         if (busy !== null) {
-          announce("Wait for the running staging operation to finish");
+          announce(BUSY_MESSAGE);
           return;
         }
         if (rowTarget(row)) onAct(row);
