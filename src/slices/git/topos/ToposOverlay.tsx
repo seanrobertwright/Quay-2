@@ -29,6 +29,11 @@ import { offerSpeedup } from "./speedup";
 import { SpeedupBanner, SpeedupDialog } from "./SpeedupDialog";
 import { useSpeedup } from "./useSpeedup";
 import { isSamePath } from "../../../utils/paths";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { checkoutBlockedBy, type RefContext } from "./refActions";
+import { ToastQueue } from "./ToastQueue";
+import type { ToposRequestKind } from "./toposPalette";
+import { useRefActions } from "./useRefActions";
 
 /** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
 export interface ToposTarget {
@@ -51,6 +56,13 @@ export interface ToposOverlayProps {
   onOpenTerminal?: (cwd: string) => void;
   /** Starts an agent terminal in `cwd` for a conflict handed to a new agent (#392). */
   onNewAgent?: (cwd: string) => Promise<TerminalInfo | null>;
+  /**
+   * Retargets the Rail selection to the worktree at `path`, for "Show that worktree" (#393).
+   * Resolves to false when the Rail doesn't list that worktree.
+   */
+  onShowWorktree?: (path: string) => boolean;
+  /** A palette entry's request (#393), with a count so the same request twice runs twice. */
+  request?: { kind: ToposRequestKind; seq: number } | null;
 }
 
 type VersionCheck =
@@ -64,7 +76,17 @@ type VersionCheck =
  * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
  * selection it was shown with, and checks git's version on its first open (#369).
  */
-export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onClose, onAddProject, terminals, onOpenTerminal, onNewAgent }) => {
+export const ToposOverlay: React.FC<ToposOverlayProps> = ({
+  isOpen,
+  project,
+  onClose,
+  onAddProject,
+  terminals,
+  onOpenTerminal,
+  onNewAgent,
+  onShowWorktree,
+  request = null,
+}) => {
   const titleId = useId();
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
 
@@ -189,6 +211,34 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
         : null,
     [changed, headOid, target, inspectorOpen, inspectorId]
   );
+  // Checkout and create branch from badges, rows, keys and the palette (#393).
+  const showWorktree = useCallback((path: string) => onShowWorktree?.(path) ?? false, [onShowWorktree]);
+  const openInspector = useCallback(() => setInspectorOpen(true), []);
+  const refActions = useRefActions({
+    worktreePath: graphRepo !== null ? selectedPath : null,
+    repoPath: graphRepo,
+    staging,
+    refs: refsReader,
+    onLanded: liveUpdates.committed,
+    onShowWorktree: showWorktree,
+    onOpenInspector: openInspector,
+  });
+  const opKind = operation.op?.kind ?? null;
+  const slotBusy = staging.busy !== null;
+  const refWorktrees = refs.state === "done" ? refs.refs.worktrees : null;
+  const refContext = useMemo<RefContext | null>(
+    () => (refWorktrees === null ? null : { selectedPath, worktrees: refWorktrees, busy: checkoutBlockedBy(opKind, slotBusy) }),
+    [refWorktrees, selectedPath, opKind, slotBusy]
+  );
+  // A palette request runs once Topos shows a repo whose refs are read.
+  const handledRequest = useRef(0);
+  const { newBranch, pickCheckout } = refActions;
+  useEffect(() => {
+    if (!isOpen || request === null || request.seq === handledRequest.current || refContext === null) return;
+    handledRequest.current = request.seq;
+    if (request.kind === "newBranch") newBranch("HEAD");
+    else pickCheckout();
+  }, [isOpen, request, refContext, newBranch, pickCheckout]);
   const watch = graph.feed?.watch ?? null;
   // The speed-up banner (#385): after slow first rows, or past 50k commits with no commit-graph.
   const speedup = useSpeedup(graphRepo);
@@ -364,6 +414,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
                       refs={refsShown}
                       worktreeAgents={worktreeAgents}
                       wip={wip}
+                      refContext={refContext}
+                      onRefAction={refActions.run}
+                      onPrimary={refActions.runPrimary}
+                      announce={staging.announce}
                     />
                   </div>
                   {openFile && (
@@ -420,6 +474,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({ isOpen, project, onC
           fallbackFocus={panelProps.ref}
         />
         <HandToAgentDialog picker={handToAgent.picker} onChoose={handToAgent.choose} onCancel={handToAgent.closePicker} />
+        <ConfirmDialog request={refActions.dialog} onCancel={refActions.closeDialog} />
+        <ToastQueue toasts={refActions.toasts} onDismiss={refActions.dismiss} />
         {/* The staging inspector's, the commit composer's and the diff view's one live region, here so it stays while
             either is shown. Keyed by the count, so the same sentence twice in a row is announced twice. */}
         <div role="status" aria-live="polite" className="sr-only">

@@ -29,6 +29,7 @@ import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
 import { ToposOverlay, type ToposTarget } from "./slices/git/topos/ToposOverlay";
+import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
 import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
 import { A2AToast } from "./slices/orchestrator/A2AToast";
 import { submitPromptToTerminal } from "./slices/terminal/submitPrompt";
@@ -225,6 +226,34 @@ export function App() {
   );
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
   const closeTopos = useCallback(() => setIsToposOpen(false), [setIsToposOpen]);
+  // A Topos palette entry (#393) opens Topos on its dialog; the count makes a repeat run again.
+  const [toposRequest, setToposRequest] = useState<{ kind: ToposRequestKind; seq: number } | null>(null);
+  const requestTopos = useCallback(
+    (kind: ToposRequestKind) => {
+      setToposRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
+      setIsToposOpen(true);
+    },
+    [setIsToposOpen]
+  );
+  // "Show that worktree" (#393) selects the Rail entry for a worktree git names, however its
+  // path is spelled, and reports false when the Rail lists no such worktree.
+  const showToposWorktree = useCallback(
+    (path: string) => {
+      for (const p of projects) {
+        if (isSamePath(p.path, path)) {
+          setActiveProject(p.path);
+          return true;
+        }
+        const wt = projectWorktrees[p.path]?.find((w) => isSamePath(w.path, path));
+        if (wt) {
+          setActiveProject(wt.path);
+          return true;
+        }
+      }
+      return false;
+    },
+    [projects, projectWorktrees, setActiveProject]
+  );
   // A conflict Topos can't resolve, such as a submodule's, is resolved by hand in a shell there.
   const openToposTerminal = useCallback(
     (cwd: string) => {
@@ -580,6 +609,8 @@ export function App() {
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
         onOpenTopos={() => setIsToposOpen(true)}
+        toposTarget={toposTarget}
+        onToposRequest={requestTopos}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}
         onToggleLiveMode={
           activeTerminalId
@@ -781,6 +812,8 @@ export function App() {
         terminals={terminals}
         onOpenTerminal={openToposTerminal}
         onNewAgent={startToposAgent}
+        onShowWorktree={showToposWorktree}
+        request={toposRequest}
       />
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}

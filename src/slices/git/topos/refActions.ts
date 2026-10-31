@@ -2,9 +2,11 @@
 // double-click or Enter on a badge checks out, and the graph's keys for them.
 
 import { isSamePath } from "../../../utils/paths.ts";
+import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 import { folderName, type Badge, type WorktreeHead } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
+import { OPERATION_NOUNS } from "./operation.ts";
 
 /** `CheckoutTarget` from `src-tauri/src/slices/git/checkout.rs`. */
 export type CheckoutTarget =
@@ -84,7 +86,10 @@ export function commitMenu(oid: string, ctx: RefContext): MenuItem[] {
 }
 
 /** What a double-click or Enter on a badge does: an action, why it can't, or nothing. */
-export type PrimaryAction = { action: RefAction } | { blocked: string; worktree: string | null } | null;
+export type PrimaryAction =
+  | { kind: "run"; action: RefAction }
+  | { kind: "blocked"; reason: string; worktree: string | null }
+  | null;
 
 /**
  * A badge's double-click and Enter (#367): a local branch checks out, a remote branch checks out
@@ -94,10 +99,10 @@ export type PrimaryAction = { action: RefAction } | { blocked: string; worktree:
 export function primaryAction(badge: Badge, oid: string, ctx: RefContext): PrimaryAction {
   const [first] = badgeMenu(badge, oid, ctx);
   if (badge.kind === "tag" || first === undefined) return null;
-  if (first.action !== null) return { action: first.action };
+  if (first.action !== null) return { kind: "run", action: first.action };
   if (first.disabledReason === "Already checked out here") return null;
   const show = badge.kind === "local" ? localCheckout(badge.name, ctx).holder : null;
-  return { blocked: first.disabledReason, worktree: show };
+  return { kind: "blocked", reason: first.disabledReason, worktree: show };
 }
 
 /** The graph keys of #367, which act on the selected row or the badge the cursor is on. */
@@ -188,4 +193,15 @@ export function checkoutDone(target: CheckoutTarget, branch: string | null): str
     case "detached":
       return `Checked out ${shortOid(target.at)}, detached`;
   }
+}
+
+/**
+ * Why a checkout can't run in the selected worktree now, or null when it can: an operation under
+ * way there (#352), whose kind is `operation` (null before it is read), or another git operation
+ * running in its staging slot.
+ */
+export function checkoutBlockedBy(operation: Operation | null, slotBusy: boolean): string | null {
+  if (operation !== null && operation !== "none") return `Finish or abort the ${OPERATION_NOUNS[operation]} first`;
+  if (slotBusy) return "Wait for the git operation running in this worktree";
+  return null;
 }

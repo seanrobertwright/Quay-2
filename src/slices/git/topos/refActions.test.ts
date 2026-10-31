@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   badgeMenu,
+  checkoutBlockedBy,
   checkoutDone,
   commitMenu,
   graphKey,
@@ -89,17 +90,21 @@ test("while an operation is under way every checkout is disabled with the reason
 
 test("double-click or Enter checks out a local or remote badge, and only says why when it can't", () => {
   assert.deepEqual(primaryAction({ kind: "local", name: "side" }, A, ctx), {
+    kind: "run",
     action: { kind: "checkout", target: { kind: "branch", name: "side" } },
   });
   assert.deepEqual(primaryAction({ kind: "remote", name: "origin/topic" }, A, ctx), {
+    kind: "run",
     action: { kind: "checkout", target: { kind: "remote", name: "origin/topic" } },
   });
   assert.deepEqual(primaryAction({ kind: "local", name: "main" }, A, ctx), {
-    blocked: "Checked out in worktree repo",
+    kind: "blocked",
+    reason: "Checked out in worktree repo",
     worktree: "C:/src/repo",
   });
   assert.deepEqual(primaryAction({ kind: "local", name: "side" }, A, { ...ctx, busy: "Finish the rebase first" }), {
-    blocked: "Finish the rebase first",
+    kind: "blocked",
+    reason: "Finish the rebase first",
     worktree: null,
   });
 });
@@ -109,6 +114,7 @@ test("a tag and the selected worktree's HEAD have no double-click action; anothe
   assert.equal(primaryAction({ kind: "local", name: "feat" }, A, ctx), null);
   assert.equal(primaryAction({ kind: "head", name: "repo-feat", path: "C:/src/repo-feat", current: true }, A, ctx), null);
   assert.deepEqual(primaryAction({ kind: "head", name: "repo", path: "C:/src/repo", current: false }, A, ctx), {
+    kind: "run",
     action: { kind: "showWorktree", path: "C:/src/repo" },
   });
 });
@@ -175,4 +181,12 @@ test("a checkout's toast names the branch the worktree landed on, or the commit 
   assert.equal(checkoutDone({ kind: "branch", name: "side" }, "side"), "Checked out side");
   assert.equal(checkoutDone({ kind: "remote", name: "origin/topic" }, "topic"), "Checked out topic, tracking origin/topic");
   assert.equal(checkoutDone({ kind: "detached", at: A }, null), "Checked out aaaaaaa, detached");
+});
+
+test("checkout waits while an operation is under way or another git operation runs here", () => {
+  assert.equal(checkoutBlockedBy("none", false), null);
+  assert.equal(checkoutBlockedBy("merge", false), "Finish or abort the merge first");
+  assert.equal(checkoutBlockedBy("cherryPick", false), "Finish or abort the cherry-pick first");
+  assert.equal(checkoutBlockedBy(null, true), "Wait for the git operation running in this worktree");
+  assert.equal(checkoutBlockedBy("rebase", true), "Finish or abort the rebase first");
 });

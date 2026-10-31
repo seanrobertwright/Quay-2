@@ -24,6 +24,7 @@ import {
 import type { GraphFeed, GraphStatus } from "./graphFeed";
 import { hitNode, rowAt } from "./graphHit";
 import type { Badge, RefsView } from "./graphRefs";
+import { badgeMenu, commitMenu, graphKey, nextBadge, primaryAction, type MenuItem, type PrimaryAction, type RefAction, type RefContext } from "./refActions";
 import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
 import type { GraphAgent } from "./graphPage";
 import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
@@ -55,6 +56,14 @@ export interface GraphListProps {
   worktreeAgents: ReadonlyMap<string, RunKind[]>;
   /** The WIP row (#382), while the selected worktree is dirty; null hides it. */
   wip: WipRowProps | null;
+  /** What the badge and row menus need (#393); null offers no ref actions. */
+  refContext: RefContext | null;
+  /** Runs a menu item's or a key's action. */
+  onRefAction: (action: RefAction) => void;
+  /** Runs a badge's double-click or Enter, or says why it can't. */
+  onPrimary: (primary: PrimaryAction) => void;
+  /** Speaks a sentence in Topos's live region, such as the badge the cursor moved to. */
+  announce: (text: string) => void;
 }
 
 export interface WipRowProps {
@@ -153,23 +162,27 @@ function badgeTitle(b: Badge): string {
  * A commit's badges (#378). The selected worktree's HEAD reads "HEAD" in a filled badge, so it is
  * marked by text and shape as well as color, and its row carries `aria-current`.
  */
-const RowBadges: React.FC<{ badges: Badge[]; worktreeAgents: ReadonlyMap<string, RunKind[]> }> = ({
+const RowBadges: React.FC<{ badges: Badge[]; worktreeAgents: ReadonlyMap<string, RunKind[]>; cursor: number | null }> = ({
   badges,
   worktreeAgents,
+  cursor,
 }) => {
   const shown = badges.slice(0, SHOWN_BADGES);
   const rest = badges.slice(SHOWN_BADGES);
   return (
     <span className="shrink-0 flex items-center gap-1 max-w-[50%] overflow-hidden">
-      {shown.map((b) => {
+      {shown.map((b, i) => {
         const { Icon, className } = BADGE_KINDS[b.kind];
         const current = isCurrentHead(b);
         const look = current ? CURRENT_HEAD_CLASS : className;
         return (
           <span
             key={badgeKey(b)}
+            data-badge={i}
             title={badgeTitle(b)}
-            className={`inline-flex items-center gap-1 max-w-40 px-1.5 rounded border text-[10px] leading-4 ${look}`}
+            className={`inline-flex items-center gap-1 max-w-40 px-1.5 rounded border text-[10px] leading-4 ${look} ${
+              i === cursor ? "outline outline-1 outline-offset-1 outline-[#06B6D4]" : ""
+            }`}
           >
             <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
             {current && <span>HEAD</span>}
@@ -474,6 +487,93 @@ const TrackStrip = React.memo<{
   );
 });
 
+/** The badge under a pointer event, by its index among its row's shown badges, or null. */
+function badgeIndexAt(target: EventTarget): number | null {
+  const el = target instanceof Element ? target.closest("[data-badge]") : null;
+  const index = el ? Number(el.getAttribute("data-badge")) : NaN;
+  return Number.isSafeInteger(index) && index >= 0 ? index : null;
+}
+
+/** An open badge or commit-row menu: where it shows, in the list's own px, and what it offers. */
+interface OpenMenu {
+  x: number;
+  y: number;
+  /** Untrusted text: a ref name or a short oid, only ever rendered as text. */
+  label: string;
+  items: MenuItem[];
+}
+
+const MENU_WIDTH = 224;
+
+/**
+ * A badge's or a commit row's context menu (#367, #393), following the menu pattern: focus starts
+ * on its first item, the arrows, Home and End move it, Enter or Space runs an item, and Escape, Tab
+ * or a click outside closes it. A disabled item stays focusable and says why in its title.
+ */
+const RefMenu: React.FC<{ menu: OpenMenu; onRun: (action: RefAction) => void; onClose: (refocus: boolean) => void }> = ({
+  menu,
+  onRun,
+  onClose,
+}) => {
+  const list = useRef<HTMLUListElement>(null);
+  const items = useRef<(HTMLButtonElement | null)[]>([]);
+  const [focused, setFocused] = useState(0);
+  useEffect(() => {
+    items.current[focused]?.focus();
+  }, [focused, menu]);
+  usePopupLayer(true, () => onClose(true), list);
+  return (
+    <ul
+      ref={list}
+      role="menu"
+      aria-label={`Actions for ${menu.label}`}
+      onKeyDown={(e) => {
+        const next = menuIndexByKey(focused, menu.items.length, e.key);
+        if (next !== null) {
+          e.preventDefault();
+          setFocused(next);
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          onClose(true);
+        }
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose(false);
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+      className="absolute z-30 p-1 flex flex-col rounded border border-[#30363d] bg-[#161b22] shadow-lg"
+      style={{ left: menu.x, top: menu.y, width: MENU_WIDTH }}
+    >
+      {menu.items.map((item, i) => (
+        <li key={item.label} role="none">
+          <button
+            ref={(el) => {
+              items.current[i] = el;
+            }}
+            type="button"
+            role="menuitem"
+            tabIndex={i === focused ? 0 : -1}
+            aria-disabled={item.action === null}
+            title={item.disabledReason}
+            onClick={() => {
+              if (item.action === null) return;
+              onClose(true);
+              onRun(item.action);
+            }}
+            onMouseEnter={() => setFocused(i)}
+            className={`w-full text-left px-2 py-1 rounded text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60 ${
+              item.action === null ? "text-[#6e7681] cursor-default" : "text-[#c9d1d9] hover:bg-[#0d1117] focus:bg-[#0d1117]"
+            }`}
+          >
+            <span className="block truncate">{item.label}</span>
+            {item.disabledReason && <span className="block truncate text-[10px] text-[#6e7681]">{item.disabledReason}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 /**
  * The commit list (#374): one scroll container over a spacer as tall as every loaded row, with
  * only a window of rows in the DOM, and the lane graph (#375) drawn over the window's left edge in
@@ -490,6 +590,10 @@ export const GraphList: React.FC<GraphListProps> = ({
   refs,
   worktreeAgents,
   wip,
+  refContext,
+  onRefAction,
+  onPrimary,
+  announce,
 }) => {
   const scroller = useRef<HTMLDivElement>(null);
   // The content offset in px lives in a ref: only a change of window or of top row, not every
@@ -510,6 +614,13 @@ export const GraphList: React.FC<GraphListProps> = ({
   // Keyed by session, so a session reopened in place doesn't inherit another history's row.
   const [active, setActive] = useState<{ sessionId: number; row: number } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  // The badge the keyboard cursor is on in the active row (#393), by its index among the shown
+  // badges, or null for the row itself. Keyed by the row, so it resets when the row changes.
+  const [cursor, setCursor] = useState<{ row: number; index: number } | null>(null);
+  const [menu, setMenu] = useState<OpenMenu | null>(null);
+  // The box menus are placed in: the overlay's backdrop filter makes `position: fixed` relative to
+  // it, so menus are placed in this frame's own px instead.
+  const frame = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const idPrefix = useId();
   const scale = useMemo(() => scrollScale(rowCount * ROW_HEIGHT, height), [rowCount, height]);
@@ -619,6 +730,10 @@ export const GraphList: React.FC<GraphListProps> = ({
 
   // Natively the browser scrolls for these keys; scaled it would move the scrollbar, not the content.
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && onGraphKey(e)) {
+      e.preventDefault();
+      return;
+    }
     if (!scaleRef.current.scaled || e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return;
     const next = keyOffset(scaleRef.current, offset.current, e.key, e.shiftKey, e.currentTarget.clientHeight);
     if (next === null) return;
@@ -645,6 +760,101 @@ export const GraphList: React.FC<GraphListProps> = ({
     win
   );
   const hovered = hover !== null && hover >= win.start && hover < win.end ? hover : null;
+  const cursorIndex = cursor !== null && cursor.row === activeRow ? cursor.index : null;
+
+  /** The badges `row` shows, the ones a cursor or a click can land on. */
+  const shownBadges = (row: number): Badge[] => (store ? (refs.badges.get(store.oid(row)) ?? []).slice(0, SHOWN_BADGES) : []);
+
+  /** Opens the menu of `row`'s badge `index`, or of the row itself, at `point` in viewport px. */
+  const openMenu = (row: number, index: number | null, point: { x: number; y: number }) => {
+    if (!store || refContext === null) return;
+    const oid = store.oid(row);
+    const badge = index === null ? undefined : shownBadges(row)[index];
+    let items = badge ? badgeMenu(badge, oid, refContext) : [];
+    let label = badge ? badge.name : shortOid(oid);
+    // The selected worktree's own HEAD has no menu of its own, so it falls back to the commit's.
+    if (items.length === 0) {
+      items = commitMenu(oid, refContext);
+      label = shortOid(oid);
+    }
+    const box = frame.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = Math.max(0, Math.min(point.x - box.left, box.width - MENU_WIDTH));
+    const y = Math.max(0, Math.min(point.y - box.top, box.height - items.length * 40 - 8));
+    setMenu({ x, y, label, items });
+  };
+
+  const closeMenu = useCallback((refocus: boolean) => {
+    setMenu(null);
+    if (refocus) scroller.current?.focus({ preventScroll: true });
+  }, []);
+
+  /** Opens the active row's menu, or its cursor badge's, under it. */
+  const openMenuByKey = () => {
+    if (activeRow === null) return;
+    const rowEl = document.getElementById(`${idPrefix}-row-${activeRow}`);
+    const badgeEl = cursorIndex === null ? null : rowEl?.querySelector(`[data-badge="${cursorIndex}"]`);
+    const anchor = (badgeEl ?? rowEl)?.getBoundingClientRect();
+    if (!anchor) return;
+    openMenu(activeRow, cursorIndex, { x: anchor.left + (badgeEl ? 0 : 48), y: anchor.bottom });
+  };
+
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!store || refContext === null) return;
+    // A keyboard-opened menu (Shift+F10, the menu key) targets the listbox itself and opens at the
+    // active row; one from the pointer opens where it was clicked.
+    if (e.target === e.currentTarget) {
+      if (menu === null) openMenuByKey();
+      return;
+    }
+    const row = rowAt(e.clientY - (layer.current?.getBoundingClientRect().top ?? 0), win);
+    if (row === null) return;
+    const index = badgeIndexAt(e.target);
+    setActive({ sessionId: store.sessionId, row });
+    setCursor(index === null ? null : { row, index });
+    openMenu(row, index, { x: e.clientX, y: e.clientY });
+  };
+
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // A double-click on a commit row only selects it, which its pointer-down already did (#367).
+    if (!store || refContext === null) return;
+    const index = badgeIndexAt(e.target);
+    const row = rowAt(e.clientY - e.currentTarget.getBoundingClientRect().top, win);
+    if (index === null || row === null) return;
+    const badge = shownBadges(row)[index];
+    if (badge) onPrimary(primaryAction(badge, store.oid(row), refContext));
+  };
+
+  /** Handles a graph key (#367) on the listbox; returns whether it did. */
+  const onGraphKey = (e: React.KeyboardEvent<HTMLDivElement>): boolean => {
+    const key = graphKey(e, false);
+    if (key === null || !store || refContext === null || activeRow === null) return false;
+    const oid = store.oid(activeRow);
+    const badges = shownBadges(activeRow);
+    switch (key) {
+      case "createBranch":
+        onRefAction({ kind: "createBranch", at: oid });
+        return true;
+      case "checkout": {
+        const badge = cursorIndex === null ? undefined : badges[cursorIndex];
+        if (!badge) return false;
+        onPrimary(primaryAction(badge, oid, refContext));
+        return true;
+      }
+      case "menu":
+        openMenuByKey();
+        return true;
+      case "nextBadge":
+      case "previousBadge": {
+        const index = nextBadge(cursorIndex, badges.length, key);
+        setCursor(index === null ? null : { row: activeRow, index });
+        const badge = index === null ? undefined : badges[index];
+        announce(badge ? `${badgeTitle(badge)}. Enter checks out; Shift+F10 opens its menu.` : `Commit ${shortOid(oid)}`);
+        return true;
+      }
+    }
+  };
 
   // One handler for the whole canvas: the hovered node comes from arithmetic over the pointer's
   // position, not from listeners on each node (#351).
@@ -691,7 +901,7 @@ export const GraphList: React.FC<GraphListProps> = ({
         >
           {/* The node's spoken label; the node itself is drawn in the aria-hidden lane graph. */}
           <span role="img" aria-label={nodeLabel(agent, author.name)} className="shrink-0" style={{ width: layout.width }} />
-          {rowBadges && <RowBadges badges={rowBadges} worktreeAgents={worktreeAgents} />}
+          {rowBadges && <RowBadges badges={rowBadges} worktreeAgents={worktreeAgents} cursor={isActive ? cursorIndex : null} />}
           <span className="flex-1 min-w-0 truncate text-[#c9d1d9]" title={subject}>
             {subject}
           </span>
@@ -706,7 +916,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     }
     return out;
     // Rows already loaded never change, so the window and the row count cover the store growing.
-  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents]);
+  }, [store, win, activeRow, layout.width, idPrefix, statusState, rowCount, refs.badges, worktreeAgents, cursorIndex]);
 
   const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -737,11 +947,12 @@ export const GraphList: React.FC<GraphListProps> = ({
     <div className="flex-1 flex flex-col min-h-0">
       <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
       {wip && <WipRow wip={wip} store={store} layout={layout} />}
-      <div className="relative flex-1 min-h-0 flex flex-col">
+      <div ref={frame} className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scroller}
           onScroll={onScroll}
           onKeyDown={onKeyDown}
+          onContextMenu={onContextMenu}
           role="listbox"
           aria-label="Commits"
           aria-busy={status.state === "loading"}
@@ -758,6 +969,7 @@ export const GraphList: React.FC<GraphListProps> = ({
               onPointerMove={onPointerMove}
               onPointerLeave={() => setHover(null)}
               onPointerDown={onPointerDown}
+              onDoubleClick={onDoubleClick}
             >
               {rows}
               {store && win.end > win.start && (
@@ -791,6 +1003,7 @@ export const GraphList: React.FC<GraphListProps> = ({
             </div>
           </div>
         </div>
+        {menu && <RefMenu menu={menu} onRun={onRefAction} onClose={closeMenu} />}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow) */}
         <div role="separator" tabIndex={0}
           aria-orientation="vertical"

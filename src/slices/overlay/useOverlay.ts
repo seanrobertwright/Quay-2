@@ -57,7 +57,7 @@ export function usePopupLayer(isOpen: boolean, onClose: () => void, popupRef: Re
 }
 
 /** The controls a dialog's focus trap moves between. */
-const DIALOG_CONTROLS = "input:not(:disabled), button:not(:disabled)";
+const DIALOG_CONTROLS = "input:not(:disabled), select:not(:disabled), button:not(:disabled)";
 
 /**
  * Focus for a modal dialog drawn inside an overlay while `isOpen`: it starts on the first enabled
