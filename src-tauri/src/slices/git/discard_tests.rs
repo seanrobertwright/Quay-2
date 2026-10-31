@@ -307,8 +307,17 @@ fn block_blob(wt: &Path, bytes: &[u8]) {
     let oid = git(wt, &["hash-object", "--no-filters", "probe.tmp"]).trim().to_string();
     std::fs::remove_file(&probe).unwrap();
     let objects = PathBuf::from(git(wt, &["rev-parse", "--path-format=absolute", "--git-path", "objects"]).trim());
-    assert!(!objects.join(&oid[..2]).exists(), "pick bytes whose fan-out folder is new");
-    std::fs::write(objects.join(&oid[..2]), "not a folder").unwrap();
+    let fan_out = objects.join(&oid[..2]);
+    if fan_out.is_dir() {
+        // A fixture commit's oid (it carries the commit time) landed in this folder. Pack the
+        // loose objects so the folder empties, then take it over.
+        git(wt, &["repack", "-a", "-d", "-q", "--keep-unreachable"]);
+        if fan_out.is_dir() {
+            std::fs::remove_dir(&fan_out).expect("repack leaves the fan-out folder empty");
+        }
+    }
+    assert!(!fan_out.exists(), "the blob's fan-out folder is free");
+    std::fs::write(&fan_out, "not a folder").unwrap();
 }
 
 #[test]
