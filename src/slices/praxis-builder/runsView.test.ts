@@ -10,6 +10,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createNewDraft } from "./drafts.ts";
 import type { CallOutcome } from "./praxisHost.ts";
+import { runEntry as entry, runsRecord } from "./fixtures/runs.ts";
 import { formatClock, formatDateTime } from "../../lib/dates.ts";
 
 const { TemplateForm } = await import("./TemplateForm.tsx");
@@ -37,24 +38,7 @@ function setWindowVisible(visible: boolean): void {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
-function entry(n: number, extra: Record<string, unknown> = {}) {
-  return {
-    workOrderId: `wo-${n}`,
-    runId: `run-${n}`,
-    revision: 3,
-    createdAt: "2026-10-25T14:00:00.000Z",
-    status: "RUNNING",
-    stage: "IMPLEMENTATION",
-    control: "RUNNING",
-    held: false,
-    ...extra,
-  };
-}
-
-const runs = (entries: unknown[], extra: Record<string, unknown> = {}): CallOutcome => ({
-  kind: "record",
-  record: { format: "aiws-workflow-runs/1", template: NAME, runs: entries, ...extra },
-});
+const runs = (entries: unknown[], extra: Record<string, unknown> = {}) => runsRecord(NAME, entries, extra);
 
 interface Sent {
   command: string;

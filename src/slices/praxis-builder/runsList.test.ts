@@ -2,6 +2,7 @@ import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { createRunsList, type RunsList } from "./runsList.ts";
 import type { CallOutcome } from "./praxisHost.ts";
+import { runEntry as entry, runsRecord } from "./fixtures/runs.ts";
 
 const PROJECT = "E:/work/app";
 const NAME = "review-code";
@@ -13,25 +14,7 @@ const settle = async () => {
   for (let i = 0; i < 8; i += 1) await Promise.resolve();
 };
 
-/** A run entry as `aiws-workflow-runs/1` has it. */
-function entry(n: number, extra: Record<string, unknown> = {}) {
-  return {
-    workOrderId: `wo-${n}`,
-    runId: `run-${n}`,
-    revision: 3,
-    createdAt: "2026-10-25T14:00:00.000Z",
-    status: "RUNNING",
-    stage: "IMPLEMENTATION",
-    control: "RUNNING",
-    held: false,
-    ...extra,
-  };
-}
-
-const runs = (entries: unknown[], extra: Record<string, unknown> = {}): CallOutcome => ({
-  kind: "record",
-  record: { format: "aiws-workflow-runs/1", template: NAME, runs: entries, ...extra },
-});
+const runs = (entries: unknown[], extra: Record<string, unknown> = {}) => runsRecord(NAME, entries, extra);
 
 /** A fake backend: each `praxis_host_runs` call waits until the test answers it. */
 function fakeBackend() {
