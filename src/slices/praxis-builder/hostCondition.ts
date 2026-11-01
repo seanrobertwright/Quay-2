@@ -36,6 +36,8 @@ export interface HostConditionView {
   tone: HostTone;
   /** True while the host can't be used, which is when a view that needs it rechecks. */
   failing: boolean;
+  /** True while the host can be used: signed in, or simulated. A condition not checked yet is neither. */
+  usable: boolean;
   panel: HostPanel | null;
   /** A standing notice shown for as long as the condition holds. */
   banner: string | null;
@@ -55,6 +57,7 @@ export function hostConditionView(condition: HostCondition): HostConditionView {
     label,
     tone,
     failing: tone === "error",
+    usable: tone === "ok" || tone === "amber",
     panel,
     banner: null,
   });

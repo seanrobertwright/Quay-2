@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
+use super::template_digest::template_digest;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
     IdMismatch, LayoutInput, PraxisKind, SaveOutcome,
@@ -258,14 +259,24 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 Ok(()) => match confined_file(repo, &dir, &id) {
                     Err(why) => Err(FileProblem::new(why)),
                     Ok(None) => Err(FileProblem::new("The file disappeared while listing.")),
-                    Ok(Some(path)) => parse_object_file(&path),
+                    Ok(Some(path)) => read_capped(&path).and_then(|bytes| Ok((parse_object(&bytes)?, bytes))),
                 },
             };
+            let empty = |id: String, problem: Option<FileProblem>| DefinitionEntry {
+                id,
+                problem,
+                id_mismatch: None,
+                name_problem: None,
+                graph_id: None,
+                cost_unit: None,
+                template_digest: None,
+            };
             match parsed {
-                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, name_problem: None, graph_id: None, cost_unit: None },
-                Ok(record) => {
+                Err(problem) => empty(id, Some(problem)),
+                Ok((record, bytes)) => {
                     let Some(id_field) = kind.id_field() else {
-                        return DefinitionEntry { id, problem: None, id_mismatch: None, name_problem: None, graph_id: None, cost_unit: None };
+                        let template_digest = (kind == PraxisKind::Templates).then(|| template_digest(&bytes)).flatten();
+                        return DefinitionEntry { template_digest, ..empty(id, None) };
                     };
                     let found = record.get(id_field).and_then(Value::as_str);
                     let id_mismatch =
@@ -277,7 +288,7 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                     };
                     let graph_id = binding_field("graphId");
                     let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
-                    DefinitionEntry { id, problem: None, id_mismatch, name_problem: None, graph_id, cost_unit }
+                    DefinitionEntry { id_mismatch, graph_id, cost_unit, ..empty(id, None) }
                 }
             }
         })
@@ -636,6 +647,7 @@ pub fn save_definition(
         layout_error,
         bindings_hash,
         bindings_error,
+        template_digest: (kind == PraxisKind::Templates).then(|| template_digest(text.as_bytes())).flatten(),
     })
 }
 
@@ -884,6 +896,47 @@ mod tests {
         assert_eq!(by_id("fix-bug").name_problem, None);
         let graphs = list_definitions(&repo, PraxisKind::Graphs).unwrap();
         assert_eq!(graphs.entries[0].name_problem, None, "only templates/ narrows");
+    }
+
+    /// One workflow template file and the `templateDigest` the AI-WS-SDK engine gives it at the
+    /// vendored pin, computed by the engine's own code. The fixture states how it was made.
+    fn engine_template_digest() -> (String, String) {
+        let fixture: Value = serde_json::from_str(include_str!("template_digest.fixture.json")).unwrap();
+        (fixture["file"].as_str().unwrap().to_string(), fixture["templateDigest"].as_str().unwrap().to_string())
+    }
+
+    #[test]
+    fn a_template_file_lists_with_the_digest_the_engine_gives_it() {
+        let repo = temp_repo();
+        let (file, digest) = engine_template_digest();
+        write(&repo, ".praxis/templates/review-code.json", &file);
+        let list = list_definitions(&repo, PraxisKind::Templates).unwrap();
+        assert_eq!(list.entries[0].template_digest.as_deref(), Some(digest.as_str()));
+    }
+
+    #[test]
+    fn a_saved_template_has_the_digest_the_engine_gives_its_file() {
+        let repo = temp_repo();
+        let (file, digest) = engine_template_digest();
+        let content: Value = serde_json::from_str(&file).unwrap();
+        let outcome = save_definition(&repo, PraxisKind::Templates, "review-code", content, None, None, None, None, false).unwrap();
+        let SaveOutcome::Saved { template_digest, .. } = outcome else { panic!("{outcome:?}") };
+        assert_eq!(template_digest.as_deref(), Some(digest.as_str()));
+        // Quay writes the file in its own key order, and the digest is still the engine's.
+        assert_ne!(std::fs::read_to_string(repo.join(".praxis/templates/review-code.json")).unwrap(), file);
+        let list = list_definitions(&repo, PraxisKind::Templates).unwrap();
+        assert_eq!(list.entries[0].template_digest.as_deref(), Some(digest.as_str()));
+    }
+
+    #[test]
+    fn only_a_template_file_that_parses_strictly_has_a_digest() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/broken.json", r#"{"description": "#);
+        write(&repo, ".praxis/templates/twice.json", r#"{"description": "a", "description": "b"}"#);
+        write(&repo, ".praxis/graphs/g.json", r#"{"id": "g"}"#);
+        let list = list_definitions(&repo, PraxisKind::Templates).unwrap();
+        assert!(list.entries.iter().all(|e| e.template_digest.is_none()), "{list:?}");
+        assert_eq!(list_definitions(&repo, PraxisKind::Graphs).unwrap().entries[0].template_digest, None);
     }
 
     #[test]

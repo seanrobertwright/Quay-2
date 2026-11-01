@@ -116,6 +116,7 @@ import { DiffView } from "./DiffView.tsx";
 import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
+import { useHostCatalog } from "./useHostCatalog.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
@@ -386,6 +387,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // The host chip (#448). A workflow template's work area is the view that needs the host, so
   // the 60 s recheck runs only while one is shown and its host condition is failing.
   const host = useHostCondition(projectPath, isOpen && openKind === "templates");
+  // Each workflow template's host state (#449), for the views that draw it. The Workflow
+  // templates group is shown whenever the builder is open with the project listed.
+  const listedTemplates = listing?.projectKey === projectKey ? listing.byKind.templates.list?.entries : undefined;
+  const hostCatalog = useHostCatalog(projectPath, listedTemplates, host.condition, isOpen);
+  const templateSaved = hostCatalog.saved;
   // Set up host, Start host and Sign in: `praxis` in a visible terminal, never headless.
   const runHostCommand = useCallback(
     (command: InteractiveCommand) => {
@@ -659,9 +665,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (outcome.status === "saved") {
       setRefreshCount((n) => n + 1);
       checkContext(path, ref);
+      // Saving a template rechecks that template's host state only.
+      if (ref.kind === "templates") templateSaved(path, ref.id, outcome.templateDigest ?? null);
     }
     return outcome;
-  }, [changeSessions, checkContext]);
+  }, [changeSessions, checkContext, templateSaved]);
 
   /** Saves one draft from the builder, asking about a conflict instead of overwriting. */
   const saveFromBuilder = useCallback(

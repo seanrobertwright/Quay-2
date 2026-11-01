@@ -56,3 +56,11 @@ test("a simulated host is amber and carries a standing banner that its approvals
   assert.equal(hostConditionView({ state: "hostUnreachable" }).tone, "error");
   assert.equal(hostConditionView({ state: "notCheckedYet" }).tone, "neutral");
 });
+
+test("only a signed-in or simulated host is usable", () => {
+  const usable = (["notCheckedYet", "noHostSetUp", "hostUnreachable", "notSignedIn", "signedIn", "simulatedHost"] as const).filter(
+    (state) => hostConditionView({ state }).usable,
+  );
+  assert.deepEqual(usable, ["signedIn", "simulatedHost"]);
+  assert.equal(hostConditionView({ state: "cliNotFound", reason: "x" }).usable, false);
+});

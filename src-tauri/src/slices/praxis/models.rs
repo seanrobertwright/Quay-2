@@ -115,6 +115,10 @@ pub struct DefinitionEntry {
     /// show the unit of the graphs it binds (#231, #274).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_unit: Option<String>,
+    /// A workflow template file's digest as the Praxis host computes it, see
+    /// [`template_digest`](super::template_digest::template_digest), when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_digest: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more
@@ -215,6 +219,9 @@ pub enum SaveOutcome {
         bindings_hash: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         bindings_error: Option<String>,
+        /// For a workflow template, the written file's digest as the Praxis host computes it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        template_digest: Option<String>,
     },
     Conflict { reason: ConflictReason },
 }

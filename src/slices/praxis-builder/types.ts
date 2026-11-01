@@ -21,6 +21,8 @@ export interface DefinitionEntry {
   graphId?: string;
   /** A graph binding's `costUnit`, when it is a string that isn't empty (#231, #274). */
   costUnit?: string;
+  /** A workflow template file's digest as the Praxis host computes it (#449), when it has one. */
+  templateDigest?: string;
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
@@ -81,6 +83,8 @@ export type SaveOutcome =
       layoutError?: string;
       bindingsHash?: string;
       bindingsError?: string;
+      /** For a workflow template, the written file's digest as the Praxis host computes it (#449). */
+      templateDigest?: string;
     }
   | { status: "conflict"; reason: "changed" | "deleted" };
 

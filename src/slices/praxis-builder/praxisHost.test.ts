@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkHost, openPraxisTerminal, type InteractiveCommand } from "./praxisHost.ts";
+import { checkHost, isHostLevelFailure, openPraxisTerminal, type CallOutcome, type InteractiveCommand } from "./praxisHost.ts";
 
 test("an interactive praxis command opens in a terminal in the project, as the backend spells it", async () => {
   const asked: InteractiveCommand[] = [];
@@ -64,4 +64,24 @@ test("an aborted check sends no call at all", async () => {
     calls.push(command);
   });
   assert.deepEqual(calls, []);
+});
+
+test("only the outcomes that say the host itself can't be used are host-level failures", () => {
+  const outcomes: CallOutcome[] = [
+    { kind: "record", record: {} },
+    { kind: "blocked", record: {}, blockingRunAddress: "r" },
+    { kind: "needsUpdate", detail: "d" },
+    { kind: "noHost", message: "m" },
+    { kind: "hostDown", message: "m" },
+    { kind: "notSignedIn", message: "m" },
+    { kind: "expired", message: "m" },
+    { kind: "refused", message: "m" },
+    { kind: "cliNotFound", reason: "r" },
+    { kind: "timedOut" },
+    { kind: "cancelled" },
+  ];
+  assert.deepEqual(
+    outcomes.filter(isHostLevelFailure).map((o) => o.kind),
+    ["noHost", "hostDown", "notSignedIn", "expired", "cliNotFound"],
+  );
 });

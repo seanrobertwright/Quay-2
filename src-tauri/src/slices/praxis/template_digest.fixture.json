@@ -1,0 +1,6 @@
+{
+  "provenance": "templateDigest from reviewWorkflowTemplate in engine/src/workflow-templates.ts of seanrobertwright/AI-WS-SDK at 1a62fec45b5e836d36b2da647712f13d52827bdd, run by template_digest.fixture.mjs on Node 24.20.0.",
+  "name": "review-code",
+  "file": "{\n  \"maxTotalActiveMs\": 60000,\n  \"maxTaskMs\": 10000,\n  \"maxAttempts\": 6,\n  \"reapproveCorrections\": true,\n  \"maxCorrections\": 1,\n  \"criteriaRef\": \"addition\",\n  \"outputPaths\": [\n    \"review.txt\"\n  ],\n  \"correction\": [\n    \"/usr/bin/node\",\n    \"fix.js\"\n  ],\n  \"validation\": [\n    \"/usr/bin/node\",\n    \"check.js\"\n  ],\n  \"implementation\": [\n    \"/usr/bin/node\",\n    \"review.js\"\n  ],\n  \"description\": \"Review the code: café, naïve, 日本語, a \\t tab, \\\"quotes\\\" and 🚀\"\n}\n",
+  "templateDigest": "77b13c1543f7b381848d78015ebe26fd45a2af628e7e485c97c88f8124a6fbcc"
+}

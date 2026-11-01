@@ -11,6 +11,7 @@ pub mod models;
 pub mod revision;
 pub mod store;
 pub mod template;
+pub mod template_digest;
 pub mod template_name;
 pub mod validate;
 

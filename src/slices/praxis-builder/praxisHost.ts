@@ -28,6 +28,20 @@ export type CallOutcome =
   | { kind: "timedOut" }
   | { kind: "cancelled" };
 
+/** True for the outcomes that say the host itself can't be used, rather than the one call failing. */
+export function isHostLevelFailure(outcome: CallOutcome): boolean {
+  switch (outcome.kind) {
+    case "noHost":
+    case "hostDown":
+    case "notSignedIn":
+    case "expired":
+    case "cliNotFound":
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** The payload of the `praxis-host-condition` event. */
 export interface HostConditionChange {
   projectPath: string;
