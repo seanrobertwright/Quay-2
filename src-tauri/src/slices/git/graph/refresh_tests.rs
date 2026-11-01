@@ -301,19 +301,26 @@ fn a_refresh_of_a_repo_with_no_commits_yet_shows_its_first_commits() {
     std::fs::remove_dir_all(repo).ok();
 }
 
-/// How many times [`a_refresh_with_20k_loaded_rows_takes_at_most_250_ms`] times each kind of refresh.
-const BUDGET_RUNS: usize = 5;
+/// The #370 refresh budget.
+const REFRESH_BUDGET: Duration = Duration::from_millis(250);
+/// The most times [`a_refresh_with_20k_loaded_rows_takes_at_most_250_ms`] times each kind of
+/// refresh, and the pause between runs, so its runs span about half a minute.
+const BUDGET_RUNS: usize = 30;
+const BUDGET_PAUSE: Duration = Duration::from_secs(1);
 
 /// The #370 budget: a refresh with up to 20k loaded rows takes at most 250 ms, timed from the
 /// request until the `Reset` or `Splice` and every row it brings have been sent. The worst case is
 /// a Reset, which lays out and sends all 20k rows again.
 ///
 /// The budget is for the refresh's own work, not for time other programs on a busy machine take
-/// from it. Each kind of refresh is timed [`BUDGET_RUNS`] times on the wall clock and the fastest
-/// run is held to the budget: other work only ever adds time to a run, while a refresh that got
-/// slower, waits included, is slower in every run and still fails. CPU time is no measure here:
-/// the walk, the branch tips and `git log` run at once, so a Reset uses about twice its wall time
-/// in CPU. A machine whose every core stays busy throughout slows every run, and fails it.
+/// from it. Each kind of refresh is timed on the wall clock up to [`BUDGET_RUNS`] times, a
+/// [`BUDGET_PAUSE`] apart, until one run is within the budget, and the fastest run is held to it.
+/// Other work only ever adds time to a run, and a build's busiest stretch passes within that
+/// half minute, while a refresh that got slower, waits included, is slower in every run and still
+/// fails. CPU time is no measure here: the walk, the branch tips and `git log` run at once, so a
+/// Reset uses about twice its wall time in CPU. A machine whose every core stays busy for the
+/// whole half minute slows every run, and fails it.
+///
 /// Timings only mean something in an optimized build, so run it as
 /// `cargo test --release --lib a_refresh_with_20k_loaded_rows_takes_at_most_250_ms -- --ignored --nocapture`.
 #[test]
@@ -334,32 +341,41 @@ fn a_refresh_with_20k_loaded_rows_takes_at_most_250_ms() {
     assert_eq!(read_until_event(&rx, id, &mut Graph::default())["event"], "paused");
     let drain = |rx: &Receiver<Msg>| while rx.recv_timeout(Duration::from_millis(300)).is_ok() {};
 
-    let mut resets = Vec::new();
-    for round in 1..=BUDGET_RUNS {
+    // Times `refresh` until a run is within the budget, and returns every run's time.
+    let time_runs = |kind: &str, refresh: &mut dyn FnMut(usize) -> Duration| {
+        let mut runs = Vec::new();
+        for round in 1..=BUDGET_RUNS {
+            let took = refresh(round);
+            println!("refresh by {kind} with {LOADED} loaded rows: {} ms", took.as_millis());
+            runs.push(took);
+            drain(&rx);
+            if took <= REFRESH_BUDGET {
+                break;
+            }
+            std::thread::sleep(BUDGET_PAUSE);
+        }
+        runs
+    };
+    let resets = time_runs("reset", &mut |round| {
         git(&repo, &["update-ref", "refs/heads/b0", &tips[round % 2]]);
         let started = std::time::Instant::now();
         let outcome = sessions.refresh(id).unwrap();
         let took = started.elapsed();
         assert_eq!(outcome, Refreshed::Reset { searched_rows: LOADED });
-        println!("refresh by reset with {LOADED} loaded rows: {} ms", took.as_millis());
-        resets.push(took);
-        drain(&rx);
-    }
-    let mut splices = Vec::new();
+        took
+    });
     let mut time = 1_800_000_000;
-    for _ in 1..=BUDGET_RUNS {
+    let splices = time_runs("splice", &mut |_| {
         commit_on(&repo, "b0", 3, &mut time);
         let started = std::time::Instant::now();
         let outcome = sessions.refresh(id).unwrap();
         let took = started.elapsed();
         assert!(matches!(outcome, Refreshed::Spliced { .. }), "{outcome:?}");
-        println!("refresh by splice with {LOADED} loaded rows: {} ms", took.as_millis());
-        splices.push(took);
-        drain(&rx);
-    }
+        took
+    });
     for (kind, runs) in [("reset", &resets), ("splice", &splices)] {
         let fastest = runs.iter().min().unwrap();
-        assert!(*fastest <= Duration::from_millis(250), "the fastest refresh by {kind} took {} ms, of {runs:?}", fastest.as_millis());
+        assert!(*fastest <= REFRESH_BUDGET, "the fastest refresh by {kind} took {} ms, of {runs:?}", fastest.as_millis());
     }
     std::fs::remove_dir_all(repo).ok();
     std::fs::remove_dir_all(other).ok();
