@@ -408,3 +408,26 @@ fn the_vendored_read_model_fixtures_hold() {
         }
     }
 }
+
+#[test]
+fn a_template_name_the_host_refuses_never_reaches_praxis() {
+    let h = Harness::new();
+    h.scenario(json!({ "stdout": fixture("WorkflowRuns") }));
+    let calls: [(Verb, &[&str]); 3] = [
+        (Verb::WorkflowsShow, &["workflows", "show", "Review_Code"]),
+        (Verb::Runs, &["runs", "review.code", "--limit", "20"]),
+        (Verb::Run, &["run", "con"]),
+    ];
+    for (verb, args) in calls {
+        match h.call(verb, args) {
+            CallOutcome::Refused { message } => {
+                assert_eq!(message, crate::slices::praxis::template_name::TEMPLATE_NAME_RULE, "{args:?}")
+            }
+            other => panic!("{args:?} gave {other:?}"),
+        }
+    }
+    assert!(h.calls().is_empty(), "{:?}", h.calls());
+    assert_eq!(h.condition(), HostCondition::NotCheckedYet);
+    // A name the rule admits still runs.
+    assert!(matches!(h.call(Verb::Runs, &["runs", "review-code", "--limit", "20"]), CallOutcome::Record { .. }));
+}

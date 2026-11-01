@@ -16,6 +16,7 @@ use super::launch::{self, Launch, LookupEnv};
 use super::outcome::{condition_after, interpret, CallOutcome, HostCondition, Verb};
 use super::process::{self, Bounds, Ended};
 use super::settings::{PraxisCliSettings, SettingsStore};
+use crate::slices::praxis::template_name::check_template_name;
 
 /// How long each kind of call may take and how much output it may print.
 #[derive(Debug, Clone, Copy)]
@@ -182,7 +183,15 @@ impl PraxisCli {
 
     /// Runs `praxis <args> --json`, with `--state` when an installation is set, for `project`,
     /// and updates `project`'s host condition from the outcome. Blocks until it ends.
+    ///
+    /// A command that names a workflow template whose name breaks the host's rule, or that
+    /// lacks the name, is refused before anything runs, and the condition is left alone.
     pub fn call(&self, project: &Path, verb: Verb, args: &[String], call_id: Uuid) -> CallOutcome {
+        if let Some(at) = verb.template_arg()
+            && let Err(message) = check_template_name(args.get(at).map_or("", String::as_str))
+        {
+            return CallOutcome::Refused { message };
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         lock(&self.inner.cancels).insert(call_id, cancel.clone());
         let outcome = match self.launch() {

@@ -1,7 +1,8 @@
 //! The Tauri commands for the Praxis CLI runner (#446). They are Quay's UI's only way to it:
 //! none is reachable through the MCP bridge or A2A (#228). Each one that calls `praxis` takes a
 //! registered project, whose host condition it updates, and a `callId` that
-//! [`praxis_host_cancel`] cancels.
+//! [`praxis_host_cancel`] cancels. A template name that breaks the host's rule comes back as a
+//! refusal from [`PraxisCli::call`], which never runs `praxis` with it.
 
 use std::path::PathBuf;
 
@@ -16,16 +17,6 @@ use crate::slices::workspace::WorkspaceManager;
 
 /// The most runs `praxis runs --limit` lists.
 pub const MAX_RUNS_LIMIT: u32 = 100;
-
-/// Refuses a template name that `praxis` would read as something else: empty, an option, or
-/// one with spaces or control characters. The host's own name rule is enforced separately.
-pub fn check_template_arg(name: &str) -> Result<(), String> {
-    let ok = !name.is_empty()
-        && name.len() <= 128
-        && !name.starts_with('-')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-    if ok { Ok(()) } else { Err(format!("{name:?} isn't a workflow template name praxis can be given.")) }
-}
 
 /// Refuses a run that breaks `praxis`'s run grammar: a letter or digit, then letters, digits,
 /// `.`, `_`, `:` or `-`, at most 256 characters (`runIdPattern` at the SDK pin).
@@ -82,7 +73,6 @@ pub async fn praxis_host_workflow_show(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    check_template_arg(&name)?;
     call(&cli, &workspace, &project_path, Verb::WorkflowsShow, vec!["workflows".into(), "show".into(), name], call_id).await
 }
 
@@ -96,7 +86,6 @@ pub async fn praxis_host_runs(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    check_template_arg(&name)?;
     check_runs_limit(limit)?;
     call(&cli, &workspace, &project_path, Verb::Runs, vec!["runs".into(), name, "--limit".into(), limit.to_string()], call_id).await
 }
@@ -126,7 +115,6 @@ pub async fn praxis_host_run(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    check_template_arg(&name)?;
     call(&cli, &workspace, &project_path, Verb::Run, vec!["run".into(), name], call_id).await
 }
 

@@ -31,6 +31,16 @@ impl Verb {
     pub fn creates(self) -> bool {
         self == Verb::Run
     }
+
+    /// Where in this command's arguments the workflow template name is, for the commands that
+    /// take one: `workflows show <name>`, `runs <name>` and `run <name>`.
+    pub fn template_arg(self) -> Option<usize> {
+        match self {
+            Verb::WorkflowsShow => Some(2),
+            Verb::Runs | Verb::Run => Some(1),
+            Verb::WorkflowsList | Verb::Status => None,
+        }
+    }
 }
 
 /// The record format `praxis run` prints with exit 7.
