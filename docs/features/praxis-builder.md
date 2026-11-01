@@ -180,7 +180,7 @@ Quay runs `praxis` from an AI-WS-SDK checkout, with Node 24 or later. To link it
 
 ### Per-user settings
 
-Two optional settings say where Quay finds `praxis` and which installation it uses. They live in `praxis-cli.json` in Quay's data folder (see [Configuration](../guide/configuration.md)). Quay has no screen for them, so edit the file by hand. Quay reads it when it starts, so restart Quay after editing it.
+Optional settings say where Quay finds `praxis` and which installation it uses. They live in `praxis-cli.json` in Quay's data folder (see [Configuration](../guide/configuration.md)). Quay has no screen for them, so edit the file by hand. Quay reads it when it starts, so restart Quay after editing it.
 
 ```json
 {
