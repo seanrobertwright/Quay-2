@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiws.dev/spec/engine-v1/read-models.schema.json",
+  "title": "Praxis contracted read models",
+  "description": "One $def per contracted read model or profile message (READ-MODELS.md). Each record names its format; x-aiws-format and x-aiws-stability give the format a $def describes and its stability. Objects are open: a client ignores fields it does not know. The engine's own tests apply these definitions in strict mode, so every field the engine emits is declared here.",
+  "$defs": {
+    "WorkflowCatalog": {
+      "x-aiws-format": "aiws-workflow-catalog/1",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "The workflow catalog list (GET /engine/workflow-catalog/v1): every template file in the host's template directory, with no readiness. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["format", "templates"],
+      "properties": {
+        "format": { "const": "aiws-workflow-catalog/1" },
+        "templates": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/WorkflowCatalogEntry" } }
+      }
+    },
+    "WorkflowCatalogEntry": {
+      "description": "One template file. A file whose name breaks the template name rule, or that is not a regular NAME.json file, is listed under the name its file gives, INVALID and with no revision.",
+      "type": "object",
+      "required": ["name", "revision", "description", "validity", "diagnostics"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "revision": { "$ref": "#/$defs/TemplateRevision" },
+        "description": { "anyOf": [{ "type": "string", "maxLength": 4096 }, { "type": "null" }] },
+        "validity": { "$ref": "#/$defs/TemplateValidity" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/TemplateDiagnostic" } }
+      }
+    },
+    "WorkflowTemplateDetail": {
+      "x-aiws-format": "aiws-workflow-catalog/1",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "One template's detail (GET /engine/workflow-catalog/v1/templates/NAME). For a VALID template, readiness, the binding review lines, the diagnostics and the template review digest come from the host's inspection run again for this request. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["format", "name", "revision", "description", "validity", "diagnostics", "templateDigest", "plan", "requirements", "limits", "readiness", "runnable", "bindingReviewLines", "reviewDigest"],
+      "properties": {
+        "format": { "const": "aiws-workflow-catalog/1" },
+        "name": { "$ref": "#/$defs/TemplateName" },
+        "revision": { "$ref": "#/$defs/TemplateRevision" },
+        "description": { "anyOf": [{ "type": "string", "maxLength": 4096 }, { "type": "null" }] },
+        "validity": { "$ref": "#/$defs/TemplateValidity" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/TemplateDiagnostic" } },
+        "templateDigest": { "description": "SHA-256 of the template's RFC 8785 canonical JSON, or of its bytes when they are not JSON; null when the file was not read.", "anyOf": [{ "$ref": "#/$defs/Digest" }, { "type": "null" }] },
+        "plan": { "description": "The identity-free plan of a VALID template; null when INVALID.", "anyOf": [{ "$ref": "#/$defs/TemplatePlan" }, { "type": "null" }] },
+        "requirements": { "description": "The template's readiness requirements, an aiws-requirements/2 record (readiness.schema.json Requirements), or null.", "anyOf": [{ "type": "object" }, { "type": "null" }] },
+        "limits": { "anyOf": [{ "$ref": "#/$defs/TemplateLimits" }, { "type": "null" }] },
+        "readiness": { "description": "Fresh readiness, an aiws-readiness/2 record (readiness.schema.json Report); null when INVALID or when the host could not inspect the agent.", "anyOf": [{ "type": "object" }, { "type": "null" }] },
+        "runnable": { "description": "VALID, with no error from the fresh review and readiness READY.", "type": "boolean" },
+        "bindingReviewLines": { "type": "array", "items": { "type": "string" } },
+        "reviewDigest": { "description": "The template review digest a creation request carries; null when INVALID or when no readiness binding could be made.", "anyOf": [{ "$ref": "#/$defs/Digest" }, { "type": "null" }] }
+      }
+    },
+    "WorkflowRunRequest": {
+      "x-aiws-format": "aiws-workflow-run/1",
+      "x-aiws-format-field": "profile",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "A run creation request (POST /engine/workflow-runs/v1), a closed profile message the client sends; it names its format in profile. The host's parser refuses any other field. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["profile", "requestId", "template", "revision", "reviewDigest"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "const": "aiws-workflow-run/1" },
+        "requestId": { "$ref": "#/$defs/RequestId" },
+        "template": { "$ref": "#/$defs/TemplateName" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "reviewDigest": { "description": "The template review digest from the template's detail.", "$ref": "#/$defs/Digest" }
+      }
+    },
+    "WorkflowRunResult": {
+      "x-aiws-format": "aiws-workflow-run-result/1",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "A created run: COMMITTED by this request, or REPLAYED from the receipt of an exact retry, with the original run. It carries no page address. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["format", "requestId", "disposition", "workOrderId", "runId", "revision", "status", "template"],
+      "properties": {
+        "format": { "const": "aiws-workflow-run-result/1" },
+        "requestId": { "$ref": "#/$defs/RequestId" },
+        "disposition": { "enum": ["COMMITTED", "REPLAYED"] },
+        "workOrderId": { "type": "string", "minLength": 1 },
+        "runId": { "type": "string", "minLength": 1 },
+        "revision": { "description": "The work order's revision when the run was created.", "type": "integer", "minimum": 1 },
+        "status": { "description": "The run's status when it was created, AWAITING_APPROVAL.", "type": "string", "minLength": 1 },
+        "template": { "$ref": "#/$defs/TemplateAssociation" }
+      }
+    },
+    "WorkflowRunError": {
+      "x-aiws-format": "aiws-workflow-run-error/1",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "A refused or uncertain creation. code is open: a client shows an unknown code with the requestId and acts on commitStatus. Only the fields a code carries are present. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["format", "requestId", "code", "commitStatus"],
+      "properties": {
+        "format": { "const": "aiws-workflow-run-error/1" },
+        "requestId": { "description": "The request's id, or null when the body gave none the parser could read.", "anyOf": [{ "$ref": "#/$defs/RequestId" }, { "type": "null" }] },
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+        "commitStatus": { "enum": ["NOT_COMMITTED", "UNKNOWN"] },
+        "currentRevision": { "description": "STALE_WORKFLOW_TEMPLATE only: the template's current revision.", "type": "integer", "minimum": 1 },
+        "reasons": { "description": "READINESS_BLOCKED only: why the host's fresh review is not runnable.", "type": "array", "items": { "type": "string" } },
+        "blockingWorkOrderId": { "description": "WORKFLOW_RUN_HELD and WORKFLOW_RUN_PENDING_APPROVAL only: the earlier open run of the template that needs a human first, the oldest such run by creation order.", "type": "string", "minLength": 1 },
+        "reason": { "description": "WORKFLOW_RUN_HELD only: HELD when that run is held or its scope has an open dispatch hold, UNRESOLVED_RESPONSIBILITY when it carries an attempt whose outcome is unresolved.", "enum": ["HELD", "UNRESOLVED_RESPONSIBILITY"] }
+      }
+    },
+    "WorkflowRuns": {
+      "x-aiws-format": "aiws-workflow-runs/1",
+      "x-aiws-stability": "PROVISIONAL",
+      "description": "A template's run list (GET /engine/workflow-catalog/v1/templates/NAME/runs?limit=N): the runs of every revision of that name, newest first by creation sequence, at most limit. WORKFLOW-TEMPLATES.md.",
+      "type": "object",
+      "required": ["format", "template", "runs"],
+      "properties": {
+        "format": { "const": "aiws-workflow-runs/1" },
+        "template": { "$ref": "#/$defs/TemplateName" },
+        "runs": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/WorkflowRunEntry" } }
+      }
+    },
+    "WorkflowRunEntry": {
+      "type": "object",
+      "required": ["workOrderId", "runId", "revision", "createdAt", "status", "stage", "control", "held"],
+      "properties": {
+        "workOrderId": { "type": "string", "minLength": 1 },
+        "runId": { "type": "string", "minLength": 1 },
+        "revision": { "description": "The template revision the run was created from.", "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "description": "The run's coding status, as a read reports it.", "type": "string", "minLength": 1 },
+        "stage": { "type": "string", "minLength": 1 },
+        "control": { "description": "The work order's control status.", "enum": ["RUNNING", "PAUSED", "CANCEL_PENDING", "CANCELED"] },
+        "held": { "description": "The run is HELD or its scope has an open dispatch hold.", "type": "boolean" }
+      }
+    },
+    "TemplateAssociation": {
+      "description": "A run's immutable association to the template it was created from.",
+      "type": "object",
+      "required": ["name", "revision", "templateDigest", "reviewDigest"],
+      "properties": {
+        "name": { "$ref": "#/$defs/TemplateName" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "templateDigest": { "$ref": "#/$defs/Digest" },
+        "reviewDigest": { "description": "The template review digest the creation request carried.", "$ref": "#/$defs/Digest" }
+      }
+    },
+    "RequestId": { "description": "A lowercase UUID the client generates.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "TemplateName": {
+      "description": "The template name rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and not a Windows reserved device name.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$",
+      "not": { "enum": ["con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"] }
+    },
+    "TemplateRevision": { "description": "The template's current revision, from 1; null for a file whose name breaks the rule or that was not read.", "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+    "TemplateValidity": { "enum": ["VALID", "INVALID"] },
+    "TemplateDiagnostic": {
+      "type": "object",
+      "required": ["field", "code", "severity", "message"],
+      "properties": {
+        "field": { "type": "string" },
+        "code": { "description": "Open: a client shows an unknown code with its message.", "type": "string", "minLength": 1 },
+        "severity": { "enum": ["ERROR", "WARNING"] },
+        "message": { "type": "string" }
+      }
+    },
+    "TemplatePlan": {
+      "description": "A guided-authoring coding plan without workOrderId and runId.",
+      "type": "object",
+      "required": ["description", "implementation", "validation", "correction", "outputPaths", "criteriaRef", "maxCorrections", "reapproveCorrections", "maxAttempts", "maxTaskMs", "maxTotalActiveMs"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "implementation": { "$ref": "#/$defs/Command" },
+        "validation": { "$ref": "#/$defs/Command" },
+        "correction": { "$ref": "#/$defs/Command" },
+        "outputPaths": { "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+        "criteriaRef": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "maxCorrections": { "type": "integer", "minimum": 0 },
+        "reapproveCorrections": { "type": "boolean" },
+        "maxAttempts": { "type": "integer", "minimum": 2 },
+        "maxTaskMs": { "type": "integer", "minimum": 1000, "maximum": 2147423647 },
+        "maxTotalActiveMs": { "type": "integer", "minimum": 1000 },
+        "exposure": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["BOUNDED", "NOT_APPLICABLE"] },
+            "allowance": { "$ref": "#/$defs/LedgerAmount" },
+            "stopThreshold": { "$ref": "#/$defs/LedgerAmount" },
+            "justification": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        },
+        "maxTotalCost": { "$ref": "#/$defs/LedgerAmount" },
+        "agent": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "TemplateLimits": {
+      "type": "object",
+      "required": ["maxCorrections", "maxAttempts", "maxTaskMs", "maxTotalActiveMs", "maxTotalCost"],
+      "properties": {
+        "maxCorrections": { "type": "integer", "minimum": 0 },
+        "maxAttempts": { "type": "integer", "minimum": 2 },
+        "maxTaskMs": { "type": "integer", "minimum": 1000 },
+        "maxTotalActiveMs": { "type": "integer", "minimum": 1000 },
+        "maxTotalCost": { "anyOf": [{ "$ref": "#/$defs/LedgerAmount" }, { "type": "null" }] }
+      }
+    },
+    "Command": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "maxLength": 65536 } },
+    "LedgerAmount": { "description": "An exact integer in the ledger cost unit, as a string.", "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+    "Digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

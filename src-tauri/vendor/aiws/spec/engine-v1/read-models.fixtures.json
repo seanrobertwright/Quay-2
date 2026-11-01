@@ -1,0 +1,1011 @@
+{
+  "profile": "aiws-read-model-fixtures/1",
+  "scope": "SHAPE_ONLY",
+  "cases": [
+    {
+      "name": "catalog list with valid and invalid templates",
+      "def": "WorkflowCatalog",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "templates": [
+          {
+            "name": "review-code",
+            "revision": 3,
+            "description": "Review the code",
+            "validity": "VALID",
+            "diagnostics": []
+          },
+          {
+            "name": "broken",
+            "revision": 1,
+            "description": "Broken",
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "maxAttempts",
+                "code": "INVALID_FIELD",
+                "severity": "ERROR",
+                "message": "Enter an exact integer between 2 and 9007199254740991. Attempts include implementation and validation."
+              }
+            ]
+          },
+          {
+            "name": "con",
+            "revision": null,
+            "description": null,
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "name",
+                "code": "INVALID_TEMPLATE_NAME",
+                "severity": "ERROR",
+                "message": "con is a Windows reserved device name; choose another workflow template name."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty catalog list",
+      "def": "WorkflowCatalog",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "templates": []
+      }
+    },
+    {
+      "name": "catalog list with an unknown field, ignored by clients",
+      "def": "WorkflowCatalog",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "templates": [
+          {
+            "name": "review-code",
+            "revision": 3,
+            "description": "Review the code",
+            "validity": "VALID",
+            "diagnostics": []
+          },
+          {
+            "name": "broken",
+            "revision": 1,
+            "description": "Broken",
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "maxAttempts",
+                "code": "INVALID_FIELD",
+                "severity": "ERROR",
+                "message": "Enter an exact integer between 2 and 9007199254740991. Attempts include implementation and validation."
+              }
+            ]
+          },
+          {
+            "name": "con",
+            "revision": null,
+            "description": null,
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "name",
+                "code": "INVALID_TEMPLATE_NAME",
+                "severity": "ERROR",
+                "message": "con is a Windows reserved device name; choose another workflow template name."
+              }
+            ]
+          }
+        ],
+        "servedAt": "ignored"
+      }
+    },
+    {
+      "name": "catalog list with an unknown validity",
+      "def": "WorkflowCatalog",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "templates": [
+          {
+            "name": "review-code",
+            "revision": 3,
+            "description": "Review the code",
+            "validity": "UNKNOWN",
+            "diagnostics": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "catalog list with revision 0",
+      "def": "WorkflowCatalog",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "templates": [
+          {
+            "name": "review-code",
+            "revision": 0,
+            "description": "Review the code",
+            "validity": "VALID",
+            "diagnostics": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "catalog list under another format",
+      "def": "WorkflowCatalog",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/2",
+        "templates": [
+          {
+            "name": "review-code",
+            "revision": 3,
+            "description": "Review the code",
+            "validity": "VALID",
+            "diagnostics": []
+          },
+          {
+            "name": "broken",
+            "revision": 1,
+            "description": "Broken",
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "maxAttempts",
+                "code": "INVALID_FIELD",
+                "severity": "ERROR",
+                "message": "Enter an exact integer between 2 and 9007199254740991. Attempts include implementation and validation."
+              }
+            ]
+          },
+          {
+            "name": "con",
+            "revision": null,
+            "description": null,
+            "validity": "INVALID",
+            "diagnostics": [
+              {
+                "field": "name",
+                "code": "INVALID_TEMPLATE_NAME",
+                "severity": "ERROR",
+                "message": "con is a Windows reserved device name; choose another workflow template name."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "detail of a runnable template",
+      "def": "WorkflowTemplateDetail",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail of a template whose agent is not ready",
+      "def": "WorkflowTemplateDetail",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "BLOCKED",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [
+            "The agent does not declare TOOL node."
+          ],
+          "checks": []
+        },
+        "runnable": false,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail of an invalid template",
+      "def": "WorkflowTemplateDetail",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "broken",
+        "revision": 1,
+        "description": "Broken",
+        "validity": "INVALID",
+        "diagnostics": [
+          {
+            "field": "maxAttempts",
+            "code": "INVALID_FIELD",
+            "severity": "ERROR",
+            "message": "Enter an exact integer between 2 and 9007199254740991. Attempts include implementation and validation."
+          }
+        ],
+        "templateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "plan": null,
+        "requirements": null,
+        "limits": null,
+        "readiness": null,
+        "runnable": false,
+        "bindingReviewLines": [],
+        "reviewDigest": null
+      }
+    },
+    {
+      "name": "detail of a template with a cost bound",
+      "def": "WorkflowTemplateDetail",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "exposure": {
+            "kind": "BOUNDED",
+            "allowance": "100",
+            "stopThreshold": "80"
+          },
+          "maxTotalCost": "200"
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": "200"
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail named by a reserved device name",
+      "def": "WorkflowTemplateDetail",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "con",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail with an uppercase name",
+      "def": "WorkflowTemplateDetail",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "Review",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail without its review digest",
+      "def": "WorkflowTemplateDetail",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ]
+      }
+    },
+    {
+      "name": "detail with a short template digest",
+      "def": "WorkflowTemplateDetail",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "abc",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "detail whose plan has no maxAttempts",
+      "def": "WorkflowTemplateDetail",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-catalog/1",
+        "name": "review-code",
+        "revision": 3,
+        "description": "Review the code",
+        "validity": "VALID",
+        "diagnostics": [],
+        "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plan": {
+          "description": "Review the code",
+          "implementation": [
+            "/usr/bin/node",
+            "review.js"
+          ],
+          "validation": [
+            "/usr/bin/node",
+            "check.js"
+          ],
+          "correction": [
+            "/usr/bin/node",
+            "fix.js"
+          ],
+          "outputPaths": [
+            "review.txt"
+          ],
+          "criteriaRef": "review-criteria",
+          "maxCorrections": 1,
+          "reapproveCorrections": true,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000
+        },
+        "requirements": null,
+        "limits": {
+          "maxCorrections": 1,
+          "maxAttempts": 6,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "maxTotalCost": null
+        },
+        "readiness": {
+          "profile": "aiws-readiness/2",
+          "version": "2.0.0",
+          "agentId": "engine:local-coding",
+          "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "requirementsDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expectedManifestDigest": null,
+          "evaluatedAtMs": 1790000000000,
+          "status": "READY",
+          "authorized": false,
+          "agentMatches": true,
+          "pinMatches": true,
+          "fresh": true,
+          "reasons": [],
+          "checks": []
+        },
+        "runnable": true,
+        "bindingReviewLines": [
+          "Binding review of workflow template review-code, revision 3, before a run is created: stage IMPLEMENTATION 1.",
+          "Template review digest: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd. Creating a run needs this digest; the run's own review and approval subject are made when the host creates it."
+        ],
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "run creation request",
+      "def": "WorkflowRunRequest",
+      "valid": true,
+      "record": {
+        "profile": "aiws-workflow-run/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "template": "review-code",
+        "revision": 3,
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "run creation request with an unknown field",
+      "def": "WorkflowRunRequest",
+      "valid": false,
+      "record": {
+        "profile": "aiws-workflow-run/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "template": "review-code",
+        "revision": 3,
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "workOrderId": "chosen-by-client"
+      }
+    },
+    {
+      "name": "run creation request with a revision of zero",
+      "def": "WorkflowRunRequest",
+      "valid": false,
+      "record": {
+        "profile": "aiws-workflow-run/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "template": "review-code",
+        "revision": 0,
+        "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "name": "run created",
+      "def": "WorkflowRunResult",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-result/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "disposition": "COMMITTED",
+        "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "revision": 1,
+        "status": "AWAITING_APPROVAL",
+        "template": {
+          "name": "review-code",
+          "revision": 3,
+          "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "name": "run replayed after the template revision changed",
+      "def": "WorkflowRunResult",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-result/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "disposition": "REPLAYED",
+        "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "revision": 1,
+        "status": "AWAITING_APPROVAL",
+        "template": {
+          "name": "review-code",
+          "revision": 3,
+          "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "name": "run result with an unknown disposition",
+      "def": "WorkflowRunResult",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-run-result/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "disposition": "CREATED",
+        "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "revision": 1,
+        "status": "AWAITING_APPROVAL",
+        "template": {
+          "name": "review-code",
+          "revision": 3,
+          "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "reviewDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "name": "run result without its template association",
+      "def": "WorkflowRunResult",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-run-result/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "disposition": "COMMITTED",
+        "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "revision": 1,
+        "status": "AWAITING_APPROVAL"
+      }
+    },
+    {
+      "name": "stale template revision carrying the current revision",
+      "def": "WorkflowRunError",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "STALE_WORKFLOW_TEMPLATE",
+        "commitStatus": "NOT_COMMITTED",
+        "currentRevision": 4
+      }
+    },
+    {
+      "name": "readiness blocked carrying its reasons",
+      "def": "WorkflowRunError",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "READINESS_BLOCKED",
+        "commitStatus": "NOT_COMMITTED",
+        "reasons": [
+          "Required capability TOOL node is not supported."
+        ]
+      }
+    },
+    {
+      "name": "held run refusal naming the blocking run and its reason",
+      "def": "WorkflowRunError",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "WORKFLOW_RUN_HELD",
+        "commitStatus": "NOT_COMMITTED",
+        "blockingWorkOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "reason": "UNRESOLVED_RESPONSIBILITY"
+      }
+    },
+    {
+      "name": "pending approval refusal naming the blocking run",
+      "def": "WorkflowRunError",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "WORKFLOW_RUN_PENDING_APPROVAL",
+        "commitStatus": "NOT_COMMITTED",
+        "blockingWorkOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110"
+      }
+    },
+    {
+      "name": "held run refusal with a reason outside the closed list",
+      "def": "WorkflowRunError",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "WORKFLOW_RUN_HELD",
+        "commitStatus": "NOT_COMMITTED",
+        "blockingWorkOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+        "reason": "LIMIT"
+      }
+    },
+    {
+      "name": "unexpected failure with an unknown outcome and no request id",
+      "def": "WorkflowRunError",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": null,
+        "code": "STORAGE_UNAVAILABLE",
+        "commitStatus": "UNKNOWN"
+      }
+    },
+    {
+      "name": "run error with an unknown commit status",
+      "def": "WorkflowRunError",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-run-error/1",
+        "requestId": "3f2c8a1e-5b7d-4c9e-8a6f-1d2e3c4b5a69",
+        "code": "NOT_FOUND",
+        "commitStatus": "MAYBE"
+      }
+    },
+    {
+      "name": "run list with one run",
+      "def": "WorkflowRuns",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-runs/1",
+        "template": "review-code",
+        "runs": [
+          {
+            "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+            "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "revision": 3,
+            "createdAt": "2026-10-25T14:00:00.000Z",
+            "status": "AWAITING_APPROVAL",
+            "stage": "IMPLEMENTATION",
+            "control": "RUNNING",
+            "held": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty run list",
+      "def": "WorkflowRuns",
+      "valid": true,
+      "record": {
+        "format": "aiws-workflow-runs/1",
+        "template": "review-code",
+        "runs": []
+      }
+    },
+    {
+      "name": "run list entry without its held flag",
+      "def": "WorkflowRuns",
+      "valid": false,
+      "record": {
+        "format": "aiws-workflow-runs/1",
+        "template": "review-code",
+        "runs": [
+          {
+            "workOrderId": "wo-6f1c2d3e-4b5a-4968-8776-655443322110",
+            "runId": "run-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "revision": 3,
+            "createdAt": "2026-10-25T14:00:00.000Z",
+            "status": "AWAITING_APPROVAL",
+            "stage": "IMPLEMENTATION",
+            "control": "RUNNING"
+          }
+        ]
+      }
+    }
+  ]
+}
