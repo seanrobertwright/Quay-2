@@ -22,7 +22,8 @@ export interface HostBadge {
   muted: boolean;
 }
 
-const LABELS: Record<KnownHostState | "failed", string> = {
+/** Each host state's text label, which carries the state without its colour. */
+export const HOST_STATE_LABELS: Record<KnownHostState | "failed", string> = {
   nameRefused: "Name the host refuses",
   notInstalled: "Not installed",
   invalidOnHost: "Invalid on host",
@@ -42,8 +43,8 @@ const TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
   failed: "neutral",
 };
 
-/** What the host or the read said about a state, for the tooltip. */
-function reasonOf(state: TemplateHostState): string | null {
+/** What the host or the read said about a state, or null when it said nothing. */
+export function hostStateReason(state: TemplateHostState): string | null {
   switch (state.kind) {
     case "nameRefused":
       return state.rule;
@@ -58,16 +59,21 @@ function reasonOf(state: TemplateHostState): string | null {
   }
 }
 
+/** Whole minutes from a reading's stamp to `now`, both in ms since the epoch; never negative. */
+export function minutesSince(checkedAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - checkedAt) / 60_000));
+}
+
 /** One template's host badge, or null when its host state is unknown and not shown. */
 export function hostBadge(id: string, view: TemplateHostView, now: number): HostBadge | null {
   const { state } = view;
   if (state.kind === "unknown" && state.why !== "failed") return null;
   const kind = state.kind === "unknown" ? "failed" : state.kind;
-  const label = LABELS[kind];
-  const reason = reasonOf(state);
+  const label = HOST_STATE_LABELS[kind];
+  const reason = hostStateReason(state);
   const title = reason ? `${label}. ${reason}` : label;
   if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: TONES[kind], muted: false };
-  const minutes = view.checkedAt === null ? null : Math.max(0, Math.floor((now - view.checkedAt) / 60_000));
+  const minutes = view.checkedAt === null ? null : minutesSince(view.checkedAt, now);
   const stale = minutes === null ? "May be out of date." : `May be out of date: checked ${minutes} min ago.`;
   return {
     state: kind,
@@ -141,7 +147,7 @@ export interface HostOnlySection {
 const invalidBadge = (name: string): HostBadge => ({
   state: "invalidOnHost",
   text: `${name} is invalid on the host`,
-  title: LABELS.invalidOnHost,
+  title: HOST_STATE_LABELS.invalidOnHost,
   tone: TONES.invalidOnHost,
   muted: false,
 });
