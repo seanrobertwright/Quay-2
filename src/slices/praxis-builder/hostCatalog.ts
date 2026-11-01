@@ -68,6 +68,12 @@ export interface TemplateHostView {
   checking: boolean;
 }
 
+/** The host's installed copy of a template, as its latest `workflows show` names it. */
+export interface HostCopy {
+  revision: number | null;
+  digest: string | null;
+}
+
 /** A host template with no local file of the same name, from the latest `list`. */
 export interface HostOnlyTemplate {
   name: string;
@@ -91,6 +97,12 @@ export interface HostCatalog {
   /** Check again: rereads one template. */
   checkAgain(name: string): Promise<void>;
   template(name: string): TemplateHostView;
+  /**
+   * The revision and `templateDigest` of the host's installed copy of `name`, from its latest
+   * `workflows show`; null without one, or while the host is offline. A field the host left out
+   * is null.
+   */
+  hostCopy(name: string): HostCopy | null;
   /** Host templates with no local file, matched by exact name; empty unless the host is online. */
   hostOnly(): HostOnlyTemplate[];
   /** Calls `listener` after every change; returns the unsubscribe. */
@@ -115,6 +127,7 @@ interface ListEntry {
 
 /** A `show` record, parsed, as far as the states need it. */
 interface Detail {
+  revision: number | null;
   valid: boolean;
   diagnostics: string[];
   templateDigest: string | null;
@@ -158,6 +171,7 @@ function parseDetail(record: Record<string, unknown>): Detail | null {
   if (digest !== null && typeof digest !== "string") return null;
   const readiness = record.readiness;
   return {
+    revision: typeof record.revision === "number" ? record.revision : null,
     valid: record.validity === "VALID",
     diagnostics: messages(record.diagnostics),
     templateDigest: digest,
@@ -376,6 +390,11 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       const { state, checkedAt } = stateOf(name);
       const checking = showsInFlight.has(name) || listInFlight !== null;
       return { state, checkedAt, muted: checkedAt !== null && Date.now() - checkedAt >= MUTED_AFTER_MS, checking };
+    },
+    hostCopy(name) {
+      const show = online(condition) ? shows.get(name) : undefined;
+      if (!show || !("detail" in show)) return null;
+      return { revision: show.detail.revision, digest: show.detail.templateDigest };
     },
     hostOnly() {
       if (!online(condition) || !list) return [];

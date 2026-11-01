@@ -386,3 +386,17 @@ test("every call names the project and a call id the runner can cancel", async (
   assert.equal(show.command, "praxis_host_workflow_show");
   assert.deepEqual({ ...show.args, callId: typeof show.args.callId }, { projectPath: "C:/p", name: "review-code", callId: "string" });
 });
+
+test("the host's installed copy is named by the revision and digest of its latest show, whatever its state", async () => {
+  const { host, catalog } = setup([local("review-code", OTHER_DIGEST)]);
+  assert.equal(catalog.hostCopy("review-code"), null, "nothing is known before a show");
+  await readListed(host, catalog, ["review-code"]);
+  const shown = showRecord("review-code");
+  if (shown.kind === "record") shown.record.revision = 7;
+  host.answer("show review-code", shown);
+  await settle();
+  assert.deepEqual(catalog.template("review-code").state, { kind: "differs" });
+  assert.deepEqual(catalog.hostCopy("review-code"), { revision: 7, digest: HOST_DIGEST });
+  catalog.setCondition({ state: "hostUnreachable" });
+  assert.equal(catalog.hostCopy("review-code"), null, "a host that went offline drops it");
+});
