@@ -65,29 +65,54 @@ impl ProcessTree {
         &mut self.child
     }
 
-    /// Kills the root process and everything it started, then reaps the root.
+    /// Kills the root process and everything it started, then reaps the root. In a job object, and
+    /// on Unix, it returns only once every killed process has exited, or after [`KILL_PATIENCE`]
+    /// if some never do, so nothing of the tree still holds a file or a lock when it returns.
     pub fn kill(&mut self) {
         #[cfg(windows)]
-        match &self.job {
-            Some(job) => job.terminate(),
-            None => {
-                let _ = hidden_command("taskkill")
-                    .args(["/T", "/F", "/PID", &self.child.id().to_string()])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
+        {
+            match &self.job {
+                Some(job) => {
+                    job.terminate();
+                    // Termination is asynchronous: each process exits a little after the call
+                    // returns, later still on a busy machine.
+                    wait_until(|| job.active_processes() == Some(0));
+                }
+                None => {
+                    let _ = hidden_command("taskkill")
+                        .args(["/T", "/F", "/PID", &self.child.id().to_string()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
             }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
         }
         #[cfg(not(windows))]
         {
-            let _ = hidden_command("kill")
-                .args(["-KILL", "--", &format!("-{}", self.child.id())])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+            let group = format!("-{}", self.child.id());
+            let signal = |sig: &str| {
+                hidden_command("kill").args([sig, "--", &group]).stdout(Stdio::null()).stderr(Stdio::null()).status()
+            };
+            let _ = signal("-KILL");
+            // The group lasts until each of its processes has exited and been reaped; the root is
+            // ours to reap, so it is reaped first.
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            wait_until(|| !signal("-0").is_ok_and(|s| s.success()));
         }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+    }
+}
+
+/// The longest [`ProcessTree::kill`] waits for the killed processes to exit.
+const KILL_PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Polls `done` until it holds or [`KILL_PATIENCE`] has passed.
+fn wait_until(done: impl Fn() -> bool) {
+    let since = std::time::Instant::now();
+    while !done() && since.elapsed() < KILL_PATIENCE {
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
@@ -119,12 +144,29 @@ mod windows {
         fn CreateJobObjectW(attributes: *const c_void, name: *const u16) -> Handle;
         fn AssignProcessToJobObject(job: Handle, process: Handle) -> i32;
         fn TerminateJobObject(job: Handle, exit_code: u32) -> i32;
+        fn QueryInformationJobObject(job: Handle, class: i32, info: *mut c_void, length: u32, returned: *mut u32) -> i32;
         fn CloseHandle(handle: Handle) -> i32;
         fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
         fn Thread32First(snapshot: Handle, entry: *mut ThreadEntry32) -> i32;
         fn Thread32Next(snapshot: Handle, entry: *mut ThreadEntry32) -> i32;
         fn OpenThread(access: u32, inherit: i32, thread_id: u32) -> Handle;
         fn ResumeThread(thread: Handle) -> u32;
+    }
+
+    const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION: i32 = 1;
+
+    /// `JOBOBJECT_BASIC_ACCOUNTING_INFORMATION`.
+    #[repr(C)]
+    #[derive(Default)]
+    struct JobAccounting {
+        total_user_time: i64,
+        total_kernel_time: i64,
+        this_period_total_user_time: i64,
+        this_period_total_kernel_time: i64,
+        total_page_fault_count: u32,
+        total_processes: u32,
+        active_processes: u32,
+        total_terminated_processes: u32,
     }
 
     /// An unnamed job object, closed on drop. Closing it leaves its processes running.
@@ -150,6 +192,22 @@ mod windows {
         pub fn terminate(&self) {
             // SAFETY: the job handle is open until drop.
             unsafe { TerminateJobObject(self.0, 1) };
+        }
+
+        /// How many processes in the job are still running, or `None` if the job can't be read.
+        pub fn active_processes(&self) -> Option<u32> {
+            let mut info = JobAccounting::default();
+            // SAFETY: the job handle is open until drop, and `info` is the struct this class fills.
+            let ok = unsafe {
+                QueryInformationJobObject(
+                    self.0,
+                    JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+                    (&mut info as *mut JobAccounting).cast(),
+                    std::mem::size_of::<JobAccounting>() as u32,
+                    std::ptr::null_mut(),
+                )
+            };
+            (ok != 0).then_some(info.active_processes)
         }
     }
 

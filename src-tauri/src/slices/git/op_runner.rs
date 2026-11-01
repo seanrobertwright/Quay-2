@@ -655,33 +655,104 @@ see https://git-scm.com/docs");
         }
     }
 
+    /// Every running process's OS process id and its parent's.
+    fn process_table() -> Vec<(u32, u32)> {
+        let out = if cfg!(windows) {
+            crate::spawn::hidden_command("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }"])
+                .output()
+                .unwrap()
+        } else {
+            crate::spawn::hidden_command("ps").args(["-A", "-o", "pid=", "-o", "ppid="]).output().unwrap()
+        };
+        assert!(out.status.success(), "could not list processes: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| {
+                let mut ids = line.split_whitespace().map(|id| id.parse::<u32>());
+                match (ids.next(), ids.next()) {
+                    (Some(Ok(pid)), Some(Ok(ppid))) => Some((pid, ppid)),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    /// The op's process tree: git, the root below this test process that `shell_pid` descends
+    /// from, everything git started, and `sleep_pid`, whose parent is a fork of the shell that has
+    /// already exited in Git for Windows, so it can't be found from git.
+    fn op_tree(shell_pid: u32, sleep_pid: u32) -> Vec<u32> {
+        let table = process_table();
+        let parent = |pid: u32| table.iter().find(|(p, _)| *p == pid).map(|(_, ppid)| *ppid);
+        let mut root = shell_pid;
+        loop {
+            let ppid = parent(root).unwrap_or_else(|| panic!("process {root}, above the shell {shell_pid}, has no parent running"));
+            if ppid == std::process::id() {
+                break;
+            }
+            root = ppid;
+        }
+        let mut tree = vec![root];
+        let mut i = 0;
+        while i < tree.len() {
+            let pid = tree[i];
+            let children: Vec<u32> = table.iter().filter(|(p, ppid)| *ppid == pid && !tree.contains(p)).map(|(p, _)| *p).collect();
+            tree.extend(children);
+            i += 1;
+        }
+        if !tree.contains(&sleep_pid) {
+            tree.push(sleep_pid);
+        }
+        tree
+    }
+
+    /// Cancels an op when dropped, so a failed check doesn't leave the test waiting on it.
+    struct CancelOnDrop<'a>(&'a GitOps, uuid::Uuid);
+
+    impl Drop for CancelOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.cancel(self.1);
+        }
+    }
+
     #[test]
     fn cancel_kills_the_ops_whole_process_tree() {
         let dir = scratch_dir();
         let (channel, events) = test_channel();
         let ops = GitOps::default();
         let op_id = uuid::Uuid::new_v4();
-        // git starts a shell, which starts `sleep` and prints its OS process id.
-        let def = "alias.probe=!sleep 120 & if [ -f /proc/$!/winpid ]; then cat /proc/$!/winpid; else echo $!; fi; wait";
+        // git starts a shell, which starts `sleep` and prints the shell's and sleep's OS process ids.
+        let def = "alias.probe=!sleep 120 & for p in $$ $!; do if [ -f /proc/$p/winpid ]; then cat /proc/$p/winpid; else echo $p; fi; done; wait";
 
         std::thread::scope(|scope| {
             let running = scope.spawn(|| ops.run(op_id, &dir, &alias_args(def), &OpOptions::default(), &channel));
+            let _cancel = CancelOnDrop(&ops, op_id);
 
             let started = Instant::now();
-            let sleep_pid = loop {
+            let (shell_pid, sleep_pid) = loop {
                 let printed = streamed_output(&events.lock().unwrap());
-                if let Ok(pid) = printed.trim().parse::<u32>() {
-                    break pid;
+                let pids: Vec<u32> = printed.lines().filter_map(|l| l.trim().parse().ok()).collect();
+                if let [shell, sleep] = pids[..] {
+                    break (shell, sleep);
                 }
-                assert!(started.elapsed() < Duration::from_secs(20), "sleep never started: {printed:?}");
+                assert!(started.elapsed() < Duration::from_secs(60), "sleep never started: {printed:?}");
                 std::thread::sleep(Duration::from_millis(50));
             };
-            assert!(process_alive(sleep_pid), "sleep {sleep_pid} should be running before Cancel");
+            // git, its shell and `sleep` at least.
+            let tree = op_tree(shell_pid, sleep_pid);
+            assert!(tree.len() >= 3, "the op's tree: {tree:?}");
+            for &pid in &tree {
+                assert!(process_alive(pid), "process {pid} of {tree:?} should be running before Cancel");
+            }
 
             ops.cancel(op_id);
             assert_eq!(running.join().unwrap(), Err(GitError::Cancelled));
-            assert!(started.elapsed() < Duration::from_secs(60), "Cancel waited for sleep to finish");
-            assert!(!process_alive(sleep_pid), "sleep {sleep_pid}, a child of git's shell, outlived Cancel");
+            // `sleep` would end by itself after 120 s.
+            assert!(started.elapsed() < Duration::from_secs(100), "Cancel waited for sleep to finish");
+            // Cancel returns once the tree has exited, so nothing here waits for it.
+            for &pid in &tree {
+                assert!(!process_alive(pid), "process {pid} of the op's tree {tree:?} outlived Cancel; sleep is {sleep_pid}");
+            }
         });
         assert_eq!(
             events.lock().unwrap().last(),

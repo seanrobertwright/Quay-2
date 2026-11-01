@@ -397,98 +397,158 @@ fn recording_channel() -> (tauri::ipc::Channel<super::op_runner::OpEvent>, std::
     (channel, events)
 }
 
-/// `wt`'s repo with a remote `slow` whose upload-pack waits `seconds` before it serves, so a fetch
-/// from it runs that long.
-fn with_slow_remote(root: &Path, wt: &Path, seconds: u32) {
-    let bare = with_origin(root, wt);
-    git(wt, &["remote", "add", "slow", &bare.to_string_lossy()]);
-    git(wt, &["config", "remote.slow.uploadpack", &format!("sleep {seconds}; git-upload-pack")]);
+/// How long a test waits for something another thread or process should do. Generous, so a
+/// busy machine only makes the wait longer, never fails it.
+const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The remote `slow` that [`with_gated_remote`] adds. Its upload-pack, once a fetch starts it,
+/// says so and then serves only when the test lets it, so the fetch holds the repo's lock from
+/// [`Gate::wait_until_started`] until [`Gate::release`], or until the upload-pack gives up after
+/// at least [`PATIENCE`].
+struct Gate {
+    started: PathBuf,
+    release: PathBuf,
 }
 
-/// Waits until `events` holds one matching `want`, failing after 20 s.
+impl Gate {
+    /// Waits until a fetch from `slow` is running, and so holds the repo's lock, which a fetch
+    /// takes before it starts git.
+    fn wait_until_started(&self) {
+        poll_until(|| self.started.exists(), || "the fetch from slow never started".to_string());
+    }
+
+    /// Lets the waiting upload-pack serve, so the fetch from `slow` finishes. Returns the instant it
+    /// released the gate.
+    fn release(&self) -> std::time::Instant {
+        std::fs::write(&self.release, "").unwrap();
+        std::time::Instant::now()
+    }
+}
+
+impl Drop for Gate {
+    /// A test that fails or cancels leaves no upload-pack waiting forever.
+    fn drop(&mut self) {
+        let _ = std::fs::write(&self.release, "");
+    }
+}
+
+/// `wt`'s repo with a remote `slow` whose upload-pack waits on the returned [`Gate`].
+fn with_gated_remote(root: &Path, wt: &Path) -> Gate {
+    let bare = with_origin(root, wt);
+    git(wt, &["remote", "add", "slow", &bare.to_string_lossy()]);
+    let gate = Gate { started: root.join("slow-started"), release: root.join("slow-release") };
+    // Git for Windows' shell reads forward slashes; a temp dir path has no quote in it. The wait
+    // gives up after at least `PATIENCE`, so a fetch that Cancel failed to stop ends with Ok
+    // rather than hanging the test.
+    let sh = |p: &Path| p.to_string_lossy().replace('\\', "/");
+    let ticks = PATIENCE.as_millis() / 50;
+    let upload_pack = format!(
+        "touch '{}'; i=0; while [ ! -e '{}' ] && [ $i -lt {ticks} ]; do sleep 0.05; i=$((i+1)); done; git-upload-pack",
+        sh(&gate.started),
+        sh(&gate.release)
+    );
+    git(wt, &["config", "remote.slow.uploadpack", &upload_pack]);
+    gate
+}
+
+/// Waits until `events` holds one matching `want`.
 fn wait_for(events: &std::sync::Mutex<Vec<serde_json::Value>>, want: impl Fn(&serde_json::Value) -> bool) {
-    let started = std::time::Instant::now();
-    while !events.lock().unwrap().iter().any(&want) {
-        assert!(started.elapsed() < std::time::Duration::from_secs(20), "never saw it in {:?}", events.lock().unwrap());
+    poll_until(|| events.lock().unwrap().iter().any(&want), || format!("never saw it in {:?}", events.lock().unwrap()));
+}
+
+/// Polls `done` until it holds, and fails with `what` once [`PATIENCE`] has passed.
+fn poll_until(done: impl Fn() -> bool, what: impl Fn() -> String) {
+    let since = std::time::Instant::now();
+    while !done() {
+        assert!(since.elapsed() < PATIENCE, "{}", what());
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 
-/// Gives an op started on another thread time to take the repo's lock; the slow remote
-/// keeps it held for seconds after that.
-fn let_it_start() {
-    std::thread::sleep(std::time::Duration::from_millis(400));
+/// Whether `e` is the progress event of an operation waiting for the repo's lock.
+fn is_waiting(e: &serde_json::Value) -> bool {
+    e["event"] == "progress" && e["phase"] == super::repo_lock::WAITING_PHASE
 }
 
 #[test]
 fn the_repo_lock_runs_one_operation_per_repo_and_the_second_waits_for_the_first() {
     let (root, wt) = repo_with_worktree();
-    with_slow_remote(&root, &wt, 2);
+    let gate = with_gated_remote(&root, &wt);
     let main_checkout = root.join("repo");
     let (ops, locks) = (GitOps::default(), StagingLocks::default());
     let (slow_channel, _) = recording_channel();
     let (second_channel, second_events) = recording_channel();
 
-    let (slow_done, second_done) = std::thread::scope(|scope| {
+    let (released, second_done) = std::thread::scope(|scope| {
         let slow = scope.spawn(|| {
             fetch(&ops, &locks, &wt, Uuid::new_v4(), &FetchFrom::Remote { name: "slow".into() }, false, &slow_channel).expect("the slow fetch runs");
-            std::time::Instant::now()
         });
-        let_it_start();
+        gate.wait_until_started();
         // From the repo's other worktree: the lock is per repo, not per worktree.
         let second = scope.spawn(|| {
             fetch(&ops, &locks, &main_checkout, Uuid::new_v4(), &FetchFrom::Remote { name: "origin".into() }, false, &second_channel).expect("the second fetch runs");
             std::time::Instant::now()
         });
-        (slow.join().unwrap(), second.join().unwrap())
+        wait_for(&second_events, is_waiting);
+        assert!(!second.is_finished(), "the second fetch finished while the first held the lock");
+        let released = gate.release();
+        slow.join().unwrap();
+        (released, second.join().unwrap())
     });
 
-    assert!(second_done > slow_done, "the second fetch finished before the first let go");
-    let waited = second_events.lock().unwrap().iter().any(|e| e["event"] == "progress" && e["phase"] == super::repo_lock::WAITING_PHASE);
-    assert!(waited, "the second fetch said it was waiting");
+    assert!(second_done > released, "the second fetch finished before the first let go");
 }
 
 #[test]
 fn a_local_ref_operation_waits_behind_a_running_fetch() {
     let (root, wt) = repo_with_worktree();
-    with_slow_remote(&root, &wt, 2);
+    let gate = with_gated_remote(&root, &wt);
     let (ops, locks) = (GitOps::default(), StagingLocks::default());
     let (slow_channel, _) = recording_channel();
+    let (create_channel, create_events) = recording_channel();
+    let later_exists = || {
+        let out = crate::spawn::hidden_command("git").current_dir(&wt).args(["rev-parse", "-q", "--verify", "refs/heads/later"]).output().unwrap();
+        out.status.success()
+    };
 
-    let (slow_done, create) = std::thread::scope(|scope| {
+    let (released, (created, created_at)) = std::thread::scope(|scope| {
         let slow = scope.spawn(|| {
             fetch(&ops, &locks, &wt, Uuid::new_v4(), &FetchFrom::Remote { name: "slow".into() }, false, &slow_channel).expect("the slow fetch runs");
-            std::time::Instant::now()
         });
-        let_it_start();
-        let created = super::checkout::branch_create(&ops, &locks, &wt, Uuid::new_v4(), super::checkout::NewBranch { name: "later", at: "HEAD", checkout: false }, &test_channel());
-        let created_at = std::time::Instant::now();
-        (slow.join().unwrap(), (created, created_at))
+        gate.wait_until_started();
+        let create = scope.spawn(|| {
+            let created = super::checkout::branch_create(&ops, &locks, &wt, Uuid::new_v4(), super::checkout::NewBranch { name: "later", at: "HEAD", checkout: false }, &create_channel);
+            (created, std::time::Instant::now())
+        });
+        wait_for(&create_events, is_waiting);
+        assert!(!create.is_finished() && !later_exists(), "the create ran while the fetch held the lock");
+        let released = gate.release();
+        slow.join().unwrap();
+        (released, create.join().unwrap())
     });
 
-    let (created, created_at) = create;
     created.expect("the branch is created once the fetch is done, not refused");
-    assert!(created_at > slow_done, "the create ran while the fetch held the lock");
+    assert!(created_at > released, "the create finished before the fetch let go");
+    assert!(later_exists(), "the branch was created");
 }
 
 #[test]
 fn cancel_stops_a_running_fetch_and_frees_the_repo() {
     let (root, wt) = repo_with_worktree();
-    with_slow_remote(&root, &wt, 60);
+    // Never released, so the fetch ends early only by Cancel; a fetch the gate let go returns Ok.
+    let gate = with_gated_remote(&root, &wt);
     let (ops, locks) = (GitOps::default(), StagingLocks::default());
     let (channel, events) = recording_channel();
     let op_id = Uuid::new_v4();
 
-    let started = std::time::Instant::now();
     let result = std::thread::scope(|scope| {
         let running = scope.spawn(|| fetch(&ops, &locks, &wt, op_id, &FetchFrom::Remote { name: "slow".into() }, false, &channel));
-        let_it_start();
+        gate.wait_until_started();
         ops.cancel(op_id);
         running.join().unwrap()
     });
 
     assert_eq!(result, Err(GitError::Cancelled));
-    assert!(started.elapsed() < std::time::Duration::from_secs(30), "cancel waited for the remote");
     wait_for(&events, |e| e["event"] == "failed" && e["error"]["kind"] == "cancelled");
     fetch_in(&wt, FetchFrom::Remote { name: "origin".into() }, false).expect("the repo's lock was let go");
 }
@@ -496,7 +556,7 @@ fn cancel_stops_a_running_fetch_and_frees_the_repo() {
 #[test]
 fn cancel_ends_an_operation_waiting_for_the_lock() {
     let (root, wt) = repo_with_worktree();
-    with_slow_remote(&root, &wt, 3);
+    let gate = with_gated_remote(&root, &wt);
     let (ops, locks) = (GitOps::default(), StagingLocks::default());
     let (slow_channel, _) = recording_channel();
     let (waiting_channel, waiting_events) = recording_channel();
@@ -504,11 +564,13 @@ fn cancel_ends_an_operation_waiting_for_the_lock() {
 
     let waited = std::thread::scope(|scope| {
         let slow = scope.spawn(|| fetch(&ops, &locks, &wt, Uuid::new_v4(), &FetchFrom::Remote { name: "slow".into() }, false, &slow_channel));
-        let_it_start();
+        gate.wait_until_started();
         let waiting = scope.spawn(|| fetch(&ops, &locks, &wt, waiting_id, &FetchFrom::Remote { name: "origin".into() }, false, &waiting_channel));
-        wait_for(&waiting_events, |e| e["event"] == "progress");
+        wait_for(&waiting_events, is_waiting);
         ops.cancel(waiting_id);
+        // The slow fetch holds the lock until the gate opens, so only Cancel can end this wait.
         let waited = waiting.join().unwrap();
+        gate.release();
         slow.join().unwrap().expect("the slow fetch is unaffected");
         waited
     });
