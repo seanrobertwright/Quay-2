@@ -60,18 +60,32 @@ export class OidColumn {
     this.bytes = new Uint8Array(this.rows * width);
   }
 
-  /** Stores `oid` at `row`. Throws unless it is 40 or 64 lowercase hex digits, as wide as the rest. */
+  /**
+   * Throws unless every one of `oids` is 40 or 64 lowercase hex digits, all as wide as the oids
+   * already held, or as the first of them when none are. Changes nothing, so a caller can check a
+   * whole page before it stores any of it.
+   */
+  check(oids: readonly string[]): void {
+    if (oids.length === 0) return;
+    const digits = this.width === 0 ? oids[0].length : this.width * 2;
+    if (this.width === 0 && digits !== SHA1_BYTES * 2 && digits !== SHA256_BYTES * 2) {
+      throw new Error(`"${oids[0]}" is not an oid: an oid is 40 or 64 hex digits`);
+    }
+    for (const oid of oids) {
+      if (oid.length !== digits) throw new Error(`"${oid}" is not a ${digits}-digit oid like the rows before it`);
+      for (let i = 0; i < digits; i++) {
+        if (digitValue(oid.charCodeAt(i)) < 0) throw new Error(`"${oid}" is not an oid: it isn't lowercase hex`);
+      }
+    }
+  }
+
+  /** Stores `oid` at `row`. Throws when `check` would refuse it. */
   set(row: number, oid: string): void {
     if (this.width === 0) {
-      if (oid.length !== SHA1_BYTES * 2 && oid.length !== SHA256_BYTES * 2) {
-        throw new Error(`"${oid}" is not an oid: an oid is 40 or 64 hex digits`);
-      }
+      this.check([oid]);
       this.setWidth(oid.length / 2);
     }
-    if (oid.length !== this.width * 2) {
-      throw new Error(`"${oid}" is not a ${this.width * 2}-digit oid like the rows loaded before it`);
-    }
-    if (!this.parse(oid, this.bytes, row * this.width)) throw new Error(`"${oid}" is not an oid: it isn't lowercase hex`);
+    if (!this.parse(oid, this.bytes, row * this.width)) this.check([oid]);
   }
 
   /** Writes `oid`'s bytes into `out` at `at`; false when it isn't hex of this column's width. */

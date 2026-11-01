@@ -298,3 +298,24 @@ test("a matcher for a set of oids answers for each row whether its oid is one of
   );
   assert.equal(new GraphStore(1).oidMatcher(["0000000000000000000000000000000000000000"])(0), false);
 });
+
+test("a page refused for a bad oid leaves the store as it was, so the right page can still follow", () => {
+  const store = twoPages();
+  const good = "00000000000000000000000000000000000000aa";
+  assert.throws(
+    () => ingest(store, { pageIndex: 2, firstRow: 8, rowCount: 2, firstEdge: 8, oids: [good, "not an oid"], newTracks: [track(2, "fix", "named")] }),
+    /not an oid/
+  );
+  assert.equal(store.rowCount, 8);
+  assert.equal(store.rowOf(good), -1);
+  ingest(store, {
+    pageIndex: 2,
+    firstRow: 8,
+    rowCount: 2,
+    firstEdge: 8,
+    oids: [good, "00000000000000000000000000000000000000bb"],
+    newTracks: [track(2, "fix", "named")],
+  });
+  assert.equal(store.trackKey(2), "fix");
+  assert.equal(store.rowOf(good), 8);
+});

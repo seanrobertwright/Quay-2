@@ -157,7 +157,9 @@ export class GraphStore {
 
   /**
    * Appends a page. Throws when the page belongs to another session, doesn't follow the last one
-   * exactly (rows already shown never move), or names an author, track or edge it hasn't sent.
+   * exactly (rows already shown never move), names an author, track or edge it hasn't sent, or
+   * holds an oid that isn't 40 or 64 lowercase hex digits as wide as the rest. A refused page
+   * changes nothing.
    */
   ingest(page: GraphPage): void {
     if (page.sessionId !== this.sessionId) {
@@ -184,6 +186,7 @@ export class GraphStore {
       if (page.closes[i] >= this.edges) throw new Error(`page closes unknown edge ${page.closes[i]}`);
     }
     for (const e of page.checkpoint) if (e >= this.edges) throw new Error(`page's checkpoint names unknown edge ${e}`);
+    this.oids.check(page.oids);
 
     for (const t of page.newTracks) this.addTrack(t);
     const end = this.count + page.rowCount;
