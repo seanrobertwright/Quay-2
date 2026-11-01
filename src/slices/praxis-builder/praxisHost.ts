@@ -42,6 +42,26 @@ export function isHostLevelFailure(outcome: CallOutcome): boolean {
   }
 }
 
+/** The words of an outcome that isn't a record, for a failed read. */
+export function outcomeMessage(outcome: CallOutcome): string {
+  switch (outcome.kind) {
+    case "needsUpdate":
+      return `Quay needs an update for this praxis: ${outcome.detail}`;
+    case "refused":
+    case "noHost":
+    case "hostDown":
+    case "notSignedIn":
+    case "expired":
+      return outcome.message;
+    case "cliNotFound":
+      return outcome.reason;
+    case "timedOut":
+      return "praxis didn't answer in time.";
+    default:
+      return "praxis gave an answer Quay can't read.";
+  }
+}
+
 /** The payload of the `praxis-host-condition` event. */
 export interface HostConditionChange {
   projectPath: string;
