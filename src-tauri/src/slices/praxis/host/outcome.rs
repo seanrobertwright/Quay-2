@@ -31,6 +31,33 @@ impl Verb {
     pub fn creates(self) -> bool {
         self == Verb::Run
     }
+
+    /// The words that name this command to `praxis`, before its operands.
+    pub fn words(self) -> &'static [&'static str] {
+        match self {
+            Verb::WorkflowsList => &["workflows", "list"],
+            Verb::WorkflowsShow => &["workflows", "show"],
+            Verb::Runs => &["runs"],
+            Verb::Status => &["status"],
+            Verb::Run => &["run"],
+        }
+    }
+
+    /// This command's arguments: its [`words`](Self::words), then `operands`. A command that
+    /// takes a workflow template name (`workflows show`, `runs` and `run`) takes it as its first
+    /// operand.
+    pub fn args(self, operands: impl IntoIterator<Item = String>) -> Vec<String> {
+        self.words().iter().map(|w| w.to_string()).chain(operands).collect()
+    }
+
+    /// Where in [`args`](Self::args) the workflow template name is, for the commands that take
+    /// one: right after the command's words.
+    pub fn template_arg(self) -> Option<usize> {
+        match self {
+            Verb::WorkflowsShow | Verb::Runs | Verb::Run => Some(self.words().len()),
+            Verb::WorkflowsList | Verb::Status => None,
+        }
+    }
 }
 
 /// The record format `praxis run` prints with exit 7.

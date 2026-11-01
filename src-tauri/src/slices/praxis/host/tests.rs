@@ -408,3 +408,45 @@ fn the_vendored_read_model_fixtures_hold() {
         }
     }
 }
+
+#[test]
+fn each_command_has_the_argv_praxis_expects_with_the_template_name_where_the_guard_looks() {
+    let argv = |verb: Verb, operands: &[&str]| verb.args(operands.iter().map(|o| o.to_string()));
+    assert_eq!(argv(Verb::WorkflowsList, &[]), ["workflows", "list"]);
+    assert_eq!(argv(Verb::Status, &["wo-1"]), ["status", "wo-1"]);
+    for (verb, operands, expected) in [
+        (Verb::WorkflowsShow, &["t"][..], &["workflows", "show", "t"][..]),
+        (Verb::Runs, &["t", "--limit", "20"][..], &["runs", "t", "--limit", "20"][..]),
+        (Verb::Run, &["t"][..], &["run", "t"][..]),
+    ] {
+        let args = argv(verb, operands);
+        assert_eq!(args, expected);
+        assert_eq!(args[verb.template_arg().unwrap()], "t", "{verb:?}");
+    }
+    assert_eq!(Verb::WorkflowsList.template_arg(), None);
+    assert_eq!(Verb::Status.template_arg(), None);
+}
+
+#[test]
+fn a_template_name_the_host_refuses_never_reaches_praxis() {
+    let h = Harness::new();
+    h.scenario(json!({ "stdout": fixture("WorkflowRuns") }));
+    // Built the way the Tauri commands build them, so the name sits where `Verb::args` puts it.
+    let calls = [
+        Verb::WorkflowsShow.args(["Review_Code".to_string()]),
+        Verb::Runs.args(["review.code".to_string(), "--limit".into(), "20".into()]),
+        Verb::Run.args(["con".to_string()]),
+    ];
+    for (verb, args) in [Verb::WorkflowsShow, Verb::Runs, Verb::Run].into_iter().zip(calls) {
+        match h.cli.call(&h.project, verb, &args, Uuid::new_v4()) {
+            CallOutcome::Refused { message } => {
+                assert_eq!(message, crate::slices::praxis::template_name::TEMPLATE_NAME_RULE, "{args:?}")
+            }
+            other => panic!("{args:?} gave {other:?}"),
+        }
+    }
+    assert!(h.calls().is_empty(), "{:?}", h.calls());
+    assert_eq!(h.condition(), HostCondition::NotCheckedYet);
+    // A name the rule admits still runs.
+    assert!(matches!(h.call(Verb::Runs, &["runs", "review-code", "--limit", "20"]), CallOutcome::Record { .. }));
+}

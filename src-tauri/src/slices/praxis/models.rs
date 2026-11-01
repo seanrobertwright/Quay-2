@@ -55,6 +55,16 @@ impl PraxisKind {
             _ => Some("id"),
         }
     }
+
+    /// Why `id` can't name a new definition of this kind, beyond the filename-safe rule every
+    /// kind shares, or `None` when it can. Only a template narrows it, to the Praxis host's
+    /// template-name rule.
+    pub fn name_problem(self, id: &str) -> Option<String> {
+        match self {
+            PraxisKind::Templates => super::template_name::check_template_name(id).err(),
+            _ => None,
+        }
+    }
 }
 
 /// Why a definition file can't be opened: it isn't valid JSON (with the position of the
@@ -94,6 +104,10 @@ pub struct DefinitionEntry {
     pub problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_mismatch: Option<IdMismatch>,
+    /// For a workflow template whose file name is a filename-safe id but breaks the host's
+    /// template name rule, the rule. The file still opens; renaming it fixes this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_problem: Option<String>,
     /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_id: Option<String>,

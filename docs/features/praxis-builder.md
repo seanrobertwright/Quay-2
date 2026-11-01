@@ -32,7 +32,7 @@ Everything the builder edits is a JSON file under `.praxis/` in the project, so 
 └── templates/<name>.json       # workflow templates
 ```
 
-- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template holds no id, so its file name alone names it.
+- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template holds no id, so its file name alone names it, and that name follows the Praxis host's narrower rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and no Windows device name.
 - **Files are written in one canonical form**, so a save that changes nothing makes no diff. Saving sets a content-digest `revision` on graphs and triggers, and `graphBindingRevision` on graph bindings.
 - **Broken files still list.** A file that isn't valid JSON is listed with an error badge, and opening it shows the line and column of the error.
 
@@ -157,6 +157,7 @@ Binding edits, node renames and retargets are steps of the graph's undo history.
 
 A workflow template is a coding plan without a work order or run id, and its file name is the name `praxis run <name>` starts. It opens as a form in sections for intent, commands, outputs, limits, and agent and cost, under a read-only strip of the coding profile's stages.
 
+- **Names follow the host's rule.** New template and rename refuse a name the Praxis host would refuse, and say why as you type. A template file already named that way still opens, with a warning in the list, an issue above the form and a **Rename** button. Quay never passes such a name to `praxis`.
 - Commands are argument lists, one row per argument with the executable first. Quay never splits a command line and never runs a command.
 - Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. The form says "Shape checked. Not previewed on a host", because readiness and the host's other rules aren't checked yet.
 

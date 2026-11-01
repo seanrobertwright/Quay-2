@@ -1,9 +1,18 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createGraphDraft, createNewDraft, isDirty, moveNodes, reconcileWithDisk, type Draft } from "./drafts.ts";
 import { parseGraph } from "./model.ts";
-import { definitionIdProblem, idProblem, MAX_DEFINITION_ID, newGraphContent, nextDefinitionId } from "./lifecycle.ts";
+import {
+  definitionIdProblem,
+  idProblem,
+  MAX_DEFINITION_ID,
+  namingProblem,
+  newGraphContent,
+  nextDefinitionId,
+  templateNameProblem,
+} from "./lifecycle.ts";
 import {
   addNewDraft,
   applyRename,
@@ -201,4 +210,30 @@ test("deleting drops the definition's draft, history and viewport, and closes it
   assert.deepEqual(next.viewports, {});
   assert.equal(next.open, null);
   assert.deepEqual(removeDefinition(session, { kind: "graphs", id: "k" }).open, g, "another definition stays open");
+});
+
+// --- workflow template names: the host's rule (#447) -------------------------------------
+
+/** The vectors the backend's `template_name` module is tested against too. */
+const templateNames = JSON.parse(
+  readFileSync(new URL("../../../src-tauri/src/slices/praxis/template_names.vectors.json", import.meta.url), "utf8")
+) as { rule: string; cases: { name: string; valid: boolean }[] };
+
+test("a template name gets the verdict the backend's vectors record", () => {
+  for (const { name, valid } of templateNames.cases) {
+    assert.equal(templateNameProblem(name), valid ? null : templateNames.rule, JSON.stringify(name));
+  }
+});
+
+test("only templates narrow to the host's rule, and the message states it", () => {
+  assert.equal(namingProblem("templates", "Fix_Bug", []), templateNames.rule);
+  assert.equal(namingProblem("templates", "fix.bug", []), templateNames.rule);
+  assert.equal(namingProblem("templates", "fix-bug", []), null);
+  assert.match(namingProblem("templates", "fix-bug", ["Fix-Bug"]) ?? "", /taken/);
+  assert.equal(namingProblem("templates", "fix-bug", ["fix-bug"], "fix-bug"), null);
+  for (const kind of ["graphs", "contracts", "grants", "triggers", "graph-bindings"] as const) {
+    assert.equal(namingProblem(kind, "Fix_Bug.v1", []), null, kind);
+  }
+  assert.equal(nextDefinitionId("template", []), "template-1");
+  assert.equal(templateNameProblem(nextDefinitionId("template", ["template-1"])), null);
 });

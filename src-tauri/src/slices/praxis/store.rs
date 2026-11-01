@@ -241,6 +241,7 @@ pub(super) fn json_ids(dir: &Path, folder: &str) -> Result<Vec<String>, String> 
 /// Lists a kind's definitions in id order, at most `MAX_LISTED` of them. Only `*.json`
 /// files directly in the kind's folder are listed. A missing folder is an empty list. Each
 /// file is parsed, so one that can't be opened, or whose `id` isn't its name, is flagged.
+/// A workflow template whose name breaks the host's rule is flagged too.
 pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
     let Some(dir) = confined_dir(repo, kind.folder())? else {
         return Ok(DefinitionList { entries: Vec::new(), truncated: false });
@@ -261,10 +262,10 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 },
             };
             match parsed {
-                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, graph_id: None, cost_unit: None },
+                Err(problem) => DefinitionEntry { id, problem: Some(problem), id_mismatch: None, name_problem: None, graph_id: None, cost_unit: None },
                 Ok(record) => {
                     let Some(id_field) = kind.id_field() else {
-                        return DefinitionEntry { id, problem: None, id_mismatch: None, graph_id: None, cost_unit: None };
+                        return DefinitionEntry { id, problem: None, id_mismatch: None, name_problem: None, graph_id: None, cost_unit: None };
                     };
                     let found = record.get(id_field).and_then(Value::as_str);
                     let id_mismatch =
@@ -276,9 +277,15 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                     };
                     let graph_id = binding_field("graphId");
                     let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
-                    DefinitionEntry { id, problem: None, id_mismatch, graph_id, cost_unit }
+                    DefinitionEntry { id, problem: None, id_mismatch, name_problem: None, graph_id, cost_unit }
                 }
             }
+        })
+        .map(|mut entry: DefinitionEntry| {
+            if validate_id(&entry.id).is_ok() {
+                entry.name_problem = kind.name_problem(&entry.id);
+            }
+            entry
         })
         .collect();
     Ok(DefinitionList { entries, truncated })
@@ -525,7 +532,8 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// longer has that hash, or no longer exists, nothing is written and the conflict is
 /// returned, unless `force` says to overwrite. When it is `None` the definition is new,
 /// and the save is refused when its id is already taken, ignoring case. The id must be
-/// filename-safe. An invalid definition is still written: whatever later runs it refuses
+/// filename-safe, and a new workflow template's must follow the host's template name rule
+/// too; a template file already saved under another name still saves. An invalid definition is still written: whatever later runs it refuses
 /// it. The definition is written first, so a layout that fails to write afterwards is
 /// reported in the outcome and the definition stays saved.
 ///
@@ -547,6 +555,11 @@ pub fn save_definition(
     expected_bindings_hash: Option<&str>,
     force: bool,
 ) -> Result<SaveOutcome, String> {
+    if expected_hash.is_none()
+        && let Some(problem) = kind.name_problem(id)
+    {
+        return Err(problem);
+    }
     validate_id(id)?;
     let Value::Object(mut record) = content else {
         return Err("A definition must be a JSON object.".to_string());
@@ -629,6 +642,7 @@ pub fn save_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::slices::praxis::template_name::TEMPLATE_NAME_RULE;
 
     fn temp_repo() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("quay2-praxis-{}", uuid::Uuid::new_v4()));
@@ -855,6 +869,37 @@ mod tests {
         let list = list_definitions(&repo, PraxisKind::Templates).unwrap();
         assert_eq!(ids(&list), vec!["fix-bug"]);
         assert_eq!(list.entries[0].id_mismatch, None);
+    }
+
+    #[test]
+    fn a_template_whose_name_the_host_refuses_is_flagged_and_still_opens() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/Fix_Bug.json", r#"{"description": "d"}"#);
+        write(&repo, ".praxis/templates/fix-bug.json", r#"{"description": "d"}"#);
+        write(&repo, ".praxis/graphs/Fix_Bug.json", r#"{"id": "Fix_Bug"}"#);
+        let templates = list_definitions(&repo, PraxisKind::Templates).unwrap();
+        let by_id = |id: &str| templates.entries.iter().find(|e| e.id == id).unwrap().clone();
+        assert_eq!(by_id("Fix_Bug").name_problem.as_deref(), Some(TEMPLATE_NAME_RULE));
+        assert_eq!(by_id("Fix_Bug").problem, None, "the file still opens");
+        assert_eq!(by_id("fix-bug").name_problem, None);
+        let graphs = list_definitions(&repo, PraxisKind::Graphs).unwrap();
+        assert_eq!(graphs.entries[0].name_problem, None, "only templates/ narrows");
+    }
+
+    #[test]
+    fn a_new_template_must_have_a_name_the_host_accepts_but_a_saved_one_still_saves() {
+        let repo = temp_repo();
+        let template = json!({"description": "d"});
+        let why = save_definition(&repo, PraxisKind::Templates, "Fix_Bug", template.clone(), None, None, None, None, false).unwrap_err();
+        assert_eq!(why, TEMPLATE_NAME_RULE);
+        assert!(!repo.join(".praxis/templates/Fix_Bug.json").exists());
+        assert!(save_definition(&repo, PraxisKind::Templates, "fix-bug", template.clone(), None, None, None, None, false).is_ok());
+        assert!(save_definition(&repo, PraxisKind::Graphs, "Fix_Bug", graph(), None, None, None, None, false).is_ok());
+        // A file already named badly can be edited and saved until it is renamed.
+        write(&repo, ".praxis/templates/Old.Name.json", r#"{"description": "d"}"#);
+        let hash = read_definition(&repo, PraxisKind::Templates, "Old.Name").unwrap().content_hash.unwrap();
+        let outcome = save_definition(&repo, PraxisKind::Templates, "Old.Name", json!({"description": "e"}), None, None, Some(&hash), None, false);
+        assert!(matches!(outcome, Ok(SaveOutcome::Saved { .. })), "{outcome:?}");
     }
 
     #[test]
