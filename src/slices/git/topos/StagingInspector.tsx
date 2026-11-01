@@ -91,6 +91,27 @@ function inConfirm(node: EventTarget | null): boolean {
   return node instanceof Element && node.closest('[role="alertdialog"]') !== null;
 }
 
+/** Whether `el`, a control that had focus, is still on the page and enabled, so it can hold focus again. */
+function canHoldFocus(el: Element): boolean {
+  return el.isConnected && !(el instanceof HTMLButtonElement && el.disabled);
+}
+
+/**
+ * Runs `release` once focus that left `from` for the page turns out to have left on purpose: `from`
+ * can still hold focus and no confirm took it. Checked after the blur, once the write that may have
+ * removed or disabled `from` has rendered.
+ */
+function whenLeftOnPurpose(from: Element, release: () => void): void {
+  queueMicrotask(() => {
+    if (canHoldFocus(from) && !inConfirm(document.activeElement)) release();
+  });
+}
+
+/** The side a staging header's `data-staging-header` names, or null for anything else. */
+function asSide(value: string | undefined): Side | null {
+  return value === "unstaged" || value === "staged" ? value : null;
+}
+
 /** Whether `el` takes typed text, where the lists' bare keys must not act. */
 function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -237,9 +258,8 @@ const ChangeList: React.FC<ChangeListProps> = ({
       if (!e.currentTarget.contains(e.relatedTarget) && !inConfirm(e.relatedTarget)) focusInside.current = false;
       return;
     }
-    const from = e.target;
-    queueMicrotask(() => {
-      if (from.isConnected && !(from instanceof HTMLButtonElement && from.disabled) && !inConfirm(document.activeElement)) focusInside.current = false;
+    whenLeftOnPurpose(e.target, () => {
+      focusInside.current = false;
     });
   };
 
@@ -675,7 +695,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     const now = document.activeElement;
     if (held === null || (now !== null && now !== document.body)) return;
     const { el } = held;
-    if (el.isConnected && !(el instanceof HTMLButtonElement && el.disabled)) {
+    if (canHoldFocus(el)) {
       el.focus();
       return;
     }
@@ -701,19 +721,16 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     const el = e.target;
     // A confirm's controls reach here through its portal; focus comes back from them.
     if (inConfirm(el)) return;
-    const side = el.closest<HTMLElement>("[data-staging-header]")?.dataset.stagingHeader;
+    const side = asSide(el.closest<HTMLElement>("[data-staging-header]")?.dataset.stagingHeader);
     const conflict = el.closest<HTMLElement>("[data-conflict]")?.dataset.conflict ?? null;
-    lastFocus.current =
-      side === "unstaged" || side === "staged" || conflict !== null ? { el, side: side === "unstaged" || side === "staged" ? side : null, conflict } : null;
+    lastFocus.current = side !== null || conflict !== null ? { el, side, conflict } : null;
   };
   // As in the lists: leaving for the page while the button is still there and enabled is on purpose.
   const onFocusOut = (e: React.FocusEvent<HTMLElement>) => {
     if (e.relatedTarget instanceof Node) return;
     const from = e.target;
-    queueMicrotask(() => {
-      if (lastFocus.current?.el === from && from.isConnected && !(from instanceof HTMLButtonElement && from.disabled) && !inConfirm(document.activeElement)) {
-        lastFocus.current = null;
-      }
+    whenLeftOnPurpose(from, () => {
+      if (lastFocus.current?.el === from) lastFocus.current = null;
     });
   };
 
