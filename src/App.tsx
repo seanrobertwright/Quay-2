@@ -276,6 +276,19 @@ export function App() {
     },
     [spawnTerminal, setIsToposOpen]
   );
+  // The Praxis host chip's actions (#448): `praxis setup`, `serve` or `login` typed into a plain
+  // shell terminal in the project, for the operator to answer. The builder hides so it shows.
+  const runInPraxisTerminal = useCallback(
+    async (cwd: string, argv: string[]) => {
+      const shell = shellFor(navigator.userAgent);
+      if (commandLine(argv, shell) === null) return false;
+      const terminal = await spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "praxis" });
+      if (terminal === null) throw new Error("the terminal didn't start");
+      setIsPraxisBuilderOpen(false);
+      return typeCommand(terminal.id, argv, shell);
+    },
+    [spawnTerminal, setIsPraxisBuilderOpen]
+  );
   // A conflict handed to a new agent (#392) starts one in the worktree; Topos stays open on the hand-off.
   const startToposAgent = useCallback(
     (cwd: string) => spawnTerminal({ project_path: cwd, run_kind: NEW_AGENT_RUN_KIND, name: "conflict agent" }),
@@ -815,6 +828,7 @@ export function App() {
         onClose={closePraxisBuilder}
         onAddProject={() => setIsAddProjectOpen(true)}
         onUnsavedProjectsChange={onPraxisUnsavedChange}
+        onRunInTerminal={runInPraxisTerminal}
       />
 
       {/* Topos git cockpit (Ctrl+Shift+B c): hidden, never unmounted, when closed */}

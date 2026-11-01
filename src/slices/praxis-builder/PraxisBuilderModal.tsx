@@ -114,6 +114,9 @@ import { focusedElement, nudgeOffset, nudgeStep, tabTarget } from "./keyboard.ts
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { DiffView } from "./DiffView.tsx";
 import { InstallDialog } from "./InstallDialog.tsx";
+import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
+import { useHostCondition } from "./useHostCondition.ts";
+import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
 import {
@@ -191,6 +194,8 @@ interface PraxisBuilderModalProps {
   onAddProject: () => void;
   /** Called with the normalized paths of the projects that have unsaved drafts, whenever they change. */
   onUnsavedProjectsChange?: (projectKeys: string[]) => void;
+  /** Opens a visible shell terminal with a command typed in, for the host chip's actions. */
+  onRunInTerminal?: RunInTerminal;
   ref?: Ref<PraxisBuilderHandle>;
 }
 
@@ -289,6 +294,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   onClose,
   onAddProject,
   onUnsavedProjectsChange,
+  onRunInTerminal,
   ref,
 }) => {
   const titleId = useId();
@@ -377,6 +383,24 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // The cross-record checks (#269): a full check when the builder is shown and on a reload, rename
   // or delete; opening or saving a record re-checks the contracts it affects.
   const runChecks = useRunContexts(isOpen, projectPath, openKind, openId);
+  // The host chip (#448). A workflow template's work area is the view that needs the host, so
+  // the 60 s recheck runs only while one is shown and its host condition is failing.
+  const host = useHostCondition(projectPath, isOpen && openKind === "templates");
+  // Set up host, Start host and Sign in: `praxis` in a visible terminal, never headless.
+  const runHostCommand = useCallback(
+    (command: InteractiveCommand) => {
+      if (!projectPath) return;
+      const failed = (why: string) => setNotice({ tone: "error", text: `Couldn't open a terminal for praxis ${command}: ${why}` });
+      if (!onRunInTerminal) return failed("this window has no terminals.");
+      openPraxisTerminal(command, projectPath, onRunInTerminal).then(
+        (typed) => {
+          if (!typed) failed("the command can't be typed into a terminal safely.");
+        },
+        (e) => failed(String(e)),
+      );
+    },
+    [projectPath, onRunInTerminal],
+  );
   const checkContext = runChecks.check;
   const openNodeIds = useMemo(() => (openContent ? nodeIdsOf(openContent) : []), [openContent]);
   // Only nodes the graph still has, since an undo or a rename can take a selected node away.
@@ -1771,6 +1795,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
             {project && (
               <>
+                <HostChip
+                  condition={host.condition}
+                  checking={host.checking}
+                  error={host.error}
+                  onCheck={host.check}
+                  onRun={runHostCommand}
+                />
                 {openDraft && (
                   <>
                     <button
@@ -1862,6 +1893,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </button>
           </div>
         </header>
+
+        {project && <SimulatedHostBanner condition={host.condition} />}
 
         {notice && (
           <p

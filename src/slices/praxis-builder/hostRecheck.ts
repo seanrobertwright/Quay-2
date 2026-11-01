@@ -29,6 +29,7 @@ export function createHostRecheck(check: (signal: AbortSignal) => Promise<void>,
       const controller = new AbortController();
       running = controller;
       void check(controller.signal)
+        // The check reports its own failures; a rejected one still keeps the recheck going.
         .catch(() => {})
         .finally(() => {
           if (running === controller) running = null;
