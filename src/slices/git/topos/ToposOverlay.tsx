@@ -34,8 +34,8 @@ import { offerSpeedup } from "./speedup";
 import { SpeedupBanner, SpeedupDialog } from "./SpeedupDialog";
 import { useSpeedup } from "./useSpeedup";
 import { isSamePath } from "../../../utils/paths";
-import { ConfirmDialog, ToposModalContext } from "./ConfirmDialog";
-import { createModalLayer } from "./modalLayer";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { ToposModalScope, useToposModal } from "./ToposModal";
 import { checkoutBlockedBy, type RefAction, type RefContext } from "./refActions";
 import { ToastQueue } from "./ToastQueue";
 import type { ToposRequestKind } from "./toposPalette";
@@ -119,18 +119,10 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   request = null,
 }) => {
   const titleId = useId();
-  // One modal layer for every confirm in Topos (#421): the dialog draws in `modalHost`, and while
-  // one is open everything else in the panel is inert. A click on the backdrop waits for it too.
-  const modalContent = useRef<HTMLDivElement>(null);
-  const [modalLayer] = useState(() =>
-    createModalLayer({
-      setInert: (on) => {
-        if (modalContent.current) modalContent.current.inert = on;
-      },
-    })
-  );
-  const [modalHost, setModalHost] = useState<HTMLDivElement | null>(null);
-  const modal = useMemo(() => ({ layer: modalLayer, host: modalHost }), [modalLayer, modalHost]);
+  // One modal layer for every confirm in Topos (#421): while one is open everything else in the panel
+  // is inert. A click on the backdrop waits for it too.
+  const modal = useToposModal();
+  const modalLayer = modal.layer;
   const closeUnlessModal = useCallback(() => {
     if (!modalLayer.isOpen()) onClose();
   }, [modalLayer, onClose]);
@@ -494,9 +486,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
         aria-labelledby={titleId}
         className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
       >
-        <ToposModalContext.Provider value={modal}>
-        {/* Everything a confirm blocks while it is open; `modalLayer` sets its inert. */}
-        <div ref={modalContent} className="contents">
+        {/* Everything a confirm blocks while it is open; the confirms draw beside it, over the whole panel. */}
+        <ToposModalScope modal={modal}>
         <header className="h-12 px-4 bg-[#161b22] border-b border-[#30363d] flex items-center gap-3 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-[#06B6D4]/10 border border-[#06B6D4]/40 flex items-center justify-center shrink-0">
             <ToposIcon className="w-5 h-5" />
@@ -780,9 +771,8 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           </div>
         )}
         <ToastQueue toasts={refActions.toasts} onDismiss={refActions.dismiss} />
-        </div>
-        {/* Topos's confirms draw here, outside the inert content, positioned over the whole panel. */}
-        <div ref={setModalHost} />
+        <ConfirmDialog request={refActions.dialog} onCancel={refActions.closeDialog} />
+        </ToposModalScope>
         <SpeedupDialog
           open={speedupOpen && graphRepo !== null}
           speedup={speedup}
@@ -790,13 +780,11 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           fallbackFocus={panelProps.ref}
         />
         <HandToAgentDialog picker={handToAgent.picker} onChoose={handToAgent.choose} onCancel={handToAgent.closePicker} />
-        <ConfirmDialog request={refActions.dialog} onCancel={refActions.closeDialog} />
         {/* The staging inspector's, the commit composer's and the diff view's one live region, here so it stays while
             either is shown. Keyed by the count, so the same sentence twice in a row is announced twice. */}
         <div role="status" aria-live="polite" className="sr-only">
           <span key={staging.announcement.seq}>{staging.announcement.text}</span>
         </div>
-        </ToposModalContext.Provider>
       </div>
     </div>
   );

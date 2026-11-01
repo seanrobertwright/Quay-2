@@ -1,14 +1,8 @@
-import React, { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import React, { useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
-import type { ModalLayer } from "./modalLayer";
+import { ToposModalContext } from "./ToposModal";
 import { confirmButtonClass, type ConfirmPrompt } from "./confirmStyle";
-
-/**
- * Topos's modal layer (#421), which every `ConfirmDialog` inside Topos opens: `host` is where the
- * dialog draws, over the whole panel and outside the content the layer makes inert.
- */
-export const ToposModalContext = createContext<{ layer: ModalLayer; host: HTMLElement | null } | null>(null);
 
 /** What a dialog with a text field or a choice collects. */
 export interface DialogValues {
