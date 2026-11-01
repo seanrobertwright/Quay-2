@@ -1,10 +1,13 @@
 // A workflow template's Runs view (#362, #452): the template's runs on the Praxis host, newest
 // first, polled through the runs list model while the view is on screen. Decisions on a run are
 // made only in the host's browser page, so a run that needs a person offers Open in browser and
-// nothing else.
+// nothing else. Show opens a run's detail (#453) above the list, followed while it is shown.
 import { useState, type FC } from "react";
 import { ExternalLink, FlaskConical, Pause, UserCheck } from "lucide-react";
 import { formatClock, formatDateTime } from "../../lib/dates.ts";
+import type { JsonObject } from "./model.ts";
+import type { RunInTerminal } from "./praxisHost.ts";
+import { RunDetail } from "./RunDetail.tsx";
 import { openRunPage } from "./runPage.ts";
 import { RUNS_MAX_LIMIT, type RunRow } from "./runsList.ts";
 import { useRunsList } from "./useRunsList.ts";
@@ -14,13 +17,20 @@ interface RunsViewProps {
   name: string;
   /** True while the builder is shown. It is only hidden when it closes, so the view stops by this. */
   shown: boolean;
+  /** The template's content, whose stages a run's detail is drawn on. */
+  content: JsonObject;
+  /** How a run's detail opens a visible terminal for `praxis trust`. */
+  runInTerminal?: RunInTerminal;
 }
 
 const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
 
-export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown }) => {
+export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown, content, runInTerminal }) => {
   const { list, view } = useRunsList(projectPath, name, shown);
   const [notice, setNotice] = useState<string | null>(null);
+  // The work order whose detail is shown, if any.
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedRow = view.runs?.find((r) => r.workOrderId === selected) ?? null;
 
   const openInBrowser = async (run: RunRow) => {
     if (!list) return;
@@ -48,6 +58,19 @@ export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown }) => {
           These runs are on a simulated host: their approvals aren't made by a person.
         </p>
       )}
+      {selected !== null && list && (
+        <RunDetail
+          key={selected}
+          projectPath={projectPath}
+          workOrderId={selected}
+          row={selectedRow}
+          content={content}
+          shown={shown}
+          runPage={list.runPage}
+          runInTerminal={runInTerminal}
+          onClose={() => setSelected(null)}
+        />
+      )}
       <div role="status" className="text-[11px] text-[#8b949e] space-y-1">
         {view.runs === null && view.problem === null && <p>Reading the runs of {name}…</p>}
         {view.dimmed && (
@@ -64,7 +87,15 @@ export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown }) => {
         <ul aria-label="Runs" className={`divide-y divide-[#21262d] border border-[#30363d] rounded-md ${view.dimmed ? "opacity-50" : ""}`}>
           {view.runs.map((run) => (
             <li key={run.runId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-[#c9d1d9]">
-              <span className="font-mono">{run.runId}</span>
+              <button
+                type="button"
+                aria-label={`Show ${run.runId}`}
+                aria-pressed={selected === run.workOrderId}
+                onClick={() => setSelected(selected === run.workOrderId ? null : run.workOrderId)}
+                className="font-mono underline-offset-2 hover:underline aria-pressed:text-white aria-pressed:underline"
+              >
+                {run.runId}
+              </button>
               <span>{run.status}</span>
               <span className="text-[#8b949e]">
                 <span className="sr-only">Stage </span>

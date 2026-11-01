@@ -14,9 +14,12 @@ export type HostCondition =
   | { state: "signedIn" }
   | { state: "simulatedHost" };
 
-/** The outcome of one `praxis --json` call. */
+/**
+ * The outcome of one `praxis --json` call. A `status` record carries `trustHint`, the
+ * certificate hint praxis wrote on stderr, when it gave one.
+ */
 export type CallOutcome =
-  | { kind: "record"; record: Record<string, unknown> }
+  | { kind: "record"; record: Record<string, unknown>; trustHint?: string }
   | { kind: "blocked"; record: Record<string, unknown>; blockingRunAddress: string }
   | { kind: "needsUpdate"; detail: string }
   | { kind: "noHost"; message: string }
