@@ -10,7 +10,7 @@
 // at once. When the host goes offline, every per-template reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
-import { isHostLevelFailure, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { isHostLevelFailure, outcomeMessage, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
 
 /** A local workflow template as the builder's list has it. */
 export interface LocalTemplate {
@@ -173,26 +173,6 @@ function notReadyReason(detail: Detail): string {
   return "The host says this template can't run, and gave no reason.";
 }
 
-/** The words of an outcome that isn't a record, for a failed read. */
-function failure(outcome: CallOutcome): string {
-  switch (outcome.kind) {
-    case "needsUpdate":
-      return `Quay needs an update for this praxis: ${outcome.detail}`;
-    case "refused":
-    case "noHost":
-    case "hostDown":
-    case "notSignedIn":
-    case "expired":
-      return outcome.message;
-    case "cliNotFound":
-      return outcome.reason;
-    case "timedOut":
-      return "praxis didn't answer in time.";
-    default:
-      return "praxis gave an answer Quay can't read.";
-  }
-}
-
 const online = (condition: HostCondition) => hostConditionView(condition).usable;
 
 /**
@@ -304,7 +284,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       if (outcome.kind !== "record") {
         // A failing host condition drops readings anyway; any other failure is the template's.
         if (!isHostLevelFailure(outcome)) {
-          shows.set(name, { at, comparedDigest, failed: failure(outcome) });
+          shows.set(name, { at, comparedDigest, failed: outcomeMessage(outcome) });
         }
         return;
       }

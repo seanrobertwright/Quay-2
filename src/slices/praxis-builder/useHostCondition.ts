@@ -7,23 +7,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
 import { createHostRecheck } from "./hostRecheck.ts";
 import { createLatestCondition } from "./latestCondition.ts";
+import { useDocumentVisible } from "./useDocumentVisible.ts";
 import { checkHost, listenHostCondition, type HostCondition } from "./praxisHost.ts";
 
 export interface HostConditionState {
   condition: HostCondition;
   /** Why the last recheck couldn't be made, such as an unregistered project; null when it was. */
   error: string | null;
-}
-
-/** True while the window is shown, not minimized or in a background tab. */
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
-  useEffect(() => {
-    const onChange = () => setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", onChange);
-    return () => document.removeEventListener("visibilitychange", onChange);
-  }, []);
-  return visible;
 }
 
 /**

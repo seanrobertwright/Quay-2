@@ -5,12 +5,14 @@
 // the template's state on the Praxis host from the host catalog (#363, #451), with the host's
 // readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
-// resolves a command.
+// resolves a command. A Template | Runs switch turns the work area to the template's runs on the
+// host (#452).
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, Info, Plus, Repeat, UserCheck, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
+import { RunsView } from "./RunsView.tsx";
 import {
   asString,
   asStrings,
@@ -58,6 +60,8 @@ interface TemplateFormProps {
   onInstall: () => void;
   /** This template's state on the Praxis host, from the host catalog; null without one. */
   host: TemplateHost | null;
+  /** Where the Runs view lists runs from, and whether the builder is shown; without it there is no switch. */
+  runs?: { projectPath: string; shown: boolean } | null;
 }
 
 /** The list item a pointer such as `/outputPaths/2` names, quoted, or the pointer when it names none. */
@@ -76,7 +80,11 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host }) => {
+/** What the template's work area shows. */
+type WorkAreaView = "template" | "runs";
+
+export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, runs }) => {
+  const [shownView, setShownView] = useState<WorkAreaView>("template");
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -283,8 +291,40 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
   );
   const rest = untaken.filter((d) => !removable.includes(d));
 
+  const viewSwitch = runs && (
+    <div role="group" aria-label="Show" className="max-w-3xl mx-auto px-6 pt-4 flex gap-1">
+      {(["template", "runs"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={shownView === v}
+          onClick={() => setShownView(v)}
+          className="px-2.5 py-1 rounded-md border border-[#30363d] text-xs text-[#c9d1d9] hover:bg-[#21262d] aria-pressed:bg-[#30363d] aria-pressed:text-white"
+        >
+          {v === "template" ? "Template" : "Runs"}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (runs && shownView === "runs") {
+    return (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {viewSwitch}
+        <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
+          <h2 className="text-sm font-semibold text-[#c9d1d9]">
+            Runs on the host
+            <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
+          </h2>
+          <RunsView projectPath={runs.projectPath} name={draft.ref.id} shown={runs.shown} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
+      {viewSwitch}
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Workflow template ${draft.ref.id}`}>
         <header className="space-y-2">
           <h2 className="text-sm font-semibold text-[#c9d1d9]">
