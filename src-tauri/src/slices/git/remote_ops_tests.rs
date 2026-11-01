@@ -403,7 +403,8 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The remote `slow` that [`with_gated_remote`] adds. Its upload-pack, once a fetch starts it,
 /// says so and then serves only when the test lets it, so the fetch holds the repo's lock from
-/// [`Gate::wait_until_started`] until [`Gate::release`] however busy the machine is.
+/// [`Gate::wait_until_started`] until [`Gate::release`], or until the upload-pack gives up after
+/// at least [`PATIENCE`].
 struct Gate {
     started: PathBuf,
     release: PathBuf,
@@ -413,14 +414,11 @@ impl Gate {
     /// Waits until a fetch from `slow` is running, and so holds the repo's lock, which a fetch
     /// takes before it starts git.
     fn wait_until_started(&self) {
-        let since = std::time::Instant::now();
-        while !self.started.exists() {
-            assert!(since.elapsed() < PATIENCE, "the fetch from slow never started");
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        poll_until(|| self.started.exists(), || "the fetch from slow never started".to_string());
     }
 
-    /// Lets the waiting upload-pack serve, so the fetch from `slow` finishes. Returns when.
+    /// Lets the waiting upload-pack serve, so the fetch from `slow` finishes. Returns the instant it
+    /// released the gate.
     fn release(&self) -> std::time::Instant {
         std::fs::write(&self.release, "").unwrap();
         std::time::Instant::now()
@@ -455,9 +453,14 @@ fn with_gated_remote(root: &Path, wt: &Path) -> Gate {
 
 /// Waits until `events` holds one matching `want`.
 fn wait_for(events: &std::sync::Mutex<Vec<serde_json::Value>>, want: impl Fn(&serde_json::Value) -> bool) {
-    let started = std::time::Instant::now();
-    while !events.lock().unwrap().iter().any(&want) {
-        assert!(started.elapsed() < PATIENCE, "never saw it in {:?}", events.lock().unwrap());
+    poll_until(|| events.lock().unwrap().iter().any(&want), || format!("never saw it in {:?}", events.lock().unwrap()));
+}
+
+/// Polls `done` until it holds, and fails with `what` once [`PATIENCE`] has passed.
+fn poll_until(done: impl Fn() -> bool, what: impl Fn() -> String) {
+    let since = std::time::Instant::now();
+    while !done() {
+        assert!(since.elapsed() < PATIENCE, "{}", what());
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
