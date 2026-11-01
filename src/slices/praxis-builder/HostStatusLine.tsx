@@ -2,9 +2,9 @@
 // template form and the Install on host… dialog. It draws `hostStatus.ts`'s view of the host
 // catalog (#449) and never calls `praxis` itself: Check again asks the catalog.
 import { useEffect, useState, type FC } from "react";
-import { CircleHelp, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type { TemplateHostView } from "./hostCatalog.ts";
-import { BADGE_ICONS, BADGE_TONES } from "./HostList.tsx";
+import { hostStateLook } from "./HostList.tsx";
 import { templateStatusLine } from "./hostStatus.ts";
 import type { HostCondition } from "./praxisHost.ts";
 
@@ -28,13 +28,11 @@ function useMinuteTick(): void {
 export const HostStatusLine: FC<{ host: TemplateHost }> = ({ host }) => {
   useMinuteTick();
   const line = templateStatusLine(host.view, host.condition, Date.now());
-  const Icon = line.state === "unknown" ? CircleHelp : BADGE_ICONS[line.state];
-  // A muted reading loses its colour, as the list's badge does; the text still says the state.
-  const tone = line.muted ? `${BADGE_TONES.muted} opacity-60` : BADGE_TONES[line.tone];
+  const { Icon, toneClass } = hostStateLook(line.state, line.tone, line.muted);
   return (
     <div className="flex items-start gap-1.5 flex-wrap text-[11px] text-[#8b949e]">
       <span role="status" className="inline-flex items-start gap-1.5 min-w-0">
-        <Icon className={`w-3.5 h-3.5 mt-px shrink-0 ${tone}`} aria-hidden="true" />
+        <Icon className={`w-3.5 h-3.5 mt-px shrink-0 ${toneClass}`} aria-hidden="true" />
         <span className="min-w-0 break-words">
           <span className="sr-only">On the host: </span>
           <span className="text-[#c9d1d9]">{line.label}</span>

@@ -2,14 +2,14 @@
 // the Praxis host (#363, #451). It renders the host catalog's model (#449) and adds no state of
 // its own: Check again asks the catalog, whose reads go through the Praxis CLI runner (#446).
 import type { TemplateHostState, TemplateHostView } from "./hostCatalog.ts";
-import { HOST_STATE_LABELS, HOST_STATE_TONES, hostStateReason, minutesSince, type HostBadge, type HostBadgeTone } from "./hostList.ts";
+import { HOST_STATE_LABELS, HOST_STATE_TONES, hostStateReason, minutesSince, type HostBadgeTone, type ShownHostState } from "./hostList.ts";
 import { hostConditionView } from "./hostCondition.ts";
 import type { HostCondition } from "./praxisHost.ts";
 
 /** The status line beside Install on host…. */
 export interface TemplateStatusLine {
   /** The state shown, as the list's badge has it; `unknown` while the host can't be used. */
-  state: HostBadge["state"] | "unknown";
+  state: ShownHostState;
   /** Its colour, which never carries the state alone: `label` does. */
   tone: HostBadgeTone;
   /** The state's text label, which carries it without colour. */
@@ -36,8 +36,8 @@ export function templateStatusLine(view: TemplateHostView, condition: HostCondit
   const shown = state.kind === "unknown" ? (state.why === "notChecked" ? "unknown" : "failed") : state.kind;
   return {
     state: shown,
-    tone: shown === "unknown" ? "neutral" : HOST_STATE_TONES[shown],
-    label: shown === "unknown" ? "Not checked yet" : HOST_STATE_LABELS[shown],
+    tone: HOST_STATE_TONES[shown],
+    label: HOST_STATE_LABELS[shown],
     reason: hostStateReason(state),
     checked:
       view.checkedAt === null

@@ -3,14 +3,14 @@
 // `hostList.ts`'s view of the host catalog (#449) and never call `praxis` themselves: Check host
 // asks the catalog, whose reads go through the Praxis CLI runner (#446).
 import { useEffect, useId, useRef, useState, type FC } from "react";
-import { Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleX, CloudOff, FileDiff, RefreshCw } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleHelp, CircleX, CloudOff, FileDiff, RefreshCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HostActionButton } from "./HostChip.tsx";
 import type { HostTone } from "./hostCondition.ts";
-import { hostOnlyDetails, type HostBadge, type HostBadgeTone, type HostGroupHeader, type HostOnlySection } from "./hostList.ts";
+import { hostOnlyDetails, type HostBadge, type HostBadgeTone, type HostGroupHeader, type HostOnlySection, type ShownHostState } from "./hostList.ts";
 import type { InteractiveCommand } from "./praxisHost.ts";
 
-export const BADGE_ICONS: Record<HostBadge["state"], LucideIcon> = {
+const BADGE_ICONS: Record<ShownHostState, LucideIcon> = {
   nameRefused: Ban,
   notInstalled: CloudOff,
   invalidOnHost: CircleX,
@@ -18,9 +18,10 @@ export const BADGE_ICONS: Record<HostBadge["state"], LucideIcon> = {
   notReady: CircleAlert,
   installed: Check,
   failed: CircleDashed,
+  unknown: CircleHelp,
 };
 
-export const BADGE_TONES: Record<HostBadgeTone, string> = {
+const BADGE_TONES: Record<HostBadgeTone, string> = {
   error: "text-[#ff7b72]",
   attention: "text-[#e3b341]",
   muted: "text-[#6e7681]",
@@ -28,15 +29,21 @@ export const BADGE_TONES: Record<HostBadgeTone, string> = {
 };
 
 /**
+ * A host state's icon and colour class. A muted reading loses its colour as well as its weight,
+ * so an old warning doesn't shout; the text beside the icon still says the state.
+ */
+export function hostStateLook(state: ShownHostState, tone: HostBadgeTone, muted: boolean): { Icon: LucideIcon; toneClass: string } {
+  return { Icon: BADGE_ICONS[state], toneClass: muted ? `${BADGE_TONES.muted} opacity-60` : BADGE_TONES[tone] };
+}
+
+/**
  * A template's compact host badge. Its icon and colour are hidden from screen readers, which
  * read its text instead; the tooltip adds the host's reason and whether it may be out of date.
  */
 export const HostBadgeView: FC<{ badge: HostBadge }> = ({ badge }) => {
-  const Icon = BADGE_ICONS[badge.state];
-  // A muted reading loses its colour as well as its weight, so an old warning doesn't shout.
-  const tone = badge.muted ? `${BADGE_TONES.muted} opacity-60` : BADGE_TONES[badge.tone];
+  const { Icon, toneClass } = hostStateLook(badge.state, badge.tone, badge.muted);
   return (
-    <span title={badge.title} className={`p-1 shrink-0 inline-flex ${tone}`}>
+    <span title={badge.title} className={`p-1 shrink-0 inline-flex ${toneClass}`}>
       <Icon className="w-3.5 h-3.5" aria-hidden="true" />
       <span className="sr-only">{badge.text}</span>
     </span>

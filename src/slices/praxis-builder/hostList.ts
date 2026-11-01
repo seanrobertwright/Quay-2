@@ -22,8 +22,11 @@ export interface HostBadge {
   muted: boolean;
 }
 
+/** A host state as a badge or the status line shows it: `failed` when the last read failed, `unknown` before any read. */
+export type ShownHostState = KnownHostState | "failed" | "unknown";
+
 /** Each host state's text label, which carries the state without its colour. */
-export const HOST_STATE_LABELS: Record<KnownHostState | "failed", string> = {
+export const HOST_STATE_LABELS: Record<ShownHostState, string> = {
   nameRefused: "Name the host refuses",
   notInstalled: "Not installed",
   invalidOnHost: "Invalid on host",
@@ -31,10 +34,11 @@ export const HOST_STATE_LABELS: Record<KnownHostState | "failed", string> = {
   notReady: "Installed, not ready",
   installed: "Installed",
   failed: "Couldn't check",
+  unknown: "Not checked yet",
 };
 
 /** Each host state's colour: states that need attention are coloured, Installed is muted. */
-export const HOST_STATE_TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
+export const HOST_STATE_TONES: Record<ShownHostState, HostBadgeTone> = {
   nameRefused: "error",
   invalidOnHost: "error",
   notInstalled: "attention",
@@ -42,6 +46,7 @@ export const HOST_STATE_TONES: Record<KnownHostState | "failed", HostBadgeTone> 
   notReady: "attention",
   installed: "muted",
   failed: "neutral",
+  unknown: "neutral",
 };
 
 /** What the host or the read said about a state, or null when it said nothing. */

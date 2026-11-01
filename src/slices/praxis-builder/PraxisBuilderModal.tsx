@@ -397,7 +397,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const templateSaved = hostCatalog.saved;
   // The On host only subsection, sorted and capped once per catalog change, not per render.
   const { catalog: shownCatalog, version: catalogVersion } = hostCatalog;
-  /** Template `name`'s host state for the form and the Install dialog, read on each catalog change. */
+  /** Template `name`'s host state for the form and the Install dialog, read from the catalog on each render. */
   const templateHost = (name: string): TemplateHost | null =>
     shownCatalog
       ? { view: shownCatalog.template(name), condition: host.condition, onCheckAgain: () => void shownCatalog.checkAgain(name) }
