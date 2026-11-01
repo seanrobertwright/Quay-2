@@ -1,13 +1,14 @@
 // Starting a workflow template run (#362, #454): a headless `praxis run <name> --json` through the
 // Praxis CLI runner (#446), never in a terminal and never with `--follow`, which hides the work
-// order id. The runner bounds a creation at 75 s and kills its process tree after that. praxis
-// saves a pending creation in its profile before it sends one (#361), so a killed creation stays
-// pending and the next Run resumes it rather than creating a second run. Quay never runs a
-// creation again on its own. This module has no UI: the Runs view and its confirm dialog draw it.
+// order id. The runner bounds a creation at `RUN_CREATE_TIMEOUT_S` and kills its process tree
+// after that. praxis saves a pending creation in its profile before it sends one (#361), so a
+// killed creation stays pending and the next Run resumes it rather than creating a second run.
+// Quay never runs a creation again on its own. This module has no UI: the Runs view and its
+// confirm dialog draw it.
 import { invoke } from "@tauri-apps/api/core";
 import type { TemplateHostState } from "./hostCatalog.ts";
 import { praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
-import type { ChangeStatus } from "./types.ts";
+import type { GitChange } from "./types.ts";
 import { normalizePath } from "../../utils/paths.ts";
 
 /** What one Run came to, in the words the Runs view shows. */
@@ -91,24 +92,6 @@ export function runStartOf(outcome: CallOutcome, name: string): RunStart {
   }
 }
 
-/**
- * Why the host can't run the template, from its host state: the reasons `workflows show` gave
- * when it isn't `runnable`, the host's diagnostics for a copy it holds invalid, or the name rule.
- * Null when nothing known stops a run. Run in the header is disabled with this reason.
- */
-export function runRefusedBy(state: TemplateHostState): string | null {
-  switch (state.kind) {
-    case "notReady":
-      return `The host can't run it: ${state.reason}`;
-    case "invalidOnHost":
-      return `The host's copy isn't valid${state.diagnostics.length > 0 ? `: ${state.diagnostics.join(" ")}` : "."}`;
-    case "nameRefused":
-      return state.rule;
-    default:
-      return null;
-  }
-}
-
 /** One warning of the confirm dialog. */
 export interface RunWarning {
   key: "differs" | "notInstalled" | "notReady" | "invalidOnHost" | "unsaved" | "uncommitted" | "gitUnknown";
@@ -116,20 +99,62 @@ export interface RunWarning {
 }
 
 /**
+ * What a host state means for Run, in one place so the header and the confirm agree: why the
+ * header's Run is disabled, why the confirm's Start run is withheld, and the confirm's warning.
+ */
+interface HostStateNote {
+  refusal: string | null;
+  confirmRefusal: string | null;
+  warning: RunWarning | null;
+}
+
+function hostStateNote(state: TemplateHostState): HostStateNote {
+  const both = (refusal: string, key: RunWarning["key"] | null): HostStateNote => ({
+    refusal,
+    confirmRefusal: refusal,
+    warning: key === null ? null : { key, text: refusal },
+  });
+  switch (state.kind) {
+    case "differs":
+      return {
+        refusal: null,
+        confirmRefusal: null,
+        warning: { key: "differs", text: "The host's installed copy differs from the saved file. The host's copy runs, not this file." },
+      };
+    case "notInstalled":
+      return {
+        refusal: null,
+        confirmRefusal: "Install the template on the host first.",
+        warning: { key: "notInstalled", text: "The host doesn't have this template installed, so there is nothing to run." },
+      };
+    case "notReady":
+      return both(`The host's copy isn't ready to run: ${state.reason}`, "notReady");
+    case "invalidOnHost":
+      return both(`The host's copy isn't valid${state.diagnostics.length > 0 ? `: ${state.diagnostics.join(" ")}` : "."}`, "invalidOnHost");
+    case "nameRefused":
+      return both(state.rule, null);
+    default:
+      return { refusal: null, confirmRefusal: null, warning: null };
+  }
+}
+
+/**
+ * Why the host can't run the template, from its host state: the reasons `workflows show` gave
+ * when it isn't `runnable`, the host's diagnostics for a copy it holds invalid, or the name rule.
+ * Null when nothing known stops a run. Run in the header is disabled with this reason.
+ */
+export function runRefusedBy(state: TemplateHostState): string | null {
+  return hostStateNote(state).refusal;
+}
+
+/**
  * The confirm dialog's warnings, from the template's host state, whether the open draft has
  * edits the saved file lacks, and how the file differs from the last commit.
  */
-export function runWarnings(state: TemplateHostState, unsaved: boolean, changed: ChangeStatus | "unknown" | undefined): RunWarning[] {
+export function runWarnings(state: TemplateHostState, unsaved: boolean, changed: GitChange | undefined): RunWarning[] {
   const warnings: RunWarning[] = [];
-  if (state.kind === "differs") {
-    warnings.push({ key: "differs", text: "The host's installed copy differs from the saved file. The host's copy runs, not this file." });
-  } else if (state.kind === "notInstalled") {
-    warnings.push({ key: "notInstalled", text: "The host doesn't have this template installed, so there is nothing to run." });
-  } else if (state.kind === "notReady") {
-    warnings.push({ key: "notReady", text: `The host's copy isn't ready to run: ${state.reason}` });
-  } else if (state.kind === "invalidOnHost") {
-    warnings.push({ key: "invalidOnHost", text: runRefusedBy(state) ?? "" });
-  }
+  const { warning } = hostStateNote(state);
+  if (warning) warnings.push(warning);
   if (unsaved) warnings.push({ key: "unsaved", text: "The draft has unsaved changes. They don't run: the host runs its installed copy." });
   if (changed === "unknown") {
     warnings.push({ key: "gitUnknown", text: "Quay couldn't read git status, so it can't tell whether this template has changes that aren't committed." });
@@ -141,15 +166,14 @@ export function runWarnings(state: TemplateHostState, unsaved: boolean, changed:
 
 /** Why the confirm dialog's Run is withheld: what stops the header's Run, or no host copy at all. */
 export function confirmRefusedBy(state: TemplateHostState): string | null {
-  if (state.kind === "notInstalled") return "Install the template on the host first.";
-  return runRefusedBy(state);
+  return hostStateNote(state).confirmRefusal;
 }
 
 /** Every Run in flight, one per project and template, shared by every Runs view. */
 export interface RunStarts {
   /**
    * Runs `praxis run <name> --json` for `projectPath`, or joins the creation in flight for that
-   * name. Never cancelled by Quay: it ends when praxis does, or at the runner's 75 s timeout.
+   * name. Never cancelled by Quay: it ends when praxis does, or at the runner's `RUN_CREATE_TIMEOUT_S` timeout.
    */
   start(projectPath: string, name: string): Promise<RunStart>;
   /** The creation in flight for `name`, if any. */

@@ -15,7 +15,7 @@ import type { TemplateHost } from "./HostStatusLine.tsx";
 import type { CallOutcome } from "./praxisHost.ts";
 import { runsRecord } from "./fixtures/runs.ts";
 import { createRunStarts } from "./runStart.ts";
-import type { ChangeStatus } from "./types.ts";
+import type { GitChange } from "./types.ts";
 
 const { TemplateForm } = await import("./TemplateForm.tsx");
 
@@ -46,8 +46,8 @@ afterEach(() => {
   mock.timers.reset();
 });
 
-/** The host's copy of the template, as `workflows show` describes it. */
-interface HostCopy {
+/** What the fake host answers about the template: what `workflows list` and `workflows show` describe. */
+interface ShowScenario {
   installed?: boolean;
   digest?: string;
   revision?: number;
@@ -55,7 +55,7 @@ interface HostCopy {
   reasons?: string[];
 }
 
-const listRecord = (copy: HostCopy): CallOutcome => ({
+const listRecord = (copy: ShowScenario): CallOutcome => ({
   kind: "record",
   record: {
     format: "aiws-workflow-catalog/1",
@@ -63,7 +63,7 @@ const listRecord = (copy: HostCopy): CallOutcome => ({
   },
 });
 
-const showRecord = (copy: HostCopy): CallOutcome => ({
+const showRecord = (copy: ShowScenario): CallOutcome => ({
   kind: "record",
   record: {
     format: "aiws-workflow-catalog/1",
@@ -102,7 +102,7 @@ interface Sent {
  * The backend. Catalog reads answer at once from `host`, which a test may change; a show is held
  * while `holdShow` is set. Runs lists, run creations and statuses wait for the test.
  */
-function fakeBackend(initial: HostCopy = {}) {
+function fakeBackend(initial: ShowScenario = {}) {
   const sent: Sent[] = [];
   const state = { host: initial, holdShow: false };
   fakeInvoke(
@@ -142,7 +142,7 @@ function fakeBackend(initial: HostCopy = {}) {
 
 interface FormOptions {
   draft?: Draft;
-  changed?: ChangeStatus | "unknown";
+  changed?: GitChange;
   onInstall?: () => void;
 }
 
@@ -208,7 +208,11 @@ test("Run sits in the Runs view header, disabled with show's reasons when the ho
   assert.equal(run.getAttribute("aria-disabled"), "true");
   const reasonId = run.getAttribute("aria-describedby");
   assert.ok(reasonId);
-  assert.match(text(root.querySelector(`[id="${reasonId}"]`)), /The agent does not declare TOOL node\./);
+  assert.match(
+    text(root.querySelector(`[id="${reasonId}"]`)),
+    /The host's copy isn't ready to run: The agent does not declare TOOL node\./,
+    "the same words as the confirm's warning"
+  );
   await click(run);
   assert.equal(dialog(root), null, "a disabled Run opens nothing");
 });
