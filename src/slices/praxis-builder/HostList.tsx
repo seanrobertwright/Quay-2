@@ -10,7 +10,7 @@ import type { HostTone } from "./hostCondition.ts";
 import { hostOnlyDetails, type HostBadge, type HostBadgeTone, type HostGroupHeader, type HostOnlySection } from "./hostList.ts";
 import type { InteractiveCommand } from "./praxisHost.ts";
 
-const BADGE_ICONS: Record<HostBadge["state"], LucideIcon> = {
+export const BADGE_ICONS: Record<HostBadge["state"], LucideIcon> = {
   nameRefused: Ban,
   notInstalled: CloudOff,
   invalidOnHost: CircleX,
@@ -20,7 +20,7 @@ const BADGE_ICONS: Record<HostBadge["state"], LucideIcon> = {
   failed: CircleDashed,
 };
 
-const BADGE_TONES: Record<HostBadgeTone, string> = {
+export const BADGE_TONES: Record<HostBadgeTone, string> = {
   error: "text-[#ff7b72]",
   attention: "text-[#e3b341]",
   muted: "text-[#6e7681]",

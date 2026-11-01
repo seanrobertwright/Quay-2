@@ -33,7 +33,8 @@ export const HOST_STATE_LABELS: Record<KnownHostState | "failed", string> = {
   failed: "Couldn't check",
 };
 
-const TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
+/** Each host state's colour: states that need attention are coloured, Installed is muted. */
+export const HOST_STATE_TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
   nameRefused: "error",
   invalidOnHost: "error",
   notInstalled: "attention",
@@ -72,14 +73,14 @@ export function hostBadge(id: string, view: TemplateHostView, now: number): Host
   const label = HOST_STATE_LABELS[kind];
   const reason = hostStateReason(state);
   const title = reason ? `${label}. ${reason}` : label;
-  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: TONES[kind], muted: false };
+  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: HOST_STATE_TONES[kind], muted: false };
   const minutes = view.checkedAt === null ? null : minutesSince(view.checkedAt, now);
   const stale = minutes === null ? "May be out of date." : `May be out of date: checked ${minutes} min ago.`;
   return {
     state: kind,
     text: `${id} on the host: ${label}, may be out of date`,
     title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`,
-    tone: TONES[kind],
+    tone: HOST_STATE_TONES[kind],
     muted: true,
   };
 }
@@ -148,7 +149,7 @@ const invalidBadge = (name: string): HostBadge => ({
   state: "invalidOnHost",
   text: `${name} is invalid on the host`,
   title: HOST_STATE_LABELS.invalidOnHost,
-  tone: TONES.invalidOnHost,
+  tone: HOST_STATE_TONES.invalidOnHost,
   muted: false,
 });
 

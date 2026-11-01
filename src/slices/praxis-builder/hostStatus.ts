@@ -2,12 +2,16 @@
 // the Praxis host (#363, #451). It renders the host catalog's model (#449) and adds no state of
 // its own: Check again asks the catalog, whose reads go through the Praxis CLI runner (#446).
 import type { TemplateHostState, TemplateHostView } from "./hostCatalog.ts";
-import { HOST_STATE_LABELS, hostStateReason, minutesSince } from "./hostList.ts";
+import { HOST_STATE_LABELS, HOST_STATE_TONES, hostStateReason, minutesSince, type HostBadge, type HostBadgeTone } from "./hostList.ts";
 import { hostConditionView } from "./hostCondition.ts";
 import type { HostCondition } from "./praxisHost.ts";
 
 /** The status line beside Install on host…. */
 export interface TemplateStatusLine {
+  /** The state shown, as the list's badge has it; `unknown` while the host can't be used. */
+  state: HostBadge["state"] | "unknown";
+  /** Its colour, which never carries the state alone: `label` does. */
+  tone: HostBadgeTone;
   /** The state's text label, which carries it without colour. */
   label: string;
   /** The host's reason, or what the failed read said; null when there is none. */
@@ -27,12 +31,13 @@ export function templateStatusLine(view: TemplateHostView, condition: HostCondit
   const { state } = view;
   // While the host condition holds, the header's Check host is what rereads.
   if (state.kind === "unknown" && state.why === "host") {
-    return { label: `Host state unknown: ${hostConditionView(condition).label}`, reason: null, checked: null, checkAgain: false, checking: false, muted: false };
+    return { state: "unknown", tone: "neutral", label: `Host state unknown: ${hostConditionView(condition).label}`, reason: null, checked: null, checkAgain: false, checking: false, muted: false };
   }
-  const label =
-    state.kind === "unknown" ? (state.why === "notChecked" ? "Not checked yet" : HOST_STATE_LABELS.failed) : HOST_STATE_LABELS[state.kind];
+  const shown = state.kind === "unknown" ? (state.why === "notChecked" ? "unknown" : "failed") : state.kind;
   return {
-    label,
+    state: shown,
+    tone: shown === "unknown" ? "neutral" : HOST_STATE_TONES[shown],
+    label: shown === "unknown" ? "Not checked yet" : HOST_STATE_LABELS[shown],
     reason: hostStateReason(state),
     checked:
       view.checkedAt === null
@@ -80,7 +85,7 @@ export function installOpening(name: string, state: TemplateHostState): InstallO
   }
 }
 
-/** What the Install dialog notes after Check again, whatever it opened on. */
+/** What the Install dialog notes after Check again, unless the host refuses the name. */
 export const INSTALL_HOST_NOTES: readonly string[] = [
   "The host reads its template directory when it starts, so its catalog changes only after a restart.",
   "Quay can say that the host's copy differs from this file, never how: it doesn't read the host's template.",
