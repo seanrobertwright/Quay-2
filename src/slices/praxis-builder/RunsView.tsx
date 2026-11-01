@@ -32,7 +32,7 @@ export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown }) => {
     }
     try {
       if (!(await openRunPage(found.address))) {
-        setNotice(`Quay opens only pages on this machine's Praxis host, at https://127.0.0.1:<port>/. praxis gave ${found.address} for ${run.runId}.`);
+        setNotice(`Quay opens only pages on this machine's Praxis host. praxis gave ${found.address} for ${run.runId}.`);
       }
     } catch (e) {
       setNotice(`Couldn't open ${run.runId}'s page: ${String(e)}`);
