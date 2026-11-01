@@ -163,13 +163,20 @@ fn record(stdout: &[u8], format: &str) -> Result<Value, CallOutcome> {
     }
 }
 
+/// A failure Quay can't read further: a refusal, except for a creation, where it can't tell whether
+/// the run was created.
+fn unread_failure(verb: Verb, text: String) -> CallOutcome {
+    if verb.creates() {
+        CallOutcome::Unknown { detail: text }
+    } else {
+        CallOutcome::Refused { message: text }
+    }
+}
+
 /// What a `praxis <verb> --json` that exited with `code` means.
 pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> CallOutcome {
     let Some(code) = code else {
-        if verb.creates() {
-            return CallOutcome::Unknown { detail: format!("praxis was stopped before it finished. {}", stderr.trim()).trim_end().to_string() };
-        }
-        return CallOutcome::Refused { message: format!("praxis was stopped before it finished. {}", stderr.trim()).trim_end().to_string() };
+        return unread_failure(verb, format!("praxis was stopped before it finished. {}", stderr.trim()).trim_end().to_string());
     };
     match code {
         0 => record(stdout, verb.format()).map_or_else(
@@ -194,13 +201,13 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
             },
             Err(outcome) => outcome,
         },
-        _ if verb.creates() => CallOutcome::Unknown { detail: format!("praxis exited with {code}. {}", message(stderr, code)) },
-        _ => CallOutcome::Refused { message: format!("praxis exited with {code}. {}", message(stderr, code)) },
+        _ => unread_failure(verb, format!("praxis exited with {code}. {}", message(stderr, code))),
     }
 }
 
 /// The host condition `outcome` shows, or `None` when it says nothing new about the host: a
-/// refusal, an unknown creation outcome, a timeout, a cancel or a record Quay can't read leave the last condition standing.
+/// refusal, an unknown creation outcome, a timeout, a cancel or a record Quay can't read leave
+/// the last condition standing.
 pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
     let simulated = |record: &Value| record.get("simulatedIdentity") == Some(&Value::Bool(true));
     match outcome {
