@@ -7,8 +7,8 @@ import { ExternalLink, FlaskConical, Pause, UserCheck } from "lucide-react";
 import { formatClock, formatDateTime } from "../../lib/dates.ts";
 import type { JsonObject } from "./model.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
-import { RunDetail } from "./RunDetail.tsx";
-import { openRunPage } from "./runPage.ts";
+import { AMBER, RunDetail } from "./RunDetail.tsx";
+import { openRunPageOf } from "./runPage.ts";
 import { RUNS_MAX_LIMIT, type RunRow } from "./runsList.ts";
 import { useRunsList } from "./useRunsList.ts";
 
@@ -23,8 +23,6 @@ interface RunsViewProps {
   runInTerminal?: RunInTerminal;
 }
 
-const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
-
 export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown, content, runInTerminal }) => {
   const { list, view } = useRunsList(projectPath, name, shown);
   const [notice, setNotice] = useState<string | null>(null);
@@ -35,18 +33,7 @@ export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown, content,
   const openInBrowser = async (run: RunRow) => {
     if (!list) return;
     setNotice(null);
-    const found = await list.runPage(run.workOrderId);
-    if ("problem" in found) {
-      setNotice(`Couldn't find ${run.runId}'s page: ${found.problem}`);
-      return;
-    }
-    try {
-      if (!(await openRunPage(found.address))) {
-        setNotice(`Quay opens only pages on this machine's Praxis host. praxis gave ${found.address} for ${run.runId}.`);
-      }
-    } catch (e) {
-      setNotice(`Couldn't open ${run.runId}'s page: ${String(e)}`);
-    }
+    setNotice(await openRunPageOf(run.runId, null, () => list.runPage(run.workOrderId)));
   };
 
   const readAt = view.readAt === null ? null : formatClock(view.readAt);

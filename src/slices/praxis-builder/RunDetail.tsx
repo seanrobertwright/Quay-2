@@ -9,7 +9,7 @@ import { formatClock } from "../../lib/dates.ts";
 import type { JsonObject } from "./model.ts";
 import { openPraxisTerminal, type RunInTerminal } from "./praxisHost.ts";
 import type { RunDetail as Run } from "./runDetail.ts";
-import { openRunPage } from "./runPage.ts";
+import { openRunPageOf } from "./runPage.ts";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
 import { StageStrip } from "./StageStrip.tsx";
 import { useRunDetail } from "./useRunDetail.ts";
@@ -30,7 +30,8 @@ interface RunDetailProps {
 }
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
-const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
+/** The amber of a caution: a simulated run, or one waiting for a person. */
+export const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
 
 export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, content, shown, runPage, runInTerminal, onClose }) => {
   const view = useRunDetail(projectPath, workOrderId, row, shown);
@@ -40,20 +41,7 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
 
   const openInBrowser = async () => {
     setNotice(null);
-    let address = run?.runPageAddress ?? null;
-    if (address === null) {
-      const found = await runPage(workOrderId);
-      if ("problem" in found) {
-        setNotice(`Couldn't find ${name}'s page: ${found.problem}`);
-        return;
-      }
-      address = found.address;
-    }
-    try {
-      if (!(await openRunPage(address))) setNotice(`Quay opens only pages on this machine's Praxis host. praxis gave ${address} for ${name}.`);
-    } catch (e) {
-      setNotice(`Couldn't open ${name}'s page: ${String(e)}`);
-    }
+    setNotice(await openRunPageOf(name, run?.runPageAddress ?? null, () => runPage(workOrderId)));
   };
 
   const trust = () => {
@@ -122,7 +110,7 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
         <div className={view.dimmed ? "opacity-50" : ""}>
           <StageStrip
             content={content}
-            progress={{ runId: name, current: run.current, finished: run.finished, held: run.held, corrections: run.corrections?.count ?? null }}
+            progress={{ runId: name, current: run.current, finished: run.finished, held: run.held, corrections: run.corrections }}
           />
         </div>
       )}

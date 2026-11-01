@@ -7,6 +7,7 @@
 // in the Runs list, or to nothing.
 import { invoke } from "@tauri-apps/api/core";
 import { HOST_RECHECK_MS } from "./hostRecheck.ts";
+import { hasOwn, isObject } from "./model.ts";
 import { createNewestRequest } from "./newestRequest.ts";
 import { createPoller } from "./poller.ts";
 import { isHostLevelFailure, outcomeMessage, praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
@@ -56,11 +57,6 @@ export interface HoldPanel {
   exits: HoldExit[];
 }
 
-/** Correction rounds the run has started, from its attempts. */
-export interface CorrectionRounds {
-  count: number;
-}
-
 /** A run as its detail draws it. */
 export interface RunDetail {
   workOrderId: string;
@@ -75,7 +71,7 @@ export interface RunDetail {
   /** The stages the run has finished, as the strip checks them. */
   finished: StageKey[];
   /** The correction rounds the run has started; null when its attempts don't say. */
-  corrections: CorrectionRounds | null;
+  corrections: number | null;
   /** The decisions the run waits for in the browser, in words; empty when it waits for none. */
   decisions: string[];
   /** True when the run waits for a person in the browser. */
@@ -125,7 +121,6 @@ export interface RunFollowOptions {
 }
 
 type Obj = Record<string, unknown>;
-const isObject = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 
@@ -154,19 +149,19 @@ function placeOf(status: string, stage: string): StageKey | null {
  * task after the first at an even place is a correction. Null when the attempts don't say: none
  * listed, or a history cut short, whose first task isn't the implementation.
  */
-function correctionsOf(view: Obj): CorrectionRounds | null {
+function correctionsOf(view: Obj): number | null {
   if (!Array.isArray(view.attempts) || view.historyTruncated === true) return null;
   const attempts = view.attempts.filter(isObject);
   const sorted = [...attempts].sort(
     (a, b) => String(a.authorized_at).localeCompare(String(b.authorized_at)) || String(a.attempt_id).localeCompare(String(b.attempt_id)),
   );
   const tasks = [...new Set(sorted.map((a) => String(a.task_id)))];
-  return { count: tasks.filter((_, n) => n >= 2 && n % 2 === 0).length };
+  return tasks.filter((_, n) => n >= 2 && n % 2 === 0).length;
 }
 
 /** The stages a run at `current` has finished. Correction counts only once a round has started. */
-function finishedOf(status: string, current: StageKey | null, corrections: CorrectionRounds | null): StageKey[] {
-  const corrected = (corrections?.count ?? 0) > 0;
+function finishedOf(status: string, current: StageKey | null, corrections: number | null): StageKey[] {
+  const corrected = (corrections ?? 0) > 0;
   if (status === "SUCCEEDED") return ORDER.filter((s) => s !== "correction" || corrected);
   if (current === null) return [];
   const before: StageKey[] = ORDER.slice(0, ORDER.indexOf(current)).filter((s) => s !== "correction");
@@ -204,10 +199,11 @@ export function runDetailOf(view: Obj | null, row: RunRow | null, trustHint: str
   const pending = strings(v.pending);
   // Held as praxis's own follow tells it (`isHeld`): its status, an open hold card, or pending reconciliation.
   const held = view === null ? (row?.held ?? false) : status === "HELD" || isObject(v.holdCard) || pending.includes("RECONCILIATION");
-  const decisions = pending.filter((p) => Object.prototype.hasOwnProperty.call(BROWSER_DECISIONS, p)).map((p) => (p === "HUMAN_APPROVAL" && stage === "CORRECTION" ? "approval of the correction" : BROWSER_DECISIONS[p]));
+  const decisions = pending.filter((p) => hasOwn(BROWSER_DECISIONS, p)).map((p) => (p === "HUMAN_APPROVAL" && stage === "CORRECTION" ? "approval of the correction" : BROWSER_DECISIONS[p]));
   const corrections = view === null ? null : correctionsOf(v);
-  const current = placeOf(status, stage);
   const holdStage = isObject(v.holdCard) ? (STAGE_OF[str(v.holdCard.stage) ?? ""] ?? null) : null;
+  // A held run stands where its hold card says it stopped, else where its stage places it.
+  const current = (held ? holdStage : null) ?? placeOf(status, stage);
   const shownControl = control ?? row?.control ?? "";
   return {
     workOrderId,
@@ -217,8 +213,8 @@ export function runDetailOf(view: Obj | null, row: RunRow | null, trustHint: str
     stage,
     control: shownControl,
     held,
-    current: held ? (holdStage ?? current) : current,
-    finished: finishedOf(status, held ? (holdStage ?? current) : current, corrections),
+    current,
+    finished: finishedOf(status, current, corrections),
     corrections,
     decisions,
     waiting: held || decisions.length > 0 || status.startsWith("AWAITING_"),
