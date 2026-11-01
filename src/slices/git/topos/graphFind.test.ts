@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { findCounter, findKey, findParts, FindScan, isFindable, isMatch, steppedMatch, type FindBadge, type FindRows } from "./graphFind.ts";
+import { countingStore, withStringOids } from "./fixtures/oidRows.ts";
 
 interface Row {
   oid: string;
@@ -13,12 +14,12 @@ const ada = { name: "Ada Lovelace", email: "ada@example.com" };
 const bob = { name: "Bob Ross", email: "bob@paint.test" };
 
 function rowsOf(rows: Row[]): FindRows {
-  return {
+  return withStringOids({
     rowCount: rows.length,
-    oid: (r) => rows[r].oid,
-    subject: (r) => rows[r].subject,
-    author: (r) => rows[r].author,
-  };
+    oid: (r: number) => rows[r].oid,
+    subject: (r: number) => rows[r].subject,
+    author: (r: number) => rows[r].author,
+  });
 }
 
 const HISTORY: Row[] = [
@@ -122,12 +123,12 @@ test(`matching 1M synthetic rows takes under ${MILLION_ROW_BUDGET_MS} ms`, () =>
   const authors = Array.from({ length: 2000 }, (_, i) => ({ name: `Author ${i}`, email: `a${i}@example.com` }));
   const oids = Array.from({ length: ROWS }, (_, i) => (i * 2654435761 >>> 0).toString(16).padStart(8, "0") + "deadbeefcafebabe0123456789abcdef");
   const subjects = Array.from({ length: ROWS }, (_, i) => `Change ${i}: tidy the module and update its tests`);
-  const rows: FindRows = {
+  const rows: FindRows = withStringOids({
     rowCount: ROWS,
-    oid: (r) => oids[r],
-    subject: (r) => subjects[r],
-    author: (r) => authors[r % authors.length],
-  };
+    oid: (r: number) => oids[r],
+    subject: (r: number) => subjects[r],
+    author: (r: number) => authors[r % authors.length],
+  });
   const refs = new Map<string, FindBadge[]>([[oids[10], [{ kind: "local", name: "main" }]]]);
   const started = performance.now();
   const scan = new FindScan("change 99999", refs);
@@ -245,21 +246,8 @@ test("Enter and Shift+Enter step through the matches only in the find field", ()
   assert.equal(findKey(key("Enter", { ctrlKey: true }), true), null);
 });
 
-test("Find over the graph store matches by SHA prefix and ref without building any row's oid", async () => {
-  const { GraphStore } = await import("./graphStore.ts");
-  const { decodeGraphPage } = await import("./graphPage.ts");
-  const { encodeTestPage } = await import("./fixtures/encodeTestPage.ts");
-  const store = new GraphStore(1);
-  // Rows are named by their row number in hex: row 0x1a2 is 00…01a2.
-  store.ingest(decodeGraphPage(encodeTestPage({ sessionId: 1, pageIndex: 0, firstRow: 0, rowCount: 1000 })));
-  let built = 0;
-  const rows: FindRows = new Proxy(store, {
-    get(target, key) {
-      if (key === "oid") built++;
-      const value = Reflect.get(target, key, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
+test("Find over the graph store matches by SHA prefix and ref without building any row's oid", () => {
+  const { rows, built } = countingStore();
   const refs = new Map<string, FindBadge[]>([["00000000000000000000000000000000000003e7", [{ kind: "tag", name: "zebra" }]]]);
   const byPrefix = new FindScan("0000000000000000000000000000000000000" + "1A", refs);
   assert.equal(byPrefix.scan(rows, 2000), true);
@@ -267,5 +255,5 @@ test("Find over the graph store matches by SHA prefix and ref without building a
   const byRef = new FindScan("zebra", refs);
   byRef.scan(rows, 2000);
   assert.deepEqual([...byRef.matches], [999]);
-  assert.equal(built, 0);
+  assert.equal(built(), 0);
 });

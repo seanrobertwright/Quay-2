@@ -3,26 +3,28 @@
 import type { Badge } from "./graphRefs.ts";
 
 /**
- * Loaded rows as a scan over their oids reads them. Rows that hold oids as bytes, as `GraphStore`
- * does (#410), also answer prefix and set tests in place, so a scan over a million rows builds no
- * string per row; rows without them are read through `oid`.
+ * Loaded rows as a scan over their oids reads them. `GraphStore` holds oids as bytes (#410) and
+ * answers prefix and set tests in place, so a scan over a million rows builds no string per row.
  */
 export interface OidRows {
   readonly rowCount: number;
   oid(row: number): string;
-  hasOidPrefix?(row: number, prefix: string): boolean;
-  oidMatcher?(oids: Iterable<string>): (row: number) => boolean;
+  /** Whether the oid at `row` begins with the lowercase hex `prefix`. */
+  hasOidPrefix(row: number, prefix: string): boolean;
+  /** A test of whether a row's oid is one of `oids`. */
+  oidMatcher(oids: Iterable<string>): (row: number) => boolean;
 }
 
-/** A test of whether a row's oid is one of `oids`, through the rows' own matcher when they have one. */
-export function oidMatcher(rows: OidRows, oids: ReadonlySet<string>): (row: number) => boolean {
-  return rows.oidMatcher?.(oids) ?? ((row) => oids.has(rows.oid(row)));
-}
-
-/** A test of whether a row's oid begins with `prefix`, in place when the rows can. */
-function oidPrefixTest(rows: OidRows, prefix: string): (row: number) => boolean {
-  if (rows.hasOidPrefix) return (row) => rows.hasOidPrefix!(row, prefix);
-  return (row) => rows.oid(row).startsWith(prefix);
+/**
+ * `make(rows)`, kept while the same rows come back and made again for other rows: a scan resumes
+ * over the same store many times, and a matcher is worth building once per store, not per call.
+ */
+export function perRows<R, T>(make: (rows: R) => T): (rows: R) => T {
+  let last: { rows: R; value: T } | null = null;
+  return (rows) => {
+    if (last?.rows !== rows) last = { rows, value: make(rows) };
+    return last.value;
+  };
 }
 
 /** The loaded rows as Find reads them; `GraphStore` is one. */
@@ -88,20 +90,17 @@ export class FindScan {
     return this.buffer.subarray(0, this.count);
   }
 
-  /** The oid tests for the rows last scanned, kept while the same rows come back. */
-  private oidTests: { rows: FindRows; prefix: (row: number) => boolean; onRef: (row: number) => boolean } | null = null;
+  /** The test for rows a matching ref name is on. */
+  private readonly onRef = perRows((rows: FindRows) => rows.oidMatcher(this.refOids));
 
   scan(rows: FindRows, budget: number): boolean {
     if (this.needle === "") return true;
-    if (this.oidTests?.rows !== rows) {
-      // Oids are lowercase hex, so the lowered needle compares as it is.
-      this.oidTests = { rows, prefix: oidPrefixTest(rows, this.needle), onRef: oidMatcher(rows, this.refOids) };
-    }
-    const { prefix, onRef } = this.oidTests;
+    const onRef = this.onRef(rows);
     const end = Math.min(rows.rowCount, this.next + budget);
     for (let row = this.next; row < end; row++) {
       if (
-        prefix(row) ||
+        // Oids are lowercase hex, so the lowered needle compares as it is.
+        rows.hasOidPrefix(row, this.needle) ||
         (this.refOids.size > 0 && onRef(row)) ||
         this.authorMatches(rows.author(row)) ||
         rows.subject(row).toLowerCase().includes(this.needle)

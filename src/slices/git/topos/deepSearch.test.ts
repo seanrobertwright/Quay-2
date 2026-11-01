@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DeepSearch, deepCounter, parseSearch, ResultRoute, ResultScan, type DeepSearchState, type SearchBackend, type SearchEvent, type SearchQuery } from "./deepSearch.ts";
+import { countingStore, withStringOids } from "./fixtures/oidRows.ts";
 
 test("a plain query finds over the loaded rows", () => {
   assert.deepEqual(parseSearch("fix parser", false), { mode: "find", text: "fix parser" });
@@ -208,7 +209,7 @@ test("a failed search says why", async () => {
 
 /** Loaded rows as the scan reads them: just their oids. */
 function rowsOf(oids: string[]) {
-  return { rowCount: oids.length, oid: (row: number) => oids[row] };
+  return withStringOids({ rowCount: oids.length, oid: (row: number) => oids[row] });
 }
 
 test("results among the loaded rows become Find's sorted match rows, whatever order they came in", () => {
@@ -248,21 +249,8 @@ test("the deep counter says what was found in history and where the selection is
   assert.equal(deepCounter("failed", 3, loaded, null), "Search failed");
 });
 
-test("over the graph store, results are matched and routed without building any row's oid", async () => {
-  const { GraphStore } = await import("./graphStore.ts");
-  const { decodeGraphPage } = await import("./graphPage.ts");
-  const { encodeTestPage } = await import("./fixtures/encodeTestPage.ts");
-  const store = new GraphStore(1);
-  // Rows are named by their row number in hex.
-  store.ingest(decodeGraphPage(encodeTestPage({ sessionId: 1, pageIndex: 0, firstRow: 0, rowCount: 1000 })));
-  let built = 0;
-  const rows = new Proxy(store, {
-    get(target, key) {
-      if (key === "oid") built++;
-      const value = Reflect.get(target, key, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
+test("over the graph store, results are matched and routed without building any row's oid", () => {
+  const { rows, built } = countingStore();
   const hex = (row: number) => row.toString(16).padStart(40, "0");
   const scan = new ResultScan([hex(700), hex(5000), hex(3)]);
   assert.equal(scan.scan(rows, 500), false);
@@ -270,5 +258,5 @@ test("over the graph store, results are matched and routed without building any 
   assert.deepEqual([...scan.matches], [3, 700]);
   assert.deepEqual(new ResultRoute(hex(812)).step(rows, "done"), { kind: "inPlace", row: 812 });
   assert.deepEqual(new ResultRoute(hex(5000)).step(rows, "done"), { kind: "detailsOnly" });
-  assert.equal(built, 0);
+  assert.equal(built(), 0);
 });
