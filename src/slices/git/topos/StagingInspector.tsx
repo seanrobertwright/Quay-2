@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ChevronRight, EyeOff, FolderTree, Loader2, Minus, Plus, RefreshCw, Undo2, X } from "lucide-react";
 import { CommitComposer } from "./CommitComposer";
 import { HeldBadge } from "./HeldBadge";
@@ -8,6 +8,7 @@ import { confirmDiscardAll, confirmDiscardFile, targetLabel, type DiscardEntry }
 import { renderedActiveRow, ROW_HEIGHT, rowWindow } from "./graphWindow";
 import { BUSY_MESSAGE, capNote, listKeyAction, type StageDirection } from "./stagingKeys";
 import { InspectorHandle } from "./InspectorHandle";
+import { focusAfterRemoval, focusMoveMessage } from "./stagingFocus";
 import { isFolderRow, listRows, splitStatus, type ListMode, type ListRow, type PathTarget, type Side } from "./stagingLists";
 import type { OpenFile } from "./useFileDiff";
 import type { Commit } from "./useCommit";
@@ -81,6 +82,36 @@ const SIDE: Record<
   },
 };
 
+/**
+ * Whether `node` sits in a confirm dialog. Focus that goes to a confirm the inspector opened comes
+ * back when it closes, unless its write removed the control that opened it (#421), so the lists
+ * keep their record of where focus was while a confirm holds it.
+ */
+function inConfirm(node: EventTarget | null): boolean {
+  return node instanceof Element && node.closest('[role="alertdialog"]') !== null;
+}
+
+/** Whether `el`, a control that had focus, is still on the page and enabled, so it can hold focus again. */
+function canHoldFocus(el: Element): boolean {
+  return el.isConnected && !(el instanceof HTMLButtonElement && el.disabled);
+}
+
+/**
+ * Runs `release` once focus that left `from` for the page turns out to have left on purpose: `from`
+ * can still hold focus and no confirm took it. Checked after the blur, once the write that may have
+ * removed or disabled `from` has rendered.
+ */
+function whenLeftOnPurpose(from: Element, release: () => void): void {
+  queueMicrotask(() => {
+    if (canHoldFocus(from) && !inConfirm(document.activeElement)) release();
+  });
+}
+
+/** The side a staging header's `data-staging-header` names, or null for anything else. */
+function asSide(value: string | undefined): Side | null {
+  return value === "unstaged" || value === "staged" ? value : null;
+}
+
 /** Whether `el` takes typed text, where the lists' bare keys must not act. */
 function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -118,7 +149,11 @@ interface ChangeListProps {
   /** Enter on a folder: collapses or expands it. */
   onOpen: (row: ListRow) => void;
   announce: (text: string) => void;
+  /** Says where focus went after a stage, unstage or discard took its row away (#421). */
+  announceFollowUp: (text: string) => void;
   hintId: string;
+  /** The listbox, for the inspector to move focus to when a header button it held is gone. */
+  listRef: RefObject<HTMLDivElement | null>;
   /** The operator made `row` the active row, by key or pointer. */
   onActive?: (row: ListRow) => void;
   /** Click or Enter on a file: opens its diff in place of the graph. */
@@ -132,8 +167,21 @@ interface ChangeListProps {
  * DOM, so a list of 10,000 changes renders a few dozen. ↑/↓ move the active row, Enter opens a
  * folder, and `s` or `u` acts on the active row.
  */
-const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onDiscard, onOpen, announce, hintId, onActive, onOpenFile, openPath }) => {
-  const scroller = useRef<HTMLDivElement>(null);
+const ChangeList: React.FC<ChangeListProps> = ({
+  side,
+  rows,
+  busy,
+  onAct,
+  onDiscard,
+  onOpen,
+  announce,
+  announceFollowUp,
+  hintId,
+  listRef: scroller,
+  onActive,
+  onOpenFile,
+  openPath,
+}) => {
   const [top, setTop] = useState(0);
   const [height, setHeight] = useState(0);
   // The active row is kept by key, so it follows its change when the list above it changes.
@@ -151,7 +199,7 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onDisc
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [scroller]);
 
   const moveTo = (index: number) => {
     const row = rows[index];
@@ -162,6 +210,57 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onDisc
     const rowTop = index * ROW_HEIGHT;
     if (rowTop < el.scrollTop) el.scrollTop = rowTop;
     else if (rowTop + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = rowTop + ROW_HEIGHT - el.clientHeight;
+  };
+
+  // Focus after a stage, unstage or discard (#421). While focus is in this list, the row it is on and
+  // the keys listed are kept from the last render; when that row goes, the next one that stayed
+  // becomes active (the one before when the last went), the listbox takes focus back from the
+  // removed button, and the move is announced after the action's own sentence.
+  const focusInside = useRef(false);
+  const lastKeys = useRef<readonly string[]>([]);
+  const shownKey = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const focused = shownKey.current;
+    const before = lastKeys.current;
+    if (!el || !focusInside.current) return;
+    const now = document.activeElement;
+    const lost = now === null || now === document.body;
+    if (!lost && !el.contains(now)) return;
+    if (lost) el.focus({ preventScroll: true });
+    if (focused === null) return;
+    const target = focusAfterRemoval(before, focused, rows.map((r) => r.key));
+    if (target === focused) return;
+    if (target === null) {
+      setActiveKey(null);
+      announceFollowUp(focusMoveMessage(SIDE[side].listLabel, null));
+      return;
+    }
+    const index = rows.findIndex((r) => r.key === target);
+    moveTo(index);
+    const row = rows[index];
+    announceFollowUp(focusMoveMessage(SIDE[side].listLabel, `${row.path}${isFolderRow(row) ? "/" : ""}`));
+    // moveTo and the announcer only change with the rows and busy state this runs on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, busy]);
+  useLayoutEffect(() => {
+    lastKeys.current = rows.map((r) => r.key);
+    shownKey.current = active === null ? null : (rows[active]?.key ?? null);
+  });
+  const onFocus = () => {
+    focusInside.current = true;
+  };
+  // Focus that leaves for another control, or for the page while what held it is still there and
+  // enabled, has left on purpose. A row button that is removed or disabled under it has not, and
+  // neither has focus taken by the confirm a row's Discard opened.
+  const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (e.relatedTarget instanceof Node) {
+      if (!e.currentTarget.contains(e.relatedTarget) && !inConfirm(e.relatedTarget)) focusInside.current = false;
+      return;
+    }
+    whenLeftOnPurpose(e.target, () => {
+      focusInside.current = false;
+    });
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -318,6 +417,8 @@ const ChangeList: React.FC<ChangeListProps> = ({ side, rows, busy, onAct, onDisc
       tabIndex={0}
       onKeyDown={onKeyDown}
       onClick={onClick}
+      onFocus={onFocus}
+      onBlur={onBlur}
       onScroll={(e) => setTop(e.currentTarget.scrollTop)}
       className="group/list flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#06B6D4]/60"
     >
@@ -428,11 +529,11 @@ const ConflictList: React.FC<ConflictListProps> = ({ op, busy, onStage, onResolv
           <span className="ml-1.5 normal-case font-normal tabular-nums">{op.conflictsTotal.toLocaleString()}</span>
         </h4>
       </div>
-      <ul className="overflow-y-auto min-h-0 py-0.5">
+      <ul aria-labelledby={headingId} className="overflow-y-auto min-h-0 py-0.5">
         {shown.map((c) => {
           const held = handOffs.held.get(c.path);
           return (
-          <li key={c.path} className="h-7 px-3 flex items-center gap-2 text-xs">
+          <li key={c.path} data-conflict={c.path} className="h-7 px-3 flex items-center gap-2 text-xs">
             <span className="w-5 shrink-0 font-mono text-[11px] text-[#f85149]" aria-hidden="true">
               {c.xy}
             </span>
@@ -506,7 +607,10 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   const hintId = useId();
   const [collapsed, setCollapsed] = useState<Record<Side, ReadonlySet<string>>>({ unstaged: new Set(), staged: new Set() });
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
-  const { status, busy, failure, announce, run, folders, toggleFolder, discard, discards, undo, dismissUndo, restore, copyDiscard } = staging;
+  const { status, busy, failure, announce, announceFollowUp, run, folders, toggleFolder, discard, discards, undo, dismissUndo, restore, copyDiscard } =
+    staging;
+  const unstagedList = useRef<HTMLDivElement>(null);
+  const stagedList = useRef<HTMLDivElement>(null);
   const [showDiscards, setShowDiscards] = useState(false);
   const discardsId = useId();
 
@@ -577,6 +681,59 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     });
   };
 
+  // Focus on a header button or a conflict's Stage when a write disables or removes it (#421). The
+  // lists keep their own rows' focus; this covers the rest of the inspector. A header button that is
+  // enabled again gets focus back; one left disabled, because its list emptied, hands it to its list;
+  // a conflict whose row went hands it to the next conflict's Resolve, or to Unstaged when none is left.
+  const lastFocus = useRef<{ el: HTMLElement; side: Side | null; conflict: string | null } | null>(null);
+  const conflictPaths = useMemo(() => (showConflicts ? conflicts.conflicts.map((c) => c.path) : []), [showConflicts, conflicts]);
+  const lastConflicts = useRef<readonly string[]>([]);
+  useLayoutEffect(() => {
+    const held = lastFocus.current;
+    const before = lastConflicts.current;
+    lastConflicts.current = conflictPaths;
+    const now = document.activeElement;
+    if (held === null || (now !== null && now !== document.body)) return;
+    const { el } = held;
+    if (canHoldFocus(el)) {
+      el.focus();
+      return;
+    }
+    if (busy !== null) return;
+    const lists = { unstaged: unstagedList, staged: stagedList };
+    if (held.side !== null) {
+      lists[held.side].current?.focus();
+      announceFollowUp(focusMoveMessage(SIDE[held.side].listLabel, null));
+    } else if (held.conflict !== null) {
+      const next = focusAfterRemoval(before, held.conflict, conflictPaths);
+      const resolve = next === null ? null : document.querySelector<HTMLElement>(`#${CSS.escape(id)} [data-conflict="${CSS.escape(next)}"] button`);
+      if (next !== null && resolve) {
+        resolve.focus();
+        announceFollowUp(focusMoveMessage("Conflicts", next));
+      } else {
+        unstagedList.current?.focus();
+        announceFollowUp("No conflicts left, focus on Unstaged changes");
+      }
+    }
+    lastFocus.current = null;
+  }, [busy, unstagedRows, stagedRows, conflictPaths, announceFollowUp, id]);
+  const onFocusIn = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.target;
+    // A confirm's controls reach here through its portal; focus comes back from them.
+    if (inConfirm(el)) return;
+    const side = asSide(el.closest<HTMLElement>("[data-staging-header]")?.dataset.stagingHeader);
+    const conflict = el.closest<HTMLElement>("[data-conflict]")?.dataset.conflict ?? null;
+    lastFocus.current = side !== null || conflict !== null ? { el, side, conflict } : null;
+  };
+  // As in the lists: leaving for the page while the button is still there and enabled is on purpose.
+  const onFocusOut = (e: React.FocusEvent<HTMLElement>) => {
+    if (e.relatedTarget instanceof Node) return;
+    const from = e.target;
+    whenLeftOnPurpose(from, () => {
+      if (lastFocus.current?.el === from) lastFocus.current = null;
+    });
+  };
+
   const isBusy = (action: BusyOp["action"]) => busy !== null && busy.action === action && busy.target.kind === "all";
   const note = status.state === "done" ? capNote(status.status) : null;
 
@@ -584,7 +741,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     const { heading, action: all, allLabel, allBusy, allClass } = SIDE[side];
     const busyAll = isBusy(all);
     return (
-      <div className="h-8 px-3 shrink-0 flex items-center gap-2 border-y border-[#30363d] bg-[#161b22]">
+      <div data-staging-header={side} className="h-8 px-3 shrink-0 flex items-center gap-2 border-y border-[#30363d] bg-[#161b22]">
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#8b949e]">
           {heading}
           <span className="ml-1.5 normal-case font-normal tabular-nums">{count.toLocaleString()}</span>
@@ -627,7 +784,7 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   };
 
   return (
-    <aside id={id} aria-labelledby={titleId} className="relative shrink-0 flex flex-col min-h-0 border-l border-[#30363d] bg-[#0d1117]" style={{ width }}>
+    <aside id={id} aria-labelledby={titleId} onFocus={onFocusIn} onBlur={onFocusOut} className="relative shrink-0 flex flex-col min-h-0 border-l border-[#30363d] bg-[#0d1117]" style={{ width }}>
       <InspectorHandle width={width} onWidth={onWidth} label="Resize staging inspector" />
       <header className="h-9 px-3 shrink-0 flex items-center gap-2">
         <h3 id={titleId} className="text-xs font-semibold text-white truncate min-w-0" title={worktreeName}>
@@ -718,7 +875,9 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
             onDiscard={askDiscard}
             onOpen={onOpen("unstaged")}
             announce={announce}
+            announceFollowUp={announceFollowUp}
             hintId={hintId}
+            listRef={unstagedList}
             onActive={(row) => row.change?.kind === "untrackedFolder" && setIgnorable(row.path)}
             onOpenFile={(row) => onOpenFile({ path: row.path, side: "unstaged" })}
             openPath={openFile?.side === "unstaged" ? openFile.path : null}
@@ -731,7 +890,9 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
             onAct={act("staged")}
             onOpen={onOpen("staged")}
             announce={announce}
+            announceFollowUp={announceFollowUp}
             hintId={hintId}
+            listRef={stagedList}
             onOpenFile={(row) => onOpenFile({ path: row.path, side: "staged" })}
             openPath={openFile?.side === "staged" ? openFile.path : null}
           />

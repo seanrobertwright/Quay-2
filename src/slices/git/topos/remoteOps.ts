@@ -270,6 +270,7 @@ export function forcePushPrompt(branch: string, plan: LeasePlan): Prompt {
     title: `Force push ${branch} to ${plan.tracking}`,
     detail: `Overwrites ${commits} on ${plan.tracking} that ${branch} lacks, as of the last fetch (at ${shortOid(plan.expectedSha)}). If the remote moved since, git refuses and overwrites nothing.`,
     confirmLabel: "Force push",
+    destructive: true,
   };
 }
 
@@ -290,6 +291,7 @@ export function typedForcePushPrompt(plan: LeasePlan): Prompt & { field: { label
     title: isDefault ? `Force push to ${branch}, ${plan.remote}'s default branch` : `Force push to ${branch}`,
     detail: `Others build on ${branch}. Type its name to overwrite it on ${plan.remote}.`,
     confirmLabel: "Force push",
+    destructive: true,
     field: { label: `Type ${branch} to confirm`, initial: "" },
   };
 }
@@ -319,6 +321,7 @@ export function deleteRemoteBranchPrompt(remote: string, branch: string): Prompt
     title: `Delete ${branch} from ${remote}`,
     detail: `Deletes the branch ${branch} on the remote ${remote}. Others may be using it. There is no undo.`,
     confirmLabel: `Delete from ${remote}`,
+    destructive: true,
   };
 }
 

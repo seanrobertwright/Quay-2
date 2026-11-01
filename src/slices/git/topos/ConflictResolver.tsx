@@ -3,7 +3,7 @@ import type { EditorView } from "@codemirror/view";
 import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronUp, Loader2, RefreshCw, RotateCcw, Save, Undo2 } from "lucide-react";
 import { ConfirmDialog, type ConfirmRequest } from "./ConfirmDialog";
 import { ResultEditor, SidePane, goToHunk } from "./ConflictEditor";
-import { confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, unresolvedLabel } from "./conflicts";
+import { confirmDropEdits, confirmMarkResolved, confirmReset, confirmTakeSide, paneLabels, parseConflicts, unresolvedLabel } from "./conflicts";
 import { CONFLICT_WORDS, type OpState } from "./operation";
 import { conflictCard, type CardChoice } from "./conflictCards";
 import { HeldBadge } from "./HeldBadge";
@@ -76,12 +76,7 @@ export const ConflictResolver: React.FC<ConflictResolverProps> = ({ worktreePath
       go();
       return;
     }
-    setConfirm({
-      title,
-      detail: `${path} has edits that aren't saved. Leaving drops them; the file keeps what was last saved.`,
-      confirmLabel: "Drop my edits",
-      onConfirm: go,
-    });
+    setConfirm({ ...confirmDropEdits(title, path), onConfirm: go });
   };
 
   const askReset = () => {

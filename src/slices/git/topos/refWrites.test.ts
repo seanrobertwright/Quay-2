@@ -23,6 +23,7 @@ test("deleting a branch always asks first, and names it as plain text", () => {
     title: "Delete branch",
     detail: "Deletes the local branch <img src=x>. Its remote branch, if any, stays.",
     confirmLabel: "Delete",
+    destructive: true,
   });
 });
 
@@ -31,6 +32,7 @@ test("an unmerged branch's second dialog names its unique commit count and tip, 
     title: "spike isn't fully merged",
     detail: "2 commits up to 0123456 are on no other branch, tag or HEAD. Deleting anyway leaves them only in the Restore toast and the reflog.",
     confirmLabel: "Delete anyway",
+    destructive: true,
   });
   assert.equal(notMergedPrompt("spike", 1, TIP).detail.slice(0, 22), "1 commit up to 0123456");
 });
@@ -60,6 +62,7 @@ test("deleting a tag asks first and says it stays on any remote", () => {
     title: "Delete tag",
     detail: "Deletes the local tag v1. A tag of that name on a remote stays.",
     confirmLabel: "Delete tag",
+    destructive: true,
   });
 });
 
@@ -68,6 +71,7 @@ test("deleting a tag a remote has offers to delete it there too, unticked", () =
     title: "Delete tag",
     detail: "Deletes the local tag v1. origin has it too; deleting it there has no undo.",
     confirmLabel: "Delete tag",
+    destructive: true,
     checkbox: { label: "Also delete from origin", initial: false },
   });
   const both = deleteTagPrompt("v1", ["origin", "fork"]);

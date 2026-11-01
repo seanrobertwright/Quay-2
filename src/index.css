@@ -18,6 +18,11 @@
   --topos-lane-9: #40cd9b;
   --topos-lane-10: #10caca;
   --topos-lane-11: #1bc3f3;
+  /* Destructive confirm buttons (#421): the label at least 4.5:1 on the button, the button, hovered
+     or not, at least 3:1 on the dialog's #161b22. */
+  --topos-danger-bg: #da3633;
+  --topos-danger-bg-hover: #c93c37;
+  --topos-danger-fg: #ffffff;
 }
 
 /* Quay is dark-only today; this set is ready for a light theme. */
@@ -35,6 +40,10 @@
   --topos-lane-9: #07835e;
   --topos-lane-10: #017f7f;
   --topos-lane-11: #017a9b;
+  /* The same contrast, measured on #ffffff. */
+  --topos-danger-bg: #cf222e;
+  --topos-danger-bg-hover: #a40e26;
+  --topos-danger-fg: #ffffff;
 }
 
 body {

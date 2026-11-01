@@ -2,21 +2,18 @@
 // what a refusal leads to, and the Restore toast. Every name in these strings is untrusted, so
 // they are only ever rendered as text.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 import type { GitRefs } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
 import { RESTORE_MS } from "./toasts.ts";
 
 /** The words of a confirm dialog with no field. */
-export interface Prompt {
-  title: string;
-  detail: string;
-  confirmLabel: string;
-}
+export type Prompt = ConfirmPrompt;
 
 /** The first confirm of every branch delete. */
 export function deleteBranchPrompt(name: string): Prompt {
-  return { title: "Delete branch", detail: `Deletes the local branch ${name}. Its remote branch, if any, stays.`, confirmLabel: "Delete" };
+  return { title: "Delete branch", detail: `Deletes the local branch ${name}. Its remote branch, if any, stays.`, confirmLabel: "Delete", destructive: true };
 }
 
 /** The second confirm, after `git branch -d` refused `name`: what deleting it anyway (`-D`) loses. */
@@ -26,6 +23,7 @@ export function notMergedPrompt(name: string, ahead: number, tip: string): Promp
     title: `${name} isn't fully merged`,
     detail: `${commits} up to ${shortOid(tip)} are on no other branch, tag or HEAD. Deleting anyway leaves them only in the Restore toast and the reflog.`,
     confirmLabel: "Delete anyway",
+    destructive: true,
   };
 }
 
@@ -52,7 +50,7 @@ export function restoreFailure(name: string, e: unknown): string {
  * delete stays local.
  */
 export function deleteTagPrompt(name: string, onRemotes: readonly string[] | null = []): Prompt & { checkbox?: { label: string; initial: boolean } } {
-  const prompt = { title: "Delete tag", confirmLabel: "Delete tag" };
+  const prompt = { title: "Delete tag", confirmLabel: "Delete tag", destructive: true };
   if (onRemotes === null) {
     return { ...prompt, detail: `Deletes the local tag ${name}. Topos couldn't check the remotes for it, so a tag of that name on one stays.` };
   }

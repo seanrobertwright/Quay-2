@@ -2,6 +2,7 @@
 // cherry-pick or revert, which of Continue, Skip and Abort it offers, and what each confirms.
 // Labels and subjects come from git and are untrusted text; the banner renders them as text.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 
@@ -128,10 +129,9 @@ export function bannerView(state: OpState, { running, summary }: BannerOptions):
 }
 
 /** What a confirm dialog asks before Abort or Skip. */
-export interface StepConfirm {
-  title: string;
-  detail: string;
-  confirmLabel: string;
+export interface StepConfirm extends ConfirmPrompt {
+  /** Always set: Abort and Skip both lose resolutions, so the button takes the danger style (#421). */
+  destructive: true;
 }
 
 /** The name on `label`, or `fallback` when git gave none. */
@@ -151,6 +151,7 @@ export function confirmAbort(state: OpState): StepConfirm | null {
         title: `Abort the merge of ${nameOf(state.rightLabel, "this branch")}?`,
         detail: `${head} goes back to where it was before the merge. Every conflict resolution and every change staged since the merge started is lost.`,
         confirmLabel: "Abort merge",
+        destructive: true,
       };
     case "rebase": {
       const replayed = state.step === undefined ? null : state.step - 1;
@@ -162,6 +163,7 @@ export function confirmAbort(state: OpState): StepConfirm | null {
         title: `Abort the rebase onto ${head}?`,
         detail: `Your branch goes back to where it was before the rebase. ${done} and every resolution in this step are lost.`,
         confirmLabel: "Abort rebase",
+        destructive: true,
       };
     }
     case "cherryPick":
@@ -171,6 +173,7 @@ export function confirmAbort(state: OpState): StepConfirm | null {
         title: `Abort the ${noun} of “${commit}”?`,
         detail: `${head} goes back to where it was before the ${noun}. Your resolutions, and any commits this ${noun} already made, are lost.`,
         confirmLabel: `Abort ${noun}`,
+        destructive: true,
       };
     }
   }
@@ -189,11 +192,12 @@ export function confirmSkip(state: OpState): StepConfirm | null {
         title,
         detail: "The rebase goes on without this commit. Its changes, and your resolutions of them, are lost from the rebased branch.",
         confirmLabel,
+        destructive: true,
       };
     case "cherryPick":
-      return { title, detail: "The cherry-pick goes on without picking this commit. Your resolutions of it are lost.", confirmLabel };
+      return { title, detail: "The cherry-pick goes on without picking this commit. Your resolutions of it are lost.", confirmLabel, destructive: true };
     case "revert":
-      return { title, detail: "The revert goes on without reverting this commit. Your resolutions of it are lost.", confirmLabel };
+      return { title, detail: "The revert goes on without reverting this commit. Your resolutions of it are lost.", confirmLabel, destructive: true };
   }
 }
 

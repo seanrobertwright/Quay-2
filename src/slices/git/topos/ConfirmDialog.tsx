@@ -1,5 +1,8 @@
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useContext, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
+import { ToposModalContext } from "./ToposModal";
+import { confirmButtonClass, type ConfirmPrompt } from "./confirmStyle";
 
 /** What a dialog with a text field or a choice collects. */
 export interface DialogValues {
@@ -12,10 +15,7 @@ export interface DialogValues {
   message: string;
 }
 
-export interface ConfirmRequest {
-  title: string;
-  detail: string;
-  confirmLabel: string;
+export interface ConfirmRequest extends ConfirmPrompt {
   /** A checkbox that widens what the confirm does; it starts as `initial`. */
   checkbox?: { label: string; initial: boolean };
   /** A text field, such as a new branch's name. Focus starts in it rather than on Cancel. */
@@ -36,8 +36,9 @@ export interface ConfirmRequest {
 /**
  * Topos's own dialog (#366, #393, #394), since Quay has no shared one: `role="alertdialog"` with focus
  * trapped inside it and starting on Cancel, the safe choice, or in its text field or choice when
- * it asks for one. Escape cancels it before it closes Topos, and on close focus goes back to what
- * opened it.
+ * it asks for one. Inside Topos it is modal across the whole panel (#421): it draws in the modal
+ * layer's host and the rest of Topos is inert while it is open. Escape cancels it before it closes
+ * Topos, and on close focus goes back to what opened it.
  */
 export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel: () => void }> = ({ request, onCancel }) => {
   const titleId = useId();
@@ -62,6 +63,14 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const cancelUnlessPending = () => {
     if (!pending) onCancel();
   };
+  // First of the dialog's effects, so it notes the opener before the inert content can blur it, and
+  // on close makes the content live again before focus goes back to it.
+  const modal = useContext(ToposModalContext);
+  const layer = modal?.layer ?? null;
+  useEffect(() => {
+    if (!open || layer === null) return;
+    return layer.open(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  }, [open, layer]);
   usePopupLayer(open, cancelUnlessPending, panel);
   useDialogFocus(open, panel);
   // A checkbox comes before the buttons, so focus is moved to Cancel once the dialog opens, or into
@@ -108,8 +117,10 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
     request.onConfirm?.(confirmed);
   };
 
-  return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+  const dialog = (
+    // A press on the dimmed backdrop keeps focus in the dialog rather than moving it to Topos's panel.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- pointer-only guard; keys stay in the dialog's trap
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => e.target === e.currentTarget && e.preventDefault()}>
       <div
         ref={panel}
         role="alertdialog"
@@ -211,7 +222,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
             type="button"
             onClick={confirm}
             aria-disabled={pending}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold bg-[#238636] hover:bg-[#2ea043] aria-disabled:opacity-50 text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
+            className={confirmButtonClass(request.destructive === true)}
           >
             {request.confirmLabel}
           </button>
@@ -219,4 +230,5 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
       </div>
     </div>
   );
+  return modal?.host ? createPortal(dialog, modal.host) : dialog;
 };
