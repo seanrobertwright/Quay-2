@@ -50,7 +50,7 @@ import {
 import { normalizePath } from "../../utils/paths.ts";
 import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
-import { namingProblem as nameProblemFor, nextDefinitionId } from "./lifecycle.ts";
+import { namingProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
 import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
@@ -1372,12 +1372,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const crossRecord = open && open.kind !== "graphs" && (
     <CrossRecordSection issues={issuesOn(contexts, open)} checked={contexts.checked} error={projectContexts.error} onOpen={openDefinition} />
   );
-  const namingProblem =
+  const namingError =
     naming === null
       ? null
       : naming.mode === "new"
-        ? nameProblemFor(naming.kind, naming.value, takenIds(naming.kind))
-        : nameProblemFor(naming.ref.kind, naming.value, takenIds(naming.ref.kind), naming.ref.id);
+        ? namingProblem(naming.kind, naming.value, takenIds(naming.kind))
+        : namingProblem(naming.ref.kind, naming.value, takenIds(naming.ref.kind), naming.ref.id);
 
   /** "+ New" and the empty project's New graph (#222): an inline name field in the kind's list. */
   const startNew = (entry: RecordKindEntry) => {
@@ -1416,7 +1416,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
    * which the user confirms.
    */
   const submitName = async () => {
-    if (!project || !naming || namingProblem || lifecycleBusy) return;
+    if (!project || !naming || namingError || lifecycleBusy) return;
     const path = project.path;
     if (naming.mode === "new") {
       const ref = { kind: naming.kind, id: naming.value };
@@ -1674,7 +1674,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           <NameField
             label={`New id for ${row.id}`}
             value={naming.value}
-            problem={namingProblem}
+            problem={namingError}
             busy={lifecycleBusy}
             onChange={(value) => setNaming({ ...naming, value })}
             onSubmit={() => void submitName()}
@@ -1940,12 +1940,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   const orphans = Object.values(session?.drafts ?? {}).filter(
                     (d) => d.ref.kind === kind && !listed.has(d.ref.id)
                   );
-                  const rows: {
-                    id: string;
-                    problem?: FileProblem;
-                    idMismatch?: DefinitionEntry["idMismatch"];
-                    nameProblem?: string;
-                  }[] = [
+                  const rows: Pick<DefinitionEntry, "id" | "problem" | "idMismatch" | "nameProblem">[] = [
                     ...(entry.list?.entries ?? []),
                     ...orphans.map((d) => ({ id: d.ref.id })),
                   ];
@@ -1972,7 +1967,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                               <NameField
                                 label={`Name of the new ${singular}`}
                                 value={naming.value}
-                                problem={namingProblem}
+                                problem={namingError}
                                 busy={lifecycleBusy}
                                 onChange={(value) => setNaming({ ...naming, value })}
                                 onSubmit={() => void submitName()}
@@ -1992,7 +1987,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                   <NameField
                                     label={`New id for ${def.id}`}
                                     value={naming.value}
-                                    problem={namingProblem}
+                                    problem={namingError}
                                     busy={lifecycleBusy}
                                     onChange={(value) => setNaming({ ...naming, value })}
                                     onSubmit={() => void submitName()}
