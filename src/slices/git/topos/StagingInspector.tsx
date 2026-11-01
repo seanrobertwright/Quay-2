@@ -82,6 +82,15 @@ const SIDE: Record<
   },
 };
 
+/**
+ * Whether `node` sits in a confirm dialog. Focus that goes to a confirm the inspector opened comes
+ * back when it closes, unless its write removed the control that opened it (#421), so the lists
+ * keep their record of where focus was while a confirm holds it.
+ */
+function inConfirm(node: EventTarget | null): boolean {
+  return node instanceof Element && node.closest('[role="alertdialog"]') !== null;
+}
+
 /** Whether `el` takes typed text, where the lists' bare keys must not act. */
 function isTextField(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -221,15 +230,16 @@ const ChangeList: React.FC<ChangeListProps> = ({
     focusInside.current = true;
   };
   // Focus that leaves for another control, or for the page while what held it is still there and
-  // enabled, has left on purpose. A row button that is removed or disabled under it has not.
+  // enabled, has left on purpose. A row button that is removed or disabled under it has not, and
+  // neither has focus taken by the confirm a row's Discard opened.
   const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
     if (e.relatedTarget instanceof Node) {
-      if (!e.currentTarget.contains(e.relatedTarget)) focusInside.current = false;
+      if (!e.currentTarget.contains(e.relatedTarget) && !inConfirm(e.relatedTarget)) focusInside.current = false;
       return;
     }
     const from = e.target;
     queueMicrotask(() => {
-      if (from.isConnected && !(from instanceof HTMLButtonElement && from.disabled)) focusInside.current = false;
+      if (from.isConnected && !(from instanceof HTMLButtonElement && from.disabled) && !inConfirm(document.activeElement)) focusInside.current = false;
     });
   };
 
@@ -689,6 +699,8 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
   }, [busy, unstagedRows, stagedRows, conflictPaths, announceFollowUp, id]);
   const onFocusIn = (e: React.FocusEvent<HTMLElement>) => {
     const el = e.target;
+    // A confirm's controls reach here through its portal; focus comes back from them.
+    if (inConfirm(el)) return;
     const side = el.closest<HTMLElement>("[data-staging-header]")?.dataset.stagingHeader;
     const conflict = el.closest<HTMLElement>("[data-conflict]")?.dataset.conflict ?? null;
     lastFocus.current =
@@ -699,7 +711,9 @@ export const StagingInspector: React.FC<StagingInspectorProps> = ({
     if (e.relatedTarget instanceof Node) return;
     const from = e.target;
     queueMicrotask(() => {
-      if (lastFocus.current?.el === from && from.isConnected && !(from instanceof HTMLButtonElement && from.disabled)) lastFocus.current = null;
+      if (lastFocus.current?.el === from && from.isConnected && !(from instanceof HTMLButtonElement && from.disabled) && !inConfirm(document.activeElement)) {
+        lastFocus.current = null;
+      }
     });
   };
 

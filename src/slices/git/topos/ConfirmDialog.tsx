@@ -130,7 +130,9 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   };
 
   const dialog = (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+    // A press on the dimmed backdrop keeps focus in the dialog rather than moving it to Topos's panel.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- pointer-only guard; keys stay in the dialog's trap
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => e.target === e.currentTarget && e.preventDefault()}>
       <div
         ref={panel}
         role="alertdialog"
