@@ -44,7 +44,7 @@ export interface HostConditionView {
 /** The text of the panel shown when the praxis CLI can't be run. */
 export const LINK_CLI_TEXT =
   "Quay runs the praxis CLI from an AI-WS-SDK checkout, with Node 24 or later on PATH. " +
-  "In the checkout's engine folder, run `npm link`, or name the checkout in Quay's Praxis settings.";
+  "In the checkout's engine folder, run `npm link`.";
 
 /** The simulated host's standing banner. */
 export const SIMULATED_HOST_BANNER =

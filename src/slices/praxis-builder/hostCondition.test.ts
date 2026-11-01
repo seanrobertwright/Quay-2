@@ -19,6 +19,8 @@ test("a missing CLI or old Node gets a panel on linking the praxis checkout, wit
   assert.equal(panel?.kind === "linkCli" && panel.reason, "praxis needs Node 24 or later, and the node on PATH is v22.1.0.");
   assert.match(panel?.text ?? "", /npm link/);
   assert.match(panel?.text ?? "", /Node 24/);
+  // Quay has no screen for the Praxis settings yet, so the panel never sends the user to one.
+  assert.doesNotMatch(panel?.text ?? "", /settings/i);
 });
 
 test("no host, host down and signed out each offer the terminal command that fixes them", () => {
