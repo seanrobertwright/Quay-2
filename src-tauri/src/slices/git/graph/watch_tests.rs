@@ -132,19 +132,37 @@ fn a_burst_of_ref_updates_coalesces_and_steady_events_still_send_each_second() {
     assert!(bits(&seen).refs);
 
     // Edits every 100 ms never leave 150 ms of quiet, yet changes arrive while they go on: the
-    // ceiling sends them at least each second. Edits go on until two have arrived.
+    // ceiling sends one each second. Edits go on until two have arrived. After the first, the
+    // next edit opens a new window that the ceiling closes a second later, so the gap between
+    // the two is at most the ceiling plus the longest pause between edits, plus half a ceiling
+    // for the watcher's own latency. The longest pause is what a busy machine stretches. The
+    // bound is a literal second, not `CEILING`, so a slower ceiling fails it.
     let started = Instant::now();
-    let mut during = 0;
+    let mut arrivals = Vec::new();
+    let mut last_edit = None;
+    let mut longest_pause = Duration::ZERO;
     let mut i = 0;
-    while during < 2 {
-        assert!(started.elapsed() < Duration::from_secs(60), "{during} changes during {i} steady edits");
+    while arrivals.len() < 2 {
+        assert!(started.elapsed() < Duration::from_secs(60), "{} changes during {i} steady edits", arrivals.len());
         std::fs::write(repo.join("steady.txt"), format!("{i}\n")).unwrap();
+        let edited = Instant::now();
+        if let Some(last) = last_edit {
+            longest_pause = longest_pause.max(edited - last);
+        }
+        last_edit = Some(edited);
         i += 1;
-        std::thread::sleep(Duration::from_millis(100));
-        while changes.try_recv().is_ok() {
-            during += 1;
+        let next_edit = edited + Duration::from_millis(100);
+        while let Some(left) = next_edit.checked_duration_since(Instant::now()) {
+            match changes.recv_timeout(left) {
+                Ok(_) => arrivals.push(Instant::now()),
+                Err(_) => break,
+            }
         }
     }
+    let gap = arrivals[1] - arrivals[0];
+    let second = Duration::from_secs(1);
+    let most = second + second / 2 + longest_pause;
+    assert!(gap <= most, "{gap:?} between steady changes, at most {most:?} (longest pause between edits {longest_pause:?})");
     std::fs::remove_dir_all(repo.parent().unwrap()).ok();
 }
 
