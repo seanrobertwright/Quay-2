@@ -16,6 +16,7 @@ import {
 import { selectionDoneMessage, type Selection } from "./diffView";
 import { doneMessage, failureView, type StageDirection, type StagingAction } from "./stagingKeys";
 import { splitStatus, type FolderListing, type PathTarget, type WorktreeStatus } from "./stagingLists";
+import { withFollowUp, type Announcement } from "./stagingFocus";
 
 export type StatusState =
   | { state: "idle" }
@@ -93,8 +94,10 @@ export interface Staging {
   busy: BusyOp | null;
   failure: StagingFailure | null;
   /** The newest sentence for the live region, with a count so a repeat is announced again. */
-  announcement: { text: string; seq: number };
+  announcement: Announcement;
   announce: (text: string) => void;
+  /** Says `text` after the sentence just announced, in the same breath, or on its own when none was (#421). */
+  announceFollowUp: (text: string) => void;
   run: (action: StagingAction, target: PathTarget) => void;
   /**
    * Stages or unstages part of one file from the diff view (#383), as one of this worktree's
@@ -153,7 +156,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
   const [status, setStatus] = useState<StatusState>({ state: "idle" });
   const [busy, setBusy] = useState<BusyOp | null>(null);
   const [failure, setFailure] = useState<StagingFailure | null>(null);
-  const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
+  const [announcement, setAnnouncement] = useState<Announcement>({ text: "", seq: 0, at: -Infinity });
   const [folders, setFolders] = useState<ReadonlyMap<string, FolderListing>>(new Map());
   const [undo, setUndo] = useState<{ worktree: string; entry: DiscardEntry } | null>(null);
   const ids = useRef(new RequestIds());
@@ -164,7 +167,8 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
   const folderIds = useRef(new Map<string, RequestIds>());
   const expanded = useRef<ReadonlySet<string>>(new Set());
 
-  const announce = useCallback((text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1 })), []);
+  const announce = useCallback((text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1, at: performance.now() })), []);
+  const announceFollowUp = useCallback((text: string) => setAnnouncement((a) => withFollowUp(a, text, performance.now())), []);
 
   const readFolder = useCallback((worktree: string, folder: string) => {
     let folderIdsFor = folderIds.current.get(folder);
@@ -446,6 +450,7 @@ export function useStaging(worktreePath: string | null, readCount: number): Stag
     failure,
     announcement,
     announce,
+    announceFollowUp,
     run,
     stageSelection,
     discard,
