@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type RefObject } from "react";
-import { trapTabTarget } from "./focusTrap";
-import { createOverlayStack } from "./overlayStack";
+import { trapTabTarget } from "./focusTrap.ts";
+import { createOverlayStack } from "./overlayStack.ts";
 
 /** Every open overlay in the app, topmost last. */
 const overlays = createOverlayStack();

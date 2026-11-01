@@ -3,24 +3,23 @@
 // fresh `workflows show`, which also refreshes the template's host state everywhere it is shown,
 // and Run waits for that answer. It warns when the saved file differs from the host's copy, when
 // the host doesn't have the template or can't run it, and when the template has unsaved or
-// uncommitted edits, and offers Install on host… beside the warnings. Focus stays inside it while it is shown and goes
-// back to the Runs view's Run when it closes. Escape closes it.
+// uncommitted edits, and offers Install on host… beside the warnings. Focus stays inside it while
+// it is shown (the shared `useDialogFocus` trap) and goes back to the Runs view's Run when it
+// closes. Escape closes it.
 import { useEffect, useId, useRef, type FC, type KeyboardEvent, type RefObject } from "react";
 import { Download, Play, TriangleAlert, X } from "lucide-react";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
 import { confirmRefusedBy, runWarnings } from "./runStart.ts";
-import type { ChangeStatus } from "./types.ts";
-
-/** The controls Tab moves between inside the dialog. */
-const CONTROLS = "button, input, select, textarea, a[href]";
+import type { GitChange } from "./types.ts";
+import { useDialogFocus } from "../overlay/useOverlay.ts";
 
 export const RunConfirm: FC<{
   name: string;
   host: TemplateHost | null;
   /** The open draft has edits the saved file doesn't. */
   unsaved: boolean;
-  /** How the template file differs from the last commit: undefined when it doesn't, "unknown" when git status couldn't be read. */
-  changed: ChangeStatus | "unknown" | undefined;
+  /** How the template file differs from the last commit; undefined when it doesn't. */
+  changed: GitChange | undefined;
   /** Opens "Install on host…"; absent when the template has no saved file to install. */
   onInstall?: () => void;
   onRun: () => void;
@@ -41,11 +40,11 @@ export const RunConfirm: FC<{
     checkAgainRef.current?.();
   }, []);
 
+  useDialogFocus(true, rootRef, returnFocus);
+  // Cancel, not the first control (Close), takes focus on open.
   useEffect(() => {
     cancelRef.current?.focus();
-    const back = returnFocus.current;
-    return () => back?.focus();
-  }, [returnFocus]);
+  }, []);
 
   const state = host?.view.state ?? { kind: "unknown", why: "notChecked" };
   const checking = host?.view.checking ?? false;
@@ -59,15 +58,7 @@ export const RunConfirm: FC<{
       e.preventDefault();
       e.stopPropagation();
       onClose();
-      return;
     }
-    if (e.key !== "Tab" || !rootRef.current) return;
-    const controls = [...rootRef.current.querySelectorAll<HTMLElement>(CONTROLS)];
-    if (controls.length === 0) return;
-    e.preventDefault();
-    const at = controls.indexOf(document.activeElement as HTMLElement);
-    const next = at === -1 ? (e.shiftKey ? controls.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + controls.length) % controls.length;
-    controls[next].focus();
   };
 
   return (
