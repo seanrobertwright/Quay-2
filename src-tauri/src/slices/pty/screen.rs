@@ -313,6 +313,7 @@ pub fn load_screen(dir: &Path, terminal_id: &str) -> Option<ScreenSnapshot> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     const ESC: &str = "\x1b";
 
@@ -427,19 +428,13 @@ mod tests {
         assert_eq!(lines[..2], ["old run".to_string(), "new run".to_string()]);
     }
 
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-screen-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
     fn saved_lines(dir: &Path, id: &str) -> Option<Vec<String>> {
         load_screen(dir, id).map(|snapshot| plain_lines(&snapshot))
     }
 
     #[test]
     fn a_keeper_saves_once_output_has_been_quiet_for_the_idle_time() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let start = Instant::now();
         let keeper = ScreenKeeper::new(&dir, "term-idle", 10, 30, None);
         keeper.feed("first\r\n", start);
@@ -450,22 +445,20 @@ mod tests {
         assert_eq!(saved_lines(&dir, "term-idle").unwrap(), ["first"]);
         assert!(!keeper.save_if_idle(start + SAVE_AFTER_IDLE * 3), "nothing new to save");
 
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn save_now_writes_whatever_the_screen_shows() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let keeper = ScreenKeeper::new(&dir, "term-now", 10, 30, None);
         keeper.feed("still running\r\n", Instant::now());
         keeper.save_now();
         assert_eq!(saved_lines(&dir, "term-now").unwrap(), ["still running"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_discarded_keeper_never_writes_again() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let start = Instant::now();
         let keeper = ScreenKeeper::new(&dir, "term-closed", 10, 30, None);
         keeper.feed("bye\r\n", start);
@@ -474,7 +467,6 @@ mod tests {
         keeper.save_now();
         assert!(!keeper.save_if_idle(start + SAVE_AFTER_IDLE * 2));
         assert_eq!(saved_lines(&dir, "term-closed"), None);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// What a new ConPTY console writes first: hide the cursor, clear the screen, go home.
@@ -482,18 +474,17 @@ mod tests {
 
     #[test]
     fn earlier_output_survives_a_new_console_clearing_its_screen() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let keeper = ScreenKeeper::new(&dir, "term-again", 10, 30, Some("\x1b[0mold run\r\nsecond line\x1b[0m"));
         keeper.feed(CONSOLE_START, Instant::now());
         keeper.feed("new run\r\n", Instant::now());
         keeper.save_now();
         assert_eq!(saved_lines(&dir, "term-again").unwrap(), ["old run", "second line", "new run"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn output_that_never_pauses_is_still_saved_every_so_often() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let start = Instant::now();
         let keeper = ScreenKeeper::new(&dir, "term-spinner", 10, 30, None);
         let tick = Duration::from_millis(100);
@@ -506,12 +497,11 @@ mod tests {
         keeper.feed("\rworking", start + SAVE_AT_LEAST_EVERY);
         assert!(keeper.save_if_idle(start + SAVE_AT_LEAST_EVERY));
         assert_eq!(saved_lines(&dir, "term-spinner").unwrap(), ["working"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_full_screen_app_is_saved_below_the_normal_screen_it_covers() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let keeper = ScreenKeeper::new(&dir, "term-alt", 10, 30, None);
         keeper.feed("PS> history\r\n", Instant::now());
         keeper.feed("\x1b[?1049h\x1b[Hfull-screen frame", Instant::now());
@@ -522,7 +512,6 @@ mod tests {
         keeper.feed("\x1b[?1049lPS> back", Instant::now());
         keeper.save_now();
         assert_eq!(saved_lines(&dir, "term-alt").unwrap(), ["PS> history", "PS> back"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -542,19 +531,17 @@ mod tests {
 
     #[test]
     fn a_keeper_follows_the_pty_size() {
-        let dir = temp_dir();
+        let dir = TempDir::new("screen");
         let keeper = ScreenKeeper::new(&dir, "term-size", 10, 30, None);
         keeper.resize(20, 50);
         keeper.save_now();
         let snapshot = load_screen(&dir, "term-size").unwrap();
         assert_eq!((snapshot.rows, snapshot.cols), (20, 50));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_saved_snapshot_loads_back_and_a_missing_or_broken_one_is_none() {
-        let dir = std::env::temp_dir().join(format!("quay2-screen-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("screen");
         let snapshot = ScreenSnapshot { rows: 24, cols: 80, data: "hello\r\nworld".to_string() };
 
         save_screen(&dir, "term-a", &snapshot).unwrap();
@@ -563,7 +550,6 @@ mod tests {
         std::fs::write(screen_path(&dir, "term-broken"), b"not json").unwrap();
         assert_eq!(load_screen(&dir, "term-broken"), None);
 
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

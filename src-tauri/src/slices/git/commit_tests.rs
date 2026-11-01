@@ -13,6 +13,7 @@ use super::error::GitError;
 use super::op_runner::{stream_cap_notice, GitOps, OpEvent};
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
+use crate::test_support::TempDir;
 
 /// A channel that keeps every event it is sent, as the JSON the frontend would receive.
 fn test_channel() -> (Channel<OpEvent>, Arc<Mutex<Vec<Value>>>) {
@@ -48,7 +49,7 @@ fn head_oid(wt: &Path) -> String {
 }
 
 /// A worktree with `README.md` changed and staged.
-fn staged_change() -> (PathBuf, PathBuf) {
+fn staged_change() -> (TempDir, PathBuf) {
     let (root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     git(&wt, &["add", "README.md"]);
@@ -57,7 +58,7 @@ fn staged_change() -> (PathBuf, PathBuf) {
 
 #[test]
 fn a_commit_records_the_staged_change_with_the_message_and_returns_the_new_head() {
-    let (root, wt) = staged_change();
+    let (_root, wt) = staged_change();
     let before = head_oid(&wt);
 
     let new_head = commit_in(&wt, &request("  Change the readme\n\n\n\nWhy it changed.  \n\n")).unwrap();
@@ -68,12 +69,11 @@ fn a_commit_records_the_staged_change_with_the_message_and_returns_the_new_head(
     // `--cleanup=whitespace`: trailing spaces and runs of blank lines go, leading text stays.
     assert_eq!(head_message(&wt), "  Change the readme\n\nWhy it changed.\n\n");
     assert_eq!(git(&wt, &["diff", "--cached", "--name-only"]), "");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn amend_replaces_head_with_the_new_message_even_with_nothing_staged() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let before = head_oid(&wt);
 
     let new_head = commit_in(&wt, &CommitRequest { message: "Reworded".into(), amend: true, signoff: false }).unwrap();
@@ -82,12 +82,11 @@ fn amend_replaces_head_with_the_new_message_even_with_nothing_staged() {
     assert_eq!(head_message(&wt), "Reworded\n\n");
     // The amend replaced HEAD rather than adding a commit on it: still one commit on the branch.
     assert_eq!(git(&wt, &["rev-list", "--count", "HEAD"]).trim(), "1");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn sign_off_adds_the_committers_signed_off_by_trailer_only_when_asked() {
-    let (root, wt) = staged_change();
+    let (_root, wt) = staged_change();
     commit_in(&wt, &CommitRequest { message: "Signed".into(), amend: false, signoff: true }).unwrap();
     assert_eq!(head_message(&wt), "Signed\n\nSigned-off-by: Quay Test <quay@example.invalid>\n\n");
 
@@ -95,7 +94,6 @@ fn sign_off_adds_the_committers_signed_off_by_trailer_only_when_asked() {
     git(&wt, &["add", "README.md"]);
     commit_in(&wt, &request("Unsigned")).unwrap();
     assert_eq!(head_message(&wt), "Unsigned\n\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Writes `body` as the hook `name` in a hooks folder of its own under `root`, and points the
@@ -137,7 +135,6 @@ fn a_failing_pre_commit_hook_is_hook_failed_with_its_output_and_commits_nothing(
         events.last(),
         Some(&serde_json::json!({ "event": "failed", "error": { "kind": "hookFailed", "hook": "pre-commit", "output": "lint: 2 problems\nsrc/lib.rs: bad\n" } }))
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -160,7 +157,6 @@ fn hook_output_is_capped_at_64_kib_both_as_it_streams_and_in_hook_failed() {
     assert!(streamed.starts_with("1\n2\n3\n"), "the oldest output streams first");
     assert!(streamed.ends_with(&notice), "the stream ends in the notice: {:?}", &streamed[streamed.len().saturating_sub(80)..]);
     assert_eq!(streamed.len(), 64 * 1024 + notice.len());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Whether a process with this OS process id is running.
@@ -217,12 +213,11 @@ fn cancel_stops_a_long_running_hook_and_leaves_the_worktree_ready_to_commit() {
     git(&wt, &["config", "core.hooksPath", ".git/no-hooks"]);
     commit(&ops, &locks, &wt, Uuid::new_v4(), &request("After cancel"), &test_channel().0).unwrap();
     assert_eq!(head_message(&wt), "After cancel\n\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// A worktree on `feat` mid-merge of `main`, stopped on a conflict in README.md that is then
 /// resolved and staged, so only the merge commit is left to make.
-fn resolved_merge() -> (PathBuf, PathBuf) {
+fn resolved_merge() -> (TempDir, PathBuf) {
     let (root, wt) = repo_with_worktree();
     let repo = root.join("repo");
     std::fs::write(repo.join("README.md"), "main side\n").unwrap();
@@ -238,7 +233,7 @@ fn resolved_merge() -> (PathBuf, PathBuf) {
 
 #[test]
 fn in_a_merge_the_context_prefills_merge_msg_and_committing_it_concludes_the_merge() {
-    let (root, wt) = resolved_merge();
+    let (_root, wt) = resolved_merge();
 
     let context = read_commit_context(&wt).unwrap();
     assert_eq!(context.operation, Operation::Merge);
@@ -250,12 +245,11 @@ fn in_a_merge_the_context_prefills_merge_msg_and_committing_it_concludes_the_mer
     assert_eq!(head_message(&wt), "Merge branch 'main' into feat\n\n");
     assert_eq!(git(&wt, &["rev-list", "--parents", "-1", "HEAD"]).split_whitespace().count(), 3, "a merge commit has two parents");
     assert_eq!(read_commit_context(&wt).unwrap().operation, Operation::None);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn the_context_gives_amend_heads_message_and_says_when_head_is_on_its_upstream() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let no_upstream = read_commit_context(&wt).unwrap().head.unwrap();
     assert_eq!(no_upstream.message, "init\n");
     assert_eq!(no_upstream.oid, head_oid(&wt));
@@ -270,12 +264,11 @@ fn the_context_gives_amend_heads_message_and_says_when_head_is_on_its_upstream()
     let ahead = read_commit_context(&wt).unwrap().head.unwrap();
     assert_eq!(ahead.message, "Local only\n\nWith a body.\n");
     assert!(!ahead.on_upstream, "a commit not yet on the upstream");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn the_context_names_a_detached_head_and_each_operation_the_banner_continues() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let context = read_commit_context(&wt).unwrap();
     assert_eq!((context.operation, context.branch.as_deref(), context.merge_message), (Operation::None, Some("feat"), None));
 
@@ -294,7 +287,6 @@ fn the_context_names_a_detached_head_and_each_operation_the_banner_continues() {
     }
     std::fs::create_dir_all(git_dir.join("rebase-merge")).unwrap();
     assert_eq!(read_commit_context(&wt).unwrap().operation, Operation::Rebase);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Names the worktree [`commit_with_the_inherited_env`] commits in, when this test binary runs it
@@ -345,16 +337,14 @@ fn a_topos_commit_carries_no_quay_agent_trailer_even_from_an_agent_terminals_env
     assert!(out.status.success() && printed.contains("1 passed"), "the child commit failed:\n{printed}\n{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(head_message(&wt), "From Topos\n\n");
     assert!(stamps(&head_message(&wt)).is_empty());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_failure_that_is_not_a_hook_is_other_with_gits_words() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let err = commit_in(&wt, &request("Nothing staged")).unwrap_err();
     match err {
         GitError::Other { stderr } => assert!(stderr.contains("nothing to commit") || stderr.contains("no changes added"), "{stderr}"),
         other => panic!("expected Other, got {other:?}"),
     }
-    let _ = std::fs::remove_dir_all(root);
 }

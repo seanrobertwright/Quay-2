@@ -1,10 +1,10 @@
 //! Filtered graph sessions (#401) against throwaway repositories built with the system git: a
 //! filter reopens the session with a reduced ref set that always holds the selected worktree's HEAD.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::session::{GraphOptions, GraphRefs, GraphSessions};
-use super::tests::{git, listen, repo_with_history, rows_until_event};
+use super::tests::{git, listen, repo_with_history, rows_until_event, TempDir};
 
 fn filtered(branches: &[&str], remotes: bool, tags: bool, worktree: Option<&Path>) -> GraphOptions {
     GraphOptions {
@@ -36,9 +36,10 @@ fn rev_list(repo: &Path, revs: &[&str]) -> Vec<String> {
 }
 
 /// [`repo_with_history`] plus a worktree whose HEAD is detached at the commit only tag `old` reaches.
-fn repo_with_detached_worktree(commits: usize) -> (PathBuf, PathBuf) {
+fn repo_with_detached_worktree(commits: usize) -> (TempDir, TempDir) {
     let repo = repo_with_history(commits);
-    let wt = repo.with_extension("wt");
+    // Git adds a worktree into an empty folder that's already there
+    let wt = super::tests::temp_dir();
     git(&repo, &["worktree", "add", "-q", "--detach", &wt.to_string_lossy(), "old"]);
     (repo, wt)
 }
@@ -50,8 +51,6 @@ fn a_branch_filter_walks_only_those_branches_and_the_selected_worktrees_head() {
     assert_eq!(rows, rev_list(&repo, &["refs/heads/feature", "old"]));
     // feature's 2, main's first commit under them, and the tag-only commit at the worktree's HEAD.
     assert_eq!(rows.len(), 4);
-    std::fs::remove_dir_all(&wt).ok();
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]
@@ -63,7 +62,6 @@ fn remotes_off_and_tags_on_walk_local_branches_tags_and_head() {
     let remote_only = git(&repo, &["rev-parse", "refs/remotes/origin/wip"]).trim().to_string();
     assert!(rows.contains(&tag_only));
     assert!(!rows.contains(&remote_only));
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]
@@ -74,7 +72,6 @@ fn remotes_off_drops_a_remote_branch_from_the_branch_filter() {
     assert_eq!(rows, rev_list(&repo, &["refs/heads/feature", "HEAD"]));
     let rows_with_remotes = walk(&repo, filtered(&["refs/remotes/origin/wip"], true, false, None));
     assert_eq!(rows_with_remotes, rev_list(&repo, &["refs/remotes/origin/wip", "HEAD"]));
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]
@@ -82,7 +79,6 @@ fn a_filter_naming_a_branch_that_is_gone_walks_the_rest() {
     let repo = repo_with_history(20);
     let rows = walk(&repo, filtered(&["refs/heads/gone", "refs/heads/feature"], true, false, None));
     assert_eq!(rows, rev_list(&repo, &["refs/heads/feature", "HEAD"]));
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]
@@ -96,7 +92,6 @@ fn a_filter_naming_anything_but_a_full_branch_name_is_refused_before_git_runs() 
     }
     let (ch, _rx) = listen();
     assert!(sessions.open(&repo, filtered(&["refs/heads/main"], true, false, Some(Path::new("relative"))), ch).is_err());
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]
@@ -139,5 +134,4 @@ fn a_refresh_walks_the_sessions_reduced_ref_set_again() {
     assert_eq!(end["event"], "done", "{end}");
     assert_eq!(after, rev_list(&repo, &["refs/heads/feature", "HEAD"]));
     assert!(after.contains(&on_feature) && !after.contains(&on_remote));
-    std::fs::remove_dir_all(&repo).ok();
 }

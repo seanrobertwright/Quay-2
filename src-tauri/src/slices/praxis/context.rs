@@ -360,18 +360,16 @@ fn check_contract(repo: &Path, project: &Project, cid: &str) -> ContractContext 
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use serde_json::json;
 
     use super::*;
+    use crate::test_support::TempDir;
     use crate::slices::praxis::models::{ContractContext, PraxisKind};
     use crate::slices::praxis::revision::content_revision;
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-context-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis-context")
     }
 
     fn write(repo: &Path, rel: &str, value: &Value) {
@@ -441,7 +439,7 @@ mod tests {
     }
 
     /// A contract that binds a root grant and its child, a graph, and is named by a trigger.
-    fn sound_project() -> PathBuf {
+    fn sound_project() -> TempDir {
         let repo = temp_repo();
         write(&repo, ".praxis/contracts/c.json", &contract("c", &["graphs", "triggers"]));
         // The child is listed before its parent, so the check must grant the parent first.

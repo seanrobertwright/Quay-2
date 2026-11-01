@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::error::GitError;
+use crate::test_support::TempDir;
 use super::staging::{ignore_folder, read_status, stage_paths, unstage_paths, PathTarget, StagingLocks, STATUS_CAP};
 
 pub(super) fn git(dir: &Path, args: &[&str]) -> String {
@@ -17,8 +18,8 @@ pub(super) fn git(dir: &Path, args: &[&str]) -> String {
 /// A repo on `main` with `README.md` and `src/lib.rs` committed, and a linked worktree on `feat`.
 /// Returns (root, worktree); the tests work in the worktree, whose index lives under the main
 /// repo's `.git/worktrees/`.
-pub(super) fn repo_with_worktree() -> (PathBuf, PathBuf) {
-    let root = std::env::temp_dir().join(format!("quay-stage-{}", uuid::Uuid::new_v4().simple()));
+pub(super) fn repo_with_worktree() -> (TempDir, PathBuf) {
+    let root = TempDir::new("stage");
     let repo = root.join("repo");
     let worktree = root.join("wt");
     std::fs::create_dir_all(repo.join("src")).unwrap();
@@ -62,7 +63,7 @@ fn e(path: &str, xy: &str, kind: &str) -> (String, String, String) {
 
 #[test]
 fn status_lists_staged_unstaged_and_untracked_folders_and_echoes_its_request_id() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     std::fs::write(wt.join("added.txt"), "new\n").unwrap();
     git(&wt, &["add", "added.txt"]);
@@ -79,7 +80,6 @@ fn status_lists_staged_unstaged_and_untracked_folders_and_echoes_its_request_id(
         entries(&status),
         [e("README.md", ".M", "tracked"), e("added.txt", "A.", "tracked"), e("notes", "??", "untrackedFolder")]
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Writes `count` untracked files straight into `dir`, each its own status entry.
@@ -93,7 +93,7 @@ fn write_files(dir: &Path, count: usize) {
 #[test]
 fn status_keeps_the_first_ten_thousand_entries_and_counts_the_rest() {
     assert_eq!(STATUS_CAP, 10_000);
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     write_files(&wt, 10_004);
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
 
@@ -101,12 +101,11 @@ fn status_keeps_the_first_ten_thousand_entries_and_counts_the_rest() {
     assert_eq!(status["entries"].as_array().unwrap().len(), 10_000);
     assert_eq!(status["total"], 10_005);
     assert_eq!(status["truncated"], true);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_folder_status_lists_only_that_folders_untracked_files_one_by_one() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     std::fs::create_dir_all(wt.join("notes/deep")).unwrap();
     std::fs::write(wt.join("notes/a.md"), "a\n").unwrap();
@@ -117,31 +116,28 @@ fn a_folder_status_lists_only_that_folders_untracked_files_one_by_one() {
     let status = status_json(&wt, 2, Some("notes"));
     assert_eq!(status["requestId"], 2);
     assert_eq!(entries(&status), [e("notes/a.md", "??", "untracked"), e("notes/deep/b.md", "??", "untracked")]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_folder_status_is_capped_too() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     write_files(&wt.join("many"), 10_002);
 
     let status = status_json(&wt, 3, Some("many"));
     assert_eq!(status["entries"].as_array().unwrap().len(), 10_000);
     assert_eq!(status["total"], 10_002);
     assert_eq!(status["truncated"], true);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_folder_outside_the_worktree_is_refused() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     for bad in ["../repo", "", "/etc", "C:/Windows", "a/../../b"] {
         assert!(
             matches!(read_status(&wt, 1, Some(bad)), Err(GitError::Other { .. })),
             "{bad:?} should be refused"
         );
     }
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn paths(list: &[&str]) -> PathTarget {
@@ -155,7 +151,7 @@ fn staged(wt: &Path) -> String {
 
 #[test]
 fn staging_files_and_a_folder_returns_the_post_write_status() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     std::fs::write(wt.join("src/lib.rs"), "fn main() { 1; }\n").unwrap();
     std::fs::create_dir_all(wt.join("notes/deep")).unwrap();
@@ -178,12 +174,11 @@ fn staging_files_and_a_folder_returns_the_post_write_status() {
         ]
     );
     assert_eq!(staged(&wt), "M\tREADME.md\nA\tname with spaces [1].txt\nA\tnotes/a.md\nA\tnotes/deep/b.md\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn unstaging_puts_the_index_back_to_head_and_drops_a_new_file_from_it() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     std::fs::write(wt.join("src/lib.rs"), "fn main() { 1; }\n").unwrap();
     std::fs::write(wt.join("new.txt"), "n\n").unwrap();
@@ -200,12 +195,11 @@ fn unstaging_puts_the_index_back_to_head_and_drops_a_new_file_from_it() {
     // The worktree keeps its bytes; only the index moved.
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "changed\n");
     assert_eq!(staged(&wt), "M\tsrc/lib.rs\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn stage_all_and_unstage_all_act_on_every_change_beyond_the_cap() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     write_files(&wt, 10_003);
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     std::fs::remove_file(wt.join("src/lib.rs")).unwrap();
@@ -221,13 +215,11 @@ fn stage_all_and_unstage_all_act_on_every_change_beyond_the_cap() {
     let status = unstage_paths(&locks, &wt, 6, &PathTarget::All).unwrap();
     assert_eq!(status.total, 10_005);
     assert_eq!(staged(&wt), "");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn unstaging_on_an_unborn_branch_takes_the_paths_out_of_the_index() {
-    let root = std::env::temp_dir().join(format!("quay-stage-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&root).unwrap();
+    let root = TempDir::new("stage");
     git(&root, &["init", "-q", "-b", "main"]);
     std::fs::write(root.join("a.txt"), "a\n").unwrap();
     std::fs::write(root.join("b.txt"), "b\n").unwrap();
@@ -241,7 +233,6 @@ fn unstaging_on_an_unborn_branch_takes_the_paths_out_of_the_index() {
     let status = unstage_paths(&locks, &root, 2, &PathTarget::All).unwrap();
     let status = serde_json::to_value(status).unwrap();
     assert_eq!(entries(&status), [e("a.txt", "??", "untracked"), e("b.txt", "??", "untracked")]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// The worktree's own `index.lock`, under the main repo's `.git/worktrees/`.
@@ -251,7 +242,7 @@ pub(super) fn index_lock(wt: &Path) -> PathBuf {
 
 #[test]
 fn a_held_index_lock_reports_index_locked_after_retrying_and_is_never_deleted() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "changed\n").unwrap();
     let lock = index_lock(&wt);
     std::fs::write(&lock, "held by another git").unwrap();
@@ -267,7 +258,6 @@ fn a_held_index_lock_reports_index_locked_after_retrying_and_is_never_deleted() 
     std::fs::remove_file(&lock).unwrap();
     stage_paths(&locks, &wt, 3, &paths(&["README.md"])).unwrap();
     assert_eq!(staged(&wt), "M\tREADME.md\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -289,12 +279,11 @@ fn one_staging_operation_runs_per_worktree_at_a_time() {
     drop(slot);
     stage_paths(&locks, &wt, 4, &paths(&["README.md"])).unwrap();
     assert_eq!(staged(&wt), "M\tREADME.md\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn ignoring_a_folder_appends_an_anchored_escaped_line_to_gitignore() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join(".gitignore"), "target").unwrap();
     std::fs::create_dir_all(wt.join("build out/[x]")).unwrap();
     std::fs::write(wt.join("build out/[x]/a.o"), "o").unwrap();
@@ -318,7 +307,6 @@ fn ignoring_a_folder_appends_an_anchored_escaped_line_to_gitignore() {
     let status = serde_json::to_value(ignore_folder(&locks, &wt, 10, "odd[1]").unwrap()).unwrap();
     // The escaped bracket matches that folder alone, not `odd1`.
     assert_eq!(entries(&status), [e(".gitignore", ".M", "tracked"), e("odd1", "??", "untrackedFolder")]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

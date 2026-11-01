@@ -1641,6 +1641,7 @@ fn write_state(path: &Path, state: &PersistedState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn parses_work_order_ids() {
@@ -1710,8 +1711,8 @@ mod tests {
 
     /// A throwaway repository on `main` with `factory_json` committed and one untracked
     /// holdback (`expected.txt` = "hello world\n"). Returns (root, repo).
-    fn test_repo(factory_json: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("machina-e2e-{}", uuid::Uuid::new_v4().simple()));
+    fn test_repo(factory_json: &str) -> (TempDir, PathBuf) {
+        let root = TempDir::new("machina-e2e");
         let repo = root.join("repo");
         fs::create_dir_all(&repo).unwrap();
         sh_git(&repo, &["init", "-q", "-b", "main"]);
@@ -1809,7 +1810,6 @@ mod tests {
 
         let _ = mgr.abort("WO-1");
         let _ = mgr.remove_worktree("WO-1", true);
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// HALT cancels a running gate, kills its command, and the work order resumes.
@@ -1869,7 +1869,6 @@ mod tests {
         mgr.abort("WO-1").unwrap();
         mgr.remove_worktree("WO-1", true).unwrap();
         assert!(!wt.exists());
-        let _ = fs::remove_dir_all(&root);
     }
 
     /// Full path through a real git repository: scaffold, a Tier 2 failure, a scope
@@ -1945,19 +1944,16 @@ mod tests {
         assert_eq!(reloaded.status().epoch, 2);
         assert_eq!(reloaded.get("WO-1").unwrap().status, WorkOrderStatus::COMPLETED);
 
-        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn unreadable_state_is_moved_aside() {
-        let dir = std::env::temp_dir().join(format!("machina-state-{}", uuid::Uuid::new_v4().simple()));
-        fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("machina-state");
         let path = dir.join("state.json");
         fs::write(&path, "{\"not\": \"a state\"}").unwrap();
         assert!(load_state(&path).is_none());
         assert!(!path.exists());
         let moved = fs::read_dir(&dir).unwrap().count();
         assert_eq!(moved, 1);
-        let _ = fs::remove_dir_all(dir);
     }
 }

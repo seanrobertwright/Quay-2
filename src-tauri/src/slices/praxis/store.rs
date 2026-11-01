@@ -654,12 +654,11 @@ pub fn save_definition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use crate::slices::praxis::template_name::TEMPLATE_NAME_RULE;
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis")
     }
 
     fn write(repo: &Path, rel: &str, body: &str) {
@@ -733,7 +732,7 @@ mod tests {
         let plain = repo.display().to_string().trim_start_matches(r"\\?\").to_string();
         let raw = format!("{}{}", plain, std::path::MAIN_SEPARATOR);
         let got = resolve_project(&raw, &[plain]).unwrap();
-        assert_eq!(got, repo);
+        assert_eq!(got, repo.path());
     }
 
     /// Lays out git's link files for a worktree of `main` at `worktree`, the way
@@ -754,7 +753,7 @@ mod tests {
         let worktree = temp_repo();
         link_worktree(&main, &worktree, "wt");
         let got = resolve_project(&worktree.display().to_string(), &[main.display().to_string()]).unwrap();
-        assert_eq!(got, worktree);
+        assert_eq!(got, worktree.path());
     }
 
     #[test]

@@ -11,6 +11,7 @@ use super::diff::{
 use super::error::GitError;
 use super::staging::StagingLocks;
 use super::staging_tests::{git, index_lock, repo_with_worktree};
+use crate::test_support::TempDir;
 
 fn diff_json(wt: &Path, path: &str, side: DiffSide) -> Value {
     serde_json::to_value(read_file_diff(wt, 1, path, &side, 3, false).expect("diff reads")).unwrap()
@@ -42,7 +43,7 @@ fn twelve() -> String {
 
 #[test]
 fn an_unstaged_diff_lists_each_hunk_with_its_lines() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), twelve()).unwrap();
     git(&wt, &["commit", "-q", "-am", "twelve"]);
     std::fs::write(wt.join("README.md"), twelve().replace("line 2\n", "line two\n").replace("line 11\n", "")).unwrap();
@@ -73,7 +74,6 @@ fn an_unstaged_diff_lists_each_hunk_with_its_lines() {
             ),
         ]
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// The index's bytes for `path`.
@@ -88,7 +88,7 @@ fn request(path: &str, side: DiffSide, token: &str, selection: Selection) -> Sta
 }
 
 /// A committed twelve-line README with line 2 changed and line 11 deleted in the worktree.
-fn two_hunks() -> (std::path::PathBuf, std::path::PathBuf) {
+fn two_hunks() -> (TempDir, std::path::PathBuf) {
     let (root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), twelve()).unwrap();
     git(&wt, &["commit", "-q", "-am", "twelve"]);
@@ -98,7 +98,7 @@ fn two_hunks() -> (std::path::PathBuf, std::path::PathBuf) {
 
 #[test]
 fn staging_one_hunk_puts_only_that_hunk_in_the_index_and_returns_the_new_diff_and_status() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     let before = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
 
     let locks = StagingLocks::default();
@@ -113,12 +113,11 @@ fn staging_one_hunk_puts_only_that_hunk_in_the_index_and_returns_the_new_diff_an
     assert_eq!(hunks(&diff).iter().map(|h| h.0.clone()).collect::<Vec<_>>(), [json!([1, 5, 1, 5])]);
     // The worktree keeps every change.
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), twelve().replace("line 2\n", "line two\n").replace("line 11\n", ""));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn unstaging_one_hunk_takes_only_that_hunk_out_of_the_index() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     git(&wt, &["add", "README.md"]);
     let before = read_file_diff(&wt, 1, "README.md", &DiffSide::Staged, 3, false).unwrap();
     assert_eq!(before.hunks.len(), 2);
@@ -130,12 +129,11 @@ fn unstaging_one_hunk_takes_only_that_hunk_out_of_the_index() {
     assert_eq!(String::from_utf8(index_bytes(&wt, "README.md")).unwrap(), twelve().replace("line 11\n", ""));
     assert_eq!(out.diff.hunks.len(), 1);
     assert_eq!((out.diff.hunks[0].old_start, out.diff.hunks[0].old_lines), (8, 5));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_stale_diff_is_refused_and_the_index_is_left_alone() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     let read = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
     // An agent stages the second change by itself, so the index moves under the diff.
     let index_moved = twelve().replace("line 11\n", "");
@@ -168,12 +166,11 @@ fn a_stale_diff_is_refused_and_the_index_is_left_alone() {
     let read = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
     let req = request("README.md", DiffSide::Unstaged, &read.diff_token, Selection::Hunks { hunks: vec![0] });
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn cr_bytes_survive_the_diff_and_a_hunk_stage_byte_for_byte() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let original: &[u8] = b"one\r\ntwo\r\nthree\rstill three\r\n4\n5\n6\n7\n8\n9\n10\r\nlast\r\n";
     std::fs::write(wt.join("README.md"), original).unwrap();
     git(&wt, &["commit", "-q", "-am", "crlf"]);
@@ -195,7 +192,6 @@ fn cr_bytes_survive_the_diff_and_a_hunk_stage_byte_for_byte() {
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "README.md"), original);
     assert_eq!(std::fs::read(wt.join("README.md")).unwrap(), changed);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// The index's mode for `path`, as `ls-files -s` prints it.
@@ -205,7 +201,7 @@ fn index_mode(wt: &Path, path: &str) -> String {
 
 #[test]
 fn a_mode_change_stages_and_unstages_on_its_own_without_the_content() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), twelve()).unwrap();
     // A committed executable bit the worktree doesn't have, which git sees with core.fileMode.
     git(&wt, &["add", "README.md"]);
@@ -241,12 +237,11 @@ fn a_mode_change_stages_and_unstages_on_its_own_without_the_content() {
     let req = request("README.md", DiffSide::Unstaged, &read.diff_token, Selection::Hunks { hunks: vec![0] });
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_mode(&wt, "README.md"), "100755");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_binary_file_stages_only_whole() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("logo.png"), [0x89, b'P', b'N', b'G', 0, 1, 2, 3]).unwrap();
     git(&wt, &["add", "logo.png"]);
     git(&wt, &["commit", "-q", "-m", "logo"]);
@@ -264,12 +259,11 @@ fn a_binary_file_stages_only_whole() {
     let out = stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "logo.png"), [0x89, b'P', b'N', b'G', 0, 9, 9, 9, 9]);
     assert_eq!(serde_json::to_value(&out.diff).unwrap()["change"], "unchanged");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_too_large_diff_leaves_out_its_hunks_until_loaded_and_still_stages_whole() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     let big: String = (0..30_000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(wt.join("big.txt"), "start\n").unwrap();
     git(&wt, &["add", "big.txt"]);
@@ -292,12 +286,11 @@ fn a_too_large_diff_leaves_out_its_hunks_until_loaded_and_still_stages_whole() {
     let req = request("big.txt", DiffSide::Unstaged, &read.diff_token, Selection::File);
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(String::from_utf8(index_bytes(&wt, "big.txt")).unwrap(), big);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn an_untracked_file_reads_against_an_empty_file_and_stages_whole() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("new.txt"), "a\r\nb\n").unwrap();
 
     let read = read_file_diff(&wt, 1, "new.txt", &DiffSide::Unstaged, 3, false).unwrap();
@@ -319,12 +312,11 @@ fn an_untracked_file_reads_against_an_empty_file_and_stages_whole() {
     let req = request("new.txt", DiffSide::Staged, &staged.diff_token, Selection::Hunks { hunks: vec![0] });
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(git(&wt, &["ls-files", "--", "new.txt"]), "");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_commit_diff_reads_against_its_parent_and_is_read_only() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     git(&wt, &["commit", "-q", "-am", "edit"]);
     let head = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
     let side = DiffSide::Commit { oid: head.clone(), parent: None, old_path: None };
@@ -340,12 +332,11 @@ fn a_commit_diff_reads_against_its_parent_and_is_read_only() {
     assert!(matches!(stage_selection(&locks, &wt, 1, 2, &req), Err(GitError::Other { .. })));
     let bad = DiffSide::Commit { oid: "--output=x".into(), parent: None, old_path: None };
     assert!(matches!(read_file_diff(&wt, 1, "README.md", &bad, 3, false), Err(GitError::Other { .. })));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_hunk_stage_waits_on_a_held_index_lock_shares_the_staging_slot_and_never_deletes_the_lock() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     let read = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
     let req = request("README.md", DiffSide::Unstaged, &read.diff_token, Selection::Hunks { hunks: vec![0] });
     let locks = StagingLocks::default();
@@ -360,12 +351,11 @@ fn a_hunk_stage_waits_on_a_held_index_lock_shares_the_staging_slot_and_never_del
     assert_eq!(std::fs::read_to_string(&lock).unwrap(), "held");
     std::fs::remove_file(&lock).unwrap();
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn image_bytes_come_from_a_blob_or_the_worktree_and_stop_at_five_megabytes() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("logo.svg"), "<svg/>").unwrap();
     git(&wt, &["add", "logo.svg"]);
     std::fs::write(wt.join("logo.svg"), "<svg></svg>").unwrap();
@@ -382,7 +372,6 @@ fn image_bytes_come_from_a_blob_or_the_worktree_and_stop_at_five_megabytes() {
     assert!(matches!(file_bytes(&wt, "huge.png", &ByteSource::Blob { oid: huge }), Err(GitError::Other { .. })));
     assert!(matches!(file_bytes(&wt, "../x.png", &ByteSource::Worktree), Err(GitError::Other { .. })));
     assert!(matches!(file_bytes(&wt, "x.png", &ByteSource::Blob { oid: "HEAD".into() }), Err(GitError::Other { .. })));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn lines(refs: &[(u32, u32)]) -> Selection {
@@ -391,7 +380,7 @@ fn lines(refs: &[(u32, u32)]) -> Selection {
 
 #[test]
 fn staging_lines_across_two_hunks_stages_only_those_lines() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     let read = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
     // Hunk 0 is `line 1`, `-line 2`, `+line two`, then context; hunk 1 ends `-line 11`, `line 12`.
     let locks = StagingLocks::default();
@@ -418,12 +407,11 @@ line two
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(String::from_utf8(index_bytes(&wt, "README.md")).unwrap(), twelve().replace("line 11
 ", ""));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_context_line_or_a_line_past_its_hunk_is_refused_and_the_index_is_left_alone() {
-    let (root, wt) = two_hunks();
+    let (_root, wt) = two_hunks();
     let read = read_file_diff(&wt, 1, "README.md", &DiffSide::Unstaged, 3, false).unwrap();
     let locks = StagingLocks::default();
     for bad in [lines(&[(0, 0)]), lines(&[(0, 99)]), lines(&[(7, 1)]), lines(&[])] {
@@ -431,12 +419,11 @@ fn a_context_line_or_a_line_past_its_hunk_is_refused_and_the_index_is_left_alone
         assert!(matches!(stage_selection(&locks, &wt, 1, 2, &req), Err(GitError::Other { .. })));
     }
     assert_eq!(String::from_utf8(index_bytes(&wt, "README.md")).unwrap(), twelve());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn lines_after_a_last_line_without_a_newline_stage_with_the_no_newline_pair() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "a\nb").unwrap();
     git(&wt, &["commit", "-q", "-am", "no newline"]);
     std::fs::write(wt.join("README.md"), "a\nb\nc\n").unwrap();
@@ -459,12 +446,11 @@ fn lines_after_a_last_line_without_a_newline_stage_with_the_no_newline_pair() {
     let req = request("README.md", DiffSide::Staged, &staged.diff_token, lines(&[(0, 1), (0, 3), (0, 4)]));
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "README.md"), b"a\nb");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_new_last_line_without_a_newline_stages_on_its_own() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "a\nb\n").unwrap();
     git(&wt, &["commit", "-q", "-am", "two"]);
     std::fs::write(wt.join("README.md"), "a\nB\nc").unwrap();
@@ -474,12 +460,11 @@ fn a_new_last_line_without_a_newline_stages_on_its_own() {
     let req = request("README.md", DiffSide::Unstaged, &read.diff_token, lines(&[(0, 3)]));
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "README.md"), b"a\nb\nc");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn part_of_an_untracked_file_stages_and_unstaging_the_rest_removes_its_empty_entry() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("new.txt"), "a\nb\nc\n").unwrap();
     let read = read_file_diff(&wt, 1, "new.txt", &DiffSide::Unstaged, 3, false).unwrap();
 
@@ -501,12 +486,11 @@ fn part_of_an_untracked_file_stages_and_unstaging_the_rest_removes_its_empty_ent
     let out = stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(git(&wt, &["ls-files", "--", "new.txt"]), "");
     assert_eq!(out.status.entries.iter().find(|e| e.path == "new.txt").map(|e| e.xy.as_str()), Some("??"));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn unstaging_some_lines_of_an_added_file_keeps_the_rest_staged() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("new.txt"), "a\nb\nc\n").unwrap();
     git(&wt, &["add", "new.txt"]);
     let staged = read_file_diff(&wt, 1, "new.txt", &DiffSide::Staged, 3, false).unwrap();
@@ -514,34 +498,31 @@ fn unstaging_some_lines_of_an_added_file_keeps_the_rest_staged() {
     let req = request("new.txt", DiffSide::Staged, &staged.diff_token, lines(&[(0, 0), (0, 2)]));
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "new.txt"), b"b\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn every_line_of_an_untracked_file_stages_it_whole() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("new.txt"), "a\nb\n").unwrap();
     let read = read_file_diff(&wt, 1, "new.txt", &DiffSide::Unstaged, 3, false).unwrap();
     let locks = StagingLocks::default();
     let req = request("new.txt", DiffSide::Unstaged, &read.diff_token, lines(&[(0, 0), (0, 1)]));
     stage_selection(&locks, &wt, 1, 2, &req).unwrap();
     assert_eq!(index_bytes(&wt, "new.txt"), b"a\nb\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_failed_apply_after_intent_to_add_rolls_the_empty_entry_back() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("new.txt"), "a\n").unwrap();
     let bad = b"diff --git a/new.txt b/new.txt\n--- a/new.txt\n+++ b/new.txt\n@@ -1,1 +1,1 @@\n-not there\n+a\n";
     assert!(matches!(stage_new_file_lines(&wt, "new.txt", bad, 3), Err(GitError::Other { .. })));
     assert_eq!(git(&wt, &["ls-files", "--", "new.txt"]), "", "the intent-to-add entry was rolled back");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn the_rollback_never_removes_a_real_staged_change() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     // Something else stages the file for real after the intent-to-add entry was made.
     std::fs::write(wt.join("new.txt"), "a\n").unwrap();
     git(&wt, &["add", "-N", "new.txt"]);
@@ -560,7 +541,6 @@ fn the_rollback_never_removes_a_real_staged_change() {
     git(&wt, &["add", "-N", "ita.txt"]);
     assert!(roll_back_intent_to_add(&wt, "ita.txt").unwrap());
     assert_eq!(git(&wt, &["ls-files", "--", "ita.txt"]), "");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

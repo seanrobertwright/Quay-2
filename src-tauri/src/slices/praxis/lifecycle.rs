@@ -482,11 +482,10 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-life-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis-life")
     }
 
     fn write(repo: &Path, rel: &str, body: &str) {
@@ -513,14 +512,14 @@ mod tests {
     const GRAPH: &str = r#"{"id": "g", "revision": "x", "nodes": [{"id": "end-1", "kind": "END", "dependsOn": [], "config": {}}]}"#;
     const LAYOUT: &str = r#"{"version": 1, "nodes": {"end-1": {"x": 1, "y": 2}}}"#;
 
-    fn graph_repo() -> PathBuf {
+    fn graph_repo() -> TempDir {
         let repo = temp_repo();
         write(&repo, ".praxis/graphs/g.json", GRAPH);
         write(&repo, ".praxis/layout/g.json", LAYOUT);
         repo
     }
 
-    fn contract_repo() -> PathBuf {
+    fn contract_repo() -> TempDir {
         let repo = temp_repo();
         write(&repo, ".praxis/contracts/c1.json", r#"{"id": "c1", "missionId": "c1"}"#);
         write(&repo, ".praxis/bindings/c1.json", r#"{"version": 1, "graphs": ["g"]}"#);
@@ -761,7 +760,7 @@ mod tests {
         assert_eq!(names(&repo, ".praxis/bindings"), vec!["c1.json"]);
     }
 
-    fn bound_repo() -> PathBuf {
+    fn bound_repo() -> TempDir {
         let repo = graph_repo();
         write(&repo, ".praxis/grants/a.json", r#"{"id": "a"}"#);
         write(&repo, ".praxis/bindings/c1.json", r#"{"version": 1, "graphs": ["g", "other"], "grants": ["a"]}"#);
@@ -915,7 +914,7 @@ mod tests {
     const BINDING: &str = r#"{"format": "aiws-graph-binding/1", "graphBindingId": "g-1", "graphBindingRevision": 1,
         "graphId": "g", "graphRevision": "r1", "graphDigest": "sha256:00", "costUnit": "u", "maxTotalActiveMs": 1000, "nodes": {}}"#;
 
-    fn binding_repo() -> PathBuf {
+    fn binding_repo() -> TempDir {
         let repo = graph_repo();
         write(&repo, ".praxis/graph-bindings/g-1.json", BINDING);
         write(&repo, ".praxis/graph-bindings/other-1.json", &BINDING.replace("\"g-1\"", "\"other-1\"").replace("\"g\"", "\"other\""));

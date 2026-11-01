@@ -43,34 +43,35 @@ fn read_from(path: &Path) -> AppSettings {
 mod tests {
     use super::*;
 
-    fn settings_file(body: Option<&str>) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-settings-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&dir).unwrap();
+    /// A `settings.json` path holding `body`, if given, in a folder that goes when the
+    /// returned `TempDir` drops.
+    fn settings_file(body: Option<&str>) -> (crate::test_support::TempDir, std::path::PathBuf) {
+        let dir = crate::test_support::TempDir::new("settings");
         let path = dir.join("settings.json");
         if let Some(body) = body {
             std::fs::write(&path, body).unwrap();
         }
-        path
+        (dir, path)
     }
 
     #[test]
     fn stamping_is_on_with_no_settings_file() {
-        assert!(read_from(&settings_file(None)).agent_commit_stamping);
+        assert!(read_from(&settings_file(None).1).agent_commit_stamping);
     }
 
     #[test]
     fn stamping_is_on_when_the_file_does_not_mention_it() {
-        assert!(read_from(&settings_file(Some(r#"{"somethingElse": 1}"#))).agent_commit_stamping);
+        assert!(read_from(&settings_file(Some(r#"{"somethingElse": 1}"#)).1).agent_commit_stamping);
     }
 
     #[test]
     fn the_setting_turns_stamping_off() {
-        let path = settings_file(Some(r#"{"agentCommitStamping": false}"#));
+        let (_dir, path) = settings_file(Some(r#"{"agentCommitStamping": false}"#));
         assert!(!read_from(&path).agent_commit_stamping);
     }
 
     #[test]
     fn an_unreadable_file_leaves_stamping_on() {
-        assert!(read_from(&settings_file(Some("{not json"))).agent_commit_stamping);
+        assert!(read_from(&settings_file(Some("{not json")).1).agent_commit_stamping);
     }
 }

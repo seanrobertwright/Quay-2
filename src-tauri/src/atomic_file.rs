@@ -29,13 +29,7 @@ pub fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-atomic-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::test_support::TempDir;
 
     fn entries(dir: &Path) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(dir)
@@ -48,7 +42,7 @@ mod tests {
 
     #[test]
     fn writes_a_new_file_and_leaves_no_temp_file() {
-        let dir = temp_dir();
+        let dir = TempDir::new("atomic");
         let path = dir.join("state.json");
         write_atomic(&path, b"first").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
@@ -57,7 +51,7 @@ mod tests {
 
     #[test]
     fn replaces_an_existing_file() {
-        let dir = temp_dir();
+        let dir = TempDir::new("atomic");
         let path = dir.join("state.json");
         std::fs::write(&path, "old contents that are longer").unwrap();
         write_atomic(&path, b"new").unwrap();
@@ -67,7 +61,7 @@ mod tests {
 
     #[test]
     fn a_failed_rename_removes_the_temp_file() {
-        let dir = temp_dir();
+        let dir = TempDir::new("atomic");
         // A directory in the way makes the rename fail on every platform
         let path = dir.join("state.json");
         std::fs::create_dir(&path).unwrap();

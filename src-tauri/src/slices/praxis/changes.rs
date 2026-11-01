@@ -128,15 +128,13 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use super::*;
+    use crate::test_support::TempDir;
     use crate::slices::praxis::models::{ChangeStatus, ChangedFile};
 
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-changes-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_dir() -> TempDir {
+        TempDir::canonical("praxis-changes")
     }
 
     fn git(repo: &Path, args: &[&str]) {
@@ -150,7 +148,7 @@ mod tests {
     }
 
     /// A repository with one commit holding `files`.
-    fn committed_repo(files: &[(&str, &str)]) -> PathBuf {
+    fn committed_repo(files: &[(&str, &str)]) -> TempDir {
         let repo = temp_dir();
         git(&repo, &["init", "-q"]);
         for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {

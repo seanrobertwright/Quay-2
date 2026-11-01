@@ -14,6 +14,7 @@ use super::outcome::{CallOutcome, HostCondition, Verb};
 use super::runner::{CallBounds, ConditionChange, PraxisCli};
 use super::settings::PraxisCliSettings;
 use super::{interactive_argv, InteractiveCommand};
+use crate::test_support::TempDir;
 
 const FAKE: &str = include_str!("fake_praxis.mjs");
 
@@ -37,6 +38,8 @@ struct Harness {
     project: PathBuf,
     cli: PraxisCli,
     changes: Arc<Mutex<Vec<ConditionChange>>>,
+    /// `root`'s folder, removed when the harness drops
+    _dir: TempDir,
 }
 
 impl Harness {
@@ -45,10 +48,9 @@ impl Harness {
     }
 
     fn with_bounds(bounds: CallBounds) -> Self {
-        let root = std::env::temp_dir().join(format!("quay-praxis-cli-{}", Uuid::new_v4().simple()));
-        let src = root.join("sdk").join("engine").join("src");
-        std::fs::create_dir_all(&src).unwrap();
-        let root = PathBuf::from(crate::slices::praxis::store::display_path(&root.canonicalize().unwrap()).unwrap());
+        let dir = TempDir::new("praxis-cli");
+        std::fs::create_dir_all(dir.join("sdk").join("engine").join("src")).unwrap();
+        let root = PathBuf::from(crate::slices::praxis::store::display_path(&dir.canonicalize().unwrap()).unwrap());
         std::fs::write(root.join("sdk").join("engine").join("package.json"), r#"{"name":"@aiws/engine","bin":{"praxis":"src/praxis.mjs"}}"#).unwrap();
         std::fs::write(root.join("sdk").join("engine").join("src").join("praxis.mjs"), FAKE).unwrap();
         let project = root.join("project");
@@ -58,7 +60,7 @@ impl Harness {
         let changes = Arc::new(Mutex::new(Vec::new()));
         let sink = changes.clone();
         cli.on_condition_changed(move |change| sink.lock().unwrap().push(change.clone()));
-        Self { root, project, cli, changes }
+        Self { root, project, cli, changes, _dir: dir }
     }
 
     fn src(&self) -> PathBuf {
@@ -85,12 +87,6 @@ impl Harness {
 
     fn condition(&self) -> HostCondition {
         self.cli.condition(&self.project)
-    }
-}
-
-impl Drop for Harness {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 

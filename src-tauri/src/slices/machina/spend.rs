@@ -262,6 +262,7 @@ fn measure_pig(sessions: &PigSessions, worktree: &str) -> SpendSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn encodes_like_claude_code() {
@@ -361,24 +362,6 @@ mod tests {
         assert_ne!(comparable_path(r"E:\a-b"), comparable_path(r"E:\a\b"));
     }
 
-    /// A fresh temp folder named for `tag`, removed when dropped.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(tag: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("quay-pig-spend-{}-{}", tag, std::process::id()));
-            let _ = fs::remove_dir_all(&dir);
-            fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
     const WORKTREE: &str = r"E:\Projects\Quay2\.machina\worktrees\WO-7";
 
     /// A PiG session file's lines: the header for `cwd`, then an assistant message costing
@@ -407,8 +390,8 @@ mod tests {
 
     #[test]
     fn pig_spend_sums_its_own_costs_over_every_session_of_the_worktree() {
-        let tmp = TempDir::new("sums");
-        let sessions = tmp.0.join("sessions");
+        let tmp = TempDir::new("pig-spend-sums");
+        let sessions = tmp.join("sessions");
         // PiG's folder name, in another case than Quay's spelling of the worktree
         let mine = sessions.join(pig_session_dir_name(WORKTREE).to_uppercase());
         let other = sessions.join(pig_session_dir_name(r"E:\Projects\Elsewhere"));
@@ -431,14 +414,14 @@ mod tests {
 
     #[test]
     fn a_shared_pig_session_folder_is_read_by_each_sessions_cwd() {
-        let tmp = TempDir::new("shared");
-        fs::write(tmp.0.join("1.jsonl"), session(&WORKTREE.to_lowercase(), &[0.5])).unwrap();
-        fs::write(tmp.0.join("2.jsonl"), session(r"E:\Projects\Elsewhere", &[9.0])).unwrap();
-        fs::write(tmp.0.join("3.jsonl"), "not a header\n").unwrap();
+        let tmp = TempDir::new("pig-spend-shared");
+        fs::write(tmp.join("1.jsonl"), session(&WORKTREE.to_lowercase(), &[0.5])).unwrap();
+        fs::write(tmp.join("2.jsonl"), session(r"E:\Projects\Elsewhere", &[9.0])).unwrap();
+        fs::write(tmp.join("3.jsonl"), "not a header\n").unwrap();
         // Encodes to the same folder name as the worktree, but is another folder
-        fs::write(tmp.0.join("4.jsonl"), session(&WORKTREE.replace(r"\WO-7", "-WO-7"), &[9.0])).unwrap();
+        fs::write(tmp.join("4.jsonl"), session(&WORKTREE.replace(r"\WO-7", "-WO-7"), &[9.0])).unwrap();
 
-        let s = measure_pig(&PigSessions::Shared(tmp.0.clone()), WORKTREE);
+        let s = measure_pig(&PigSessions::Shared(tmp.to_path_buf()), WORKTREE);
         assert!((s.usd - 0.5).abs() < 1e-9, "{}", s.usd);
         assert_eq!(s.responses, 1);
         assert!(s.note.starts_with("Priced from 1 PiG session file(s)"), "{}", s.note);
@@ -446,11 +429,11 @@ mod tests {
 
     #[test]
     fn without_pig_sessions_for_the_worktree_spend_is_measured_as_none_yet() {
-        let tmp = TempDir::new("missing");
+        let tmp = TempDir::new("pig-spend-missing");
         for sessions in [
-            PigSessions::PerDirectory(tmp.0.join("sessions")),
-            PigSessions::PerDirectory(tmp.0.join("no-such-folder")),
-            PigSessions::Shared(tmp.0.join("no-such-folder")),
+            PigSessions::PerDirectory(tmp.join("sessions")),
+            PigSessions::PerDirectory(tmp.join("no-such-folder")),
+            PigSessions::Shared(tmp.join("no-such-folder")),
         ] {
             let s = measure_pig(&sessions, WORKTREE);
             assert!(s.measured, "{:?}", sessions);
@@ -462,8 +445,8 @@ mod tests {
 
     #[test]
     fn a_response_a_forked_session_copied_counts_once() {
-        let tmp = TempDir::new("fork");
-        let dir = tmp.0.join(pig_session_dir_name(WORKTREE));
+        let tmp = TempDir::new("pig-spend-fork");
+        let dir = tmp.join(pig_session_dir_name(WORKTREE));
         fs::create_dir_all(&dir).unwrap();
         let parent = session(WORKTREE, &[0.5]);
         fs::write(dir.join("1.jsonl"), &parent).unwrap();
@@ -477,13 +460,13 @@ mod tests {
 
     #[test]
     fn a_malformed_pig_session_line_is_skipped() {
-        let tmp = TempDir::new("malformed");
-        let dir = tmp.0.join(pig_session_dir_name(WORKTREE));
+        let tmp = TempDir::new("pig-spend-malformed");
+        let dir = tmp.join(pig_session_dir_name(WORKTREE));
         fs::create_dir_all(&dir).unwrap();
         let text = session(WORKTREE, &[0.5]) + "{\"type\":\"message\",\"message\":{\"role\":\"assist\n" + &session(WORKTREE, &[0.25]);
         fs::write(dir.join("1.jsonl"), text).unwrap();
 
-        let s = measure_pig(&PigSessions::PerDirectory(tmp.0.clone()), WORKTREE);
+        let s = measure_pig(&PigSessions::PerDirectory(tmp.to_path_buf()), WORKTREE);
         assert!((s.usd - 0.75).abs() < 1e-9, "{}", s.usd);
         assert_eq!(s.responses, 2);
     }
@@ -508,8 +491,8 @@ mod tests {
 
     #[test]
     fn the_composer_warns_for_exactly_the_agents_spend_cannot_price() {
-        let tmp = TempDir::new("composer");
-        let cwd = tmp.0.to_string_lossy().to_string();
+        let tmp = TempDir::new("pig-spend-composer");
+        let cwd = tmp.to_string_lossy().to_string();
         let measured: Vec<String> = crate::slices::pty::models::ALL_RUN_KINDS
             .iter()
             .map(|kind| kind.as_str().to_string())
@@ -525,11 +508,11 @@ mod tests {
     #[test]
     #[ignore]
     fn live_pig_spend() {
-        let tmp = TempDir::new("live");
-        let cwd = tmp.0.to_string_lossy().to_string();
+        let tmp = TempDir::new("pig-spend-live");
+        let cwd = tmp.to_string_lossy().to_string();
         let out = crate::spawn::hidden_command("pig")
             .args(["-p", "Reply with OK"])
-            .current_dir(&tmp.0)
+            .current_dir(tmp.path())
             .output()
             .expect("run pig");
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -538,7 +521,7 @@ mod tests {
         println!("{:?}", s);
         let home = get_home_dir().ok();
         if let Some(PigSessions::PerDirectory(sessions)) =
-            pig_sessions(|name| std::env::var(name).ok(), home.as_deref(), &tmp.0)
+            pig_sessions(|name| std::env::var(name).ok(), home.as_deref(), tmp.path())
         {
             let _ = fs::remove_dir_all(sessions.join(pig_session_dir_name(&cwd)));
         }

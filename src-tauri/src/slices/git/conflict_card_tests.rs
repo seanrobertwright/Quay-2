@@ -8,6 +8,7 @@ use super::conflict::{mark_resolved, open_conflict, remove_conflict, take_side, 
 use super::error::GitError;
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
+use crate::test_support::TempDir;
 
 /// Runs `git <args>` in `dir`, which is expected to stop on a conflict and so exit non-zero.
 fn git_stops(dir: &Path, args: &[&str]) {
@@ -20,7 +21,7 @@ type Change<'a> = &'a dyn Fn(&Path);
 
 /// `base` committed on `main`, then `ours` committed on `feat` (the worktree) and `theirs` on
 /// `main`, then `main` merged into `feat`, which stops on the conflict. Returns (root, worktree).
-fn conflict(base: Change, ours: Change, theirs: Change) -> (PathBuf, PathBuf) {
+fn conflict(base: Change, ours: Change, theirs: Change) -> (TempDir, PathBuf) {
     let (root, wt) = repo_with_worktree();
     let repo = root.join("repo");
     base(&repo);
@@ -62,18 +63,18 @@ fn git_bytes(dir: &Path, args: &[&str]) -> Vec<u8> {
 }
 
 /// A file changed on the left and deleted on the right: `UD`.
-fn changed_and_deleted() -> (PathBuf, PathBuf) {
+fn changed_and_deleted() -> (TempDir, PathBuf) {
     conflict(&write("notes.txt", "one\n"), &write("notes.txt", "one\nours\n"), &delete("notes.txt"))
 }
 
 /// A file deleted on the left and changed on the right: `DU`.
-fn deleted_and_changed() -> (PathBuf, PathBuf) {
+fn deleted_and_changed() -> (TempDir, PathBuf) {
     conflict(&write("notes.txt", "one\n"), &delete("notes.txt"), &write("notes.txt", "one\ntheirs\n"))
 }
 
 #[test]
 fn accepting_the_deletion_of_a_file_changed_on_the_left_removes_it_from_the_index_and_the_worktree() {
-    let (root, wt) = changed_and_deleted();
+    let (_root, wt) = changed_and_deleted();
     let opened = open_conflict(&wt, "notes.txt").unwrap();
     assert_eq!(opened.xy, "UD");
 
@@ -83,12 +84,11 @@ fn accepting_the_deletion_of_a_file_changed_on_the_left_removes_it_from_the_inde
     assert_eq!(git(&wt, &["cat-file", "blob", &removed.backup.blob.expect("the file was backed up")]), "one\nours\n");
     assert_eq!(removed.backup.after, None);
     assert_eq!(removed.status.request_id, 3);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn keeping_a_file_changed_on_one_side_and_deleted_on_the_other_stages_it_as_it_stands() {
-    for ((root, wt), xy, bytes) in [(changed_and_deleted(), "UD", "one\nours\n"), (deleted_and_changed(), "DU", "one\ntheirs\n")] {
+    for ((_root, wt), xy, bytes) in [(changed_and_deleted(), "UD", "one\nours\n"), (deleted_and_changed(), "DU", "one\ntheirs\n")] {
         let opened = open_conflict(&wt, "notes.txt").unwrap();
         assert_eq!(opened.xy, xy);
 
@@ -96,13 +96,12 @@ fn keeping_a_file_changed_on_one_side_and_deleted_on_the_other_stages_it_as_it_s
         assert_eq!(git(&wt, &["ls-files", "-u"]), "", "{xy}: no unmerged stages remain");
         assert_eq!(git(&wt, &["show", ":notes.txt"]), bytes, "{xy}: the changed file is staged");
         assert_eq!(std::fs::read_to_string(wt.join("notes.txt")).unwrap(), bytes, "{xy}: the worktree keeps it");
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
 #[test]
 fn accepting_the_deletion_of_a_file_changed_on_the_right_removes_it() {
-    let (root, wt) = deleted_and_changed();
+    let (_root, wt) = deleted_and_changed();
     let opened = open_conflict(&wt, "notes.txt").unwrap();
     assert_eq!(opened.xy, "DU");
 
@@ -110,12 +109,11 @@ fn accepting_the_deletion_of_a_file_changed_on_the_right_removes_it() {
     assert_eq!(index_entries(&wt, "notes.txt"), "");
     assert!(!wt.join("notes.txt").exists());
     assert_eq!(git(&wt, &["cat-file", "blob", &removed.backup.blob.unwrap()]), "one\ntheirs\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn taking_a_side_that_deleted_the_file_is_refused_and_changes_nothing() {
-    let (root, wt) = changed_and_deleted();
+    let (_root, wt) = changed_and_deleted();
     let opened = open_conflict(&wt, "notes.txt").unwrap();
     let before = index_entries(&wt, "notes.txt");
 
@@ -126,27 +124,25 @@ fn taking_a_side_that_deleted_the_file_is_refused_and_changes_nothing() {
     }
     assert_eq!(index_entries(&wt, "notes.txt"), before);
     assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"one\nours\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// `a.txt` renamed to `left.txt` on the left and to `right.txt` on the right, which leaves `a.txt`
 /// deleted on both sides (`DD`), `left.txt` added by us (`AU`) and `right.txt` added by them (`UA`).
-fn rename_conflict() -> (PathBuf, PathBuf) {
+fn rename_conflict() -> (TempDir, PathBuf) {
     conflict(&write("a.txt", "shared\n"), &rename("a.txt", "left.txt"), &rename("a.txt", "right.txt"))
 }
 
 #[test]
 fn a_rename_on_both_sides_opens_as_both_deleted_and_one_addition_per_side() {
-    let (root, wt) = rename_conflict();
+    let (_root, wt) = rename_conflict();
     assert_eq!(open_conflict(&wt, "a.txt").unwrap().xy, "DD");
     assert_eq!(open_conflict(&wt, "left.txt").unwrap().xy, "AU");
     assert_eq!(open_conflict(&wt, "right.txt").unwrap().xy, "UA");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn keeping_a_file_one_side_added_stages_it_and_removing_it_drops_it() {
-    let (root, wt) = rename_conflict();
+    let (_root, wt) = rename_conflict();
     let left = open_conflict(&wt, "left.txt").unwrap();
     let right = open_conflict(&wt, "right.txt").unwrap();
 
@@ -159,12 +155,11 @@ fn keeping_a_file_one_side_added_stages_it_and_removing_it_drops_it() {
     assert_eq!(index_entries(&wt, "right.txt"), "");
     assert!(!wt.join("right.txt").exists());
     assert_eq!(git(&wt, &["cat-file", "blob", &removed.backup.blob.unwrap()]), "shared\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn keeping_a_file_one_side_added_writes_it_back_when_the_worktree_lost_it() {
-    let (root, wt) = rename_conflict();
+    let (_root, wt) = rename_conflict();
     std::fs::remove_file(wt.join("right.txt")).unwrap();
     let right = open_conflict(&wt, "right.txt").unwrap();
     assert!(!right.on_disk);
@@ -173,12 +168,11 @@ fn keeping_a_file_one_side_added_writes_it_back_when_the_worktree_lost_it() {
     assert_eq!(git(&wt, &["show", ":right.txt"]), "shared\n");
     assert_eq!(std::fs::read(wt.join("right.txt")).unwrap(), b"shared\n");
     assert_eq!(git(&wt, &["ls-files", "-u", "--", "right.txt"]), "");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn removing_a_file_both_sides_deleted_clears_its_entries_and_backs_up_nothing() {
-    let (root, wt) = rename_conflict();
+    let (_root, wt) = rename_conflict();
     let opened = open_conflict(&wt, "a.txt").unwrap();
     assert!(!opened.on_disk);
 
@@ -186,7 +180,6 @@ fn removing_a_file_both_sides_deleted_clears_its_entries_and_backs_up_nothing() 
     assert_eq!(index_entries(&wt, "a.txt"), "");
     assert!(!wt.join("a.txt").exists());
     assert_eq!((removed.backup.blob, removed.backup.after), (None, None));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// For each side in turn: a conflict on `name` from `base`, `ours` and `theirs`, opened (it must
@@ -194,7 +187,7 @@ fn removing_a_file_both_sides_deleted_clears_its_entries_and_backs_up_nothing() 
 /// worktree holds its bytes, and the bytes the worktree had are backed up.
 fn take_each_side(name: &'static str, base: &[u8], ours: &[u8], theirs: &[u8], reason: NotEditable) {
     for (side, bytes) in [(ConflictSide::Left, ours), (ConflictSide::Right, theirs)] {
-        let (root, wt) = conflict(&write(name, base.to_vec()), &write(name, ours.to_vec()), &write(name, theirs.to_vec()));
+        let (_root, wt) = conflict(&write(name, base.to_vec()), &write(name, ours.to_vec()), &write(name, theirs.to_vec()));
         let opened = open_conflict(&wt, name).unwrap();
         assert_eq!((opened.editable, opened.reason), (false, Some(reason)), "{name} opens as a card");
         let before = std::fs::read(wt.join(name)).unwrap();
@@ -205,7 +198,6 @@ fn take_each_side(name: &'static str, base: &[u8], ours: &[u8], theirs: &[u8], r
         assert_eq!(std::fs::read(wt.join(name)).unwrap(), bytes, "{side:?}: the worktree holds it");
         let blob = taken.backup.blob.expect("the worktree bytes were backed up");
         assert_eq!(git_bytes(&wt, &["cat-file", "blob", &blob]), before);
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -250,7 +242,7 @@ fn link(name: &'static str, target: &'static str) -> impl Fn(&Path) {
 #[test]
 fn a_symlink_conflict_takes_either_side_whole_and_stays_a_link() {
     for (side, target) in [(ConflictSide::Left, "ours-target"), (ConflictSide::Right, "theirs-target")] {
-        let (root, wt) = conflict(&link("current", "base-target"), &link("current", "ours-target"), &link("current", "theirs-target"));
+        let (_root, wt) = conflict(&link("current", "base-target"), &link("current", "ours-target"), &link("current", "theirs-target"));
         let opened = open_conflict(&wt, "current").unwrap();
         assert_eq!((opened.editable, opened.reason), (false, Some(NotEditable::Symlink)));
 
@@ -260,7 +252,6 @@ fn a_symlink_conflict_takes_either_side_whole_and_stays_a_link() {
         assert_eq!(git(&wt, &["show", ":current"]), target, "{side:?}: it points at that side's target");
         assert_eq!(std::fs::read_to_string(wt.join("current")).unwrap(), target);
         assert!(taken.backup.blob.is_some());
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -280,7 +271,7 @@ fn gitlink(message: &'static str) -> impl Fn(&Path) {
 
 #[test]
 fn a_submodule_conflict_shows_both_commits_and_refuses_every_card_write() {
-    let (root, wt) = conflict(&gitlink("base"), &gitlink("ours"), &gitlink("theirs"));
+    let (_root, wt) = conflict(&gitlink("base"), &gitlink("ours"), &gitlink("theirs"));
     let opened = open_conflict(&wt, "sub").unwrap();
     assert_eq!((opened.editable, opened.reason), (false, Some(NotEditable::Submodule)));
     let stage = |n: &str| {
@@ -299,7 +290,6 @@ fn a_submodule_conflict_shows_both_commits_and_refuses_every_card_write() {
     let removed = remove_conflict(&locks, &wt, 1, "sub", &opened.token);
     assert!(matches!(&removed, Err(GitError::Other { stderr }) if stderr.contains("submodule")), "remove refused: {removed:?}");
     assert_eq!(index_entries(&wt, "sub"), before, "the index is unchanged");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Makes `name` a real symbolic link to `target`, with `core.symlinks` on so git writes real links.
@@ -320,7 +310,7 @@ fn a_real_symlink_conflict_can_be_taken_and_removed_without_writing_through_the_
     let base = real_link("current", "base-target");
     let ours = real_link("current", "ours-target");
     let theirs = real_link("current", "theirs-target");
-    let (root, wt) = conflict(&base, &ours, &theirs);
+    let (_root, wt) = conflict(&base, &ours, &theirs);
     assert!(std::fs::symlink_metadata(wt.join("current")).unwrap().file_type().is_symlink(), "git left a real link");
     let opened = open_conflict(&wt, "current").unwrap();
     assert_eq!(opened.reason, Some(NotEditable::Symlink));
@@ -330,19 +320,17 @@ fn a_real_symlink_conflict_can_be_taken_and_removed_without_writing_through_the_
     assert_eq!(std::fs::read_link(wt.join("current")).unwrap(), Path::new("theirs-target"), "the worktree holds their link");
     let blob = taken.backup.blob.expect("the link was backed up");
     assert_eq!(git(&wt, &["cat-file", "blob", &blob]), "ours-target", "as the target it pointed at");
-    let _ = std::fs::remove_dir_all(&root);
 
-    let (root, wt) = conflict(&base, &ours, &theirs);
+    let (_root, wt) = conflict(&base, &ours, &theirs);
     let opened = open_conflict(&wt, "current").unwrap();
     remove_conflict(&StagingLocks::default(), &wt, 1, "current", &opened.token).expect("the removal lands");
     assert_eq!(index_entries(&wt, "current"), "");
     assert!(std::fs::symlink_metadata(wt.join("current")).is_err(), "the link is gone");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn every_card_write_after_an_outside_edit_is_refused_as_stale_and_changes_nothing() {
-    let (root, wt) = changed_and_deleted();
+    let (_root, wt) = changed_and_deleted();
     let token = open_conflict(&wt, "notes.txt").unwrap().token;
     // An agent edits the file while its card is open.
     std::fs::write(wt.join("notes.txt"), "one\nagent's pick\n").unwrap();
@@ -354,12 +342,11 @@ fn every_card_write_after_an_outside_edit_is_refused_as_stale_and_changes_nothin
     assert_eq!(mark_resolved(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::ConflictStale));
     assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"one\nagent's pick\n");
     assert_eq!(index_entries(&wt, "notes.txt"), before);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_binary_side_taken_after_an_outside_edit_is_refused_as_stale() {
-    let (root, wt) = conflict(&write("logo.bin", b"\x00base".to_vec()), &write("logo.bin", b"\x00ours".to_vec()), &write("logo.bin", b"\x00theirs".to_vec()));
+    let (_root, wt) = conflict(&write("logo.bin", b"\x00base".to_vec()), &write("logo.bin", b"\x00ours".to_vec()), &write("logo.bin", b"\x00theirs".to_vec()));
     let token = open_conflict(&wt, "logo.bin").unwrap().token;
     std::fs::write(wt.join("logo.bin"), b"\x00agent").unwrap();
 
@@ -367,12 +354,11 @@ fn a_binary_side_taken_after_an_outside_edit_is_refused_as_stale() {
     assert_eq!(taken.err(), Some(GitError::ConflictStale));
     assert_eq!(std::fs::read(wt.join("logo.bin")).unwrap(), b"\x00agent");
     assert_ne!(git(&wt, &["ls-files", "-u"]), "", "still conflicted");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_link_retargeted_after_it_was_opened_is_refused_as_stale() {
-    let (root, wt) = conflict(&real_link("current", "base-target"), &real_link("current", "ours-target"), &real_link("current", "theirs-target"));
+    let (_root, wt) = conflict(&real_link("current", "base-target"), &real_link("current", "ours-target"), &real_link("current", "theirs-target"));
     let token = open_conflict(&wt, "current").unwrap().token;
     std::fs::remove_file(wt.join("current")).unwrap();
     real_link("current", "agent-target")(&wt);
@@ -380,7 +366,6 @@ fn a_link_retargeted_after_it_was_opened_is_refused_as_stale() {
     let removed = remove_conflict(&StagingLocks::default(), &wt, 1, "current", &token);
     assert_eq!(removed.err(), Some(GitError::ConflictStale));
     assert_eq!(std::fs::read_link(wt.join("current")).unwrap(), Path::new("agent-target"));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -397,7 +382,6 @@ fn remove_refuses_a_path_outside_the_worktree() {
     }
     assert_eq!(std::fs::read(&outside).unwrap(), b"keep\n");
     assert_ne!(index_entries(&wt, "notes.txt"), "", "still conflicted");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[cfg(windows)]
@@ -414,17 +398,15 @@ fn remove_refuses_a_path_through_a_junction_out_of_the_worktree() {
     assert!(remove_conflict(&StagingLocks::default(), &wt, 1, "link/notes.txt", &token).is_err());
     assert_eq!(std::fs::read(away.join("notes.txt")).unwrap(), b"keep\n");
     let _ = std::fs::remove_dir(wt.join("link"));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn remove_waits_for_the_worktrees_staging_slot() {
-    let (root, wt) = changed_and_deleted();
+    let (_root, wt) = changed_and_deleted();
     let token = open_conflict(&wt, "notes.txt").unwrap().token;
     let locks = StagingLocks::default();
     let _held = locks.begin(&wt).unwrap();
 
     assert_eq!(remove_conflict(&locks, &wt, 1, "notes.txt", &token).err(), Some(GitError::StagingBusy));
     assert!(wt.join("notes.txt").exists());
-    let _ = std::fs::remove_dir_all(root);
 }

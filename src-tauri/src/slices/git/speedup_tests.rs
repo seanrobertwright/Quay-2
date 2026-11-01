@@ -12,10 +12,11 @@ use super::op_runner::{GitOps, OpEvent};
 use super::settings::{ToposSettingsPatch, ToposSettingsStore};
 use super::speedup::*;
 use super::staging_tests::git;
+use crate::test_support::TempDir;
 
 /// A repo on `main` with a few commits and no commit-graph. Returns (root, repo).
-fn repo() -> (PathBuf, PathBuf) {
-    let root = std::env::temp_dir().join(format!("quay-speedup-{}", uuid::Uuid::new_v4().simple()));
+fn repo() -> (TempDir, PathBuf) {
+    let root = TempDir::new("speedup");
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
     git(&repo, &["init", "-q", "-b", "main"]);
@@ -35,14 +36,9 @@ fn repo() -> (PathBuf, PathBuf) {
     (root, repo)
 }
 
-fn store_path() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("quay-speedup-store-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("topos.json")
-}
-
-fn store() -> ToposSettingsStore {
-    ToposSettingsStore::at(store_path())
+/// A settings store whose `topos.json` is in `root`, beside the repo.
+fn store(root: &Path) -> ToposSettingsStore {
+    ToposSettingsStore::at(root.join("topos.json"))
 }
 
 /// The repo's own config file and the names under `objects/info`: everything a speed-up writes.
@@ -80,7 +76,7 @@ fn a_fresh_repo_is_offered_every_item_and_the_check_writes_nothing() {
     let (root, repo) = repo();
     let before = written_state(&repo);
 
-    let check = speedup_check(&repo, &store()).unwrap();
+    let check = speedup_check(&repo, &store(&root)).unwrap();
 
     let mut expected = vec![SpeedupItem::CommitGraph];
     if fsmonitor_offered() {
@@ -89,7 +85,6 @@ fn a_fresh_repo_is_offered_every_item_and_the_check_writes_nothing() {
     expected.push(SpeedupItem::UntrackedCache);
     assert_eq!(check, SpeedupCheck { items: expected, suppressed: false });
     assert_eq!(written_state(&repo), before, "the check wrote to the repo");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -99,7 +94,6 @@ fn fsmonitor_is_offered_only_where_the_disk_is_known_to_be_local() {
     // A network share, and a path that can't be looked at, are never known to be local.
     assert!(!fsmonitor_supported(Path::new(r"\\quay-no-such-host.invalid\share\repo")));
     assert!(!fsmonitor_supported(&root.join("no-such-folder")));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// A channel that keeps every event it is sent, as the JSON the frontend would receive.
@@ -147,10 +141,9 @@ fn apply_writes_only_the_ticked_config_item() {
     assert!(!repo.join(".git/objects/info/commit-graphs").exists(), "an unticked commit-graph was written");
     assert!(!repo.join(".git/objects/info/commit-graph").exists(), "an unticked commit-graph was written");
     // Once in place, the item is no longer offered.
-    let items = speedup_check(&repo, &store()).unwrap().items;
+    let items = speedup_check(&repo, &store(&root)).unwrap().items;
     assert!(!items.contains(&SpeedupItem::UntrackedCache), "{items:?}");
     assert!(items.contains(&SpeedupItem::CommitGraph), "{items:?}");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -165,10 +158,9 @@ fn the_commit_graph_write_streams_progress_and_writes_no_config() {
     assert_eq!(events.last(), Some(&json!({ "event": "done" })));
     assert!(repo.join(".git/objects/info/commit-graphs/commit-graph-chain").is_file(), "no split commit-graph");
     assert_eq!(std::fs::read_to_string(repo.join(".git/config")).unwrap(), config_before);
-    let items = speedup_check(&repo, &store()).unwrap().items;
+    let items = speedup_check(&repo, &store(&root)).unwrap().items;
     assert!(!items.contains(&SpeedupItem::CommitGraph), "{items:?}");
     assert!(items.contains(&SpeedupItem::UntrackedCache), "{items:?}");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -182,20 +174,19 @@ fn ticking_every_item_writes_each_or_refuses_all_where_fsmonitor_cant_run() {
         assert_eq!(result, Ok(()));
         assert_eq!(local_config(&repo, "core.fsmonitor").as_deref(), Some("true"));
         assert_eq!(local_config(&repo, "core.untrackedCache").as_deref(), Some("true"));
-        assert_eq!(speedup_check(&repo, &store()).unwrap().items, []);
+        assert_eq!(speedup_check(&repo, &store(&root)).unwrap().items, []);
     } else {
         assert!(matches!(result, Err(GitError::Other { .. })), "{result:?}");
         assert_eq!(events.last().unwrap()["event"], "failed");
         assert_eq!(written_state(&repo), before, "a refused apply wrote to the repo");
     }
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn dont_suggest_is_remembered_in_the_repos_topos_json_entry() {
-    let (other_root, other) = repo();
+    let (_other_root, other) = repo();
     let (root, repo) = repo();
-    let path = store_path();
+    let path = root.join("topos.json");
     let store = ToposSettingsStore::at(path.clone());
     let before = written_state(&repo);
 
@@ -213,8 +204,6 @@ fn dont_suggest_is_remembered_in_the_repos_topos_json_entry() {
     // Another repo is still offered its speed-ups.
     assert!(!speedup_check(&other, &reopened).unwrap().suppressed);
     assert_eq!(written_state(&repo), before, "turning the banner away wrote to the repo");
-    let _ = std::fs::remove_dir_all(root);
-    let _ = std::fs::remove_dir_all(other_root);
 }
 
 #[test]

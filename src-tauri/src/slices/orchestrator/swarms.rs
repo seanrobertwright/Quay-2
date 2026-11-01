@@ -160,17 +160,18 @@ impl SwarmStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_store() -> (SwarmStore, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("quay2-swarms-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+    /// A store whose `swarms.json` is in a fresh folder, which goes when the `TempDir` drops.
+    fn temp_store() -> (SwarmStore, PathBuf, TempDir) {
+        let dir = TempDir::new("swarms");
         let path = dir.join("swarms.json");
-        (SwarmStore::at(path.clone()), path)
+        (SwarmStore::at(path.clone()), path, dir)
     }
 
     #[test]
     fn a_missing_swarms_file_reads_as_no_saved_swarms() {
-        let (store, path) = temp_store();
+        let (store, path, _dir) = temp_store();
         assert!(!path.exists());
 
         assert_eq!(store.list().unwrap(), Vec::<SavedSwarm>::new());
@@ -196,7 +197,7 @@ mod tests {
 
     #[test]
     fn a_first_save_stores_the_swarm_with_an_id() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         let mut reviewer = agent("Reviewer", "rev", RunKind::Codex);
         reviewer.custom_flags = Some("--full-auto".to_string());
         reviewer.role_prompt = Some("You review.".to_string());
@@ -215,7 +216,7 @@ mod tests {
 
     #[test]
     fn a_role_prompt_is_saved_as_typed_and_a_blank_one_as_none() {
-        let (store, path) = temp_store();
+        let (store, path, _dir) = temp_store();
         let mut writer = agent("Technical Writer", "writer", RunKind::Claude);
         writer.role_prompt = Some("You are the writer.\n\nYou own docs/.\n".to_string());
         let mut editor = agent("Editor", "editor", RunKind::Claude);
@@ -235,7 +236,7 @@ mod tests {
 
     #[test]
     fn saving_under_an_existing_name_replaces_that_swarm_and_keeps_its_id() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         let first = store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
         store.save(draft("Other Crew", vec![agent("Solo", "solo", RunKind::Claude)])).unwrap();
         let original_id = first[0].id.clone();
@@ -254,7 +255,7 @@ mod tests {
 
     #[test]
     fn the_name_match_ignores_case_and_surrounding_spaces() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
         let saved = store.save(draft("  review pair ", vec![agent("Builder", "builder", RunKind::Codex)])).unwrap();
@@ -266,7 +267,7 @@ mod tests {
 
     #[test]
     fn a_blank_name_is_refused_and_nothing_is_written() {
-        let (store, path) = temp_store();
+        let (store, path, _dir) = temp_store();
 
         for blank in ["", "   "] {
             let err = store.save(draft(blank, vec![agent("Builder", "builder", RunKind::Claude)])).unwrap_err();
@@ -277,7 +278,7 @@ mod tests {
 
     #[test]
     fn a_built_in_preset_title_is_refused_in_any_case() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
         for taken in ["TDD Swarm", "  dev & watcher "] {
@@ -332,7 +333,7 @@ mod tests {
 
     #[test]
     fn remove_deletes_only_the_named_swarm() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
         let both = store.save(draft("Other Crew", vec![agent("Solo", "solo", RunKind::Claude)])).unwrap();
 
@@ -344,7 +345,7 @@ mod tests {
 
     #[test]
     fn a_built_in_preset_cannot_be_removed() {
-        let (store, _) = temp_store();
+        let (store, _, _dir) = temp_store();
         store.save(draft("Review Pair", vec![agent("Builder", "builder", RunKind::Claude)])).unwrap();
 
         assert!(store.remove("tdd-swarm").is_err());
@@ -369,7 +370,7 @@ mod tests {
 
     #[test]
     fn an_empty_roster_is_refused() {
-        let (store, path) = temp_store();
+        let (store, path, _dir) = temp_store();
 
         assert!(store.save(draft("Review Pair", Vec::new())).is_err());
         assert!(!path.exists());
@@ -377,7 +378,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_swarms_file_is_reported_and_left_alone() {
-        let (store, path) = temp_store();
+        let (store, path, _dir) = temp_store();
         std::fs::write(&path, "not json").unwrap();
 
         assert!(store.list().is_err());

@@ -307,16 +307,14 @@ impl Coverage {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use serde_json::json;
 
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-attach-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis-attach")
     }
 
     fn write(repo: &Path, rel: &str, value: &Value) {

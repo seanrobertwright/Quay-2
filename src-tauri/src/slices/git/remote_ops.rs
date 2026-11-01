@@ -417,7 +417,9 @@ thread_local! {
 /// machine's system and global config can't change what a test sees.
 #[cfg(test)]
 pub(super) fn with_repo_config_only<T>(run: impl FnOnce() -> T) -> T {
-    let empty = std::env::temp_dir().join(format!("quay-no-global-{}", Uuid::new_v4().simple()));
+    // A global config file that isn't there, in a folder that goes when `run` returns
+    let dir = crate::test_support::TempDir::new("no-global");
+    let empty = dir.join("gitconfig");
     TEST_ENV.with(|env| *env.borrow_mut() = vec![("GIT_CONFIG_NOSYSTEM", "1".into()), ("GIT_CONFIG_GLOBAL", empty.to_string_lossy().into_owned())]);
     let result = run();
     TEST_ENV.with(|env| env.borrow_mut().clear());

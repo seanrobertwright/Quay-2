@@ -405,6 +405,7 @@ fn remove_leftover_folder(folder: &Path, was_registered: bool) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     fn sh_git(dir: &Path, args: &[&str]) {
         let output = create_git_command(&dir.to_string_lossy())
@@ -421,8 +422,8 @@ mod tests {
 
     /// A throwaway repository on `main` with one commit and a linked worktree on
     /// branch `feat` at `<root>/wt`. Returns (root, repo, worktree).
-    fn repo_with_worktree() -> (PathBuf, PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("quay-wt-{}", uuid::Uuid::new_v4().simple()));
+    fn repo_with_worktree() -> (TempDir, PathBuf, PathBuf) {
+        let root = TempDir::new("wt");
         let repo = root.join("repo");
         let worktree = root.join("wt");
         std::fs::create_dir_all(&repo).unwrap();
@@ -444,7 +445,7 @@ mod tests {
 
     #[test]
     fn a_worktree_with_a_modified_file_reports_gits_refusal() {
-        let (root, _repo, worktree) = repo_with_worktree();
+        let (_root, _repo, worktree) = repo_with_worktree();
         std::fs::write(worktree.join("README.md"), "changed\n").unwrap();
 
         let refusal = uncommitted_changes(&worktree.to_string_lossy()).unwrap();
@@ -452,32 +453,29 @@ mod tests {
         let message = refusal.expect("a dirty worktree is refused");
         assert!(message.contains("contains modified or untracked files, use --force to delete it"), "{}", message);
         assert!(message.contains("M README.md"), "{}", message);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn a_clean_worktree_has_nothing_to_report() {
-        let (root, _repo, worktree) = repo_with_worktree();
+        let (_root, _repo, worktree) = repo_with_worktree();
 
         assert_eq!(uncommitted_changes(&worktree.to_string_lossy()), Ok(None));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn a_worktree_with_an_untracked_file_reports_gits_refusal() {
-        let (root, _repo, worktree) = repo_with_worktree();
+        let (_root, _repo, worktree) = repo_with_worktree();
         std::fs::write(worktree.join("notes.txt"), "draft\n").unwrap();
 
         let message = uncommitted_changes(&worktree.to_string_lossy())
             .unwrap()
             .expect("an untracked file is refused");
         assert!(message.contains("?? notes.txt"), "{}", message);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn a_long_status_lists_the_first_twenty_files_and_counts_the_rest() {
-        let (root, _repo, worktree) = repo_with_worktree();
+        let (_root, _repo, worktree) = repo_with_worktree();
         for i in 0..25 {
             std::fs::write(worktree.join(format!("draft-{:02}.txt", i)), "draft\n").unwrap();
         }
@@ -488,12 +486,11 @@ mod tests {
         assert!(message.contains("?? draft-19.txt"), "{}", message);
         assert!(!message.contains("draft-20.txt"), "{}", message);
         assert!(message.ends_with("...and 5 more"), "{}", message);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
     async fn remove_refuses_a_dirty_worktree_and_the_forced_remove_deletes_it() {
-        let (root, repo, worktree) = repo_with_worktree();
+        let (_root, repo, worktree) = repo_with_worktree();
         std::fs::write(worktree.join("notes.txt"), "draft\n").unwrap();
         let repo_path = repo.to_string_lossy().to_string();
         let worktree_path = worktree.to_string_lossy().to_string();
@@ -505,7 +502,6 @@ mod tests {
 
         remove_git_worktree(repo_path, worktree_path, true).await.unwrap();
         assert!(!worktree.exists());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     /// Holds `folder` open without delete sharing, as a just-killed terminal's process
@@ -530,7 +526,7 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn remove_waits_for_a_file_a_closing_process_still_holds() {
-        let (root, repo, worktree) = repo_with_worktree();
+        let (_root, repo, worktree) = repo_with_worktree();
         let release = hold_open(worktree.clone(), std::time::Duration::from_millis(800));
 
         remove_git_worktree(
@@ -544,12 +540,11 @@ mod tests {
         release.join().unwrap();
         assert!(!worktree.exists());
         assert!(!is_registered_worktree(&repo.to_string_lossy(), &worktree.to_string_lossy()).unwrap());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     /// A worktree git has unregistered but whose emptied folder it could not delete: what
     /// an interrupted `git worktree remove` leaves behind.
-    fn half_removed_worktree() -> (PathBuf, PathBuf, PathBuf) {
+    fn half_removed_worktree() -> (TempDir, PathBuf, PathBuf) {
         let (root, repo, worktree) = repo_with_worktree();
         std::fs::remove_dir_all(&worktree).unwrap();
         sh_git(&repo, &["worktree", "prune"]);
@@ -559,7 +554,7 @@ mod tests {
 
     #[tokio::test]
     async fn removing_a_half_removed_worktree_deletes_its_empty_folder() {
-        let (root, repo, worktree) = half_removed_worktree();
+        let (_root, repo, worktree) = half_removed_worktree();
 
         remove_git_worktree(
             repo.to_string_lossy().to_string(),
@@ -570,12 +565,11 @@ mod tests {
         .unwrap();
 
         assert!(!worktree.exists());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
     async fn a_folder_that_is_not_a_worktree_and_holds_files_is_left_alone() {
-        let (root, repo, worktree) = half_removed_worktree();
+        let (_root, repo, worktree) = half_removed_worktree();
         std::fs::write(worktree.join("keep.txt"), "mine\n").unwrap();
 
         let error = remove_git_worktree(
@@ -588,12 +582,11 @@ mod tests {
 
         assert!(error.contains("is not a worktree of this project"), "{}", error);
         assert!(worktree.join("keep.txt").exists());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
     async fn a_worktree_path_spelled_another_way_is_still_removed() {
-        let (root, repo, worktree) = repo_with_worktree();
+        let (_root, repo, worktree) = repo_with_worktree();
         let spelled = repo.join("..").join("wt");
 
         remove_git_worktree(
@@ -605,12 +598,11 @@ mod tests {
         .unwrap();
 
         assert!(!worktree.exists());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
     async fn a_relative_worktree_path_is_refused() {
-        let (root, repo, worktree) = repo_with_worktree();
+        let (_root, repo, worktree) = repo_with_worktree();
 
         let error = remove_git_worktree(repo.to_string_lossy().to_string(), "wt".to_string(), true)
             .await
@@ -618,12 +610,11 @@ mod tests {
 
         assert!(error.contains("must be absolute"), "{}", error);
         assert!(worktree.exists());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
     async fn removing_a_worktree_that_is_already_gone_succeeds() {
-        let (root, repo, worktree) = half_removed_worktree();
+        let (_root, repo, worktree) = half_removed_worktree();
         std::fs::remove_dir(&worktree).unwrap();
 
         remove_git_worktree(
@@ -633,7 +624,6 @@ mod tests {
         )
         .await
         .unwrap();
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -668,10 +658,8 @@ detached
 
     #[tokio::test]
     async fn non_git_folder_returns_empty_worktree_list() {
-        let root = std::env::temp_dir().join(format!("quay-nogit-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&root).unwrap();
+        let root = TempDir::new("nogit");
         let res = list_git_worktrees(root.to_string_lossy().to_string()).await.unwrap();
         assert!(res.is_empty());
-        let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -413,6 +413,7 @@ pub fn transcript_dir_spend(dir: &Path) -> DirSpend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     fn line(id: &str, req: &str, ts: &str, model: &str, out: u64, extra: &str) -> String {
         format!(
@@ -448,8 +449,7 @@ mod tests {
 
     #[test]
     fn duplicates_across_files_count_once_with_final_output() {
-        let dir =
-            std::env::temp_dir().join(format!("quay-usage-test-{}", uuid::Uuid::new_v4().simple()));
+        let dir = TempDir::new("usage");
         let sub = dir.join("proj").join("session").join("subagents");
         std::fs::create_dir_all(&sub).unwrap();
         let a = [
@@ -495,7 +495,6 @@ mod tests {
         assert!(!snap2.days.contains_key("2026-10-17"));
         assert!(snap2.days.contains_key("2026-10-18"));
 
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -533,12 +532,8 @@ mod tests {
 
     #[test]
     fn ledger_round_trips_through_disk() {
-        let path = std::env::temp_dir()
-            .join(format!(
-                "quay-ledger-test-{}",
-                uuid::Uuid::new_v4().simple()
-            ))
-            .join("token-ledger.json");
+        let dir = TempDir::new("ledger");
+        let path = dir.join("token-ledger.json");
         let mut days = DayTable::new();
         days.entry("2026-10-18".into()).or_default().insert(
             "claude-opus-5-5".into(),
@@ -550,6 +545,5 @@ mod tests {
         );
         save_ledger(&path, &days).unwrap();
         assert_eq!(load_ledger(&path), days);
-        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 }

@@ -446,6 +446,7 @@ pub fn headless_git() -> Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::path::PathBuf;
 
     use serde_json::Value;
@@ -466,10 +467,8 @@ mod tests {
         (channel, events)
     }
 
-    fn scratch_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay-op-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn scratch_dir() -> TempDir {
+        TempDir::new("op")
     }
 
     /// Args that run the alias `def` defines as `probe`. An `alias.probe=!…` alias runs in git's
@@ -500,7 +499,6 @@ see https://git-scm.com/docs");
         let out = run_op(&dir, &alias_args("alias.probe=!env"), &OpOptions::default(), &channel).unwrap();
         assert!(out.stdout.lines().any(|l| l == "GIT_TERMINAL_PROMPT=0"), "env was:\n{}", out.stdout);
         assert_eq!(events.lock().unwrap().last(), Some(&serde_json::json!({ "event": "done" })));
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -510,7 +508,6 @@ see https://git-scm.com/docs");
         let def = "alias.probe=!readlink /proc/self/fd/0";
         let out = run_op(&dir, &alias_args(def), &OpOptions::default(), &channel).unwrap();
         assert_eq!(out.stdout.trim(), "/dev/null");
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// The value of `name` in the environment git's children see, or `None` when it is unset.
@@ -518,7 +515,6 @@ see https://git-scm.com/docs");
         let dir = scratch_dir();
         let (channel, _events) = test_channel();
         let out = run_op(&dir, &alias_args("alias.probe=!env"), opts, &channel).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
         let prefix = format!("{name}=");
         out.stdout.lines().find_map(|l| l.strip_prefix(&prefix).map(str::to_string))
     }
@@ -561,7 +557,6 @@ see https://git-scm.com/docs");
             Some(&serde_json::json!({ "event": "failed", "error": { "kind": "other", "stderr": "to-stderr
 " } }))
         );
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn git_in(dir: &Path, args: &[&str]) {
@@ -604,7 +599,6 @@ see https://git-scm.com/docs");
             .iter()
             .any(|e| e["event"] == "progress" && e["phase"] == "Enumerating objects" && e["percent"].is_null()));
         assert!(!streamed_output(&events).contains("objects:"), "progress leaked into output: {events:?}");
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -621,7 +615,6 @@ see https://git-scm.com/docs");
 30000
 "));
         }
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -638,7 +631,6 @@ see https://git-scm.com/docs");
         let kinds: Vec<String> =
             events.lock().unwrap().iter().map(|e| e["event"].as_str().unwrap().to_string()).collect();
         assert_eq!(kinds, ["stalled", "output", "done"]);
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Whether a process with this OS process id is running.
@@ -758,6 +750,5 @@ see https://git-scm.com/docs");
             events.lock().unwrap().last(),
             Some(&serde_json::json!({ "event": "failed", "error": { "kind": "cancelled" } }))
         );
-        let _ = std::fs::remove_dir_all(dir);
     }
 }
