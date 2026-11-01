@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkHost, isHostLevelFailure, openPraxisTerminal, type CallOutcome, type InteractiveCommand } from "./praxisHost.ts";
+import { checkHost, isHostLevelFailure, openPraxisTerminal, praxisCall, type CallOutcome, type InteractiveCommand } from "./praxisHost.ts";
 
 test("an interactive praxis command opens in a terminal in the project, as the backend spells it", async () => {
   const asked: InteractiveCommand[] = [];
@@ -84,4 +84,40 @@ test("only the outcomes that say the host itself can't be used are host-level fa
     outcomes.filter(isHostLevelFailure).map((o) => o.kind),
     ["noHost", "hostDown", "notSignedIn", "expired", "cliNotFound"],
   );
+});
+
+test("a praxis call carries a fresh call id, and aborting it cancels that call", async () => {
+  const sent: [string, Record<string, unknown>][] = [];
+  let answer: (outcome: CallOutcome) => void = () => {};
+  const call = (command: string, args: Record<string, unknown>) => {
+    sent.push([command, args]);
+    return command === "praxis_host_runs" ? new Promise<unknown>((resolve) => (answer = resolve)) : Promise.resolve(undefined);
+  };
+  const controller = new AbortController();
+  const outcome = praxisCall("praxis_host_runs", { projectPath: "E:/app", name: "review-code", limit: 20 }, controller.signal, call);
+  controller.abort();
+  answer({ kind: "cancelled" });
+  assert.deepEqual(await outcome, { kind: "cancelled" });
+  const [[command, args], [cancel, cancelArgs]] = sent;
+  assert.equal(command, "praxis_host_runs");
+  assert.deepEqual({ ...args, callId: undefined }, { projectPath: "E:/app", name: "review-code", limit: 20, callId: undefined });
+  assert.match(String(args.callId), /^[0-9a-f-]{36}$/);
+  assert.equal(cancel, "praxis_host_cancel");
+  assert.deepEqual(cancelArgs, { callId: args.callId });
+});
+
+test("an already aborted praxis call sends nothing", async () => {
+  const sent: string[] = [];
+  const controller = new AbortController();
+  controller.abort();
+  const outcome = await praxisCall("praxis_host_runs", {}, controller.signal, async (command) => void sent.push(command));
+  assert.deepEqual(outcome, { kind: "cancelled" });
+  assert.deepEqual(sent, []);
+});
+
+test("a praxis call the backend refuses comes back as a refusal in its words", async () => {
+  const outcome = await praxisCall("praxis_host_runs", {}, new AbortController().signal, async () => {
+    throw "The run limit must be from 1 to 100, not 0.";
+  });
+  assert.deepEqual(outcome, { kind: "refused", message: "The run limit must be from 1 to 100, not 0." });
 });
