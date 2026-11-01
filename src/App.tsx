@@ -263,31 +263,30 @@ export function App() {
     },
     [spawnTerminal, setIsToposOpen]
   );
-  // Run in terminal (#395): a plain shell terminal, never an agent's, so it gets no commit
-  // stamping env, with the git command typed in for the operator to finish.
-  const runInToposTerminal = useCallback(
-    async (cwd: string, argv: string[]) => {
+  // Types `argv` into a new plain shell terminal in `cwd`, never an agent's, so it gets no commit
+  // stamping env, then calls `onOpened` so the modal that asked steps aside. False when the shell
+  // can't quote `argv`; throws when the terminal doesn't start.
+  const runInShellTerminal = useCallback(
+    async (cwd: string, argv: string[], name: string, onOpened: () => void) => {
       const shell = shellFor(navigator.userAgent);
       if (commandLine(argv, shell) === null) return false;
-      const terminal = await spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "git" });
+      const terminal = await spawnTerminal({ project_path: cwd, run_kind: "powershell", name });
       if (terminal === null) throw new Error("the terminal didn't start");
-      setIsToposOpen(false);
+      onOpened();
       return typeCommand(terminal.id, argv, shell);
     },
-    [spawnTerminal, setIsToposOpen]
+    [spawnTerminal]
   );
-  // The Praxis host chip's actions (#448): `praxis setup`, `serve` or `login` typed into a plain
-  // shell terminal in the project, for the operator to answer. The builder hides so it shows.
+  // Run in terminal (#395): the git command typed in for the operator to finish.
+  const runInToposTerminal = useCallback(
+    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "git", () => setIsToposOpen(false)),
+    [runInShellTerminal, setIsToposOpen]
+  );
+  // The Praxis host chip's actions (#448): `praxis setup`, `serve` or `login` typed in for the
+  // operator to answer. The builder hides so the terminal shows.
   const runInPraxisTerminal = useCallback(
-    async (cwd: string, argv: string[]) => {
-      const shell = shellFor(navigator.userAgent);
-      if (commandLine(argv, shell) === null) return false;
-      const terminal = await spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "praxis" });
-      if (terminal === null) throw new Error("the terminal didn't start");
-      setIsPraxisBuilderOpen(false);
-      return typeCommand(terminal.id, argv, shell);
-    },
-    [spawnTerminal, setIsPraxisBuilderOpen]
+    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "praxis", () => setIsPraxisBuilderOpen(false)),
+    [runInShellTerminal, setIsPraxisBuilderOpen]
   );
   // A conflict handed to a new agent (#392) starts one in the worktree; Topos stays open on the hand-off.
   const startToposAgent = useCallback(
