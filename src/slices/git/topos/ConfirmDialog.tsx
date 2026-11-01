@@ -1,5 +1,13 @@
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
+import type { ModalLayer } from "./modalLayer";
+
+/**
+ * Topos's modal layer (#421), which every `ConfirmDialog` inside Topos opens: `host` is where the
+ * dialog draws, over the whole panel and outside the content the layer makes inert.
+ */
+export const ToposModalContext = createContext<{ layer: ModalLayer; host: HTMLElement | null } | null>(null);
 
 /** What a dialog with a text field or a choice collects. */
 export interface DialogValues {
@@ -36,8 +44,9 @@ export interface ConfirmRequest {
 /**
  * Topos's own dialog (#366, #393, #394), since Quay has no shared one: `role="alertdialog"` with focus
  * trapped inside it and starting on Cancel, the safe choice, or in its text field or choice when
- * it asks for one. Escape cancels it before it closes Topos, and on close focus goes back to what
- * opened it.
+ * it asks for one. Inside Topos it is modal across the whole panel (#421): it draws in the modal
+ * layer's host and the rest of Topos is inert while it is open. Escape cancels it before it closes
+ * Topos, and on close focus goes back to what opened it.
  */
 export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel: () => void }> = ({ request, onCancel }) => {
   const titleId = useId();
@@ -62,6 +71,14 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
   const cancelUnlessPending = () => {
     if (!pending) onCancel();
   };
+  // First of the dialog's effects, so it notes the opener before the inert content can blur it, and
+  // on close makes the content live again before focus goes back to it.
+  const modal = useContext(ToposModalContext);
+  const layer = modal?.layer ?? null;
+  useEffect(() => {
+    if (!open || layer === null) return;
+    return layer.open(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  }, [open, layer]);
   usePopupLayer(open, cancelUnlessPending, panel);
   useDialogFocus(open, panel);
   // A checkbox comes before the buttons, so focus is moved to Cancel once the dialog opens, or into
@@ -108,7 +125,7 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
     request.onConfirm?.(confirmed);
   };
 
-  return (
+  const dialog = (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
         ref={panel}
@@ -219,4 +236,5 @@ export const ConfirmDialog: React.FC<{ request: ConfirmRequest | null; onCancel:
       </div>
     </div>
   );
+  return modal?.host ? createPortal(dialog, modal.host) : dialog;
 };
