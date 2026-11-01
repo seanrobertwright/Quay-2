@@ -149,11 +149,10 @@ const frames = (n: number) =>
 
 /**
  * The page's JS heap in bytes once garbage is gone, ArrayBuffer backing stores included. The GC
- * is DevTools' own, between the page's tasks. A gc() the page called from its own tasks, as it did
- * before #410, read 185 to 495 B per row above what a heap snapshot held on syn-100k, by a different
- * amount each run; a reading a moment later, or after DevTools' GC, matched the snapshot. V8 can free
- * backing stores a little after the GC that finds them dead, so this collects and reads until the
- * heap stops shrinking.
+ * is DevTools' own, run between the page's tasks: a gc() called from inside the page's own tasks
+ * leaves garbage behind, a different amount each run, so its readings sit above what a heap
+ * snapshot holds. V8 can free backing stores a little after the GC that finds them dead, so this
+ * collects and reads until the heap stops shrinking.
  */
 async function settledHeap(): Promise<number> {
   const cdp = await page.context().newCDPSession(page);
