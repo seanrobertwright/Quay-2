@@ -10,8 +10,8 @@ import { isHostLevelFailure, outcomeMessage, praxisCall, type CallOutcome, type 
 /** How often the list is read while the host answers. */
 export const RUNS_POLL_MS = 15_000;
 
-/** How often it is read while the host can't be used: the host recheck's interval, as every failing state polls. */
-export const RUNS_HOST_DOWN_POLL_MS = HOST_RECHECK_MS;
+/** How often it is read after any failed read, host-level or not: the host recheck's interval, as every failing state polls. */
+export const RUNS_FAILING_POLL_MS = HOST_RECHECK_MS;
 
 /** How many runs the list asks for first: `praxis runs`'s own default. */
 export const RUNS_FIRST_LIMIT = 20;
@@ -21,6 +21,12 @@ export const RUNS_FIRST_LIMIT = 20;
  * cursor, so older runs can't be listed at all.
  */
 export const RUNS_MAX_LIMIT = 100;
+
+/**
+ * The run status that waits for a person's approval. The host's status vocabulary is
+ * provisional and not enumerated by `aiws-workflow-runs/1`, so this is the one status Quay names.
+ */
+export const AWAITING_APPROVAL = "AWAITING_APPROVAL";
 
 /** One run, as the list shows it. */
 export interface RunRow {
@@ -101,30 +107,35 @@ function parseRun(v: unknown): RunRow | null {
     stage,
     control,
     held,
-    needsYou: held || status === "AWAITING_APPROVAL",
+    needsYou: held || status === AWAITING_APPROVAL,
   };
 }
 
 type Shown = Pick<RunsListView, "runs" | "readAt" | "dimmed" | "problem" | "simulated">;
 
+function viewOf(shown: Shown, limit: number): RunsListView {
+  const count = shown.runs?.length ?? 0;
+  return { ...shown, limit, canShowMore: limit < RUNS_MAX_LIMIT && count >= limit, atCap: count >= RUNS_MAX_LIMIT };
+}
+
+const NOTHING_SHOWN: Shown = { runs: null, readAt: null, dimmed: false, problem: null, simulated: false };
+
+/** A list's view before its first read. */
+export const INITIAL_RUNS_VIEW: RunsListView = viewOf(NOTHING_SHOWN, RUNS_FIRST_LIMIT);
+
 export function createRunsList({ projectPath, name, call = invoke }: RunsListOptions): RunsList {
   let limit = RUNS_FIRST_LIMIT;
-  let shown: Shown = { runs: null, readAt: null, dimmed: false, problem: null, simulated: false };
-  let view = viewOf();
+  let shown = NOTHING_SHOWN;
+  let view = INITIAL_RUNS_VIEW;
   const listeners = new Set<() => void>();
   const requests = createNewestRequest();
   // The run page lookups in flight, aborted by `dispose`.
   const lookups = new Set<AbortController>();
   let disposed = false;
 
-  function viewOf(): RunsListView {
-    const count = shown.runs?.length ?? 0;
-    return { ...shown, limit, canShowMore: limit < RUNS_MAX_LIMIT && count >= limit, atCap: count >= RUNS_MAX_LIMIT };
-  }
-
   const changed = () => {
     if (disposed) return;
-    view = viewOf();
+    view = viewOf(shown, limit);
     for (const listener of listeners) listener();
   };
 
@@ -132,29 +143,25 @@ export function createRunsList({ projectPath, name, call = invoke }: RunsListOpt
     const id = requests.begin();
     const outcome = await praxisCall("praxis_host_runs", { projectPath, name, limit }, signal, call);
     if (!requests.isNewest(id) || disposed) return null;
-    return took(outcome);
+    return recordAndNextDelay(outcome);
   });
 
-  /** Keeps the newest read's outcome, returning the wait before the next read, or null for none. */
-  function took(outcome: CallOutcome): number | null {
+  /**
+   * Keeps the newest read's outcome and returns the wait before the next read: 15 s after a list,
+   * 60 s after any failure. The last list stays; only a host-level failure dims it.
+   */
+  function recordAndNextDelay(outcome: CallOutcome): number {
     if (outcome.kind === "cancelled") return RUNS_POLL_MS;
-    if (outcome.kind === "record") {
-      if (!Array.isArray(outcome.record.runs)) {
-        shown = { ...shown, problem: "praxis gave a runs list Quay can't read." };
-        changed();
-        return null;
-      }
+    if (outcome.kind === "record" && Array.isArray(outcome.record.runs)) {
       const rows = outcome.record.runs.map(parseRun).filter((r): r is RunRow => r !== null);
       shown = { runs: rows, readAt: Date.now(), dimmed: false, problem: null, simulated: outcome.record.simulatedIdentity === true };
       changed();
       return RUNS_POLL_MS;
     }
-    const down = isHostLevelFailure(outcome);
-    shown = { ...shown, dimmed: down, problem: outcomeMessage(outcome) };
+    const problem = outcome.kind === "record" ? "praxis gave a runs list Quay can't read." : outcomeMessage(outcome);
+    shown = { ...shown, dimmed: isHostLevelFailure(outcome), problem };
     changed();
-    // This Quay can't read what this praxis prints, and reading again won't change that.
-    if (outcome.kind === "needsUpdate") return null;
-    return down ? RUNS_HOST_DOWN_POLL_MS : RUNS_POLL_MS;
+    return RUNS_FAILING_POLL_MS;
   }
 
   return {

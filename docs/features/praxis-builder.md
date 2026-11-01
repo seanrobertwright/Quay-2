@@ -167,5 +167,5 @@ A workflow template is a coding plan without a work order or run id, and its fil
 
 - A run that waits for a person, awaiting approval or held, is marked **Needs you** with **Open in browser**. Decisions are made only in the host's browser page. Quay opens a page only when it is on this machine's host, at `https://127.0.0.1:<port>/`.
 - A simulated host's runs are marked **Simulated**, in amber, because its approvals aren't made by a person.
-- The list is read every 15 seconds while it is shown, or every 60 seconds while the host can't be used. Then the last list stays, dimmed, with the time it was read.
+- The list is read every 15 seconds while it is shown, or every 60 seconds after a read fails. The last list stays, with the reason the read failed. While the host can't be used, the list is also dimmed, with the time it was read.
 - Reading stops, and the `praxis` call in flight is stopped, as soon as the list leaves the screen: switching to **Template**, opening another definition or project, closing the builder or hiding Quay's window.

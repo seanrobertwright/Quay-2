@@ -3,19 +3,9 @@
 // turns to another project or template. The poller runs only while `onScreen` holds and the
 // window is shown: the builder only hides when it closes, so the caller says when it is shown.
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { createRunsList, type RunsList, type RunsListView } from "./runsList.ts";
+import { createRunsList, INITIAL_RUNS_VIEW, type RunsList, type RunsListView } from "./runsList.ts";
 import { useDocumentVisible } from "./useDocumentVisible.ts";
 
-const EMPTY: RunsListView = {
-  runs: null,
-  readAt: null,
-  dimmed: false,
-  problem: null,
-  limit: 0,
-  canShowMore: false,
-  atCap: false,
-  simulated: false,
-};
 const noList = () => () => {};
 
 export function useRunsList(projectPath: string, name: string, onScreen: boolean): { list: RunsList | null; view: RunsListView } {
@@ -36,7 +26,7 @@ export function useRunsList(projectPath: string, name: string, onScreen: boolean
 
   const view = useSyncExternalStore(
     list ? list.subscribe : noList,
-    () => list?.view() ?? EMPTY,
+    () => list?.view() ?? INITIAL_RUNS_VIEW,
   );
   return { list, view };
 }

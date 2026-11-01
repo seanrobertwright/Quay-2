@@ -130,6 +130,35 @@ for (const down of [
   });
 }
 
+for (const failing of [
+  { kind: "needsUpdate", detail: "unknown format aiws-workflow-runs/2" },
+  { kind: "refused", message: "praxis refused the call." },
+  { kind: "timedOut" },
+  { kind: "record", record: { format: "aiws-workflow-runs/1", template: NAME } },
+] as CallOutcome[]) {
+  test(`a read that fails (${failing.kind === "record" ? "no runs array" : failing.kind}) keeps the list undimmed, says why, and reads again at 60 s`, async () => {
+    const backend = fakeBackend();
+    const runsList = start(backend);
+    await settle();
+    backend.reads()[0].answer(runs([entry(1)]));
+    await settle();
+    mock.timers.tick(15_000);
+    await settle();
+    backend.reads()[1].answer(failing);
+    await settle();
+    const view = runsList.view();
+    assert.deepEqual(view.runs?.map((r) => r.runId), ["run-1"]);
+    assert.equal(view.dimmed, false);
+    assert.notEqual(view.problem, null);
+    mock.timers.tick(59_999);
+    await settle();
+    assert.equal(backend.reads().length, 2);
+    mock.timers.tick(1);
+    await settle();
+    assert.equal(backend.reads().length, 3);
+  });
+}
+
 test("leaving the screen kills the read in flight and reads no more", async () => {
   const backend = fakeBackend();
   const runsList = start(backend);
