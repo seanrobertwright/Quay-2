@@ -6,11 +6,11 @@
 // readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
 // resolves a command. A Template | Runs switch turns the work area to the template's runs on the
-// host (#452), where a run's detail is drawn on the same stage strip (#453).
+// host (#452), where a run's detail is drawn on the same stage strip (#453) and Run starts one (#454).
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, Info, Plus, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
-import type { Draft } from "./drafts.ts";
+import { isDirty, type Draft } from "./drafts.ts";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { RunsView } from "./RunsView.tsx";
@@ -51,7 +51,7 @@ import {
   type TemplateEdit,
 } from "./template.ts";
 import { useValidation } from "./useValidation.ts";
-import type { Diagnostic } from "./types.ts";
+import type { ChangeStatus, Diagnostic } from "./types.ts";
 
 interface TemplateFormProps {
   draft: Draft;
@@ -65,7 +65,13 @@ interface TemplateFormProps {
    * Where the Runs view lists runs from, whether the builder is shown, and how a run's detail
    * opens a visible terminal for `praxis trust`; without it there is no switch.
    */
-  runs?: { projectPath: string; shown: boolean; runInTerminal?: RunInTerminal } | null;
+  runs?: {
+    projectPath: string;
+    shown: boolean;
+    runInTerminal?: RunInTerminal;
+    /** How the template file differs from the last commit, for Run's confirm: undefined when it doesn't, "unknown" when git status couldn't be read. */
+    changed?: ChangeStatus | "unknown";
+  } | null;
 }
 
 /** The list item a pointer such as `/outputPaths/2` names, quoted, or the pointer when it names none. */
@@ -316,11 +322,17 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <h2 className="text-sm font-semibold text-[#c9d1d9]">
-            Runs on the host
-            <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
-          </h2>
-          <RunsView projectPath={runs.projectPath} name={draft.ref.id} shown={runs.shown} content={t} runInTerminal={runs.runInTerminal} />
+          <RunsView
+            projectPath={runs.projectPath}
+            name={draft.ref.id}
+            shown={runs.shown}
+            content={t}
+            runInTerminal={runs.runInTerminal}
+            host={host}
+            onInstall={installable ? onInstall : undefined}
+            unsaved={isDirty(draft)}
+            changed={runs.changed}
+          />
         </div>
       </div>
     );

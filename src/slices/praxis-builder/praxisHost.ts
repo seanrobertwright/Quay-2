@@ -28,6 +28,8 @@ export type CallOutcome =
   | { kind: "expired"; message: string }
   | { kind: "refused"; message: string }
   | { kind: "cliNotFound"; reason: string }
+  /** A run creation that ended without saying whether the run was created. */
+  | { kind: "unknown"; detail: string }
   | { kind: "timedOut" }
   | { kind: "cancelled" };
 
@@ -58,6 +60,8 @@ export function outcomeMessage(outcome: CallOutcome): string {
       return outcome.message;
     case "cliNotFound":
       return outcome.reason;
+    case "unknown":
+      return outcome.detail;
     case "timedOut":
       return "praxis didn't answer in time.";
     default:

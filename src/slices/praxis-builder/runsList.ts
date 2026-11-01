@@ -74,6 +74,8 @@ export interface RunsList {
   view(): RunsListView;
   /** Raises the limit to `RUNS_MAX_LIMIT` and reads at once. */
   showMore(): void;
+  /** Reads at once, as after a new run was created. */
+  refresh(): void;
   /** The address of run `workOrderId`'s page, from `praxis status`. */
   runPage(workOrderId: string): Promise<RunPageLookup>;
   /** Calls `listener` after every change; returns the unsubscribe. */
@@ -176,6 +178,9 @@ export function createRunsList({ projectPath, name, call = invoke }: RunsListOpt
       limit = RUNS_MAX_LIMIT;
       changed();
       poller.now();
+    },
+    refresh() {
+      if (!disposed) poller.now();
     },
     async runPage(workOrderId) {
       const controller = new AbortController();
