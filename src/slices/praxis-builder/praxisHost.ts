@@ -59,3 +59,25 @@ export async function openPraxisTerminal(
 ): Promise<boolean> {
   return runInTerminal(projectPath, await argvFor(command));
 }
+
+/** How a `praxis` call reaches the backend; `invoke` in the app. */
+export type Invoker = (command: string, args: Record<string, unknown>) => Promise<unknown>;
+
+/**
+ * Checks the host once with `praxis workflows list --json`, the cheapest call that reaches it.
+ * The backend updates the project's host condition from the outcome, so a caller reads the
+ * condition, not this call's result. Aborting `signal` cancels the call; an aborted check sends
+ * nothing. This is the call behind the 60 s recheck.
+ */
+export async function checkHost(projectPath: string, signal: AbortSignal, call: Invoker = invoke): Promise<void> {
+  if (signal.aborted) return;
+  const callId = crypto.randomUUID();
+  // `praxis_host_cancel` can't fail; a lost cancel only lets the call run to its own timeout.
+  const cancel = () => void call("praxis_host_cancel", { callId }).catch(() => {});
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    await call("praxis_host_workflows_list", { projectPath, callId });
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}

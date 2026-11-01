@@ -43,8 +43,7 @@ impl LookupEnv {
 
 /// The message for a machine where `praxis` isn't linked.
 pub fn not_linked() -> String {
-    "The praxis CLI isn't linked. In your AI-WS-SDK checkout, run `npm link` in its engine folder, \
-     or name the checkout in Quay's Praxis settings."
+    "The praxis CLI isn't linked. In your AI-WS-SDK checkout, run `npm link` in its engine folder."
         .to_string()
 }
 

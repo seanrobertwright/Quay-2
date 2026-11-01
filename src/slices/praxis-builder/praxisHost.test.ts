@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openPraxisTerminal, type InteractiveCommand } from "./praxisHost.ts";
+import { checkHost, openPraxisTerminal, type InteractiveCommand } from "./praxisHost.ts";
 
 test("an interactive praxis command opens in a terminal in the project, as the backend spells it", async () => {
   const asked: InteractiveCommand[] = [];
@@ -37,4 +37,31 @@ test("no terminal opens when praxis can't be found", async () => {
     /isn't linked/,
   );
   assert.equal(opened, false);
+});
+
+test("checking the host lists its templates for the project, and cancels that call when aborted", async () => {
+  const calls: [string, Record<string, unknown>][] = [];
+  let answer = (_: unknown) => {};
+  const controller = new AbortController();
+  const checking = checkHost("E:/work/app", controller.signal, (command, args) => {
+    calls.push([command, args]);
+    return command === "praxis_host_workflows_list" ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(undefined);
+  });
+  const [listed, listArgs] = calls[0];
+  assert.equal(listed, "praxis_host_workflows_list");
+  assert.equal(listArgs.projectPath, "E:/work/app");
+  controller.abort();
+  assert.deepEqual(calls[1], ["praxis_host_cancel", { callId: listArgs.callId }]);
+  answer({ kind: "cancelled" });
+  await checking;
+});
+
+test("an aborted check sends no call at all", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const calls: string[] = [];
+  await checkHost("E:/work/app", controller.signal, async (command) => {
+    calls.push(command);
+  });
+  assert.deepEqual(calls, []);
 });
