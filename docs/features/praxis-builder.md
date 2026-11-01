@@ -159,13 +159,125 @@ A workflow template is a coding plan without a work order or run id, and its fil
 
 - **Names follow the host's rule.** New template and rename refuse a name the Praxis host would refuse, and say why as you type. A template file already named that way still opens, with a warning in the list, an issue above the form and a **Rename** button. Quay never passes such a name to `praxis`.
 - Commands are argument lists, one row per argument with the executable first. Quay never splits a command line and never runs a command.
-- Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. The form says "Shape checked. Not previewed on a host", because readiness and the host's other rules aren't checked yet.
+- Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. Readiness and the host's other rules come from the host: beside **Install on host…**, a status line shows the template's [state on the host](#template-host-states).
 
-**Install on host…** opens a dialog that writes nothing. It shows the saved file's path with a **Copy** button and the steps to install it: copy the file into the template directory your host configuration names, restart the host, then run `praxis run <name>`. When the file has uncommitted changes, the dialog leads with their diff and a warning. Quay never writes the host's configuration or template directory.
+**Template | Runs** above the form switches the work area between the form and the template's [runs on the host](#runs).
 
-**Template | Runs** above the form switches the work area to the template's runs on the host, from `praxis runs <name> --json`, newest first. Each run shows its status, stage, control (as a chip), whether it is held, the template revision it ran and when it was created. The list shows the newest 20 runs; **Show more** lists the newest 100, the most `praxis` lists, and says so, because `praxis` can't page past them.
+---
 
-- A run that waits for a person, awaiting approval or held, is marked **Needs you** with **Open in browser**. Decisions are made only in the host's browser page. Quay opens a page only when it is on this machine's host, at `https://127.0.0.1:<port>/`.
+## The Praxis host
+
+The builder reaches a Praxis host only by running the `praxis` CLI. Reads and Run are headless `praxis <command> --json` calls: `workflows list`, `workflows show`, `runs`, `status` and `run`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, and it has no control for any decision on a run: [decisions happen in the browser](#decisions-happen-in-the-browser).
+
+### Linking the `praxis` CLI
+
+Quay runs `praxis` from an AI-WS-SDK checkout, with Node 24 or later. To link it, run `npm link` in the checkout's `engine` folder.
+
+- **How Quay finds it.** Quay never starts `praxis` through npm's `praxis.cmd` shim or `cmd.exe`. It follows npm's global link for `@aiws/engine` into the checkout, looking beside each `praxis` shim on `PATH`, under `NPM_CONFIG_PREFIX` and under npm's default prefix. It reads `bin.praxis` from that package's `package.json` and runs `node <script>` with the first `node` on `PATH`, once `node --version` says 24 or later. The [`checkout` setting](#per-user-settings) replaces the link.
+- **A found `praxis` is kept for 60 seconds** before Quay looks it up again. A failed lookup is never kept, so linking the CLI takes effect on the next call.
+- **Every call is bounded.** A read may take 15 seconds and a run creation 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
+- **A `praxis` Quay can't read**, one that refuses Quay's arguments or prints a record in a format this Quay doesn't read, gets "Quay needs an update for this praxis".
+
+### Per-user settings
+
+Two optional settings say where Quay finds `praxis` and which installation it uses. They live in `praxis-cli.json` in Quay's data folder (see [Configuration](../guide/configuration.md)). Quay has no screen for them, so edit the file by hand. Quay reads it when it starts, so restart Quay after editing it.
+
+```json
+{
+  "checkout": "D:\\src\\AI-WS-SDK",
+  "installation": null
+}
+```
+
+- **`checkout`** is an AI-WS-SDK checkout to run `praxis` from, in place of the one npm's global link points at. It, or its `engine` folder, must hold a `package.json` whose `bin.praxis` names a file inside that package.
+- **`installation`** is the Praxis installation folder, passed as `--state` on every call, the terminal commands included. Without it, Quay passes no `--state`, so it uses the installation `praxis` in a terminal uses.
+- **Both follow the same rules.** Each is `null` or left out when unset, or else the absolute path of an existing folder, not empty and with no space at either end.
+- **A bad setting stops every call.** Each folder is checked again on every call, because a folder can go away. A bad one makes the host chip read **praxis CLI not found**, with a reason that names the setting.
+- **A file Quay can't read is ignored**, as if it held no settings: one that isn't valid JSON, or that holds any other key. Quay logs a warning and still starts.
+
+### The host chip
+
+The chip in the builder's header shows the project's host condition as the latest `praxis` call left it. Its colour is never the only sign: each condition has a text label.
+
+| Chip | What it means | Its action |
+| --- | --- | --- |
+| **Host not checked yet** | No call for this project has said anything about the host yet | None |
+| **praxis CLI not found** | The CLI isn't linked, Node is older than 24, or a setting is bad | How to link it, with the reason |
+| **No host set up** | This machine has no Praxis host | **Set up host** runs `praxis setup` |
+| **Host down** | Nothing answered at the host's address | **Start host** runs `praxis serve` |
+| **Not signed in** | `praxis` holds no session for the host, or the host refused it | **Sign in** runs `praxis login` |
+| **Signed in** | The last call reached the host and was signed in | None |
+| **Simulated host** | The host's identity is simulated, so its approvals aren't made by a person | None |
+
+- **Press the chip** to open a panel that says what the condition means and what to do about it. `Escape` closes it.
+- **Set up host, Start host and Sign in** each open a new terminal in the project, running that command for you to answer, and hide the builder so the terminal shows. The terminal runs the same `node <script>` as the headless calls, with `--state` when an installation is set, and never a flag that skips a confirmation. Leave the `praxis serve` terminal open.
+- **The chip never calls `praxis` itself**, except to recheck: while a failing condition holds, a workflow template is open and Quay's window is shown, Quay checks the host again every 60 seconds, each check starting 60 seconds after the last one ended. The recheck stops, and stops its call, when that view leaves the screen.
+- **A simulated host** gets an amber chip and a standing banner across the builder: "This is a simulated Praxis host: its approvals aren't made by a person. Don't treat its runs as reviewed."
+
+#### Signing in lasts about 5 minutes on a real host
+
+The `praxis` CLI never refreshes its 5-minute token on a real host: see [praxis CLI never refreshes its 5-minute token on a real host, and stores credentials in plain text](https://github.com/seanrobertwright/AI-WS-SDK/issues/328). About 5 minutes after `praxis login`, the next call says the session expired, and the chip reads **Not signed in** with **Sign in** again. Quay doesn't work around it, so until the CLI is fixed, sign in again whenever that happens.
+
+### Template host states
+
+Each workflow template has a state on the host, from one `praxis workflows list`, then `praxis workflows show <name>` for each local template the host has installed, at most two at a time. The states are worked out in this order, and a template shows the first that applies:
+
+| State | When |
+| --- | --- |
+| **Name the host refuses** | The file name breaks the host's name rule. Quay never asks the host about it. |
+| **Not installed** | The host's catalog has no template of that name. |
+| **Invalid on host** | The host holds its copy invalid, and gives its diagnostics. |
+| **Differs from host** | The host's copy has a different digest from the saved file. |
+| **Installed, not ready** | The host has the saved file but says it can't run, and gives its reasons. |
+| **Installed** | The host has the saved file and can run it. |
+
+A read that failed shows **Couldn't check**, with what it said, and a template not read yet shows **Not checked yet**.
+
+- **When Quay reads.** The first time the builder is shown for a project, Quay reads every template. Saving a template the host has installed rereads that template only, and a save that changed the file shows it as not checked until that read ends. A template the host doesn't have stays **Not installed** until the host restarts. **Check host** rereads everything, and **Check again** rereads one template.
+- **Readings live in memory** for as long as Quay runs, never on disk. Each is stamped with the time it was read. After 10 minutes it is shown muted and marked "may be out of date", never dropped. While the host can't be used, every template's reading is dropped and its state is unknown.
+- **In the list**, each template's row shows its host state as an icon after its **changed since last commit** badge. The icon's tooltip gives the state and the host's reason, and screen readers hear the state as text. A template whose state is unknown shows no host icon.
+- **The Workflow templates group header** shows the host condition, as the chip does, with **Check host**. When the condition is **Not signed in**, it offers **Sign in** too, and when the CLI can't be run, it says how to link it.
+- **On host only (N)** ends the group, collapsed, when the host has templates with no local file of the same name. It lists up to 100 of them by name, and its title counts them all. They are read-only: choosing one shows the description, revision and validity the host's list gave, and there's no import and no delete.
+- **On the form**, the status line beside **Install on host…** shows the state in words, the host's reason, when it was checked, and **Check again**. While the host can't be used, it reads "Host state unknown:" and the chip's label, and **Check host** in the group header is what rereads.
+
+### Install on host
+
+**Install on host…** opens a dialog that writes nothing. A template that was never saved, or whose file was deleted, has no file to install, so the button stays unavailable until it is saved. The dialog opens on the template's host state:
+
+- **Not installed, or not known**: the saved file's absolute path with a **Copy** button, the name `<name>.json` it takes on the host, and the steps: copy the file into the template directory your host configuration names, restart the host, then run `praxis run <name>`. With the steps, it lists the saved file's implementation, validation and correction commands in full, read-only.
+- **Differs from host, or Invalid on host**: the same steps, under a warning that installing replaces the host's copy with this saved file.
+- **Installed, or Installed, not ready**: no steps, because the host already has the saved file. For a template that isn't ready, it gives the host's reason, since copying the file again won't help.
+- **Name the host refuses**: no steps, only the rule and a pointer to rename the file from the list.
+
+When the file has uncommitted changes, the dialog leads with their diff and a warning, and when the draft has unsaved edits, it says the host gets the saved file. Unless the host refuses the name, the dialog ends with the status line and **Check again**, and notes that the host reads its template directory only when it starts, and that Quay can say the host's copy differs, never how. Quay never writes the host's configuration or template directory, never guesses that directory, and never runs `engine:author`.
+
+### Runs
+
+**Runs** shows the template's runs on the host, from `praxis runs <name> --json`, newest first. Each run shows its status, stage, control (as a chip), whether it is held, the template revision it ran and when it was created. The list shows the newest 20 runs. **Show more** lists the newest 100, the most `praxis` lists, and says so, because `praxis` can't page past them.
+
+- A run that waits for a person, awaiting approval or held, is marked **Needs you** with **Open in browser**.
 - A simulated host's runs are marked **Simulated**, in amber, because its approvals aren't made by a person.
 - The list is read every 15 seconds while it is shown, or every 60 seconds after a read fails. The last list stays, with the reason the read failed. While the host can't be used, the list is also dimmed, with the time it was read.
 - Reading stops, and the `praxis` call in flight is stopped, as soon as the list leaves the screen: switching to **Template**, opening another definition or project, closing the builder or hiding Quay's window.
+
+#### A run's detail
+
+**Show** on a run opens its detail above the list, drawn live on the template's stage strip: the stage the run is at, the stages it finished, its correction rounds and, for a held run, where it stopped. Each mark is in words as well as colour.
+
+- **The detail follows the run** with `praxis status <work-order> --json`, never `praxis follow`, while the Runs view and Quay's window are shown. It reads again 3 seconds after a change, doubling the wait up to 15 seconds while nothing changes. A run waiting for a person is read every 15 seconds, and after a failed read, every 60 seconds. Once the run has ended, it is no longer read.
+- **A run that waits for a decision** gets a banner naming what it waits for, such as approval or acceptance of the deliverable, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
+- **A held run** gets a hold panel with **Resolve in browser**: why it is held, its cause and notes, and the ways out of the hold, each marked when it isn't available now, all taken in the browser.
+- **A certificate hint.** When `praxis` says the browser may not trust the host's certificate, the banner or hold panel shows its words, with **Trust certificate** when they ask for `praxis trust`. That opens a terminal running `praxis trust` for you to answer.
+
+#### Run
+
+**Run** in the Runs view's header starts a run of the host's installed copy of the template, with `praxis run <name> --json`. It is unavailable, with the reason shown, while the host says its copy isn't ready or isn't valid, while the name breaks the host's rule, and while a run of the template is starting.
+
+- **Run asks first.** Its confirm checks the host's copy again, then shows its revision and digest, and says the host runs that copy, not the project's file. It warns when the host's copy differs from the saved file, when the draft has unsaved edits, and when the file has uncommitted changes. **Start run** is withheld until the check ends, and while the host has no copy or can't run it. **Install on host…** in the confirm opens the install dialog.
+- **A started run** is selected, its detail follows it, and a notice names it with **Open in browser**.
+- **Every other outcome gets a notice of its own.** A held run, or one awaiting approval, blocks new runs: the notice says which, with **Open in browser** for the run that blocks it, and **Show run** when `praxis` names its work order. A host that isn't set up, is down, isn't signed in or whose sign-in expired says no run was started, and so does a `praxis` Quay couldn't run. A refusal gives `praxis`'s own words with **Copy**.
+- **Quay never stops a creation** before its 75-second bound, and leaving the view doesn't stop it: the Runs view shows its outcome when it ends. When Quay can't tell whether the run was created, after its timeout or an outcome `praxis` didn't report, the notice says so. `praxis` keeps that creation pending, so **Run** again finishes it and can't create a second run. Quay never runs a creation again on its own.
+
+### Decisions happen in the browser
+
+Approving a run, pausing it, cancelling it and resolving a hold are decided only in the host's browser page. Quay has no control for any of them, not even a disabled one, and never runs `praxis hold` or `praxis open`. **Open in browser** and **Resolve in browser** open the run's page in your browser, and only when it is on this machine's Praxis host: an `https` address at the host's browser origin, `https://praxis-<label>.localhost:<port>/`, or at `https://127.0.0.1:<port>/`. Quay refuses any other address and says what `praxis` gave.
