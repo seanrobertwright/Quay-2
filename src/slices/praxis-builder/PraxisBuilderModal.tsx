@@ -117,6 +117,8 @@ import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
+import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
+import { hostGroupHeader, hostOnlySection, rowBadges } from "./hostList.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
@@ -1985,11 +1987,23 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     ? deletedSinceCommit(currentChanges.byKey, kind, new Set(rows.map((r) => r.id)))
                     : [];
                   const namingNew = naming?.mode === "new" && naming.kind === kind;
+                  // The Workflow templates group carries the host's state (#363): the condition
+                  // in its header, a host badge on each row and the On host only subsection.
+                  const catalog = kind === "templates" ? hostCatalog.catalog : null;
+                  const onHostOnly = catalog ? hostOnlySection(catalog.hostOnly()) : null;
+                  const now = Date.now();
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
                       <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
                         <Icon className="w-3 h-3" aria-hidden="true" /> {label}
                       </h3>
+                      {catalog && (
+                        <HostGroupHeaderBar
+                          header={hostGroupHeader(host.condition)}
+                          onCheckHost={() => catalog.checkHost()}
+                          onRun={runHostCommand}
+                        />
+                      )}
                       {entry.error !== undefined && (
                         <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
                           {entry.error}
@@ -2076,8 +2090,17 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                     current={isOpenDef}
                                     onOpen={() => openDefinition(ref)}
                                   />
-                                  {changed && (
-                                    <ChangedBadge id={def.id} status={changed} onClick={() => setDiffShown(ref)} />
+                                  {catalog ? (
+                                    // Git state first, host state second.
+                                    rowBadges(def.id, changed, catalog.template(def.id), now).map((badge) =>
+                                      badge.kind === "git" ? (
+                                        <ChangedBadge key="git" id={def.id} status={badge.status} onClick={() => setDiffShown(ref)} />
+                                      ) : (
+                                        <HostBadgeView key="host" badge={badge.badge} />
+                                      ),
+                                    )
+                                  ) : (
+                                    changed && <ChangedBadge id={def.id} status={changed} onClick={() => setDiffShown(ref)} />
                                   )}
                                   <RowAction label={`Rename ${def.id}`} shown={isOpenDef} onClick={() => startRename(ref)}>
                                     <Pencil className="w-3 h-3" aria-hidden="true" />
@@ -2109,6 +2132,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           Showing the first {entry.list.entries.length}. The folder holds more.
                         </p>
                       )}
+                      {onHostOnly && <HostOnlySubsection section={onHostOnly} />}
                     </section>
                   );
                 })}
