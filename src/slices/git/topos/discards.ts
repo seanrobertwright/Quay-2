@@ -120,6 +120,8 @@ export interface DiscardConfirm {
   title: string;
   detail: string;
   confirmLabel: string;
+  /** Always set: every discard drops work, so its button takes the danger style (#421). */
+  destructive: true;
 }
 
 const KEPT = "Quay backs up the current bytes first, so you can restore them from Recently discarded until Quay closes.";
@@ -132,12 +134,14 @@ export function confirmDiscardFile(path: string, kind: EntryKind): DiscardConfir
       title: `Move ${name} to the Recycle Bin?`,
       detail: `${kind === "untrackedFolder" ? "Its untracked files go" : "The untracked file goes"} to the Recycle Bin; ignored files stay. ${KEPT}`,
       confirmLabel: "Move to Recycle Bin",
+      destructive: true,
     };
   }
   return {
     title: `Discard changes to ${path}?`,
     detail: `Its unstaged changes are thrown away and the file goes back to the staged or committed version. Staged changes stay. ${KEPT}`,
     confirmLabel: "Discard file",
+    destructive: true,
   };
 }
 
@@ -153,6 +157,7 @@ export function confirmDiscardAll(status: WorktreeStatus): DiscardConfirm & { ch
     title: "Discard all unstaged changes?",
     detail: `Every unstaged change to a tracked file goes back to the staged or committed version: ${count}. Staged changes stay. ${KEPT}`,
     confirmLabel: "Discard all",
+    destructive: true,
     checkbox: { label: "Also move untracked files to the Recycle Bin", initial: false },
   };
 }

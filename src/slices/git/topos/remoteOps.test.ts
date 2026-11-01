@@ -180,6 +180,7 @@ test("the force push confirm names the remote branch and how many remote commits
     title: "Force push feat to origin/feat",
     detail: `Overwrites 3 commits on origin/feat that feat lacks, as of the last fetch (at ${"b".repeat(7)}). If the remote moved since, git refuses and overwrites nothing.`,
     confirmLabel: "Force push",
+    destructive: true,
   });
   assert.match(forcePushPrompt("feat", plan(1, null)).detail, /^Overwrites 1 commit on origin\/feat /);
   assert.match(forcePushPrompt("feat", plan(0, null)).detail, /^Overwrites no commits on origin\/feat /);
@@ -230,5 +231,6 @@ test("deleting a remote branch confirms, naming the remote and saying there is n
     title: "Delete <b>topic</b> from origin",
     detail: "Deletes the branch <b>topic</b> on the remote origin. Others may be using it. There is no undo.",
     confirmLabel: "Delete from origin",
+    destructive: true,
   });
 });

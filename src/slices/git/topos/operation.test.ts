@@ -104,11 +104,13 @@ test("Abort confirms, naming the operation, where HEAD goes back to and what is 
     title: "Abort the merge of feature?",
     detail: "main goes back to where it was before the merge. Every conflict resolution and every change staged since the merge started is lost.",
     confirmLabel: "Abort merge",
+    destructive: true,
   });
   assert.deepEqual(confirmAbort(REBASE), {
     title: "Abort the rebase onto main @abc1234?",
     detail: "Your branch goes back to where it was before the rebase. The 1 commit already replayed and every resolution in this step are lost.",
     confirmLabel: "Abort rebase",
+    destructive: true,
   });
   // A subject is untrusted text, kept as it is for the dialog to render as text.
   assert.equal(confirmAbort(PICK)?.title, "Abort the cherry-pick of “Add <b>bold</b> & more”?");
@@ -121,6 +123,7 @@ test("Skip confirms, naming the commit it drops; a merge has no Skip", () => {
     title: "Skip “Fix the login redirect”?",
     detail: "The rebase goes on without this commit. Its changes, and your resolutions of them, are lost from the rebased branch.",
     confirmLabel: "Skip commit",
+    destructive: true,
   });
   assert.equal(confirmSkip(PICK)?.detail, "The cherry-pick goes on without picking this commit. Your resolutions of it are lost.");
   assert.equal(confirmSkip(MERGE), null);

@@ -147,6 +147,8 @@ export interface ResolverConfirm {
   title: string;
   detail: string;
   confirmLabel: string;
+  /** Drops or overwrites work, so the confirm button takes the danger style (#421). */
+  destructive?: boolean;
 }
 
 /** What Mark resolved confirms while `parsed`, the Result, still holds markers, or null when it doesn't. */
@@ -168,6 +170,17 @@ export function confirmReset(path: string, unsaved: boolean): ResolverConfirm {
     title: `Reset ${path}?`,
     detail: `This puts ${path} back to git's conflict markers (git checkout -m), dropping any resolution saved to it.${lost} The saved file is backed up first, and Recently discarded can restore it.`,
     confirmLabel: "Reset file",
+    destructive: true,
+  };
+}
+
+/** What leaving the resolver with `title` confirms while `path`'s Result holds unsaved edits. */
+export function confirmDropEdits(title: string, path: string): ResolverConfirm {
+  return {
+    title,
+    detail: `${path} has edits that aren't saved. Leaving drops them; the file keeps what was last saved.`,
+    confirmLabel: "Drop my edits",
+    destructive: true,
   };
 }
 
@@ -177,6 +190,7 @@ export function confirmTakeSide(path: string, name: string): ResolverConfirm {
     title: `Keep ${name} for all of ${path}?`,
     detail: `This replaces ${path} with ${name}'s version, dropping the other side and any edits to the Result, and stages it as resolved. The file is backed up first, and Recently discarded can restore it.`,
     confirmLabel: `Keep ${name}`,
+    destructive: true,
   };
 }
 

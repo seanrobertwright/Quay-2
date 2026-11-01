@@ -92,6 +92,7 @@ function takeSide(f: ConflictFile, names: SideNames, side: ConflictSide): CardCh
       title: `Take ${names[side]} for ${f.path}?`,
       detail: `This replaces ${f.path} with ${names[side]}'s version and stages it as resolved, dropping ${dropped}'s version. ${BACKED_UP}`,
       confirmLabel: label,
+      destructive: true,
     },
   };
 }
@@ -114,6 +115,7 @@ function remove(f: ConflictFile, label: string): CardChoice {
       title: `${label}: delete ${f.path}?`,
       detail: `This removes ${f.path} from the index and deletes it from the worktree (git rm). ${BACKED_UP}`,
       confirmLabel: label,
+      destructive: true,
     },
   };
 }
