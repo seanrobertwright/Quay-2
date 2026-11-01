@@ -403,7 +403,9 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
     },
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     dispose() {
       disposed = true;
