@@ -40,11 +40,6 @@ export class OidColumn {
     return this.rows;
   }
 
-  /** Bytes held, slack included. */
-  get byteLength(): number {
-    return this.bytes.byteLength;
-  }
-
   /** Makes room for exactly `rows` rows, keeping the first `keep`. Less room trims the slack. */
   resize(rows: number, keep: number): void {
     this.rows = rows;
