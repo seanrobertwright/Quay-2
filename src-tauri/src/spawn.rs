@@ -70,20 +70,24 @@ impl ProcessTree {
     /// if some never do, so nothing of the tree still holds a file or a lock when it returns.
     pub fn kill(&mut self) {
         #[cfg(windows)]
-        match &self.job {
-            Some(job) => {
-                job.terminate();
-                // Termination is asynchronous: each process exits a little after the call returns,
-                // later still on a busy machine.
-                wait_until(|| job.active_processes() == Some(0));
+        {
+            match &self.job {
+                Some(job) => {
+                    job.terminate();
+                    // Termination is asynchronous: each process exits a little after the call
+                    // returns, later still on a busy machine.
+                    wait_until(|| job.active_processes() == Some(0));
+                }
+                None => {
+                    let _ = hidden_command("taskkill")
+                        .args(["/T", "/F", "/PID", &self.child.id().to_string()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status();
+                }
             }
-            None => {
-                let _ = hidden_command("taskkill")
-                    .args(["/T", "/F", "/PID", &self.child.id().to_string()])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-            }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
         }
         #[cfg(not(windows))]
         {
@@ -98,8 +102,6 @@ impl ProcessTree {
             let _ = self.child.wait();
             wait_until(|| !signal("-0").is_ok_and(|s| s.success()));
         }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 
