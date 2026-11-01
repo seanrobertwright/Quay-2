@@ -29,7 +29,7 @@ missed:
 | Lane pass (once per run) | the Rust lane pass costs at most 1 µs per row over 1M synthetic rows |
 | Refresh (once per run) | with 20k rows loaded from a 30k-commit synthetic repo, each of three refreshes that reset and three that splice takes at most 250 ms, from the request until the `Reset` or `Splice` and every row it brings are sent |
 | First rows | the session's time to its first Rows page, from the recording's `.json`, plus the page's time from that page to the first frame that shows rows, is at most 300 ms |
-| Frontend memory | the JS heap after a full GC grows by at most 300 B per loaded row from before the recording is fetched to after it is applied |
+| Frontend memory | the JS heap, ArrayBuffers included, after a full GC that DevTools runs between the page's tasks, grows by at most 300 B per loaded row from before the recording is fetched to after it is applied |
 | Main-thread ingest | p95 of the per-page time, decode plus store ingest, is at most 8 ms per 512-row page |
 | Last row reachable | the last row is on screen after the scrollbar goes to the bottom, and after End |
 | Wheel fidelity, scaled lists only | one wheel event, and then ten, move the content by exactly the deltaY the list received, within 0.5 px |
