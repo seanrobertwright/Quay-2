@@ -43,6 +43,11 @@ use slices::praxis::{
     praxis_contract_triggers, praxis_delete, praxis_diff, praxis_graph_pin, praxis_list, praxis_path, praxis_read, praxis_rename,
     praxis_reveal, praxis_save, praxis_validate,
 };
+use slices::praxis::host::{
+    praxis_cli_settings_read, praxis_cli_settings_write, praxis_host_cancel, praxis_host_condition, praxis_host_run,
+    praxis_host_runs, praxis_host_status, praxis_host_terminal_argv, praxis_host_workflow_show, praxis_host_workflows_list,
+    PraxisCli,
+};
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
     rename_terminal, resize_pty, save_terminal_screens, spawn_terminal, write_pty, PtyManager,
@@ -106,6 +111,7 @@ pub fn run() {
         .manage(GitSearches::default())
         .manage(StagingLocks::default())
         .manage(topos_settings.clone())
+        .manage(PraxisCli::new())
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -129,6 +135,12 @@ pub fn run() {
             let git_events = app_handle.clone();
             app.state::<GraphSessions>().on_repo_changed(move |change| {
                 let _ = git_events.emit("git-repo-changed", change);
+            });
+
+            // A project's Praxis host condition reaches the builder as `praxis-host-condition` (#446).
+            let praxis_events = app_handle.clone();
+            app.state::<PraxisCli>().on_condition_changed(move |change| {
+                let _ = praxis_events.emit("praxis-host-condition", change);
             });
 
             // Launch the claude-mod-events HTTP bridge & MCP server on a Tokio task.
@@ -306,6 +318,16 @@ pub fn run() {
             praxis_reveal,
             praxis_save,
             praxis_validate,
+            praxis_cli_settings_read,
+            praxis_cli_settings_write,
+            praxis_host_cancel,
+            praxis_host_condition,
+            praxis_host_run,
+            praxis_host_runs,
+            praxis_host_status,
+            praxis_host_terminal_argv,
+            praxis_host_workflow_show,
+            praxis_host_workflows_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
