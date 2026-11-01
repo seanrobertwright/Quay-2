@@ -187,3 +187,135 @@ test("each row keeps the agent its page gave it, and a human commit has none", (
     ]
   );
 });
+
+/** Every string reachable from `root` through objects, arrays, maps and sets. */
+function reachableStrings(root: unknown): string[] {
+  const seen = new Set<unknown>();
+  const out: string[] = [];
+  const stack: unknown[] = [root];
+  while (stack.length > 0) {
+    const v = stack.pop();
+    if (typeof v === "string") {
+      out.push(v);
+      continue;
+    }
+    if (typeof v !== "object" || v === null || seen.has(v) || ArrayBuffer.isView(v)) continue;
+    seen.add(v);
+    if (v instanceof Map) for (const [k, x] of v) stack.push(k, x);
+    else if (v instanceof Set) for (const x of v) stack.push(x);
+    else for (const x of Object.values(v)) stack.push(x);
+  }
+  return out;
+}
+
+const HEX_OID = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+
+test("the store holds no oid as a string of its own, and decodes each row's oid on demand", () => {
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 600 });
+  ingest(store, { pageIndex: 1, firstRow: 600, rowCount: 600 });
+  assert.deepEqual(reachableStrings(store).filter((s) => HEX_OID.test(s)), []);
+  // The fixture names each row by its row number in hex.
+  assert.equal(store.oid(0), "0000000000000000000000000000000000000000");
+  assert.equal(store.oid(1199), "00000000000000000000000000000000000004af");
+});
+
+const SHA256_A = "6f1ed002ab5595859014ebf0951522d9d4a2b4e1d71c2a1b8e3f0b5a6c7d8e9f";
+const SHA256_B = "0000000000000000000000000000000000000000000000000000000000000abc";
+
+test("a SHA-256 repository's 64-digit oids come back as they went in, and are found by lookup", () => {
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 2, oids: [SHA256_A, SHA256_B] });
+  assert.equal(store.oid(0), SHA256_A);
+  assert.equal(store.oid(1), SHA256_B);
+  assert.equal(store.rowOf(SHA256_B), 1);
+  assert.equal(store.rowOf(SHA256_A.slice(0, 40)), -1, "a 40-digit oid can't name a SHA-256 row");
+});
+
+test("a page whose oids aren't 40 or 64 lowercase hex digits, or change width, is refused", () => {
+  assert.throws(() => ingest(new GraphStore(1), { pageIndex: 0, firstRow: 0, rowCount: 1, oids: ["abc123"] }), /not an oid/);
+  assert.throws(
+    () => ingest(new GraphStore(1), { pageIndex: 0, firstRow: 0, rowCount: 1, oids: ["G".repeat(40)] }),
+    /isn't lowercase hex/
+  );
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 1 });
+  assert.throws(() => ingest(store, { pageIndex: 1, firstRow: 1, rowCount: 1, oids: [SHA256_A] }), /not a 40-digit oid/);
+});
+
+test("looking up an oid finds its row, and an oid not loaded or not an oid finds none", () => {
+  const store = twoPages();
+  assert.equal(store.rowOf("0000000000000000000000000000000000000006"), 6);
+  assert.equal(store.rowOf("0000000000000000000000000000000000000009"), -1);
+  assert.equal(store.rowOf("000000"), -1);
+  assert.equal(store.rowOf("not an oid"), -1);
+  assert.equal(new GraphStore(1).rowOf("0000000000000000000000000000000000000000"), -1);
+});
+
+test("trimming drops the slack doubling left, keeps every row, and the store still grows after", () => {
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 1000 });
+  ingest(store, { pageIndex: 1, firstRow: 1000, rowCount: 500 });
+  assert.equal(store.capacity, 2048);
+  store.trim();
+  assert.equal(store.capacity, 1500);
+  assert.equal(store.oid(1499), "00000000000000000000000000000000000005db");
+  assert.equal(store.subject(1499), "commit 1499");
+  ingest(store, { pageIndex: 2, firstRow: 1500, rowCount: 10 });
+  assert.equal(store.capacity, 3000);
+  assert.equal(store.oid(1499), "00000000000000000000000000000000000005db");
+  assert.equal(store.rowOf("00000000000000000000000000000000000005e5"), 1509);
+  assert.deepEqual(store.author(1499), { name: "Author 1", email: "a1@example.invalid" });
+});
+
+test("a row's oid matches a hex prefix of it, of any length up to the whole oid", () => {
+  const store = new GraphStore(1);
+  ingest(store, { pageIndex: 0, firstRow: 0, rowCount: 2, oids: ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", SHA256_B.slice(0, 40)] });
+  assert.equal(store.hasOidPrefix(0, "a1b2c"), true);
+  assert.equal(store.hasOidPrefix(0, "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"), true);
+  assert.equal(store.hasOidPrefix(0, ""), true);
+  assert.equal(store.hasOidPrefix(0, "a1b2d"), false);
+  assert.equal(store.hasOidPrefix(0, "a1b2c3d4e5f60718293a4b5c6d7e8f90123456780"), false, "longer than the oid");
+  assert.equal(store.hasOidPrefix(0, "fix"), false);
+  assert.equal(store.hasOidPrefix(1, "a1"), false);
+  const sha256 = new GraphStore(1);
+  ingest(sha256, { pageIndex: 0, firstRow: 0, rowCount: 1, oids: [SHA256_A] });
+  assert.equal(sha256.hasOidPrefix(0, SHA256_A.slice(0, 50)), true);
+});
+
+test("a matcher for a set of oids answers for each row whether its oid is one of them", () => {
+  const store = twoPages();
+  const isOne = store.oidMatcher([
+    "0000000000000000000000000000000000000002",
+    "0000000000000000000000000000000000000007",
+    // Shares its first eight digits with every row, but is none of them.
+    "0000000000000000000000000000000000000fff",
+    "not an oid",
+  ]);
+  assert.deepEqual(
+    Array.from({ length: store.rowCount }, (_, r) => r).filter(isOne),
+    [2, 7]
+  );
+  assert.equal(new GraphStore(1).oidMatcher(["0000000000000000000000000000000000000000"])(0), false);
+});
+
+test("a page refused for a bad oid leaves the store as it was, so the right page can still follow", () => {
+  const store = twoPages();
+  const good = "00000000000000000000000000000000000000aa";
+  assert.throws(
+    () => ingest(store, { pageIndex: 2, firstRow: 8, rowCount: 2, firstEdge: 8, oids: [good, "not an oid"], newTracks: [track(2, "fix", "named")] }),
+    /not an oid/
+  );
+  assert.equal(store.rowCount, 8);
+  assert.equal(store.rowOf(good), -1);
+  ingest(store, {
+    pageIndex: 2,
+    firstRow: 8,
+    rowCount: 2,
+    firstEdge: 8,
+    oids: [good, "00000000000000000000000000000000000000bb"],
+    newTracks: [track(2, "fix", "named")],
+  });
+  assert.equal(store.trackKey(2), "fix");
+  assert.equal(store.rowOf(good), 8);
+});

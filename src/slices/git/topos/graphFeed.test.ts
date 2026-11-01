@@ -6,6 +6,11 @@ import { GraphStore } from "./graphStore.ts";
 import { decodeGraphPage, OPEN_ROW, type GraphPage } from "./graphPage.ts";
 import { encodeTestPage } from "./fixtures/encodeTestPage.ts";
 
+/** A 40-digit hex oid named by `label`, its char codes in hex padded with f: the store holds only real oids. */
+function oidOf(label: string): string {
+  return Array.from(label, (c) => c.charCodeAt(0).toString(16)).join("").padEnd(40, "f");
+}
+
 /** A page of `rowCount` rows, all in lane 0, with one new author per page. */
 function encodePage(sessionId: number, pageIndex: number, firstRow: number, rowCount: number): ArrayBuffer {
   return encodeTestPage({ sessionId, pageIndex, firstRow, rowCount });
@@ -137,7 +142,7 @@ function sessionBeforeSplice(): GraphFeed {
       pageIndex: 0,
       firstRow: 0,
       rowCount: 4,
-      oids: ["A", "B", "S", "C"],
+      oids: ["A", "B", "S", "C"].map(oidOf),
       rows: [
         [0, 0],
         [0, 0],
@@ -191,7 +196,7 @@ test("a splice puts the new rows above the old rows from the match, renumbered",
       pageIndex: 0,
       firstRow: 0,
       rowCount: 3,
-      oids: ["N", "A", "B"],
+      oids: ["N", "A", "B"].map(oidOf),
       agents: [{ row: 0, kind: null, source: "stamp", raw: "robot" }],
       edges: [
         [0, 1, 0, 0, 0, 0],
@@ -205,11 +210,11 @@ test("a splice puts the new rows above the old rows from the match, renumbered",
   assert.deepEqual(
     Array.from({ length: 5 }, (_, r) => [store.oid(r), store.lane(r), store.trackKey(store.track(r))]),
     [
-      ["N", 0, "main"],
-      ["A", 0, "main"],
-      ["B", 0, "main"],
-      ["S", 1, "side"],
-      ["C", 0, "main"],
+      [oidOf("N"), 0, "main"],
+      [oidOf("A"), 0, "main"],
+      [oidOf("B"), 0, "main"],
+      [oidOf("S"), 1, "side"],
+      [oidOf("C"), 0, "main"],
     ]
   );
   assert.deepEqual(
@@ -225,8 +230,8 @@ test("a splice puts the new rows above the old rows from the match, renumbered",
   assert.deepEqual(store.visibleEdges(3, 5).sort(), [2, 3], "the window below the splice still finds its edges");
   assert.equal(store.trackStartRow(1), 3);
   assert.deepEqual(store.author(3), { name: "Author 0", email: "a0@example.invalid" });
-  assert.equal(store.rowOf("S"), 3);
-  assert.equal(store.rowOf("gone"), -1);
+  assert.equal(store.rowOf(oidOf("S")), 3);
+  assert.equal(store.rowOf(oidOf("gone")), -1);
   // Each row keeps its own agent: the refresh's rows from their page, the kept rows moved down.
   assert.deepEqual(
     Array.from({ length: 5 }, (_, r) => store.agent(r)),
@@ -250,17 +255,17 @@ test("a reset keeps the old rows on screen until the reload has as many, or ends
   feed.accept({ event: "paused", sessionId: 2, rowsLoaded: 4 });
   assert.equal(feed.accept({ event: "reset", sessionId: 2 }), true);
   assert.deepEqual(feed.status, { state: "loading" });
-  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 2, oids: ["X", "Y"] }));
+  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 2, oids: ["X", "Y"].map(oidOf) }));
   assert.equal(feed.store?.oid(0), (0).toString(16).padStart(40, "0"), "still the old rows");
   feed.accept({ event: "done", sessionId: 2, total: 2 });
   assert.equal(feed.store?.rowCount, 2);
-  assert.equal(feed.store?.oid(0), "X");
+  assert.equal(feed.store?.oid(0), oidOf("X"));
   assert.deepEqual(feed.status, { state: "done" });
 
   // A reload that reaches the old row count swaps in at once.
   assert.equal(feed.accept({ event: "reset", sessionId: 2 }), true, "a finished session can still refresh");
-  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 3, oids: ["P", "Q", "R"] }));
-  assert.equal(feed.store?.oid(2), "R");
+  feed.accept(encodeTestPage({ sessionId: 2, pageIndex: 0, firstRow: 0, rowCount: 3, oids: ["P", "Q", "R"].map(oidOf) }));
+  assert.equal(feed.store?.oid(2), oidOf("R"));
 });
 
 test("refresh events from another session are dropped", () => {
@@ -316,4 +321,22 @@ test("the load the speed-up banner reads counts the rows and whether the walk pa
   feed.accept(encodePage(1, 0, 0, 512));
   feed.accept({ event: "paused", sessionId: 1, rowsLoaded: 512 });
   assert.deepEqual(feed.load(), { slowFirstRows: false, rowsLoaded: 512, moreRemain: true });
+});
+
+test("a session that ends, done or at its ceiling, leaves its store no bigger than its rows", () => {
+  for (const end of [
+    { event: "done", sessionId: 5, total: 1100 },
+    { event: "truncated", sessionId: 5, cap: 1100 },
+  ]) {
+    const feed = new GraphFeed();
+    started(feed, 5);
+    feed.accept(encodePage(5, 0, 0, 600));
+    feed.accept(encodePage(5, 1, 600, 500));
+    assert.equal(feed.store?.capacity, 2048, "rows grow by doubling while they load");
+    feed.accept({ event: "paused", sessionId: 5, rowsLoaded: 1100 });
+    assert.equal(feed.store?.capacity, 2048, "a paused session may load more");
+    feed.accept(end);
+    assert.equal(feed.store?.capacity, 1100, end.event);
+    assert.equal(feed.store?.oid(1099), (1099).toString(16).padStart(40, "0"));
+  }
 });

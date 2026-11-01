@@ -111,11 +111,14 @@ export class GraphFeed {
         this.moreRequested = false;
         this.status = { state: "paused" };
         return true;
+      // No more rows come once the walk ends, so the store sheds the room it kept for them.
       case "done":
         this.status = { state: "done" };
+        this.store.trim();
         return true;
       case "truncated":
         this.status = { state: "truncated", cap: event.cap };
+        this.store.trim();
         return true;
       case "failed":
         this.status = { state: "failed", message: errorMessage(event.error) };

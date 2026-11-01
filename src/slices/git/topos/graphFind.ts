@@ -2,10 +2,33 @@
 
 import type { Badge } from "./graphRefs.ts";
 
-/** The loaded rows as Find reads them; `GraphStore` is one. */
-export interface FindRows {
+/**
+ * Loaded rows as a scan over their oids reads them. `GraphStore` holds oids as bytes (#410) and
+ * answers prefix and set tests in place, so a scan over a million rows builds no string per row.
+ */
+export interface OidRows {
   readonly rowCount: number;
   oid(row: number): string;
+  /** Whether the oid at `row` begins with the lowercase hex `prefix`. */
+  hasOidPrefix(row: number, prefix: string): boolean;
+  /** A test of whether a row's oid is one of `oids`. */
+  oidMatcher(oids: Iterable<string>): (row: number) => boolean;
+}
+
+/**
+ * `make(rows)`, kept while the same rows come back and made again for other rows: a scan resumes
+ * over the same store many times, and a matcher is worth building once per store, not per call.
+ */
+export function perRows<R, T>(make: (rows: R) => T): (rows: R) => T {
+  let last: { rows: R; value: T } | null = null;
+  return (rows) => {
+    if (last?.rows !== rows) last = { rows, value: make(rows) };
+    return last.value;
+  };
+}
+
+/** The loaded rows as Find reads them; `GraphStore` is one. */
+export interface FindRows extends OidRows {
   subject(row: number): string;
   author(row: number): FindAuthor;
 }
@@ -67,14 +90,18 @@ export class FindScan {
     return this.buffer.subarray(0, this.count);
   }
 
+  /** The test for rows a matching ref name is on. */
+  private readonly onRef = perRows((rows: FindRows) => rows.oidMatcher(this.refOids));
+
   scan(rows: FindRows, budget: number): boolean {
     if (this.needle === "") return true;
+    const onRef = this.onRef(rows);
     const end = Math.min(rows.rowCount, this.next + budget);
     for (let row = this.next; row < end; row++) {
       if (
         // Oids are lowercase hex, so the lowered needle compares as it is.
-        rows.oid(row).startsWith(this.needle) ||
-        this.refOids.has(rows.oid(row)) ||
+        rows.hasOidPrefix(row, this.needle) ||
+        (this.refOids.size > 0 && onRef(row)) ||
         this.authorMatches(rows.author(row)) ||
         rows.subject(row).toLowerCase().includes(this.needle)
       ) {

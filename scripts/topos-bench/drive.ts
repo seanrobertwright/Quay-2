@@ -125,11 +125,11 @@ const address = server.address();
 if (address === null || typeof address === "string") throw new Error("the server has no port");
 const origin = `http://127.0.0.1:${address.port}`;
 
-// The page weighs its heap after a full GC, so it needs gc() and unrounded performance.memory.
+// The heap is weighed after a full GC, so it needs unrounded performance.memory.
 const browser = await chromium.launch({
   channel: "msedge",
   headless: false,
-  args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"],
+  args: ["--enable-precise-memory-info"],
 });
 // Each recording gets its own context, so the last recording's store can't sit in the heap the
 // next one weighs.
@@ -146,6 +146,29 @@ const frames = (n: number) =>
       }),
     n
   );
+
+/**
+ * The page's JS heap in bytes once garbage is gone, ArrayBuffer backing stores included. The GC
+ * is DevTools' own, run between the page's tasks: a gc() called from inside the page's own tasks
+ * leaves garbage behind, a different amount each run, so its readings sit above what a heap
+ * snapshot holds. V8 can free backing stores a little after the GC that finds them dead, so this
+ * collects and reads until the heap stops shrinking.
+ */
+async function settledHeap(): Promise<number> {
+  const cdp = await page.context().newCDPSession(page);
+  let least = Infinity;
+  for (let quiet = 0; quiet < 3; ) {
+    await cdp.send("HeapProfiler.collectGarbage");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const used = await page.evaluate(
+      () => (performance as unknown as { memory: { usedJSHeapSize: number } }).memory.usedJSHeapSize
+    );
+    quiet = used < least ? 0 : quiet + 1;
+    least = Math.min(least, used);
+  }
+  await cdp.detach();
+  return least;
+}
 
 /** The last row is on screen, inside the list's box. */
 const lastRowShown = (rows: number) =>
@@ -298,7 +321,15 @@ for (const [i, recording] of recordings.entries()) {
     page = await browser.newPage({ viewport: VIEWPORT });
   }
   await page.goto(`${origin}/?pages=/pages`);
-  await page.waitForFunction(() => window.__toposBench?.phase !== "loading", null, { timeout: 900_000, polling: 1000 });
+  await page.waitForFunction(() => window.__toposBench?.phase === "ready");
+  const heapBeforeBytes = await settledHeap();
+  await page.evaluate(() => window.__toposBenchStart());
+  await page.waitForFunction(
+    () => window.__toposBench.phase === "done" || window.__toposBench.phase === "failed",
+    null,
+    { timeout: 900_000, polling: 1000 }
+  );
+  const heapAfterBytes = await settledHeap();
   const state: BenchState = await page.evaluate(() => window.__toposBench);
   if (state.phase === "failed") throw new Error(`${recording}: ${state.error}`);
   if (state.firstRowsMs === null) throw new Error(`${recording}: no rows reached the screen`);
@@ -307,7 +338,7 @@ for (const [i, recording] of recordings.entries()) {
   // Only the Tauri IPC hop between the two is left out.
   const { firstPageMs } = JSON.parse(readFileSync(`${recording}.json`, "utf8")) as { firstPageMs: number };
   const firstRowsMs = firstPageMs + state.firstRowsMs;
-  const heapBytesPerRow = (state.heapAfterBytes - state.heapBeforeBytes) / state.rows;
+  const heapBytesPerRow = (heapAfterBytes - heapBeforeBytes) / state.rows;
   const ingestP95 = quantile(state.ingestMs, 0.95);
   const list = page.locator(LIST);
   const box = await list.boundingBox();

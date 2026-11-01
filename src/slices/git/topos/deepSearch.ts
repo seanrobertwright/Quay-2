@@ -4,6 +4,7 @@
 
 import { errorMessage, type GitError } from "./gitVersion.ts";
 import type { RefSet } from "./graphFilters.ts";
+import { perRows, type OidRows } from "./graphFind.ts";
 
 /** What a deep search matches; the Rust `SearchKind`. */
 export type SearchKind = "message" | "author" | "path" | "code";
@@ -218,12 +219,6 @@ export class DeepSearch {
   }
 }
 
-/** The loaded rows as a result lookup reads them; `GraphStore` is one. */
-export interface ResultRows {
-  readonly rowCount: number;
-  oid(row: number): string;
-}
-
 /**
  * The loaded rows that are deep-search results, found by one pass over the rows against a set of
  * the results' oids. The rows come out ascending, as Find's sorted match list (#399) is, so Find's
@@ -234,6 +229,8 @@ export class ResultScan {
   private buffer = new Int32Array(64);
   private count = 0;
   private next = 0;
+  /** The test for rows that are results. */
+  private readonly isResult = perRows((rows: OidRows) => rows.oidMatcher(this.oids));
 
   constructor(oids: Iterable<string>) {
     this.oids = new Set(oids);
@@ -244,11 +241,12 @@ export class ResultScan {
   }
 
   /** Scans up to `budget` more rows; returns whether it has reached the last loaded row. */
-  scan(rows: ResultRows, budget: number): boolean {
+  scan(rows: OidRows, budget: number): boolean {
     const end = Math.min(rows.rowCount, this.next + budget);
     if (this.oids.size > 0) {
+      const isResult = this.isResult(rows);
       for (let row = this.next; row < end; row++) {
-        if (!this.oids.has(rows.oid(row))) continue;
+        if (!isResult(row)) continue;
         if (this.count === this.buffer.length) {
           const grown = new Int32Array(this.buffer.length * 2);
           grown.set(this.buffer);
@@ -289,9 +287,10 @@ export class ResultRoute {
     this.oid = oid;
   }
 
-  step(rows: ResultRows, state: FeedState): RouteStep {
-    for (let row = this.next; row < rows.rowCount; row++) {
-      if (rows.oid(row) === this.oid) return { kind: "inPlace", row };
+  step(rows: OidRows, state: FeedState): RouteStep {
+    if (this.next < rows.rowCount) {
+      const isResult = rows.oidMatcher([this.oid]);
+      for (let row = this.next; row < rows.rowCount; row++) if (isResult(row)) return { kind: "inPlace", row };
     }
     this.next = rows.rowCount;
     switch (state) {

@@ -1,8 +1,8 @@
 // The Topos scale benchmark page (#377). It mounts the real `GraphFeed` and `GraphList` and
 // replays a recorded graph session (see ../dump-pages.ts) into the feed one channel message per
 // task, as Tauri delivers them. It times each page's main-thread ingest and how long the first
-// page takes to reach the screen, and weighs the JS heap before and after. `drive.ts` builds this
-// page for production, serves it and reads `window.__toposBench`.
+// page takes to reach the screen. `drive.ts` builds this page for production, serves it, weighs the
+// JS heap before it starts the replay and after it ends, and reads `window.__toposBench`.
 
 import { useEffect, useReducer, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -27,41 +27,24 @@ const WIP: WipRowProps = {
 };
 
 const state: BenchState = {
-  phase: "loading",
+  phase: "ready",
   rows: 0,
   ingestMs: [],
   loadMs: 0,
   firstRowsMs: null,
-  heapBeforeBytes: 0,
-  heapAfterBytes: 0,
   error: null,
 };
 window.__toposBench = state;
+const startCalled = new Promise<void>((resolve) => {
+  window.__toposBenchStart = () => {
+    state.phase = "loading";
+    resolve();
+  };
+});
 const feed = new GraphFeed();
 let bump: () => void = () => {};
 /** When the first Rows page arrived, for `firstRowsMs`. */
 let firstPageAt: number | null = null;
-
-/**
- * JS heap in bytes once garbage is gone. drive.ts launches Edge with `--expose-gc` and precise
- * memory info. V8 frees ArrayBuffer backing stores after the GC that finds them dead, so one GC
- * and an immediate read can still count them: this collects and waits until the heap stops
- * shrinking.
- */
-async function settledHeap(): Promise<number> {
-  const { gc } = window as unknown as { gc?: () => void };
-  const memory = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
-  if (!gc || !memory) throw new Error("the page needs gc() and performance.memory; run it through drive.ts");
-  let least = Infinity;
-  for (let quiet = 0; quiet < 3; ) {
-    gc();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const used = memory.usedJSHeapSize;
-    quiet = used < least ? 0 : quiet + 1;
-    least = Math.min(least, used);
-  }
-  return least;
-}
 
 /** One task's pause, so rendering and input interleave with messages as they do over IPC. */
 function nextTask(): Promise<void> {
@@ -74,7 +57,8 @@ function nextTask(): Promise<void> {
 
 /** Frames are `[kind: u8 (0 JSON event, 1 Rows page)][length: u32 LE][bytes]`. */
 async function replay(url: string): Promise<void> {
-  state.heapBeforeBytes = await settledHeap();
+  // drive.ts weighs the heap first.
+  await startCalled;
   const response = await fetch(url);
   if (!response.ok || response.body === null) throw new Error(`${url}: HTTP ${response.status}`);
   const reader = response.body.getReader();
@@ -184,8 +168,7 @@ function Bench() {
 const pages = new URLSearchParams(location.search).get("pages") ?? "/pages";
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<Bench />);
 replay(pages)
-  .then(async () => {
-    state.heapAfterBytes = await settledHeap();
+  .then(() => {
     state.phase = "done";
     bump();
   })

@@ -1,6 +1,6 @@
-// The frontend copy of one graph session's rows and lanes (#370, #375): per-row numbers and edges
-// live in typed arrays that grow by doubling, never per page, so ingesting a page stays cheap at a
-// million rows.
+// The frontend copy of one graph session's rows and lanes (#370, #375): per-row numbers, oids and
+// edges live in typed arrays that grow by doubling, never per page, so ingesting a page stays cheap
+// at a million rows. Oids are bytes (#410), turned into hex only when a caller asks for one.
 
 import {
   CLOSE_FIELD,
@@ -17,6 +17,7 @@ import {
 } from "./graphPage.ts";
 import type { EdgeGeometry } from "./graphPaths.ts";
 import { trackSlot } from "./laneColors.ts";
+import { leadOf, OidColumn } from "./oidColumn.ts";
 
 const INITIAL_CAPACITY = 1024;
 
@@ -104,7 +105,7 @@ export class GraphStore {
   /** The distinct agents seen; few, so a row holds an index rather than an object. */
   private readonly agentTable: (GraphAgent | null)[] = [null, UNKNOWN_STAMP];
   private readonly agentIds = new Map<string, number>([[agentKey(UNKNOWN_STAMP), UNKNOWN_STAMP_ID]]);
-  private readonly oids: string[] = [];
+  private readonly oids = new OidColumn();
   private readonly subjects: string[] = [];
   private readonly authors: GraphAuthor[] = [];
   /** `EDGE_FIELDS` per edge, in edge-id order, which is child-row order. */
@@ -149,14 +150,16 @@ export class GraphStore {
     return this.peak;
   }
 
-  /** Capacity of the per-row typed arrays, which only ever doubles. */
+  /** Capacity of the per-row typed arrays, which doubles as rows load and `trim` cuts to the rows. */
   get capacity(): number {
     return this.authorTimes.length;
   }
 
   /**
    * Appends a page. Throws when the page belongs to another session, doesn't follow the last one
-   * exactly (rows already shown never move), or names an author, track or edge it hasn't sent.
+   * exactly (rows already shown never move), names an author, track or edge it hasn't sent, or
+   * holds an oid that isn't 40 or 64 lowercase hex digits as wide as the rest. A refused page
+   * changes nothing.
    */
   ingest(page: GraphPage): void {
     if (page.sessionId !== this.sessionId) {
@@ -183,6 +186,7 @@ export class GraphStore {
       if (page.closes[i] >= this.edges) throw new Error(`page closes unknown edge ${page.closes[i]}`);
     }
     for (const e of page.checkpoint) if (e >= this.edges) throw new Error(`page's checkpoint names unknown edge ${e}`);
+    this.oids.check(page.oids);
 
     for (const t of page.newTracks) this.addTrack(t);
     const end = this.count + page.rowCount;
@@ -194,7 +198,7 @@ export class GraphStore {
     for (let i = 0; i < page.rowCount; i++) {
       const t = page.rowTracks[i];
       if (this.trackStarts[t] === OPEN_ROW) this.trackStarts[t] = page.firstRow + i;
-      this.oids.push(page.oids[i]);
+      this.oids.set(page.firstRow + i, page.oids[i]);
       this.subjects.push(page.subjects[i]);
     }
     for (const author of page.newAuthors) this.authors.push(author);
@@ -251,6 +255,22 @@ export class GraphStore {
     this.lanesByRow = grown(this.lanesByRow, rows, (n) => new Uint16Array(n));
     this.tracksByRow = grown(this.tracksByRow, rows, (n) => new Uint32Array(n));
     this.agentIdsByRow = grown(this.agentIdsByRow, rows, (n) => new Uint16Array(n));
+    if (this.oids.capacity !== this.capacity) this.oids.resize(this.capacity, this.count);
+  }
+
+  /**
+   * Shrinks the typed arrays to the rows and edges loaded, dropping the slack doubling left: up to
+   * half of each array. The feed calls it when the session ends; a later page grows them again.
+   */
+  trim(): void {
+    const rows = this.count;
+    this.authorTimes = this.authorTimes.slice(0, rows);
+    this.authorIdsByRow = this.authorIdsByRow.slice(0, rows);
+    this.lanesByRow = this.lanesByRow.slice(0, rows);
+    this.tracksByRow = this.tracksByRow.slice(0, rows);
+    this.agentIdsByRow = this.agentIdsByRow.slice(0, rows);
+    this.oids.resize(rows, rows);
+    this.edgeData = this.edgeData.slice(0, this.edges * EDGE_FIELDS);
   }
 
   private growEdges(edges: number): void {
@@ -307,7 +327,7 @@ export class GraphStore {
       top.tracksByRow[at] = t;
       const agent = this.agentTable[this.agentIdsByRow[r]];
       top.agentIdsByRow[at] = agent === null ? 0 : top.agentId(agent);
-      top.oids.push(this.oids[r]);
+      top.oids.copyRow(this.oids, r, at);
       top.subjects.push(this.subjects[r]);
       if (top.trackStarts[t] === OPEN_ROW) top.trackStarts[t] = at;
     }
@@ -348,11 +368,38 @@ export class GraphStore {
 
   /** The row of the commit `oid`, or -1 when it isn't loaded. Costs a scan of the loaded rows. */
   rowOf(oid: string): number {
-    return this.oids.indexOf(oid);
+    return this.oids.indexOf(oid, this.count);
   }
 
+  /** Whether the oid at `row` begins with the lowercase hex `prefix`, without building the oid. */
+  hasOidPrefix(row: number, prefix: string): boolean {
+    return this.oids.startsWith(row, prefix);
+  }
+
+  /**
+   * A test of whether a row's oid is one of `oids`, for scans over many rows: it compares bytes
+   * against the few oids sharing the row's first four bytes, so it builds no string per row.
+   * Entries that aren't oids match nothing.
+   */
+  oidMatcher(oids: Iterable<string>): (row: number) => boolean {
+    const byLead = new Map<number, string[]>();
+    for (const oid of oids) {
+      const lead = leadOf(oid);
+      if (lead === null) continue;
+      const bucket = byLead.get(lead);
+      if (bucket === undefined) byLead.set(lead, [oid]);
+      else bucket.push(oid);
+    }
+    return (row) => {
+      if (row < 0 || row >= this.count) return false;
+      const bucket = byLead.get(this.oids.lead(row));
+      return bucket !== undefined && bucket.some((oid) => this.oids.equals(row, oid));
+    };
+  }
+
+  /** The oid at `row` as hex, built on each call: the store keeps oids as bytes (#410). */
   oid(row: number): string {
-    return this.oids[row];
+    return this.oids.hex(row);
   }
 
   subject(row: number): string {
