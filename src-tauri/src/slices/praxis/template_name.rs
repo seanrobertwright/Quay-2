@@ -105,8 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn the_refusal_states_the_rule() {
+    fn the_refusal_states_the_rule_the_builder_shows() {
         let why = check_template_name("Review_Code").unwrap_err();
         assert!(why.contains("lowercase letter") && why.contains("62") && why.contains("hyphens"), "{why}");
+        let file: Value = serde_json::from_str(include_str!("template_names.vectors.json")).unwrap();
+        assert_eq!(file["rule"], why);
     }
 }

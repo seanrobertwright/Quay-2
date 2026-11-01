@@ -50,7 +50,7 @@ import {
 import { normalizePath } from "../../utils/paths.ts";
 import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
-import { definitionIdProblem, nextDefinitionId } from "./lifecycle.ts";
+import { namingProblem as nameProblemFor, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
 import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
@@ -1376,8 +1376,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     naming === null
       ? null
       : naming.mode === "new"
-        ? definitionIdProblem(naming.value, takenIds(naming.kind))
-        : definitionIdProblem(naming.value, takenIds(naming.ref.kind), naming.ref.id);
+        ? nameProblemFor(naming.kind, naming.value, takenIds(naming.kind))
+        : nameProblemFor(naming.ref.kind, naming.value, takenIds(naming.ref.kind), naming.ref.id);
 
   /** "+ New" and the empty project's New graph (#222): an inline name field in the kind's list. */
   const startNew = (entry: RecordKindEntry) => {
@@ -1940,7 +1940,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   const orphans = Object.values(session?.drafts ?? {}).filter(
                     (d) => d.ref.kind === kind && !listed.has(d.ref.id)
                   );
-                  const rows: { id: string; problem?: FileProblem; idMismatch?: DefinitionEntry["idMismatch"] }[] = [
+                  const rows: {
+                    id: string;
+                    problem?: FileProblem;
+                    idMismatch?: DefinitionEntry["idMismatch"];
+                    nameProblem?: string;
+                  }[] = [
                     ...(entry.list?.entries ?? []),
                     ...orphans.map((d) => ({ id: d.ref.id })),
                   ];
@@ -2034,6 +2039,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                     id={def.id}
                                     problem={def.problem}
                                     idMismatch={def.idMismatch}
+                                    nameProblem={def.nameProblem}
                                     invalid={invalid.get(`${projectKey}|${key}`) === true}
                                     crossIssues={crossErrors.has(key)}
                                     draft={draft}
@@ -2108,6 +2114,30 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </nav>
 
             <main className="flex-1 min-w-0 relative flex flex-col">
+              {open && openEntry?.nameProblem !== undefined && (
+                <div
+                  role="status"
+                  className="shrink-0 px-4 py-1.5 flex items-center gap-2 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]"
+                >
+                  <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span className="break-words min-w-0">
+                    The Praxis host can't install {open.id}: {openEntry.nameProblem}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (lifecycleBusy) return;
+                      setListShown(true);
+                      startRename(open);
+                    }}
+                    aria-disabled={lifecycleBusy}
+                    aria-label={`Rename ${open.id}`}
+                    className="ml-auto shrink-0 px-2 py-0.5 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#c9d1d9] font-semibold aria-disabled:opacity-50"
+                  >
+                    Rename
+                  </button>
+                </div>
+              )}
               {open && openEntry?.idMismatch && (
                 <div
                   role="status"
@@ -2370,6 +2400,8 @@ const ListRow: FC<{
   id: string;
   problem: FileProblem | undefined;
   idMismatch: DefinitionEntry["idMismatch"];
+  /** A workflow template's name the Praxis host refuses: the host's rule. */
+  nameProblem?: string;
   /** The definition was validated and the SDK refuses it. */
   invalid: boolean;
   /** A contract's scratch mission refuses the saved definition, or a reference in it names nothing (#269). */
@@ -2377,7 +2409,7 @@ const ListRow: FC<{
   draft: Draft | undefined;
   current: boolean;
   onOpen: () => void;
-}> = ({ id, problem, idMismatch, invalid, crossIssues, draft, current, onOpen }) => {
+}> = ({ id, problem, idMismatch, nameProblem, invalid, crossIssues, draft, current, onOpen }) => {
   const dirty = draft ? isDirty(draft) : false;
   const deleted = draft?.deletedOnDisk ?? false;
   const unsaved = draft?.baseHash === null;
@@ -2387,6 +2419,7 @@ const ListRow: FC<{
     problem && problem.message,
     !problem && invalid && "invalid, see Problems",
     mismatchNote,
+    nameProblem !== undefined && "a name the Praxis host refuses",
     crossIssues && "issues across records",
     deleted && "deleted on disk",
     unsaved ? "never saved" : dirty && "unsaved changes",
@@ -2415,11 +2448,17 @@ const ListRow: FC<{
           <span className="sr-only">{problem ? "(can't be opened)" : "(invalid)"}</span>
         </span>
       ) : (
-        (mismatchNote || crossIssues) && (
+        (mismatchNote || nameProblem !== undefined || crossIssues) && (
           <span className="ml-auto inline-flex items-center text-[#e3b341] shrink-0">
             <TriangleAlert className="w-3.5 h-3.5" aria-hidden="true" />
             <span className="sr-only">
-              {[mismatchNote && "(its id doesn't match its file name)", crossIssues && "(issues across records)"].filter(Boolean).join(" ")}
+              {[
+                mismatchNote && "(its id doesn't match its file name)",
+                nameProblem !== undefined && "(a name the Praxis host refuses)",
+                crossIssues && "(issues across records)",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             </span>
           </span>
         )

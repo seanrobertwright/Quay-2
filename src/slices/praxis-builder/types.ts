@@ -15,6 +15,8 @@ export interface DefinitionEntry {
   problem?: FileProblem;
   /** Set when the file parses but its `id` isn't its name: `found` is the id inside, if it has a string one. */
   idMismatch?: { found?: string };
+  /** For a workflow template whose name the Praxis host refuses (#447), the host's name rule. Renaming fixes it. */
+  nameProblem?: string;
   /** A graph binding's `graphId`, when it is a string, so the list nests it under its graph. */
   graphId?: string;
   /** A graph binding's `costUnit`, when it is a string that isn't empty (#231, #274). */

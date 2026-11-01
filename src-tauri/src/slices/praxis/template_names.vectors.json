@@ -1,5 +1,6 @@
 {
-  "about": "Workflow template names and whether the host's name rule admits them. The Rust rule and the builder's copy are both tested against these, and a cargo test checks every verdict against the TemplateName definition in the vendored read-models schema.",
+  "about": "Workflow template names and whether the host's name rule admits them, and the message that states the rule. The Rust rule and the builder's copy are both tested against these, and a cargo test checks every verdict against the TemplateName definition in the vendored read-models schema.",
+  "rule": "A workflow template name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and isn't a Windows device name such as con, nul, com1 or lpt1. The Praxis host refuses any other name.",
   "cases": [
     { "name": "review-code", "valid": true },
     { "name": "a", "valid": true },
