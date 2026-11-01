@@ -296,8 +296,9 @@ fn taken_by_another(dir: &Path, folder: &str, id: &str, new_id: &str) -> Result<
 /// before any old one is removed. A rename to the same id writes the definition with that
 /// id inside and nothing else, which is how a file whose name and id differ is fixed.
 ///
-/// Refused, with nothing written, when either id isn't filename-safe, the definition
-/// doesn't exist or can't be read, or `new_id` is taken by another file, ignoring case.
+/// Refused, with nothing written, when either id isn't filename-safe, a workflow template's
+/// `new_id` breaks the host's template name rule, the definition doesn't exist or can't be
+/// read, or `new_id` is taken by another file, ignoring case.
 /// With `dry_run` it reports what it would do and writes nothing.
 pub fn rename_definition(
     repo: &Path,
@@ -309,6 +310,9 @@ pub fn rename_definition(
     hooks: &[ReferenceHook],
 ) -> Result<RenameOutcome, String> {
     validate_id(id)?;
+    if kind == PraxisKind::Templates {
+        super::template_name::check_template_name(new_id)?;
+    }
     validate_id(new_id)?;
     if drafts.len() > MAX_DRAFTS {
         return Err(format!("A rename takes at most {} drafts.", MAX_DRAFTS));
@@ -615,6 +619,23 @@ mod tests {
         assert_eq!(outcome.error, None);
         assert_eq!(names(&repo, ".praxis/templates"), vec!["b.json"]);
         assert_eq!(read(&repo, ".praxis/templates/b.json"), json!({"description": "d", "maxAttempts": 2}));
+    }
+
+    #[test]
+    fn a_template_renames_only_to_a_name_the_host_accepts() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/templates/Bad_Name.json", r#"{"description": "d"}"#);
+        for bad in ["Worse", "worse.name", "con", "1st"] {
+            let why = rename_definition(&repo, PraxisKind::Templates, "Bad_Name", bad, &[], true, HOOKS).unwrap_err();
+            assert_eq!(why, crate::slices::praxis::template_name::TEMPLATE_NAME_RULE, "{bad}");
+        }
+        assert_eq!(names(&repo, ".praxis/templates"), vec!["Bad_Name.json"]);
+        let outcome = rename_definition(&repo, PraxisKind::Templates, "Bad_Name", "good-name", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/templates"), vec!["good-name.json"]);
+        // Other kinds keep #222's ids.
+        write(&repo, ".praxis/graphs/g.json", GRAPH);
+        assert!(rename_definition(&repo, PraxisKind::Graphs, "g", "Has.Dot_1", &[], false, HOOKS).is_ok());
     }
 
     #[test]

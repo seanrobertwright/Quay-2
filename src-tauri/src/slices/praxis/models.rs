@@ -94,6 +94,10 @@ pub struct DefinitionEntry {
     pub problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_mismatch: Option<IdMismatch>,
+    /// For a workflow template whose file name is a filename-safe id but breaks the host's
+    /// template name rule, the rule. The file still opens; renaming it fixes this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_problem: Option<String>,
     /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_id: Option<String>,
