@@ -21,13 +21,17 @@ const NAME = "review-code";
 let mounted: { root: Root; container: HTMLElement } | null = null;
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW }));
+/** Unmounts the mounted form, if any, and removes its container. */
+const unmount = () => {
+  if (!mounted) return;
+  const { root, container } = mounted;
+  act(() => root.unmount());
+  container.remove();
+  mounted = null;
+};
+
 afterEach(() => {
-  if (mounted) {
-    const { root, container } = mounted;
-    act(() => root.unmount());
-    container.remove();
-    mounted = null;
-  }
+  unmount();
   mock.timers.reset();
   setWindowVisible(true);
 });
@@ -201,9 +205,7 @@ test("a held or awaiting run is read every 15 s straight away", async () => {
     await nextReadAfter(backend, 3_000, working(1, extra));
     await nextReadAfter(backend, 15_000, working(1, extra));
     await nextReadAfter(backend, 15_000, working(1, extra));
-    act(() => mounted?.root.unmount());
-    mounted?.container.remove();
-    mounted = null;
+    unmount();
   }
 });
 
@@ -215,9 +217,7 @@ test("an ended run is no longer read", async () => {
     await tick(10 * 60_000);
     assert.equal(backend.statuses().length, 1, JSON.stringify(extra));
     assert.match(text(detail(root)), /no longer read/);
-    act(() => mounted?.root.unmount());
-    mounted?.container.remove();
-    mounted = null;
+    unmount();
   }
 });
 
@@ -251,9 +251,7 @@ test("the Runs list's stop triggers stop the followed run and kill its call", as
     const { root, callId } = await following(backend);
     await go(root);
     await stopped(backend, callId).catch((e) => assert.fail(`${why}: ${e}`));
-    act(() => mounted?.root.unmount());
-    mounted?.container.remove();
-    mounted = null;
+    unmount();
     setWindowVisible(true);
   }
 });
@@ -313,9 +311,7 @@ test("Open in browser opens a page on 127.0.0.1 too, and refuses any other addre
     await flush();
     assert.deepEqual(backend.opened(), opens ? [address] : [], address);
     if (!opens) assert.match(text(detail(root)), /Quay opens only pages on this machine's Praxis host/, address);
-    act(() => mounted?.root.unmount());
-    mounted?.container.remove();
-    mounted = null;
+    unmount();
   }
 });
 
@@ -422,9 +418,7 @@ test("without the hint, or with one praxis trust can't help, there is no Trust c
     await answer(backend.statuses()[0], statusRecord(awaiting(), hint));
     assert.equal(button(detail(root) as HTMLElement, /^Trust certificate$/), undefined, String(hint));
     if (hint) assert.ok(text(banner(root)).includes(hint), "the hint itself is still shown");
-    act(() => mounted?.root.unmount());
-    mounted?.container.remove();
-    mounted = null;
+    unmount();
   }
 });
 
