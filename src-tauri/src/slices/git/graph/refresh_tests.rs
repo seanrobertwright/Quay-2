@@ -261,12 +261,10 @@ fn a_refresh_with_no_match_in_20k_rows_resets_and_reloads_only_the_loaded_rows()
     let outcome = sessions.refresh(id).unwrap();
     assert_eq!(outcome, Refreshed::Reset { searched_rows: 20_000 });
     let mut after = Graph::default();
-    loop {
-        match rx.recv_timeout(WAIT).unwrap() {
-            Msg::Event(e) if e["event"] == "reset" => break,
-            Msg::Event(e) => panic!("expected reset, got {e}"),
-            Msg::Rows { .. } => panic!("no rows before the reset"),
-        }
+    match rx.recv_timeout(WAIT).unwrap() {
+        Msg::Event(e) if e["event"] == "reset" => {}
+        Msg::Event(e) => panic!("expected reset, got {e}"),
+        Msg::Rows { .. } => panic!("no rows before the reset"),
     }
     let paused = read_until_event(&rx, id, &mut after);
     // Only the rows the frontend had loaded come back.
