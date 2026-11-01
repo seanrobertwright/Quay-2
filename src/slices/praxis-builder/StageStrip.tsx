@@ -4,7 +4,7 @@
 // counted, and where a held run stopped. Each mark is in words as well as colour. Nothing here
 // can be dragged, connected or exported.
 import type { FC } from "react";
-import { Check, CircleDot, Pause, Repeat, UserCheck } from "lucide-react";
+import { Check, CircleDot, Pause, Repeat, UserCheck, type LucideIcon } from "lucide-react";
 import type { JsonObject } from "./model.ts";
 import { templateStages, type StageKey } from "./template.ts";
 
@@ -29,6 +29,25 @@ interface StageStripProps {
   progress?: StageProgress;
 }
 
+type Mark = "held" | "current" | "finished";
+
+const PLAIN_TONE = "border-[#30363d] bg-[#161b22] text-[#c9d1d9]";
+const MUTED_TONE = "border-dashed border-[#30363d] text-[#6e7681]";
+
+/** How the strip draws a stage a run marks: its box, the mark's colour, icon and word. */
+const MARKS: Readonly<Record<Mark, { tone: string; text: string; Icon: LucideIcon; word: string }>> = {
+  held: { tone: "border-[#f0883e] bg-[#161b22] text-[#c9d1d9]", text: "text-[#f0883e]", Icon: Pause, word: "Held here" },
+  current: { tone: "border-[#58a6ff] bg-[#0d2240] text-white", text: "text-[#58a6ff]", Icon: CircleDot, word: "Current" },
+  finished: { tone: PLAIN_TONE, text: "text-[#3fb950]", Icon: Check, word: "Finished" },
+};
+
+/** The run's mark on stage `key`, or null when the run hasn't reached it. */
+function markOf(progress: StageProgress | undefined, key: StageKey): Mark | null {
+  if (!progress) return null;
+  if (progress.current === key) return progress.held ? "held" : "current";
+  return progress.finished.includes(key) ? "finished" : null;
+}
+
 const rounds = (n: number) => `${n} correction round${n === 1 ? "" : "s"}`;
 
 export const StageStrip: FC<StageStripProps> = ({ content, anchor, progress }) => {
@@ -45,8 +64,8 @@ export const StageStrip: FC<StageStripProps> = ({ content, anchor, progress }) =
       <ol className="flex flex-wrap items-stretch gap-1.5 text-xs">
         {stages.map((s, i) => {
           const isCurrent = progress?.current === s.key;
-          const isFinished = progress?.finished.includes(s.key) ?? false;
-          const heldHere = isCurrent && progress?.held === true;
+          const mark = markOf(progress, s.key);
+          const shown = mark === null ? null : MARKS[mark];
           const body = (
             <>
               <span className="flex items-center gap-1 font-medium">
@@ -65,10 +84,10 @@ export const StageStrip: FC<StageStripProps> = ({ content, anchor, progress }) =
                 )}
               </span>
               {s.detail && <span className="text-[10px] text-[#8b949e]">{s.detail}</span>}
-              {progress && (isFinished || isCurrent) && (
-                <span className={`inline-flex items-center gap-0.5 text-[10px] ${heldHere ? "text-[#f0883e]" : isCurrent ? "text-[#58a6ff]" : "text-[#3fb950]"}`}>
-                  {heldHere ? <Pause className="w-3 h-3" aria-hidden="true" /> : isCurrent ? <CircleDot className="w-3 h-3" aria-hidden="true" /> : <Check className="w-3 h-3" aria-hidden="true" />}
-                  {heldHere ? "Held here" : isCurrent ? "Current" : "Finished"}
+              {shown && (
+                <span className={`inline-flex items-center gap-0.5 text-[10px] ${shown.text}`}>
+                  <shown.Icon className="w-3 h-3" aria-hidden="true" />
+                  {shown.word}
                 </span>
               )}
               {progress && s.key === "correction" && progress.corrections !== null && progress.corrections > 0 && (
@@ -76,13 +95,7 @@ export const StageStrip: FC<StageStripProps> = ({ content, anchor, progress }) =
               )}
             </>
           );
-          const tone = s.muted
-            ? "border-dashed border-[#30363d] text-[#6e7681]"
-            : heldHere
-              ? "border-[#f0883e] bg-[#161b22] text-[#c9d1d9]"
-              : isCurrent
-                ? "border-[#58a6ff] bg-[#0d2240] text-white"
-                : "border-[#30363d] bg-[#161b22] text-[#c9d1d9]";
+          const tone = s.muted ? MUTED_TONE : (shown?.tone ?? PLAIN_TONE);
           return (
             <li key={s.key} className="flex items-center gap-1.5" aria-current={isCurrent ? "step" : undefined}>
               {i > 0 && (
