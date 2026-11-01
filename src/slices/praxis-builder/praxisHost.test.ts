@@ -66,6 +66,15 @@ test("an aborted check sends no call at all", async () => {
   assert.deepEqual(calls, []);
 });
 
+test("a check the backend can't make rejects with its reason, so the recheck can show it", async () => {
+  await assert.rejects(
+    checkHost("E:/work/app", new AbortController().signal, async () => {
+      throw new Error("The project isn't registered.");
+    }),
+    /isn't registered/,
+  );
+});
+
 test("only the outcomes that say the host itself can't be used are host-level failures", () => {
   const outcomes: CallOutcome[] = [
     { kind: "record", record: {} },

@@ -98,6 +98,23 @@ export async function openPraxisTerminal(
 export type Invoker = (command: string, args: Record<string, unknown>) => Promise<unknown>;
 
 /**
+ * Sends `command` through the runner with a fresh call id. Aborting `signal` sends
+ * `praxis_host_cancel` for that id, which kills its process. Rejects when the invoke does. The
+ * one home of the cancel-on-abort rule for every `praxis` call.
+ */
+async function cancellableCall(command: string, args: Record<string, unknown>, signal: AbortSignal, call: Invoker): Promise<unknown> {
+  const callId = crypto.randomUUID();
+  // `praxis_host_cancel` can't fail; a lost cancel only lets the call run to its own timeout.
+  const cancel = () => void call("praxis_host_cancel", { callId }).catch(() => {});
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    return await call(command, { ...args, callId });
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}
+
+/**
  * Checks the host once with `praxis workflows list --json`, the cheapest call that reaches it.
  * The backend updates the project's host condition from the outcome, so a caller reads the
  * condition, not this call's result. Aborting `signal` cancels the call; an aborted check sends
@@ -105,15 +122,7 @@ export type Invoker = (command: string, args: Record<string, unknown>) => Promis
  */
 export async function checkHost(projectPath: string, signal: AbortSignal, call: Invoker = invoke): Promise<void> {
   if (signal.aborted) return;
-  const callId = crypto.randomUUID();
-  // `praxis_host_cancel` can't fail; a lost cancel only lets the call run to its own timeout.
-  const cancel = () => void call("praxis_host_cancel", { callId }).catch(() => {});
-  signal.addEventListener("abort", cancel, { once: true });
-  try {
-    await call("praxis_host_workflows_list", { projectPath, callId });
-  } finally {
-    signal.removeEventListener("abort", cancel);
-  }
+  await cancellableCall("praxis_host_workflows_list", { projectPath }, signal, call);
 }
 
 /**
@@ -124,15 +133,9 @@ export async function checkHost(projectPath: string, signal: AbortSignal, call: 
  */
 export async function praxisCall(command: string, args: Record<string, unknown>, signal: AbortSignal, call: Invoker = invoke): Promise<CallOutcome> {
   if (signal.aborted) return { kind: "cancelled" };
-  const callId = crypto.randomUUID();
-  // `praxis_host_cancel` can't fail; a lost cancel only lets the call run to its own timeout.
-  const cancel = () => void call("praxis_host_cancel", { callId }).catch(() => {});
-  signal.addEventListener("abort", cancel, { once: true });
   try {
-    return (await call(command, { ...args, callId })) as CallOutcome;
+    return (await cancellableCall(command, args, signal, call)) as CallOutcome;
   } catch (e) {
     return { kind: "refused", message: String(e) };
-  } finally {
-    signal.removeEventListener("abort", cancel);
   }
 }
