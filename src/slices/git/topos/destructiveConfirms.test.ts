@@ -137,16 +137,21 @@ test("every confirm in Topos's source is either marked destructive or known to d
   for (const file of sources) {
     const lines = readFileSync(new URL(file, dir), "utf8").split(/\r?\n/);
     lines.forEach((line, i) => {
-      const label = /^\s*confirmLabel(?::\s*(.+?),?)?\s*,?$/.exec(line);
-      // Interface fields (`confirmLabel: string;`) declare the words, they don't ask anything.
-      if (label === null || /:\s*string;/.test(line)) return;
+      // A `confirmLabel` key in an object literal, written out or shorthand. Interface fields
+      // (`confirmLabel: string;`), reads (`.confirmLabel`) and `const confirmLabel =` ask nothing.
+      if (!/(?<![.\w])confirmLabel\s*[:,}]/.test(line) || /confirmLabel\??:\s*string;/.test(line)) return;
       seen++;
-      // The object literal the label sits in: back to its opening brace, on to its closing one.
-      let start = i;
-      while (start > 0 && !/[{]\s*$/.test(lines[start])) start--;
-      let end = i;
-      while (end < lines.length - 1 && !/^\s*}/.test(lines[end])) end++;
-      const literal = lines.slice(start, end + 1).join("\n");
+      // The object literal the key sits in: the line itself when it opens and closes there, or
+      // back to the line that opens it and on to the line that closes it.
+      let literal = line;
+      const braces = line.replace(/\$\{[^}]*\}/g, "");
+      if (!(braces.includes("{") && braces.includes("}"))) {
+        let start = i;
+        while (start > 0 && !/[{]\s*$/.test(lines[start])) start--;
+        let end = i;
+        while (end < lines.length - 1 && !/^\s*}/.test(lines[end])) end++;
+        literal = lines.slice(start, end + 1).join("\n");
+      }
       const safe = SAFE_LABELS.some((l) => line.includes(`"${l}"`));
       assert.ok(safe || /destructive:\s*true/.test(literal), `${file}:${i + 1} ${line.trim()} is neither destructive nor a known safe confirm`);
     });
