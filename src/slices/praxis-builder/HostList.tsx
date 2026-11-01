@@ -143,12 +143,7 @@ export const HostOnlySubsection: FC<{ section: HostOnlySection }> = ({ section }
                   >
                     {row.name}
                   </button>
-                  {row.invalid && (
-                    <span title="Invalid on host" className="p-1 shrink-0 inline-flex text-[#ff7b72]">
-                      <CircleX className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span className="sr-only">{row.invalidText}</span>
-                    </span>
-                  )}
+                  {row.invalid && <HostBadgeView badge={row.invalid} />}
                 </div>
                 {open && (
                   <dl
@@ -168,6 +163,11 @@ export const HostOnlySubsection: FC<{ section: HostOnlySection }> = ({ section }
             );
           })}
         </ul>
+      )}
+      {expanded && section.omitted > 0 && (
+        <p className="mx-3 mt-1 text-[10px] text-[#e3b341]">
+          Showing the first {section.rows.length}. The host holds {section.omitted} more.
+        </p>
       )}
     </div>
   );

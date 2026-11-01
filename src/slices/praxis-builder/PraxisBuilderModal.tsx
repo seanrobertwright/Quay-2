@@ -394,6 +394,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const listedTemplates = listing?.projectKey === projectKey ? listing.byKind.templates.list?.entries : undefined;
   const hostCatalog = useHostCatalog(projectPath, listedTemplates, host.condition, isOpen);
   const templateSaved = hostCatalog.saved;
+  // The On host only subsection, sorted and capped once per catalog change, not per render.
+  const { catalog: shownCatalog, version: catalogVersion } = hostCatalog;
+  const hostOnlyShown = useMemo(
+    () => (shownCatalog ? hostOnlySection(shownCatalog.hostOnly()) : null),
+    // `catalogVersion` is bumped on every catalog change, which `hostOnly()` reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shownCatalog, catalogVersion],
+  );
   // Set up host, Start host and Sign in: `praxis` in a visible terminal, never headless.
   const runHostCommand = useCallback(
     (command: InteractiveCommand) => {
@@ -1990,7 +1998,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   // The Workflow templates group carries the host's state (#363): the condition
                   // in its header, a host badge on each row and the On host only subsection.
                   const catalog = kind === "templates" ? hostCatalog.catalog : null;
-                  const onHostOnly = catalog ? hostOnlySection(catalog.hostOnly()) : null;
+                  const onHostOnly = catalog ? hostOnlyShown : null;
                   const now = Date.now();
                   return (
                     <section key={kind} aria-label={label} className="mb-3">

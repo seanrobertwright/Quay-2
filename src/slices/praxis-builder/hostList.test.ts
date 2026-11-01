@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hostBadge, hostGroupHeader, hostOnlyDetails, hostOnlySection, rowBadges } from "./hostList.ts";
+import { HOST_ONLY_LIMIT, hostBadge, hostGroupHeader, hostOnlyDetails, hostOnlySection, rowBadges } from "./hostList.ts";
 import type { HostOnlyTemplate, TemplateHostView } from "./hostCatalog.ts";
 
 const NOW = 1_800_000_000_000;
@@ -108,6 +108,11 @@ test("praxis CLI not found says how to link it, with the reason", () => {
   assert.equal(header.action, null);
 });
 
+test("Host down and No host set up add no action to the header: only Not signed in does", () => {
+  assert.equal(hostGroupHeader({ state: "hostUnreachable" }).action, null);
+  assert.equal(hostGroupHeader({ state: "noHostSetUp" }).action, null);
+});
+
 test("a signed-in host offers no action besides Check host", () => {
   const header = hostGroupHeader({ state: "signedIn" });
   assert.equal(header.action, null);
@@ -131,13 +136,28 @@ test("the On host only subsection appears only when the latest reading found hos
 test("On host only rows are by name, with the invalid badge from list", () => {
   const section = hostOnlySection([hostOnly("review"), hostOnly("deploy", false, { diagnostics: ["Unknown step kind."] })]);
   assert.deepEqual(
-    section?.rows.map((r) => [r.name, r.invalid]),
+    section?.rows.map((r) => [r.name, r.invalid?.state ?? null]),
     [
-      ["deploy", true],
-      ["review", false],
+      ["deploy", "invalidOnHost"],
+      ["review", null],
     ],
   );
-  assert.equal(section?.rows[0]?.invalidText, "deploy is invalid on the host");
+  assert.equal(section?.rows[0]?.invalid?.text, "deploy is invalid on the host");
+  assert.equal(section?.rows[0]?.invalid?.tone, "error");
+});
+
+test("the On host only subsection draws at most HOST_ONLY_LIMIT rows and counts the rest", () => {
+  const total = HOST_ONLY_LIMIT + 5;
+  const templates = Array.from({ length: total }, (_, i) => hostOnly(`t-${String(total - i).padStart(4, "0")}`));
+  const section = hostOnlySection(templates);
+  assert.equal(section?.title, `On host only (${total})`);
+  assert.equal(section?.rows.length, HOST_ONLY_LIMIT);
+  assert.equal(section?.omitted, 5);
+  assert.equal(section?.rows[0]?.name, "t-0001");
+});
+
+test("a short On host only list omits nothing", () => {
+  assert.equal(hostOnlySection([hostOnly("review")])?.omitted, 0);
 });
 
 test("a host-only template's read-only panel has its description, revision and validity", () => {

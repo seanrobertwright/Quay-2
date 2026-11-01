@@ -13,8 +13,6 @@ export type HostBadgeTone = "error" | "attention" | "muted" | "neutral";
 export interface HostBadge {
   /** The state it shows, or `failed` when the last read failed. */
   state: KnownHostState | "failed";
-  /** The state's short name. */
-  label: string;
   /** The badge's text equivalent for screen readers. */
   text: string;
   /** The tooltip: the state and the host's reason, when there is one. */
@@ -68,12 +66,11 @@ export function hostBadge(id: string, view: TemplateHostView, now: number): Host
   const label = LABELS[kind];
   const reason = reasonOf(state);
   const title = reason ? `${label}. ${reason}` : label;
-  if (!view.muted) return { state: kind, label, text: `${id} on the host: ${label}`, title, tone: TONES[kind], muted: false };
+  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: TONES[kind], muted: false };
   const minutes = view.checkedAt === null ? null : Math.max(0, Math.floor((now - view.checkedAt) / 60_000));
   const stale = minutes === null ? "May be out of date." : `May be out of date: checked ${minutes} min ago.`;
   return {
     state: kind,
-    label,
     text: `${id} on the host: ${label}, may be out of date`,
     title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`,
     tone: TONES[kind],
@@ -83,7 +80,6 @@ export function hostBadge(id: string, view: TemplateHostView, now: number): Host
 
 /** A row's badges, in the order they are drawn: git state first, host state second. */
 export type RowBadge = { kind: "git"; status: ChangeStatus } | { kind: "host"; badge: HostBadge };
-
 
 /** The badges of template `id`'s row: its change since the last commit, then its host state. */
 export function rowBadges(id: string, changed: ChangeStatus | undefined, host: TemplateHostView, now: number): RowBadge[] {
@@ -101,7 +97,7 @@ export interface HostGroupHeader {
   tone: HostTone;
   /** The button that rereads everything. */
   checkHostLabel: "Check host";
-  /** The host chip's terminal action for the condition, such as Sign in; null for none. */
+  /** Sign in, the host chip's action, when the condition is Not signed in; null otherwise. */
   action: HostAction | null;
   /** How to link the praxis CLI, when it can't be run; null otherwise. */
   linkCli: { text: string; reason: string } | null;
@@ -115,7 +111,8 @@ export function hostGroupHeader(condition: HostCondition): HostGroupHeader {
     condition: view.label,
     tone: view.tone,
     checkHostLabel: "Check host",
-    action: panel?.kind === "terminal" ? panel.action : null,
+    // #363 asks the header for Sign in only. The chip keeps its other actions, such as Start host.
+    action: condition.state === "notSignedIn" && panel?.kind === "terminal" ? panel.action : null,
     linkCli: panel?.kind === "linkCli" ? { text: panel.text, reason: panel.reason } : null,
   };
 }
@@ -123,18 +120,31 @@ export function hostGroupHeader(condition: HostCondition): HostGroupHeader {
 /** A read-only row of the On host only subsection. */
 export interface HostOnlyRow {
   name: string;
-  /** True when `list` reports the host's copy as invalid. */
-  invalid: boolean;
-  /** The invalid badge's text equivalent. */
-  invalidText: string;
+  /** The invalid badge, when `list` reports the host's copy as invalid; null otherwise. */
+  invalid: HostBadge | null;
   template: HostOnlyTemplate;
 }
 
-/** The On host only subsection: its title with the count, and its rows by name. */
+/** The most On host only rows the subsection draws. */
+export const HOST_ONLY_LIMIT = 100;
+
+/** The On host only subsection: its title with the count, and its first rows by name. */
 export interface HostOnlySection {
+  /** Counts every host-only template, including the ones not drawn. */
   title: string;
+  /** At most `HOST_ONLY_LIMIT` rows, by name. */
   rows: HostOnlyRow[];
+  /** How many host-only templates are past the limit and not drawn. */
+  omitted: number;
 }
+
+const invalidBadge = (name: string): HostBadge => ({
+  state: "invalidOnHost",
+  text: `${name} is invalid on the host`,
+  title: LABELS.invalidOnHost,
+  tone: TONES.invalidOnHost,
+  muted: false,
+});
 
 /**
  * The collapsed subsection that ends the Workflow templates group, or null when the latest
@@ -144,11 +154,16 @@ export function hostOnlySection(templates: readonly HostOnlyTemplate[]): HostOnl
   if (templates.length === 0) return null;
   const rows = [...templates]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .map((t) => ({ name: t.name, invalid: !t.valid, invalidText: `${t.name} is invalid on the host`, template: t }));
-  return { title: `On host only (${rows.length})`, rows };
+    .slice(0, HOST_ONLY_LIMIT)
+    .map((t) => ({ name: t.name, invalid: t.valid ? null : invalidBadge(t.name), template: t }));
+  return { title: `On host only (${templates.length})`, rows, omitted: templates.length - rows.length };
 }
 
-/** The read-only panel of a host-only template: what the latest `list` said of it. */
+/**
+ * The read-only panel of a host-only template: what the latest `list` said of it. It has no
+ * readiness: #363 shows readiness only once a `show` has run, and the catalog (#449) runs `show`
+ * for local templates only, so none has run for a host-only one. This list adds no reads.
+ */
 export function hostOnlyDetails(template: HostOnlyTemplate): { label: string; value: string }[] {
   const validity = template.valid
     ? "Valid"
