@@ -43,10 +43,11 @@ async fn call(
     workspace: &WorkspaceManager,
     project_path: &str,
     verb: Verb,
-    args: Vec<String>,
+    operands: Vec<String>,
     call_id: Uuid,
 ) -> Result<CallOutcome, String> {
     let root = project_root(workspace, project_path)?;
+    let args = verb.args(operands);
     let cli = cli.clone();
     tokio::task::spawn_blocking(move || cli.call(&root, verb, &args, call_id))
         .await
@@ -61,7 +62,7 @@ pub async fn praxis_host_workflows_list(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    call(&cli, &workspace, &project_path, Verb::WorkflowsList, vec!["workflows".into(), "list".into()], call_id).await
+    call(&cli, &workspace, &project_path, Verb::WorkflowsList, vec![], call_id).await
 }
 
 /// `praxis workflows show <name> --json`: one template's detail, with fresh readiness.
@@ -73,7 +74,7 @@ pub async fn praxis_host_workflow_show(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    call(&cli, &workspace, &project_path, Verb::WorkflowsShow, vec!["workflows".into(), "show".into(), name], call_id).await
+    call(&cli, &workspace, &project_path, Verb::WorkflowsShow, vec![name], call_id).await
 }
 
 /// `praxis runs <name> --limit <limit> --json`: the template's recent runs, newest first.
@@ -87,7 +88,7 @@ pub async fn praxis_host_runs(
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
     check_runs_limit(limit)?;
-    call(&cli, &workspace, &project_path, Verb::Runs, vec!["runs".into(), name, "--limit".into(), limit.to_string()], call_id).await
+    call(&cli, &workspace, &project_path, Verb::Runs, vec![name, "--limit".into(), limit.to_string()], call_id).await
 }
 
 /// `praxis status <workOrderId> --json`: one run's operator view.
@@ -100,7 +101,7 @@ pub async fn praxis_host_status(
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
     check_run_arg(&work_order_id)?;
-    call(&cli, &workspace, &project_path, Verb::Status, vec!["status".into(), work_order_id], call_id).await
+    call(&cli, &workspace, &project_path, Verb::Status, vec![work_order_id], call_id).await
 }
 
 /// `praxis run <name> --json`: creates a run of the host's installed copy. A repeat while one is
@@ -115,7 +116,7 @@ pub async fn praxis_host_run(
     cli: State<'_, PraxisCli>,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
-    call(&cli, &workspace, &project_path, Verb::Run, vec!["run".into(), name], call_id).await
+    call(&cli, &workspace, &project_path, Verb::Run, vec![name], call_id).await
 }
 
 /// Cancels a call. See [`PraxisCli::cancel`].
