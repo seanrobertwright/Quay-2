@@ -15,7 +15,7 @@ import { AMBER, RunDetail } from "./RunDetail.tsx";
 import { openRunPageOf } from "./runPage.ts";
 import { RUNS_MAX_LIMIT, type RunRow } from "./runsList.ts";
 import { runRefusedBy, runStarts, type RunStart } from "./runStart.ts";
-import type { ChangeStatus } from "./types.ts";
+import type { GitChange } from "./types.ts";
 import { useRunsList } from "./useRunsList.ts";
 
 interface RunsViewProps {
@@ -33,8 +33,8 @@ interface RunsViewProps {
   onInstall?: () => void;
   /** The open draft has edits the saved file doesn't. */
   unsaved?: boolean;
-  /** How the template file differs from the last commit: undefined when it doesn't, "unknown" when git status couldn't be read. */
-  changed?: ChangeStatus | "unknown";
+  /** How the template file differs from the last commit; undefined when it doesn't. */
+  changed?: GitChange;
 }
 
 /** The outcome of the last Run this view started, and what its Copy said. */

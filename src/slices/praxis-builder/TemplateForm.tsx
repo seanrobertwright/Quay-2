@@ -51,7 +51,7 @@ import {
   type TemplateEdit,
 } from "./template.ts";
 import { useValidation } from "./useValidation.ts";
-import type { ChangeStatus, Diagnostic } from "./types.ts";
+import type { GitChange, Diagnostic } from "./types.ts";
 
 interface TemplateFormProps {
   draft: Draft;
@@ -69,8 +69,8 @@ interface TemplateFormProps {
     projectPath: string;
     shown: boolean;
     runInTerminal?: RunInTerminal;
-    /** How the template file differs from the last commit, for Run's confirm: undefined when it doesn't, "unknown" when git status couldn't be read. */
-    changed?: ChangeStatus | "unknown";
+    /** How the template file differs from the last commit (for Run's confirm); undefined when it doesn't. */
+    changed?: GitChange;
   } | null;
 }
 
