@@ -2,7 +2,7 @@
 
 **Praxis** is the workflow engine in the AI-WS-SDK. It runs finite-v1 graphs under contracts, grants and triggers, and it runs coding plans from workflow templates.
 
-The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It never connects to a Praxis host, never submits a definition, and doesn't show runs.
+The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reads a Praxis host only through the `praxis` CLI, to show the host's state, each workflow template's state on it and a template's runs. It never submits a definition.
 
 ---
 
@@ -162,3 +162,10 @@ A workflow template is a coding plan without a work order or run id, and its fil
 - Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. The form says "Shape checked. Not previewed on a host", because readiness and the host's other rules aren't checked yet.
 
 **Install on host…** opens a dialog that writes nothing. It shows the saved file's path with a **Copy** button and the steps to install it: copy the file into the template directory your host configuration names, restart the host, then run `praxis run <name>`. When the file has uncommitted changes, the dialog leads with their diff and a warning. Quay never writes the host's configuration or template directory.
+
+**Template | Runs** above the form switches the work area to the template's runs on the host, from `praxis runs <name> --json`, newest first. Each run shows its status, stage, control (as a chip), whether it is held, the template revision it ran and when it was created. The list shows the newest 20 runs; **Show more** lists the newest 100, the most `praxis` lists, and says so, because `praxis` can't page past them.
+
+- A run that waits for a person, awaiting approval or held, is marked **Needs you** with **Open in browser**. Decisions are made only in the host's browser page. Quay opens a page only when it is on this machine's host, at `https://127.0.0.1:<port>/`.
+- A simulated host's runs are marked **Simulated**, in amber, because its approvals aren't made by a person.
+- The list is read every 15 seconds while it is shown, or every 60 seconds while the host can't be used. Then the last list stays, dimmed, with the time it was read.
+- Reading stops, and the `praxis` call in flight is stopped, as soon as the list leaves the screen: switching to **Template**, opening another definition or project, closing the builder or hiding Quay's window.
