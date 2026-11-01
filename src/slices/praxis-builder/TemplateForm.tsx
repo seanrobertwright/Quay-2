@@ -1,13 +1,16 @@
 // The workflow template form (#224): a template opens full width in the work area, under a
 // read-only strip of the coding profile's stages. Its shape is checked against the SDK's
-// coding-plan schema, and nothing more: readiness, warnings and agent selectability come
-// from a host's authoring preview, which Quay doesn't call yet. The three commands are
+// coding-plan schema, and nothing more: warnings and agent selectability come from a host's
+// authoring preview, which Quay doesn't call yet. Beside Install on host…, a status line shows
+// the template's state on the Praxis host from the host catalog (#363, #451), with the host's
+// readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
 // resolves a command.
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, Info, Plus, Repeat, UserCheck, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
+import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
 import {
   asString,
   asStrings,
@@ -53,6 +56,8 @@ interface TemplateFormProps {
   onValidated: (verdict: string | null) => void;
   /** Opens "Install on host…" for this template; only a saved file can be installed. */
   onInstall: () => void;
+  /** This template's state on the Praxis host, from the host catalog; null without one. */
+  host: TemplateHost | null;
 }
 
 /** The list item a pointer such as `/outputPaths/2` names, quoted, or the pointer when it names none. */
@@ -71,7 +76,7 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall }) => {
+export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host }) => {
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -282,11 +287,12 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Workflow template ${draft.ref.id}`}>
         <header className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[#c9d1d9]">
-              Workflow template · coding profile
-              <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
-            </h2>
+          <h2 className="text-sm font-semibold text-[#c9d1d9]">
+            Workflow template · coding profile
+            <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
+          </h2>
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">{host && <HostStatusLine host={host} />}</div>
             <button
               type="button"
               // Not `disabled`, which would drop focus; the reason is in the title.
@@ -316,7 +322,6 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
             accepts="The template's shape matches the coding-plan schema."
             refuses="The template's shape doesn't match the coding-plan schema"
           />
-          <p className="text-[11px] text-[#8b949e]">Shape checked. Not previewed on a host.</p>
         </div>
         {removable.length > 0 && <RemovableFields issues={removable} onRemove={(field) => set(field, undefined)} />}
         {fields}

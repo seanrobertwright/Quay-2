@@ -22,7 +22,11 @@ export interface HostBadge {
   muted: boolean;
 }
 
-const LABELS: Record<KnownHostState | "failed", string> = {
+/** A host state as a badge or the status line shows it: `failed` when the last read failed, `unknown` before any read. */
+export type ShownHostState = KnownHostState | "failed" | "unknown";
+
+/** Each host state's text label, which carries the state without its colour. */
+export const HOST_STATE_LABELS: Record<ShownHostState, string> = {
   nameRefused: "Name the host refuses",
   notInstalled: "Not installed",
   invalidOnHost: "Invalid on host",
@@ -30,9 +34,11 @@ const LABELS: Record<KnownHostState | "failed", string> = {
   notReady: "Installed, not ready",
   installed: "Installed",
   failed: "Couldn't check",
+  unknown: "Not checked yet",
 };
 
-const TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
+/** Each host state's colour: states that need attention are coloured, Installed is muted. */
+export const HOST_STATE_TONES: Record<ShownHostState, HostBadgeTone> = {
   nameRefused: "error",
   invalidOnHost: "error",
   notInstalled: "attention",
@@ -40,10 +46,11 @@ const TONES: Record<KnownHostState | "failed", HostBadgeTone> = {
   notReady: "attention",
   installed: "muted",
   failed: "neutral",
+  unknown: "neutral",
 };
 
-/** What the host or the read said about a state, for the tooltip. */
-function reasonOf(state: TemplateHostState): string | null {
+/** What the host or the read said about a state, or null when it said nothing. */
+export function hostStateReason(state: TemplateHostState): string | null {
   switch (state.kind) {
     case "nameRefused":
       return state.rule;
@@ -58,22 +65,27 @@ function reasonOf(state: TemplateHostState): string | null {
   }
 }
 
+/** Whole minutes from a reading's stamp to `now`, both in ms since the epoch; never negative. */
+export function minutesSince(checkedAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - checkedAt) / 60_000));
+}
+
 /** One template's host badge, or null when its host state is unknown and not shown. */
 export function hostBadge(id: string, view: TemplateHostView, now: number): HostBadge | null {
   const { state } = view;
   if (state.kind === "unknown" && state.why !== "failed") return null;
   const kind = state.kind === "unknown" ? "failed" : state.kind;
-  const label = LABELS[kind];
-  const reason = reasonOf(state);
+  const label = HOST_STATE_LABELS[kind];
+  const reason = hostStateReason(state);
   const title = reason ? `${label}. ${reason}` : label;
-  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: TONES[kind], muted: false };
-  const minutes = view.checkedAt === null ? null : Math.max(0, Math.floor((now - view.checkedAt) / 60_000));
+  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: HOST_STATE_TONES[kind], muted: false };
+  const minutes = view.checkedAt === null ? null : minutesSince(view.checkedAt, now);
   const stale = minutes === null ? "May be out of date." : `May be out of date: checked ${minutes} min ago.`;
   return {
     state: kind,
     text: `${id} on the host: ${label}, may be out of date`,
     title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`,
-    tone: TONES[kind],
+    tone: HOST_STATE_TONES[kind],
     muted: true,
   };
 }
@@ -141,8 +153,8 @@ export interface HostOnlySection {
 const invalidBadge = (name: string): HostBadge => ({
   state: "invalidOnHost",
   text: `${name} is invalid on the host`,
-  title: LABELS.invalidOnHost,
-  tone: TONES.invalidOnHost,
+  title: HOST_STATE_LABELS.invalidOnHost,
+  tone: HOST_STATE_TONES.invalidOnHost,
   muted: false,
 });
 

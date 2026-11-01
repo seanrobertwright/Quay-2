@@ -117,6 +117,7 @@ import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
+import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
 import { hostGroupHeader, hostOnlySection, rowBadges } from "./hostList.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
@@ -396,6 +397,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const templateSaved = hostCatalog.saved;
   // The On host only subsection, sorted and capped once per catalog change, not per render.
   const { catalog: shownCatalog, version: catalogVersion } = hostCatalog;
+  /** Template `name`'s host state for the form and the Install dialog, read from the catalog on each render. */
+  const templateHost = (name: string): TemplateHost | null =>
+    shownCatalog
+      ? { view: shownCatalog.template(name), condition: host.condition, onCheckAgain: () => void shownCatalog.checkAgain(name) }
+      : null;
   const hostOnlyShown = useMemo(
     () => (shownCatalog ? hostOnlySection(shownCatalog.hostOnly()) : null),
     // `catalogVersion` is bumped on every catalog change, which `hostOnly()` reads.
@@ -2299,6 +2305,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onEdit={editOpenTemplate}
                     onValidated={recordValidity}
                     onInstall={() => setInstallShown(open.id)}
+                    host={templateHost(open.id)}
                   />
                 </>
               ) : openDraft ? (
@@ -2398,6 +2405,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             changed={changesError ? "unknown" : currentChanges?.byKey.get(definitionKey({ kind: "templates", id: installShown }))}
             refresh={refreshCount}
             unsaved={open?.kind === "templates" && open.id === installShown && openDirty}
+            host={templateHost(installShown)}
             onClose={() => setInstallShown(null)}
           />
         )}

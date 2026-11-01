@@ -1,13 +1,18 @@
-// "Install on host…" (#224): how to install a workflow template on a Praxis host, by hand. Quay
-// writes nothing here. It never writes the host's configuration or template directory, never
-// guesses that directory, and never runs `engine:author`. When the template file has changes
-// since the last commit, the dialog leads with their diff and a warning. Once it has read the
-// saved file, it lists that file's three commands in full, read-only. Everything shown is read
-// again after a save. Escape closes it, through the builder's cascade.
+// "Install on host…" (#224, #451): how to install a workflow template on a Praxis host, by hand.
+// Quay writes nothing here. It never writes the host's configuration or template directory, never
+// guesses that directory, and never runs `engine:author`. It opens on the template's state on the
+// host, from the host catalog (#363): the copy steps when the host doesn't have it, the steps with
+// a warning when the host's copy will be replaced, nothing to do when the host has the saved file,
+// and no steps at all when the host refuses the name. When the template file has changes since
+// the last commit, the dialog leads with their diff and a warning. With the steps, it lists the
+// saved file's three commands in full, read-only. Check again follows the steps. Everything shown
+// is read again after a save. Escape closes it, through the builder's cascade.
 import { useEffect, useId, useRef, useState, type FC, type Ref } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Copy, TriangleAlert, X } from "lucide-react";
 import { DiffBody, useFileDiff } from "./DiffView.tsx";
+import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
+import { INSTALL_HOST_NOTES, installOpening } from "./hostStatus.ts";
 import { installCommands, installTarget, runCommand, type InstallCommand } from "./install.ts";
 import { focusedElement } from "./keyboard.ts";
 import { definitionPath } from "./session.ts";
@@ -26,13 +31,17 @@ export const InstallDialog: FC<{
   refresh: number;
   /** The open draft has edits the saved file doesn't. */
   unsaved: boolean;
+  /** The template's state on the Praxis host, from the host catalog; null without one. */
+  host: TemplateHost | null;
   onClose: () => void;
-}> = ({ rootRef, projectPath, name, changed, refresh, unsaved, onClose }) => {
+}> = ({ rootRef, projectPath, name, changed, refresh, unsaved, host, onClose }) => {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const [read, setRead] = useState<Read>({ state: "loading" });
   const [copied, setCopied] = useState<string | null>(null);
   const ref = { kind: "templates" as const, id: name };
+  // Without a catalog the host state is unknown, and the dialog opens on the steps as before.
+  const opening = installOpening(name, host?.view.state ?? { kind: "unknown", why: "notChecked" });
 
   // Focus goes to Close while it is shown and back to where it was when it closes.
   useEffect(() => {
@@ -108,14 +117,30 @@ export const InstallDialog: FC<{
             The draft has unsaved changes. The host gets the saved file, so save first to install them.
           </p>
         )}
+        {opening.kind === "steps" && opening.replaces && (
+          <p className="flex items-start gap-1.5 text-xs text-[#e3b341]">
+            <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+            {opening.replaces}
+          </p>
+        )}
+        {opening.kind === "nothingToDo" && <p className="text-xs text-[#c9d1d9]">{opening.message}</p>}
+        {opening.kind === "refused" && (
+          <section aria-label="Name the host refuses" className="space-y-1">
+            <p className="flex items-start gap-1.5 text-xs text-[#ff7b72]">
+              <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+              {opening.message}
+            </p>
+            <p className="text-xs text-[#8b949e]">{opening.rule}</p>
+          </section>
+        )}
 
-        {read.state === "loading" && <p className="text-xs text-[#6e7681]">Reading {definitionPath(ref)}…</p>}
-        {read.state === "failed" && (
+        {opening.kind === "steps" && read.state === "loading" && <p className="text-xs text-[#6e7681]">Reading {definitionPath(ref)}…</p>}
+        {opening.kind === "steps" && read.state === "failed" && (
           <p role="alert" className="text-xs text-[#ff7b72] break-words">
             {read.error}
           </p>
         )}
-        {read.state === "done" && (
+        {opening.kind === "steps" && read.state === "done" && (
           <>
             <section aria-label="Template file" className="space-y-1">
               <p className="text-xs text-[#8b949e]">Template file</p>
@@ -162,6 +187,18 @@ export const InstallDialog: FC<{
               )}
             </section>
           </>
+        )}
+
+        {/* A refused name is never read, so there is nothing to check again. */}
+        {host && opening.kind !== "refused" && (
+          <section aria-label="On the host" className="space-y-1 border-t border-[#30363d] pt-3">
+            <HostStatusLine host={host} />
+            <ul className="list-disc pl-5 space-y-0.5 text-[11px] text-[#8b949e]">
+              {INSTALL_HOST_NOTES.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </section>
         )}
       </div>
     </div>
