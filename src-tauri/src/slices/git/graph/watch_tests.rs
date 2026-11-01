@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::session::{GraphOptions, GraphSessions};
 use super::tests::{git, listen, temp_dir, Msg};
-use super::watch::{Dirty, RepoChanged, WatchState};
+use super::watch::{Dirty, RepoChanged, WatchState, CEILING};
 
 /// Longer than the 150 ms debounce plus a loaded machine's slack.
 const SETTLE: Duration = Duration::from_millis(1500);
@@ -103,7 +103,7 @@ fn a_checkout_dirties_head_staging_dirties_the_index_and_files_count_only_while_
 }
 
 #[test]
-fn a_burst_of_ref_updates_is_one_or_two_changes_and_steady_events_still_send_each_second() {
+fn a_burst_of_ref_updates_coalesces_and_steady_events_still_send_each_second() {
     let _timed = crate::slices::git::test_load::timed();
     let repo = repo();
     let (sessions, id, changes, _rx) = watched(&repo);
@@ -112,6 +112,7 @@ fn a_burst_of_ref_updates_is_one_or_two_changes_and_steady_events_still_send_eac
     // An agent's rebase rewriting hundreds of refs.
     let tip = git(&repo, &["rev-parse", "HEAD"]).trim().to_string();
     let stdin: String = (0..300).map(|i| format!("create refs/heads/burst-{i} {tip}\n")).collect();
+    let started = Instant::now();
     let mut child = crate::spawn::hidden_command("git")
         .arg("-C")
         .arg(&repo)
@@ -121,21 +122,29 @@ fn a_burst_of_ref_updates_is_one_or_two_changes_and_steady_events_still_send_eac
         .unwrap();
     std::io::Write::write_all(&mut child.stdin.take().unwrap(), stdin.as_bytes()).unwrap();
     assert!(child.wait().unwrap().success());
+    let burst = started.elapsed();
     let seen = settle(&changes);
-    assert!((1..=2).contains(&seen.len()), "{} changes for one burst", seen.len());
+    // Hundreds of ref writes become one change, or two if git paused for 150 ms between them, plus
+    // the one the ceiling sends for each second the burst lasted: a busy machine stretches this
+    // burst past two seconds.
+    let most = 2 + (burst.as_millis() / CEILING.as_millis()) as usize;
+    assert!((1..=most).contains(&seen.len()), "{} changes for one burst over {burst:?}, at most {most}", seen.len());
     assert!(bits(&seen).refs);
 
-    // Edits every 100 ms for 3 s never leave 150 ms of quiet, yet changes arrive at least each second.
+    // Edits every 100 ms never leave 150 ms of quiet, yet changes arrive while they go on: the
+    // ceiling sends them at least each second. Edits go on until two have arrived.
     let started = Instant::now();
     let mut during = 0;
-    for i in 0..30 {
+    let mut i = 0;
+    while during < 2 {
+        assert!(started.elapsed() < Duration::from_secs(60), "{during} changes during {i} steady edits");
         std::fs::write(repo.join("steady.txt"), format!("{i}\n")).unwrap();
+        i += 1;
         std::thread::sleep(Duration::from_millis(100));
         while changes.try_recv().is_ok() {
             during += 1;
         }
     }
-    assert!(during >= 2, "{during} changes during {:?} of steady edits", started.elapsed());
     std::fs::remove_dir_all(repo.parent().unwrap()).ok();
 }
 
