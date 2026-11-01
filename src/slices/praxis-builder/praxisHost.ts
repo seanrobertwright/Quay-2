@@ -67,7 +67,7 @@ export type Invoker = (command: string, args: Record<string, unknown>) => Promis
  * Checks the host once with `praxis workflows list --json`, the cheapest call that reaches it.
  * The backend updates the project's host condition from the outcome, so a caller reads the
  * condition, not this call's result. Aborting `signal` cancels the call; an aborted check sends
- * nothing. This is the call behind Check host and the 60 s recheck.
+ * nothing. This is the call behind the 60 s recheck.
  */
 export async function checkHost(projectPath: string, signal: AbortSignal, call: Invoker = invoke): Promise<void> {
   if (signal.aborted) return;

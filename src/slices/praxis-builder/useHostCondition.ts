@@ -1,8 +1,8 @@
 // The builder project's host condition, as the latest call for it left it (#448). It reads the
 // backend's condition when the project changes and follows the `praxis-host-condition` event;
 // it never calls `praxis` by itself, except for the 60 s recheck while a failing condition holds
-// and a view that needs the host is on screen. Check host makes one call when asked.
-import { useCallback, useEffect, useRef, useState } from "react";
+// and a view that needs the host is on screen.
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
 import { createHostRecheck } from "./hostRecheck.ts";
@@ -11,12 +11,8 @@ import { checkHost, listenHostCondition, type HostCondition } from "./praxisHost
 
 export interface HostConditionState {
   condition: HostCondition;
-  /** True while a Check host started here is running. */
-  checking: boolean;
-  /** Why the last check couldn't be made, such as an unregistered project; null when it was. */
+  /** Why the last recheck couldn't be made, such as an unregistered project; null when it was. */
   error: string | null;
-  /** Checks the host once now. A check already running is left to finish. */
-  check: () => void;
 }
 
 /** True while the window is shown, not minimized or in a background tab. */
@@ -37,7 +33,6 @@ function useDocumentVisible(): boolean {
 export function useHostCondition(projectPath: string | null, hostNeeded: boolean): HostConditionState {
   const [latest] = useState(createLatestCondition);
   const [condition, setCondition] = useState<HostCondition>({ state: "notCheckedYet" });
-  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const visible = useDocumentVisible();
 
@@ -71,8 +66,8 @@ export function useHostCondition(projectPath: string | null, hostNeeded: boolean
     };
   }, [latest]);
 
-  // A check, Check host's or the recheck's, ends by reading the condition it left. It never
-  // rejects: a check that couldn't be made sets `error`.
+  // A recheck ends by reading the condition it left. It never rejects: a check that couldn't be
+  // made sets `error`.
   const checkOnce = useCallback(
     async (path: string, signal: AbortSignal) => {
       try {
@@ -87,30 +82,12 @@ export function useHostCondition(projectPath: string | null, hostNeeded: boolean
     [read],
   );
 
-  const manual = useRef<AbortController | null>(null);
   useEffect(() => {
     latest.project(projectPath);
     setCondition(latest.current());
-    setChecking(false);
     setError(null);
     if (projectPath) read(projectPath);
-    return () => {
-      manual.current?.abort();
-      manual.current = null;
-    };
   }, [projectPath, latest, read]);
-
-  const check = useCallback(() => {
-    if (!projectPath || manual.current) return;
-    const controller = new AbortController();
-    manual.current = controller;
-    setChecking(true);
-    void checkOnce(projectPath, controller.signal).finally(() => {
-      if (manual.current !== controller) return;
-      manual.current = null;
-      setChecking(false);
-    });
-  }, [projectPath, checkOnce]);
 
   const failing = hostConditionView(condition).failing;
   const active = hostNeeded && visible && failing && projectPath !== null;
@@ -121,5 +98,5 @@ export function useHostCondition(projectPath: string | null, hostNeeded: boolean
     return () => recheck.stop();
   }, [active, projectPath, checkOnce]);
 
-  return { condition, checking, error, check };
+  return { condition, error };
 }

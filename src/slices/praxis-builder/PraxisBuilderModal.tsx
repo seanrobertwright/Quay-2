@@ -1795,13 +1795,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           <div className="ml-auto flex items-center gap-1.5 shrink-0">
             {project && (
               <>
-                <HostChip
-                  condition={host.condition}
-                  checking={host.checking}
-                  error={host.error}
-                  onCheck={host.check}
-                  onRun={runHostCommand}
-                />
+                <HostChip condition={host.condition} error={host.error} onRun={runHostCommand} />
                 {openDraft && (
                   <>
                     <button

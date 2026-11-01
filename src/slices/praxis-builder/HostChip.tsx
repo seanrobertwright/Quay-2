@@ -1,10 +1,10 @@
 // The host chip in the builder header (#448, #362) and the pieces other views reuse: the panel
 // that says what to do about a host condition, its terminal action button, and the simulated
 // host's standing banner. The chip shows the latest call's condition and never calls `praxis`
-// itself; Check host makes one call when pressed. Every condition has a text label, so its
+// itself. Every condition has a text label, so its
 // colour is never the only sign of it.
 import { useId, useRef, useState, type FC } from "react";
-import { RefreshCw, SquareTerminal, TriangleAlert } from "lucide-react";
+import { SquareTerminal, TriangleAlert } from "lucide-react";
 import { hostConditionView, type HostAction, type HostTone } from "./hostCondition.ts";
 import type { HostCondition, InteractiveCommand } from "./praxisHost.ts";
 
@@ -28,30 +28,14 @@ export const HostActionButton: FC<{ action: HostAction; onRun: (command: Interac
   </button>
 );
 
-/** Check host: one call to the host, to read its condition now. */
-export const CheckHostButton: FC<{ checking: boolean; onCheck: () => void }> = ({ checking, onCheck }) => (
-  <button
-    type="button"
-    onClick={onCheck}
-    // Not `disabled`, which would drop focus; a press while checking does nothing.
-    aria-disabled={checking}
-    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:bg-[#21262d] border border-[#30363d] text-[#c9d1d9] text-xs aria-disabled:opacity-50"
-  >
-    <RefreshCw className={`w-3.5 h-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden="true" />
-    {checking ? "Checking…" : "Check host"}
-  </button>
-);
-
 export interface HostPanelProps {
   condition: HostCondition;
-  checking: boolean;
   error: string | null;
-  onCheck: () => void;
   onRun: (command: InteractiveCommand) => void;
 }
 
-/** What a host condition means and what to do about it, with its action and Check host. */
-export const HostPanelBody: FC<HostPanelProps> = ({ condition, checking, error, onCheck, onRun }) => {
+/** What a host condition means and what to do about it, with its action. */
+export const HostPanelBody: FC<HostPanelProps> = ({ condition, error, onRun }) => {
   const view = hostConditionView(condition);
   const { panel } = view;
   return (
@@ -72,10 +56,11 @@ export const HostPanelBody: FC<HostPanelProps> = ({ condition, checking, error, 
           {error}
         </p>
       )}
-      <div className="flex items-center gap-2">
-        {panel?.kind === "terminal" && <HostActionButton action={panel.action} onRun={onRun} />}
-        <CheckHostButton checking={checking} onCheck={onCheck} />
-      </div>
+      {panel?.kind === "terminal" && (
+        <div className="flex items-center gap-2">
+          <HostActionButton action={panel.action} onRun={onRun} />
+        </div>
+      )}
     </div>
   );
 };
