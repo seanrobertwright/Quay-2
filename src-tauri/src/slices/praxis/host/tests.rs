@@ -100,7 +100,7 @@ fn a_catalog_record_is_read_and_the_host_is_signed_in() {
     assert_eq!(h.condition(), HostCondition::NotCheckedYet);
     let catalog = fixture("WorkflowCatalog");
     h.scenario(json!({ "stdout": catalog }));
-    assert_eq!(h.call(Verb::WorkflowsList, &["workflows", "list"]), CallOutcome::Record { record: catalog });
+    assert_eq!(h.call(Verb::WorkflowsList, &["workflows", "list"]), CallOutcome::Record { record: catalog, trust_hint: None });
     assert_eq!(h.calls(), [["workflows", "list", "--json"]]);
     assert_eq!(h.condition(), HostCondition::SignedIn);
     let changes = h.changes.lock().unwrap();
@@ -246,7 +246,7 @@ fn a_created_run_and_a_blocked_run() {
     let mut created = fixture("WorkflowRunResult");
     created["runPageAddress"] = json!("https://praxis-abcdefghij.localhost:7443/#/runs/wo-1");
     h.scenario(json!({ "stdout": created }));
-    assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::Record { record: created });
+    assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::Record { record: created, trust_hint: None });
 
     let held = fixtures()["cases"].as_array().unwrap().iter().find(|c| c["record"]["code"] == "WORKFLOW_RUN_HELD").unwrap()["record"].clone();
     let address = "https://praxis-abcdefghij.localhost:7443/#/runs/wo-6f1c2d3e-4b5a-4968-8776-655443322110";
@@ -269,7 +269,7 @@ fn identical_reads_in_flight_share_one_process() {
         joins.into_iter().map(|j| j.join().unwrap()).collect()
     });
     for outcome in &outcomes {
-        assert_eq!(outcome, &CallOutcome::Record { record: runs.clone() });
+        assert_eq!(outcome, &CallOutcome::Record { record: runs.clone(), trust_hint: None });
     }
     assert_eq!(h.calls().len(), 1, "{:?}", h.calls());
     // Different arguments are a different call.
@@ -404,7 +404,7 @@ fn the_vendored_read_model_fixtures_hold() {
         };
         if let (Some(verb), true) = (verb, case["valid"] == true) {
             let stdout = serde_json::to_vec(&case["record"]).unwrap();
-            assert_eq!(super::outcome::interpret(verb, Some(0), &stdout, ""), CallOutcome::Record { record: case["record"].clone() }, "{}", case["name"]);
+            assert_eq!(super::outcome::interpret(verb, Some(0), &stdout, ""), CallOutcome::Record { record: case["record"].clone(), trust_hint: None }, "{}", case["name"]);
         }
     }
 }
@@ -449,4 +449,47 @@ fn a_template_name_the_host_refuses_never_reaches_praxis() {
     assert_eq!(h.condition(), HostCondition::NotCheckedYet);
     // A name the rule admits still runs.
     assert!(matches!(h.call(Verb::Runs, &["runs", "review-code", "--limit", "20"]), CallOutcome::Record { .. }));
+}
+
+/// A `coding-operator-view/1` record as `praxis status <wo> --json` prints it, as far as the
+/// runner reads it: the CLI checks only its format and work order.
+fn operator_view(work_order: &str) -> Value {
+    json!({
+        "format": "coding-operator-view/1",
+        "workOrderId": work_order,
+        "runId": "run-1",
+        "status": "AWAITING_APPROVAL",
+        "stage": "IMPLEMENTATION",
+        "pending": ["HUMAN_APPROVAL"],
+        "runPageAddress": format!("https://praxis-abcdefghij.localhost:7443/#work-order={work_order}"),
+    })
+}
+
+#[test]
+fn status_passes_on_the_certificate_hint_praxis_writes_on_stderr() {
+    let h = Harness::new();
+    let view = operator_view("wo-1");
+    // `trustHint` in engine/src/praxis-follow.ts at the SDK pin, after the simulated banner.
+    let hint = r"Your browser does not trust this host's certificate yet: run praxis trust --state C:\Users\u\AppData\Local\Praxis\installation first.";
+    h.scenario(json!({ "stdout": view, "stderr": format!("Simulated identity: nothing decided on this host is a human decision.\n{hint}\n") }));
+    assert_eq!(h.call(Verb::Status, &["status", "wo-1"]), CallOutcome::Record { record: view.clone(), trust_hint: Some(hint.to_string()) });
+
+    h.scenario(json!({ "stdout": view }));
+    assert_eq!(h.call(Verb::Status, &["status", "wo-1"]), CallOutcome::Record { record: view, trust_hint: None });
+}
+
+#[test]
+fn only_status_reads_a_certificate_hint() {
+    let h = Harness::new();
+    let runs = fixture("WorkflowRuns");
+    h.scenario(json!({ "stdout": runs, "stderr": "Your browser does not trust this host's certificate yet: run praxis trust first.\n" }));
+    assert_eq!(h.call(Verb::Runs, &["runs", "review-code"]), CallOutcome::Record { record: runs, trust_hint: None });
+}
+
+#[test]
+fn a_record_without_a_hint_is_sent_without_the_field() {
+    let json = serde_json::to_value(CallOutcome::Record { record: json!({ "format": "x" }), trust_hint: None }).unwrap();
+    assert_eq!(json, json!({ "kind": "record", "record": { "format": "x" } }));
+    let json = serde_json::to_value(CallOutcome::Record { record: json!({}), trust_hint: Some("run praxis trust".into()) }).unwrap();
+    assert_eq!(json["trustHint"], "run praxis trust");
 }
