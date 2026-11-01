@@ -10,7 +10,7 @@
 // at once. When the host goes offline, every per-template reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
-import type { CallOutcome, HostCondition, Invoker } from "./praxisHost.ts";
+import { isHostLevelFailure, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
 
 /** A local workflow template as the builder's list has it. */
 export interface LocalTemplate {
@@ -303,7 +303,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       const comparedDigest = local.get(name)?.digest ?? null;
       if (outcome.kind !== "record") {
         // A failing host condition drops readings anyway; any other failure is the template's.
-        if (!["noHost", "hostDown", "notSignedIn", "expired", "cliNotFound"].includes(outcome.kind)) {
+        if (!isHostLevelFailure(outcome)) {
           shows.set(name, { at, comparedDigest, failed: failure(outcome) });
         }
         return;
