@@ -193,7 +193,7 @@ function failure(outcome: CallOutcome): string {
   }
 }
 
-const online = (condition: HostCondition) => condition.state === "signedIn" || condition.state === "simulatedHost";
+const online = (condition: HostCondition) => hostConditionView(condition).usable;
 
 /**
  * Runs at most `limit` tasks at once, in the order they were queued. The limit is this queue's,
