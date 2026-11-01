@@ -9,6 +9,7 @@
 // where the label is ten lower-case base32 characters. A `.localhost` name always resolves to
 // loopback (RFC 6761), so both forms stay on this machine, and both are accepted.
 import { openUrl } from "@tauri-apps/plugin-opener";
+import type { RunPageLookup } from "./runsList.ts";
 
 // The port is written out, so a default port that a URL parser would drop is refused too.
 const RUN_PAGE = /^https:\/\/(?:127\.0\.0\.1|praxis-[a-z2-7]{10}\.localhost):([1-9][0-9]{0,4})\/[^\s]*$/;
@@ -30,4 +31,27 @@ export async function openRunPage(address: string, open: (url: string) => Promis
   if (!isRunPageAddress(address)) return false;
   await open(address);
   return true;
+}
+
+/**
+ * Opens the page of the run named `name`: at `address` when praxis gave one, else at the address
+ * `lookup` finds. Null once the page opened; otherwise why it didn't, in words for the view's notice.
+ */
+export async function openRunPageOf(
+  name: string,
+  address: string | null,
+  lookup: () => Promise<RunPageLookup>,
+  open: (url: string) => Promise<void> = openUrl,
+): Promise<string | null> {
+  let target = address;
+  if (target === null) {
+    const found = await lookup();
+    if ("problem" in found) return `Couldn't find ${name}'s page: ${found.problem}`;
+    target = found.address;
+  }
+  try {
+    return (await openRunPage(target, open)) ? null : `Quay opens only pages on this machine's Praxis host. praxis gave ${target} for ${name}.`;
+  } catch (e) {
+    return `Couldn't open ${name}'s page: ${String(e)}`;
+  }
 }

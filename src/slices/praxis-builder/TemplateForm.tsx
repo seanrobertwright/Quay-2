@@ -6,13 +6,15 @@
 // readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
 // resolves a command. A Template | Runs switch turns the work area to the template's runs on the
-// host (#452).
+// host (#452), where a run's detail is drawn on the same stage strip (#453).
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Download, Info, Plus, Repeat, UserCheck, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Info, Plus, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
+import type { RunInTerminal } from "./praxisHost.ts";
 import { RunsView } from "./RunsView.tsx";
+import { StageStrip } from "./StageStrip.tsx";
 import {
   asString,
   asStrings,
@@ -29,7 +31,7 @@ import {
   Summary,
   TextInput,
 } from "./RecordFields.tsx";
-import { isObject, type Json, type JsonObject } from "./model.ts";
+import { isObject, type Json } from "./model.ts";
 import {
   argumentsText,
   chooseExposure,
@@ -42,7 +44,6 @@ import {
   parseArguments,
   removeArgument,
   setArgument,
-  templateStages,
   type CommandKey,
   type ExposureChoice,
   type HiddenExposure,
@@ -60,8 +61,11 @@ interface TemplateFormProps {
   onInstall: () => void;
   /** This template's state on the Praxis host, from the host catalog; null without one. */
   host: TemplateHost | null;
-  /** Where the Runs view lists runs from, and whether the builder is shown; without it there is no switch. */
-  runs?: { projectPath: string; shown: boolean } | null;
+  /**
+   * Where the Runs view lists runs from, whether the builder is shown, and how a run's detail
+   * opens a visible terminal for `praxis trust`; without it there is no switch.
+   */
+  runs?: { projectPath: string; shown: boolean; runInTerminal?: RunInTerminal } | null;
 }
 
 /** The list item a pointer such as `/outputPaths/2` names, quoted, or the pointer when it names none. */
@@ -316,7 +320,7 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
             Runs on the host
             <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
           </h2>
-          <RunsView projectPath={runs.projectPath} name={draft.ref.id} shown={runs.shown} />
+          <RunsView projectPath={runs.projectPath} name={draft.ref.id} shown={runs.shown} content={t} runInTerminal={runs.runInTerminal} />
         </div>
       </div>
     );
@@ -367,60 +371,6 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
         {fields}
       </form>
     </div>
-  );
-};
-
-/**
- * The coding profile's fixed stages, read-only (#224). A stage scrolls to its fields when
- * chosen; nothing here can be dragged, connected or exported.
- */
-const StageStrip: FC<{ content: JsonObject; anchor: (key: StageKey) => string }> = ({ content, anchor }) => {
-  const stages = templateStages(content);
-  const go = (key: StageKey) => {
-    const target = document.getElementById(anchor(key));
-    target?.scrollIntoView({ block: "start" });
-    const field = target?.querySelector<HTMLElement>("input, textarea") ?? target?.querySelector<HTMLElement>("button");
-    field?.focus({ preventScroll: true });
-  };
-  return (
-    <nav aria-label="Stages of the coding profile">
-      <ol className="flex flex-wrap items-stretch gap-1.5 text-xs">
-        {stages.map((s, i) => (
-          <li key={s.key} className="flex items-center gap-1.5">
-            {i > 0 && (
-              <span aria-hidden="true" className="text-[#6e7681]">
-                →
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => go(s.key)}
-              title={`Go to the ${s.label.toLowerCase()} fields`}
-              className={`flex flex-col items-start px-2 py-1 rounded-md border text-left ${
-                s.muted ? "border-dashed border-[#30363d] text-[#6e7681]" : "border-[#30363d] bg-[#161b22] text-[#c9d1d9] hover:border-[#58a6ff]"
-              }`}
-            >
-              <span className="flex items-center gap-1 font-medium">
-                {s.label}
-                {s.loop && (
-                  <span className="inline-flex items-center gap-0.5 text-[#d2a8ff]">
-                    <Repeat className="w-3 h-3" aria-hidden="true" />
-                    Validation
-                  </span>
-                )}
-                {s.reapprove && (
-                  <span className="inline-flex items-center gap-0.5 text-[#f0883e]">
-                    <UserCheck className="w-3 h-3" aria-hidden="true" />
-                    re-approve
-                  </span>
-                )}
-              </span>
-              {s.detail && <span className="text-[10px] text-[#8b949e]">{s.detail}</span>}
-            </button>
-          </li>
-        ))}
-      </ol>
-    </nav>
   );
 };
 

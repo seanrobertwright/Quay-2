@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isRunPageAddress, openRunPage } from "./runPage.ts";
+import { isRunPageAddress, openRunPage, openRunPageOf } from "./runPage.ts";
 
 test("a run page on the local host's https port is a run page address", () => {
   assert.equal(isRunPageAddress("https://127.0.0.1:7443/"), true);
@@ -56,4 +56,36 @@ test("a refused address never reaches the opener", async () => {
   const opened: string[] = [];
   assert.equal(await openRunPage("https://example.com/", async (url) => void opened.push(url)), false);
   assert.deepEqual(opened, []);
+});
+
+test("a run's page opens at the address praxis gave, without a lookup", async () => {
+  const opened: string[] = [];
+  const lookup = async () => assert.fail("looked up an address it already had");
+  assert.equal(await openRunPageOf("run-1", "https://127.0.0.1:7443/#/runs/wo-1", lookup, async (url) => void opened.push(url)), null);
+  assert.deepEqual(opened, ["https://127.0.0.1:7443/#/runs/wo-1"]);
+});
+
+test("a run's page without an address opens at the one the lookup finds", async () => {
+  const opened: string[] = [];
+  const lookup = async () => ({ address: "https://praxis-abcdefghij.localhost:7443/#work-order=wo-1" });
+  assert.equal(await openRunPageOf("run-1", null, lookup, async (url) => void opened.push(url)), null);
+  assert.deepEqual(opened, ["https://praxis-abcdefghij.localhost:7443/#work-order=wo-1"]);
+});
+
+test("opening a run's page says why when the lookup, the address or the opener fails", async () => {
+  const opened: string[] = [];
+  const open = async (url: string) => void opened.push(url);
+  assert.equal(await openRunPageOf("run-1", null, async () => ({ problem: "no host" }), open), "Couldn't find run-1's page: no host");
+  assert.equal(
+    await openRunPageOf("run-1", "https://example.com/", async () => ({ problem: "unused" }), open),
+    "Quay opens only pages on this machine's Praxis host. praxis gave https://example.com/ for run-1.",
+  );
+  assert.deepEqual(opened, []);
+  const broken = async () => {
+    throw new Error("no browser");
+  };
+  assert.equal(
+    await openRunPageOf("run-1", "https://127.0.0.1:7443/", async () => ({ problem: "unused" }), broken),
+    "Couldn't open run-1's page: Error: no browser",
+  );
 });

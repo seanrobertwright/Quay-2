@@ -67,8 +67,14 @@ pub const RUN_ERROR_FORMAT: &str = "aiws-workflow-run-error/1";
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum CallOutcome {
-    /// Exit 0 with a record in the format Quay reads for the command.
-    Record { record: Value },
+    /// Exit 0 with a record in the format Quay reads for the command. For `status`, `trust_hint`
+    /// is the certificate hint `praxis` writes on stderr while the run waits for a browser
+    /// decision and the browser may not trust the host's certificate; it is left out when absent.
+    Record {
+        record: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trust_hint: Option<String>,
+    },
     /// `praxis run` exit 7: a held run, or one awaiting approval, blocks new runs.
     Blocked { record: Value, blocking_run_address: String },
     /// Exit 2, or a record Quay doesn't read: "Quay needs an update for this praxis".
@@ -127,6 +133,15 @@ const PHRASES: [(&str, Phrase); 5] = [
     ("The host did not accept the CLI session", Phrase::Expired),
 ];
 
+/// The words every certificate hint of `praxis status` holds (`trustHint` in
+/// `engine/src/praxis-follow.ts` at the pinned SDK commit).
+const TRUST_HINT_PHRASE: &str = "this host's certificate";
+
+/// The certificate hint on `stderr`, the first line holding [`TRUST_HINT_PHRASE`].
+fn trust_hint(stderr: &str) -> Option<String> {
+    stderr.lines().map(str::trim).find(|line| line.contains(TRUST_HINT_PHRASE)).map(str::to_string)
+}
+
 /// `praxis`'s stderr, trimmed, or a stand-in when it printed nothing.
 fn message(stderr: &str, code: i32) -> String {
     let text = stderr.trim();
@@ -150,7 +165,10 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
         return CallOutcome::Refused { message: format!("praxis was stopped before it finished. {}", stderr.trim()).trim_end().to_string() };
     };
     match code {
-        0 => record(stdout, verb.format()).map_or_else(|o| o, |record| CallOutcome::Record { record }),
+        0 => record(stdout, verb.format()).map_or_else(
+            |o| o,
+            |record| CallOutcome::Record { record, trust_hint: if verb == Verb::Status { trust_hint(stderr) } else { None } },
+        ),
         1 => {
             let message = message(stderr, code);
             match PHRASES.iter().find(|(phrase, _)| message.contains(phrase)).map(|(_, kind)| *kind) {
@@ -178,7 +196,7 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
 pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
     let simulated = |record: &Value| record.get("simulatedIdentity") == Some(&Value::Bool(true));
     match outcome {
-        CallOutcome::Record { record } | CallOutcome::Blocked { record, .. } => {
+        CallOutcome::Record { record, .. } | CallOutcome::Blocked { record, .. } => {
             Some(if simulated(record) { HostCondition::SimulatedHost } else { HostCondition::SignedIn })
         }
         CallOutcome::NoHost { .. } => Some(HostCondition::NoHostSetUp),
