@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useId, useRef, useState } 
 import { createPortal } from "react-dom";
 import { useDialogFocus, usePopupLayer } from "../../overlay/useOverlay";
 import type { ModalLayer } from "./modalLayer";
-import { confirmButtonClass } from "./confirmStyle";
+import { confirmButtonClass, type ConfirmPrompt } from "./confirmStyle";
 
 /**
  * Topos's modal layer (#421), which every `ConfirmDialog` inside Topos opens: `host` is where the
@@ -21,13 +21,7 @@ export interface DialogValues {
   message: string;
 }
 
-export interface ConfirmRequest {
-  title: string;
-  detail: string;
-  /** The confirm button's text, which names the action, so its color is never the only cue. */
-  confirmLabel: string;
-  /** Drops or overwrites work: the confirm button takes the danger style, never Stage's green (#421). */
-  destructive?: boolean;
+export interface ConfirmRequest extends ConfirmPrompt {
   /** A checkbox that widens what the confirm does; it starts as `initial`. */
   checkbox?: { label: string; initial: boolean };
   /** A text field, such as a new branch's name. Focus starts in it rather than on Cancel. */

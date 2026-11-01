@@ -2,19 +2,14 @@
 // what a refusal leads to, and the Restore toast. Every name in these strings is untrusted, so
 // they are only ever rendered as text.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 import type { GitRefs } from "./graphRefs.ts";
 import { shortOid } from "./graphStore.ts";
 import { RESTORE_MS } from "./toasts.ts";
 
 /** The words of a confirm dialog with no field. */
-export interface Prompt {
-  title: string;
-  detail: string;
-  confirmLabel: string;
-  /** Drops or overwrites work, so the confirm button takes the danger style (#421). */
-  destructive?: boolean;
-}
+export type Prompt = ConfirmPrompt;
 
 /** The first confirm of every branch delete. */
 export function deleteBranchPrompt(name: string): Prompt {

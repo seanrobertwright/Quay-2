@@ -2,6 +2,7 @@
 // cherry-pick or revert, which of Continue, Skip and Abort it offers, and what each confirms.
 // Labels and subjects come from git and are untrusted text; the banner renders them as text.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 
@@ -128,10 +129,7 @@ export function bannerView(state: OpState, { running, summary }: BannerOptions):
 }
 
 /** What a confirm dialog asks before Abort or Skip. */
-export interface StepConfirm {
-  title: string;
-  detail: string;
-  confirmLabel: string;
+export interface StepConfirm extends ConfirmPrompt {
   /** Always set: Abort and Skip both lose resolutions, so the button takes the danger style (#421). */
   destructive: true;
 }

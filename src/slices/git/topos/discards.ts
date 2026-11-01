@@ -1,6 +1,7 @@
 // Discarding and restoring unstaged changes (#366, #387): the session's Recently discarded list,
 // and the words the inspector and the diff view use for a discard.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import type { Selection } from "./diffView.ts";
 import { parseGitError } from "./gitVersion.ts";
 import { lineCount } from "./lineSelection.ts";
@@ -116,10 +117,7 @@ export function discardedMessage(label: string, files: number): string {
   return `Discarded ${label}. Undo within ${UNDO_MS / 1000} seconds, or restore it from Recently discarded.`;
 }
 
-export interface DiscardConfirm {
-  title: string;
-  detail: string;
-  confirmLabel: string;
+export interface DiscardConfirm extends ConfirmPrompt {
   /** Always set: every discard drops work, so its button takes the danger style (#421). */
   destructive: true;
 }

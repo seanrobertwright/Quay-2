@@ -3,6 +3,7 @@
 // "n unresolved" navigator and the check that no markers remain before Mark resolved. Rust never
 // parses markers. The text is the file's own, untrusted content: it is only ever shown as text.
 
+import type { ConfirmPrompt } from "./confirmStyle.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
 import { bannerView, type OpState, type SideView } from "./operation.ts";
 
@@ -143,13 +144,7 @@ export function unresolvedLabel(parsed: ParsedConflicts): string {
 }
 
 /** What a confirm dialog asks before a resolver action. */
-export interface ResolverConfirm {
-  title: string;
-  detail: string;
-  confirmLabel: string;
-  /** Drops or overwrites work, so the confirm button takes the danger style (#421). */
-  destructive?: boolean;
-}
+export type ResolverConfirm = ConfirmPrompt;
 
 /** What Mark resolved confirms while `parsed`, the Result, still holds markers, or null when it doesn't. */
 export function confirmMarkResolved(path: string, parsed: ParsedConflicts): ResolverConfirm | null {
