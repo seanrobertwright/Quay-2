@@ -55,6 +55,16 @@ impl PraxisKind {
             _ => Some("id"),
         }
     }
+
+    /// Why `id` can't name a new definition of this kind, beyond the filename-safe rule every
+    /// kind shares, or `None` when it can. Only a template narrows it, to the Praxis host's
+    /// template-name rule.
+    pub fn name_problem(self, id: &str) -> Option<String> {
+        match self {
+            PraxisKind::Templates => super::template_name::check_template_name(id).err(),
+            _ => None,
+        }
+    }
 }
 
 /// Why a definition file can't be opened: it isn't valid JSON (with the position of the

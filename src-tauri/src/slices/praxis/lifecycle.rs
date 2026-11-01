@@ -310,8 +310,8 @@ pub fn rename_definition(
     hooks: &[ReferenceHook],
 ) -> Result<RenameOutcome, String> {
     validate_id(id)?;
-    if kind == PraxisKind::Templates {
-        super::template_name::check_template_name(new_id)?;
+    if let Some(problem) = kind.name_problem(new_id) {
+        return Err(problem);
     }
     validate_id(new_id)?;
     if drafts.len() > MAX_DRAFTS {

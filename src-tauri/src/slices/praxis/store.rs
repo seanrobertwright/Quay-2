@@ -10,7 +10,6 @@ use std::sync::Mutex;
 use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
-use super::template_name::check_template_name;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
     IdMismatch, LayoutInput, PraxisKind, SaveOutcome,
@@ -283,8 +282,8 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
             }
         })
         .map(|mut entry: DefinitionEntry| {
-            if kind == PraxisKind::Templates && validate_id(&entry.id).is_ok() {
-                entry.name_problem = check_template_name(&entry.id).err();
+            if validate_id(&entry.id).is_ok() {
+                entry.name_problem = kind.name_problem(&entry.id);
             }
             entry
         })
@@ -556,8 +555,10 @@ pub fn save_definition(
     expected_bindings_hash: Option<&str>,
     force: bool,
 ) -> Result<SaveOutcome, String> {
-    if kind == PraxisKind::Templates && expected_hash.is_none() {
-        check_template_name(id)?;
+    if expected_hash.is_none()
+        && let Some(problem) = kind.name_problem(id)
+    {
+        return Err(problem);
     }
     validate_id(id)?;
     let Value::Object(mut record) = content else {
