@@ -127,6 +127,12 @@ export interface GrantCheck {
 /** How a definition file differs from the last commit. */
 export type ChangeStatus = "modified" | "added" | "deleted";
 
+/**
+ * How a template file differs from the last commit, as the Install and Run dialogs see it:
+ * "unknown" when git status couldn't be read. A file that doesn't differ has no value (undefined).
+ */
+export type GitChange = ChangeStatus | "unknown";
+
 /** `praxis_changes`: the contracts, grants, templates and graph bindings changed since the last commit, empty outside git. */
 export interface ChangedFiles {
   files: { kind: PraxisKind; id: string; status: ChangeStatus }[];

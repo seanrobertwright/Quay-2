@@ -397,10 +397,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const templateSaved = hostCatalog.saved;
   // The On host only subsection, sorted and capped once per catalog change, not per render.
   const { catalog: shownCatalog, version: catalogVersion } = hostCatalog;
-  /** Template `name`'s host state for the form and the Install dialog, read from the catalog on each render. */
+  /** Template `name`'s host state for the form, the Install dialog and Run's confirm, read from the catalog on each render. */
   const templateHost = (name: string): TemplateHost | null =>
     shownCatalog
-      ? { view: shownCatalog.template(name), condition: host.condition, onCheckAgain: () => void shownCatalog.checkAgain(name) }
+      ? {
+          view: shownCatalog.template(name),
+          condition: host.condition,
+          copy: shownCatalog.hostCopy(name),
+          onCheckAgain: () => void shownCatalog.checkAgain(name),
+        }
       : null;
   const hostOnlyShown = useMemo(
     () => (shownCatalog ? hostOnlySection(shownCatalog.hostOnly()) : null),
@@ -2307,7 +2312,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onInstall={() => setInstallShown(open.id)}
                     host={templateHost(open.id)}
                     // The builder is only hidden when it closes, so the Runs view is told when.
-                    runs={projectPath ? { projectPath, shown: isOpen, runInTerminal: onRunInTerminal } : null}
+                    runs={
+                      projectPath
+                        ? {
+                            projectPath,
+                            shown: isOpen,
+                            runInTerminal: onRunInTerminal,
+                            changed: changesError ? "unknown" : currentChanges?.byKey.get(definitionKey({ kind: "templates", id: open.id })),
+                          }
+                        : null
+                    }
                   />
                 </>
               ) : openDraft ? (

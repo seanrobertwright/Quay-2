@@ -17,7 +17,7 @@ import { installCommands, installTarget, runCommand, type InstallCommand } from 
 import { focusedElement } from "./keyboard.ts";
 import { definitionPath } from "./session.ts";
 import { argumentsText } from "./template.ts";
-import type { ChangeStatus, DefinitionFile } from "./types.ts";
+import type { GitChange, DefinitionFile } from "./types.ts";
 
 type Read = { state: "loading" } | { state: "failed"; error: string } | { state: "done"; path: string; file: DefinitionFile };
 
@@ -25,8 +25,8 @@ export const InstallDialog: FC<{
   rootRef: Ref<HTMLDivElement>;
   projectPath: string;
   name: string;
-  /** How the template file differs from the last commit: undefined when it doesn't, "unknown" when git status couldn't be read. */
-  changed: ChangeStatus | "unknown" | undefined;
+  /** How the template file differs from the last commit; undefined when it doesn't. */
+  changed: GitChange | undefined;
   /** Changes after each save, so the saved file and its diff are read again. */
   refresh: number;
   /** The open draft has edits the saved file doesn't. */

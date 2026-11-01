@@ -3,7 +3,7 @@
 // catalog (#449) and never calls `praxis` itself: Check again asks the catalog.
 import { useEffect, useState, type FC } from "react";
 import { RefreshCw } from "lucide-react";
-import type { TemplateHostView } from "./hostCatalog.ts";
+import type { HostCopy, TemplateHostView } from "./hostCatalog.ts";
 import { hostStateLook } from "./HostList.tsx";
 import { templateStatusLine } from "./hostStatus.ts";
 import type { HostCondition } from "./praxisHost.ts";
@@ -12,6 +12,8 @@ import type { HostCondition } from "./praxisHost.ts";
 export interface TemplateHost {
   view: TemplateHostView;
   condition: HostCondition;
+  /** The host's installed copy, from its latest `workflows show`; null or absent when unknown. */
+  copy?: HostCopy | null;
   /** Rereads this template only. */
   onCheckAgain: () => void;
 }

@@ -493,3 +493,91 @@ fn a_record_without_a_hint_is_sent_without_the_field() {
     let json = serde_json::to_value(CallOutcome::Record { record: json!({}), trust_hint: Some("run praxis trust".into()) }).unwrap();
     assert_eq!(json["trustHint"], "run praxis trust");
 }
+
+/// The `aiws-workflow-run-error/1` refusal `praxis run` prints with exit 7 for `code`, naming the
+/// run that blocks it.
+fn run_refusal(code: &str) -> Value {
+    let mut refusal = fixtures()["cases"].as_array().unwrap().iter().find(|c| c["record"]["code"] == code).unwrap()["record"].clone();
+    refusal["blockingRunAddress"] = json!("https://praxis-abcdefghij.localhost:7443/#work-order=wo-6f1c2d3e-4b5a-4968-8776-655443322110");
+    refusal
+}
+
+#[test]
+fn every_outcome_of_a_run_creation() {
+    let h = Harness::new();
+    let run = || h.call(Verb::Run, &["run", "review-code"]);
+    let kind = |outcome: &CallOutcome| serde_json::to_value(outcome).unwrap()["kind"].as_str().unwrap().to_string();
+
+    h.scenario(json!({ "stdout": fixture("WorkflowRunResult") }));
+    assert_eq!(run(), CallOutcome::Record { record: fixture("WorkflowRunResult"), trust_hint: None });
+
+    for code in ["WORKFLOW_RUN_HELD", "WORKFLOW_RUN_PENDING_APPROVAL"] {
+        h.scenario(json!({ "stdout": run_refusal(code), "exit": 7 }));
+        assert_eq!(kind(&run()), "blocked", "{code}");
+    }
+
+    for (stderr, expected) in [
+        (praxis_err(r"There is no Praxis host connection descriptor at C:\x\connection.json. Start the host, or pass --state DIR for its installation."), "noHost"),
+        (praxis_err("Could not connect to the host at https://127.0.0.1:7443; is it running?"), "hostDown"),
+        (praxis_err(r"There is no CLI session for this host in C:\x\cli. Run praxis login."), "notSignedIn"),
+        (praxis_err("The host did not accept the CLI session (UNAUTHENTICATED). Run praxis login."), "expired"),
+    ] {
+        h.scenario(json!({ "stderr": stderr, "exit": 1 }));
+        assert_eq!(kind(&run()), expected, "{stderr}");
+    }
+
+    let stderr = praxis_err("The host refused the run (READINESS_BLOCKED): Required capability TOOL node is not supported.");
+    h.scenario(json!({ "stderr": stderr, "exit": 1 }));
+    assert_eq!(run(), CallOutcome::Refused { message: stderr.trim().to_string() });
+
+    h.scenario(json!({ "stderr": praxis_err("unknown option --jsn"), "exit": 2 }));
+    assert_eq!(kind(&run()), "needsUpdate");
+    let mut result = fixture("WorkflowRunResult");
+    result["format"] = json!("aiws-workflow-run-result/2");
+    h.scenario(json!({ "stdout": result }));
+    assert_eq!(kind(&run()), "needsUpdate");
+
+    // An exit praxis doesn't document for `run` says nothing about whether the run was created.
+    h.scenario(json!({ "stderr": praxis_err("something broke"), "exit": 9 }));
+    let outcome = run();
+    assert!(matches!(&outcome, CallOutcome::Unknown { detail } if detail.contains("something broke")), "{outcome:?}");
+    // Each creation ran praxis once: Quay retries none of them.
+    assert_eq!(h.calls().len(), 11);
+    assert!(h.calls().iter().all(|c| c == &["run", "review-code", "--json"]), "{:?}", h.calls());
+}
+
+#[test]
+fn a_repeated_run_while_one_is_in_flight_joins_the_same_process() {
+    let h = Harness::new();
+    let created = fixture("WorkflowRunResult");
+    h.scenario(json!({ "stdout": created, "delayMs": 1500 }));
+    let outcomes: Vec<CallOutcome> = std::thread::scope(|scope| {
+        let joins: Vec<_> = (0..2).map(|_| scope.spawn(|| h.call(Verb::Run, &["run", "review-code"]))).collect();
+        joins.into_iter().map(|j| j.join().unwrap()).collect()
+    });
+    for outcome in &outcomes {
+        assert_eq!(outcome, &CallOutcome::Record { record: created.clone(), trust_hint: None });
+    }
+    assert_eq!(h.calls().len(), 1, "{:?}", h.calls());
+}
+
+#[test]
+fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
+    let h = Harness::with_bounds(CallBounds { create: Duration::from_secs(2), ..CallBounds::default() });
+    let created = fixture("WorkflowRunResult");
+    h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
+    assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::TimedOut);
+    let profile: Value = serde_json::from_str(&std::fs::read_to_string(h.src().join("profile.json")).unwrap()).unwrap();
+    let pending = profile["pending"]["requestId"].clone();
+    assert!(pending.is_string(), "the killed creation is still pending: {profile}");
+    // Quay ran praxis once and didn't run it again by itself.
+    assert_eq!(h.calls().len(), 1);
+
+    h.scenario(json!({ "stdout": created, "profile": true }));
+    let CallOutcome::Record { record, .. } = h.call(Verb::Run, &["run", "review-code"]) else { panic!("the next run didn't finish") };
+    assert_eq!(record["requestId"], pending, "the next run resumed the pending creation");
+    assert_eq!(record["workOrderId"], created["workOrderId"]);
+    let profile: Value = serde_json::from_str(&std::fs::read_to_string(h.src().join("profile.json")).unwrap()).unwrap();
+    assert_eq!(profile["pending"], Value::Null);
+    assert_eq!(h.calls(), [["run", "review-code", "--json"], ["run", "review-code", "--json"]]);
+}
