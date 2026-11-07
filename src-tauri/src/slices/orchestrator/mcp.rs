@@ -24,6 +24,15 @@ pub struct JsonRpcRequest {
     pub params: Option<Value>,
 }
 
+/// A request without an `id` is a JSON-RPC notification, which gets no JSON-RPC answer. MCP's
+/// streamable HTTP transport answers it with 202 Accepted and no body. Codex 0.164 drops the
+/// whole connection when `notifications/initialized` gets any other reply.
+fn reply_to_notification(req: &JsonRpcRequest) -> Option<Response> {
+    req.id
+        .is_none()
+        .then(|| StatusCode::ACCEPTED.into_response())
+}
+
 #[derive(Debug, Serialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
@@ -48,6 +57,9 @@ pub async fn handle_mcp_request(
     caller: AuthenticatedTerminal,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
+    if let Some(accepted) = reply_to_notification(&req) {
+        return accepted;
+    }
     let caller_id = caller.id();
     let id = req.id.unwrap_or(Value::Null);
 
@@ -76,15 +88,6 @@ pub async fn handle_mcp_request(
                 error: None,
             };
             Json(res).into_response()
-        }
-
-        "notifications/initialized" => {
-            (
-                StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, "application/json")],
-                "{}",
-            )
-                .into_response()
         }
 
         "ping" => {
@@ -648,5 +651,29 @@ mod tests {
         assert!(raw.contains(r#""jsonrpc":"2.0""#));
         assert!(raw.contains(r#""id":42"#));
         assert!(!raw.contains("error"));
+    }
+
+    fn rpc(body: &str) -> JsonRpcRequest {
+        serde_json::from_str(body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_notification_is_accepted_with_no_body() {
+        for method in ["notifications/initialized", "notifications/cancelled"] {
+            let body = format!(r#"{{"jsonrpc":"2.0","method":"{method}"}}"#);
+            let reply = reply_to_notification(&rpc(&body)).expect(method);
+
+            assert_eq!(reply.status(), StatusCode::ACCEPTED, "{method}");
+            let bytes = axum::body::to_bytes(reply.into_body(), 1024).await.unwrap();
+            assert!(bytes.is_empty(), "{method}: {bytes:?}");
+        }
+    }
+
+    #[test]
+    fn a_request_with_an_id_is_not_a_notification() {
+        assert!(
+            reply_to_notification(&rpc(r#"{"jsonrpc":"2.0","id":0,"method":"initialize"}"#))
+                .is_none()
+        );
     }
 }

@@ -409,16 +409,13 @@ pub async fn handle_mcp(
     crate::slices::orchestrator::mcp::handle_mcp_request(State(ctx), State(a2a), caller, Json(req)).await
 }
 
+/// Quay's MCP server sends nothing unprompted, so it offers no event stream to `GET`. MCP's
+/// streamable HTTP transport says such a server answers `GET` with 405 Method Not Allowed.
 pub async fn handle_mcp_get(headers: HeaderMap) -> Response {
     if let Err(rejection) = validate_host_and_origin(&headers) {
         return rejection.into_response();
     }
-    (
-        StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        r#"{"name":"quay-a2a","status":"ready"}"#,
-    )
-        .into_response()
+    (StatusCode::METHOD_NOT_ALLOWED, [(axum::http::header::ALLOW, "POST")]).into_response()
 }
 
 pub async fn handle_machina_agent_card(State(ctx): State<Arc<AppContext>>) -> Response {
@@ -658,5 +655,13 @@ mod tests {
         );
 
         assert_eq!(result.unwrap().id(), "term-b");
+    }
+
+    #[tokio::test]
+    async fn mcp_get_is_not_allowed_because_quay_offers_no_event_stream() {
+        let reply = handle_mcp_get(loopback_headers(None)).await;
+
+        assert_eq!(reply.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(reply.headers().get("allow").unwrap(), "POST");
     }
 }
