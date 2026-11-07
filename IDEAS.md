@@ -129,10 +129,9 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
 
 ### Ideas to explore
 
-* **1.** **Trans server, with a backend UI and an Android app.** The word "Trans"
-  is a best reading of the handwriting; confirm what it stands for. It reads
-  as a server that lets Quay be reached away from the desk, which is also
-  what idea 3 needs.
+* **1.** **Praxis server, with a backend UI and an Android app.** It reads as a
+  server that lets Quay be reached away from the desk, which is also what
+  idea 3 needs.
 * **2.** **Agentic group chat.** Create an orchestrated "chat room" for agents. The
   user picks how many agents and states the problem, and a chat-room window
   opens so the user can watch. Example: ten agents asked to "recommend
@@ -194,7 +193,7 @@ Re-prioritized 2026-11-07 across the whole backlog. Effort is S, M or L.
 | **P9** | **"System One" Laya Process Supervisor** | M | Still useful, but no current work depends on it. |
 | **P10** | **Dual-Pane Diff & Conflict Resolver** | M | Check what Topos's staging inspector already covers before starting. |
 | **P11** | **Shortcut manager** and **spend budget caps** | S–M each | Nice to have. |
-| **P12** | **Trans server** (idea 1) and **Android app** (idea 3) | L | Largest scope; the server comes first, and idea 1's meaning needs confirming. |
+| **P12** | **Praxis server** (idea 1) and **Android app** (idea 3) | L | Largest scope; the server comes first. |
 
 Done and removed from the ranking: the Archon & SDD Graph Inspector, session
 scrollback persistence, and GitKraken-like functionality (Topos).
