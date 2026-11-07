@@ -25,6 +25,7 @@ use slices::github::{
     check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
     list_github_prs,
 };
+use slices::logging::open_logs_folder;
 use slices::machina::{
     machina_abort, machina_accept_and_merge, machina_approve_project_config,
     machina_bind_author_terminal,
@@ -61,7 +62,8 @@ use slices::workspace::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt::init();
+    // Held until the app exits so the background log writer keeps draining.
+    let _log_guard = slices::logging::init(&slices::logging::logs_dir());
 
     let pty_manager = PtyManager::new();
     let bridge_state = BridgeState::new();
@@ -168,6 +170,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_logs_folder,
             get_bridge_port,
             spawn_terminal,
             get_terminal_output,

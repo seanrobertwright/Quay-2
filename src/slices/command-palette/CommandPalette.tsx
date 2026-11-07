@@ -41,6 +41,7 @@ import {
   Cpu,
   ArrowUpCircle,
   Workflow,
+  FolderOpen,
   X,
 } from "lucide-react";
 import { useOverlay } from "../overlay/useOverlay";
@@ -93,6 +94,7 @@ interface CommandPaletteProps {
   onOpenFactoryStation?: () => void;
   onOpenPraxisBuilder?: () => void;
   onOpenTopos?: () => void;
+  onOpenLogsFolder?: () => void;
   /** What Topos targets, which decides whether its New branch and Checkout entries show (#393). */
   toposTarget?: { path: string } | null;
   onToposRequest?: (kind: ToposRequestKind) => void;
@@ -129,6 +131,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenFactoryStation,
   onOpenPraxisBuilder,
   onOpenTopos,
+  onOpenLogsFolder,
   toposTarget = null,
   onToposRequest,
   onCheckForUpdates,
@@ -470,6 +473,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    if (onOpenLogsFolder) {
+      items.push({
+        id: "action-open-logs-folder",
+        category: "Tools & Actions",
+        title: "Open logs folder",
+        subtitle: "Show Quay's log files and crash.log in the file manager",
+        icon: <FolderOpen className="w-4 h-4 text-[#8b949e]" />,
+        action: () => onOpenLogsFolder(),
+      });
+    }
+
     if (onToposRequest) {
       for (const entry of toposPaletteEntries(toposTarget)) {
         items.push({
@@ -608,6 +622,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenFactoryStation,
     onOpenPraxisBuilder,
     onOpenTopos,
+    onOpenLogsFolder,
     toposTarget,
     onToposRequest,
     onCheckForUpdates,
