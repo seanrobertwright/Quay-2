@@ -57,7 +57,7 @@ where
 /// writer alive; hold it for the life of the app. If the folder cannot be created or opened,
 /// logging falls back to the console alone and the app still starts.
 pub fn init(dir: &Path) -> Option<WorkerGuard> {
-    let console = tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_filter(LevelFilter::INFO);
+    let console = tracing_subscriber::fmt::layer().with_writer(std::io::stdout).with_filter(LevelFilter::INFO);
     let (guard, file) = match std::fs::create_dir_all(dir)
         .map_err(|e| e.to_string())
         .and_then(|()| file_writer(dir))
@@ -68,8 +68,12 @@ pub fn init(dir: &Path) -> Option<WorkerGuard> {
             (None, None)
         }
     };
-    // `try_init`: a second call (or a test harness) must not panic on the global subscriber.
-    let _ = tracing_subscriber::registry().with(file).with(console).try_init();
+    // `try_init`, not `init`: a second call must not panic on the global subscriber.
+    if let Err(error) = tracing_subscriber::registry().with(file).with(console).try_init() {
+        eprintln!("Quay could not start logging: {error}");
+        crash::install_panic_hook(dir.to_path_buf());
+        return None;
+    }
     crash::install_panic_hook(dir.to_path_buf());
     tracing::info!("Quay {} logging to {}", env!("CARGO_PKG_VERSION"), dir.display());
     guard

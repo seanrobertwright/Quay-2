@@ -96,6 +96,19 @@ mod tests {
     /// The panic hook is process-wide; tests that swap it take this lock.
     static HOOK_LOCK: Mutex<()> = Mutex::new(());
 
+    /// Puts the hook that was installed before the test back, even if an assertion fails.
+    type Hook = Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>;
+
+    struct RestoreHook(Option<Hook>);
+
+    impl Drop for RestoreHook {
+        fn drop(&mut self) {
+            if let Some(hook) = self.0.take() {
+                std::panic::set_hook(hook);
+            }
+        }
+    }
+
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("quay2-crash-{}-{}", name, uuid::Uuid::new_v4().simple()));
         fs::create_dir_all(&dir).unwrap();
@@ -141,7 +154,7 @@ mod tests {
     fn a_panic_writes_an_entry_and_still_reaches_the_previous_hook() {
         let _lock = HOOK_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let dir = temp_dir("hook");
-        let original = std::panic::take_hook();
+        let _restore = RestoreHook(Some(std::panic::take_hook()));
         let previous_ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag = previous_ran.clone();
         std::panic::set_hook(Box::new(move |_| flag.store(true, std::sync::atomic::Ordering::SeqCst)));
@@ -153,7 +166,6 @@ mod tests {
             .unwrap()
             .join();
 
-        std::panic::set_hook(original);
         assert!(result.is_err());
         assert!(previous_ran.load(std::sync::atomic::Ordering::SeqCst), "the previous hook did not run");
         let text = fs::read_to_string(dir.join(CRASH_LOG_NAME)).unwrap();
@@ -168,13 +180,12 @@ mod tests {
         let dir = temp_dir("unwritable");
         let blocker = dir.join("file");
         fs::write(&blocker, "x").unwrap();
-        let original = std::panic::take_hook();
+        let _restore = RestoreHook(Some(std::panic::take_hook()));
         std::panic::set_hook(Box::new(|_| {}));
 
         install_panic_hook(blocker.join("logs"));
         let result = std::thread::spawn(|| panic!("still just one panic")).join();
 
-        std::panic::set_hook(original);
         assert!(result.is_err());
     }
 }
