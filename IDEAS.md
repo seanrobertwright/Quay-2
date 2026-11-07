@@ -18,6 +18,7 @@ This document captures the strategic features, architectural proposals, and futu
 * **GitHub Companion**: Drawer for triage of open issues and PRs (`Ctrl+B I`).
 * **Terminal Session State & Scrollback Persistence Across Restarts**: Persistent storage of session metadata in `%LOCALAPPDATA%\Quay2\sessions\sessions.json` and real-time streaming of ANSI/color scrollback logs to `<session_id>.log`. Reopening Quay 2 automatically restores dormant sessions with their complete historical scrollback, and features a 1-click **"Relaunch Agent"** button in both `TerminalView` and `Rail` to instantly resume work in the same project directory.
 * **Terminal Engine Stabilization**: Fixed ConPTY UTF-8 character boundary panics, single-layout pane switching, duplicate CPR `CC` input injection, and automatic `Starting... -> Ready` status transitions.
+* **Topos Git Graph**: GitKraken-style commit graph, staging inspector, and git operations inside Quay (v1 finished 2026-11-01). This covers notebook idea 4 below.
 
 ---
 
@@ -122,12 +123,78 @@ Beyond the three strategic features above, several tactical enhancements have em
 
 ---
 
-## 4. Priority Recommendation
+## 4. Notebook Ideas (added 2026-11-07)
 
-| Priority | Feature | Estimated Effort | Impact |
+Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
+
+### Ideas to explore
+
+* **1.** **Trans server, with a backend UI and an Android app.** The word "Trans"
+  is a best reading of the handwriting; confirm what it stands for. It reads
+  as a server that lets Quay be reached away from the desk, which is also
+  what idea 3 needs.
+* **2.** **Agentic group chat.** Create an orchestrated "chat room" for agents. The
+  user picks how many agents and states the problem, and a chat-room window
+  opens so the user can watch. Example: ten agents asked to "recommend
+  improvements to the codebase".
+  * The orchestrator opens with "OK team, how do you suggest we approach
+    this problem?"
+  * Every agent recommends how it would tackle the problem.
+  * The team reaches consensus and begins the work.
+  * Builds on the A2A bus and the Tri-Agent Council preset.
+* **3.** **Quay mobile app for Android, built with Tauri.** Quay's core is Windows
+  ConPTY terminals, so a phone app is a remote client for a desktop Quay.
+  It depends on a server like idea 1.
+* **4.** **GitKraken-like functionality ("GitKraken in Quay", or GiQ).** Done as
+  Topos; see the status overview.
+* **5.** **Observability in Quay.** May belong to AI-WS-SDK: the SDK provides the
+  framework and Quay does the implementation. Plan it with the AI-WS-SDK
+  side, after idea 6 gives Quay logs to observe.
+* **6.** **Debugging and logging of errors: error logs.** Today Quay calls
+  `tracing_subscriber::fmt::init()`, which writes to stdout. A packaged
+  Windows app has no console, so nothing is kept. The release profile also
+  sets `panic = "abort"`, so a panic leaves no message. Write a rotating log
+  file, log panics before abort, and add a way to open the log from Quay.
+
+### Features
+
+* **7.** **Open-project dialog: double-click opens a folder, not the project.**
+  Double-clicking a folder in `OpenProjectDialog` should show its
+  sub-directories. Only the "Open" button opens the project. (The top of the
+  page is cut off; this is the legible part.)
+* **8.** **A context menu for each area.** Only the Topos graph and the Praxis
+  builder have context menus today. The rail, terminals, stage, and project
+  list need ones that fit what they show.
+* **9.** **Run PowerShell with administrator privileges.** An elevated process
+  cannot run inside a terminal owned by a non-elevated Quay, so this needs
+  an elevated helper and a clear marker on elevated panes. Treat it as a
+  security feature and design it before building.
+* **10.** **Drag and drop.** Projects should be draggable, and so should terminals.
+   Nothing in Quay is draggable today.
+* **11.** **An attention queue.** One list of every session waiting for the user
+   (permission prompts, questions, finished turns, Archon approvals), oldest
+   first. Today the only signal is a chime.
+
+---
+
+## 5. Priority Recommendation
+
+Re-prioritized 2026-11-07 across the whole backlog. Effort is S, M or L.
+
+| Priority | Feature | Effort | Why this rank |
 | :--- | :--- | :--- | :--- |
-| **P1** | **Visual "What's Next?" Pipeline Runner** | Medium (1-2 days) | High — Eliminates frequent prompt copy-pasting; directly speeds up your core `/ask-sean` workflow. |
-| **P2** | **"System One" Laya Process Supervisor** | Medium (1-2 days) | High — Solves the long-standing server lifecycle issue and enables free zero-token local evaluations. |
-| **P3** | **Archon & SDD Graph Inspector** | High (2-3 days) | High — Provides the visual alignment and DAG clarity missing from the terminal Archon mod. |
-| **P4** | **Dual-Pane Diff & Conflict Resolver** | Medium (1 day) | Medium — Enhances git workflow during worktree merges. |
-| **P5** | **Session Scrollback Persistence** | Low-Medium (1 day) | Medium — Prevents lost terminal output when restarting the app. |
+| **P1** | **Error logs and panic capture** (idea 6) | S | Quay keeps no log, so every crash or kill needs forensics. Small change, and observability (idea 5) needs it first. |
+| **P2** | **Attention queue** (idea 11) | M | With several agents and Archon runs at once, a missed prompt stalls work. The bridge already raises an event, with a chime, when a session asks for permission. |
+| **P3** | **Context menus** (idea 8) and **open-project double-click** (idea 7) | S–M | Daily friction in the core UI; small, independent changes. |
+| **P4** | **Visual "What's Next?" Pipeline Runner** | M | Removes prompt copy-pasting from the `/ask-sean` workflow. Its cards can feed the attention queue. |
+| **P5** | **Drag and drop** for projects and terminals (idea 10) | M | Layout comfort; needs a decision on what a drop changes (order, pane, worktree). |
+| **P6** | **Agentic group chat** (idea 2) | L | High value, and builds on the A2A bus and council preset, but needs a design for turns, consensus, and cost limits. |
+| **P7** | **Administrator PowerShell** (idea 9) | M–L | Needed for admin tasks such as the kill audit, but a security boundary; design first. |
+| **P8** | **Observability** (idea 5) | L | Cross-repo with AI-WS-SDK; starts after P1. |
+| **P9** | **"System One" Laya Process Supervisor** | M | Still useful, but no current work depends on it. |
+| **P10** | **Dual-Pane Diff & Conflict Resolver** | M | Check what Topos's staging inspector already covers before starting. |
+| **P11** | **Shortcut manager** and **spend budget caps** | S–M each | Nice to have. |
+| **P12** | **Trans server** (idea 1) and **Android app** (idea 3) | L | Largest scope; the server comes first, and idea 1's meaning needs confirming. |
+
+Done and removed from the ranking: the Archon & SDD Graph Inspector, session
+scrollback persistence, and GitKraken-like functionality (Topos).
