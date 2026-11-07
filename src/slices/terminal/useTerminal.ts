@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Terminal, IUnicodeVersionProvider } from "@xterm/xterm";
+import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { terminalKeyAction } from "./terminalKeys";
 import { isTerminalReport, splitPendingQueries } from "./terminalReports";
+import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
 
 /**
@@ -19,57 +20,6 @@ function focusXterm(term: Terminal) {
     term.focus();
     term.textarea?.focus({ preventScroll: true });
   } catch (_) {}
-}
-
-const EMOJI_PRESENTATION_RE = /\p{Emoji_Presentation}/u;
-
-/**
- * Creates an xterm.js Unicode provider that matches Claude Code (Ink / string-width)
- * cell widths for emojis and Variation Selector-16 (U+FE0F, e.g. "⚙️", "⚠️", "⏸️").
- * Without this, xterm's default UnicodeV6 treats U+2699 U+FE0F ("⚙️") as 1 cell wide
- * while Claude Code counts it as 2 cells wide, shifting subsequent auto-wrapped rows
- * left by 1 column.
- */
-function createClaudeUnicodeProvider(
-  baseProvider: IUnicodeVersionProvider
-): IUnicodeVersionProvider {
-  return {
-    version: "11-claude",
-    wcwidth(codepoint: number): 0 | 1 | 2 {
-      const baseWidth = baseProvider.wcwidth(codepoint);
-      if (baseWidth === 0 || baseWidth === 2) {
-        return baseWidth;
-      }
-      // Supplementary plane pictographs / emojis and BMP Emoji_Presentation glyphs
-      if (
-        (codepoint >= 0x1f000 && codepoint <= 0x1faff) ||
-        (codepoint >= 0x2300 &&
-          codepoint <= 0x2bff &&
-          EMOJI_PRESENTATION_RE.test(String.fromCodePoint(codepoint)))
-      ) {
-        return 2;
-      }
-      return baseWidth;
-    },
-    charProperties(codepoint: number, preceding: number): number {
-      // U+FE0F (Variation Selector-16) widens a preceding 1-cell character (like U+2699 ⚙) to 2 cells
-      if (codepoint === 0xfe0f && preceding !== 0) {
-        // Property bit layout in xterm UnicodeService: (charKind << 3) | (width << 1) | (shouldJoin ? 1 : 0)
-        return (2 << 1) | 1;
-      }
-      let width = this.wcwidth(codepoint);
-      let shouldJoin = width === 0 && preceding !== 0;
-      if (shouldJoin) {
-        const oldWidth = (preceding >> 1) & 3;
-        if (oldWidth === 0) {
-          shouldJoin = false;
-        } else if (oldWidth > width) {
-          width = oldWidth as 0 | 1 | 2;
-        }
-      }
-      return (width << 1) | (shouldJoin ? 1 : 0);
-    },
-  };
 }
 
 let globalTerminalCols = 160;
@@ -107,6 +57,7 @@ export function useTerminal(
     rows: 0,
     cols: 0,
   });
+  const redrawTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep latest props in refs so the main Terminal instance is never disposed on React re-renders
   const onToggleSearchRef = useRef(onToggleSearch);
@@ -152,7 +103,11 @@ export function useTerminal(
         // When resizing an existing interactive terminal, notify Claude Code/Ink TUI
         // to cleanly redraw with form-feed Ctrl+L (\x0c) so ConPTY buffer reflow doesn't corrupt lines
         if (!isInitial) {
-          setTimeout(() => {
+          if (redrawTimerRef.current !== null) {
+            clearTimeout(redrawTimerRef.current);
+          }
+          redrawTimerRef.current = setTimeout(() => {
+            redrawTimerRef.current = null;
             invoke("write_pty", { terminalId, data: "\x0c" }).catch(() => {});
           }, 60);
         }
@@ -201,25 +156,8 @@ export function useTerminal(
       allowProposedApi: true,
     });
 
-    // Register custom Unicode width provider so "⚙️" (U+2699 U+FE0F) and emojis match Claude Code / Ink
-    try {
-      const coreUnicode = (
-        term as unknown as {
-          _core?: {
-            unicodeService?: {
-              _providers?: Record<string, IUnicodeVersionProvider>;
-            };
-          };
-        }
-      )._core?.unicodeService;
-      const baseProvider = coreUnicode?._providers?.["6"];
-      if (baseProvider && term.unicode) {
-        term.unicode.register(createClaudeUnicodeProvider(baseProvider));
-        term.unicode.activeVersion = "11-claude";
-      }
-    } catch (err) {
-      console.warn("Could not register custom unicode provider:", err);
-    }
+    // Register custom Unicode width provider so "⚙️" (U+2699 U+FE0F) and emojis match ConPTY
+    registerClaudeUnicodeProvider(term);
 
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();
@@ -389,6 +327,10 @@ export function useTerminal(
     return () => {
       disposed = true;
       clearTimeout(fitTimer);
+      if (redrawTimerRef.current !== null) {
+        clearTimeout(redrawTimerRef.current);
+        redrawTimerRef.current = null;
+      }
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf);
       }
