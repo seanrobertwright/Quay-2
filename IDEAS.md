@@ -18,7 +18,8 @@ This document captures the strategic features, architectural proposals, and futu
 * **GitHub Companion**: Drawer for triage of open issues and PRs (`Ctrl+B I`).
 * **Terminal Session State & Scrollback Persistence Across Restarts**: Persistent storage of session metadata in `%LOCALAPPDATA%\Quay2\sessions\sessions.json` and real-time streaming of ANSI/color scrollback logs to `<session_id>.log`. Reopening Quay 2 automatically restores dormant sessions with their complete historical scrollback, and features a 1-click **"Relaunch Agent"** button in both `TerminalView` and `Rail` to instantly resume work in the same project directory.
 * **Terminal Engine Stabilization**: Fixed ConPTY UTF-8 character boundary panics, single-layout pane switching, duplicate CPR `CC` input injection, and automatic `Starting... -> Ready` status transitions.
-* **Topos Git Graph**: GitKraken-style commit graph, staging inspector, and git operations inside Quay (v1 finished 2026-11-01). This covers notebook idea 4 below.
+* **Topos Git Graph**: GitKraken-style commit graph, staging inspector, and git operations inside Quay (v1 finished 2026-11-01). This covers notebook idea 4 below, and the dual-pane diff and conflict resolver: a Split diff view with hunk and line staging (#416, #419) and a three-pane conflict resolver (#424).
+* **Error Logs & Panic Capture**: Quay writes daily `quay.*.log` files to the `logs` folder in its data folder, keeping the newest seven, and a panic hook records the panic to `crash.log` before the release build aborts. **Open logs folder** in the command palette opens them (#498). This covers notebook idea 6 below.
 
 ---
 
@@ -109,9 +110,8 @@ Beyond the three strategic features above, several tactical enhancements have em
 ### 1. Terminal Session State Persistence Across App Restarts [COMPLETED ✅]
 * **Implementation**: Persists session metadata to `%LOCALAPPDATA%\Quay2\sessions\sessions.json` and streams ANSI output to `<terminal_id>.log`. Restores dormant sessions with full scrollback in `xterm.js` on app launch with 1-click **"Relaunch Agent"** functionality.
 
-### 2. Dual-Pane Visual Diff & Merge Conflict Resolver (`Ctrl+B D`)
-* **Current Behavior**: Git Diff Inspector shows a unified diff view.
-* **Proposed Enhancement**: Add a side-by-side diff view with 1-click stage/unstage buttons and conflict markers resolution for active git worktrees.
+### 2. Dual-Pane Visual Diff & Merge Conflict Resolver [COMPLETED ✅]
+* **Implementation**: Built in Topos (`Ctrl+Shift+B C`). The staging inspector opens a diff with a Split toggle, Stage hunk and Unstage hunk, and line staging (#416, #419). Conflicted files open in a three-pane resolver from the inspector's Conflicts list, non-text conflicts get side-picker cards, and a conflicted file can be handed to an agent (#424, #425, #427).
 
 ### 3. Customizable Shortcut Manager & Keybinding Re-mapper
 * **Current Behavior**: Shortcuts are hardcoded to tmux-style conventions (`Ctrl+B <key>`).
@@ -148,12 +148,10 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
   Topos; see the status overview.
 * **5.** **Observability in Quay.** May belong to AI-WS-SDK: the SDK provides the
   framework and Quay does the implementation. Plan it with the AI-WS-SDK
-  side, after idea 6 gives Quay logs to observe.
-* **6.** **Debugging and logging of errors: error logs.** Today Quay calls
-  `tracing_subscriber::fmt::init()`, which writes to stdout. A packaged
-  Windows app has no console, so nothing is kept. The release profile also
-  sets `panic = "abort"`, so a panic leaves no message. Write a rotating log
-  file, log panics before abort, and add a way to open the log from Quay.
+  side, now that idea 6 gives Quay logs to observe.
+* **6.** **Debugging and logging of errors: error logs.** Done in #498; see
+  the status overview. Quay used to log only to stdout, which a packaged
+  Windows app never shows, and `panic = "abort"` left no message.
 
 ### Features
 
@@ -178,22 +176,23 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
 
 ## 5. Priority Recommendation
 
-Re-prioritized 2026-11-07 across the whole backlog. Effort is S, M or L.
+Re-prioritized 2026-11-07 across the whole backlog, and updated the same day
+when error logs and the diff and conflict resolver were done. Effort is S, M
+or L.
 
 | Priority | Feature | Effort | Why this rank |
 | :--- | :--- | :--- | :--- |
-| **P1** | **Error logs and panic capture** (idea 6) | S | Quay keeps no log, so every crash or kill needs forensics. Small change, and observability (idea 5) needs it first. |
-| **P2** | **Attention queue** (idea 11) | M | With several agents and Archon runs at once, a missed prompt stalls work. The bridge already raises an event, with a chime, when a session asks for permission. |
-| **P3** | **Context menus** (idea 8) and **open-project double-click** (idea 7) | S–M | Daily friction in the core UI; small, independent changes. |
-| **P4** | **Visual "What's Next?" Pipeline Runner** | M | Removes prompt copy-pasting from the `/ask-sean` workflow. Its cards can feed the attention queue. |
-| **P5** | **Drag and drop** for projects and terminals (idea 10) | M | Layout comfort; needs a decision on what a drop changes (order, pane, worktree). |
-| **P6** | **Agentic group chat** (idea 2) | L | High value, and builds on the A2A bus and council preset, but needs a design for turns, consensus, and cost limits. |
-| **P7** | **Administrator PowerShell** (idea 9) | M–L | Needed for admin tasks such as the kill audit, but a security boundary; design first. |
-| **P8** | **Observability** (idea 5) | L | Cross-repo with AI-WS-SDK; starts after P1. |
-| **P9** | **"System One" Laya Process Supervisor** | M | Still useful, but no current work depends on it. |
-| **P10** | **Dual-Pane Diff & Conflict Resolver** | M | Check what Topos's staging inspector already covers before starting. |
-| **P11** | **Shortcut manager** and **spend budget caps** | S–M each | Nice to have. |
-| **P12** | **Praxis server** (idea 1) and **Android app** (idea 3) | L | Largest scope; the server comes first. |
+| **P1** | **Attention queue** (idea 11) | M | With several agents and Archon runs at once, a missed prompt stalls work. The bridge already raises an event, with a chime, when a session asks for permission. |
+| **P2** | **Context menus** (idea 8) and **open-project double-click** (idea 7) | S–M | Daily friction in the core UI; small, independent changes. |
+| **P3** | **Visual "What's Next?" Pipeline Runner** | M | Removes prompt copy-pasting from the `/ask-sean` workflow. Its cards can feed the attention queue. |
+| **P4** | **Drag and drop** for projects and terminals (idea 10) | M | Layout comfort; needs a decision on what a drop changes (order, pane, worktree). |
+| **P5** | **Agentic group chat** (idea 2) | L | High value, and builds on the A2A bus and council preset, but needs a design for turns, consensus, and cost limits. |
+| **P6** | **Administrator PowerShell** (idea 9) | M–L | Needed for admin tasks such as the kill audit, but a security boundary; design first. |
+| **P7** | **Observability** (idea 5) | L | Cross-repo with AI-WS-SDK; the error logs it builds on are done. |
+| **P8** | **"System One" Laya Process Supervisor** | M | Still useful, but no current work depends on it. |
+| **P9** | **Shortcut manager** and **spend budget caps** | S–M each | Nice to have. |
+| **P10** | **Praxis server** (idea 1) and **Android app** (idea 3) | L | Largest scope; the server comes first. |
 
 Done and removed from the ranking: the Archon & SDD Graph Inspector, session
-scrollback persistence, and GitKraken-like functionality (Topos).
+scrollback persistence, GitKraken-like functionality and the dual-pane diff
+and conflict resolver (both Topos), and error logs with panic capture (#498).
