@@ -1842,20 +1842,23 @@ mod tests {
     /// The text the stand-in bridge's `quay_ping` tool returns.
     const PING_REPLY: &str = "PONG-7731";
 
-    /// What the stand-in bridge answers an `/mcp` request with, as Quay's MCP server does:
-    /// `GET` with Quay's status document, and a JSON-RPC `POST` with one tool, `quay_ping`.
-    fn stand_in_mcp(method: &str, body: &str) -> String {
+    /// What the stand-in bridge answers an `/mcp` request with, as its HTTP status line and body,
+    /// the way Quay's MCP server does: `GET` with 405, a notification with 202 and no body, and a
+    /// JSON-RPC request with one tool, `quay_ping`.
+    fn stand_in_mcp(method: &str, body: &str) -> (&'static str, String) {
         if method == "GET" {
-            return r#"{"name":"quay-a2a","status":"ready"}"#.to_string();
+            return ("405 Method Not Allowed", String::new());
         }
         let request: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+        if request.get("id").is_none() {
+            return ("202 Accepted", String::new());
+        }
         let result = match request["method"].as_str().unwrap_or_default() {
             "initialize" => serde_json::json!({
                 "protocolVersion": request["params"]["protocolVersion"].as_str().unwrap_or("2024-11-05"),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "quay-a2a", "version": "1.0.0" }
             }),
-            "notifications/initialized" => return "{}".to_string(),
             "tools/list" => serde_json::json!({ "tools": [{
                 "name": "quay_ping",
                 "description": "Answers with a fixed word.",
@@ -1864,7 +1867,7 @@ mod tests {
             "tools/call" => serde_json::json!({ "content": [{ "type": "text", "text": PING_REPLY }] }),
             _ => serde_json::json!({}),
         };
-        serde_json::json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }).to_string()
+        ("200 OK", serde_json::json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }).to_string())
     }
 
     /// A stand-in for Quay's bridge on a free loopback port. It keeps each `POST /v1/events`
@@ -1925,10 +1928,12 @@ mod tests {
                             seen.lock().push((auth, body));
                         }
                     }
-                    let reply = if path == "/mcp" { stand_in_mcp(method, body) } else { String::new() };
+                    let (status, reply) =
+                        if path == "/mcp" { stand_in_mcp(method, body) } else { ("200 OK", String::new()) };
                     let _ = stream.write_all(
                         format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            status,
                             reply.len(),
                             reply
                         )
