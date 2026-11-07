@@ -635,6 +635,9 @@ export function App() {
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
         onOpenTopos={() => setIsToposOpen(true)}
+        onOpenLogsFolder={() => {
+          invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
+        }}
         toposTarget={toposTarget}
         onToposRequest={requestTopos}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}

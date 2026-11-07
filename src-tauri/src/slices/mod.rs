@@ -3,6 +3,7 @@ pub mod audit;
 pub mod bridge;
 pub mod git;
 pub mod github;
+pub mod logging;
 pub mod machina;
 pub mod orchestrator;
 pub mod praxis;
