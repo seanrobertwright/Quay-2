@@ -29,6 +29,51 @@ pub struct ScreenSnapshot {
 /// The DEC private modes that switch to the alternate screen: 1049, 1047 and 47.
 const ENTER_ALTERNATE: [&str; 3] = ["\x1b[?1049h", "\x1b[?1047h", "\x1b[?47h"];
 
+/// Unicode 16.0 emojis that `unicode-width` (used by `vt100`) counts as 2 cells wide while
+/// Windows ConPTY (`conhost.exe`, Unicode 15.1) counts them as 1 cell wide, paired with
+/// 1-cell Supplementary Private Use Area-A stand-ins so `vt100` advances 1 column like ConPTY.
+const CONPTY_SINGLE_CELL_EMOJIS: [(char, char); 7] = [
+    ('\u{1FA89}', '\u{F0000}'),
+    ('\u{1FA8F}', '\u{F0001}'),
+    ('\u{1FABE}', '\u{F0002}'),
+    ('\u{1FAC6}', '\u{F0003}'),
+    ('\u{1FADC}', '\u{F0004}'),
+    ('\u{1FADF}', '\u{F0005}'),
+    ('\u{1FAE9}', '\u{F0006}'),
+];
+
+fn encode_conpty_widths(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(|c| matches!(c, '\u{1FA89}'..='\u{1FAE9}')) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(
+        text.chars()
+            .map(|c| {
+                CONPTY_SINGLE_CELL_EMOJIS
+                    .iter()
+                    .find_map(|&(emoji, pua)| (c == emoji).then_some(pua))
+                    .unwrap_or(c)
+            })
+            .collect(),
+    )
+}
+
+fn decode_conpty_widths(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(|c| matches!(c, '\u{F0000}'..='\u{F0006}')) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(
+        text.chars()
+            .map(|c| {
+                CONPTY_SINGLE_CELL_EMOJIS
+                    .iter()
+                    .find_map(|&(emoji, pua)| (c == pua).then_some(emoji))
+                    .unwrap_or(c)
+            })
+            .collect(),
+    )
+}
+
 /// Parses a terminal's output at the PTY's size, following its resizes.
 ///
 /// A full-screen program such as Claude Code draws on the alternate screen, which hides the
@@ -59,7 +104,8 @@ impl ScreenRecorder {
 
     pub fn feed(&mut self, text: &str) {
         let text = std::mem::take(&mut self.held) + text;
-        let mut rest = text.as_str();
+        let encoded = encode_conpty_widths(&text);
+        let mut rest = encoded.as_ref();
         while let Some((at, len)) = next_switch(rest) {
             self.parser.process(&rest.as_bytes()[..at]);
             if !self.on_alternate_screen() {
@@ -70,7 +116,7 @@ impl ScreenRecorder {
         }
         let keep = partial_switch_len(rest);
         self.parser.process(&rest.as_bytes()[..rest.len() - keep]);
-        self.held = rest[rest.len() - keep..].to_string();
+        self.held = decode_conpty_widths(&rest[rest.len() - keep..]).into_owned();
         if !self.on_alternate_screen() {
             self.covered = None;
         }
@@ -108,7 +154,8 @@ impl ScreenRecorder {
         let range = vt100::capture::BasicFormattedCaptureRange::Full(&mut Default::default());
         // Writing to a String can't fail
         let _ = self.parser.screen().write_contents_formatted_basic(&mut basic, range);
-        let lines: Vec<&str> = basic.split('\n').collect();
+        let decoded = decode_conpty_widths(&basic);
+        let lines: Vec<&str> = decoded.split('\n').collect();
         let last = lines.iter().rposition(|line| !is_blank(line)).map_or(0, |i| i + 1);
         lines[..last].iter().map(|line| line.trim_end_matches(' ')).collect::<Vec<_>>().join("\r\n")
     }
@@ -517,5 +564,31 @@ mod tests {
         assert_eq!(load_screen(&dir, "term-broken"), None);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conpty_status_bar_with_unicode_16_tree_neither_wraps_bottom_row_nor_shifts_columns() {
+        // Windows ConPTY (Unicode 15.1) treats U+1FABE ('🪾') as 1 cell wide: it pads a 111-col
+        // bottom status row containing '🪾' with 110 ASCII chars (111 ConPTY cells total) and
+        // addresses columns after '🪾' at 1-cell offsets (e.g. ESC[28;90H1ESC[1C12 to update
+        // "$0.63" to "$1.12"). If the parser treats '🪾' as 2 cells wide, the 111th ConPTY cell
+        // wraps on row 28, scrolling the whole screen up by 1 row, and "$0.63" becomes "10123".
+        let mut recorder = ScreenRecorder::new(28, 111);
+        let status_row = "  tools 0 this turn · 14 total  git ticket-217 · 1 changed  🪾  worktree AI-WS-SDK  cost $0.63  session 2h 58m  ";
+        assert_eq!(status_row.chars().count(), 111);
+
+        recorder.feed(&format!(
+            "{ESC}[?1049h{ESC}[2J{ESC}[Htop row stays at row 1{ESC}[24;1H> prompt{ESC}[28;1H{status_row}"
+        ));
+        // ConPTY differential update changing "$0.63" (at ConPTY cols 89..93) to "$1.12"
+        recorder.feed(&format!("{ESC}[28;90H1{ESC}[1C12"));
+
+        let lines = plain_lines(&recorder.snapshot());
+        assert_eq!(lines[0], "top row stays at row 1");
+        assert_eq!(lines[23], "> prompt");
+        assert_eq!(
+            lines[27],
+            "  tools 0 this turn · 14 total  git ticket-217 · 1 changed  🪾  worktree AI-WS-SDK  cost $1.12  session 2h 58m"
+        );
     }
 }
