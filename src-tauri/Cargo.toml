@@ -45,9 +45,10 @@ jsonschema = { version = "0.33", default-features = false }
 vt100 = "0.18.1"
 # Moves a deleted Praxis definition to the Recycle Bin or Trash, so it can be recovered.
 trash = "5.2.9"
-# The watcher behind Topos's live updates (#354, #379). Without default features it skips FSEvents and
-# uses kqueue on macOS; Windows uses ReadDirectoryChangesW either way.
-notify = { version = "8", default-features = false }
+# The watcher behind Topos's live updates (#354, #379). Keep the default features: on macOS they pick
+# FSEvents, which suits the recursive worktree watch, and turning them off without `macos_kqueue` does
+# not compile there. Windows uses ReadDirectoryChangesW and Linux inotify either way.
+notify = "8"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
