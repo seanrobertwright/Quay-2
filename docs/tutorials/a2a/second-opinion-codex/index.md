@@ -165,7 +165,7 @@ Focus was still on the left pane. Press `Ctrl+Shift+B 2` to put `author` back on
 
 ::: do
 1. Click into `author`, the left pane, and paste the prompt below.
-2. Watch `codex`. Quay types the job into Codex's input box after `[Peer agent (author)]:` and marks `codex` Working. If the job is still sitting in the input box a few seconds later, with nothing under it, click into `codex` and press Enter. Quay's Enter doesn't always reach Codex after a message this long; it is a known Quay bug, [#329](https://github.com/seanrobertwright/Quay-2/issues/329).
+2. Watch `codex`. Quay types the job into Codex's input box after `[Peer agent (author)]:`, submits it and marks `codex` Working.
 
 A review is longer than a reply should carry, and `author` has nothing to do while it waits. So the job goes out with `wait_for_reply` false, names the file the answer goes in, and says what shape that file takes.
 :::
@@ -188,7 +188,6 @@ Use quay_send_message to send codex the job below, with wait_for_reply set to fa
 
 ::: may
 - `author`'s wording, and whether it calls `quay_list_agents` first to find `codex`.
-- Whether you had to press Enter in `codex`.
 - What Codex prints while it works, and how long it takes: about a minute.
 :::
 
@@ -335,7 +334,7 @@ npm test; npm run typecheck; npx vitest run --config check/vitest.config.ts; Get
 :::
 
 ::: ifnot some check tests fail
-Codex missed a problem, or `author` fixed one wrongly. Each check test's name starts with the `SPEC.md` rule it checks. Press `Ctrl+Shift+B Z` to put the stage back, then `Ctrl+Shift+B 2` to bring `author` back into the left pane, and paste `Send codex this with quay_send_message, wait_for_reply false: "A check test for SPEC.md rule <n> fails. Re-review src/retry.ts for that rule and append a finding to review.md." Then poll codex until it is idle, apply the new finding, and run npm test.` into `author`, with the rule number in place of `<n>`. If that message sits in `codex`'s input box, click into `codex` and press Enter, as in step 4. When `author` has finished, press `Ctrl+Shift+B 1`, `Ctrl+Shift+B Z`, and paste this step's line again. `check` is already in place, so don't download it a second time.
+Codex missed a problem, or `author` fixed one wrongly. Each check test's name starts with the `SPEC.md` rule it checks. Press `Ctrl+Shift+B Z` to put the stage back, then `Ctrl+Shift+B 2` to bring `author` back into the left pane, and paste `Send codex this with quay_send_message, wait_for_reply false: "A check test for SPEC.md rule <n> fails. Re-review src/retry.ts for that rule and append a finding to review.md." Then poll codex until it is idle, apply the new finding, and run npm test.` into `author`, with the rule number in place of `<n>`. When `author` has finished, press `Ctrl+Shift+B 1`, `Ctrl+Shift+B Z`, and paste this step's line again. `check` is already in place, so don't download it a second time.
 :::
 
 ::: done
