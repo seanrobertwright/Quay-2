@@ -5,6 +5,7 @@ import {
   applyAttentionEvent,
   attentionItems,
   emptyAttentionQueue,
+  modalPermissions,
   type AttentionEvent,
   type AttentionQueue,
 } from "./attentionQueue.ts";
@@ -32,6 +33,7 @@ test("a permission request waits in the queue with its terminal, project, tool a
       project: "E:/proj",
       tool: "Write",
       waitingSince: 100,
+      deferred: false,
     },
   ]);
 });
@@ -143,8 +145,8 @@ test("the backend's pending permissions rebuild the queue after a webview reload
     at: 500,
   });
   assert.deepEqual(attentionItems(queue), [
-    { kind: "permission", requestId: "req-live", terminalId: "term-a", project: "E:/proj", tool: "Bash", waitingSince: 100 },
-    { kind: "permission", requestId: "req-old", terminalId: "term-b", project: null, tool: "Write", waitingSince: 500 },
+    { kind: "permission", requestId: "req-live", terminalId: "term-a", project: "E:/proj", tool: "Bash", waitingSince: 100, deferred: false },
+    { kind: "permission", requestId: "req-old", terminalId: "term-b", project: null, tool: "Write", waitingSince: 500, deferred: false },
   ]);
 });
 
@@ -173,7 +175,7 @@ test("an item queued before its terminal was known takes the terminal's project 
     }
   );
   assert.deepEqual(attentionItems(queue), [
-    { kind: "permission", requestId: "req-old", terminalId: "term-b", project: "E:/b", tool: "Write", waitingSince: 500 },
+    { kind: "permission", requestId: "req-old", terminalId: "term-b", project: "E:/b", tool: "Write", waitingSince: 500, deferred: false },
     { kind: "finishedTurn", terminalId: "term-c", project: "E:/c", waitingSince: 600 },
   ]);
 });
@@ -187,4 +189,99 @@ test("a known terminal leaves an item's project as it was when the item already 
     attentionItems(queue).map((item) => item.project),
     ["E:/proj"]
   );
+});
+
+/** The request ids the permission modal shows, in its order. */
+const modalIds = (queue: AttentionQueue): string[] => modalPermissions(queue).map((item) => item.requestId);
+
+test("the permission modal shows the queue's pending requests, oldest first, and no finished turns", () => {
+  const queue = run(
+    requested("req-late", "term-a", 300),
+    finished("term-b", 100),
+    requested("req-early", "term-c", 50)
+  );
+  assert.deepEqual(modalIds(queue), ["req-early", "req-late"]);
+});
+
+test("Later hides the requests the modal showed, and they stay in the queue, still counted", () => {
+  const queue = run(
+    requested("req-1", "term-a", 100),
+    requested("req-2", "term-b", 200),
+    { type: "permissionsDeferred", requestIds: ["req-1", "req-2"] }
+  );
+  assert.deepEqual(modalIds(queue), []);
+  assert.deepEqual(keys(queue), ["permission:req-1", "permission:req-2"]);
+});
+
+test("a deferred request stays out of the modal when the backend lists it again, and a new request opens the modal on itself", () => {
+  const queue = run(
+    requested("req-deferred", "term-a", 100),
+    { type: "permissionsDeferred", requestIds: ["req-deferred"] },
+    requested("req-deferred", "term-a", 150),
+    {
+      type: "pendingPermissionsLoaded",
+      requests: [{ requestId: "req-deferred", terminalId: "term-a", project: "E:/proj", tool: "Bash" }],
+      at: 180,
+    },
+    requested("req-new", "term-b", 200)
+  );
+  assert.deepEqual(modalIds(queue), ["req-new"]);
+  assert.deepEqual(keys(queue), ["permission:req-deferred", "permission:req-new"]);
+});
+
+test("Later defers only the requests the modal showed, so one that arrived since still shows", () => {
+  const queue = run(
+    requested("req-seen", "term-a", 100),
+    requested("req-unseen", "term-b", 200),
+    { type: "permissionsDeferred", requestIds: ["req-seen"] }
+  );
+  assert.deepEqual(modalIds(queue), ["req-unseen"]);
+});
+
+test("reopening a deferred request puts it back in the modal, oldest first", () => {
+  const queue = run(
+    requested("req-1", "term-a", 100),
+    requested("req-2", "term-b", 200),
+    { type: "permissionsDeferred", requestIds: ["req-1", "req-2"] },
+    requested("req-3", "term-c", 300),
+    { type: "permissionsReopened", requestIds: ["req-2"] }
+  );
+  assert.deepEqual(modalIds(queue), ["req-2", "req-3"]);
+});
+
+test("the modal's request carries the tool's input and the agent's reason", () => {
+  const queue = run({
+    type: "permissionRequested",
+    request: {
+      requestId: "req-1",
+      terminalId: "term-a",
+      project: "E:/proj",
+      tool: "Bash",
+      input: { command: "rm -rf dist" },
+      reason: "clean the build",
+    },
+    at: 100,
+  });
+  assert.deepEqual(modalPermissions(queue), [
+    {
+      kind: "permission",
+      requestId: "req-1",
+      terminalId: "term-a",
+      project: "E:/proj",
+      tool: "Bash",
+      input: { command: "rm -rf dist" },
+      reason: "clean the build",
+      waitingSince: 100,
+      deferred: false,
+    },
+  ]);
+});
+
+test("answering a deferred request later clears it from the queue", () => {
+  const queue = run(
+    requested("req-1", "term-a", 100),
+    { type: "permissionsDeferred", requestIds: ["req-1"] },
+    { type: "permissionResolved", requestId: "req-1" }
+  );
+  assert.deepEqual(keys(queue), []);
 });
