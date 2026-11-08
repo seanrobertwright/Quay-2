@@ -491,7 +491,9 @@ export const TerminalView: FC<TerminalViewProps> = ({
           scrollback={exportScrollback}
           at={bodyMenu.open.at}
           onClose={bodyMenu.close}
-          handlers={paneHandlers}
+          // The rename box sits in the pane header, so a pane without one leaves Rename… out;
+          // the terminal's Rail row still offers it.
+          handlers={showPaneHeader ? paneHandlers : { ...paneHandlers, rename: undefined }}
         />
       )}
     </>
