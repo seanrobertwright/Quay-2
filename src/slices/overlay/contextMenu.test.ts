@@ -252,6 +252,19 @@ test("choosing an item of a menu opened in an overlay runs it and leaves the ove
   assert.notEqual(document.querySelector('[role="dialog"]'), null);
 });
 
+test("an item with a swatch shows its color as a dot before its name, which only sighted users get", () => {
+  const list: Item[] = [
+    { name: "main", enabled: true, group: "tracks", swatch: "rgb(88, 166, 255)", onChoose: () => {} },
+    { name: "Rename…", enabled: true, group: "tracks", onChoose: () => {} },
+  ];
+  render(createElement(ContextMenu, { label: "More tracks", items: list, at: { x: 10, y: 10 }, onClose: () => {} }));
+  const [main, rename] = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const dot = main.querySelector<HTMLElement>('[aria-hidden="true"]');
+  assert.equal(dot?.style.background, "rgb(88, 166, 255)");
+  assert.equal(main.textContent, "main");
+  assert.equal(rename.querySelector('[aria-hidden="true"]'), null);
+});
+
 test("an item with a checked state is a checkbox item announcing it, and the keys still reach it", () => {
   const list: Item[] = [
     { name: "Rename…", enabled: true, group: "session", onChoose: () => {} },

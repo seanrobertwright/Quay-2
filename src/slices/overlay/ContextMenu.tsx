@@ -2,7 +2,8 @@
 // WAI-ARIA menu pattern: focus starts on the first item, the arrow keys, Home and End move it
 // with wrap, and Escape or Tab closes the menu. Escape goes through the overlay stack, so it
 // closes the menu before any overlay behind it. It renders through a portal to the document
-// body, at a point in the window.
+// body, at a point in the window. It is never larger than the window: a long name is cut short,
+// and a long list scrolls inside the menu.
 import { useEffect, useLayoutEffect, useRef, useState, type FC, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
@@ -25,6 +26,8 @@ export interface ContextMenuItem {
   ariaKeyShortcuts?: string;
   /** Set for a toggle: the item is then a checkbox item, announced as checked or not. */
   checked?: boolean;
+  /** A CSS color shown as a dot before the name, such as a Topos track's lane color. */
+  swatch?: string;
   onChoose: () => void;
 }
 
@@ -158,7 +161,7 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
       onPointerDown={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="fixed z-[60] min-w-56 py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs"
+      className="fixed z-[60] min-w-56 max-w-[min(28rem,calc(100vw-1rem))] max-h-[calc(100vh-1rem)] overflow-y-auto py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs"
       style={{ left: place.x, top: place.y }}
     >
       {items.map((item, i) => {
@@ -182,7 +185,10 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
               className="w-full flex items-center gap-4 px-3 py-1.5 text-left text-[#c9d1d9] hover:bg-[#21262d] focus:bg-[#21262d] focus:outline-none aria-disabled:text-[#484f58] aria-disabled:hover:bg-transparent"
             >
               {toggle && <Check className={`-ml-1 w-3 h-3 shrink-0 ${item.checked ? "" : "invisible"}`} aria-hidden="true" />}
-              <span>{item.name}</span>
+              {item.swatch !== undefined && (
+                <span aria-hidden="true" className="-mr-2 w-2 h-2 shrink-0 rounded-full" style={{ background: item.swatch }} />
+              )}
+              <span className="truncate">{item.name}</span>
               <span className="ml-auto text-[10px] text-[#6e7681]">{item.hint}</span>
             </button>
           </div>
