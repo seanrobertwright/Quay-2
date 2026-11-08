@@ -1,8 +1,10 @@
 // The one menu component in Quay (#507), promoted from the Praxis builder's menu. It follows the
-// WAI-ARIA menu pattern: focus starts on the first item, the arrow keys, Home and End move it
+// WAI-ARIA menu pattern: focus starts on the first item (or the last, for a menu button opened
+// by ArrowUp), the arrow keys, Home and End move it
 // with wrap, and Escape or Tab closes the menu. Escape goes through the overlay stack, so it
 // closes the menu before any overlay behind it. It renders through a portal to the document
-// body, at a point in the window.
+// body, at a point in the window. It is never larger than the window: a long name is cut short,
+// and a long list scrolls inside the menu.
 import { useEffect, useLayoutEffect, useRef, useState, type FC, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
@@ -25,6 +27,10 @@ export interface ContextMenuItem {
   ariaKeyShortcuts?: string;
   /** Set for a toggle: the item is then a checkbox item, announced as checked or not. */
   checked?: boolean;
+  /** A CSS color shown as a dot before the name, such as a Topos track's lane color. */
+  swatch?: string;
+  /** The item's tooltip, such as what choosing it does. */
+  title?: string;
   onChoose: () => void;
 }
 
@@ -44,6 +50,8 @@ export interface ContextMenuProps {
   at: MenuPoint;
   /** Which corner of the menu's top edge is at the point. Defaults to its start, the left. */
   align?: "start" | "end";
+  /** Which item takes focus when the menu opens. Defaults to the first; a menu button opened by ArrowUp starts on the last. */
+  focus?: "first" | "last";
   /** Called when the menu should go away; `refocus` is false when focus has moved on already. */
   onClose: (refocus: boolean) => void;
   /** The button that opened the menu, whose own presses toggle it rather than close it. */
@@ -62,7 +70,7 @@ function placeOnAxis(at: number, size: number, room: number, fromEnd = false): n
 }
 
 /** A list of items following the WAI-ARIA menu pattern described at the top of this file. */
-export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align = "start", onClose, anchorRef }) => {
+export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align = "start", focus = "first", onClose, anchorRef }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // On the Escape stack, so Escape closes the menu before any overlay behind it.
   usePopupLayer(true, () => onClose(true), rootRef);
@@ -77,9 +85,11 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
     });
   }, [at.x, at.y, align]);
   const buttons = () => [...(rootRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [])];
-  // Without scrolling, since a scroll closes the menu.
+  // Once, as the menu opens, and without scrolling, since a scroll closes the menu.
+  const startOn = useRef(focus);
   useEffect(() => {
-    buttons()[0]?.focus({ preventScroll: true });
+    const list = buttons();
+    list[startOn.current === "last" ? list.length - 1 : 0]?.focus({ preventScroll: true });
   }, []);
   // A press anywhere outside closes the menu, leaving focus where the press puts it. The menu
   // sits at a point in the window, so a scroll or a resize, which moves what is under it, closes
@@ -147,13 +157,18 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      // A right-click on the menu does nothing. The portal still bubbles React events to the
-      // surface that rendered it, which would open the menu again under the pointer.
+      // The portal still bubbles React events to the surface that rendered it. A right-click on
+      // the menu does nothing, where the surface would open the menu again under the pointer, and
+      // a press on it stays the menu's own, where an overlay's backdrop would take a press outside
+      // its panel for a dismissal.
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
       }}
-      className="fixed z-[60] min-w-56 py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      className="fixed z-[60] min-w-56 max-w-[min(28rem,calc(100vw-1rem))] max-h-[calc(100vh-1rem)] overflow-y-auto py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs"
       style={{ left: place.x, top: place.y }}
     >
       {items.map((item, i) => {
@@ -169,6 +184,7 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
               tabIndex={-1}
               aria-disabled={!item.enabled}
               aria-keyshortcuts={item.ariaKeyShortcuts}
+              title={item.title}
               onClick={() => {
                 if (!item.enabled) return;
                 onClose(true);
@@ -177,7 +193,10 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
               className="w-full flex items-center gap-4 px-3 py-1.5 text-left text-[#c9d1d9] hover:bg-[#21262d] focus:bg-[#21262d] focus:outline-none aria-disabled:text-[#484f58] aria-disabled:hover:bg-transparent"
             >
               {toggle && <Check className={`-ml-1 w-3 h-3 shrink-0 ${item.checked ? "" : "invisible"}`} aria-hidden="true" />}
-              <span>{item.name}</span>
+              {item.swatch !== undefined && (
+                <span aria-hidden="true" className="-mr-2 w-2 h-2 shrink-0 rounded-full" style={{ background: item.swatch }} />
+              )}
+              <span className="truncate">{item.name}</span>
               <span className="ml-auto text-[10px] text-[#6e7681]">{item.hint}</span>
             </button>
           </div>
