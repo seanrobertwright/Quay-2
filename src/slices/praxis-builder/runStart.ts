@@ -45,7 +45,7 @@ export function runStartOf(outcome: CallOutcome, name: string): RunStart {
       const workOrderId = str(outcome.record.workOrderId);
       if (workOrderId === null) {
         // The run was created, so this must not say Run again is safe.
-        return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis started a run of ${name}, but its result has no work order Quay can read.` };
+        return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis started a run of ${name}, but its result names no run Quay can follow.` };
       }
       return {
         kind: "created",

@@ -1,7 +1,7 @@
-import { FC, useEffect, useId, useState } from "react";
+import { type FC, useEffect, useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AlertTriangle, FileCode2 } from "lucide-react";
-import { FactoryConfig, ProjectFactoryInfo } from "./types";
+import type { FactoryConfig, ProjectFactoryInfo } from "./types.ts";
 
 interface FactoryConfigPanelProps {
   activeProject: string;
