@@ -8,10 +8,25 @@
 /// The longest name the rule allows.
 pub const MAX_TEMPLATE_NAME_LEN: usize = 63;
 
-/// The rule, as every refusal states it.
-pub const TEMPLATE_NAME_RULE: &str = "A workflow template name is a lowercase letter, then at most 62 lowercase letters, \
-     digits and hyphens, and isn't a Windows device name such as con, nul, com1 or lpt1. \
-     The Praxis host refuses any other name.";
+/// The rule as a refusal states it, for a name of the kind `$noun` names.
+macro_rules! name_rule {
+    ($noun:literal) => {
+        concat!(
+            "A ",
+            $noun,
+            " name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, \
+             and isn't a Windows device name such as con, nul, com1 or lpt1. \
+             The Praxis host refuses any other name."
+        )
+    };
+}
+
+/// The rule, as every refusal of a workflow template name states it.
+pub const TEMPLATE_NAME_RULE: &str = name_rule!("workflow template");
+
+/// The rule as a refusal of a graph workflow name states it. A graph workflow's file name is
+/// its name on the host too, and follows the same rule as a template's (#444).
+pub const GRAPH_WORKFLOW_NAME_RULE: &str = name_rule!("graph workflow");
 
 /// The Windows reserved device names the rule refuses, in the lowercase the pattern allows.
 const RESERVED: [&str; 22] = [
@@ -33,22 +48,12 @@ pub fn check_template_name(name: &str) -> Result<(), String> {
     if is_template_name(name) { Ok(()) } else { Err(TEMPLATE_NAME_RULE.to_string()) }
 }
 
-/// The rule as a refusal of a graph workflow name states it. A graph workflow's file name is
-/// its name on the host too, and follows the same rule as a template's (#444).
-pub const GRAPH_WORKFLOW_NAME_RULE: &str = "A graph workflow name is a lowercase letter, then at most 62 lowercase letters, \
-     digits and hyphens, and isn't a Windows device name such as con, nul, com1 or lpt1. \
-     The Praxis host refuses any other name.";
-
-/// Refuses a graph workflow name the host's rule doesn't admit, with a message stating the rule.
-pub fn check_graph_workflow_name(name: &str) -> Result<(), String> {
-    if is_template_name(name) { Ok(()) } else { Err(GRAPH_WORKFLOW_NAME_RULE.to_string()) }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
 
     use super::*;
+    use crate::slices::praxis::models::PraxisKind;
 
     fn vectors() -> Vec<(String, bool)> {
         let file: Value = serde_json::from_str(include_str!("template_names.vectors.json")).unwrap();
@@ -82,12 +87,13 @@ mod tests {
     #[test]
     fn a_graph_workflow_name_follows_the_same_vectors_and_its_refusal_names_a_graph_workflow() {
         for (name, valid) in vectors() {
-            assert_eq!(check_graph_workflow_name(&name).is_ok(), valid, "{name:?}");
+            let why = PraxisKind::GraphWorkflows.name_problem(&name);
+            assert_eq!(why.is_none(), valid, "{name:?}");
+            assert!(why.is_none_or(|why| why == GRAPH_WORKFLOW_NAME_RULE), "{name:?}");
         }
-        let why = check_graph_workflow_name("Ship_It").unwrap_err();
-        assert!(why.starts_with("A graph workflow name is a lowercase letter"), "{why}");
         let file: Value = serde_json::from_str(include_str!("template_names.vectors.json")).unwrap();
-        assert_eq!(why, file["rule"].as_str().unwrap().replace("A workflow template name", "A graph workflow name"));
+        let rule = file["rule"].as_str().unwrap();
+        assert_eq!(GRAPH_WORKFLOW_NAME_RULE, rule.replace("A workflow template name", "A graph workflow name"));
     }
 
     #[test]

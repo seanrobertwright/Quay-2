@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createDraft, createNewDraft, editGraphWorkflowDraft, isDirty, withId } from "./drafts.ts";
 import { applyGraphWorkflowEdit, graphWorkflowStepFor, newGraphWorkflowContent } from "./graphWorkflow.ts";
 import { RECORD_KINDS } from "./kinds.ts";
-import { graphWorkflowNameProblem, nextDefinitionId } from "./lifecycle.ts";
+import { hostNameProblem, nextDefinitionId } from "./lifecycle.ts";
 import { applyDiskRead, changeDraft, definitionKey, EMPTY_SESSION, undoDraft } from "./session.ts";
 
 test("graph workflows are listed as Graph workflows, after templates, and the builder creates them", () => {
@@ -19,7 +19,7 @@ test("graph workflows are listed as Graph workflows, after templates, and the bu
   // A new one's name starts from a prefix the host's rule accepts.
   const first = nextDefinitionId(entry?.idPrefix ?? entry?.singular ?? "", []);
   assert.equal(first, "graph-workflow-1");
-  assert.equal(graphWorkflowNameProblem(first), null);
+  assert.equal(hostNameProblem("graph-workflows", first), null);
 });
 
 test("a new graph workflow names nothing yet and holds no id", () => {

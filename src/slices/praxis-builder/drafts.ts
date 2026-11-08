@@ -8,6 +8,7 @@ import { applyContractEdit, EMPTY_BINDINGS, parseBindings, type Bindings, type C
 import { graphToFlow } from "./flow/to-flow.ts";
 import { applyGrantEdit, type GrantEdit } from "./grant.ts";
 import { applyGraphWorkflowEdit, type GraphWorkflowEdit } from "./graphWorkflow.ts";
+import { HOST_NAME_RULES } from "./lifecycle.ts";
 import { applyTemplateEdit, type TemplateEdit } from "./template.ts";
 import { applyTriggerEdit, type TriggerEdit } from "./trigger.ts";
 import { isObject, parseGraph, parseLayoutPositions, type JsonObject, type ParseResult, type XYPosition } from "./model.ts";
@@ -130,7 +131,7 @@ export const hasDrafts = (kind: DefinitionRef["kind"]) =>
  * graph workflow's `graphBindingId` names the binding it runs with.
  */
 export const idField = (kind: DefinitionRef["kind"]): string | null =>
-  kind === "templates" || kind === "graph-workflows" ? null : kind === "graph-bindings" ? "graphBindingId" : "id";
+  HOST_NAME_RULES[kind] !== undefined ? null : kind === "graph-bindings" ? "graphBindingId" : "id";
 
 /** A clean draft of a file of a kind the builder edits, a graph, contract, grant, trigger, graph binding, template or graph workflow. */
 export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {

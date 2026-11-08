@@ -57,9 +57,19 @@ impl PraxisKind {
     /// binding's `bindingId`; a graph workflow's `graphBindingId` names the binding it runs with.
     pub fn id_field(self) -> Option<&'static str> {
         match self {
+            _ if self.host_name_rule().is_some() => None,
             PraxisKind::GraphBindings => Some("graphBindingId"),
-            PraxisKind::Templates | PraxisKind::GraphWorkflows => None,
             _ => Some("id"),
+        }
+    }
+
+    /// The Praxis host's name rule, as a refusal states it, for a kind the host knows by its
+    /// file name alone, which therefore holds no id: a template or a graph workflow.
+    pub fn host_name_rule(self) -> Option<&'static str> {
+        match self {
+            PraxisKind::Templates => Some(super::template_name::TEMPLATE_NAME_RULE),
+            PraxisKind::GraphWorkflows => Some(super::template_name::GRAPH_WORKFLOW_NAME_RULE),
+            _ => None,
         }
     }
 
@@ -67,11 +77,7 @@ impl PraxisKind {
     /// kind shares, or `None` when it can. A template and a graph workflow narrow it, to the
     /// Praxis host's name rule, since the host knows each by its file name.
     pub fn name_problem(self, id: &str) -> Option<String> {
-        match self {
-            PraxisKind::Templates => super::template_name::check_template_name(id).err(),
-            PraxisKind::GraphWorkflows => super::template_name::check_graph_workflow_name(id).err(),
-            _ => None,
-        }
+        self.host_name_rule().filter(|_| !super::template_name::is_template_name(id)).map(str::to_string)
     }
 }
 
