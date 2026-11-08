@@ -131,6 +131,7 @@ import {
   applyDiskRead,
   applyRename,
   bindingsPath,
+  targetPath,
   changeDraft,
   changeWorkspace,
   chooseBinding,
@@ -156,6 +157,7 @@ import {
 import type {
   BindingSuggestions,
   BindingsInput,
+  TargetInput,
   ChangedFiles,
   ChangeStatus,
   ContractTriggers,
@@ -642,9 +644,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   }, [hasPending]);
 
   /**
-   * Saves one draft through `praxis_save`, with a graph's layout or a contract's bindings,
-   * expecting the file (and a contract's bindings file) to still have the hash the draft
-   * loaded unless `force` is set. The draft records the result: a save makes the written
+   * Saves one draft through `praxis_save`, with a graph's layout, a contract's bindings or a
+   * trigger's target (#472), expecting the file (and a contract's bindings file or a trigger's
+   * target file) to still have the hash the draft loaded unless `force` is set. The draft records the result: a save makes the written
    * content its new base, and a deleted file marks it.
    */
   const saveDraft = useCallback(async (path: string, ref: DefinitionRef, force: boolean): Promise<SaveOutcome> => {
@@ -657,6 +659,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       shown && shown.key === `${normalizePath(path)}|${key}` ? shown.canvas.readViewport() : current.viewports[key];
     const layout = ref.kind === "graphs" ? layoutForSave(draft, viewport) : null;
     const bindings: BindingsInput | null = draft.bindings;
+    const target: TargetInput | null = ref.kind === "triggers" ? { graphWorkflow: draft.target } : null;
     const outcome = await invoke<SaveOutcome>("praxis_save", {
       projectPath: path,
       kind: ref.kind,
@@ -666,6 +669,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       bindings,
       expectedHash: draft.baseHash,
       expectedBindingsHash: draft.baseBindingsHash,
+      target,
+      expectedTargetHash: draft.baseTargetHash,
       force,
     });
     changeSessions((s) =>
@@ -676,8 +681,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           outcome.status === "saved"
             ? markSaved(
                 d,
-                { content: outcome.content as JsonObject, contentHash: outcome.contentHash, bindingsHash: outcome.bindingsHash },
-                { content: draft.content, layout, bindings }
+                {
+                  content: outcome.content as JsonObject,
+                  contentHash: outcome.contentHash,
+                  bindingsHash: outcome.bindingsHash,
+                  targetHash: outcome.targetHash,
+                  targetError: outcome.targetError,
+                },
+                { content: draft.content, layout, bindings, target }
               )
             : outcome.reason === "deleted"
               ? markDeletedOnDisk(d)
@@ -714,6 +725,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           setNotice({
             tone: "warning",
             text: `Saved the contract, but its bindings file wasn't written, so it stays unsaved: ${outcome.bindingsError}`,
+          });
+        } else if (outcome.targetError) {
+          setNotice({
+            tone: "warning",
+            text: `Saved the trigger, but its target file wasn't written, so it stays unsaved: ${outcome.targetError}`,
           });
         } else {
           announce(`Saved ${definitionPath(ref)}`);
@@ -1435,6 +1451,17 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .filter((d) => d.ref.kind === kind)
       .map((d) => d.ref.id),
   ];
+  /** The graph workflows a trigger can start, listed or drafted, each with its contract (#472). A draft's contract wins. */
+  const graphWorkflowChoices = (): { id: string; contractId?: string }[] => {
+    const drafted = Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-workflows");
+    const ids = new Set(drafted.map((d) => d.ref.id));
+    return [
+      ...listedEntries("graph-workflows")
+        .filter((e) => !ids.has(e.id))
+        .map((e) => ({ id: e.id, contractId: e.contractId })),
+      ...drafted.map((d) => ({ id: d.ref.id, contractId: typeof d.content.contractId === "string" ? d.content.contractId : undefined })),
+    ];
+  };
   /** The graph bindings a graph workflow can pick, listed or drafted, each with the graph it binds (#459). */
   const graphBindingChoices = (): { id: string; graphId?: string }[] => [
     ...listedEntries("graph-bindings").map((e) => ({ id: e.id, graphId: e.graphId })),
@@ -2312,13 +2339,17 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onValidated={recordValidity}
                   />
                 </>
-              ) : openDraft && open.kind === "triggers" ? (
+              ) : openDraft && projectPath && open.kind === "triggers" ? (
                 <>
                   {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
                   <TriggerForm
                     key={`${projectKey}|${openKey}`}
+                    projectPath={projectPath}
                     draft={openDraft}
+                    targetProblem={current?.file?.targetProblem}
                     contracts={[...new Set(takenIds("contracts"))]}
+                    graphWorkflows={graphWorkflowChoices()}
+                    refresh={refreshCount}
                     crossRecord={crossRecord}
                     onEdit={editOpenTrigger}
                     onOpen={openDefinition}
@@ -2885,11 +2916,12 @@ const ConflictPrompt: FC<{
   onCancel: () => void;
 }> = ({ rootRef, conflict, busy, onOverwrite, onReload, onCancel }) => {
   const titleId = useId();
-  // A contract's save also expects its bindings file unchanged, so either may be the one.
+  // A contract's save also expects its bindings file unchanged, and a trigger's its target file,
+  // so either may be the one.
+  const companion =
+    conflict.ref.kind === "contracts" ? bindingsPath(conflict.ref.id) : conflict.ref.kind === "triggers" ? targetPath(conflict.ref.id) : null;
   const path =
-    conflict.ref.kind === "contracts" && conflict.reason === "changed"
-      ? `${definitionPath(conflict.ref)} or ${bindingsPath(conflict.ref.id)}`
-      : definitionPath(conflict.ref);
+    companion && conflict.reason === "changed" ? `${definitionPath(conflict.ref)} or ${companion}` : definitionPath(conflict.ref);
   const changed = conflict.reason === "changed";
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-6">

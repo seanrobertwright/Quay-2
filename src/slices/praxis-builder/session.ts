@@ -66,6 +66,9 @@ export const definitionPath = (ref: DefinitionRef) => `.praxis/${ref.kind}/${ref
 /** A contract's bindings file, relative to the repository, as the backend reports paths. */
 export const bindingsPath = (contractId: string) => `.praxis/bindings/${contractId}.json`;
 
+/** A trigger's target file (#472), relative to the repository, as rename outcomes name it. */
+export const targetPath = (triggerId: string) => `.praxis/trigger-targets/${triggerId}.json`;
+
 const sameRef = (a: DefinitionRef | null, b: DefinitionRef) => a !== null && a.kind === b.kind && a.id === b.id;
 
 export function sessionFor(sessions: Sessions, projectPath: string): BuilderSession {
@@ -408,9 +411,10 @@ export function renameUnsavedDraft(session: BuilderSession, from: DefinitionRef,
  * The session after the backend renamed `from` to `toId` (#222). The renamed definition's
  * draft, which was clean, is dropped, so the builder reads the moved file afresh; its
  * viewport and its place as the open definition move to the new id. Every other draft the
- * rename touched loses its history: one whose references the rename rewrote, and a
- * contract that binds the renamed graph or grant (#223). A clean one whose file, or bindings
- * file, the rename rewrote is dropped, so it reads the rewritten file. Any other takes the
+ * rename touched loses its history: one whose references the rename rewrote, a contract
+ * that binds the renamed graph or grant (#223), and a trigger that starts the renamed graph
+ * workflow (#472). A clean one whose file, bindings file or target file the rename rewrote is
+ * dropped, so it reads the rewritten file. Any other takes the
  * rewritten references and, for each file the rename rewrote from the bytes the draft
  * loaded, expects the new bytes on its next save.
  */
@@ -430,20 +434,24 @@ export function applyRename(
     if (key === fromKey) continue;
     const hashes = hashesByPath.get(definitionPath(draft.ref));
     const bindingsHashes = draft.bindings ? hashesByPath.get(bindingsPath(draft.ref.id)) : undefined;
+    const targetHashes = draft.ref.kind === "triggers" ? hashesByPath.get(targetPath(draft.ref.id)) : undefined;
     const content = rewritten.get(key);
     const bindings = draft.bindings && renameInBindings(draft.bindings, from.kind, from.id, toId);
-    if (!hashes && !bindingsHashes && !content && bindings === draft.bindings) {
+    // A trigger's target names a graph workflow (#472).
+    const target = from.kind === "graph-workflows" && draft.target === from.id ? toId : draft.target;
+    if (!hashes && !bindingsHashes && !targetHashes && !content && bindings === draft.bindings && target === draft.target) {
       drafts[key] = draft;
       continue;
     }
     histories = withoutKey(histories, key);
-    if (!isDirty(draft) && (hashes || bindingsHashes)) continue;
-    const next = withChanges(draft, content ?? draft.content, draft.positions, bindings);
+    if (!isDirty(draft) && (hashes || bindingsHashes || targetHashes)) continue;
+    const next = withChanges(draft, content ?? draft.content, draft.positions, bindings, target);
     drafts[key] = {
       ...next,
       baseHash: hashes && draft.baseHash === hashes.previous ? hashes.next : next.baseHash,
       baseBindingsHash:
         bindingsHashes && draft.baseBindingsHash === bindingsHashes.previous ? bindingsHashes.next : next.baseBindingsHash,
+      baseTargetHash: targetHashes && draft.baseTargetHash === targetHashes.previous ? targetHashes.next : next.baseTargetHash,
     };
   }
   return {

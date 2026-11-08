@@ -63,7 +63,16 @@ export const FieldMessages: FC<{ id: string; issues: readonly Diagnostic[] | und
       {withKeys(issues).map(([key, d]) => (
         <li key={key} className={`flex items-start gap-1 text-[11px] break-words ${SEVERITY_LOOK[d.severity].text}`}>
           <SeverityIcon severity={d.severity} className="w-3 h-3 mt-px shrink-0" />
-          <span className="min-w-0">{d.message}</span>
+          <span className="min-w-0">
+            {d.message}
+            {/* An issue with a hint carries the Praxis host's code, which the host's refusal names too (#472). */}
+            {d.hint !== undefined && (
+              <>
+                {" "}
+                {d.hint} <span className="font-mono text-[#8b949e]">{d.code}</span>
+              </>
+            )}
+          </span>
         </li>
       ))}
     </ul>

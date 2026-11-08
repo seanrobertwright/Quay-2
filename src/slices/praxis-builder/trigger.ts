@@ -3,7 +3,9 @@
 // to CONDITION and `waitId` to RESUME_WAIT, so changing the kind or action adds them with
 // their smallest legal values and removes them when they stop applying. `filter` is optional
 // on every kind but CONDITION, so it is kept. The backend validates the whole trigger with
-// the SDK; these rules only shape what the form shows.
+// the SDK; these rules only shape what the form shows. A trigger's Starts target (#472), the
+// graph workflow it starts, lives in its own file, so setting it changes only the trigger's
+// contract, and only to fill an empty one with the target's.
 import type { Step } from "./history.ts";
 import { idProblem } from "./lifecycle.ts";
 import { isObject, withField, type Json, type JsonObject } from "./model.ts";
@@ -70,7 +72,12 @@ export type TriggerEdit =
   /** Sets a field of the schedule or filter; nothing when there is none. */
   | { type: "set-nested"; key: NestedKey; field: string; value: Json; live?: boolean }
   | { type: "set-kind"; kind: TriggerKind }
-  | { type: "set-action"; action: TriggerAction };
+  | { type: "set-action"; action: TriggerAction }
+  /**
+   * Sets the graph workflow the trigger starts, or none with null. `contractId` is the target's
+   * contract, when known, which fills an empty `contractId`.
+   */
+  | { type: "set-target"; target: string | null; contractId?: string; live?: boolean };
 
 /** The record after `edit`, or the same object when it changes nothing. */
 export function applyTriggerEdit(content: JsonObject, edit: TriggerEdit): JsonObject {
@@ -96,6 +103,10 @@ export function applyTriggerEdit(content: JsonObject, edit: TriggerEdit): JsonOb
       const waitId = typeof next.waitId === "string" ? next.waitId : "";
       return withField(next, "waitId", edit.action === "RESUME_WAIT" ? waitId : undefined);
     }
+    case "set-target": {
+      const empty = content.contractId === undefined || content.contractId === "";
+      return empty && edit.contractId ? withField(content, "contractId", edit.contractId) : content;
+    }
   }
 }
 
@@ -112,7 +123,17 @@ export function triggerStepFor(edit: TriggerEdit): Step {
       return { label: `Set kind to ${edit.kind}` };
     case "set-action":
       return { label: `Set action to ${edit.action}` };
+    case "set-target": {
+      const label = "Set the Starts target";
+      return edit.live ? { label, merge: { key: "trigger|target" } } : { label };
+    }
   }
+}
+
+/** The graph workflow a target file names, or null when it names none or isn't one. */
+export function parseTarget(file: Readonly<Record<string, unknown>> | undefined): string | null {
+  const id = file?.graphWorkflow;
+  return typeof id === "string" && id !== "" ? id : null;
 }
 
 /**

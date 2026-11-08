@@ -1,5 +1,6 @@
 // A definition's draft (#221): the record as loaded, saved or edited, with every node's
-// position for a graph and the binding record for a contract (#223). Each graph, contract,
+// position for a graph, the binding record for a contract (#223) and the Starts target for a
+// trigger (#472). Each graph, contract,
 // grant, trigger, graph binding, workflow template or graph workflow touched in a session gets one. A draft is dirty when any of these differ from what was
 // last loaded or saved (#248), compared by fingerprint, so moving a node back to where it
 // was makes it clean again. The viewport isn't part of it, so pan and zoom never make a
@@ -10,10 +11,10 @@ import { applyGrantEdit, type GrantEdit } from "./grant.ts";
 import { applyGraphWorkflowEdit, type GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { HOST_NAME_RULES } from "./lifecycle.ts";
 import { applyTemplateEdit, type TemplateEdit } from "./template.ts";
-import { applyTriggerEdit, type TriggerEdit } from "./trigger.ts";
+import { applyTriggerEdit, parseTarget, type TriggerEdit } from "./trigger.ts";
 import { isObject, parseGraph, parseLayoutPositions, type JsonObject, type ParseResult, type XYPosition } from "./model.ts";
 import type { Viewport } from "./session.ts";
-import type { DefinitionFile, DefinitionRef, LayoutInput } from "./types.ts";
+import type { DefinitionFile, DefinitionRef, LayoutInput, TargetInput } from "./types.ts";
 
 export interface Draft {
   ref: DefinitionRef;
@@ -23,20 +24,29 @@ export interface Draft {
   positions: ReadonlyMap<string, XYPosition>;
   /** A contract's graphs and grants, saved to its bindings file; null for any other kind. */
   bindings: Bindings | null;
+  /** The graph workflow a trigger starts, saved to its target file (#472); null for none, and for any other kind. */
+  target: string | null;
   /** The hash of the file as loaded or last saved, which a save expects to find; null for a definition never saved. */
   baseHash: string | null;
   /** The hash of a contract's bindings file as loaded or last saved; null when there was none. */
   baseBindingsHash: string | null;
-  /** The fingerprint of the content, positions and bindings as loaded or last saved. */
+  /** The hash of a trigger's target file as loaded or last saved; null when there was none. */
+  baseTargetHash: string | null;
+  /** The fingerprint of the content, positions, bindings and target as loaded or last saved. */
   baseFingerprint: string;
-  /** The fingerprint of the content, positions and bindings now. */
+  /** The fingerprint of the content, positions, bindings and target now. */
   fingerprint: string;
   /** The file was gone the last time the builder read it. */
   deletedOnDisk: boolean;
 }
 
-function fingerprintOf(content: JsonObject, positions: ReadonlyMap<string, XYPosition>, bindings: Bindings | null): string {
-  return JSON.stringify([content, [...positions], bindings]);
+function fingerprintOf(
+  content: JsonObject,
+  positions: ReadonlyMap<string, XYPosition>,
+  bindings: Bindings | null,
+  target: string | null
+): string {
+  return JSON.stringify([content, [...positions], bindings, target]);
 }
 
 const rounded = (p: XYPosition): XYPosition => ({ x: Math.round(p.x), y: Math.round(p.y) });
@@ -46,16 +56,19 @@ function cleanDraft(
   content: JsonObject,
   positions: ReadonlyMap<string, XYPosition>,
   bindings: Bindings | null,
-  file: DefinitionFile
+  file: DefinitionFile,
+  target: string | null = null
 ): Draft {
-  const fingerprint = fingerprintOf(content, positions, bindings);
+  const fingerprint = fingerprintOf(content, positions, bindings, target);
   return {
     ref,
     content,
     positions,
     bindings,
+    target,
     baseHash: file.contentHash ?? null,
     baseBindingsHash: file.bindingsHash ?? null,
+    baseTargetHash: file.targetHash ?? null,
     baseFingerprint: fingerprint,
     fingerprint,
     deletedOnDisk: false,
@@ -91,10 +104,13 @@ export function createGrantDraft(ref: DefinitionRef, file: DefinitionFile): Pars
   return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
 }
 
-/** A clean draft of a trigger file (#223). Any JSON object opens, since the form shows what the SDK refuses. */
+/**
+ * A clean draft of a trigger file (#223) and its target file (#472). Any JSON object opens, since
+ * the form shows what the SDK refuses. A target file that can't be read opens as no target.
+ */
 export function createTriggerDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
   if (!isObject(file.content)) return { ok: false, message: "The trigger isn't a JSON object." };
-  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
+  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file, parseTarget(file.target)) };
 }
 
 /** A clean draft of a graph binding file (#273). Any JSON object opens, since the backend shape-checks it. */
@@ -190,14 +206,15 @@ export function moveNodes(draft: Draft, moved: Iterable<[string, XYPosition]>): 
   return withChanges(draft, draft.content, positions);
 }
 
-/** The draft with this content, these positions and these bindings, and its fingerprint to match. */
+/** The draft with this content, these positions, these bindings and this target, and its fingerprint to match. */
 export function withChanges(
   draft: Draft,
   content: JsonObject,
   positions: ReadonlyMap<string, XYPosition>,
-  bindings: Bindings | null = draft.bindings
+  bindings: Bindings | null = draft.bindings,
+  target: string | null = draft.target
 ): Draft {
-  return { ...draft, content, positions, bindings, fingerprint: fingerprintOf(content, positions, bindings) };
+  return { ...draft, content, positions, bindings, target, fingerprint: fingerprintOf(content, positions, bindings, target) };
 }
 
 /** A contract's draft after `edit`, or the same draft when the edit changes nothing. */
@@ -214,10 +231,15 @@ export function editGrantDraft(draft: Draft, edit: GrantEdit): Draft {
   return content === draft.content ? draft : withChanges(draft, content, draft.positions);
 }
 
-/** A trigger's draft after `edit`, or the same draft when the edit changes nothing. */
+/**
+ * A trigger's draft after `edit`, or the same draft when the edit changes nothing. Setting the
+ * Starts target (#472) changes the target, and fills an empty `contractId` with the target's.
+ */
 export function editTriggerDraft(draft: Draft, edit: TriggerEdit): Draft {
   const content = applyTriggerEdit(draft.content, edit);
-  return content === draft.content ? draft : withChanges(draft, content, draft.positions);
+  const target = edit.type === "set-target" ? edit.target : draft.target;
+  if (content === draft.content && target === draft.target) return draft;
+  return withChanges(draft, content, draft.positions, draft.bindings, target);
 }
 
 /** A template's draft after `edit`, or the same draft when the edit changes nothing. */
@@ -245,24 +267,28 @@ export function layoutForSave(draft: Draft, viewport: Viewport | undefined): Lay
  * sent, are its new base. An edit or a move made while the save was in flight keeps the
  * draft dirty, and an edit keeps its content in place of what was written. Bindings the
  * save didn't write (no `saved.bindingsHash` after sending some) keep it dirty, so the
- * next save writes them.
+ * next save writes them, and so does a trigger's target the save couldn't write or remove
+ * (`saved.targetError`, #472).
  */
 export function markSaved(
   draft: Draft,
-  saved: { content: JsonObject; contentHash: string; bindingsHash?: string },
-  sent: { content: JsonObject; layout: LayoutInput | null; bindings?: Bindings | null }
+  saved: { content: JsonObject; contentHash: string; bindingsHash?: string; targetHash?: string; targetError?: string },
+  sent: { content: JsonObject; layout: LayoutInput | null; bindings?: Bindings | null; target?: TargetInput | null }
 ): Draft {
   const sentPositions = new Map((sent.layout?.nodes ?? []).map(({ id, x, y }) => [id, { x, y }]));
   const content = draft.content === sent.content ? saved.content : draft.content;
   const sentBindings = sent.bindings ?? null;
   const bindingsWritten = sentBindings === null || saved.bindingsHash !== undefined;
+  const targetWritten = !sent.target || saved.targetError === undefined;
+  const sentTarget = sent.target?.graphWorkflow ?? null;
   return {
     ...draft,
     content,
     baseHash: saved.contentHash,
     baseBindingsHash: saved.bindingsHash ?? draft.baseBindingsHash,
-    baseFingerprint: bindingsWritten ? fingerprintOf(saved.content, sentPositions, sentBindings) : "",
-    fingerprint: fingerprintOf(content, draft.positions, draft.bindings),
+    baseTargetHash: sent.target && targetWritten ? (saved.targetHash ?? null) : draft.baseTargetHash,
+    baseFingerprint: bindingsWritten && targetWritten ? fingerprintOf(saved.content, sentPositions, sentBindings, sentTarget) : "",
+    fingerprint: fingerprintOf(content, draft.positions, draft.bindings, draft.target),
     deletedOnDisk: false,
   };
 }
@@ -273,7 +299,8 @@ export function markDeletedOnDisk(draft: Draft): Draft {
 
 /**
  * What to do with a draft when its file is read again (#221). A file with the hash the
- * draft loaded, and for a contract a bindings file with the hash it loaded, keeps it. A
+ * draft loaded, and for a contract a bindings file or for a trigger a target file with the
+ * hash it loaded, keeps it. A
  * changed file reloads a clean draft quietly, and keeps a dirty one, whose save then finds
  * the conflict. A deleted file marks the draft deleted on disk, unless the draft was never
  * saved, so has no file yet.
@@ -286,13 +313,15 @@ export function reconcileWithDisk(
   const same =
     file.contentHash !== undefined &&
     file.contentHash === draft.baseHash &&
-    (draft.bindings === null || (file.bindingsHash ?? null) === draft.baseBindingsHash);
+    (draft.bindings === null || (file.bindingsHash ?? null) === draft.baseBindingsHash) &&
+    (draft.ref.kind !== "triggers" || (file.targetHash ?? null) === draft.baseTargetHash);
   if (!same && !isDirty(draft)) return { action: "reload" };
   return { action: "keep", draft: draft.deletedOnDisk ? { ...draft, deletedOnDisk: false } : draft };
 }
 
 /**
- * What one undo step restores: the record, a graph's node positions and a contract's bindings.
+ * What one undo step restores: the record, a graph's node positions, a contract's bindings and a
+ * trigger's target.
  * A graph's step also holds the content of each of its graph bindings' drafts, keyed by
  * `definitionKey`, since they share its history (#248).
  */
@@ -300,6 +329,7 @@ export interface DraftSnapshot {
   content: JsonObject;
   positions: ReadonlyMap<string, XYPosition>;
   bindings: Bindings | null;
+  target: string | null;
   graphBindings?: Readonly<Record<string, JsonObject>>;
 }
 
@@ -307,11 +337,12 @@ export const snapshotOf = (draft: Draft): DraftSnapshot => ({
   content: draft.content,
   positions: draft.positions,
   bindings: draft.bindings,
+  target: draft.target,
 });
 
-/** The draft with a snapshot's record, positions and bindings, dirty or clean by fingerprint. */
+/** The draft with a snapshot's record, positions, bindings and target, dirty or clean by fingerprint. */
 export const restoreSnapshot = (draft: Draft, snapshot: DraftSnapshot): Draft =>
-  withChanges(draft, snapshot.content, snapshot.positions, snapshot.bindings);
+  withChanges(draft, snapshot.content, snapshot.positions, snapshot.bindings, snapshot.target);
 
 
 const nodeList = (content: JsonObject): { id?: unknown }[] =>
