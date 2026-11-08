@@ -353,10 +353,8 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
     };
     // Bindings that can't be read are reported, and the contract opens with none. A trigger's
     // target is read the same way (#472).
-    let (bindings, bindings_problem, bindings_hash) =
-        if kind == PraxisKind::Contracts { read_companion(repo, BINDINGS_DIR, id) } else { (None, None, None) };
-    let (target, target_problem, target_hash) =
-        if kind == PraxisKind::Triggers { read_companion(repo, TRIGGER_TARGETS_DIR, id) } else { (None, None, None) };
+    let bindings = if kind == PraxisKind::Contracts { read_companion(repo, BINDINGS_DIR, id) } else { Companion::default() };
+    let target = if kind == PraxisKind::Triggers { read_companion(repo, TRIGGER_TARGETS_DIR, id) } else { Companion::default() };
     Ok(DefinitionFile {
         id: id.to_string(),
         kind,
@@ -366,27 +364,34 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
         problem,
         layout,
         layout_problem,
-        bindings,
-        bindings_problem,
-        bindings_hash,
-        target,
-        target_problem,
-        target_hash,
+        bindings: bindings.value,
+        bindings_problem: bindings.problem,
+        bindings_hash: bindings.hash,
+        target: target.value,
+        target_problem: target.problem,
+        target_hash: target.hash,
     })
 }
 
-/// `.praxis/<folder>/<id>.json`, a file that belongs to a definition: its object, or why it
-/// can't be used, and the hash of its bytes when they could be read. All `None` when there is
-/// no such file.
-fn read_companion(repo: &Path, folder: &str, id: &str) -> (Option<Value>, Option<FileProblem>, Option<String>) {
+/// A file that belongs to a definition as it was read: its object, or why it can't be used,
+/// and the hash of its bytes when they could be read. All `None` when there is no such file.
+#[derive(Default)]
+struct Companion {
+    value: Option<Value>,
+    problem: Option<FileProblem>,
+    hash: Option<String>,
+}
+
+/// Reads `.praxis/<folder>/<id>.json`, a file that belongs to a definition.
+fn read_companion(repo: &Path, folder: &str, id: &str) -> Companion {
     match companion_file(repo, folder, id) {
-        Err(why) => (None, Some(FileProblem::new(why)), None),
-        Ok(None) => (None, None, None),
+        Err(why) => Companion { problem: Some(FileProblem::new(why)), ..Companion::default() },
+        Ok(None) => Companion::default(),
         Ok(Some(file)) => match read_capped(&file) {
-            Err(problem) => (None, Some(problem), None),
+            Err(problem) => Companion { problem: Some(problem), ..Companion::default() },
             Ok(bytes) => {
                 let (value, problem) = split(parse_object(&bytes));
-                (value, problem, Some(content_hash(&bytes)))
+                Companion { value, problem, hash: Some(content_hash(&bytes)) }
             }
         },
     }
@@ -579,8 +584,7 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// filename-safe, and a new workflow template's or graph workflow's must follow the host's name
 /// rule too; a file already saved under another name still saves. An invalid definition is still written: whatever later runs it refuses
 /// it. The definition is written first, so a layout that fails to write afterwards is
-/// reported in the outcome and the definition stays saved. A saved file that already holds
-/// the bytes the save would write is left alone.
+/// reported in the outcome and the definition stays saved.
 ///
 /// A graph binding's unset `graphRevision` and `graphDigest` are filled from its graph as
 /// saved on disk first (#247, `graph_bindings::fill_pins`).
@@ -699,7 +703,9 @@ fn save(
 
     let value = Value::Object(record);
     let text = to_canonical_text(&value);
-    if on_disk.as_deref() != Some(text.as_bytes()) {
+    // Setting or clearing a trigger's target alone leaves the trigger file as it is (#472).
+    let unchanged = target.is_some() && on_disk.as_deref() == Some(text.as_bytes());
+    if !unchanged {
         write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
             .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, kind.folder(), id, e))?;
     }
