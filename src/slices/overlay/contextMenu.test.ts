@@ -64,6 +64,24 @@ test("focus starts on the first item, and the arrows, Home and End move it with 
   assert.equal(focusedName(), "Cut");
 });
 
+test("a menu opened from its button by ArrowUp can start with focus on its last item", () => {
+  render(createElement(ContextMenu, { label: "Node", items: items(["Cut", "Copy", "Paste"]), at: { x: 10, y: 10 }, focus: "last", onClose: () => {} }));
+  assert.equal(focusedName(), "Paste");
+  press("ArrowDown");
+  assert.equal(focusedName(), "Cut");
+});
+
+test("an item with a title shows it as the item's tooltip", () => {
+  const list: Item[] = [
+    { name: "main", enabled: true, group: "tracks", title: "Scroll to where main starts", onChoose: () => {} },
+    { name: "feat", enabled: true, group: "tracks", onChoose: () => {} },
+  ];
+  render(createElement(ContextMenu, { label: "More tracks", items: list, at: { x: 10, y: 10 }, onClose: () => {} }));
+  const [main, feat] = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  assert.equal(main.title, "Scroll to where main starts");
+  assert.equal(feat.hasAttribute("title"), false);
+});
+
 test("the menu renders in the document body, outside the element that opened it", () => {
   const container = render(createElement(ContextMenu, { label: "Node", items: items(["Cut"]), at: { x: 10, y: 10 }, onClose: () => {} }));
   assert.equal(menu()?.parentElement, document.body);

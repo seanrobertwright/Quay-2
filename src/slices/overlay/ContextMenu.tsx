@@ -1,5 +1,6 @@
 // The one menu component in Quay (#507), promoted from the Praxis builder's menu. It follows the
-// WAI-ARIA menu pattern: focus starts on the first item, the arrow keys, Home and End move it
+// WAI-ARIA menu pattern: focus starts on the first item (or the last, for a menu button opened
+// by ArrowUp), the arrow keys, Home and End move it
 // with wrap, and Escape or Tab closes the menu. Escape goes through the overlay stack, so it
 // closes the menu before any overlay behind it. It renders through a portal to the document
 // body, at a point in the window. It is never larger than the window: a long name is cut short,
@@ -28,6 +29,8 @@ export interface ContextMenuItem {
   checked?: boolean;
   /** A CSS color shown as a dot before the name, such as a Topos track's lane color. */
   swatch?: string;
+  /** The item's tooltip, such as what choosing it does. */
+  title?: string;
   onChoose: () => void;
 }
 
@@ -47,6 +50,8 @@ export interface ContextMenuProps {
   at: MenuPoint;
   /** Which corner of the menu's top edge is at the point. Defaults to its start, the left. */
   align?: "start" | "end";
+  /** Which item takes focus when the menu opens. Defaults to the first; a menu button opened by ArrowUp starts on the last. */
+  focus?: "first" | "last";
   /** Called when the menu should go away; `refocus` is false when focus has moved on already. */
   onClose: (refocus: boolean) => void;
   /** The button that opened the menu, whose own presses toggle it rather than close it. */
@@ -65,7 +70,7 @@ function placeOnAxis(at: number, size: number, room: number, fromEnd = false): n
 }
 
 /** A list of items following the WAI-ARIA menu pattern described at the top of this file. */
-export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align = "start", onClose, anchorRef }) => {
+export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align = "start", focus = "first", onClose, anchorRef }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // On the Escape stack, so Escape closes the menu before any overlay behind it.
   usePopupLayer(true, () => onClose(true), rootRef);
@@ -82,7 +87,8 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
   const buttons = () => [...(rootRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [])];
   // Without scrolling, since a scroll closes the menu.
   useEffect(() => {
-    buttons()[0]?.focus({ preventScroll: true });
+    const list = buttons();
+    list[focus === "last" ? list.length - 1 : 0]?.focus({ preventScroll: true });
   }, []);
   // A press anywhere outside closes the menu, leaving focus where the press puts it. The menu
   // sits at a point in the window, so a scroll or a resize, which moves what is under it, closes
@@ -177,6 +183,7 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
               tabIndex={-1}
               aria-disabled={!item.enabled}
               aria-keyshortcuts={item.ariaKeyShortcuts}
+              title={item.title}
               onClick={() => {
                 if (!item.enabled) return;
                 onClose(true);
