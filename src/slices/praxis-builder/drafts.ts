@@ -1,12 +1,13 @@
 // A definition's draft (#221): the record as loaded, saved or edited, with every node's
 // position for a graph and the binding record for a contract (#223). Each graph, contract,
-// grant, trigger, graph binding or workflow template touched in a session gets one. A draft is dirty when any of these differ from what was
+// grant, trigger, graph binding, workflow template or graph workflow touched in a session gets one. A draft is dirty when any of these differ from what was
 // last loaded or saved (#248), compared by fingerprint, so moving a node back to where it
 // was makes it clean again. The viewport isn't part of it, so pan and zoom never make a
 // draft dirty.
 import { applyContractEdit, EMPTY_BINDINGS, parseBindings, type Bindings, type ContractEdit } from "./contract.ts";
 import { graphToFlow } from "./flow/to-flow.ts";
 import { applyGrantEdit, type GrantEdit } from "./grant.ts";
+import { applyGraphWorkflowEdit, type GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { applyTemplateEdit, type TemplateEdit } from "./template.ts";
 import { applyTriggerEdit, type TriggerEdit } from "./trigger.ts";
 import { isObject, parseGraph, parseLayoutPositions, type JsonObject, type ParseResult, type XYPosition } from "./model.ts";
@@ -107,23 +108,31 @@ export function createTemplateDraft(ref: DefinitionRef, file: DefinitionFile): P
   return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
 }
 
-/** Whether the builder edits definitions of `kind` through drafts: graphs, contracts, grants, triggers, graph bindings and templates. */
+/** A clean draft of a graph workflow file (#459). Any JSON object opens, since the form shows what the backend refuses. */
+export function createGraphWorkflowDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
+  if (!isObject(file.content)) return { ok: false, message: "The graph workflow isn't a JSON object." };
+  return { ok: true, value: cleanDraft(ref, file.content, new Map(), null, file) };
+}
+
+/** Whether the builder edits definitions of `kind` through drafts: every kind, graph workflows (#459) among them. */
 export const hasDrafts = (kind: DefinitionRef["kind"]) =>
   kind === "graphs" ||
   kind === "contracts" ||
   kind === "grants" ||
   kind === "triggers" ||
   kind === "graph-bindings" ||
-  kind === "templates";
+  kind === "templates" ||
+  kind === "graph-workflows";
 
 /**
  * The record field that holds a definition's id: a graph binding's is `graphBindingId` (#247).
- * A template holds no id, since its file name is its name, so it has none.
+ * A template or graph workflow holds no id, since its file name is its name, so it has none; a
+ * graph workflow's `graphBindingId` names the binding it runs with.
  */
 export const idField = (kind: DefinitionRef["kind"]): string | null =>
-  kind === "templates" ? null : kind === "graph-bindings" ? "graphBindingId" : "id";
+  kind === "templates" || kind === "graph-workflows" ? null : kind === "graph-bindings" ? "graphBindingId" : "id";
 
-/** A clean draft of a file of a kind the builder edits, a graph, contract, grant, trigger, graph binding or template; other kinds have none. */
+/** A clean draft of a file of a kind the builder edits, a graph, contract, grant, trigger, graph binding, template or graph workflow. */
 export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResult<Draft> {
   switch (ref.kind) {
     case "graphs":
@@ -138,6 +147,8 @@ export function createDraft(ref: DefinitionRef, file: DefinitionFile): ParseResu
       return createGraphBindingDraft(ref, file);
     case "templates":
       return createTemplateDraft(ref, file);
+    case "graph-workflows":
+      return createGraphWorkflowDraft(ref, file);
     default:
       return { ok: false, message: `The builder can't edit ${ref.kind} yet.` };
   }
@@ -153,7 +164,7 @@ export function createNewDraft(ref: DefinitionRef, content: JsonObject): ParseRe
   return { ok: true, value: { ...created.value, baseHash: null, baseFingerprint: "" } };
 }
 
-/** The draft under another id, with that id inside its record. A template holds no id: its file name is its name. */
+/** The draft under another id, with that id inside its record. A template or graph workflow holds no id: its file name is its name. */
 export function withId(draft: Draft, ref: DefinitionRef): Draft {
   const field = idField(ref.kind);
   if (field === null) return { ...draft, ref };
@@ -211,6 +222,12 @@ export function editTriggerDraft(draft: Draft, edit: TriggerEdit): Draft {
 /** A template's draft after `edit`, or the same draft when the edit changes nothing. */
 export function editTemplateDraft(draft: Draft, edit: TemplateEdit): Draft {
   const content = applyTemplateEdit(draft.content, edit);
+  return content === draft.content ? draft : withChanges(draft, content, draft.positions);
+}
+
+/** A graph workflow's draft after `edit`, or the same draft when the edit changes nothing. */
+export function editGraphWorkflowDraft(draft: Draft, edit: GraphWorkflowEdit): Draft {
+  const content = applyGraphWorkflowEdit(draft.content, edit);
   return content === draft.content ? draft : withChanges(draft, content, draft.positions);
 }
 

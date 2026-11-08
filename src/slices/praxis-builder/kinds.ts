@@ -20,11 +20,13 @@ import {
   Timer,
   Undo2,
   UserCheck,
+  Waypoints,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { newContractContent } from "./contract.ts";
 import { newGrantContent } from "./grant.ts";
+import { newGraphWorkflowContent } from "./graphWorkflow.ts";
 import { newGraphContent } from "./lifecycle.ts";
 import { newTemplateContent } from "./template.ts";
 import { newTriggerContent } from "./trigger.ts";
@@ -181,8 +183,10 @@ export function configSummary(node: PraxisNode): string {
 export interface RecordKindEntry {
   kind: PraxisKind;
   label: string;
-  /** One definition of the kind, in lower case, which also starts a new one's id (`graph-1`). */
+  /** One definition of the kind, in lower case, which also starts a new one's id (`graph-1`) unless `idPrefix` does. */
   singular: string;
+  /** What a new definition's id starts with, when `singular` isn't an id, as a phrase with a space isn't. */
+  idPrefix?: string;
   icon: LucideIcon;
   /** A new definition's record, for the kinds the builder can create. */
   newRecord?: (id: string) => JsonObject;
@@ -195,4 +199,12 @@ export const RECORD_KINDS: RecordKindEntry[] = [
   { kind: "grants", label: "Grants", singular: "grant", icon: KeyRound, newRecord: newGrantContent },
   { kind: "triggers", label: "Triggers", singular: "trigger", icon: Timer, newRecord: newTriggerContent },
   { kind: "templates", label: "Workflow templates", singular: "template", icon: ListChecks, newRecord: newTemplateContent },
+  {
+    kind: "graph-workflows",
+    label: "Graph workflows",
+    singular: "graph workflow",
+    idPrefix: "graph-workflow",
+    icon: Waypoints,
+    newRecord: newGraphWorkflowContent,
+  },
 ];

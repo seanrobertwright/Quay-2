@@ -68,6 +68,9 @@ function mentions(c: ContractContext, ref: DefinitionRef): boolean {
     // A template refers to no other record, and nothing refers to it (#224).
     case "templates":
       return false;
+    // A graph workflow's checks against its contract are its own (`praxis_check_graph_workflow`, #459).
+    case "graph-workflows":
+      return false;
   }
 }
 

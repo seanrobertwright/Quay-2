@@ -1,7 +1,7 @@
 // The shapes the `praxis_*` backend commands return (src-tauri/src/slices/praxis/models.rs).
 
 /** A record kind, named by its folder under `.praxis/`. */
-export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "graph-bindings" | "templates";
+export type PraxisKind = "graphs" | "contracts" | "grants" | "triggers" | "graph-bindings" | "templates" | "graph-workflows";
 
 /** Why a definition file can't be opened. `line` and `column` are set for invalid JSON. */
 export interface FileProblem {
@@ -15,7 +15,7 @@ export interface DefinitionEntry {
   problem?: FileProblem;
   /** Set when the file parses but its `id` isn't its name: `found` is the id inside, if it has a string one. */
   idMismatch?: { found?: string };
-  /** For a workflow template whose name the Praxis host refuses (#447), the host's name rule. Renaming fixes it. */
+  /** For a workflow template or graph workflow whose name the Praxis host refuses (#447, #459), the host's name rule. Renaming fixes it. */
   nameProblem?: string;
   /** A graph binding's `graphId`, when it is a string, so the list nests it under its graph. */
   graphId?: string;
@@ -133,7 +133,7 @@ export type ChangeStatus = "modified" | "added" | "deleted";
  */
 export type GitChange = ChangeStatus | "unknown";
 
-/** `praxis_changes`: the contracts, grants, templates and graph bindings changed since the last commit, empty outside git. */
+/** `praxis_changes`: the contracts, grants, templates, graph bindings and graph workflows changed since the last commit, empty outside git. */
 export interface ChangedFiles {
   files: { kind: PraxisKind; id: string; status: ChangeStatus }[];
 }
@@ -310,4 +310,15 @@ export interface GraphPin {
   revision?: string;
   /** The SDK digest of the graph record exactly as the file holds it. */
   digest: string;
+}
+
+/**
+ * `praxis_check_graph_workflow`: a graph workflow's local checks (#459) against the contract,
+ * graph and graph binding it names as saved, and the grant set it carries.
+ */
+export interface GraphWorkflowCheck {
+  /** The grants of the contract's bindings file, in file order; empty without one. */
+  grants: string[];
+  /** Each failed check, an error on the field that names the record at fault. */
+  diagnostics: Diagnostic[];
 }
