@@ -50,6 +50,14 @@ trash = "5.2.9"
 # not compile there. Windows uses ReadDirectoryChangesW and Linux inotify either way.
 notify = "8"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+] }
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

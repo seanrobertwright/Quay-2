@@ -1366,6 +1366,17 @@ export function useWorkspace() {
     }
   };
 
+  // Open or focus project in VS Code
+  const openInVsCode = useCallback(async (projectPath: string) => {
+    const result = await invoke<{
+      success: boolean;
+      action: "focused" | "launched";
+      target: string;
+      message?: string;
+    }>("open_in_vscode", { path: projectPath });
+    return result;
+  }, []);
+
   return {
     projects,
     activeProject,
@@ -1451,5 +1462,6 @@ export function useWorkspace() {
     killTerminal,
     relaunchTerminal,
     toggleTerminalLiveMode,
+    openInVsCode,
   };
 }

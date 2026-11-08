@@ -129,3 +129,10 @@ pub async fn list_recent_projects(
     .await
     .map_err(|e| format!("Task join error: {}", e))
 }
+
+#[tauri::command]
+pub async fn open_in_vscode(path: String) -> Result<super::vscode::VscodeOpenResult, String> {
+    tokio::task::spawn_blocking(move || super::vscode::open_or_focus_vscode(&path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
