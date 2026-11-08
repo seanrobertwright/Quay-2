@@ -190,7 +190,7 @@ test("a scroll inside the menu, or focus moving between its items, leaves it ope
 });
 
 /** A modal overlay, such as the command palette, whose button opens a menu. Logs what closes. */
-const OverlayWithMenu: FC<{ log: string[] }> = ({ log }) => {
+const OverlayWithMenu: FC<{ log: string[]; chosen?: string[] }> = ({ log, chosen = [] }) => {
   const [overlayOpen, setOverlayOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const { backdropProps, panelProps } = useOverlay({
@@ -211,7 +211,7 @@ const OverlayWithMenu: FC<{ log: string[] }> = ({ log }) => {
       menuOpen &&
         createElement(ContextMenu, {
           label: "Row",
-          items: items(["Rename"]),
+          items: items(["Rename"], chosen),
           at: { x: 10, y: 10 },
           onClose: () => {
             log.push("menu");
@@ -232,6 +232,24 @@ test("Escape closes an open menu before the overlay behind it, then the overlay"
   assert.equal(menu(), null);
   press("Escape");
   assert.deepEqual(log, ["menu", "overlay"]);
+});
+
+test("choosing an item of a menu opened in an overlay runs it and leaves the overlay open", () => {
+  // The menu renders outside the overlay's panel, so a press on it must not count as a press on
+  // the backdrop outside the panel.
+  const log: string[] = [];
+  const chosen: string[] = [];
+  render(createElement(OverlayWithMenu, { log, chosen }));
+  act(() => document.querySelector<HTMLElement>("button")?.click());
+  const rename = document.querySelector<HTMLElement>('[role="menuitem"]')!;
+  act(() => {
+    rename.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+    rename.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    rename.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+    rename.click();
+  });
+  assert.deepEqual([chosen, log], [["Rename"], ["menu"]]);
+  assert.notEqual(document.querySelector('[role="dialog"]'), null);
 });
 
 test("an item with a checked state is a checkbox item announcing it, and the keys still reach it", () => {

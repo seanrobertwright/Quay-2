@@ -147,12 +147,17 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      // A right-click on the menu does nothing. The portal still bubbles React events to the
-      // surface that rendered it, which would open the menu again under the pointer.
+      // The portal still bubbles React events to the surface that rendered it. A right-click on
+      // the menu does nothing, where the surface would open the menu again under the pointer, and
+      // a press on it stays the menu's own, where an overlay's backdrop would take a press outside
+      // its panel for a dismissal.
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
       }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       className="fixed z-[60] min-w-56 py-1 rounded-md border border-[#30363d] bg-[#161b22] shadow-xl text-xs"
       style={{ left: place.x, top: place.y }}
     >
