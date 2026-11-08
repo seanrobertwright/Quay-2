@@ -1,13 +1,14 @@
 // Where the cross-record checks show (#223, #269): a section on each record form, and on a
 // graph the "Runs under:" chips and the collapsible Run context panel beside the Problems list.
 // The checks read saved records, so they change when a record is opened or saved, not as the
-// user types; they are advisory, and saving still works.
+// user types; they are advisory, and saving still works. A graph's "Submitted as:" chips (#467)
+// sit beside its "Runs under:" chips and link to the graph workflows that name it.
 import { useId, useState, type FC } from "react";
-import { ChevronDown, ChevronRight, FileText, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Plus, Waypoints } from "lucide-react";
 import { inputClass, SeverityIcon } from "./ConfigForms.tsx";
 import { hintClass, Section } from "./RecordFields.tsx";
 import { issuePlace, type GraphRunContext } from "./runContext.ts";
-import type { DefinitionRef, PraxisKind, RecordIssue } from "./types.ts";
+import type { DefinitionRef, GraphWorkflowChoice, PraxisKind, RecordIssue } from "./types.ts";
 
 const linkClass = "font-mono text-[#58a6ff] hover:underline";
 
@@ -80,6 +81,55 @@ export const RunsUnder: FC<{ run: GraphRunContext; onOpen: (ref: DefinitionRef) 
           <FileText className="w-3 h-3 text-[#8b949e]" aria-hidden="true" />
           {c.id}
         </button>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * What a Submitted as chip says when its graph workflow's binding isn't the one the Binding
+ * dropdown shows: the binding it uses, or that it uses none. A graph workflow that names no
+ * binding matches the dropdown's None.
+ */
+function bindingNote(bindingId: string | undefined, shownBinding: string | null) {
+  const uses = bindingId === undefined || bindingId === "" ? null : bindingId;
+  if (uses === shownBinding) return null;
+  return <span className="font-sans text-[#e3b341]">, uses {uses ?? "no binding"}</span>;
+}
+
+/**
+ * A graph's "Submitted as" chips (#467), one per graph workflow whose graphId is the graph, each a
+ * link that opens that graph workflow's form. It reads only the records it is given and shows no run state.
+ */
+export const SubmittedAs: FC<{
+  graphId: string;
+  /** The project's graph workflows, listed or drafted. */
+  workflows: readonly GraphWorkflowChoice[];
+  /** The binding the Binding dropdown shows, or null for None. */
+  shownBinding: string | null;
+  onOpen: (ref: DefinitionRef) => void;
+}> = ({ graphId, workflows, shownBinding, onOpen }) => {
+  const naming = workflows.filter((w) => w.graphId === graphId);
+  if (naming.length === 0) return null;
+  return (
+    <div className="shrink-0 px-4 py-1 flex flex-wrap items-center gap-1.5 text-[11px] border-b border-[#30363d] bg-[#161b22]">
+      <span className="text-[#8b949e]">Submitted as:</span>
+      {naming.map((w) => (
+        <a
+          key={w.id}
+          href={`#graph-workflows/${encodeURIComponent(w.id)}`}
+          onClick={(e) => {
+            // The builder opens records itself; the href only makes this a link.
+            e.preventDefault();
+            onOpen({ kind: "graph-workflows", id: w.id });
+          }}
+          title={`Open graph workflow ${w.id}`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] font-mono text-[#c9d1d9]"
+        >
+          <Waypoints className="w-3 h-3 text-[#8b949e]" aria-hidden="true" />
+          {w.id}
+          {bindingNote(w.graphBindingId, shownBinding)}
+        </a>
       ))}
     </div>
   );

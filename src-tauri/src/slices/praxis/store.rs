@@ -274,16 +274,25 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 cost_unit: None,
                 template_digest: None,
                 contract_id: None,
+                graph_binding_id: None,
             };
             match parsed {
                 Err(problem) => empty(id, Some(problem)),
                 Ok((record, bytes)) => {
                     let Some(id_field) = kind.id_field() else {
                         let template_digest = (kind == PraxisKind::Templates).then(|| template_digest(&bytes)).flatten();
-                        let contract_id = (kind == PraxisKind::GraphWorkflows)
-                            .then(|| record.get("contractId").and_then(Value::as_str).map(str::to_string))
-                            .flatten();
-                        return DefinitionEntry { template_digest, contract_id, ..empty(id, None) };
+                        let workflow_field = |key: &str| {
+                            (kind == PraxisKind::GraphWorkflows)
+                                .then(|| record.get(key).and_then(Value::as_str).map(str::to_string))
+                                .flatten()
+                        };
+                        return DefinitionEntry {
+                            template_digest,
+                            contract_id: workflow_field("contractId"),
+                            graph_id: workflow_field("graphId"),
+                            graph_binding_id: workflow_field("graphBindingId"),
+                            ..empty(id, None)
+                        };
                     };
                     let found = record.get(id_field).and_then(Value::as_str);
                     let id_mismatch =
@@ -1088,6 +1097,22 @@ mod tests {
         assert_eq!(contract("odd"), None);
         // Only graph workflows list it.
         assert_eq!(list_definitions(&repo, PraxisKind::Triggers).unwrap().entries[0].contract_id, None);
+    }
+
+    #[test]
+    fn a_graph_workflow_lists_with_its_graph_and_binding_so_the_graph_canvas_can_show_it() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graph-workflows/ship.json", WORKFLOW);
+        write(&repo, ".praxis/graph-workflows/odd.json", "{\"version\": 1, \"graphId\": 3, \"graphBindingId\": null}");
+        write(&repo, ".praxis/graph-bindings/b.json", "{\"graphBindingId\": \"b\", \"graphId\": \"g\"}");
+        let list = list_definitions(&repo, PraxisKind::GraphWorkflows).unwrap();
+        let entry = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().clone();
+        assert_eq!(entry("ship").graph_id.as_deref(), Some("g"));
+        assert_eq!(entry("ship").graph_binding_id.as_deref(), Some("g-1"));
+        assert_eq!((entry("odd").graph_id, entry("odd").graph_binding_id), (None, None));
+        // A graph binding still lists its graph, and no binding id of its own.
+        let binding = &list_definitions(&repo, PraxisKind::GraphBindings).unwrap().entries[0];
+        assert_eq!((binding.graph_id.as_deref(), binding.graph_binding_id.as_deref()), (Some("g"), None));
     }
 
     #[test]

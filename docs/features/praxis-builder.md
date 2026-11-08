@@ -176,6 +176,7 @@ A graph workflow (`.praxis/graph-workflows/<name>.json`) ties a contract, a grap
 - **Pickers** choose the contract, the graph and one of that graph's bindings. Each also takes an id no record has yet, and flags it as missing.
 - **Grants** lists the grant set the graph workflow carries, read-only, with a link to the contract, where it is changed.
 - **Local checks** read the records it names as saved on disk, and show as issues on the field naming the record at fault: each record exists and is valid, the contract's bindings file lists the graph, and the graph binding binds that graph.
+- **Submitted as** on a graph's canvas, beside **Runs under:**, has one chip per graph workflow that names the graph, saved or drafted, each a link that opens its form. A chip whose graph binding isn't the one the **Binding** picker shows says which binding it uses. The row is left out when no graph workflow names the graph, and it shows no run state.
 
 ---
 
