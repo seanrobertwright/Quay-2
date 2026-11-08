@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { attachTerminalKeys } from "./terminalBody";
 import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminalReports";
-import { reportUserInput } from "../attention/userInput";
+import { reportUserInput } from "./userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
 

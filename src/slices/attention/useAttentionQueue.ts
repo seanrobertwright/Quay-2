@@ -10,7 +10,7 @@ import {
   emptyAttentionQueue,
   type AttentionItem,
 } from "./attentionQueue";
-import { onUserInput } from "./userInput";
+import { onUserInput } from "../terminal/userInput";
 
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
