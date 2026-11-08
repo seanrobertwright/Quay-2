@@ -215,6 +215,12 @@ export interface SpawnTerminalRequest {
   initial_prompt?: string | null;
 }
 
+/** The backend's `terminal-exited` payload: the terminal whose process ended, and its exit code. */
+export interface TerminalExitedPayload {
+  terminal_id: string;
+  exit_code?: number | null;
+}
+
 export interface PtyOutputPayload {
   terminal_id: string;
   data: string;
