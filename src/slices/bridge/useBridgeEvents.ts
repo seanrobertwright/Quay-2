@@ -19,6 +19,16 @@ export function isSubagentTurn(envelope: Envelope): boolean {
   return envelope.type.startsWith("turn.") && Boolean(envelope.data?.agentId);
 }
 
+/** A permission request as the backend sends it in `permission-requested` and `get_pending_permissions`. */
+export interface PermissionRequestPayload {
+  requestId: string;
+  sessionId: string;
+  tag?: string;
+  tool: string;
+  input: any;
+  reason?: string;
+}
+
 export interface PermissionResolvedPayload {
   requestId: string;
   decision: string;

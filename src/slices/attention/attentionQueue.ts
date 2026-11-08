@@ -208,6 +208,13 @@ export function modalPermissions(queue: AttentionQueue): PermissionItem[] {
     .sort((a, b) => a.waitingSince - b.waitingSince);
 }
 
+/** The ids of every permission request still waiting, deferred or not, oldest first. */
+export function pendingPermissionIds(queue: AttentionQueue): string[] {
+  return [...queue.permissions.values()]
+    .sort((a, b) => a.waitingSince - b.waitingSince)
+    .map((item) => item.requestId);
+}
+
 /** Every waiting item, oldest first by when it started waiting, across all kinds. */
 export function attentionItems(queue: AttentionQueue): AttentionItem[] {
   return [...queue.permissions.values(), ...queue.finishedTurns.values()].sort(

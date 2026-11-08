@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
-import { PermissionRequestPayload } from "../bridge/PermissionModal";
+import {
+  Envelope,
+  isSubagentTurn,
+  PermissionRequestPayload,
+  PermissionResolvedPayload,
+} from "../bridge/useBridgeEvents";
 import { TerminalInfo, TerminalStatusPayload } from "../terminal/types";
 import {
   applyAttentionEvent,
   attentionItems,
   emptyAttentionQueue,
   modalPermissions,
+  pendingPermissionIds,
   type AttentionItem,
   type PendingPermission,
   type PermissionItem,
@@ -32,11 +37,21 @@ const toPendingPermission = (
   reason: payload.reason,
 });
 
+/** Sends the user's answer to permission request `requestId`. */
+export type AnswerPermission = (
+  requestId: string,
+  decision: "allow" | "deny",
+  reason?: string,
+  rememberForSession?: boolean
+) => Promise<void>;
+
 export interface AttentionQueueView {
   /** Every waiting item, oldest first. */
   items: AttentionItem[];
   /** The permission requests the permission modal shows, oldest first; none when it is closed. */
   modalPermissions: PermissionItem[];
+  /** The ids of every permission request still waiting, deferred or not, oldest first. */
+  pendingPermissionIds: string[];
   /** Puts `requestIds` off with Later: they leave the modal and stay in the queue. */
   deferPermissions: (requestIds: readonly string[]) => void;
   /** Shows deferred `requestIds` in the permission modal again. */
@@ -46,12 +61,7 @@ export interface AttentionQueueView {
    * The request also clears on the backend's `permission-resolved`, but that is not sent when the
    * agent has stopped waiting, so the answer clears it here too.
    */
-  answerPermission: (
-    requestId: string,
-    decision: "allow" | "deny",
-    reason?: string,
-    rememberForSession?: boolean
-  ) => Promise<void>;
+  answerPermission: AnswerPermission;
 }
 
 /**
@@ -145,7 +155,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     (requestIds: readonly string[]) => dispatch({ type: "permissionsReopened", requestIds }),
     []
   );
-  const answerPermission = useCallback<AttentionQueueView["answerPermission"]>(
+  const answerPermission = useCallback<AnswerPermission>(
     async (requestId, decision, reason, rememberForSession = false) => {
       try {
         await invoke("resolve_permission", {
@@ -164,9 +174,11 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
 
   const items = useMemo(() => attentionItems(queue), [queue]);
   const modal = useMemo(() => modalPermissions(queue), [queue]);
+  const pending = useMemo(() => pendingPermissionIds(queue), [queue]);
   return {
     items,
     modalPermissions: modal,
+    pendingPermissionIds: pending,
     deferPermissions,
     reopenPermissions,
     answerPermission,

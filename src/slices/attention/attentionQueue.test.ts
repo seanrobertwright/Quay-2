@@ -6,6 +6,7 @@ import {
   attentionItems,
   emptyAttentionQueue,
   modalPermissions,
+  pendingPermissionIds,
   type AttentionEvent,
   type AttentionQueue,
 } from "./attentionQueue.ts";
@@ -284,4 +285,14 @@ test("answering a deferred request later clears it from the queue", () => {
     { type: "permissionResolved", requestId: "req-1" }
   );
   assert.deepEqual(keys(queue), []);
+});
+
+test("every waiting permission request is pending, deferred or not, oldest first, and no finished turns", () => {
+  const queue = run(
+    requested("req-late", "term-a", 300),
+    finished("term-b", 100),
+    requested("req-early", "term-c", 50),
+    { type: "permissionsDeferred", requestIds: ["req-late"] }
+  );
+  assert.deepEqual(pendingPermissionIds(queue), ["req-early", "req-late"]);
 });

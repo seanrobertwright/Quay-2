@@ -130,15 +130,11 @@ export function App() {
   const {
     items: waitingItems,
     modalPermissions,
+    pendingPermissionIds,
     deferPermissions,
     reopenPermissions,
     answerPermission,
   } = useAttentionQueue(terminals);
-  // Every permission request still waiting, deferred or not
-  const pendingPermissionIds = useMemo(
-    () => waitingItems.flatMap((item) => (item.kind === "permission" ? [item.requestId] : [])),
-    [waitingItems]
-  );
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();

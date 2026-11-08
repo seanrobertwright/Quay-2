@@ -13,26 +13,13 @@ import {
 } from "lucide-react";
 import { TerminalInfo } from "../terminal/types";
 import type { PermissionItem } from "../attention/attentionQueue";
-
-export interface PermissionRequestPayload {
-  requestId: string;
-  sessionId: string;
-  tag?: string;
-  tool: string;
-  input: any;
-  reason?: string;
-}
+import type { AnswerPermission } from "../attention/useAttentionQueue";
 
 interface PermissionModalProps {
   /** The requests to show, from the attention queue; the first is shown when the modal opens. */
   pendingRequests: PermissionItem[];
   terminals: TerminalInfo[];
-  onResolve: (
-    requestId: string,
-    decision: "allow" | "deny",
-    reason?: string,
-    rememberForSession?: boolean
-  ) => void;
+  onResolve: AnswerPermission;
   /** Hides the modal and leaves the shown requests waiting in the attention queue. */
   onLater: () => void;
 }
