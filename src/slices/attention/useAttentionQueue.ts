@@ -76,7 +76,8 @@ export interface AttentionQueueView {
  * `terminal-status` that moves the terminal to Working, for the CLIs that send no turn start
  * (Codex goes Working on its first tool; Antigravity on its own turn report).
  *
- * Returns the waiting items, the requests the permission modal shows, and the user's actions on them.
+ * Returns the waiting items, the requests the permission modal shows, the ids of every pending
+ * request, and the user's actions on them.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
