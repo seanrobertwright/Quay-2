@@ -109,7 +109,7 @@ The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xt
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.
 - **`archon/`**: SVG-powered DAG visualization canvas, live log viewer, and spec checklist.
-- **`machina/`**: Software factory cockpit with stage milestones, deliverable inspections, and worker pools.
+- **`machina/`**: The Factory Station (**Machina: local**): work orders, the project gate, holds and Accept.
 - **`github/`**: Slide-over companion drawer with filter chips, red `BLOCKED` dependency badges, and 1-click prompt submission.
 
 ---

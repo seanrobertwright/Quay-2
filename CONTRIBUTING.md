@@ -22,7 +22,7 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`orchestrator`**: In-process Agent-to-Agent (A2A) router and loopback MCP server (`quay_list_agents`, `quay_send_message`, `quay_broadcast`, `quay_get_agent_status`).
 - **`github`**: Native `gh` CLI subprocess integration, issue/PR triage, and GraphQL dependency resolution for blocked issues.
 - **`archon`**: Archon & Spec-Driven Development (SDD) runtime bridge, DAG inspection, live event streaming, and ADR viewer.
-- **`machina`**: Native Machina Praxis AI Software Factory supervisor, SQLite schema migrations, and work order lifecycle manager.
+- **`machina`**: Machina, Quay's local factory: the work order supervisor, per-work-order git worktrees, the project gate with hidden holdbacks, holds, squash-merge on Accept, and state in `machina\state.json`.
 - **`sessions`**: Claude Code transcript scanner, token spend accounting, deduplication engine, and disk caching.
 - **`audit`**: Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths.
 - **`workspace`**: Project directory registration, configuration persistence, and worktree discovery.
@@ -34,7 +34,7 @@ Quay 2 is strictly organized around **Vertical Slice Architecture (VSA)** rather
 - **`orchestrator/`**: A2A Mission Control modal for operator dispatch and inter-agent message logs.
 - **`github/`**: GitHub Companion slide-over drawer with blocked issue tags, filter chips, and 1-click agent prompt submission.
 - **`archon/`**: Visual DAG execution canvas, live node status inspector, streaming execution logs, and spec task trackers.
-- **`machina/`**: AI Software Factory cockpit, stage progression, deliverable reviewers, and worker pools.
+- **`machina/`**: The Factory Station (**Machina: local**): work order list and detail, the work order composer, the project gate config, holds and Accept.
 - **`sessions/`**: Session history browser and token spend meter.
 
 > [!IMPORTANT]
