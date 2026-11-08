@@ -68,6 +68,7 @@ export function useWorkspace() {
   const [isGithubDrawerOpen, setIsGithubDrawerOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
+  const [isAttentionQueueOpen, setIsAttentionQueueOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
@@ -1281,6 +1282,7 @@ export function useWorkspace() {
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
       toggleTopos: () => setIsToposOpen((prev) => !prev),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
+      toggleAttentionQueue: () => setIsAttentionQueueOpen((prev) => !prev),
       openA2A: () => setIsA2AOpen(true),
       focusNextPane,
       toggleZoom,
@@ -1439,6 +1441,8 @@ export function useWorkspace() {
     setIsAuditModalOpen,
     isSessionHistoryOpen,
     setIsSessionHistoryOpen,
+    isAttentionQueueOpen,
+    setIsAttentionQueueOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
     isArchonGraphOpen,

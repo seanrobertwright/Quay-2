@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
@@ -29,6 +29,13 @@ const toPendingPermission = (
   tool: payload.tool,
 });
 
+export interface AttentionQueueState {
+  /** Every waiting item, oldest first. */
+  items: AttentionItem[];
+  /** Clears the terminal's finished turn without acting on it. Its permission requests stay. */
+  dismissFinishedTurn: (terminalId: string) => void;
+}
+
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
  * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
@@ -43,9 +50,9 @@ const toPendingPermission = (
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.
  *
- * Returns the waiting items, oldest first.
+ * Returns the waiting items, oldest first, and the action that dismisses a terminal's finished turn.
  */
-export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
+export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueState {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
 
   // Listeners read the project of the terminal an event names at the time it arrives
@@ -128,5 +135,10 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
     };
   }, []);
 
-  return useMemo(() => attentionItems(queue), [queue]);
+  const items = useMemo(() => attentionItems(queue), [queue]);
+  const dismissFinishedTurn = useCallback(
+    (terminalId: string) => dispatch({ type: "finishedTurnDismissed", terminalId }),
+    []
+  );
+  return { items, dismissFinishedTurn };
 }

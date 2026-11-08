@@ -30,7 +30,7 @@ import type { ClaudeTokenStats } from "../sessions/types.ts";
 import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths.ts";
 import { useContextMenu } from "../overlay/useContextMenu.ts";
 import { ProjectMenu, WorktreeMenu } from "./RailRowMenus.tsx";
-import { worktreeBranch } from "./worktreeMenu.ts";
+import { worktreeRowName } from "./worktreeMenu.ts";
 
 // The rail was a fixed 288px (`w-72`); the drag range is measured from that width
 const RAIL_BASE_WIDTH = 288;
@@ -91,9 +91,6 @@ interface RailProps {
 
 /** The row a Rail menu is open for: a project's row, or one of its worktrees' rows. */
 type RowMenuTarget = { kind: "project"; path: string } | { kind: "worktree"; repoPath: string; path: string };
-
-/** What a worktree's row shows for it: its branch, or its HEAD's short hash when that is detached. */
-const worktreeRowName = (wt: GitWorktree) => worktreeBranch(wt) ?? wt.head.slice(0, 7);
 
 /** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
 const UnsavedDot = () => (

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { shownMenu as shown } from "../../test-support/menuEntries.ts";
-import { worktreeBranch, worktreeMenu, worktreeMenuLabel } from "./worktreeMenu.ts";
+import { worktreeBranch, worktreeMenu, worktreeMenuLabel, worktreeRowName } from "./worktreeMenu.ts";
 
 test("a worktree on a branch lists its items in their groups", () => {
   assert.deepEqual(shown(worktreeMenu({ branch: "refs/heads/ticket-509" })), [
@@ -30,4 +30,9 @@ test("the branch name drops git's refs/heads/ prefix, and a detached HEAD has no
 
 test("the menu is named for the worktree it acts on", () => {
   assert.equal(worktreeMenuLabel("ticket-509"), "Worktree ticket-509");
+});
+
+test("a worktree is named by its branch, or by its HEAD's short hash when that is detached", () => {
+  assert.equal(worktreeRowName({ branch: "refs/heads/feat/menus", head: "0123456789abcdef" }), "feat/menus");
+  assert.equal(worktreeRowName({ branch: "", head: "0123456789abcdef" }), "0123456");
 });

@@ -79,6 +79,7 @@ export interface CtrlBActions {
   togglePraxisBuilder(): void;
   toggleTopos(): void;
   toggleUpdateModal(): void;
+  toggleAttentionQueue(): void;
   openA2A(): void;
   focusNextPane(): void;
   toggleZoom(): void;
@@ -121,6 +122,7 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["p", "togglePraxisBuilder"],
   ["c", "toggleTopos"],
   ["u", "toggleUpdateModal"],
+  ["q", "toggleAttentionQueue"],
   ["m", "openA2A"],
   ["o", "focusNextPane"],
   ["z", "toggleZoom"],

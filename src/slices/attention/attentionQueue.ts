@@ -1,8 +1,8 @@
 /**
  * The attention queue: every session waiting on the user, oldest first. It takes plain events
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
- * that feeds it (`useAttentionQueue`) turns bridge events into these events, and the status
- * strip badge renders its count.
+ * that feeds it (`useAttentionQueue`) turns bridge events into these events. The status strip
+ * badge renders its count and the attention drawer its rows.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */
@@ -214,6 +214,31 @@ export function attentionItems(queue: AttentionQueue): AttentionItem[] {
   return [...queue.permissions.values(), ...queue.finishedTurns.values()].sort(
     (a, b) => a.waitingSince - b.waitingSince
   );
+}
+
+/**
+ * A key for `item` that names the thing waiting, never its place in the list: the request id
+ * for a permission, the terminal for a finished turn (a terminal has at most one).
+ */
+export function attentionItemKey(item: AttentionItem): string {
+  return item.kind === "permission" ? `permission:${item.requestId}` : `finishedTurn:${item.terminalId}`;
+}
+
+/**
+ * How long an item that started waiting at `waitingSince` has waited by `now`, both in epoch
+ * milliseconds, in its two largest units: "45s", "3m", "1h 5m", "1d 2h". A `now` before
+ * `waitingSince` reads "0s".
+ */
+export function waitedLabel(waitingSince: number, now: number): string {
+  const seconds = Math.floor(Math.max(0, now - waitingSince) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const pair = (big: number, bigUnit: string, small: number, smallUnit: string) =>
+    small === 0 ? `${big}${bigUnit}` : `${big}${bigUnit} ${small}${smallUnit}`;
+  if (hours < 24) return pair(hours, "h", minutes % 60, "m");
+  return pair(Math.floor(hours / 24), "d", hours % 24, "h");
 }
 
 /**

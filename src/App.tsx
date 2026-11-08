@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
+import { AttentionDrawer } from "./slices/attention/AttentionDrawer";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -101,6 +102,8 @@ export function App() {
     setIsAuditModalOpen,
     isSessionHistoryOpen,
     setIsSessionHistoryOpen,
+    isAttentionQueueOpen,
+    setIsAttentionQueueOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
     isArchonGraphOpen,
@@ -128,7 +131,7 @@ export function App() {
 
   const { events, activeTools, pendingPermissions, resolvePermission, getTerminalEvents } =
     useBridgeEvents();
-  const waitingItems = useAttentionQueue(terminals);
+  const { items: waitingItems, dismissFinishedTurn } = useAttentionQueue(terminals);
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
@@ -604,13 +607,7 @@ export function App() {
         onNewTerminal={() => setIsNewTerminalOpen(true)}
         onOpenActionLog={() => setIsActionLogOpen(true)}
         onOpenPermissionModal={() => setIsPermissionModalOpen(true)}
-        onOpenAttentionQueue={() => {
-          // Until the queue has its drawer, the badge goes to the item that has waited longest
-          const oldest = waitingItems[0];
-          if (!oldest) return;
-          if (oldest.kind === "permission") setIsPermissionModalOpen(true);
-          else selectTerminal(oldest.terminalId);
-        }}
+        onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
         onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
         onOpenSwarm={() => setIsSwarmModalOpen(true)}
         onOpenDiffInspector={() => setIsDiffInspectorOpen(true)}
@@ -668,6 +665,7 @@ export function App() {
         onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
         onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
+        onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
@@ -821,6 +819,21 @@ export function App() {
         projectName={activeProjectObj?.name || "Repo"}
         onClose={() => setIsAuditModalOpen(false)}
         onFixWithClaude={handleFixAuditWithClaude}
+      />
+
+      {/* Attention queue drawer: every session waiting on you (Ctrl+Shift+B q) */}
+      <AttentionDrawer
+        isOpen={isAttentionQueueOpen}
+        items={waitingItems}
+        terminals={terminals}
+        projects={projects}
+        projectWorktrees={projectWorktrees}
+        onClose={() => setIsAttentionQueueOpen(false)}
+        onFocusTerminal={(terminalId) => {
+          setIsAttentionQueueOpen(false);
+          selectTerminal(terminalId);
+        }}
+        onDismissFinishedTurn={dismissFinishedTurn}
       />
 
       {/* Claude Session History & Auto-Resume Drawer (Ctrl+Shift+B h) */}
