@@ -140,3 +140,48 @@ test("double-clicking a git folder goes into it and lists its subfolders, withou
   assert.deepEqual(dialog.selected, [], "no project was switched to");
   assert.equal(dialog.closed(), 0, "the dialog stays open");
 });
+
+test("double-clicking a plain folder goes into it", async () => {
+  const dialog = await renderDialog();
+  await doubleClick(folder(dialog.container, "notes"));
+  assert.deepEqual(folderNames(dialog.container), ["2026"]);
+  assert.deepEqual(crumbs(dialog.container), ["C:", "Users", "me", "notes"]);
+  assert.deepEqual(dialog.added, []);
+});
+
+test("a single click selects a git folder and fills the path bar, and Open then opens it", async () => {
+  const dialog = await renderDialog();
+  await act(async () => folder(dialog.container, "repo").click());
+  await settle();
+  assert.equal(pathBar(dialog.container).value, REPO);
+  assert.deepEqual(folderNames(dialog.container), ["repo", "notes"], "the browser stays where it was");
+  assert.match(text(dialog.container), /Git repo · main/, "the verdict chip describes the selection");
+  assert.deepEqual(dialog.added, [], "a click alone opens nothing");
+  const open = button(dialog.container, /^Open$/);
+  assert.ok(open);
+  assert.equal(open.disabled, false);
+  await act(async () => open.click());
+  assert.deepEqual(dialog.added, [REPO]);
+  assert.equal(dialog.closed(), 1);
+});
+
+test("Enter in the path bar opens the folder it names", async () => {
+  const dialog = await renderDialog();
+  await act(async () => folder(dialog.container, "repo").click());
+  await settle();
+  await act(async () => {
+    pathBar(dialog.container).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  assert.deepEqual(dialog.added, [REPO]);
+  assert.equal(dialog.closed(), 1);
+});
+
+test("double-clicking a Recent entry still opens it", async () => {
+  const dialog = await renderDialog({ withRecent: true });
+  const aside = dialog.container.querySelector("aside") as HTMLElement;
+  const recent = button(aside, /^recent-repo/);
+  assert.ok(recent, "the recent project is in the sidebar");
+  await doubleClick(recent);
+  assert.deepEqual(dialog.added, [RECENT]);
+  assert.equal(dialog.closed(), 1);
+});
