@@ -561,6 +561,7 @@ export function App() {
         onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
         onRemoveWorktree={handleRemoveWorktree}
         onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
+        onOpenTopos={() => setIsToposOpen(true)}
         onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}

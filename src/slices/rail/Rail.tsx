@@ -1,8 +1,8 @@
-import { useState, useEffect, useId, MouseEvent, KeyboardEvent, ReactNode } from "react";
-import { PermissionMode, TerminalInfo } from "../terminal/types";
-import { Project } from "../workspace/types";
-import { GitWorktree } from "../git/types";
-import { TerminalRow } from "./TerminalRow";
+import { useState, useEffect, useId, type MouseEvent, type KeyboardEvent, type ReactNode } from "react";
+import type { PermissionMode, TerminalInfo } from "../terminal/types.ts";
+import type { Project } from "../workspace/types.ts";
+import type { GitWorktree } from "../git/types.ts";
+import { TerminalRow } from "./TerminalRow.tsx";
 import {
   FolderGit2,
   Plus,
@@ -22,12 +22,15 @@ import {
   ShieldCheck,
   Coins,
 } from "lucide-react";
-import { GithubIcon } from "../github/GithubIcon";
-import { ArchonIcon } from "../archon/ArchonIcon";
-import { PraxisIcon } from "../praxis-builder/PraxisIcon";
-import { VsCodeIcon } from "../workspace/VsCodeIcon";
-import { ClaudeTokenStats } from "../sessions/types";
-import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths";
+import { GithubIcon } from "../github/GithubIcon.tsx";
+import { ArchonIcon } from "../archon/ArchonIcon.tsx";
+import { PraxisIcon } from "../praxis-builder/PraxisIcon.tsx";
+import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
+import type { ClaudeTokenStats } from "../sessions/types.ts";
+import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths.ts";
+import { useContextMenu } from "../overlay/useContextMenu.ts";
+import { ProjectMenu, WorktreeMenu } from "./RailRowMenus.tsx";
+import { worktreeBranch } from "./worktreeMenu.ts";
 
 // The rail was a fixed 288px (`w-72`); the drag range is measured from that width
 const RAIL_BASE_WIDTH = 288;
@@ -73,6 +76,8 @@ interface RailProps {
   onOpenNewWorktree?: (repoPath: string) => void;
   onRemoveWorktree?: (repoPath: string, wtPath: string) => void;
   onOpenGithubDrawer?: () => void;
+  /** Opens Topos on the active project. */
+  onOpenTopos?: () => void;
   onOpenPrePrAudit?: () => void;
   onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
@@ -83,6 +88,12 @@ interface RailProps {
   /** Switches a terminal between Skip and Ask, from the mode it is in now. */
   onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
 }
+
+/** The row a Rail menu is open for: a project's row, or one of its worktrees' rows. */
+type RowMenuTarget = { kind: "project"; path: string } | { kind: "worktree"; repoPath: string; path: string };
+
+/** What a worktree's row shows for it: its branch, or its HEAD's short hash when that is detached. */
+const worktreeRowName = (wt: GitWorktree) => worktreeBranch(wt) ?? wt.head.slice(0, 7);
 
 /** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
 const UnsavedDot = () => (
@@ -116,6 +127,7 @@ export const Rail: React.FC<RailProps> = ({
   onOpenNewWorktree,
   onRemoveWorktree,
   onOpenGithubDrawer,
+  onOpenTopos,
   onOpenPrePrAudit,
   onOpenSessionHistory,
   onOpenTokenSpend,
@@ -200,6 +212,77 @@ export const Rail: React.FC<RailProps> = ({
       ...prev,
       [path]: prev[path] === false ? true : false,
     }));
+  };
+
+  // Removing a workspace or a worktree asks first. The trash buttons and the row menus both
+  // remove through these, so the question is asked in one place.
+  const removeProject = (proj: Project) => {
+    if (window.confirm(`Remove workspace "${proj.name}"? Any active terminals in this workspace will be closed.`)) {
+      onRemoveProject(proj.path);
+    }
+  };
+
+  const removeWorktree = async (repoPath: string, wt: GitWorktree) => {
+    if (!onRemoveWorktree) return;
+    if (!window.confirm(`Remove worktree "${worktreeRowName(wt)}"? Any active terminals in this worktree will be closed.`)) return;
+    try {
+      await onRemoveWorktree(repoPath, wt.path);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // One menu at a time, for a project row or a worktree row. Opening it never changes the active
+  // project; an item that acts on the active project selects the row's project first.
+  const rowMenu = useContextMenu<RowMenuTarget>({ keyOf: (t) => `${t.kind} ${t.path}` });
+  const selectThen = (path: string, run?: () => void) =>
+    run &&
+    (() => {
+      onSelectProject(path);
+      run();
+    });
+
+  const renderRowMenu = () => {
+    const open = rowMenu.open;
+    if (!open) return null;
+    if (open.target.kind === "project") {
+      const path = open.target.path;
+      const proj = projects.find((p) => p.path === path);
+      if (!proj) return null;
+      return (
+        <ProjectMenu
+          project={proj}
+          collapsed={!!collapsedProjects[proj.path]}
+          at={open.at}
+          onClose={rowMenu.close}
+          handlers={{
+            newTerminal: () => onNewTerminal(proj.path),
+            newWorktree: onOpenNewWorktree && (() => onOpenNewWorktree(proj.path)),
+            swarm: selectThen(proj.path, onOpenSwarm),
+            topos: selectThen(proj.path, onOpenTopos),
+            github: selectThen(proj.path, onOpenGithubDrawer),
+            settings: onOpenSettings && (() => onOpenSettings(proj)),
+            toggleCollapse: () => toggleCollapse(proj.path),
+            remove: () => removeProject(proj),
+          }}
+        />
+      );
+    }
+    const { repoPath, path } = open.target;
+    const wt = projectWorktrees?.[repoPath]?.find((w) => w.path === path);
+    if (!wt) return null;
+    return (
+      <WorktreeMenu
+        worktree={wt}
+        rowName={worktreeRowName(wt)}
+        at={open.at}
+        onClose={rowMenu.close}
+        handlers={{
+          newTerminal: () => onNewTerminal(wt.path),
+          remove: onRemoveWorktree && (() => void removeWorktree(repoPath, wt)),
+        }}
+      />
+    );
   };
 
   // Find any terminals that match neither a registered project nor one of its worktrees
@@ -398,10 +481,14 @@ export const Rail: React.FC<RailProps> = ({
                   role="button"
                   tabIndex={0}
                   onClick={() => onSelectProject(proj.path)}
+                  onContextMenu={(e) => rowMenu.onContextMenu(e, { kind: "project", path: proj.path })}
                   onKeyDown={(e) => {
-                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelectProject(proj.path);
+                    } else {
+                      rowMenu.onKeyDown(e, { kind: "project", path: proj.path });
                     }
                   }}
                   className={`group flex items-center justify-between px-2.5 py-1.5 text-xs rounded-t cursor-pointer transition-colors ${
@@ -494,13 +581,7 @@ export const Rail: React.FC<RailProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (
-                          window.confirm(
-                            `Remove workspace "${proj.name}"? Any active terminals in this workspace will be closed.`
-                          )
-                        ) {
-                          onRemoveProject(proj.path);
-                        }
+                        removeProject(proj);
                       }}
                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#30363d] text-[#8b949e] hover:text-[#f85149] rounded transition-all"
                       title={`Remove workspace ${proj.name}`}
@@ -594,9 +675,8 @@ export const Rail: React.FC<RailProps> = ({
                         {!wtCollapsed && (
                           <div id={wtListId} className="space-y-1 mt-1">
                           {secondaryWorktrees.map((wt) => {
-                            const branchName = wt.branch
-                              ? wt.branch.replace("refs/heads/", "")
-                              : wt.head.slice(0, 7);
+                            const branchName = worktreeRowName(wt);
+                            const wtMenuTarget: RowMenuTarget = { kind: "worktree", repoPath: proj.path, path: wt.path };
                             const isWtActive = isSamePath(activeProject, wt.path);
                             const wtTerminals = terminals.filter((t) => isSamePath(t.project_path, wt.path));
 
@@ -611,13 +691,17 @@ export const Rail: React.FC<RailProps> = ({
                                       onSelectTerminal(wtTerminals[0].id);
                                     }
                                   }}
+                                  onContextMenu={(e) => rowMenu.onContextMenu(e, wtMenuTarget)}
                                   onKeyDown={(e) => {
-                                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                                    if (e.target !== e.currentTarget) return;
+                                    if (e.key === "Enter" || e.key === " ") {
                                       e.preventDefault();
                                       onSelectProject(wt.path);
                                       if (wtTerminals.length > 0) {
                                         onSelectTerminal(wtTerminals[0].id);
                                       }
+                                    } else {
+                                      rowMenu.onKeyDown(e, wtMenuTarget);
                                     }
                                   }}
                                   className={`group/wt flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer transition-colors ${
@@ -674,19 +758,9 @@ export const Rail: React.FC<RailProps> = ({
                                     {onRemoveWorktree && (
                                       <button
                                         type="button"
-                                        onClick={async (e) => {
+                                        onClick={(e) => {
                                           e.stopPropagation();
-                                          if (
-                                            window.confirm(
-                                              `Remove worktree "${branchName}"? Any active terminals in this worktree will be closed.`
-                                            )
-                                          ) {
-                                            try {
-                                              await onRemoveWorktree(proj.path, wt.path);
-                                            } catch (err: any) {
-                                              console.error(err);
-                                            }
-                                          }
+                                          void removeWorktree(proj.path, wt);
                                         }}
                                         className="opacity-0 group-hover/wt:opacity-100 p-0.5 hover:bg-[#30363d] text-[#8b949e] hover:text-[#ff7b72] rounded transition-all"
                                         title={`Remove worktree ${branchName}`}
@@ -823,6 +897,7 @@ export const Rail: React.FC<RailProps> = ({
           </span>
         </div>
       </div>
+      {renderRowMenu()}
     </aside>
   );
 };
