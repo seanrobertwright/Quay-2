@@ -33,6 +33,10 @@ for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "E
   // Node's own `navigator` is a getter, so each global is defined rather than assigned.
   Object.defineProperty(globalThis, key, { value: (window as unknown as Record<string, unknown>)[key], configurable: true, writable: true });
 }
+for (const key of ["requestAnimationFrame", "cancelAnimationFrame"] as const) {
+  // Called bare by components, so each is bound to the window it belongs to.
+  globals[key] = window[key].bind(window);
+}
 globals.window = window;
 // Tells React that updates are wrapped in `act`.
 globals.IS_REACT_ACT_ENVIRONMENT = true;
