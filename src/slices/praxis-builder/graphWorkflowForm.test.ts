@@ -7,7 +7,7 @@
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft, type Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
@@ -65,11 +65,10 @@ function draftOf(content: Record<string, unknown>, id = "ship"): Draft {
   return made.value;
 }
 
-/** What a test can change between renders: the graph workflow's id, the refresh count and the trigger badges. */
+/** What a test can change between renders: the graph workflow's id and the refresh count. */
 interface FormOptions {
   id?: string;
   refresh?: number;
-  triggerBadge?: (triggerId: string) => ReactNode;
 }
 
 interface Rendered {
@@ -89,7 +88,7 @@ async function render(content: Record<string, unknown>, options: FormOptions = {
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted = { root, container };
-  const draw = (body: Record<string, unknown>, { id, refresh = 0, triggerBadge }: FormOptions) =>
+  const draw = (body: Record<string, unknown>, { id, refresh = 0 }: FormOptions) =>
     act(async () =>
       root.render(
         createElement(GraphWorkflowForm, {
@@ -103,7 +102,6 @@ async function render(content: Record<string, unknown>, options: FormOptions = {
             { id: "other-1", graphId: "other" },
           ],
           refresh,
-          triggerBadge,
           onEdit: (e: GraphWorkflowEdit) => edits.push(e),
           onOpen: (r: DefinitionRef) => opened.push(r),
           onValidated: (v: string | null) => verdicts.push(v),
@@ -323,18 +321,6 @@ test("without graph trigger host state each trigger shows only its id", async ()
   const items = [...(sectionTitled(root, "Triggers")?.querySelectorAll("li") ?? [])];
   assert.deepEqual(items.map(text), ["nightly"]);
   assert.equal(items[0].children.length, 1, "the link alone");
-});
-
-test("a trigger's host state badge shows next to its id once there is one", async () => {
-  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly", "on-push"], unchecked: [] });
-  const badge = (id: string) => (id === "on-push" ? createElement("span", { "data-badge": id }, "Candidate (revision 2)") : null);
-  const { root } = await render(WORKFLOW, { triggerBadge: badge });
-  const items = [...(sectionTitled(root, "Triggers")?.querySelectorAll("li") ?? [])];
-  assert.equal(items[0].querySelector("[data-badge]"), null, "a trigger with no state shows only its id");
-  assert.equal(text(items[0]), "nightly");
-  const shown = items[1].querySelector("[data-badge]");
-  assert.equal(text(shown), "Candidate (revision 2)");
-  assert.equal(shown?.previousElementSibling?.tagName, "A", "the badge sits next to the trigger's link");
 });
 
 test("a target file the lookup skipped is named, and a failed lookup says why", async () => {

@@ -26,11 +26,6 @@ interface GraphWorkflowFormProps {
   graphBindings: readonly { id: string; graphId?: string }[];
   /** Counts up when the builder saves, renames or deletes a record, so the local checks run again. */
   refresh: number;
-  /**
-   * A trigger's host state badge, shown next to its id in the Triggers section (#479). Quay has no
-   * graph trigger host state yet (#475), so the builder passes none and only the id shows.
-   */
-  triggerBadge?: (triggerId: string) => ReactNode;
   onEdit: (edit: GraphWorkflowEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -61,7 +56,6 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   graphs,
   graphBindings,
   refresh,
-  triggerBadge,
   onEdit,
   onOpen,
   onValidated,
@@ -130,7 +124,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
         />
       </Section>
       <GrantSet contractId={contractId} grants={grants} missing={contractMissing} onOpen={onOpen} />
-      <StartedBy triggers={triggers} badge={triggerBadge} onOpen={onOpen} />
+      <StartedBy triggers={triggers} onOpen={onOpen} />
     </>
   );
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
@@ -202,12 +196,14 @@ const GrantSet: FC<{
   );
 };
 
-/** The triggers that start this graph workflow (#479), each a link that opens its form. */
+/**
+ * The triggers that start this graph workflow (#479), each a link that opens its form. Quay has
+ * no graph trigger host state yet (#475), so each shows only its id.
+ */
 const StartedBy: FC<{
   triggers: GraphWorkflowTriggersStatus;
-  badge?: (triggerId: string) => ReactNode;
   onOpen: (ref: DefinitionRef) => void;
-}> = ({ triggers, badge, onOpen }) => {
+}> = ({ triggers, onOpen }) => {
   let body: ReactNode;
   if (triggers.state === "loading") body = <p className={hintClass}>Looking for triggers…</p>;
   else if (triggers.state === "failed")
@@ -222,7 +218,7 @@ const StartedBy: FC<{
         {triggers.found.ids.length === 0 ? (
           <p className={hintClass}>No saved trigger starts this graph workflow.</p>
         ) : (
-          <TriggerLinks ids={triggers.found.ids} badge={badge} onOpen={onOpen} />
+          <TriggerLinks ids={triggers.found.ids} onOpen={onOpen} />
         )}
         {triggers.found.unchecked.length > 0 && (
           <ul className="space-y-0.5">
@@ -240,15 +236,14 @@ const StartedBy: FC<{
   return <Section title="Triggers">{body}</Section>;
 };
 
-/** The trigger ids as links that open each trigger's form, each with its host state badge when there is one. */
+/** The trigger ids as links that open each trigger's form. */
 const TriggerLinks: FC<{
   ids: readonly string[];
-  badge?: (triggerId: string) => ReactNode;
   onOpen: (ref: DefinitionRef) => void;
-}> = ({ ids, badge, onOpen }) => (
+}> = ({ ids, onOpen }) => (
   <ul className="space-y-1">
     {ids.map((id) => (
-      <li key={id} className="flex items-center gap-1.5">
+      <li key={id}>
         <a
           href={`#triggers/${encodeURIComponent(id)}`}
           onClick={(e) => {
@@ -260,7 +255,6 @@ const TriggerLinks: FC<{
         >
           {id}
         </a>
-        {badge?.(id)}
       </li>
     ))}
   </ul>
