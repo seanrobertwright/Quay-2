@@ -12,7 +12,7 @@ Press `Ctrl+Shift+B P`, or choose **Praxis Builder...** in the command palette, 
 
 Closing the builder only hides it. Each project keeps its open definition, its unsaved drafts and its undo history for as long as Quay runs, so the builder reopens where you left it. `Escape` hides the builder once there is nothing smaller for it to close: the shortcuts help, **Go to node**, a connection being drawn, a focused field or the selection.
 
-The list groups definitions by kind: **Graphs** (each with its graph bindings nested under it), **Contracts**, **Grants**, **Triggers** and **Workflow templates**.
+The list groups definitions by kind: **Graphs** (each with its graph bindings nested under it), **Contracts**, **Grants**, **Triggers**, **Workflow templates** and **Graph workflows**.
 
 ---
 
@@ -29,10 +29,11 @@ Everything the builder edits is a JSON file under `.praxis/` in the project, so 
 ├── grants/<id>.json
 ├── triggers/<id>.json
 ├── graph-bindings/<id>.json    # what each node of a graph runs as
-└── templates/<name>.json       # workflow templates
+├── templates/<name>.json       # workflow templates
+└── graph-workflows/<name>.json # a contract, a graph and one of its bindings
 ```
 
-- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template holds no id, so its file name alone names it, and that name follows the Praxis host's narrower rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and no Windows device name.
+- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template or graph workflow holds no id, so its file name alone names it, and that name follows the Praxis host's narrower rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and no Windows device name.
 - **Files are written in one canonical form**, so a save that changes nothing makes no diff. Saving sets a content-digest `revision` on graphs and triggers, and `graphBindingRevision` on graph bindings.
 - **Broken files still list.** A file that isn't valid JSON is listed with an error badge, and opening it shows the line and column of the error.
 
@@ -81,7 +82,7 @@ Every edit goes to an in-memory draft first. Unsaved drafts show `*` in the list
 ### Creating, renaming and deleting
 
 - **New** asks for the kind, then names the definition in the list (`graph-1` to start) and checks the name as you type. A new graph starts with a single `END` node, and nothing is written until its first save.
-- **Rename** lists every file it will touch, moves the definition and its layout file, and changes the id inside. References follow: renaming a graph or grant rewrites the contract bindings that list it, renaming a contract rewrites the `contractId` of its triggers, and renaming a grant rewrites the `parentId` of the grants under it.
+- **Rename** lists every file it will touch, moves the definition and its layout file, and changes the id inside. References follow: renaming a graph or grant rewrites the contract bindings that list it, renaming a contract rewrites the `contractId` of its triggers, renaming a grant rewrites the `parentId` of the grants under it, and renaming a contract, graph or graph binding rewrites the `contractId`, `graphId` or `graphBindingId` of the graph workflows that name it.
 - **Delete** names what refers to the definition and moves it, with its layout file, to the Recycle Bin or Trash. Deleting a graph offers to delete its graph bindings too.
 - Neither rename nor delete can be undone in the builder.
 
@@ -135,7 +136,7 @@ On the canvas, a graph shows **Runs under:** chips for the contracts that bind i
 
 ### Changed since last commit
 
-Contracts, grants, graph bindings and workflow templates whose files have uncommitted changes carry a **changed since last commit** badge in the list, so an agent's edits are visible before anyone acts on them. The badge opens the file's diff against the last commit. A project that isn't a git repository shows no badge. Committing a grant doesn't approve it: only a human in Praxis does.
+Contracts, grants, graph bindings, workflow templates and graph workflows whose files have uncommitted changes carry a **changed since last commit** badge in the list, so an agent's edits are visible before anyone acts on them. The badge opens the file's diff against the last commit. A project that isn't a git repository shows no badge. Committing a grant doesn't approve it: only a human in Praxis does.
 
 ---
 
@@ -162,6 +163,17 @@ A workflow template is a coding plan without a work order or run id, and its fil
 - Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. Readiness and the host's other rules come from the host: beside **Install on host…**, a status line shows the template's [state on the host](#template-host-states).
 
 **Template | Runs** above the form switches the work area between the form and the template's [runs on the host](#runs).
+
+---
+
+## Graph workflows
+
+A graph workflow (`.praxis/graph-workflows/<name>.json`) ties a contract, a graph and one of that graph's graph bindings together: `{version, contractId, graphId, graphBindingId}`. It is the unit Quay will submit to a Praxis host, carrying the grants of its contract's bindings file. Quay doesn't submit graph workflows yet.
+
+- **Names follow the host's rule**, as a workflow template's do, with the same warning, issue and **Rename** button on a file named otherwise.
+- **Pickers** choose the contract, the graph and one of that graph's bindings. Each also takes an id no record has yet, and flags it as missing.
+- **Grants** lists the grant set the graph workflow carries, read-only, with a link to the contract, where it is changed.
+- **Local checks** read the records it names as saved on disk, and show as issues on the field naming the record at fault: each record exists and is valid, the contract's bindings file lists the graph, and the graph binding binds that graph.
 
 ---
 
