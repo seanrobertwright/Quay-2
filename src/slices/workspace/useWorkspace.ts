@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   TerminalInfo,
   TerminalStatusPayload,
+  TerminalExitedPayload,
   SpawnTerminalRequest,
   StageLayout,
   PermissionMode,
@@ -37,11 +38,6 @@ import {
 } from "./viewState";
 
 export type { Project };
-
-interface PtyExitPayload {
-  terminal_id: string;
-  exit_code?: number | null;
-}
 
 /** How long a project's view must sit still before it is written to disk. */
 const VIEW_SAVE_DEBOUNCE_MS = 500;
@@ -234,7 +230,7 @@ export function useWorkspace() {
 
   // Listen for terminal process exits
   useEffect(() => {
-    const unlistenPromise = listen<PtyExitPayload>("terminal-exited", (event) => {
+    const unlistenPromise = listen<TerminalExitedPayload>("terminal-exited", (event) => {
       const { terminal_id, exit_code } = event.payload;
       setTerminals((prev) =>
         prev.map((t) =>

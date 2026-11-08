@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
 import { PermissionRequestPayload } from "../bridge/PermissionModal";
-import { TerminalInfo, TerminalStatusPayload } from "../terminal/types";
+import { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types";
 import {
   applyAttentionEvent,
   attentionItems,
@@ -13,11 +13,6 @@ import {
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
 import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
-
-/** The backend's `terminal-exited` payload: the terminal whose process ended. */
-interface TerminalExitedPayload {
-  terminal_id: string;
-}
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
