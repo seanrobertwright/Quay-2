@@ -4,13 +4,15 @@
 // also takes an id no record has yet, and flags it. The backend checks the record's shape, and
 // its local checks against the saved records it names: each exists and is valid, the contract's
 // bindings file lists the graph, and the binding binds that graph. Each issue shows on the field
-// that names the record at fault. Nothing here calls a Praxis host.
+// that names the record at fault. A Triggers section lists the triggers that start the graph
+// workflow, read from their saved target files (#479). Nothing here calls a Praxis host.
 import { useEffect, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
+import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
 import { useValidation } from "./useValidation.ts";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
@@ -24,6 +26,11 @@ interface GraphWorkflowFormProps {
   graphBindings: readonly { id: string; graphId?: string }[];
   /** Counts up when the builder saves, renames or deletes a record, so the local checks run again. */
   refresh: number;
+  /**
+   * A trigger's host state badge, shown next to its id in the Triggers section (#479). Quay has no
+   * graph trigger host state yet (#475), so the builder passes none and only the id shows.
+   */
+  triggerBadge?: (triggerId: string) => ReactNode;
   onEdit: (edit: GraphWorkflowEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -54,12 +61,14 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   graphs,
   graphBindings,
   refresh,
+  triggerBadge,
   onEdit,
   onOpen,
   onValidated,
 }) => {
   const shape = useValidation("graph-workflows", draft.content);
   const check = useGraphWorkflowCheck(projectPath, draft.content, refresh);
+  const triggers = useGraphWorkflowTriggers(projectPath, draft.ref.id, refresh);
   const { status, settled } = combined(shape, check);
   const verdict = settled && status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -121,6 +130,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
         />
       </Section>
       <GrantSet contractId={contractId} grants={grants} missing={contractMissing} onOpen={onOpen} />
+      <StartedBy triggers={triggers} badge={triggerBadge} onOpen={onOpen} />
     </>
   );
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
@@ -191,3 +201,67 @@ const GrantSet: FC<{
     </Section>
   );
 };
+
+/** The triggers that start this graph workflow (#479), each a link that opens its form. */
+const StartedBy: FC<{
+  triggers: GraphWorkflowTriggersStatus;
+  badge?: (triggerId: string) => ReactNode;
+  onOpen: (ref: DefinitionRef) => void;
+}> = ({ triggers, badge, onOpen }) => {
+  let body: ReactNode;
+  if (triggers.state === "loading") body = <p className={hintClass}>Looking for triggers…</p>;
+  else if (triggers.state === "failed")
+    body = (
+      <p role="alert" className="text-xs text-[#ff7b72] break-words">
+        {triggers.error}
+      </p>
+    );
+  else
+    body = (
+      <>
+        {triggers.found.ids.length === 0 ? (
+          <p className={hintClass}>No saved trigger starts this graph workflow.</p>
+        ) : (
+          <TriggerLinks ids={triggers.found.ids} badge={badge} onOpen={onOpen} />
+        )}
+        {triggers.found.skipped.length > 0 && (
+          <ul className="space-y-0.5">
+            {/* Each line names a different file, so it is its own key. */}
+            {triggers.found.skipped.map((line) => (
+              <li key={line} className="text-[11px] text-[#e3b341] break-words">
+                Skipped: {line}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className={hintClass}>A trigger names the graph workflow it starts with its own Starts picker, so it is set from the trigger.</p>
+      </>
+    );
+  return <Section title="Triggers">{body}</Section>;
+};
+
+/** The trigger ids as links that open each trigger's form, each with its host state badge when there is one. */
+const TriggerLinks: FC<{
+  ids: readonly string[];
+  badge?: (triggerId: string) => ReactNode;
+  onOpen: (ref: DefinitionRef) => void;
+}> = ({ ids, badge, onOpen }) => (
+  <ul className="space-y-1">
+    {ids.map((id) => (
+      <li key={id} className="flex items-center gap-1.5">
+        <a
+          href={`#triggers/${encodeURIComponent(id)}`}
+          onClick={(e) => {
+            // The builder opens records itself; the href only makes this a link.
+            e.preventDefault();
+            onOpen({ kind: "triggers", id });
+          }}
+          className="text-xs font-mono text-[#58a6ff] hover:underline"
+        >
+          {id}
+        </a>
+        {badge?.(id)}
+      </li>
+    ))}
+  </ul>
+);
