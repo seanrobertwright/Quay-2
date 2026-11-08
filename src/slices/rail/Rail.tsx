@@ -25,6 +25,7 @@ import {
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
 import { PraxisIcon } from "../praxis-builder/PraxisIcon";
+import { VsCodeIcon } from "../workspace/VsCodeIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths";
 
@@ -77,6 +78,7 @@ interface RailProps {
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
+  onOpenInVsCode?: (projectPath: string) => void;
   onRelaunchTerminal?: (id: string) => void;
 }
 
@@ -116,6 +118,7 @@ export const Rail: React.FC<RailProps> = ({
   onOpenTokenSpend,
   onOpenArchonGraph,
   onOpenFactoryStation,
+  onOpenInVsCode,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   // Worktree lists start collapsed; an entry of `false` means the user expanded it
@@ -469,6 +472,21 @@ export const Rail: React.FC<RailProps> = ({
                       </button>
                     )}
 
+                    {onOpenInVsCode && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenInVsCode(proj.path);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#30363d] text-[#8b949e] hover:text-[#007acc] rounded transition-all"
+                        title={`Open ${proj.name} in VS Code`}
+                        aria-label={`Open ${proj.name} in VS Code`}
+                      >
+                        <VsCodeIcon className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={(e) => {
@@ -636,6 +654,21 @@ export const Rail: React.FC<RailProps> = ({
                                     >
                                       <Plus className="w-3 h-3" />
                                     </button>
+
+                                    {onOpenInVsCode && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onOpenInVsCode(wt.path);
+                                        }}
+                                        className="opacity-0 group-hover/wt:opacity-100 p-0.5 hover:bg-[#30363d] text-[#8b949e] hover:text-[#007acc] rounded transition-all"
+                                        title={`Open worktree ${branchName} in VS Code`}
+                                        aria-label={`Open worktree ${branchName} in VS Code`}
+                                      >
+                                        <VsCodeIcon className="w-3 h-3" />
+                                      </button>
+                                    )}
 
                                     {onRemoveWorktree && (
                                       <button

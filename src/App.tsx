@@ -38,6 +38,7 @@ import { UpdateModal } from "./slices/updater/UpdateModal";
 import { checkForUpdates } from "./slices/updater/updaterService";
 import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
+import { AlertCircle, X } from "lucide-react";
 
 export function App() {
   const {
@@ -121,6 +122,7 @@ export function App() {
     killTerminal,
     relaunchTerminal,
     toggleTerminalLiveMode,
+    openInVsCode,
   } = useWorkspace();
 
   const { events, activeTools, pendingPermissions, resolvePermission, getTerminalEvents } =
@@ -134,6 +136,26 @@ export function App() {
   const [worktreeRemovalPrompt, setWorktreeRemovalPrompt] = useState<WorktreeRemovalPrompt | null>(
     null
   );
+  const [vscodeError, setVscodeError] = useState<string | null>(null);
+
+  const handleOpenInVsCode = useCallback(
+    async (projectPath: string) => {
+      try {
+        setVscodeError(null);
+        await openInVsCode(projectPath);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setVscodeError(msg);
+      }
+    },
+    [openInVsCode]
+  );
+
+  useEffect(() => {
+    if (!vscodeError) return;
+    const timer = setTimeout(() => setVscodeError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [vscodeError]);
 
   // Remove a worktree from the rail. Git's refusal or error opens the Remove anyway dialog.
   const handleRemoveWorktree = async (repoPath: string, worktreePath: string) => {
@@ -544,6 +566,7 @@ export function App() {
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onOpenInVsCode={handleOpenInVsCode}
         onRelaunchTerminal={relaunchTerminal}
       />
 
@@ -585,6 +608,7 @@ export function App() {
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
+        onOpenInVsCode={handleOpenInVsCode}
         onToggleLiveMode={toggleTerminalLiveMode}
         onRelaunchTerminal={relaunchTerminal}
       />
@@ -638,6 +662,7 @@ export function App() {
         onOpenLogsFolder={() => {
           invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
         }}
+        onOpenInVsCode={handleOpenInVsCode}
         toposTarget={toposTarget}
         onToposRequest={requestTopos}
         onCheckForUpdates={() => setIsUpdateModalOpen(true)}
@@ -859,6 +884,27 @@ export function App() {
         onClose={() => setIsUpdateModalOpen(false)}
         initialUpdate={detectedUpdate}
       />
+
+      {/* VS Code Launch/Focus Error Toast */}
+      {vscodeError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 right-4 max-w-md bg-[#161b22] border border-[#f85149] text-white p-3 rounded-lg shadow-xl z-50 flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-2"
+        >
+          <AlertCircle className="w-5 h-5 text-[#f85149] shrink-0 mt-0.5" />
+          <div className="flex-1 text-xs">
+            <div className="font-semibold text-[#f85149]">VS Code Error</div>
+            <div className="text-[#c9d1d9] mt-0.5">{vscodeError}</div>
+          </div>
+          <button
+            onClick={() => setVscodeError(null)}
+            className="text-[#8b949e] hover:text-white p-0.5"
+            aria-label="Dismiss error"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

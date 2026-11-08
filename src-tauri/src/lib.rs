@@ -56,7 +56,7 @@ use slices::pty::{
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
     add_project, get_active_project, get_project_views, inspect_folder, list_folder, list_projects,
-    list_recent_projects, open_project_places, remove_project, save_project_view, set_active_project,
+    list_recent_projects, open_in_vscode, open_project_places, remove_project, save_project_view, set_active_project,
     update_project_settings, validate_path, WorkspaceManager,
 };
 
@@ -189,6 +189,7 @@ pub fn run() {
             set_active_project,
             get_active_project,
             update_project_settings,
+            open_in_vscode,
             get_project_views,
             save_project_view,
             validate_path,

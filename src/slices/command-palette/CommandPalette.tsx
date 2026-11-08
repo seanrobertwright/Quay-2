@@ -47,6 +47,7 @@ import {
 import { useOverlay } from "../overlay/useOverlay";
 import { GithubIcon } from "../github/GithubIcon";
 import { ArchonIcon } from "../archon/ArchonIcon";
+import { VsCodeIcon } from "../workspace/VsCodeIcon";
 import { APP_CURRENT_VERSION } from "../updater/updaterService";
 import { isSamePath } from "../../utils/paths";
 import { toposPaletteEntries, type ToposRequestKind } from "../git/topos/toposPalette";
@@ -95,6 +96,7 @@ interface CommandPaletteProps {
   onOpenPraxisBuilder?: () => void;
   onOpenTopos?: () => void;
   onOpenLogsFolder?: () => void;
+  onOpenInVsCode?: (projectPath: string) => void;
   /** What Topos targets, which decides whether its New branch and Checkout entries show (#393). */
   toposTarget?: { path: string } | null;
   onToposRequest?: (kind: ToposRequestKind) => void;
@@ -132,6 +134,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenPraxisBuilder,
   onOpenTopos,
   onOpenLogsFolder,
+  onOpenInVsCode,
   toposTarget = null,
   onToposRequest,
   onCheckForUpdates,
@@ -364,6 +367,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         action: () => onAddProject(),
       }
     );
+
+    if (onOpenInVsCode) {
+      const activeProjName =
+        activeProject.split(/[/\\]/).filter(Boolean).pop() || "Active Workspace";
+      items.push({
+        id: "action-open-in-vscode",
+        category: "Tools & Actions",
+        title: "Open in VS Code",
+        subtitle: `Focus or launch Visual Studio Code for ${activeProjName}`,
+        icon: <VsCodeIcon className="w-4 h-4 text-[#007acc]" />,
+        action: () => onOpenInVsCode(activeProject),
+      });
+    }
 
     if (onOpenNewWorktree) {
       items.push({
@@ -623,6 +639,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenPraxisBuilder,
     onOpenTopos,
     onOpenLogsFolder,
+    onOpenInVsCode,
     toposTarget,
     onToposRequest,
     onCheckForUpdates,
