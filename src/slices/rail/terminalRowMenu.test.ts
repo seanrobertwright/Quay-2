@@ -68,7 +68,7 @@ function renderRow(terminal: Terminal = TERMINAL) {
         onClose: () => calls.push("close"),
         onRename: (id: string, name: string) => calls.push(`rename ${id} ${name}`),
         onRelaunch: (id: string) => calls.push(`relaunch ${id}`),
-        onToggleAsk: (id: string) => calls.push(`toggleAsk ${id}`),
+        onToggleAsk: (id: string, currentMode: string) => calls.push(`toggleAsk ${id} ${currentMode}`),
       })
     )
   );
@@ -128,7 +128,7 @@ test("each item runs the row's own action, and choosing one closes the menu", ()
   choose(row, "Ask before tool calls");
   choose(row, "Show in focused pane");
   choose(row, "Close terminal");
-  assert.deepEqual(calls, ["relaunch t1", "toggleAsk t1", "select", "close"]);
+  assert.deepEqual(calls, ["relaunch t1", "toggleAsk t1 skip", "select", "close"]);
 });
 
 test("a disabled item says why and does nothing", () => {

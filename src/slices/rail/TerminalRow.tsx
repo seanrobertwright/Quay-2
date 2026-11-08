@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { type TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types.ts";
+import { type PermissionMode, type TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types.ts";
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
 import { RenameInput } from "../terminal/RenameInput.tsx";
@@ -27,7 +27,7 @@ interface TerminalRowProps {
   onRename?: (id: string, newName: string) => void;
   onRelaunch?: (id: string) => void;
   /** Switches the terminal between Skip and Ask, as the status strip's mode switch does. */
-  onToggleAsk?: (id: string) => void;
+  onToggleAsk?: (id: string, currentMode: PermissionMode) => void;
 }
 
 export const TerminalRow = ({
@@ -371,7 +371,7 @@ export const TerminalRow = ({
           handlers={{
             rename: () => setIsEditing(true),
             relaunch: onRelaunch && (() => onRelaunch(terminal.id)),
-            toggleAsk: onToggleAsk && (() => onToggleAsk(terminal.id)),
+            toggleAsk: onToggleAsk && (() => onToggleAsk(terminal.id, terminal.live_mode)),
             showInFocusedPane: onSelect,
             redraw: () => requestTerminal(terminal.id, "redraw"),
             // The search shows in the terminal's pane, so the terminal is shown first.

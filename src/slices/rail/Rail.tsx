@@ -1,5 +1,5 @@
 import { useState, useEffect, useId, MouseEvent, KeyboardEvent, ReactNode } from "react";
-import { TerminalInfo } from "../terminal/types";
+import { PermissionMode, TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
 import { TerminalRow } from "./TerminalRow";
@@ -80,8 +80,8 @@ interface RailProps {
   onOpenFactoryStation?: () => void;
   onOpenInVsCode?: (projectPath: string) => void;
   onRelaunchTerminal?: (id: string) => void;
-  /** Switches a terminal between Skip and Ask. */
-  onToggleTerminalAsk?: (id: string) => void;
+  /** Switches a terminal between Skip and Ask, from the mode it is in now. */
+  onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
 }
 
 /** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
