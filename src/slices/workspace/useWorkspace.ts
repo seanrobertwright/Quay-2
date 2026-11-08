@@ -18,6 +18,7 @@ import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChim
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
+import { reportTerminalRelaunched } from "../terminal/terminalRelaunched";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
@@ -1230,6 +1231,8 @@ export function useWorkspace() {
 
   // Relaunch an exited or restored dormant terminal
   const relaunchTerminal = async (terminalId: string) => {
+    // Before the new launch can raise anything of its own
+    reportTerminalRelaunched(terminalId);
     try {
       const dims = getTerminalDimensions(terminalId);
       const updated = await invoke<TerminalInfo>("relaunch_terminal", {
