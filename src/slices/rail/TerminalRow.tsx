@@ -5,7 +5,7 @@ import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
 import { RenameInput } from "../terminal/RenameInput.tsx";
 import { requestTerminal } from "../terminal/terminalRequests.ts";
-import { useContextMenu } from "../overlay/useContextMenu.ts";
+import { useTerminalMenu } from "../terminal/useTerminalMenu.ts";
 import {
   Terminal as TerminalIcon,
   X,
@@ -40,10 +40,12 @@ export const TerminalRow = ({
   onRelaunch,
   onToggleAsk,
 }: TerminalRowProps) => {
-  const [isEditing, setIsEditing] = useState(false);
   const [hasRecentA2A, setHasRecentA2A] = useState(false);
   const [recentA2APrompt, setRecentA2APrompt] = useState<string | null>(null);
-  const menu = useContextMenu<string>();
+  const { menu, isRenaming, startRename, renameDone, onContextMenu, onKeyDown } = useTerminalMenu(
+    terminal.id,
+    onRename && ((newName) => onRename(terminal.id, newName)),
+  );
 
   const isAgent = isAgentRunKind(terminal.run_kind);
   const launchedModel = launchModel(terminal.custom_flags);
@@ -77,11 +79,6 @@ export const TerminalRow = ({
       if (timeout) clearTimeout(timeout);
     };
   }, [terminal.id]);
-
-  const handleRenameDone = (newName: string | null) => {
-    if (newName !== null) onRename?.(terminal.id, newName);
-    setIsEditing(false);
-  };
 
   const renderIcon = () => {
     return <AgentIcon kind={terminal.run_kind} className="w-3.5 h-3.5 shrink-0" />;
@@ -224,165 +221,161 @@ export const TerminalRow = ({
 
   return (
     <>
-    <div
-      role="button"
-      tabIndex={0}
-      aria-haspopup="menu"
-      onClick={onSelect}
-      // Right-click opens the terminal menu and leaves the selection as it is. The rename box
-      // keeps the native menu, with its Cut, Copy and Paste.
-      onContextMenu={(e) => {
-        if (!isEditing) menu.onContextMenu(e, terminal.id);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-          return;
-        }
-        menu.onKeyDown(e, terminal.id);
-      }}
-      className={`group flex flex-col gap-1 px-2.5 py-1.5 text-xs rounded-md cursor-pointer transition-colors ${
-        isActive
-          ? "bg-[#21262d] text-white font-medium shadow-xs border border-[#30363d]/80"
-          : "text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] border border-transparent"
-      }`}
-    >
-      {/* Top Header Row: Index, Icon, Name (with inline edit), and Action Badges */}
-      <div className="flex items-center justify-between min-w-0">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <span className="font-mono text-[#484f58] w-3 shrink-0 text-right text-[11px]">
-            {index}
-          </span>
-          {renderIcon()}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-haspopup="menu"
+        onClick={onSelect}
+        // Right-click opens the terminal menu and leaves the selection as it is.
+        onContextMenu={onContextMenu}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onSelect();
+            return;
+          }
+          onKeyDown(e);
+        }}
+        className={`group flex flex-col gap-1 px-2.5 py-1.5 text-xs rounded-md cursor-pointer transition-colors ${
+          isActive
+            ? "bg-[#21262d] text-white font-medium shadow-xs border border-[#30363d]/80"
+            : "text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] border border-transparent"
+        }`}
+      >
+        {/* Top Header Row: Index, Icon, Name (with inline edit), and Action Badges */}
+        <div className="flex items-center justify-between min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="font-mono text-[#484f58] w-3 shrink-0 text-right text-[11px]">
+              {index}
+            </span>
+            {renderIcon()}
 
-          {isEditing ? (
-            <RenameInput name={terminal.name} onDone={handleRenameDone} />
-          ) : (
-            <div className="flex items-center gap-1 min-w-0 truncate">
-              <span
-                className="truncate font-medium text-xs text-[#c9d1d9] group-hover:text-white"
-                title={`${terminal.name}${terminal.task_title ? ` — ${terminal.task_title}` : ""}`}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditing(true);
-                }}
-              >
-                {terminal.name}
+            {isRenaming ? (
+              <RenameInput name={terminal.name} onDone={renameDone} />
+            ) : (
+              <div className="flex items-center gap-1 min-w-0 truncate">
+                <span
+                  className="truncate font-medium text-xs text-[#c9d1d9] group-hover:text-white"
+                  title={`${terminal.name}${terminal.task_title ? ` — ${terminal.task_title}` : ""}`}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    startRename();
+                  }}
+                >
+                  {terminal.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startRename();
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-[#8b949e] hover:text-white rounded transition-opacity"
+                  title="Rename session"
+                >
+                  <Edit2 className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Permission Mode badge */}
+            {isAgent && terminal.permission_mode === "skip" && (
+              <span className="px-1 py-0.2 rounded text-[9px] font-mono font-bold bg-[#ff7b72]/20 text-[#ff7b72] border border-[#ff7b72]/40 shrink-0">
+                SKIP
               </span>
+            )}
+
+            {/* Incoming A2A Badge */}
+            {hasRecentA2A && (
+              <span
+                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[#1f6feb]/30 text-[#58a6ff] border border-[#58a6ff]/60 animate-pulse shrink-0 flex items-center gap-1"
+                title={`Incoming A2A Task: ${recentA2APrompt || ""}`}
+              >
+                <Radio className="w-2.5 h-2.5 text-[#58a6ff] animate-spin shrink-0" />
+                <span>A2A ✉</span>
+              </span>
+            )}
+          </div>
+
+          {/* Action icons / counters on right */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-1">
+            {terminal.auto_approved_count > 0 && (
+              <span
+                className="flex items-center gap-0.5 px-1.5 py-0.2 bg-[#30363d]/80 text-[#8b949e] rounded text-[9px] font-mono"
+                title={`${terminal.auto_approved_count} auto-approved actions`}
+              >
+                <Shield className="w-2.5 h-2.5 text-[#3fb950]" />
+                <span>{terminal.auto_approved_count}</span>
+              </span>
+            )}
+
+            {terminal.claude_status === "exited" && onRelaunch && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsEditing(true);
+                  onRelaunch(terminal.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 text-[#8b949e] hover:text-white rounded transition-opacity"
-                title="Rename session"
+                className="p-0.5 text-[#3fb950] hover:text-[#56d364] hover:bg-[#238636]/20 rounded transition-colors"
+                title="Relaunch agent process"
               >
-                <Edit2 className="w-2.5 h-2.5" />
+                <Play className="w-3 h-3 fill-current" />
               </button>
-            </div>
-          )}
+            )}
 
-          {/* Permission Mode badge */}
-          {isAgent && terminal.permission_mode === "skip" && (
-            <span className="px-1 py-0.2 rounded text-[9px] font-mono font-bold bg-[#ff7b72]/20 text-[#ff7b72] border border-[#ff7b72]/40 shrink-0">
-              SKIP
-            </span>
-          )}
-
-          {/* Incoming A2A Badge */}
-          {hasRecentA2A && (
-            <span
-              className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[#1f6feb]/30 text-[#58a6ff] border border-[#58a6ff]/60 animate-pulse shrink-0 flex items-center gap-1"
-              title={`Incoming A2A Task: ${recentA2APrompt || ""}`}
-            >
-              <Radio className="w-2.5 h-2.5 text-[#58a6ff] animate-spin shrink-0" />
-              <span>A2A ✉</span>
-            </span>
-          )}
-        </div>
-
-        {/* Action icons / counters on right */}
-        <div className="flex items-center gap-1.5 shrink-0 ml-1">
-          {terminal.auto_approved_count > 0 && (
-            <span
-              className="flex items-center gap-0.5 px-1.5 py-0.2 bg-[#30363d]/80 text-[#8b949e] rounded text-[9px] font-mono"
-              title={`${terminal.auto_approved_count} auto-approved actions`}
-            >
-              <Shield className="w-2.5 h-2.5 text-[#3fb950]" />
-              <span>{terminal.auto_approved_count}</span>
-            </span>
-          )}
-
-          {terminal.claude_status === "exited" && onRelaunch && (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onRelaunch(terminal.id);
+                onClose();
               }}
-              className="p-0.5 text-[#3fb950] hover:text-[#56d364] hover:bg-[#238636]/20 rounded transition-colors"
-              title="Relaunch agent process"
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 hover:text-[#ff7b72] rounded transition-opacity"
+              title="Close terminal"
+              aria-label={`Close terminal ${terminal.name}`}
             >
-              <Play className="w-3 h-3 fill-current" />
+              <X className="w-3 h-3" />
             </button>
-          )}
+          </div>
+        </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 hover:text-[#ff7b72] rounded transition-opacity"
-            title="Close terminal"
-            aria-label={`Close terminal ${terminal.name}`}
-          >
-            <X className="w-3 h-3" />
-          </button>
+        {/* Sub Row: Live Status and Tool Badge */}
+        <div className="pl-4.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          {renderStatus()}
+          {/* Launch model (absent when the agent runs its default model) */}
+          {isAgent && modelLabel && (
+            <span
+              className="ml-auto px-1 py-0.2 rounded text-[9px] font-mono bg-[#388bfd]/15 text-[#79c0ff] border border-[#388bfd]/40 shrink-0 truncate max-w-[96px]"
+              title={`Launched with --model ${launchedModel}`}
+            >
+              {modelLabel}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Sub Row: Live Status and Tool Badge */}
-      <div className="pl-4.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
-        {renderStatus()}
-        {/* Launch model (absent when the agent runs its default model) */}
-        {isAgent && modelLabel && (
-          <span
-            className="ml-auto px-1 py-0.2 rounded text-[9px] font-mono bg-[#388bfd]/15 text-[#79c0ff] border border-[#388bfd]/40 shrink-0 truncate max-w-[96px]"
-            title={`Launched with --model ${launchedModel}`}
-          >
-            {modelLabel}
-          </span>
+        {/* Outside the row, whose click selects the terminal: the portal still bubbles React
+            events from the menu to the element that renders it. */}
+        {menu.open && (
+          <TerminalMenu
+            terminal={terminal}
+            surface={{ kind: "rail" }}
+            at={menu.open.at}
+            onClose={menu.close}
+            handlers={{
+              rename: startRename,
+              relaunch: onRelaunch && (() => onRelaunch(terminal.id)),
+              toggleAsk: onToggleAsk && (() => onToggleAsk(terminal.id, terminal.live_mode)),
+              showInFocusedPane: onSelect,
+              redraw: () => requestTerminal(terminal.id, "redraw"),
+              // The search shows in the terminal's pane, so the terminal is shown first.
+              find: () => {
+                onSelect();
+                requestTerminal(terminal.id, "find");
+              },
+              closeTerminal: onClose,
+            }}
+          />
         )}
-      </div>
-    </div>
-
-      {/* Outside the row, whose click selects the terminal: the portal still bubbles React
-          events from the menu to the element that renders it. */}
-      {menu.open && (
-        <TerminalMenu
-          terminal={terminal}
-          surface={{ kind: "rail" }}
-          at={menu.open.at}
-          onClose={menu.close}
-          handlers={{
-            rename: () => setIsEditing(true),
-            relaunch: onRelaunch && (() => onRelaunch(terminal.id)),
-            toggleAsk: onToggleAsk && (() => onToggleAsk(terminal.id, terminal.live_mode)),
-            showInFocusedPane: onSelect,
-            redraw: () => requestTerminal(terminal.id, "redraw"),
-            // The search shows in the terminal's pane, so the terminal is shown first.
-            find: () => {
-              onSelect();
-              requestTerminal(terminal.id, "find");
-            },
-            closeTerminal: onClose,
-          }}
-        />
-      )}
     </>
   );
 };
