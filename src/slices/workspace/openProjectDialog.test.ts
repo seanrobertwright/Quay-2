@@ -4,7 +4,7 @@
 // They render the real dialog into happy-dom and fake only Tauri's `invoke`, the out-of-process
 // boundary, answering it with a small folder tree.
 import { fakeInvoke } from "../../test-support/dom.ts";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,10 +38,11 @@ const TREE = new Map<string, Entry[]>([
   ["C:\\Work", [entry(RECENT, true)]],
   [RECENT, []],
 ]);
-const GIT = new Set([REPO, RECENT]);
+const GIT = new Set([...TREE.values()].flat().filter((e) => e.is_git).map((e) => e.path));
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
 
+beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
 afterEach(() => {
   if (mounted) {
     const { root, container } = mounted;
@@ -49,6 +50,7 @@ afterEach(() => {
     container.remove();
     mounted = null;
   }
+  mock.timers.reset();
 });
 
 /**
@@ -68,10 +70,11 @@ async function renderDialog({ withRecent = false } = {}) {
         return withRecent
           ? [{ path: RECENT, name: "recent-repo", last_opened: 1, exists: true, is_git: true, branch: "main" }]
           : [];
-      case "list_folder":
+      case "list_folder": {
         const entries = TREE.get(path);
         if (!entries) throw `Can't read ${path}`;
         return { path, entries, truncated: false };
+      }
       case "inspect_folder":
         return { exists: TREE.has(path), is_git: GIT.has(path), branch: GIT.has(path) ? "main" : null };
       default:
@@ -101,19 +104,27 @@ async function renderDialog({ withRecent = false } = {}) {
   return { container, added, selected, closed: () => closed };
 }
 
-/** Lets the fake backend answer, and the path bar's lookup run once its typing delay passes. */
-const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 200)));
+/**
+ * Lets the fake backend answer, then fires the path bar's pending lookup, whatever its typing
+ * delay, and lets that answer too.
+ */
+const settle = () =>
+  act(async () => {
+    await flush();
+    mock.timers.runAll();
+    await flush();
+  });
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 const text = (el: Element | null) => el?.textContent ?? "";
 const folderList = (root: HTMLElement) => root.querySelector('ul[aria-label="Folders"]') as HTMLElement;
 const folderNames = (root: HTMLElement) =>
   [...folderList(root).querySelectorAll("button")].map((b) => text(b.querySelector("span")));
+const label = (b: Element) => b.getAttribute("aria-label") ?? text(b);
 const button = (scope: Element, name: RegExp) =>
-  [...scope.querySelectorAll("button")].find((b) => name.test(b.getAttribute("aria-label") ?? text(b))) as
-    | HTMLButtonElement
-    | undefined;
+  [...scope.querySelectorAll("button")].find((b) => name.test(label(b))) as HTMLButtonElement | undefined;
 const folder = (root: HTMLElement, name: string) => {
-  const found = button(folderList(root), new RegExp(`^${name}`));
+  const found = [...folderList(root).querySelectorAll("button")].find((b) => label(b).startsWith(name));
   assert.ok(found, `${name} is in the folder list`);
   return found;
 };
