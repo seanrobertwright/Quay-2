@@ -31,13 +31,13 @@ const entry = (path: string, isGit: boolean): Entry => ({
 });
 
 /** The fake disk: each folder's subfolders, and which folders are git repos. */
-const TREE: Record<string, Entry[]> = {
-  [HOME]: [entry(REPO, true), entry(PLAIN, false)],
-  [REPO]: [entry(`${REPO}\\packages`, false), entry(`${REPO}\\docs`, false)],
-  [PLAIN]: [entry(`${PLAIN}\\2026`, false)],
-  "C:\\Work": [entry(RECENT, true)],
-  [RECENT]: [],
-};
+const TREE = new Map<string, Entry[]>([
+  [HOME, [entry(REPO, true), entry(PLAIN, false)]],
+  [REPO, [entry(`${REPO}\\packages`, false), entry(`${REPO}\\docs`, false)]],
+  [PLAIN, [entry(`${PLAIN}\\2026`, false)]],
+  ["C:\\Work", [entry(RECENT, true)]],
+  [RECENT, []],
+]);
 const GIT = new Set([REPO, RECENT]);
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
@@ -69,10 +69,11 @@ async function renderDialog({ withRecent = false } = {}) {
           ? [{ path: RECENT, name: "recent-repo", last_opened: 1, exists: true, is_git: true, branch: "main" }]
           : [];
       case "list_folder":
-        if (!Object.hasOwn(TREE, path)) throw `Can't read ${path}`;
-        return { path, entries: TREE[path], truncated: false };
+        const entries = TREE.get(path);
+        if (!entries) throw `Can't read ${path}`;
+        return { path, entries, truncated: false };
       case "inspect_folder":
-        return { exists: Object.hasOwn(TREE, path), is_git: GIT.has(path), branch: GIT.has(path) ? "main" : null };
+        return { exists: TREE.has(path), is_git: GIT.has(path), branch: GIT.has(path) ? "main" : null };
       default:
         throw new Error(`unexpected invoke ${command}`);
     }
