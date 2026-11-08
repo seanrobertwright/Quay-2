@@ -1,5 +1,5 @@
 import React from "react";
-import { RunKind } from "./types";
+import type { RunKind } from "./types.ts";
 
 /** Official Anthropic Claude brand mark (sunburst asterisk) */
 export const ClaudeIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -182,7 +182,7 @@ export const OpenCodeIcon: React.FC<{ className?: string }> = ({ className = "w-
   </svg>
 );
 
-import { ArchonIcon } from "../archon/ArchonIcon";
+import { ArchonIcon } from "../archon/ArchonIcon.tsx";
 export { ArchonIcon };
 
 /** Helper to render the official icon with authentic brand colors */

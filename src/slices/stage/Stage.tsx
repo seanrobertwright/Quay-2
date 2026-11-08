@@ -68,6 +68,8 @@ interface StageProps {
   claudeStats?: ClaudeTokenStats | null;
   onToggleLiveMode?: (terminalId: string, currentMode: "skip" | "normal") => void;
   onRelaunchTerminal?: (terminalId: string) => void;
+  onRenameTerminal?: (terminalId: string, name: string) => void;
+  onCloseTerminal?: (terminalId: string) => void;
 }
 
 export const Stage: FC<StageProps> = ({
@@ -108,6 +110,8 @@ export const Stage: FC<StageProps> = ({
   onOpenInVsCode,
   onToggleLiveMode,
   onRelaunchTerminal,
+  onRenameTerminal,
+  onCloseTerminal,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -116,6 +120,10 @@ export const Stage: FC<StageProps> = ({
   const visibleTerminals = terminals.filter((t) => isSamePath(t.project_path, activeProject));
   const activeTerminal =
     visibleTerminals.find((t) => t.id === activeTerminalId) || visibleTerminals[0];
+  // How many panes show a terminal, which the pane header menu's Close pane needs.
+  const paneTerminalIds =
+    layout === "grid" ? gridTerminalIds : layout === "single" ? [activeTerminalId] : [primaryTerminalId, secondaryTerminalId];
+  const paneCount = paneTerminalIds.filter((id) => visibleTerminals.some((t) => t.id === id)).length;
 
   // Every terminal of every project, hidden unless its project is active. Both returns render
   // them in the same keyed viewport, so a project with no terminals never remounts them.
@@ -266,6 +274,10 @@ export const Stage: FC<StageProps> = ({
         onClosePane={onUnsplit}
         onSwitchTerminal={onSwitchTerm}
         onRelaunch={onRelaunchTerminal ? () => onRelaunchTerminal(term.id) : undefined}
+        onRename={onRenameTerminal ? (name) => onRenameTerminal(term.id, name) : undefined}
+        onToggleAsk={onToggleLiveMode ? () => onToggleLiveMode(term.id, term.live_mode) : undefined}
+        onCloseTerminal={onCloseTerminal ? () => onCloseTerminal(term.id) : undefined}
+        paneCount={paneCount}
         style={paneStyle}
       />
     );

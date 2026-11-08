@@ -568,6 +568,7 @@ export function App() {
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenInVsCode={handleOpenInVsCode}
         onRelaunchTerminal={relaunchTerminal}
+        onToggleTerminalAsk={toggleTerminalLiveMode}
       />
 
       {/* Main Workspace Stage */}
@@ -611,6 +612,8 @@ export function App() {
         onOpenInVsCode={handleOpenInVsCode}
         onToggleLiveMode={toggleTerminalLiveMode}
         onRelaunchTerminal={relaunchTerminal}
+        onRenameTerminal={renameTerminal}
+        onCloseTerminal={(id) => killTerminal(id)}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}

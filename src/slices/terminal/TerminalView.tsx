@@ -6,6 +6,11 @@ import { TerminalInfo, isAgentRunKind } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
+// The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
+import { TerminalMenu } from "./TerminalMenu.tsx";
+import { RenameInput } from "./RenameInput";
+import { onTerminalRequest } from "./terminalRequests";
+import { useTerminalMenu } from "./useTerminalMenu";
 import {
   Maximize2,
   X,
@@ -27,6 +32,14 @@ interface TerminalViewProps {
   onZoomPane?: () => void;
   onSwitchTerminal?: (newTerminalId: string) => void;
   onRelaunch?: () => void;
+  /** Saves a new name for the terminal, from the header menu's Rename. */
+  onRename?: (newName: string) => void;
+  /** Switches the terminal between Skip and Ask. */
+  onToggleAsk?: () => void;
+  /** Closes the terminal itself, as the Rail row's close button does. */
+  onCloseTerminal?: () => void;
+  /** How many panes the stage shows, which decides whether Close pane can run. */
+  paneCount?: number;
   className?: string;
   style?: CSSProperties;
 }
@@ -43,10 +56,15 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onZoomPane,
   onSwitchTerminal,
   onRelaunch,
+  onRename,
+  onToggleAsk,
+  onCloseTerminal,
+  paneCount = 1,
   className = "",
   style,
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const { menu, isRenaming, startRename, renameDone, onContextMenu, onKeyDown } = useTerminalMenu(terminalId, onRename);
   const [a2aNotification, setA2aNotification] = useState<{
     fromName: string;
     content: string;
@@ -100,6 +118,16 @@ export const TerminalView: FC<TerminalViewProps> = ({
     focusTerminal,
     repaintTerminal,
   } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch);
+
+  // The terminal menu on a Rail row asks this pane to redraw or search (#508).
+  useEffect(
+    () =>
+      onTerminalRequest(terminalId, (request) => {
+        if (request === "redraw") repaintTerminal();
+        else setIsSearchOpen(true);
+      }),
+    [terminalId, repaintTerminal]
+  );
 
   // Hotkey listener for Ctrl+F when pane is focused
   useEffect(() => {
@@ -177,222 +205,259 @@ export const TerminalView: FC<TerminalViewProps> = ({
   const showPluginHint = !!terminal?.plugin_hint && terminal.claude_status !== "exited";
 
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o
-    <div
-      onClick={(e) => {
-        onSelect?.();
-        if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
-          focusTerminal();
-        }
-      }}
-      onMouseDown={(e) => {
-        if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
-          focusTerminal();
-        }
-      }}
-      className={`overflow-hidden transition-colors bg-[#0d1117] ${
-        isVisible ? "flex flex-col" : "hidden"
-      } ${
-        showPaneHeader
-          ? isFocused
-            ? "ring-1 ring-[#58a6ff] border border-[#58a6ff]/70 rounded-md shadow-md"
-            : "border border-[#30363d]/60 rounded-md"
-          : "w-full h-full"
-      } ${className}`}
-      style={{
-        display: isVisible ? "flex" : "none",
-        ...style,
-      }}
-    >
-      {/* Pane Header (only displayed in split/grid layout) */}
-      {showPaneHeader && (
-        <div
-          className={`h-7 px-2.5 border-b border-[#30363d]/60 flex items-center justify-between text-xs select-none shrink-0 transition-colors ${
-            isFocused ? "bg-[#21262d] text-white" : "bg-[#161b22] text-[#8b949e]"
-          }`}
-        >
-          {/* Left: Terminal Selector / Name & Status */}
-          <div className="flex items-center gap-2 min-w-0">
-            {renderIcon()}
+    <>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o */}
+      <div
+        data-terminal-pane
+        onClick={(e) => {
+          onSelect?.();
+          if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
+            focusTerminal();
+          }
+        }}
+        onMouseDown={(e) => {
+          if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
+            focusTerminal();
+          }
+        }}
+        className={`overflow-hidden transition-colors bg-[#0d1117] ${
+          isVisible ? "flex flex-col" : "hidden"
+        } ${
+          showPaneHeader
+            ? isFocused
+              ? "ring-1 ring-[#58a6ff] border border-[#58a6ff]/70 rounded-md shadow-md"
+              : "border border-[#30363d]/60 rounded-md"
+            : "w-full h-full"
+        } ${className}`}
+        style={{
+          display: isVisible ? "flex" : "none",
+          ...style,
+        }}
+      >
+        {/* Pane Header (only displayed in split/grid layout) */}
+        {showPaneHeader && (
+          // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Rail row.
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- a labelled group that opens its terminal menu from the keyboard
+          <div role="group" tabIndex={0}
+            aria-label={`Pane ${terminal?.name ?? terminalId}`}
+            onContextMenu={onContextMenu}
+            onKeyDown={onKeyDown}
+            className={`h-7 px-2.5 border-b border-[#30363d]/60 flex items-center justify-between text-xs select-none shrink-0 transition-colors ${
+              isFocused ? "bg-[#21262d] text-white" : "bg-[#161b22] text-[#8b949e]"
+            }`}
+          >
+            {/* Left: Terminal Selector / Name & Status */}
+            <div className="flex items-center gap-2 min-w-0">
+              {renderIcon()}
 
-            {allTerminals.length > 1 && onSwitchTerminal ? (
-              <select
-                value={terminalId}
-                onChange={(e) => onSwitchTerminal(e.target.value)}
-                onClick={(e: MouseEvent<HTMLSelectElement>) => e.stopPropagation()}
-                className="bg-transparent font-medium text-xs text-[#c9d1d9] hover:text-white border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate"
-              >
-                {allTerminals.map((t) => (
-                  <option key={t.id} value={t.id} className="bg-[#161b22] text-white">
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="font-medium truncate max-w-[140px] text-xs">
-                {terminal?.name || terminalId}
-              </span>
-            )}
+              {isRenaming && terminal ? (
+                <RenameInput name={terminal.name} onDone={renameDone} />
+              ) : allTerminals.length > 1 && onSwitchTerminal ? (
+                <select
+                  value={terminalId}
+                  onChange={(e) => onSwitchTerminal(e.target.value)}
+                  onClick={(e: MouseEvent<HTMLSelectElement>) => e.stopPropagation()}
+                  className="bg-transparent font-medium text-xs text-[#c9d1d9] hover:text-white border-none focus:outline-hidden cursor-pointer max-w-[140px] truncate"
+                >
+                  {allTerminals.map((t) => (
+                    <option key={t.id} value={t.id} className="bg-[#161b22] text-white">
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="font-medium truncate max-w-[140px] text-xs">
+                  {terminal?.name || terminalId}
+                </span>
+              )}
 
-            {renderStatusBadge()}
-          </div>
+              {renderStatusBadge()}
+            </div>
 
-          {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
-          <div className="flex items-center gap-1 shrink-0">
-            {terminal?.permission_mode === "skip" && (
-              <span className="text-[9px] px-1 py-0.2 rounded bg-[#ff7b72]/20 text-[#ff7b72] font-mono font-bold border border-[#ff7b72]/40" title="Bypassing tool permissions">
-                SKIP
-              </span>
-            )}
+            {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
+            <div className="flex items-center gap-1 shrink-0">
+              {terminal?.permission_mode === "skip" && (
+                <span className="text-[9px] px-1 py-0.2 rounded bg-[#ff7b72]/20 text-[#ff7b72] font-mono font-bold border border-[#ff7b72]/40" title="Bypassing tool permissions">
+                  SKIP
+                </span>
+              )}
 
-            {isFocused && (
-              <span className="text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
-                ACTIVE
-              </span>
-            )}
+              {isFocused && (
+                <span className="text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
+                  ACTIVE
+                </span>
+              )}
 
-            {/* Repaint / Redraw Terminal */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                repaintTerminal();
-              }}
-              className="p-1 rounded text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#30363d] transition-colors cursor-pointer"
-              title="Redraw terminal screen (Ctrl+L)"
-            >
-              <RotateCw className="w-3 h-3" />
-            </button>
-
-            {/* In-Pane Search Trigger */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsSearchOpen((prev) => !prev);
-              }}
-              className={`p-1 rounded transition-colors cursor-pointer ${
-                isSearchOpen
-                  ? "bg-[#58a6ff]/20 text-[#58a6ff]"
-                  : "text-[#8b949e] hover:text-white hover:bg-[#30363d]"
-              }`}
-              title="Search terminal scrollback (Ctrl+F)"
-            >
-              <Search className="w-3 h-3" />
-            </button>
-
-            {onZoomPane && (
+              {/* Repaint / Redraw Terminal */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onZoomPane();
+                  repaintTerminal();
                 }}
-                className="p-1 hover:bg-[#30363d] text-[#8b949e] hover:text-white rounded transition-colors cursor-pointer"
-                title="Zoom pane (Ctrl+Shift+B z)"
+                className="p-1 rounded text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#30363d] transition-colors cursor-pointer"
+                title="Redraw terminal screen (Ctrl+L)"
               >
-                <Maximize2 className="w-3 h-3" />
+                <RotateCw className="w-3 h-3" />
               </button>
-            )}
 
-            {onClosePane && (
+              {/* In-Pane Search Trigger */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClosePane();
+                  setIsSearchOpen((prev) => !prev);
                 }}
-                className="p-1 hover:bg-[#30363d] hover:text-[#ff7b72] text-[#8b949e] rounded transition-colors cursor-pointer"
-                title="Close pane / Unsplit"
+                className={`p-1 rounded transition-colors cursor-pointer ${
+                  isSearchOpen
+                    ? "bg-[#58a6ff]/20 text-[#58a6ff]"
+                    : "text-[#8b949e] hover:text-white hover:bg-[#30363d]"
+                }`}
+                title="Search terminal scrollback (Ctrl+F)"
               >
-                <X className="w-3 h-3" />
+                <Search className="w-3 h-3" />
               </button>
-            )}
+
+              {onZoomPane && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onZoomPane();
+                  }}
+                  className="p-1 hover:bg-[#30363d] text-[#8b949e] hover:text-white rounded transition-colors cursor-pointer"
+                  title="Zoom pane (Ctrl+Shift+B z)"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                </button>
+              )}
+
+              {onClosePane && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClosePane();
+                  }}
+                  className="p-1 hover:bg-[#30363d] hover:text-[#ff7b72] text-[#8b949e] rounded transition-colors cursor-pointer"
+                  title="Close pane / Unsplit"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
+        )}
+
+        {showPluginHint && (
+          <PluginHint
+            flags={terminal?.custom_flags}
+            onDismiss={() => {
+              invoke("dismiss_plugin_hint", { terminalId }).catch((err) =>
+                console.error("Failed to dismiss the plugin hint:", err)
+              );
+            }}
+          />
+        )}
+
+        {/* Terminal Viewport */}
+        <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden bg-[#0d1117] p-2">
+          {/* Floating Search Bar */}
+          <TerminalSearchBar
+            isOpen={isSearchOpen}
+            searchResult={searchResult}
+            terminalName={terminal?.name}
+            onFindNext={findNext}
+            onFindPrevious={findPrevious}
+            onClear={clearSearch}
+            onClose={() => setIsSearchOpen(false)}
+            onGetScrollback={exportScrollback}
+          />
+
+          {/* Incoming A2A Task Floating Banner */}
+          {a2aNotification && (
+            <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#1f6feb]/70 rounded shadow-lg backdrop-blur text-xs animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
+                </span>
+                <span className="font-semibold text-[#58a6ff] shrink-0">
+                  {a2aNotification.broadcast ? "Swarm Broadcast" : "Incoming A2A Task"} from {a2aNotification.fromName}:
+                </span>
+                <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
+                  {a2aNotification.content}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setA2aNotification(null)}
+                className="text-[#8b949e] hover:text-white p-0.5 rounded cursor-pointer shrink-0 ml-2"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Restored Dormant / Exited Session Ribbon */}
+          {terminal?.claude_status === "exited" && (
+            <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
+              <div className="flex items-center gap-2 text-[#8b949e]">
+                <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
+                <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
+                <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
+              </div>
+              {onRelaunch && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRelaunch();
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
+                >
+                  <Play className="w-3 h-3 fill-white" />
+                  <span>Relaunch Agent</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          <div
+            ref={containerRef}
+            tabIndex={-1}
+            className="w-full h-full focus:outline-hidden"
+          />
         </div>
-      )}
+      </div>
 
-      {showPluginHint && (
-        <PluginHint
-          flags={terminal?.custom_flags}
-          onDismiss={() => {
-            invoke("dismiss_plugin_hint", { terminalId }).catch((err) =>
-              console.error("Failed to dismiss the plugin hint:", err)
-            );
+      {/* Outside the pane, whose clicks select it and focus the terminal: the portal still
+          bubbles React events from the menu to the element that renders it. */}
+      {menu.open && terminal && (
+        <TerminalMenu
+          terminal={terminal}
+          surface={{ kind: "pane", paneCount }}
+          at={menu.open.at}
+          onClose={menu.close}
+          handlers={{
+            rename: startRename,
+            relaunch: onRelaunch,
+            toggleAsk: onToggleAsk,
+            // Zooms this pane, not whichever pane had focus.
+            zoomPane:
+              onZoomPane &&
+              (() => {
+                onSelect?.();
+                onZoomPane();
+              }),
+            redraw: repaintTerminal,
+            find: () => setIsSearchOpen(true),
+            closePane: onClosePane,
+            closeTerminal: onCloseTerminal,
           }}
         />
       )}
-
-      {/* Terminal Viewport */}
-      <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden bg-[#0d1117] p-2">
-        {/* Floating Search Bar */}
-        <TerminalSearchBar
-          isOpen={isSearchOpen}
-          searchResult={searchResult}
-          terminalName={terminal?.name}
-          onFindNext={findNext}
-          onFindPrevious={findPrevious}
-          onClear={clearSearch}
-          onClose={() => setIsSearchOpen(false)}
-          onGetScrollback={exportScrollback}
-        />
-
-        {/* Incoming A2A Task Floating Banner */}
-        {a2aNotification && (
-          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#1f6feb]/70 rounded shadow-lg backdrop-blur text-xs animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#58a6ff] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#58a6ff]" />
-              </span>
-              <span className="font-semibold text-[#58a6ff] shrink-0">
-                {a2aNotification.broadcast ? "Swarm Broadcast" : "Incoming A2A Task"} from {a2aNotification.fromName}:
-              </span>
-              <span className="text-[#c9d1d9] truncate font-mono text-[11px]">
-                {a2aNotification.content}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setA2aNotification(null)}
-              className="text-[#8b949e] hover:text-white p-0.5 rounded cursor-pointer shrink-0 ml-2"
-              title="Dismiss"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Restored Dormant / Exited Session Ribbon */}
-        {terminal?.claude_status === "exited" && (
-          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 bg-[#161b22]/95 border border-[#30363d] rounded shadow-lg backdrop-blur text-xs">
-            <div className="flex items-center gap-2 text-[#8b949e]">
-              <span className="w-2 h-2 rounded-full bg-[#ff7b72] shrink-0" />
-              <span className="font-medium text-[#c9d1d9]">Session Inactive</span>
-              <span className="text-[11px] text-[#8b949e] hidden sm:inline">Scrollback restored from disk</span>
-            </div>
-            {onRelaunch && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRelaunch();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
-              >
-                <Play className="w-3 h-3 fill-white" />
-                <span>Relaunch Agent</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        <div
-          ref={containerRef}
-          tabIndex={-1}
-          className="w-full h-full focus:outline-hidden"
-        />
-      </div>
-    </div>
+    </>
   );
 };

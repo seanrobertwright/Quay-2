@@ -61,6 +61,15 @@ export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
 }
 
 /**
+ * Whether a terminal of this run kind can switch between Skip and Ask: an agent whose CLI asks
+ * before tool calls. The status strip's mode switch and the terminal menu's Ask toggle show
+ * under this rule.
+ */
+export function offersAskToggle(kind?: RunKind | string | null): boolean {
+  return isAgentRunKind(kind) && !neverAsksBeforeTools(kind);
+}
+
+/**
  * The run kinds that report through a plugin or extension that may stay silent: Claude
  * Code's event-bridge plugin and Quay's PiG extension. Mirrors
  * `RunKind::reports_through_plugin` in the backend.

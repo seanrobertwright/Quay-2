@@ -358,15 +358,25 @@ export function useTerminal(
     } catch (_) {}
   }, []);
 
+  // A timed focus leaves focus in one of the pane's own controls, such as its search box or
+  // rename box: the terminal menu's Find opens the search just as selecting the terminal
+  // schedules these focus calls.
+  const focusUnlessInPaneControl = useCallback(() => {
+    const active = document.activeElement;
+    const pane = containerRef.current?.closest("[data-terminal-pane]");
+    if (active && pane?.contains(active) && active.closest("[data-no-terminal-focus]")) return;
+    focusTerminal();
+  }, [focusTerminal]);
+
   // Multi-stage staggered focus scheduler to overcome modal unmount blurs and DOM layouts
   const scheduleFocus = useCallback(() => {
     const rafId = requestAnimationFrame(() => {
-      focusTerminal();
+      focusUnlessInPaneControl();
     });
-    const t1 = setTimeout(focusTerminal, 30);
-    const t2 = setTimeout(focusTerminal, 100);
-    const t3 = setTimeout(focusTerminal, 250);
-    const t4 = setTimeout(focusTerminal, 500);
+    const t1 = setTimeout(focusUnlessInPaneControl, 30);
+    const t2 = setTimeout(focusUnlessInPaneControl, 100);
+    const t3 = setTimeout(focusUnlessInPaneControl, 250);
+    const t4 = setTimeout(focusUnlessInPaneControl, 500);
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -375,7 +385,7 @@ export function useTerminal(
       clearTimeout(t3);
       clearTimeout(t4);
     };
-  }, [focusTerminal]);
+  }, [focusUnlessInPaneControl]);
 
   // Refit when terminal becomes visible; only resize PTY if dimensions changed
   useEffect(() => {

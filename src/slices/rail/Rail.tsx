@@ -1,5 +1,5 @@
 import { useState, useEffect, useId, MouseEvent, KeyboardEvent, ReactNode } from "react";
-import { TerminalInfo } from "../terminal/types";
+import { PermissionMode, TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
 import { TerminalRow } from "./TerminalRow";
@@ -80,6 +80,8 @@ interface RailProps {
   onOpenFactoryStation?: () => void;
   onOpenInVsCode?: (projectPath: string) => void;
   onRelaunchTerminal?: (id: string) => void;
+  /** Switches a terminal between Skip and Ask, from the mode it is in now. */
+  onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
 }
 
 /** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
@@ -106,6 +108,7 @@ export const Rail: React.FC<RailProps> = ({
   onRemoveProject,
   onRenameTerminal,
   onRelaunchTerminal,
+  onToggleTerminalAsk,
   onOpenA2APanel,
   onOpenSettings,
   onOpenSwarm,
@@ -532,11 +535,9 @@ export const Rail: React.FC<RailProps> = ({
                             onSelect={() => {
                               onSelectTerminal(term.id);
                             }}
-                            onClose={(e: MouseEvent<HTMLButtonElement>) => {
-                              e.stopPropagation();
-                              onCloseTerminal(term.id);
-                            }}
+                            onClose={() => onCloseTerminal(term.id)}
                             onRename={onRenameTerminal}
+                            onToggleAsk={onToggleTerminalAsk}
                             onRelaunch={onRelaunchTerminal}
                           />
                         );
@@ -710,11 +711,9 @@ export const Rail: React.FC<RailProps> = ({
                                           onSelect={() => {
                                             onSelectTerminal(term.id);
                                           }}
-                                          onClose={(e: MouseEvent<HTMLButtonElement>) => {
-                                            e.stopPropagation();
-                                            onCloseTerminal(term.id);
-                                          }}
+                                          onClose={() => onCloseTerminal(term.id)}
                                           onRename={onRenameTerminal}
+                                          onToggleAsk={onToggleTerminalAsk}
                                           onRelaunch={onRelaunchTerminal}
                                         />
                                       );
@@ -750,11 +749,9 @@ export const Rail: React.FC<RailProps> = ({
                       terminal={term}
                       isActive={term.id === activeTerminalId}
                       onSelect={() => onSelectTerminal(term.id)}
-                      onClose={(e: MouseEvent<HTMLButtonElement>) => {
-                        e.stopPropagation();
-                        onCloseTerminal(term.id);
-                      }}
+                      onClose={() => onCloseTerminal(term.id)}
                       onRename={onRenameTerminal}
+                      onToggleAsk={onToggleTerminalAsk}
                       onRelaunch={onRelaunchTerminal}
                     />
                   );
