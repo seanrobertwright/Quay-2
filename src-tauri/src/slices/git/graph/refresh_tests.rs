@@ -143,14 +143,14 @@ fn commit_on(repo: &Path, branch: &str, count: usize, time: &mut u64) -> String 
 }
 
 /// A repo of `random_history(seed, commits)` with HEAD on `b0`.
-fn random_history_repo(seed: u64, commits: usize) -> std::path::PathBuf {
+fn random_history_repo(seed: u64, commits: usize) -> super::tests::TempDir {
     let (history, refs) = random_history(seed, commits);
     let refs: Vec<(&str, &str)> = refs.iter().map(|(r, c)| (r.as_str(), c.as_str())).collect();
     build(&history, &refs, "refs/heads/b0").0
 }
 
 /// `random_history_repo` with `origin/b0` as the remote's default branch.
-fn random_repo(seed: u64, commits: usize) -> std::path::PathBuf {
+fn random_repo(seed: u64, commits: usize) -> super::tests::TempDir {
     let repo = random_history_repo(seed, commits);
     git(&repo, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/b0"]);
     repo
@@ -215,7 +215,6 @@ fn a_refresh_after_prepended_commits_splices_and_leaves_the_rows_a_fresh_session
     assert_eq!(next["event"], "done");
     assert_eq!(next["total"].as_u64(), Some(again.oids.len() as u64));
     assert_eq!(again, fresh(&repo));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -241,7 +240,6 @@ fn a_refresh_after_history_is_rewritten_resets_and_reloads_the_rows() {
     // The new walk ended before the search limit, having found no old row to splice at.
     assert_eq!(outcome, Refreshed::Reset { searched_rows: 5 });
     assert_eq!(after, fresh(&repo));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -273,8 +271,6 @@ fn a_refresh_with_no_match_in_20k_rows_resets_and_reloads_only_the_loaded_rows()
     assert_eq!(after.oids, whole.oids[..20_500]);
     assert_eq!(after.rows, whole.rows[..20_500]);
     assert!(rx.recv_timeout(Duration::from_millis(200)).is_err(), "nothing more until more rows are asked for");
-    std::fs::remove_dir_all(repo).ok();
-    std::fs::remove_dir_all(other).ok();
 }
 
 #[test]
@@ -296,7 +292,6 @@ fn a_refresh_of_a_repo_with_no_commits_yet_shows_its_first_commits() {
     assert_eq!(outcome, Refreshed::Reset { searched_rows: 1 });
     assert_eq!((next["event"].as_str(), next["total"].as_u64()), (Some("done"), Some(1)), "{next}");
     assert_eq!(after.oids, vec![root]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 /// The #370 refresh budget.
@@ -375,6 +370,4 @@ fn a_refresh_with_20k_loaded_rows_takes_at_most_250_ms() {
         let fastest = runs.iter().min().unwrap();
         assert!(*fastest <= REFRESH_BUDGET, "the fastest refresh by {kind} took {} ms, of {runs:?}", fastest.as_millis());
     }
-    std::fs::remove_dir_all(repo).ok();
-    std::fs::remove_dir_all(other).ok();
 }

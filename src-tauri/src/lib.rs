@@ -2,6 +2,8 @@ pub mod atomic_file;
 pub mod dates;
 pub mod slices;
 pub mod spawn;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 use tauri::{Emitter, Manager};
 

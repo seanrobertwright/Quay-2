@@ -90,6 +90,7 @@ pub fn install_panic_hook(dir: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::fs;
     use std::sync::Mutex;
 
@@ -109,10 +110,8 @@ mod tests {
         }
     }
 
-    fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-crash-{}-{}", name, uuid::Uuid::new_v4().simple()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_dir(name: &str) -> TempDir {
+        TempDir::new(&format!("crash-{name}"))
     }
 
     #[test]
@@ -159,7 +158,7 @@ mod tests {
         let flag = previous_ran.clone();
         std::panic::set_hook(Box::new(move |_| flag.store(true, std::sync::atomic::Ordering::SeqCst)));
 
-        install_panic_hook(dir.clone());
+        install_panic_hook(dir.to_path_buf());
         let result = std::thread::Builder::new()
             .name("crash-test-thread".into())
             .spawn(|| panic!("kaboom {}", 42))

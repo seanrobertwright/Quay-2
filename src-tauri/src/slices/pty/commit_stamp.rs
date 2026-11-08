@@ -215,19 +215,20 @@ pub fn stamping_env(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::process::Command;
 
     /// A throwaway repo plus a hooks root, both under the temp dir, with git isolated
     /// from the user's own global and system config.
     struct Sandbox {
-        dir: PathBuf,
+        dir: TempDir,
         repo: PathBuf,
         hooks: PathBuf,
     }
 
     impl Sandbox {
         fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!("quay2-stamp-{}", uuid::Uuid::new_v4().simple()));
+            let dir = TempDir::new("stamp");
             let repo = dir.join("repo");
             std::fs::create_dir_all(&repo).unwrap();
             std::fs::write(dir.join("empty.gitconfig"), "").unwrap();
@@ -299,12 +300,6 @@ mod tests {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
-        }
-    }
-
-    impl Drop for Sandbox {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 

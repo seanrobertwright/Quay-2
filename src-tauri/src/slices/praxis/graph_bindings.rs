@@ -350,18 +350,16 @@ fn check_against_graph(binding: &Value, entries: &Map<String, Value>, graph: &Va
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use serde_json::json;
 
     use super::*;
+    use crate::test_support::TempDir;
     use crate::slices::praxis::models::{PraxisKind, SaveOutcome};
     use crate::slices::praxis::store::{list_definitions, read_definition, save_definition};
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-bindings-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis-bindings")
     }
 
     fn write(repo: &Path, rel: &str, body: &str) {

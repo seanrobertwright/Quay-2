@@ -269,11 +269,10 @@ pub fn sanitize_tier2_output(raw: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("machina-{}-{}", tag, uuid::Uuid::new_v4().simple()));
-        fs::create_dir_all(&d).unwrap();
-        d
+    fn temp_dir(tag: &str) -> TempDir {
+        TempDir::new(&format!("machina-{tag}"))
     }
 
     #[test]
@@ -309,10 +308,6 @@ mod tests {
         // Editing a vaulted file breaks the pin.
         fs::write(vault.join("WO-1").join("files").join("a.test.mjs"), "weakened").unwrap();
         assert!(restore_into(&vault, "WO-1", &v.sha256, &wt).is_err());
-
-        for d in [repo, vault, wt] {
-            let _ = fs::remove_dir_all(d);
-        }
     }
 
     #[test]
@@ -322,9 +317,6 @@ mod tests {
         let v = vault_holdbacks(&vault, &repo, "WO-2").unwrap();
         assert!(v.files.is_empty());
         assert_eq!(v.sha256, sha256_hex(b""));
-        for d in [repo, vault] {
-            let _ = fs::remove_dir_all(d);
-        }
     }
 
     #[test]

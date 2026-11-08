@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 use super::git_refs;
-use super::tests::{git, temp_dir};
+use super::tests::{git, temp_dir, TempDir};
 
 fn rev(repo: &Path, name: &str) -> String {
     git(repo, &["rev-parse", name]).trim().to_string()
 }
 
 /// A repo whose `main` has one commit, `init`, with git's identity set for commits.
-fn repo() -> (PathBuf, PathBuf) {
+fn repo() -> (TempDir, PathBuf) {
     let root = temp_dir();
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
@@ -94,7 +94,6 @@ async fn reads_branch_remote_and_tag_badges_and_every_worktree_head() {
     assert_eq!(find(&feat_wt)["branch"], json!("feat"));
     assert_eq!(find(&detached_wt)["oid"], json!(init));
     assert_eq!(find(&detached_wt)["branch"], Value::Null);
-    std::fs::remove_dir_all(root).ok();
 }
 
 #[tokio::test]
@@ -117,7 +116,6 @@ async fn counts_the_commits_only_a_tag_reaches() {
 
     let refs = refs_of(&repo).await;
     assert_eq!(refs["tagOnlyCount"], json!(2));
-    std::fs::remove_dir_all(root).ok();
 }
 
 #[tokio::test]
@@ -130,7 +128,6 @@ async fn a_repo_without_tags_or_commits_counts_none() {
     let refs = refs_of(&empty).await;
     assert_eq!(refs["tagOnlyCount"], json!(0));
     assert_eq!(refs["refs"], json!([]));
-    std::fs::remove_dir_all(root).ok();
 }
 
 #[tokio::test]

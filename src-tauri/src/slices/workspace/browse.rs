@@ -208,24 +208,8 @@ fn drives_from_mask(mask: u32) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::fs;
-
-    /// A fresh folder under the system temp dir, removed when dropped.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(tag: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("quay-browse-{}-{}", tag, uuid::Uuid::new_v4()));
-            fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
 
     fn make_repo(dir: &Path, head: &str) {
         fs::create_dir_all(dir.join(".git")).unwrap();
@@ -238,13 +222,13 @@ mod tests {
 
     #[test]
     fn lists_subfolders_sorted_without_files_or_dot_folders() {
-        let tmp = TempDir::new("list");
+        let tmp = TempDir::new("browse-list");
         for name in ["beta", "Alpha", "gamma", ".hidden"] {
-            fs::create_dir(tmp.0.join(name)).unwrap();
+            fs::create_dir(tmp.join(name)).unwrap();
         }
-        fs::write(tmp.0.join("readme.txt"), "x").unwrap();
+        fs::write(tmp.join("readme.txt"), "x").unwrap();
 
-        let listing = list_folder(&tmp.0.to_string_lossy()).unwrap();
+        let listing = list_folder(&tmp.to_string_lossy()).unwrap();
         assert_eq!(names(&listing), vec!["Alpha", "beta", "gamma"]);
         assert!(!listing.truncated);
         assert!(listing.entries.iter().all(|e| !e.is_git && e.branch.is_none()));
@@ -252,12 +236,12 @@ mod tests {
 
     #[test]
     fn marks_git_repos_with_their_branch() {
-        let tmp = TempDir::new("git");
-        make_repo(&tmp.0.join("repo"), "ref: refs/heads/feat/286-dialog\n");
-        make_repo(&tmp.0.join("detached"), "0553827abcdef0123456789abcdef0123456789\n");
-        fs::create_dir(tmp.0.join("plain")).unwrap();
+        let tmp = TempDir::new("browse-git");
+        make_repo(&tmp.join("repo"), "ref: refs/heads/feat/286-dialog\n");
+        make_repo(&tmp.join("detached"), "0553827abcdef0123456789abcdef0123456789\n");
+        fs::create_dir(tmp.join("plain")).unwrap();
 
-        let listing = list_folder(&tmp.0.to_string_lossy()).unwrap();
+        let listing = list_folder(&tmp.to_string_lossy()).unwrap();
         let by_name = |n: &str| listing.entries.iter().find(|e| e.name == n).unwrap().clone();
         assert_eq!(by_name("repo").branch.as_deref(), Some("feat/286-dialog"));
         assert!(by_name("repo").is_git);
@@ -267,11 +251,11 @@ mod tests {
 
     #[test]
     fn follows_a_dot_git_file_to_a_worktree_head() {
-        let tmp = TempDir::new("worktree");
-        let real_git = tmp.0.join("main-repo-git").join("worktrees").join("wt");
+        let tmp = TempDir::new("browse-worktree");
+        let real_git = tmp.join("main-repo-git").join("worktrees").join("wt");
         fs::create_dir_all(&real_git).unwrap();
         fs::write(real_git.join("HEAD"), "ref: refs/heads/wt-branch\n").unwrap();
-        let wt = tmp.0.join("wt");
+        let wt = tmp.join("wt");
         fs::create_dir(&wt).unwrap();
         fs::write(wt.join(".git"), format!("gitdir: {}\n", real_git.display())).unwrap();
 
@@ -283,17 +267,17 @@ mod tests {
 
     #[test]
     fn a_repo_with_an_unreadable_head_is_still_a_repo() {
-        let tmp = TempDir::new("nohead");
-        fs::create_dir_all(tmp.0.join("repo").join(".git")).unwrap();
-        let listing = list_folder(&tmp.0.to_string_lossy()).unwrap();
+        let tmp = TempDir::new("browse-nohead");
+        fs::create_dir_all(tmp.join("repo").join(".git")).unwrap();
+        let listing = list_folder(&tmp.to_string_lossy()).unwrap();
         assert!(listing.entries[0].is_git);
         assert_eq!(listing.entries[0].branch, None);
     }
 
     #[test]
     fn a_missing_folder_is_an_error_and_inspects_as_missing() {
-        let tmp = TempDir::new("missing");
-        let gone = tmp.0.join("nope");
+        let tmp = TempDir::new("browse-missing");
+        let gone = tmp.join("nope");
         let err = list_folder(&gone.to_string_lossy()).unwrap_err();
         assert!(err.starts_with("Folder not found"), "{}", err);
         assert!(!inspect_folder(&gone.to_string_lossy()).exists);
@@ -302,8 +286,8 @@ mod tests {
 
     #[test]
     fn a_file_inspects_as_missing() {
-        let tmp = TempDir::new("file");
-        let file = tmp.0.join("f.txt");
+        let tmp = TempDir::new("browse-file");
+        let file = tmp.join("f.txt");
         fs::write(&file, "x").unwrap();
         assert!(!inspect_folder(&file.to_string_lossy()).exists);
         assert!(list_folder(&file.to_string_lossy()).is_err());
@@ -311,11 +295,11 @@ mod tests {
 
     #[test]
     fn large_folders_are_truncated() {
-        let tmp = TempDir::new("large");
+        let tmp = TempDir::new("browse-large");
         for i in 0..MAX_ENTRIES + 5 {
-            fs::create_dir(tmp.0.join(format!("d{:05}", i))).unwrap();
+            fs::create_dir(tmp.join(format!("d{:05}", i))).unwrap();
         }
-        let listing = list_folder(&tmp.0.to_string_lossy()).unwrap();
+        let listing = list_folder(&tmp.to_string_lossy()).unwrap();
         assert_eq!(listing.entries.len(), MAX_ENTRIES);
         assert!(listing.truncated);
     }
@@ -323,15 +307,15 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn junctions_to_folders_are_listed() {
-        let tmp = TempDir::new("junction");
-        let target = tmp.0.join("target");
+        let tmp = TempDir::new("browse-junction");
+        let target = tmp.join("target");
         fs::create_dir(&target).unwrap();
-        let link = tmp.0.join("link");
+        let link = tmp.join("link");
         // Directory symlinks need a privilege junctions don't; skip if neither is available.
         if std::os::windows::fs::symlink_dir(&target, &link).is_err() {
             return;
         }
-        let listing = list_folder(&tmp.0.to_string_lossy()).unwrap();
+        let listing = list_folder(&tmp.to_string_lossy()).unwrap();
         assert_eq!(names(&listing), vec!["link", "target"]);
     }
 

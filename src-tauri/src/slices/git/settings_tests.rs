@@ -10,11 +10,13 @@ use serde_json::json;
 use super::error::GitError;
 use super::settings::*;
 use super::staging_tests::repo_with_worktree;
+use crate::test_support::TempDir;
 
-fn temp_path() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("quay-topos-settings-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("topos.json")
+/// A `topos.json` path in a fresh folder, which goes when the returned `TempDir` drops.
+fn temp_path() -> (TempDir, PathBuf) {
+    let dir = TempDir::new("topos-settings");
+    let path = dir.join("topos.json");
+    (dir, path)
 }
 
 fn defaults() -> ToposSettings {
@@ -29,7 +31,7 @@ fn defaults() -> ToposSettings {
 
 #[test]
 fn a_missing_file_reads_as_the_defaults() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
 
     assert_eq!(ToposSettingsStore::at(path.clone()).read(), defaults());
     assert!(!path.exists());
@@ -37,7 +39,7 @@ fn a_missing_file_reads_as_the_defaults() {
 
 #[test]
 fn a_file_of_valid_prefs_reads_back_as_written() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(
         &path,
         r#"{ "graphColumnWidth": 300, "inspectorWidth": 520, "diffMode": "split", "fileListMode": "tree", "repos": {} }"#,
@@ -58,7 +60,7 @@ fn a_file_of_valid_prefs_reads_back_as_written() {
 
 #[test]
 fn each_bad_value_falls_back_to_its_own_default() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     // NaN isn't JSON, so a NaN width reaches the file as a string or null; each is refused alone.
     for (graph, inspector, diff, list) in [
         (r#""NaN""#, "-1", r#""side-by-side""#, "3"),
@@ -78,7 +80,7 @@ fn each_bad_value_falls_back_to_its_own_default() {
 
 #[test]
 fn a_good_value_survives_beside_a_bad_one() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(&path, r#"{ "graphColumnWidth": 9999, "inspectorWidth": 600, "diffMode": "split", "fileListMode": 7 }"#).unwrap();
 
     assert_eq!(
@@ -89,7 +91,7 @@ fn a_good_value_survives_beside_a_bad_one() {
 
 #[test]
 fn the_width_bounds_are_the_frontends() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(&path, r#"{ "graphColumnWidth": 48, "inspectorWidth": 280 }"#).unwrap();
     assert_eq!(ToposSettingsStore::at(path.clone()).read(), ToposSettings { graph_column_width: 48, inspector_width: 280, ..defaults() });
     std::fs::write(&path, r#"{ "graphColumnWidth": 656, "inspectorWidth": 720 }"#).unwrap();
@@ -98,7 +100,7 @@ fn the_width_bounds_are_the_frontends() {
 
 #[test]
 fn a_corrupt_file_reads_as_the_defaults() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     for text in ["not json", "", "[1, 2]", "\"split\"", r#"{ "graphColumnWidth": 300"#] {
         std::fs::write(&path, text).unwrap();
         assert_eq!(ToposSettingsStore::at(path.clone()).read(), defaults(), "{text:?}");
@@ -123,7 +125,7 @@ fn wait_for(path: &std::path::Path, limit: Duration) -> bool {
 
 #[test]
 fn writes_reach_the_file_together_once_they_have_been_quiet_for_500_ms() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let store = ToposSettingsStore::at(path.clone());
 
     let first = store.write(patch(json!({ "graphColumnWidth": 300 }))).unwrap();
@@ -143,7 +145,7 @@ fn writes_reach_the_file_together_once_they_have_been_quiet_for_500_ms() {
 
 #[test]
 fn a_patch_with_a_width_out_of_range_is_refused_whole() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let store = ToposSettingsStore::at(path.clone());
 
     for bad in [json!({ "graphColumnWidth": 47, "diffMode": "split" }), json!({ "inspectorWidth": 721 }), json!({ "inspectorWidth": 0 })] {
@@ -180,7 +182,7 @@ fn expected_key(repo: &Path) -> String {
 fn a_repo_and_its_worktrees_share_one_entry_keyed_by_the_common_git_dir() {
     let (root, worktree) = repo_with_worktree();
     let repo = root.join("repo");
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let store = ToposSettingsStore::at(path.clone());
 
     let before = crate::dates::now_ms();
@@ -205,7 +207,8 @@ fn a_repo_and_its_worktrees_share_one_entry_keyed_by_the_common_git_dir() {
 fn on_windows_a_repo_opened_by_a_differently_cased_path_is_the_same_entry() {
     let (root, _) = repo_with_worktree();
     let repo = root.join("repo");
-    let store = ToposSettingsStore::at(temp_path());
+    let (_dir, path) = temp_path();
+    let store = ToposSettingsStore::at(path);
 
     store.write(patch(json!({ "openedRepo": repo.to_string_lossy() }))).unwrap();
     store.write(patch(json!({ "openedRepo": repo.to_string_lossy().to_uppercase() }))).unwrap();
@@ -215,7 +218,7 @@ fn on_windows_a_repo_opened_by_a_differently_cased_path_is_the_same_entry() {
 
 #[test]
 fn opening_a_folder_that_is_not_a_repo_is_refused_and_records_nothing() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let store = ToposSettingsStore::at(path.clone());
 
     let folder = path.parent().unwrap().to_string_lossy().into_owned();
@@ -234,7 +237,7 @@ fn file_with_repos(count: i64) -> String {
 fn opening_a_201st_repo_evicts_the_least_recently_opened() {
     let (root, _) = repo_with_worktree();
     let repo = root.join("repo");
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(&path, file_with_repos(200)).unwrap();
     let store = ToposSettingsStore::at(path.clone());
     assert_eq!(store.read().repos.len(), 200);
@@ -253,7 +256,7 @@ fn opening_a_201st_repo_evicts_the_least_recently_opened() {
 fn reopening_a_kept_repo_evicts_nothing() {
     let (root, _) = repo_with_worktree();
     let repo = root.join("repo");
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let mut seeded: serde_json::Value = serde_json::from_str(&file_with_repos(199)).unwrap();
     seeded["repos"][expected_key(&repo)] = json!({ "lastOpened": 0 });
     std::fs::write(&path, seeded.to_string()).unwrap();
@@ -268,7 +271,7 @@ fn reopening_a_kept_repo_evicts_nothing() {
 
 #[test]
 fn a_file_over_the_cap_reads_as_its_200_most_recently_opened_repos() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(&path, file_with_repos(205)).unwrap();
 
     let repos = ToposSettingsStore::at(path).read().repos;
@@ -280,7 +283,7 @@ fn a_file_over_the_cap_reads_as_its_200_most_recently_opened_repos() {
 
 #[test]
 fn a_repo_entry_with_a_bad_last_opened_time_is_dropped_alone() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(
         &path,
         r#"{ "repos": { "c:/a/.git": { "lastOpened": 5 }, "c:/b/.git": { "lastOpened": "yesterday" }, "c:/c/.git": { "lastOpened": -3 }, "c:/d/.git": 7, "c:/e/.git": { "lastOpened": 1.5 } }, "diffMode": "split" }"#,
@@ -296,7 +299,7 @@ fn a_repo_entry_with_a_bad_last_opened_time_is_dropped_alone() {
 #[cfg(windows)]
 #[test]
 fn on_windows_keys_differing_only_in_case_read_as_one_entry_at_its_latest_time() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(&path, r#"{ "repos": { "C:/Repo/.git": { "lastOpened": 9 }, "c:/repo/.git": { "lastOpened": 4 } } }"#).unwrap();
 
     let repos = ToposSettingsStore::at(path).read().repos;
@@ -306,7 +309,7 @@ fn on_windows_keys_differing_only_in_case_read_as_one_entry_at_its_latest_time()
 
 #[test]
 fn only_a_true_suppress_speedup_turns_the_banner_away() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(
         &path,
         r#"{ "repos": {
@@ -331,7 +334,7 @@ fn a_repos_filters_round_trip_through_the_file_and_branches_that_are_gone_are_pr
     let (root, worktree) = repo_with_worktree();
     let repo = root.join("repo");
     super::staging_tests::git(&repo, &["branch", "doomed"]);
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     let store = ToposSettingsStore::at(path.clone());
 
     // Untouched, a repo's filters are the defaults: every branch, remotes shown, tags not.
@@ -357,13 +360,13 @@ fn a_repos_filters_round_trip_through_the_file_and_branches_that_are_gone_are_pr
     assert_eq!(reopened.repo_filters(&worktree).unwrap(), pruned);
     reopened.flush().unwrap();
     assert_eq!(ToposSettingsStore::at(path).repo_filters(&repo).unwrap(), pruned, "the pruning is written back");
-    std::fs::remove_dir_all(root).ok();
 }
 
 #[test]
 fn a_filter_naming_anything_but_full_branch_names_is_refused_whole() {
-    let (root, worktree) = repo_with_worktree();
-    let store = ToposSettingsStore::at(temp_path());
+    let (_root, worktree) = repo_with_worktree();
+    let (_dir, path) = temp_path();
+    let store = ToposSettingsStore::at(path);
     for bad in ["--all", "feat", "refs/tags/v1", ""] {
         let result = store.write(patch(json!({ "repoFilters": {
             "repoPath": worktree.to_string_lossy(), "filters": { "branches": [bad], "remotes": true, "tags": false },
@@ -371,12 +374,11 @@ fn a_filter_naming_anything_but_full_branch_names_is_refused_whole() {
         assert!(matches!(result, Err(GitError::InvalidRefName { .. })), "{bad:?}: {result:?}");
     }
     assert_eq!(store.read().repos, BTreeMap::new());
-    std::fs::remove_dir_all(root).ok();
 }
 
 #[test]
 fn bad_stored_filter_values_read_as_their_defaults() {
-    let path = temp_path();
+    let (_dir, path) = temp_path();
     std::fs::write(
         &path,
         r#"{ "repos": {

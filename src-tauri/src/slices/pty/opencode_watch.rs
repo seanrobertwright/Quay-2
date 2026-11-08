@@ -598,7 +598,7 @@ mod tests {
         use std::io::{Read, Write};
         use std::sync::Arc;
 
-        let root = std::env::temp_dir().join(format!("quay-live-opencode-{}", std::process::id()));
+        let root = crate::test_support::TempDir::new("live-opencode");
         let project = root.join("project");
         let config_home = root.join("config");
         std::fs::create_dir_all(&project).unwrap();
@@ -688,7 +688,6 @@ mod tests {
             }
         }
         let _ = child.kill();
-        let _ = std::fs::remove_dir_all(&root);
         let end = end.unwrap_or_else(|_| panic!("no turn end within {}s", limit.as_secs()));
         assert_eq!(end.unwrap(), WatchEnd::Stopped);
         let turns = turns.lock();

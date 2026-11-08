@@ -138,16 +138,14 @@ pub fn check_grant(repo: &Path, id: &str, content: &Value) -> Result<GrantCheck,
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
 
     use serde_json::json;
 
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_repo() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-praxis-grants-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+    fn temp_repo() -> TempDir {
+        TempDir::canonical("praxis-grants")
     }
 
     fn write(repo: &Path, rel: &str, value: &Value) {

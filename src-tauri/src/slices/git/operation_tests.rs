@@ -15,6 +15,7 @@ use super::op_runner::{GitOps, OpEvent};
 use super::operation::{OpOutcome, op_abort, op_continue, op_skip, read_operation_state};
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
+use crate::test_support::TempDir;
 
 /// A channel that keeps every event it is sent, as the JSON the frontend would receive.
 fn test_channel() -> (Channel<OpEvent>, Arc<Mutex<Vec<Value>>>) {
@@ -62,7 +63,7 @@ fn state_json(wt: &Path) -> Value {
 
 /// `README.md` changed one way on `main` (in the main repo) and another on `feat` (in the
 /// worktree), each in a commit with `subject`.
-fn diverged(main_subject: &str, feat_subject: &str) -> (PathBuf, PathBuf) {
+fn diverged(main_subject: &str, feat_subject: &str) -> (TempDir, PathBuf) {
     let (root, wt) = repo_with_worktree();
     let repo = root.join("repo");
     std::fs::write(repo.join("README.md"), "main side\n").unwrap();
@@ -74,7 +75,7 @@ fn diverged(main_subject: &str, feat_subject: &str) -> (PathBuf, PathBuf) {
 
 #[test]
 fn a_merge_stopped_on_a_conflict_names_head_and_the_incoming_branch() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     git_stops(&wt, &["merge", "main"]);
 
     let state = state_json(&wt);
@@ -96,7 +97,6 @@ fn a_merge_stopped_on_a_conflict_names_head_and_the_incoming_branch() {
         state.get("step").is_none() && state.get("total").is_none(),
         "a merge has no steps: {state}"
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn short_oid(dir: &Path, rev: &str) -> String {
@@ -107,7 +107,7 @@ fn short_oid(dir: &Path, rev: &str) -> String {
 
 #[test]
 fn a_plain_rebase_names_what_it_is_onto_and_the_commit_it_replays_at_its_step() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     std::fs::write(wt.join("later.txt"), "later\n").unwrap();
     git(&wt, &["add", "later.txt"]);
     git(&wt, &["commit", "-q", "-m", "Later change"]);
@@ -132,7 +132,6 @@ fn a_plain_rebase_names_what_it_is_onto_and_the_commit_it_replays_at_its_step() 
         json!([{ "path": "README.md", "xy": "UU", "kind": "bothModified" }])
     );
     assert_eq!(state["message"], "Feat change\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Runs `git rebase -i <onto>` in `wt` with its todo list's first `pick` turned into `edit`.
@@ -165,12 +164,11 @@ fn an_interactive_rebase_stopped_at_an_edit_is_a_rebase_with_nothing_to_resolve(
     assert_eq!(state["leftLabel"], json!({ "role": "Onto", "name": format!("main @{}", short_oid(&wt, "main")) }));
     assert_eq!(state["rightLabel"], json!({ "role": "Replaying", "name": "First step" }));
     assert_eq!(state["conflicts"], json!([]));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_cherry_pick_names_head_and_the_commit_it_picks() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     git_stops(&wt, &["cherry-pick", "main"]);
 
     let state = state_json(&wt);
@@ -179,12 +177,11 @@ fn a_cherry_pick_names_head_and_the_commit_it_picks() {
     assert_eq!(state["rightLabel"], json!({ "role": "Picking", "name": "Main change" }));
     assert_eq!(state["conflicts"], json!([{ "path": "README.md", "xy": "UU", "kind": "bothModified" }]));
     assert_eq!(state["message"], "Main change\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_revert_names_head_and_the_commit_it_reverts() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "first\n").unwrap();
     git(&wt, &["commit", "-q", "-am", "First edit"]);
     std::fs::write(wt.join("README.md"), "second\n").unwrap();
@@ -197,12 +194,11 @@ fn a_revert_names_head_and_the_commit_it_reverts() {
     assert_eq!(state["rightLabel"], json!({ "role": "Reverting", "name": "First edit" }));
     assert_eq!(state["conflicts"], json!([{ "path": "README.md", "xy": "UU", "kind": "bothModified" }]));
     assert!(state["message"].as_str().unwrap().starts_with("Revert \"First edit\"\n"), "{state}");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_conflict_with_no_state_file_lists_its_conflicts_under_no_operation() {
-    let (root, wt) = repo_with_worktree();
+    let (_root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), "stashed\n").unwrap();
     git(&wt, &["stash", "-q"]);
     std::fs::write(wt.join("README.md"), "committed\n").unwrap();
@@ -214,13 +210,12 @@ fn a_conflict_with_no_state_file_lists_its_conflicts_under_no_operation() {
     assert_eq!((state["leftLabel"].clone(), state["rightLabel"].clone(), state["message"].clone()), (Value::Null, Value::Null, Value::Null));
     assert_eq!(state["conflicts"], json!([{ "path": "README.md", "xy": "UU", "kind": "bothModified" }]));
     assert_eq!(state["conflictsTotal"], 1);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 
 #[test]
 fn continue_concludes_a_resolved_merge_with_the_edited_message_and_no_editor() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     // An editor that fails: Continue must never open one.
     git(&wt, &["config", "core.editor", "false"]);
     git_stops(&wt, &["merge", "main"]);
@@ -233,7 +228,6 @@ fn continue_concludes_a_resolved_merge_with_the_edited_message_and_no_editor() {
     assert_eq!(git(&wt, &["log", "-1", "--format=%B"]), "Merge main, resolved by hand\n\n");
     assert_eq!(git(&wt, &["rev-list", "--parents", "-1", "HEAD"]).split_whitespace().count(), 3, "a merge commit has two parents");
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "both sides\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn subjects(wt: &Path, range: &str) -> Vec<String> {
@@ -242,7 +236,7 @@ fn subjects(wt: &Path, range: &str) -> Vec<String> {
 
 /// `feat` with two commits that each change README.md, rebasing onto a `main` that changed it too,
 /// stopped on the first one's conflict.
-fn rebase_with_two_conflicts() -> (PathBuf, PathBuf) {
+fn rebase_with_two_conflicts() -> (TempDir, PathBuf) {
     let (root, wt) = diverged("Main change", "First feat change");
     std::fs::write(wt.join("README.md"), "feat side again\n").unwrap();
     git(&wt, &["commit", "-q", "-am", "Second feat change"]);
@@ -253,7 +247,7 @@ fn rebase_with_two_conflicts() -> (PathBuf, PathBuf) {
 
 #[test]
 fn continue_in_a_rebase_stops_again_on_the_next_conflict_then_finishes() {
-    let (root, wt) = rebase_with_two_conflicts();
+    let (_root, wt) = rebase_with_two_conflicts();
     resolve(&wt, "first resolved\n");
 
     let stopped = continue_in(&wt, Operation::Rebase, Some("First feat change, reworded\n")).unwrap();
@@ -268,12 +262,11 @@ fn continue_in_a_rebase_stops_again_on_the_next_conflict_then_finishes() {
     assert_eq!(git(&wt, &["symbolic-ref", "--short", "HEAD"]).trim(), "feat", "the rebase finished on its branch");
     assert_eq!(subjects(&wt, "main..feat"), ["Second feat change", "First feat change, reworded"]);
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "second resolved\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn continue_concludes_a_resolved_cherry_pick() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     git(&wt, &["config", "core.editor", "false"]);
     git_stops(&wt, &["cherry-pick", "main"]);
     resolve(&wt, "picked\n");
@@ -281,24 +274,22 @@ fn continue_concludes_a_resolved_cherry_pick() {
     let outcome = continue_in(&wt, Operation::CherryPick, Some("Main change\n")).unwrap();
     assert_eq!(outcome.state.kind, Operation::None);
     assert_eq!(subjects(&wt, "-2"), ["Main change", "Feat change"]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn continue_is_refused_while_a_conflict_remains_and_runs_nothing() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     git_stops(&wt, &["merge", "main"]);
     let before = git(&wt, &["rev-parse", "HEAD"]);
 
     assert_eq!(continue_in(&wt, Operation::Merge, None), Err(GitError::ConflictsRemain { count: 1 }));
     assert_eq!(git(&wt, &["rev-parse", "HEAD"]), before);
     assert_eq!(read_operation_state(&wt).unwrap().kind, Operation::Merge);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn each_step_acts_only_on_the_operation_under_way() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     // With nothing under way, there is nothing to continue, skip or abort, and nothing is started.
     assert_eq!(continue_in(&wt, Operation::Merge, None), Err(GitError::NoOperation));
     assert_eq!(abort_in(&wt, Operation::Rebase), Err(GitError::NoOperation));
@@ -310,7 +301,6 @@ fn each_step_acts_only_on_the_operation_under_way() {
     resolve(&wt, "both\n");
     assert_eq!(continue_in(&wt, Operation::Rebase, None), Err(GitError::NoOperation));
     assert_eq!(read_operation_state(&wt).unwrap().kind, Operation::Merge);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Skips `expected` in `wt`, with fresh ops, slots and channel.
@@ -325,7 +315,7 @@ fn abort_in(wt: &Path, expected: Operation) -> Result<OpOutcome, GitError> {
 
 #[test]
 fn skip_drops_the_commit_a_rebase_stopped_on_and_moves_to_the_next() {
-    let (root, wt) = rebase_with_two_conflicts();
+    let (_root, wt) = rebase_with_two_conflicts();
 
     let stopped = skip_in(&wt, Operation::Rebase).unwrap();
     assert_eq!(stopped.state.kind, Operation::Rebase);
@@ -334,21 +324,19 @@ fn skip_drops_the_commit_a_rebase_stopped_on_and_moves_to_the_next() {
     resolve(&wt, "second resolved\n");
     continue_in(&wt, Operation::Rebase, None).unwrap();
     assert_eq!(subjects(&wt, "main..feat"), ["Second feat change"], "the skipped commit is gone");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn a_merge_has_nothing_to_skip() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     git_stops(&wt, &["merge", "main"]);
     assert!(matches!(skip_in(&wt, Operation::Merge), Err(GitError::Other { .. })));
     assert_eq!(read_operation_state(&wt).unwrap().kind, Operation::Merge);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn abort_puts_head_back_as_it_was_before_a_merge_or_a_rebase() {
-    let (root, wt) = diverged("Main change", "Feat change");
+    let (_root, wt) = diverged("Main change", "Feat change");
     let before = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
     git_stops(&wt, &["merge", "main"]);
     let aborted = abort_in(&wt, Operation::Merge).unwrap();
@@ -361,7 +349,6 @@ fn abort_puts_head_back_as_it_was_before_a_merge_or_a_rebase() {
     assert_eq!(aborted.state.kind, Operation::None);
     assert_eq!(aborted.head.as_deref(), Some(before.as_str()));
     assert_eq!(git(&wt, &["symbolic-ref", "--short", "HEAD"]).trim(), "feat");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Writes `body` as the hook `name` in a hooks folder of its own under `root`, and points the
@@ -403,7 +390,6 @@ fn a_hook_that_fails_continue_is_hook_failed_with_its_streamed_output_and_the_op
         assert!(streamed_output(&events).contains("lint check: no"), "{start}");
         assert_eq!(events.last().unwrap()["event"], "failed");
         assert_eq!(read_operation_state(&wt).unwrap().kind, operation, "the {start} is still under way");
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -460,5 +446,4 @@ fn cancel_stops_a_slow_hook_in_continue_and_the_merge_can_continue_after() {
     git(&wt, &["config", "core.hooksPath", ".git/no-hooks"]);
     let done = op_continue(&ops, &locks, &wt, Uuid::new_v4(), Operation::Merge, None, &test_channel().0).unwrap();
     assert_eq!(done.state.kind, Operation::None);
-    let _ = std::fs::remove_dir_all(root);
 }

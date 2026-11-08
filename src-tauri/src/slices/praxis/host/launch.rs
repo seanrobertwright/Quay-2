@@ -158,11 +158,13 @@ pub fn check_node_version(version: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
-    fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay-praxis-launch-{tag}-{}", uuid::Uuid::new_v4().simple()));
-        std::fs::create_dir_all(&dir).unwrap();
-        PathBuf::from(crate::slices::praxis::store::display_path(&dir.canonicalize().unwrap()).unwrap())
+    /// A fresh folder, and its path as Quay displays it.
+    fn temp_dir(tag: &str) -> (TempDir, PathBuf) {
+        let dir = TempDir::new(&format!("praxis-launch-{tag}"));
+        let path = PathBuf::from(crate::slices::praxis::store::display_path(&dir.canonicalize().unwrap()).unwrap());
+        (dir, path)
     }
 
     fn package(dir: &Path, bin: &str) {
@@ -173,35 +175,32 @@ mod tests {
 
     #[test]
     fn a_checkout_resolves_to_its_engine_packages_bin() {
-        let root = temp_dir("checkout");
+        let (_dir, root) = temp_dir("checkout");
         std::fs::write(root.join("package.json"), r#"{"name":"aiws-sdk-workspace"}"#).unwrap();
         package(&root.join("engine"), "src/praxis.ts");
         assert_eq!(script_in_checkout(&root).unwrap(), root.join("engine").join("src").join("praxis.ts"));
         // The engine package itself is accepted as the checkout.
         assert_eq!(script_in_checkout(&root.join("engine")).unwrap(), root.join("engine").join("src").join("praxis.ts"));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn a_folder_without_a_praxis_bin_is_refused() {
-        let root = temp_dir("not-sdk");
+        let (_dir, root) = temp_dir("not-sdk");
         std::fs::write(root.join("package.json"), r#"{"name":"other","bin":{"other":"x.js"}}"#).unwrap();
         assert!(script_in_checkout(&root).unwrap_err().contains("isn't an AI-WS-SDK checkout"));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn a_bin_outside_its_package_is_refused() {
-        let root = temp_dir("escape");
+        let (_dir, root) = temp_dir("escape");
         std::fs::write(root.join("outside.ts"), "").unwrap();
         package(&root.join("engine"), "../outside.ts");
         assert!(script_in_checkout(&root).unwrap_err().contains("outside its package"));
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn the_global_link_is_found_beside_the_shim_on_path_never_the_shim_itself() {
-        let prefix = temp_dir("prefix");
+        let (_dir, prefix) = temp_dir("prefix");
         let (shim_dir, modules) = if cfg!(windows) {
             (prefix.clone(), prefix.join("node_modules"))
         } else {
@@ -213,7 +212,6 @@ mod tests {
         let env = LookupEnv { path: Some(std::env::join_paths([shim_dir.clone()]).unwrap()), ..LookupEnv::default() };
         let script = find_script(None, &env).unwrap();
         assert_eq!(script, modules.join("@aiws").join("engine").join("src").join("praxis.ts"));
-        let _ = std::fs::remove_dir_all(prefix);
     }
 
     #[test]

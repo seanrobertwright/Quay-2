@@ -9,6 +9,7 @@ use super::discard::{copy_discarded, discard_paths, discard_selection, restore_d
 use super::error::GitError;
 use super::staging::StagingLocks;
 use super::staging_tests::{git, repo_with_worktree};
+use crate::test_support::TempDir;
 
 /// A Recycle Bin that moves what it is given into its own folder, so a test can see that a
 /// discarded file went there and was never deleted outright.
@@ -63,7 +64,7 @@ fn discard(path: &str, token: &str, selection: Selection) -> DiscardRequest {
 }
 
 /// A committed twelve-line README with line 2 changed and line 11 deleted in the worktree.
-fn two_hunks() -> (PathBuf, PathBuf, String) {
+fn two_hunks() -> (TempDir, PathBuf, String) {
     let (root, wt) = repo_with_worktree();
     std::fs::write(wt.join("README.md"), twelve()).unwrap();
     git(&wt, &["commit", "-q", "-am", "twelve"]);
@@ -93,7 +94,6 @@ fn discarding_a_hunk_reverse_applies_it_and_backs_up_the_bytes_first() {
     assert_eq!(out.diff.request_id, 4);
     assert!(out.diff.hunks.is_empty());
     assert!(bin.names().is_empty());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -117,7 +117,6 @@ fn discarding_lines_of_a_crlf_file_and_restoring_them_puts_back_every_byte() {
     let status = restore_discarded(&locks, &bin, &wt, 9, &[out.backup]).unwrap();
     assert_eq!(status.request_id, 9);
     assert_eq!(std::fs::read(wt.join("README.md")).unwrap(), changed);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -134,7 +133,6 @@ fn a_restore_is_refused_once_the_file_changed_since_the_discard() {
         Err(GitError::ChangedSinceDiscard { paths: vec!["README.md".into()] })
     );
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), edited);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Bytes git reads as binary: a NUL, a lone CR, and bytes that aren't UTF-8.
@@ -162,7 +160,6 @@ fn discarding_a_whole_binary_file_restores_the_index_bytes_and_undo_puts_back_th
 
     restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
     assert_eq!(std::fs::read(wt.join("logo.png")).unwrap(), binary(2));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -181,7 +178,6 @@ fn a_hunk_of_a_binary_file_is_refused() {
         Err(GitError::Other { .. })
     ));
     assert_eq!(std::fs::read(wt.join("logo.png")).unwrap(), binary(2));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -202,7 +198,6 @@ fn discarding_an_untracked_file_moves_it_to_the_recycle_bin_and_undo_brings_it_b
 
     restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
     assert_eq!(std::fs::read(wt.join("notes/new.bin")).unwrap(), binary(3));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn paths(list: &[&str]) -> DiscardTarget {
@@ -242,7 +237,6 @@ fn discard_all_restores_every_tracked_change_and_leaves_untracked_files_unless_a
     restore_discarded(&locks, &bin, &wt, 5, &out.backups).unwrap();
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), "staged, then changed\n");
     assert!(!wt.join("src/lib.rs").exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -270,7 +264,6 @@ fn discard_all_with_untracked_files_acts_beyond_the_status_cap() {
     assert_eq!(std::fs::read_to_string(wt.join("debug.log")).unwrap(), "ignored\n");
     let last = out.backups.iter().find(|b| b.path == "many/f10001.txt").unwrap();
     assert_eq!(blob_bytes(&wt, last.blob.as_deref().unwrap()), b"10001");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -296,7 +289,6 @@ fn discarding_an_untracked_folder_bins_its_files_and_keeps_ignored_ones() {
 
     restore_discarded(&locks, &bin, &wt, 1, &out.backups).unwrap();
     assert_eq!(std::fs::read_to_string(wt.join("notes/deep/b.md")).unwrap(), "b\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 /// Makes storing the blob of `bytes` fail: a file where its fan-out folder under `objects/` goes,
@@ -338,7 +330,6 @@ fn a_failed_backup_discards_nothing() {
     assert!(err.to_string().contains("nothing was discarded"), "{err}");
     assert_eq!(std::fs::read_to_string(wt.join("untracked.txt")).unwrap(), "keep me\n");
     assert!(bin.names().is_empty());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -356,7 +347,6 @@ fn discarding_a_deleted_file_brings_it_back_and_undo_deletes_it_again_through_th
     restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
     assert!(!wt.join("README.md").exists());
     assert_eq!(bin.names(), ["README.md"]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -375,7 +365,6 @@ fn a_stale_diff_discards_nothing() {
         );
     }
     assert_eq!(std::fs::read_to_string(wt.join("README.md")).unwrap(), edited);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -395,7 +384,6 @@ fn discarding_some_lines_of_an_untracked_file_keeps_the_rest_of_it() {
     assert_eq!(out.status.entries.iter().map(|e| e.xy.as_str()).collect::<Vec<_>>(), ["??"]);
     restore_discarded(&locks, &bin, &wt, 1, &[out.backup]).unwrap();
     assert_eq!(std::fs::read_to_string(wt.join("new.txt")).unwrap(), "keep\ndrop\nkeep too\n");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -412,7 +400,6 @@ fn a_restore_or_copy_only_writes_inside_the_worktree() {
         assert!(matches!(copy_discarded(&locks, &wt, 1, &[backup]), Err(GitError::Other { .. })), "{bad:?} copied");
     }
     assert!(!outside.exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[cfg(unix)]
@@ -427,7 +414,6 @@ fn a_restore_through_a_symlinked_folder_that_leaves_the_worktree_is_refused() {
     let backup = DiscardBackup { path: "link/README.md".into(), blob: out.backup.blob.clone(), after: None };
     assert!(matches!(restore_discarded(&locks, &bin, &wt, 1, &[backup]), Err(GitError::Other { .. })));
     assert!(!root.join("elsewhere/README.md").exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -448,5 +434,4 @@ fn copying_a_discard_writes_its_bytes_to_a_new_file_beside_the_changed_one() {
     let again = copy_discarded(&locks, &wt, 8, &[out.backup]).unwrap();
     assert_eq!(again.paths, ["README (discarded 2).md"]);
     assert_eq!(std::fs::read_to_string(wt.join("README (discarded).md")).unwrap(), changed);
-    let _ = std::fs::remove_dir_all(root);
 }

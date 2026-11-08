@@ -4,14 +4,14 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 
 use serde_json::Value;
 
 use super::page::OPEN_ROW;
 use super::session::{GraphOptions, GraphSessions};
-use super::tests::{git, listen, temp_dir, Msg, WAIT};
+use super::tests::{git, listen, temp_dir, Msg, TempDir, WAIT};
 use super::GraphOrder;
 
 /// One commit of a hand-built history. Commits are listed oldest first and get increasing times.
@@ -31,7 +31,7 @@ pub(super) fn merge(name: &str, parents: &[&str], msg: &str) -> C {
 
 /// Builds `commits` with fast-import, points each `(ref, commit)` in `refs` at its commit, and sets
 /// HEAD to `head` (a ref name). Returns the repo and the oid of each commit by name.
-pub(super) fn build(commits: &[C], refs: &[(&str, &str)], head: &str) -> (PathBuf, HashMap<String, String>) {
+pub(super) fn build(commits: &[C], refs: &[(&str, &str)], head: &str) -> (TempDir, HashMap<String, String>) {
     let repo = temp_dir();
     git(&repo, &["init", "-q", "-b", "main"]);
     let mut stream = String::new();
@@ -187,7 +187,6 @@ fn a_linear_history_runs_down_lane_zero_with_one_edge_per_parent() {
         ]
     );
     assert_eq!(l.peaks, vec![1]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -208,7 +207,6 @@ fn lane_zero_waits_for_the_default_branch_while_newer_tips_take_the_next_free_la
     let [fork] = l.edges_from(&oid["f1"])[..] else { panic!("f1 has one edge") };
     assert_eq!((fork.lane, fork.child_lane, fork.parent_lane, fork.parent_row), (1, 1, 0, 3));
     assert_eq!(l.peaks, vec![2]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -228,7 +226,6 @@ fn a_new_tip_takes_the_lowest_free_lane_and_live_lanes_never_shift() {
     let [y] = l.edges_from(&oid["y1"])[..] else { panic!("y1 has one edge") };
     assert_eq!((y.lane, y.child_lane, y.parent_row, y.parent_lane), (2, 2, 5, 0));
     assert_eq!(l.peaks, vec![3]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -252,7 +249,6 @@ fn a_merge_parent_takes_the_nearest_free_lane_right_of_the_merge_on_a_track_name
     assert_eq!((l.track_key(topic), l.tracks[topic as usize]["kind"].as_str()), ("topic", Some("derived")));
     // Lane 0's track is to its left when the topic lane opens.
     assert_eq!(l.tracks[topic as usize]["left"], l.rows[0].1);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 fn lanes_of(l: &Layout, oid: &HashMap<String, String>, names: &[&str]) -> Vec<u32> {
@@ -280,7 +276,6 @@ fn lane_zero_takes_whichever_default_tip_streams_in_first_and_remote_head_is_nev
     git(&repo, &["update-ref", "refs/remotes/origin/trunk", &oid["a"]]);
     let l = layout(&repo, GraphOrder::Date);
     assert_eq!(lanes_of(&l, &oid, &["c", "m", "b", "a"]), vec![0, 1, 0, 0]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -297,7 +292,6 @@ fn a_merge_into_lane_zero_before_its_tip_arrives_opens_a_merge_edge_down_lane_ze
     let merge = edges[1];
     assert_eq!((merge.lane, merge.child_lane, merge.parent_row, merge.parent_lane), (0, 1, 2, 0));
     assert_eq!(merge.track, main);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -313,7 +307,6 @@ fn a_join_ends_at_the_parent_when_the_parent_is_the_next_row_and_on_the_lane_oth
     let join = l.edges_from(&oid["x"])[1];
     assert_eq!((join.child_row, join.child_lane, join.lane, join.parent_row, join.parent_lane), (1, 1, 0, 2, 0));
     assert_eq!(join.track, l.rows[0].1, "a join takes the color of the lane it joins");
-    std::fs::remove_dir_all(repo).ok();
 
     // With another row between, the join ends one row down, on main's lane.
     let (repo, oid) = build(
@@ -332,7 +325,6 @@ fn a_join_ends_at_the_parent_when_the_parent_is_the_next_row_and_on_the_lane_oth
     assert_eq!(lanes_of(&l, &oid, &["top", "x", "y", "p", "q", "a"]), vec![0, 1, 2, 0, 1, 0]);
     let join = l.edges_from(&oid["x"])[1];
     assert_eq!((join.child_row, join.child_lane, join.lane, join.parent_row, join.parent_lane), (1, 1, 0, 2, 0));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -355,7 +347,6 @@ fn a_merge_lane_ends_in_a_join_once_a_lane_left_of_it_heads_for_the_same_parent(
     assert_eq!((join.child_row, join.child_lane, join.lane, join.parent_row, join.parent_lane), (2, 2, 1, 3, 1));
     assert_eq!(join.track, l.rows[2].1, "a join takes the color of the lane it joins");
     assert_eq!(l.peaks, vec![3]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -379,7 +370,6 @@ fn an_octopus_merge_fans_one_edge_per_extra_parent_out_to_the_right_in_parent_or
     let keys: Vec<&str> = edges[1..].iter().map(|e| l.track_key(e.track)).collect();
     assert_eq!(keys, vec!["b", "c", "d"]);
     assert_eq!(l.peaks, vec![4]);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -403,7 +393,6 @@ fn each_page_carries_the_edges_open_at_its_first_row_and_long_edges_close_in_a_l
     assert_eq!((side.lane, side.parent_row, side.parent_lane), (1, l.row_of(&oid["root"]), 0));
     assert!(l.closed_later.iter().any(|&e| l.edges[e as usize] == side), "side's edge was sent open, then closed");
     assert!(l.checkpoints[1..].iter().all(|(_, cp)| cp.len() == 2), "main's edge and side's edge cross every page start");
-    std::fs::remove_dir_all(repo).ok();
 }
 
 /// A deterministic pseudo-random history: branches commit, fork, merge (sometimes octopus) and
@@ -577,7 +566,6 @@ fn lane_topology_matches_git_log_graph_on_built_histories() {
         git(&repo, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/b0"]);
         check_against_git_graph(&repo, GraphOrder::Date);
         check_against_git_graph(&repo, GraphOrder::Topo);
-        std::fs::remove_dir_all(repo).ok();
     }
 }
 
@@ -603,5 +591,4 @@ fn merged_in_tracks_take_their_key_from_pull_request_and_remote_tracking_message
     assert_eq!(key_of("z"), format!("{}^2", oid["m3"]));
     let kind_of = |name: &str| l.tracks[l.rows[l.row_of(&oid[name]) as usize].1 as usize]["kind"].as_str().unwrap().to_string();
     assert_eq!((kind_of("x"), kind_of("z")), ("derived".to_string(), "anonymous".to_string()));
-    std::fs::remove_dir_all(repo).ok();
 }

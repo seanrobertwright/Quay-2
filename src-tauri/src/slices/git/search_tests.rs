@@ -10,6 +10,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use super::checkout_tests::rev;
 use super::search::{GitSearches, SearchKind, SearchQuery, SearchRefs};
 use super::staging_tests::{git, repo_with_worktree};
+use crate::test_support::TempDir;
 
 /// A channel that keeps every event it is sent, as the JSON the frontend would receive.
 fn test_channel() -> (Channel<super::search::SearchEvent>, Arc<Mutex<Vec<Value>>>) {
@@ -216,9 +217,8 @@ fn a_ref_that_is_option_like_short_or_missing_is_refused_before_git_runs() {
 
 /// A repo on `main` with `count` commits, each with the message `needle <n>`, built in one
 /// `git fast-import` so a test can pass the cap quickly.
-fn repo_with_commits(count: usize) -> std::path::PathBuf {
-    let repo = std::env::temp_dir().join(format!("quay-search-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&repo).unwrap();
+fn repo_with_commits(count: usize) -> TempDir {
+    let repo = TempDir::new("search");
     git(&repo, &["init", "-q", "-b", "main"]);
     let mut stream = String::new();
     for n in 1..=count {
@@ -263,7 +263,6 @@ fn results_cap_at_a_thousand_and_load_more_sends_the_rest() {
     assert_eq!(oids.len(), 1500);
     assert_eq!(oids.iter().collect::<std::collections::HashSet<_>>().len(), 1500, "no oid is sent twice");
     assert_eq!(oids[0], rev(&repo, "main"), "newest first");
-    let _ = std::fs::remove_dir_all(repo);
 }
 
 #[test]
@@ -273,7 +272,6 @@ fn a_search_with_exactly_the_cap_of_matches_ends_in_done() {
     assert_eq!(oids.len(), 1000);
     assert_eq!(last["event"], "done");
     assert_eq!(last["total"], 1000);
-    let _ = std::fs::remove_dir_all(repo);
 }
 
 /// Commits enough that the oids past the cap overflow the pipe, so git blocks until Load more.
@@ -307,7 +305,6 @@ fn cancel_kills_the_searchs_git_and_ends_it_cancelled() {
     assert_eq!(all.last().unwrap(), &serde_json::json!({ "event": "failed", "searchId": id, "error": { "kind": "cancelled" } }));
     assert!(!process_alive(pid), "git {pid} outlived the cancel");
     assert_eq!(searches.process_id(id), None);
-    let _ = std::fs::remove_dir_all(repo);
 }
 
 #[test]
@@ -329,5 +326,4 @@ fn a_new_search_cancels_the_running_one() {
     searches.more(first);
     let last = wait_for_terminal(&events, 1);
     assert_eq!(last.last().unwrap()["event"], "done", "the second search runs to its end");
-    let _ = std::fs::remove_dir_all(repo);
 }

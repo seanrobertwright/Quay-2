@@ -311,6 +311,7 @@ pub fn open_or_focus_vscode(path: &str) -> Result<VscodeOpenResult, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
 
     #[test]
     fn test_title_matches_target_exact_and_nested() {
@@ -333,11 +334,10 @@ mod tests {
 
     #[test]
     fn test_resolve_target_dir_and_workspace() {
-        let temp_dir = std::env::temp_dir().join(format!("quay_test_{}", std::process::id()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        let temp_dir = TempDir::new("vscode");
 
         let (target, name) = resolve_target(temp_dir.to_str().unwrap());
-        assert_eq!(target, temp_dir);
+        assert_eq!(target, temp_dir.to_path_buf());
         assert_eq!(name, temp_dir.file_name().unwrap().to_str().unwrap());
 
         // Create a workspace file
@@ -347,7 +347,5 @@ mod tests {
         let (ws_target, ws_name) = resolve_target(temp_dir.to_str().unwrap());
         assert_eq!(ws_target, ws_file);
         assert_eq!(ws_name, "my-cool-project");
-
-        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

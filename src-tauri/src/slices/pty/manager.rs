@@ -1122,10 +1122,10 @@ impl PtyManager {
 mod tests {
     use super::*;
     use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind, ALL_RUN_KINDS};
+    use crate::test_support::TempDir;
 
-    fn temp_sessions_file() -> (PathBuf, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("quay2-sessions-{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn temp_sessions_file() -> (TempDir, PathBuf) {
+        let dir = TempDir::new("sessions");
         let path = dir.join("sessions.json");
         (dir, path)
     }

@@ -319,9 +319,8 @@ mod tests {
     #[test]
     #[ignore]
     fn live_claude_stats() {
-        let ledger = std::env::temp_dir()
-            .join(format!("quay-live-ledger-{}", uuid::Uuid::new_v4().simple()))
-            .join("token-ledger.json");
+        let dir = crate::test_support::TempDir::new("live-ledger");
+        let ledger = dir.join("token-ledger.json");
         let started = std::time::Instant::now();
         let stats = compute_stats(&get_claude_dir().unwrap(), &ledger).unwrap();
         let first = started.elapsed();
@@ -339,6 +338,5 @@ mod tests {
                 println!("    {:<34} ${:>10.2}  out {:>11}", m.model_name, m.estimated_cost_usd, m.output_tokens);
             }
         }
-        let _ = std::fs::remove_dir_all(ledger.parent().unwrap());
     }
 }

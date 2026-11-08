@@ -7,6 +7,7 @@ use super::error::GitError;
 use super::hand_off::{hand_off, hand_offs, take_back, Agent, HandOff};
 use super::staging::{stage_paths, PathTarget, StagingLocks};
 use super::staging_tests::git;
+use crate::test_support::TempDir;
 
 fn claude() -> Agent {
     Agent { terminal_id: "term-1".into(), name: "claude 1".into() }
@@ -20,19 +21,18 @@ fn with(path: &str, agent: &Agent) -> HandOff {
     HandOff { path: path.into(), terminal_id: agent.terminal_id.clone(), agent_name: agent.name.clone() }
 }
 
-fn conflicted() -> (std::path::PathBuf, std::path::PathBuf) {
+fn conflicted() -> (TempDir, std::path::PathBuf) {
     merge_conflict("notes.txt", b"one\ntwo\nthree\n", b"one\nours\nthree\n", b"one\ntheirs\nthree\n")
 }
 
 #[test]
 fn a_handed_off_conflict_is_listed_with_its_agent() {
-    let (root, wt) = conflicted();
+    let (_root, wt) = conflicted();
     let locks = StagingLocks::default();
 
     let listed = hand_off(&locks, &wt, &paths(&["notes.txt"]), &claude()).expect("the hand-off lands");
     assert_eq!(listed, vec![with("notes.txt", &claude())]);
     assert_eq!(hand_offs(&locks, &wt).unwrap(), vec![with("notes.txt", &claude())]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn handed_off(path: &str) -> GitError {
@@ -41,7 +41,7 @@ fn handed_off(path: &str) -> GitError {
 
 #[test]
 fn every_write_refuses_a_handed_off_file_and_leaves_it_untouched() {
-    let (root, wt) = conflicted();
+    let (_root, wt) = conflicted();
     let locks = StagingLocks::default();
     let token = open_conflict(&wt, "notes.txt").unwrap().token;
     let before = std::fs::read(wt.join("notes.txt")).unwrap();
@@ -62,12 +62,11 @@ fn every_write_refuses_a_handed_off_file_and_leaves_it_untouched() {
 
     assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), before);
     assert!(git(&wt, &["ls-files", "-u"]).contains("notes.txt"), "still unmerged");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn the_hand_off_clears_once_the_agent_stages_the_file() {
-    let (root, wt) = conflicted();
+    let (_root, wt) = conflicted();
     let locks = StagingLocks::default();
     hand_off(&locks, &wt, &paths(&["notes.txt"]), &claude()).unwrap();
 
@@ -79,12 +78,11 @@ three
     git(&wt, &["add", "notes.txt"]);
 
     assert_eq!(hand_offs(&locks, &wt).unwrap(), vec![]);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn taking_a_file_back_makes_it_writable_again() {
-    let (root, wt) = conflicted();
+    let (_root, wt) = conflicted();
     let locks = StagingLocks::default();
     hand_off(&locks, &wt, &paths(&["notes.txt"]), &claude()).unwrap();
 
@@ -94,7 +92,6 @@ fn taking_a_file_back_makes_it_writable_again() {
 ").expect("the save lands");
     assert_eq!(std::fs::read(wt.join("notes.txt")).unwrap(), b"mine
 ");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -109,13 +106,11 @@ fn a_hand_off_in_one_worktree_never_reaches_another() {
     save_conflict(&locks, &wt_b, "notes.txt", &token, "mine
 ").expect("the other worktree's file stays writable");
     assert_eq!(hand_offs(&locks, &wt_a).unwrap(), vec![with("notes.txt", &claude())]);
-    let _ = std::fs::remove_dir_all(root_a);
-    let _ = std::fs::remove_dir_all(root_b);
 }
 
 #[test]
 fn staging_a_folder_that_holds_a_handed_off_file_is_refused() {
-    let (root, wt) = merge_conflict("src/notes.txt", b"one
+    let (_root, wt) = merge_conflict("src/notes.txt", b"one
 ", b"ours
 ", b"theirs
 ");
@@ -131,12 +126,11 @@ fn staging_a_folder_that_holds_a_handed_off_file_is_refused() {
     std::fs::write(wt.join("sr/other.txt"), "x
 ").unwrap();
     stage_paths(&locks, &wt, 1, &PathTarget::Paths { paths: paths(&["sr"]) }).expect("sr/ is not src/");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn only_a_conflicted_file_can_be_handed_off() {
-    let (root, wt) = conflicted();
+    let (_root, wt) = conflicted();
     let locks = StagingLocks::default();
 
     assert!(matches!(hand_off(&locks, &wt, &paths(&["README.md"]), &claude()), Err(GitError::Other { .. })));
@@ -145,5 +139,4 @@ fn only_a_conflicted_file_can_be_handed_off() {
     // A refused list records nothing, not even its conflicted files.
     assert!(hand_off(&locks, &wt, &paths(&["notes.txt", "README.md"]), &claude()).is_err());
     assert_eq!(hand_offs(&locks, &wt).unwrap(), vec![]);
-    let _ = std::fs::remove_dir_all(root);
 }

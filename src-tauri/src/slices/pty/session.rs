@@ -1032,6 +1032,7 @@ impl PtySession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::io::Read;
 
     #[test]
@@ -1605,7 +1606,7 @@ mod tests {
 
     #[test]
     fn opencode_is_found_on_the_path_first_then_in_buns_folder() {
-        let root = std::env::temp_dir().join(format!("quay-opencode-path-{}", std::process::id()));
+        let root = TempDir::new("opencode-path");
         let on_path = root.join("bin");
         let home = root.join("home");
         let bun_bin = home.join(".bun").join("bin");
@@ -1625,7 +1626,6 @@ mod tests {
         assert_eq!(opencode_program(None, Some(&root.join("nobody"))), name);
         assert_eq!(opencode_program(None, None), name);
 
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1642,7 +1642,7 @@ mod tests {
     /// Folders PiG can be installed in, under a fresh temp folder named for `tag`: one on the
     /// `PATH`, npm's prefix and a home folder. Each starts empty.
     struct PigInstalls {
-        root: PathBuf,
+        root: TempDir,
         on_path: PathBuf,
         npm: PathBuf,
         home: PathBuf,
@@ -1650,8 +1650,7 @@ mod tests {
 
     impl PigInstalls {
         fn new(tag: &str) -> Self {
-            let root = std::env::temp_dir().join(format!("quay-pig-{}-{}", tag, std::process::id()));
-            let _ = std::fs::remove_dir_all(&root);
+            let root = TempDir::new(&format!("pig-{tag}"));
             let installs = Self {
                 on_path: root.join("bin"),
                 npm: root.join("npm"),
@@ -1710,12 +1709,6 @@ mod tests {
                 .collect(),
             );
             request
-        }
-    }
-
-    impl Drop for PigInstalls {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.root);
         }
     }
 
@@ -1965,8 +1958,7 @@ mod tests {
         std::fs::copy(&built, pig_bridge_program()).expect("the app's build builds quay-pig-bridge");
 
         let (port, posts, requests) = recording_bridge();
-        let project = std::env::temp_dir().join(format!("quay-live-pig-{}", std::process::id()));
-        std::fs::create_dir_all(&project).unwrap();
+        let project = TempDir::new("live-pig");
         let mut request = spawn_request(RunKind::Pig);
         request.project_path = project.to_string_lossy().to_string();
         // So the check leaves no session behind in PiG's own folder
@@ -2019,7 +2011,6 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(250));
         }
         let _ = child.kill();
-        let _ = std::fs::remove_dir_all(&project);
 
         let events = events();
         for (_, event) in &events {
@@ -2073,10 +2064,8 @@ mod tests {
     #[test]
     fn a_multi_line_launch_prompt_reaches_an_npm_shim_cli_intact() {
         // A stand-in pi.ps1 shim records the arguments it was handed
-        let dir = std::env::temp_dir().join(format!("quay-launch-prompt-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = TempDir::new("launch-prompt");
         let out = dir.join("args.json");
-        let _ = std::fs::remove_file(&out);
         std::fs::write(
             dir.join("pi.ps1"),
             format!(
@@ -2133,7 +2122,6 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(100));
         };
         let _ = child.kill();
-        let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(recorded, [MULTI_LINE_PROMPT]);
     }

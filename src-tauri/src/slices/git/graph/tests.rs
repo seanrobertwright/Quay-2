@@ -1,7 +1,7 @@
 //! Graph sessions against throwaway repositories built with the system git.
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
@@ -12,6 +12,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use super::page::{HEADER_BYTES, PAGE_FORMAT_VERSION, PAGE_MAGIC};
 use super::session::{GraphOptions, GraphSessions, PAGE_ROWS};
 use super::GraphOrder;
+pub(super) use crate::test_support::TempDir;
 
 pub(super) fn git(dir: &Path, args: &[&str]) -> String {
     let out = crate::spawn::hidden_command("git").arg("-C").arg(dir).args(args).output().expect("git runs");
@@ -19,10 +20,8 @@ pub(super) fn git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-pub(super) fn temp_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("quay-graph-{}", uuid::Uuid::new_v4().simple()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+pub(super) fn temp_dir() -> TempDir {
+    TempDir::new("graph")
 }
 
 /// A repo whose `main` has `commits` commits, one second apart, plus:
@@ -30,7 +29,7 @@ pub(super) fn temp_dir() -> PathBuf {
 /// - `refs/remotes/origin/main` at `main`'s tip and `refs/remotes/origin/wip`, one commit on top;
 /// - tag `old`, one commit reachable from no branch;
 /// - `refs/stash` and `refs/notes/commits`, one commit each, which a rev set using `--all` shows.
-pub(super) fn repo_with_history(commits: usize) -> PathBuf {
+pub(super) fn repo_with_history(commits: usize) -> TempDir {
     let repo = temp_dir();
     git(&repo, &["init", "-q", "-b", "main"]);
     let mut stream = String::new();
@@ -197,7 +196,6 @@ fn streams_every_branch_and_remote_in_date_order_without_tags_stash_or_notes() {
     let stash = git(&repo, &["rev-parse", "refs/stash"]).trim().to_string();
     assert!(!rows.contains(&tag_only) && !rows.contains(&stash));
     assert_eq!(pages, (0..pages.len() as u32).collect::<Vec<_>>());
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -209,7 +207,6 @@ fn topo_order_is_a_session_option() {
     let (mut rows, mut pages) = (Vec::new(), Vec::new());
     assert_eq!(rows_until_event(&rx, id, &mut rows, &mut pages)["event"], "done");
     assert_eq!(rows, expected_order(&repo, "--topo-order"));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -225,7 +222,6 @@ fn pages_carry_epoch_ms_from_the_author_time() {
     };
     // The newest commit is origin/wip's, at 1_600_000_000 + 3 + 12 seconds.
     assert_eq!(author_ms, 1_600_000_015_000.0);
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -250,7 +246,6 @@ fn a_soft_cap_pauses_the_walk_until_more_rows_are_asked_for() {
     assert_eq!(done["event"], "done");
     // The resumed walk is the same walk: every row once, in git's order.
     assert_eq!(rows, expected_order(&repo, "--date-order"));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -262,7 +257,6 @@ fn a_soft_cap_that_covers_the_history_ends_with_done_not_paused() {
     let id = sessions.open(&repo, options(Some(13)), ch).unwrap();
     let (mut rows, mut pages) = (Vec::new(), Vec::new());
     assert_eq!(rows_until_event(&rx, id, &mut rows, &mut pages)["event"], "done");
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -286,8 +280,6 @@ fn opening_another_repo_closes_the_old_session() {
     sessions.close(second);
     assert!(sessions.more(second, 1).is_err());
     sessions.close(second);
-    std::fs::remove_dir_all(a).ok();
-    std::fs::remove_dir_all(b).ok();
 }
 
 #[test]
@@ -300,7 +292,6 @@ fn a_repo_with_no_commits_is_done_with_no_rows() {
     let (mut rows, mut pages) = (Vec::new(), Vec::new());
     let end = rows_until_event(&rx, id, &mut rows, &mut pages);
     assert_eq!((end["event"].as_str(), end["total"].as_u64()), (Some("done"), Some(0)));
-    std::fs::remove_dir_all(repo).ok();
 }
 
 #[test]
@@ -314,7 +305,6 @@ fn a_folder_that_is_not_a_repo_fails_with_gits_message() {
     assert_eq!(end["event"], "failed");
     assert_eq!(end["error"]["kind"], "other");
     assert!(end["error"]["stderr"].as_str().unwrap().contains("not a git repository"), "{end}");
-    std::fs::remove_dir_all(dir).ok();
 }
 
 #[test]
@@ -354,7 +344,6 @@ fn object_reads_go_through_one_cat_file_per_session() {
     assert!(sessions.read_object(id, "main\nHEAD").is_err());
     assert_eq!(sessions.read_object(id, "main").unwrap().unwrap().kind, "commit");
     assert!(sessions.read_object(id + 1, "main").is_err());
-    std::fs::remove_dir_all(repo).ok();
 }
 
 /// Commits `message` on `repo`'s current branch, with no changes, and returns its oid.
@@ -409,5 +398,4 @@ Quay-Agent: powershell");
     assert!(!agents.iter().any(|a| a["row"] == row(human.as_str())));
     let text = serde_json::to_string(&agents).unwrap();
     assert!(!text.contains("example.invalid") && !text.contains("anthropic"), "{text}");
-    std::fs::remove_dir_all(repo).ok();
 }
