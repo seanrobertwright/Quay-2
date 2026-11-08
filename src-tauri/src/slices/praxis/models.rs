@@ -75,9 +75,15 @@ impl PraxisKind {
 
     /// Why `id` can't name a new definition of this kind, beyond the filename-safe rule every
     /// kind shares, or `None` when it can. A template and a graph workflow narrow it, to the
-    /// Praxis host's name rule, since the host knows each by its file name.
-    pub fn name_problem(self, id: &str) -> Option<String> {
-        self.host_name_rule().filter(|_| !super::template_name::is_template_name(id)).map(str::to_string)
+    /// Praxis host's name rule, since the host knows each by its file name. A trigger narrows it
+    /// to the host's graph trigger name rule only when `has_target` says it has a Starts target
+    /// (#473), since only then does the host see its name; `has_target` means nothing for any
+    /// other kind.
+    pub fn name_problem(self, id: &str, has_target: bool) -> Option<String> {
+        match self {
+            PraxisKind::Triggers => has_target.then(|| super::template_name::check_trigger_name(id).err()).flatten(),
+            _ => self.host_name_rule().filter(|_| !super::template_name::is_template_name(id)).map(str::to_string),
+        }
     }
 }
 

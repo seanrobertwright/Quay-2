@@ -11,7 +11,6 @@ use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::template_digest::template_digest;
-use super::template_name::check_trigger_name;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
     IdMismatch, LayoutInput, PraxisKind, SaveOutcome, TargetInput,
@@ -306,17 +305,14 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                     };
                     let graph_id = binding_field("graphId");
                     let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
-                    let target = (kind == PraxisKind::Triggers).then(|| saved_target(repo, &id)).flatten();
+                    let target = (kind == PraxisKind::Triggers).then(|| target_graph_workflow(repo, &id)).flatten();
                     DefinitionEntry { id_mismatch, graph_id, cost_unit, target, ..empty(id, None) }
                 }
             }
         })
         .map(|mut entry: DefinitionEntry| {
             if validate_id(&entry.id).is_ok() {
-                entry.name_problem = kind.name_problem(&entry.id);
-                if entry.target.is_some() {
-                    entry.name_problem = check_trigger_name(&entry.id).err();
-                }
+                entry.name_problem = kind.name_problem(&entry.id, entry.target.is_some());
             }
             entry
         })
@@ -414,7 +410,7 @@ fn read_companion(repo: &Path, folder: &str, id: &str) -> Companion {
 
 /// The graph workflow the saved target file of trigger `id` names (#472), or `None` when it has
 /// no target file, or one that can't be read or names none, which the builder opens as no target.
-pub fn saved_target(repo: &Path, id: &str) -> Option<String> {
+pub fn target_graph_workflow(repo: &Path, id: &str) -> Option<String> {
     let id = read_companion(repo, TRIGGER_TARGETS_DIR, id).value?.get("graphWorkflow")?.as_str()?.to_string();
     (!id.is_empty()).then_some(id)
 }
@@ -667,16 +663,12 @@ fn save(
     expected_hash: Option<&str>,
     force: bool,
 ) -> Result<SaveOutcome, String> {
+    // A new trigger saved with a target is a name the host will see (#473).
+    let has_target = matches!(companions.target, Some((TargetInput { graph_workflow: Some(_) }, _)));
     if expected_hash.is_none()
-        && let Some(problem) = kind.name_problem(id)
+        && let Some(problem) = kind.name_problem(id, has_target)
     {
         return Err(problem);
-    }
-    // A new trigger saved with a target is a name the host will see (#473).
-    if expected_hash.is_none()
-        && let Some((TargetInput { graph_workflow: Some(_) }, _)) = companions.target
-    {
-        check_trigger_name(id)?;
     }
     validate_id(id)?;
     let Value::Object(mut record) = content else {

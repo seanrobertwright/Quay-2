@@ -10,9 +10,8 @@ use serde_json::{Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{DeleteOutcome, DraftContent, FileChange, HashChange, PraxisKind, RenameOutcome};
-use super::template_name::check_trigger_name;
 use super::store::{
-    confined_dir, confined_file, json_ids, parse_object, read_capped, saved_target, validate_id, BINDINGS_DIR,
+    confined_dir, confined_file, json_ids, parse_object, read_capped, target_graph_workflow, validate_id, BINDINGS_DIR,
     LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK, TRIGGER_TARGETS_DIR,
 };
 use crate::atomic_file::write_atomic;
@@ -369,9 +368,6 @@ pub fn rename_definition(
     hooks: &[ReferenceHook],
 ) -> Result<RenameOutcome, String> {
     validate_id(id)?;
-    if let Some(problem) = kind.name_problem(new_id) {
-        return Err(problem);
-    }
     if drafts.len() > MAX_DRAFTS {
         return Err(format!("A rename takes at most {} drafts.", MAX_DRAFTS));
     }
@@ -382,9 +378,11 @@ pub fn rename_definition(
     let dir = confined_dir(repo, folder)?.ok_or_else(missing)?;
     let old_path = existing_file(repo, &dir, id)?.ok_or_else(missing)?;
     let same_id = id == new_id;
-    // A trigger with a target is a name the host will see (#473).
-    if kind == PraxisKind::Triggers && !same_id && saved_target(repo, id).is_some() {
-        check_trigger_name(new_id)?;
+    // A trigger with a target is a name the host will see (#473). A rename to the same id, the
+    // "Set the id" fix, changes no name, so its target doesn't narrow it.
+    let has_target = kind == PraxisKind::Triggers && !same_id && target_graph_workflow(repo, id).is_some();
+    if let Some(problem) = kind.name_problem(new_id, has_target) {
+        return Err(problem);
     }
     validate_id(new_id)?;
     // On a file system that ignores case, `G.json` and `g.json` are one file, so writing

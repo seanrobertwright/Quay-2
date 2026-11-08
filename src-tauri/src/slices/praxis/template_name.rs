@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn a_graph_workflow_name_follows_the_same_vectors_and_its_refusal_names_a_graph_workflow() {
         for (name, valid) in vectors() {
-            let why = PraxisKind::GraphWorkflows.name_problem(&name);
+            let why = PraxisKind::GraphWorkflows.name_problem(&name, false);
             assert_eq!(why.is_none(), valid, "{name:?}");
             assert!(why.is_none_or(|why| why == GRAPH_WORKFLOW_NAME_RULE), "{name:?}");
         }
