@@ -47,7 +47,8 @@ import {
 } from "./trigger.ts";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
 import { useValidation } from "./useValidation.ts";
-import type { DefinitionRef, Diagnostic, FileProblem, ValidationStatus } from "./types.ts";
+import { targetPath } from "./session.ts";
+import type { DefinitionRef, Diagnostic, FileProblem, GraphWorkflowChoice, ValidationStatus } from "./types.ts";
 
 interface TriggerFormProps {
   projectPath: string;
@@ -57,7 +58,7 @@ interface TriggerFormProps {
   /** The ids of the contracts in the project, listed or drafted, for the contract picker. */
   contracts: readonly string[];
   /** The project's graph workflows, listed or drafted, each with its contract when it names one, for the Starts picker. */
-  graphWorkflows: readonly { id: string; contractId?: string }[];
+  graphWorkflows: readonly GraphWorkflowChoice[];
   /** Counts up when the builder saves, renames or deletes a record, so the target's checks run again. */
   refresh: number;
   /** The record's cross-record checks (#269), shown under the verdict. */
@@ -315,7 +316,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
           <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#e3b341]">
             <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
             <span className="break-words">
-              .praxis/trigger-targets/{draft.ref.id}.json was ignored, so the trigger starts no graph workflow. Saving replaces it:{" "}
+              {targetPath(draft.ref.id)} was ignored, so the trigger starts no graph workflow. Saving replaces it:{" "}
               {targetProblem.message}
             </span>
           </p>

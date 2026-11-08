@@ -169,6 +169,7 @@ import type {
   DraftContent,
   FileProblem,
   GraphPin,
+  GraphWorkflowChoice,
   PraxisKind,
   RenameOutcome,
   SaveOutcome,
@@ -1452,7 +1453,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .map((d) => d.ref.id),
   ];
   /** The graph workflows a trigger can start, listed or drafted, each with its contract (#472). A draft's contract wins. */
-  const graphWorkflowChoices = (): { id: string; contractId?: string }[] => {
+  const graphWorkflowChoices = (): GraphWorkflowChoice[] => {
     const drafted = Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-workflows");
     const ids = new Set(drafted.map((d) => d.ref.id));
     return [

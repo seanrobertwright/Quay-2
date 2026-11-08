@@ -27,6 +27,12 @@ export interface DefinitionEntry {
   contractId?: string;
 }
 
+/** A graph workflow a trigger can start (#472), with its contract when it names one. */
+export interface GraphWorkflowChoice {
+  id: string;
+  contractId?: string;
+}
+
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
 export interface DefinitionList {
   entries: DefinitionEntry[];
