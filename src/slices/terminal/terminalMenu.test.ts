@@ -3,21 +3,10 @@
 // in what order and groups, which are disabled and why, and the hints.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { terminalMenu, terminalMenuLabel, type TerminalMenuEntry, type TerminalMenuTarget } from "./terminalMenu.ts";
+import { shownMenu as shown } from "../../test-support/menuEntries.ts";
+import { terminalMenu, terminalMenuLabel, type TerminalMenuTarget } from "./terminalMenu.ts";
 
 const claude: TerminalMenuTarget = { name: "claude-1", run_kind: "claude", claude_status: "working", live_mode: "skip" };
-
-/** Each item as `name`, `name [hint]`, `name (disabled: why)` or `[x] name`, with `---` between groups. */
-function shown(items: TerminalMenuEntry[]): string[] {
-  const out: string[] = [];
-  items.forEach((item, i) => {
-    if (i > 0 && items[i - 1].group !== item.group) out.push("---");
-    const box = item.checked === undefined ? "" : item.checked ? "[x] " : "[ ] ";
-    const tail = !item.enabled ? ` (disabled: ${item.hint})` : item.hint ? ` [${item.hint}]` : "";
-    out.push(`${box}${item.name}${tail}`);
-  });
-  return out;
-}
 
 test("a running agent's Rail row menu lists the terminal items in their groups, without the pane-only ones", () => {
   assert.deepEqual(shown(terminalMenu(claude, { kind: "rail" })), [

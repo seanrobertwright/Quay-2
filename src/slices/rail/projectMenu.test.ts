@@ -3,18 +3,8 @@
 // groups, their hints, and the Collapse or Expand label for the row's current state.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectMenu, projectMenuLabel, type ProjectMenuEntry } from "./projectMenu.ts";
-
-/** Each item as `name` or `name [hint]`, with `---` between groups. */
-function shown(items: ProjectMenuEntry[]): string[] {
-  const out: string[] = [];
-  items.forEach((item, i) => {
-    if (i > 0 && items[i - 1].group !== item.group) out.push("---");
-    const tail = !item.enabled ? ` (disabled: ${item.hint})` : item.hint ? ` [${item.hint}]` : "";
-    out.push(`${item.name}${tail}`);
-  });
-  return out;
-}
+import { shownMenu as shown } from "../../test-support/menuEntries.ts";
+import { projectMenu, projectMenuLabel } from "./projectMenu.ts";
 
 test("an expanded project's menu lists its items in their groups, ending with Collapse and Remove workspace…", () => {
   assert.deepEqual(shown(projectMenu({ collapsed: false })), [

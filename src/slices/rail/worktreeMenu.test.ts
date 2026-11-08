@@ -3,18 +3,8 @@
 // groups, and Copy branch name on a worktree whose HEAD is detached.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { worktreeBranch, worktreeMenu, worktreeMenuLabel, type WorktreeMenuEntry } from "./worktreeMenu.ts";
-
-/** Each item as `name` or `name (disabled: why)`, with `---` between groups. */
-function shown(items: WorktreeMenuEntry[]): string[] {
-  const out: string[] = [];
-  items.forEach((item, i) => {
-    if (i > 0 && items[i - 1].group !== item.group) out.push("---");
-    const tail = !item.enabled ? ` (disabled: ${item.hint})` : item.hint ? ` [${item.hint}]` : "";
-    out.push(`${item.name}${tail}`);
-  });
-  return out;
-}
+import { shownMenu as shown } from "../../test-support/menuEntries.ts";
+import { worktreeBranch, worktreeMenu, worktreeMenuLabel } from "./worktreeMenu.ts";
 
 test("a worktree on a branch lists its items in their groups", () => {
   assert.deepEqual(shown(worktreeMenu({ branch: "refs/heads/ticket-509" })), [
