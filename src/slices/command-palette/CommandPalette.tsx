@@ -470,7 +470,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-praxis-builder",
         category: "Tools & Actions",
         title: "Praxis Builder...",
-        subtitle: "Browse the project's Praxis graphs, contracts, grants, triggers and workflow templates",
+        subtitle: "Browse the project's Praxis graphs, contracts, grants, triggers, workflow templates and graph workflows",
         icon: <Workflow className="w-4 h-4 text-[#58a6ff]" />,
         shortcut: "Ctrl+Shift+B p",
         action: () => onOpenPraxisBuilder(),

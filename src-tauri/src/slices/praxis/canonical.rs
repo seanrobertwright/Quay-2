@@ -165,6 +165,7 @@ fn order_record(kind: PraxisKind, record: Map<String, Value>) -> Map<String, Val
             map
         }
         PraxisKind::Templates => ordered(record, template::template_keys()),
+        PraxisKind::GraphWorkflows => ordered(record, super::graph_workflow::GRAPH_WORKFLOW_KEYS),
     }
 }
 

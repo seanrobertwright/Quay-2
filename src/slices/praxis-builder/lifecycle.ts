@@ -1,6 +1,6 @@
 // Creating and renaming definitions (#222): the filename-safe id rule the list checks as
-// the user types, the narrower name rule workflow templates follow (#447), the id a new
-// definition starts with, and a new graph's record. The backend checks the same rules
+// the user types, the narrower name rule workflow templates and graph workflows follow (#447,
+// #459), the id a new definition starts with, and a new graph's record. The backend checks the same rules
 // (`validate_id` in src-tauri/src/slices/praxis/store.rs and its `template_name` module)
 // before it writes anything, so these copies only give early feedback.
 import type { JsonObject } from "./model.ts";
@@ -41,13 +41,29 @@ export function definitionIdProblem(id: string, taken: Iterable<string>, self?: 
   return null;
 }
 
-/** The host's workflow template name rule, as the backend states it. */
-export const TEMPLATE_NAME_RULE =
-  "A workflow template name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, " +
+/** The host's name rule, as the backend states it for a name of the kind `noun` names. */
+const hostNameRule = (noun: string) =>
+  `A ${noun} name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, ` +
   "and isn't a Windows device name such as con, nul, com1 or lpt1. The Praxis host refuses any other name.";
+
+/** The host's workflow template name rule, as the backend states it. */
+export const TEMPLATE_NAME_RULE = hostNameRule("workflow template");
+
+/** The host's name rule as the backend states it for a graph workflow, whose file name is its host name too (#444). */
+export const GRAPH_WORKFLOW_NAME_RULE = hostNameRule("graph workflow");
+
+/**
+ * The host's name rule for each kind the host knows by its file name alone (#447, #459). Such a
+ * kind's records hold no id.
+ */
+export const HOST_NAME_RULES: Partial<Record<PraxisKind, string>> = {
+  templates: TEMPLATE_NAME_RULE,
+  "graph-workflows": GRAPH_WORKFLOW_NAME_RULE,
+};
 
 const TEMPLATE_NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+const isHostName = (name: string) => TEMPLATE_NAME.test(name) && !DEVICE_NAME.test(name);
 
 /**
  * The rule, when the Praxis host refuses `name` as a workflow template name (#447), or null
@@ -56,16 +72,22 @@ const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
  * against the same vectors.
  */
 export function templateNameProblem(name: string): string | null {
-  return TEMPLATE_NAME.test(name) && !DEVICE_NAME.test(name) ? null : TEMPLATE_NAME_RULE;
+  return isHostName(name) ? null : TEMPLATE_NAME_RULE;
+}
+
+/** The host's rule for `kind`, when the host knows `kind` by its file name and refuses `name`, or null. */
+export function hostNameProblem(kind: PraxisKind, name: string): string | null {
+  const rule = HOST_NAME_RULES[kind];
+  return rule === undefined || isHostName(name) ? null : rule;
 }
 
 /**
  * Why `id` can't name a new or renamed definition of `kind`, or null when it can. A
- * workflow template must follow the host's name rule first; every kind follows
- * {@link definitionIdProblem}.
+ * workflow template or graph workflow must follow the host's name rule first; every kind
+ * follows {@link definitionIdProblem}.
  */
 export function namingProblem(kind: PraxisKind, id: string, taken: Iterable<string>, self?: string): string | null {
-  return (kind === "templates" ? templateNameProblem(id) : null) ?? definitionIdProblem(id, taken, self);
+  return hostNameProblem(kind, id) ?? definitionIdProblem(id, taken, self);
 }
 
 /** `<prefix>-<n>` with the smallest `n` from 1 that no id in `taken` has, ignoring case. */

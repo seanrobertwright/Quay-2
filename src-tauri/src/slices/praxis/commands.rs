@@ -7,6 +7,7 @@ use super::changes;
 use super::context;
 use super::grants;
 use super::graph_bindings;
+use super::graph_workflow::{self, GraphWorkflowCheck};
 use super::lifecycle;
 use super::models::{
     BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
@@ -105,6 +106,19 @@ pub async fn praxis_check_binding(
         binding_attach::check_attach(&project_root(&workspace, &project_path)?, &content, &graph)
     })
     .await
+}
+
+/// A graph workflow's local checks (#459), with `content` as its draft, against the contract,
+/// graph and graph binding it names as saved on disk, and the grants its contract's bindings
+/// file lists, which it carries.
+#[tauri::command]
+pub async fn praxis_check_graph_workflow(
+    project_path: String,
+    content: serde_json::Value,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<GraphWorkflowCheck, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || graph_workflow::check_graph_workflow(&project_root(&workspace, &project_path)?, &content)).await
 }
 
 /// The ids used across the project's saved graph bindings, and the agents of its saved workflow

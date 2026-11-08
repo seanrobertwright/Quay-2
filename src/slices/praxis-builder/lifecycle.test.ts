@@ -6,6 +6,8 @@ import { createGraphDraft, createNewDraft, isDirty, moveNodes, reconcileWithDisk
 import { parseGraph } from "./model.ts";
 import {
   definitionIdProblem,
+  GRAPH_WORKFLOW_NAME_RULE,
+  hostNameProblem,
   idProblem,
   MAX_DEFINITION_ID,
   namingProblem,
@@ -236,4 +238,22 @@ test("only templates narrow to the host's rule, and the message states it", () =
   }
   assert.equal(nextDefinitionId("template", []), "template-1");
   assert.equal(templateNameProblem(nextDefinitionId("template", ["template-1"])), null);
+});
+
+// --- graph workflow names: the same host rule (#459) -------------------------------------
+
+test("a graph workflow name gets the verdict the backend's vectors record, with its own wording", () => {
+  for (const { name, valid } of templateNames.cases) {
+    assert.equal(hostNameProblem("graph-workflows", name), valid ? null : GRAPH_WORKFLOW_NAME_RULE, JSON.stringify(name));
+  }
+  assert.equal(GRAPH_WORKFLOW_NAME_RULE, templateNames.rule.replace("A workflow template name", "A graph workflow name"));
+});
+
+test("a new or renamed graph workflow follows the host's rule before the id rule", () => {
+  assert.equal(namingProblem("graph-workflows", "Ship_It", []), GRAPH_WORKFLOW_NAME_RULE);
+  assert.equal(namingProblem("graph-workflows", "ship.it", []), GRAPH_WORKFLOW_NAME_RULE);
+  assert.equal(namingProblem("graph-workflows", "ship-it", []), null);
+  assert.match(namingProblem("graph-workflows", "ship-it", ["Ship-It"]) ?? "", /taken/);
+  assert.equal(namingProblem("graph-workflows", "ship-it", ["ship-it"], "ship-it"), null);
+  assert.equal(hostNameProblem("graph-workflows", nextDefinitionId("graph-workflow", [])), null);
 });

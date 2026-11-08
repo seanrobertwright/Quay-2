@@ -145,10 +145,43 @@ pub const GRANT_HOOK: ReferenceHook = ReferenceHook {
     rewrite: rewrite_parent,
 };
 
+/// The field of a graph workflow that names a definition of `kind`, if any.
+fn graph_workflow_field(kind: PraxisKind) -> Option<&'static str> {
+    match kind {
+        PraxisKind::Contracts => Some("contractId"),
+        PraxisKind::Graphs => Some("graphId"),
+        PraxisKind::GraphBindings => Some("graphBindingId"),
+        _ => None,
+    }
+}
+
+/// Rewrites a graph workflow's `contractId`, `graphId` or `graphBindingId` when it names the
+/// contract, graph or graph binding `old` (#459). Each field names one kind only.
+fn rewrite_graph_workflow(folder: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
+    let Some(field) = graph_workflow_field(target).filter(|_| folder == PraxisKind::GraphWorkflows.folder()) else {
+        return false;
+    };
+    if record.get(field).and_then(Value::as_str) != Some(old) {
+        return false;
+    }
+    if let Some(new) = new {
+        record.insert(field.to_string(), Value::String(new.to_string()));
+    }
+    true
+}
+
+/// A graph workflow owns no files. It names its contract, graph and graph binding, so a
+/// rename of any of them rewrites it and a delete names it.
+pub const GRAPH_WORKFLOW_HOOK: ReferenceHook = ReferenceHook {
+    companions: &[],
+    scans: &[PraxisKind::GraphWorkflows.folder()],
+    rewrite: rewrite_graph_workflow,
+};
+
 /// Every kind's hook. A kind adds one here when it owns files, or when other files refer to
 /// it, as triggers refer to a contract and grants to a parent grant, which the referred-to
-/// kind's hook rewrites.
-pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK];
+/// kind's hook rewrites. A graph workflow's hook rewrites the references it holds.
+pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK, GRAPH_WORKFLOW_HOOK];
 
 /// A file's path relative to the repository, as reports show it.
 fn shown(folder: &str, id: &str) -> String {
@@ -291,13 +324,13 @@ fn taken_by_another(dir: &Path, folder: &str, id: &str, new_id: &str) -> Result<
 }
 
 /// Renames the definition `kind`/`id` to `new_id` (#222): writes it under the new name
-/// with the new `id` inside (a template holds none), moves the files that belong to it, and rewrites the
+/// with the new `id` inside (a template or graph workflow holds none), moves the files that belong to it, and rewrites the
 /// references the hooks find in other files and in `drafts`. Every new file is written
 /// before any old one is removed. A rename to the same id writes the definition with that
 /// id inside and nothing else, which is how a file whose name and id differ is fixed.
 ///
-/// Refused, with nothing written, when either id isn't filename-safe, a workflow template's
-/// `new_id` breaks the host's template name rule, the definition doesn't exist or can't be
+/// Refused, with nothing written, when either id isn't filename-safe, a workflow template's or
+/// graph workflow's `new_id` breaks the host's name rule, the definition doesn't exist or can't be
 /// read, or `new_id` is taken by another file, ignoring case.
 /// With `dry_run` it reports what it would do and writes nothing.
 pub fn rename_definition(
@@ -958,6 +991,110 @@ mod tests {
         let outcome = delete_definition(&repo, PraxisKind::Graphs, "g", false, HOOKS, &trash).unwrap();
         assert_eq!(outcome.referrers, vec![".praxis/graph-bindings/g-1.json"]);
         assert_eq!(read(&repo, ".praxis/graph-bindings/g-1.json")["graphId"], "g");
+    }
+
+    // --- graph workflows (#459) ----------------------------------------------------------
+
+    const WORKFLOW: &str = r#"{"version": 1, "contractId": "c1", "graphId": "g", "graphBindingId": "g-1"}"#;
+
+    /// A contract binding graph `g`, the graph's binding `g-1`, two graph workflows that use
+    /// them, and one that uses other records with the same ids in other fields.
+    fn workflow_repo() -> TempDir {
+        let repo = binding_repo();
+        write(&repo, ".praxis/contracts/c1.json", r#"{"id": "c1", "missionId": "c1"}"#);
+        write(&repo, ".praxis/bindings/c1.json", r#"{"version": 1, "graphs": ["g"], "grants": []}"#);
+        write(&repo, ".praxis/graph-workflows/ship.json", WORKFLOW);
+        write(&repo, ".praxis/graph-workflows/review.json", WORKFLOW);
+        write(
+            &repo,
+            ".praxis/graph-workflows/crossed.json",
+            r#"{"version": 1, "contractId": "g", "graphId": "g-1", "graphBindingId": "c1"}"#,
+        );
+        repo
+    }
+
+    #[test]
+    fn a_graph_workflow_renames_only_to_a_name_the_host_accepts_and_adds_no_id() {
+        let repo = workflow_repo();
+        for bad in ["Ship", "ship.v2", "nul", "2nd", "ship_it"] {
+            let why = rename_definition(&repo, PraxisKind::GraphWorkflows, "ship", bad, &[], true, HOOKS).unwrap_err();
+            assert_eq!(why, crate::slices::praxis::template_name::GRAPH_WORKFLOW_NAME_RULE, "{bad}");
+        }
+        let outcome = rename_definition(&repo, PraxisKind::GraphWorkflows, "ship", "ship-it", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/graph-workflows"), vec!["crossed.json", "review.json", "ship-it.json"]);
+        assert_eq!(read(&repo, ".praxis/graph-workflows/ship-it.json"), serde_json::from_str::<Value>(WORKFLOW).unwrap());
+    }
+
+    #[test]
+    fn renaming_a_contract_rewrites_the_contract_id_of_its_graph_workflows_and_their_drafts() {
+        let repo = workflow_repo();
+        let drafts = [DraftContent {
+            kind: PraxisKind::GraphWorkflows,
+            id: "draft".to_string(),
+            content: json!({"version": 1, "contractId": "c1", "graphId": "g", "graphBindingId": "g-1"}),
+        }];
+        let outcome = rename_definition(&repo, PraxisKind::Contracts, "c1", "c2", &drafts, false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        for name in ["ship", "review"] {
+            let saved = read(&repo, &format!(".praxis/graph-workflows/{name}.json"));
+            assert_eq!(saved, json!({"version": 1, "contractId": "c2", "graphId": "g", "graphBindingId": "g-1"}), "{name}");
+        }
+        assert_eq!(read(&repo, ".praxis/graph-workflows/crossed.json")["graphBindingId"], "c1", "a binding id isn't a contract id");
+        assert_eq!(outcome.drafts.len(), 1);
+        assert_eq!(outcome.drafts[0].content["contractId"], "c2");
+    }
+
+    #[test]
+    fn renaming_a_graph_rewrites_the_graph_id_of_its_graph_workflows() {
+        let repo = workflow_repo();
+        let outcome = rename_definition(&repo, PraxisKind::Graphs, "g", "h", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/graph-workflows/ship.json")["graphId"], "h");
+        assert_eq!(read(&repo, ".praxis/graph-workflows/ship.json")["contractId"], "c1");
+        assert_eq!(read(&repo, ".praxis/graph-workflows/crossed.json")["contractId"], "g", "a contract id isn't a graph id");
+        // The binding's graphId and the contract's bindings file follow as before.
+        assert_eq!(read(&repo, ".praxis/graph-bindings/g-1.json")["graphId"], "h");
+        assert_eq!(read(&repo, ".praxis/bindings/c1.json")["graphs"], json!(["h"]));
+    }
+
+    #[test]
+    fn renaming_a_graph_binding_rewrites_the_graph_binding_id_of_its_graph_workflows() {
+        let repo = workflow_repo();
+        let outcome = rename_definition(&repo, PraxisKind::GraphBindings, "g-1", "g-9", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/graph-workflows/review.json")["graphBindingId"], "g-9");
+        assert_eq!(read(&repo, ".praxis/graph-workflows/crossed.json")["graphId"], "g-1", "a graph id isn't a binding id");
+        assert_eq!(read(&repo, ".praxis/graph-bindings/g-9.json")["graphBindingId"], "g-9");
+    }
+
+    #[test]
+    fn deleting_a_contract_graph_or_binding_names_the_graph_workflows_that_use_it_and_leaves_them() {
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let workflows = |outcome: DeleteOutcome| -> Vec<String> {
+            outcome.referrers.into_iter().filter(|r| r.starts_with(".praxis/graph-workflows/")).collect()
+        };
+        let expected = vec![".praxis/graph-workflows/review.json", ".praxis/graph-workflows/ship.json"];
+        for (kind, id, crossed_field) in
+            [(PraxisKind::Contracts, "c1", "graphBindingId"), (PraxisKind::Graphs, "g", "contractId"), (PraxisKind::GraphBindings, "g-1", "graphId")]
+        {
+            let repo = workflow_repo();
+            let outcome = delete_definition(&repo, kind, id, false, HOOKS, &trash).unwrap();
+            assert_eq!(outcome.error, None);
+            assert_eq!(workflows(outcome), expected, "{kind:?}");
+            assert_eq!(read(&repo, ".praxis/graph-workflows/ship.json"), serde_json::from_str::<Value>(WORKFLOW).unwrap());
+            assert_eq!(read(&repo, ".praxis/graph-workflows/crossed.json")[crossed_field], id);
+        }
+    }
+
+    #[test]
+    fn deleting_a_graph_workflow_trashes_only_its_file() {
+        let repo = workflow_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::GraphWorkflows, "ship", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.files, vec![".praxis/graph-workflows/ship.json"]);
+        assert!(outcome.referrers.is_empty(), "{:?}", outcome.referrers);
+        assert_eq!(names(&repo, ".praxis/graph-workflows"), vec!["crossed.json", "review.json"]);
     }
 
     #[test]

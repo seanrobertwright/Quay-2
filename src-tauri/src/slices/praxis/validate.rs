@@ -38,7 +38,8 @@ const MAX_NODES: usize = 1000;
 pub const MAX_DIAGNOSTICS: usize = 500;
 
 /// Validates a definition's content: a graph, contract, grant, trigger, graph binding (a binding without its
-/// graph, so only its shape) or workflow template. Content over the size limit is refused.
+/// graph, so only its shape), workflow template or graph workflow (its shape only). Content over
+/// the size limit is refused.
 pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validation, String> {
     check_size(content)?;
     match kind {
@@ -48,6 +49,7 @@ pub fn validate_definition(kind: PraxisKind, content: &Value) -> Result<Validati
         PraxisKind::Triggers => Ok(validate_trigger(content)),
         PraxisKind::GraphBindings => Ok(super::graph_bindings::validate_graph_binding(content, None)),
         PraxisKind::Templates => Ok(super::template::validate_template(content)),
+        PraxisKind::GraphWorkflows => Ok(super::graph_workflow::validate_graph_workflow(content)),
     }
 }
 
@@ -136,6 +138,13 @@ impl Found {
         } else {
             self.omitted.count(d.severity);
         }
+    }
+
+    /// The diagnostics as a validation whose verdict is the first error's code, for a check
+    /// that is Quay's own rather than an SDK verdict.
+    pub(super) fn into_validation(self) -> Validation {
+        let verdict = self.kept.iter().find(|d| d.severity == Severity::Error).map(|d| d.code.clone());
+        Validation { verdict, diagnostics: self.kept, omitted: self.omitted }
     }
 }
 

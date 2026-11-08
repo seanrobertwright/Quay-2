@@ -129,6 +129,8 @@ pub fn check_context(repo: &Path, record: Option<&RecordRef>, also: &[String]) -
                 PraxisKind::GraphBindings => {}
                 // A template refers to no other record, and nothing refers to it (#224).
                 PraxisKind::Templates => {}
+                // A graph workflow's own local checks are `graph_workflow`'s (#459), not a mission's.
+                PraxisKind::GraphWorkflows => {}
             }
         }
     }
