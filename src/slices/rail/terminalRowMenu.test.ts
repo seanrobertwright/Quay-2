@@ -11,11 +11,6 @@ import { createRoot, type Root } from "react-dom/client";
 
 const { TerminalRow } = await import("./TerminalRow.tsx");
 const { onTerminalRequest } = await import("../terminal/terminalRequests.ts");
-// The row listens for A2A events. `listen` and its unlisten reach these Tauri internals as well
-// as `invoke`, so they get stand-ins that do nothing.
-const tauriWindow = window as unknown as { __TAURI_INTERNALS__: object; __TAURI_EVENT_PLUGIN_INTERNALS__?: object };
-Object.assign(tauriWindow.__TAURI_INTERNALS__, { transformCallback: () => 1 });
-tauriWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 type Terminal = import("../terminal/types.ts").TerminalInfo;
 
 const TERMINAL: Terminal = {
@@ -36,7 +31,7 @@ beforeEach(() => {
   invoked = [];
   fakeInvoke(async (cmd, args) => {
     invoked.push({ cmd, args });
-    return cmd === "plugin:event|listen" ? 1 : null;
+    return null;
   });
 });
 afterEach(() => {

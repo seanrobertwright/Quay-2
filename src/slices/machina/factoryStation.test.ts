@@ -1,8 +1,7 @@
 /// <reference types="node" />
 // The Factory Station in Machina's own words (#481, ADR 0006): its header names the engine and
 // where it runs, since Machina is Quay's local factory and not a Praxis host, and a work order is
-// taken with Accept. The real modal is rendered into happy-dom, with only Tauri's `invoke` (and
-// event listening) faked.
+// taken with Accept. The real modal is rendered into happy-dom, with only Tauri's `invoke` faked.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,11 +9,6 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 const { FactoryStationModal } = await import("./FactoryStationModal.tsx");
-// The modal listens for state updates. `listen` and its unlisten reach these Tauri internals as
-// well as `invoke`, so they get stand-ins that do nothing.
-const tauriWindow = window as unknown as { __TAURI_INTERNALS__: object; __TAURI_EVENT_PLUGIN_INTERNALS__?: object };
-Object.assign(tauriWindow.__TAURI_INTERNALS__, { transformCallback: () => 1 });
-tauriWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 
 const STATUS = {
   loopMode: "ACTIVE",
@@ -34,11 +28,11 @@ const AWAITING = {
   id: "WO-1",
   title: "Add a greeting",
   objective: "Say hello",
-  repoPath: "C:\src\repo",
+  repoPath: "C:\\src\\repo",
   baseBranch: "main",
   baseSha: "a".repeat(40),
   branchName: "machina/wo-1",
-  worktreePath: "C:\src\repo\.machina\worktrees\wo-1",
+  worktreePath: "C:\\src\\repo\\.machina\\worktrees\\wo-1",
   authorAgent: "claude",
   authorTerminalId: null,
   allowedOutputPaths: ["src/**"],
@@ -69,10 +63,6 @@ beforeEach(() => {
   workOrders = [];
   fakeInvoke(async (cmd) => {
     switch (cmd) {
-      case "plugin:event|listen":
-        return 1;
-      case "plugin:event|unlisten":
-        return null;
       case "machina_get_status":
         return STATUS;
       case "machina_list_work_orders":
