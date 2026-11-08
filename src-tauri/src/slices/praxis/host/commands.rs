@@ -186,15 +186,19 @@ pub async fn praxis_host_graph_submit(
     if let Some(base) = base_revision {
         check_revision(base)?;
     }
-    call_with(&cli, &workspace, &project_path, Verb::GraphsSubmit, call_id, move |root| {
-        let mut operands = bundle_operands(root, &name)?;
-        if let Some(base) = base_revision {
-            operands.extend(["--base".to_string(), base.to_string()]);
-        }
-        operands.extend(request_id_operands(request_id));
-        Ok(operands)
-    })
-    .await
+    call_with(&cli, &workspace, &project_path, Verb::GraphsSubmit, call_id, move |root| submit_operands(root, &name, base_revision, request_id)).await
+}
+
+/// The operands of `praxis graphs submit` for graph workflow `name` saved under `root`: its
+/// bundle ([`bundle_operands`]), then `--base <revision>` when given, then `--request-id <id>`
+/// when given.
+pub fn submit_operands(root: &Path, name: &str, base_revision: Option<u32>, request_id: Option<Uuid>) -> Result<Vec<String>, String> {
+    let mut operands = bundle_operands(root, name)?;
+    if let Some(base) = base_revision {
+        operands.extend(["--base".to_string(), base.to_string()]);
+    }
+    operands.extend(request_id_operands(request_id));
+    Ok(operands)
 }
 
 /// `praxis graphs list --limit <limit> [--after <name>] --json`: the host's graph workflows in

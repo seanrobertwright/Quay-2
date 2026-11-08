@@ -92,6 +92,7 @@ await record('graphs list', ['graphs', 'list', '--limit', '100', '--format', 'ai
 await record('graphs show', ['graphs', 'show', name, '--format', 'aiws-graph-workflow/1']);
 await record('graphs show: older revisions', ['graphs', 'show', name, '--before', '2', '--limit', '20', '--format', 'aiws-graph-workflow-revisions/1']);
 await record('graphs show: not submitted', ['graphs', 'show', 'nothing-here', '--format', 'aiws-graph-workflow/1']);
+await record('graphs show: older revisions, not submitted', ['graphs', 'show', 'nothing-here', '--before', '2', '--limit', '20', '--format', 'aiws-graph-workflow-revisions/1']);
 await record('graphs withdraw: a pending candidate', ['graphs', 'withdraw', name, '1']);
 await record('graphs withdraw: not pending', ['graphs', 'withdraw', name, '1']);
 await record('run: no admitted revision', ['run', name]);

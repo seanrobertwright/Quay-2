@@ -601,10 +601,17 @@ fn recorded_args(case: &Value) -> Vec<String> {
 }
 
 /// Runs `verb` with `operands` as the Tauri commands build them, against `case` replayed.
-fn graph_call(h: &Harness, verb: Verb, operands: &[&str], case: &Value) -> CallOutcome {
+fn graph_call(h: &Harness, verb: Verb, operands: &[impl AsRef<str>], case: &Value) -> CallOutcome {
     h.scenario(replay(case));
-    let args = verb.args(operands.iter().map(|o| o.to_string()));
+    let args = verb.args(operands.iter().map(|o| o.as_ref().to_string()));
     h.cli.call(&h.project, verb, &args, Uuid::new_v4())
+}
+
+/// Asserts `h` ran `praxis` once, with the arguments the real `praxis` took in `case`, and `--json`.
+fn assert_called_as(h: &Harness, case: &Value) {
+    let mut expected = recorded_args(case);
+    expected.push("--json".into());
+    assert_eq!(h.calls(), [expected], "{}", case["name"]);
 }
 
 #[test]
@@ -613,9 +620,7 @@ fn graphs_list_reads_the_host_s_graph_workflows_and_updates_the_condition() {
     let case = recorded("graphs list");
     let outcome = graph_call(&h, Verb::GraphsList, &["--limit", "100"], &case);
     assert_eq!(outcome, CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
-    let mut expected = recorded_args(&case);
-    expected.push("--json".into());
-    assert_eq!(h.calls(), [expected]);
+    assert_called_as(&h, &case);
     assert_eq!(h.condition(), HostCondition::SimulatedHost);
 }
 
@@ -640,7 +645,7 @@ fn a_praxis_error_record_says_which_host_condition_failed_in_its_own_words() {
 fn a_usage_error_record_needs_an_update_and_keeps_the_condition() {
     let h = Harness::new();
     let case = recorded("usage: unknown graphs command, exit 2");
-    let outcome = graph_call(&h, Verb::GraphsList, &[], &case);
+    let outcome = graph_call(&h, Verb::GraphsList, &[] as &[&str], &case);
     assert_eq!(outcome, CallOutcome::NeedsUpdate { detail: "praxis didn't accept Quay's arguments: unknown graphs command: lsit".into() });
     assert_eq!(h.condition(), HostCondition::NotCheckedYet);
 }
@@ -654,9 +659,7 @@ fn graphs_show_reads_one_graph_workflow_with_its_revisions_and_admission_page() 
     assert_eq!(record, case["stdout"]);
     assert_eq!(record["revisions"].as_array().unwrap().len(), 2);
     assert!(record["admissionPageAddress"].as_str().unwrap().ends_with("#graph-workflow=release-review&revision=2"));
-    let mut expected = recorded_args(&case);
-    expected.push("--json".into());
-    assert_eq!(h.calls(), [expected]);
+    assert_called_as(&h, &case);
 }
 
 #[test]
@@ -696,9 +699,7 @@ fn each_graph_read_is_read_with_the_arguments_praxis_took() {
         let outcome = graph_call(&h, verb, &operands, &case);
         let CallOutcome::Record { record, .. } = outcome else { panic!("{name}: {outcome:?}") };
         assert_eq!(record, case["stdout"], "{name}");
-        let mut expected = recorded_args(&case);
-        expected.push("--json".into());
-        assert_eq!(h.calls(), [expected], "{name}");
+        assert_called_as(&h, &case);
         assert_eq!(h.condition(), HostCondition::SimulatedHost, "{name}");
     }
 }
@@ -708,9 +709,7 @@ fn a_graph_run_is_created_or_blocked_by_a_run_that_needs_a_person() {
     let h = Harness::new();
     let case = recorded("run: created");
     assert_eq!(graph_call(&h, Verb::GraphRun, &["nightly-build"], &case), CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
-    let mut expected = recorded_args(&case);
-    expected.push("--json".into());
-    assert_eq!(h.calls(), [expected]);
+    assert_called_as(&h, &case);
 
     let case = recorded("run: blocked by a run awaiting approval, exit 7");
     let address = case["stdout"]["blockingRunAddress"].as_str().unwrap().to_string();
@@ -734,6 +733,7 @@ fn a_graph_status_passes_on_the_certificate_hint() {
 #[test]
 fn each_graph_command_s_recorded_refusal() {
     for (verb, operands, name, host_code) in [
+        (Verb::GraphsRevisions, &["nothing-here", "--before", "2", "--limit", "20"][..], "graphs show: older revisions, not submitted", Some("NOT_FOUND")),
         (Verb::GraphsWithdraw, &["release-review", "1"][..], "graphs withdraw: not pending", Some("REVISION_NOT_PENDING")),
         (Verb::GraphRuns, &["nothing-here", "--limit", "20"][..], "runs: not submitted", Some("NOT_FOUND")),
         (Verb::GraphStatus, &["wo-nothing-here"][..], "status: no such run", Some("NOT_FOUND")),
@@ -743,6 +743,7 @@ fn each_graph_command_s_recorded_refusal() {
         let h = Harness::new();
         let case = recorded(name);
         let outcome = graph_call(&h, verb, operands, &case);
+        assert_called_as(&h, &case);
         let message = case["stdout"]["message"].as_str().unwrap().to_string();
         match host_code {
             Some(code) => {
@@ -815,7 +816,6 @@ fn a_check_sends_the_graph_workflow_s_saved_files_as_paths() {
     ];
     assert_eq!(operands, expected);
     let case = recorded("graphs check: valid");
-    let operands: Vec<&str> = operands.iter().map(String::as_str).collect();
     assert_eq!(graph_call(&h, Verb::GraphsCheck, &operands, &case), CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
     let mut argv = vec!["graphs".to_string(), "check".into()];
     argv.extend(expected);
@@ -856,18 +856,49 @@ fn bundle_in(h: &Harness) -> Vec<String> {
     super::bundle::bundle_operands(&h.project.canonicalize().unwrap(), "release-review").unwrap()
 }
 
+/// The operands `praxis_host_graph_submit` gives for `release-review` in a harness's project,
+/// saved, with `base` and `request_id`.
+fn submit_in(h: &Harness, base: Option<u32>, request_id: Option<Uuid>) -> Vec<String> {
+    saved_graph_workflow(&h.project);
+    super::commands::submit_operands(&h.project.canonicalize().unwrap(), "release-review", base, request_id).unwrap()
+}
+
+/// `args` with the bundle's file operands (`--graph`, `--binding`, `--contract` and each
+/// `--grant`, with their paths) put as one `<bundle>`, since the recorded bundle and a test
+/// project's saved one name and count their files differently.
+fn bundle_as_one(args: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if matches!(arg.as_str(), "--graph" | "--binding" | "--contract" | "--grant") {
+            args.next();
+            if kept.last().map(String::as_str) != Some("<bundle>") {
+                kept.push("<bundle>".into());
+            }
+        } else {
+            kept.push(arg.clone());
+        }
+    }
+    kept
+}
+
 #[test]
 fn a_submission_becomes_a_candidate_with_its_admission_page() {
-    let h = Harness::new();
-    let operands = bundle_in(&h);
-    let operands: Vec<&str> = operands.iter().map(String::as_str).collect();
-    let case = recorded("graphs submit: a candidate");
-    let outcome = graph_call(&h, Verb::GraphsSubmit, &operands, &case);
-    let CallOutcome::Record { record, .. } = outcome else { panic!("{outcome:?}") };
-    assert_eq!((record["status"].as_str(), record["revision"].as_u64()), (Some("CANDIDATE"), Some(1)));
-    assert!(record["admissionPageAddress"].as_str().unwrap().ends_with("#graph-workflow=release-review&revision=1"));
-    assert_eq!(h.calls()[0][..3], ["graphs", "submit", "release-review"]);
-    assert_eq!(h.condition(), HostCondition::SimulatedHost);
+    for (base, name, revision) in [(None, "graphs submit: a candidate", 1), (Some(1), "graphs submit: a second candidate", 2)] {
+        let h = Harness::new();
+        let operands = submit_in(&h, base, None);
+        let case = recorded(name);
+        let outcome = graph_call(&h, Verb::GraphsSubmit, &operands, &case);
+        let CallOutcome::Record { record, .. } = outcome else { panic!("{name}: {outcome:?}") };
+        assert_eq!((record["status"].as_str(), record["revision"].as_u64()), (Some("CANDIDATE"), Some(revision)), "{name}");
+        assert_eq!(record["baseRevision"].as_u64(), base.map(u64::from), "{name}");
+        assert!(record["admissionPageAddress"].as_str().unwrap().ends_with(&format!("#graph-workflow=release-review&revision={revision}")), "{name}");
+        // The name, the bundle, then `--base`, in the order the real `praxis` took them.
+        let mut expected = recorded_args(&case);
+        expected.push("--json".into());
+        assert_eq!(h.calls().iter().map(|call| bundle_as_one(call)).collect::<Vec<_>>(), [bundle_as_one(&expected)], "{name}");
+        assert_eq!(h.condition(), HostCondition::SimulatedHost, "{name}");
+    }
 }
 
 #[test]
@@ -875,7 +906,6 @@ fn a_bundle_the_host_finds_faults_in_gives_its_findings_on_exit_9() {
     for (verb, name) in [(Verb::GraphsCheck, "graphs check: faults, exit 9"), (Verb::GraphsSubmit, "graphs submit: faults, exit 9")] {
         let h = Harness::new();
         let operands = bundle_in(&h);
-        let operands: Vec<&str> = operands.iter().map(String::as_str).collect();
         let case = recorded(name);
         let outcome = graph_call(&h, verb, &operands, &case);
         assert_eq!(outcome, CallOutcome::BundleInvalid { record: case["stdout"].clone() }, "{name}");
@@ -888,12 +918,13 @@ fn a_bundle_the_host_finds_faults_in_gives_its_findings_on_exit_9() {
 #[test]
 fn an_unconfirmed_submission_is_unknown_with_the_request_id_to_resend() {
     let h = Harness::new();
-    let operands = bundle_in(&h);
-    let mut operands: Vec<&str> = operands.iter().map(String::as_str).collect();
     let case = recorded("graphs submit: outcome unknown (made)");
     let request_id = "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d";
-    operands.extend(["--request-id", request_id]);
+    let operands = submit_in(&h, Some(1), Some(Uuid::parse_str(request_id).unwrap()));
     let outcome = graph_call(&h, Verb::GraphsSubmit, &operands, &case);
+    // The resend goes after the bundle and `--base`, as `--request-id`.
+    let call = &h.calls()[0];
+    assert_eq!(call[call.len() - 5..], ["--base", "1", "--request-id", request_id, "--json"]);
     assert_eq!(
         outcome,
         CallOutcome::Unknown { detail: case["stdout"]["message"].as_str().unwrap().to_string(), request_id: Some(request_id.to_string()) }

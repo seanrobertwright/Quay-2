@@ -290,6 +290,31 @@
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
     },
     {
+      "name": "graphs show: older revisions, not submitted",
+      "args": [
+        "graphs",
+        "show",
+        "nothing-here",
+        "--before",
+        "2",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-workflow-revisions/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
       "name": "graphs withdraw: a pending candidate",
       "args": [
         "graphs",
