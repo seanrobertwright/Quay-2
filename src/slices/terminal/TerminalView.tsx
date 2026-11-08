@@ -6,6 +6,10 @@ import { TerminalInfo, isAgentRunKind } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
+import { TerminalMenu } from "./TerminalMenu.tsx";
+import { RenameInput } from "./RenameInput.tsx";
+import { onTerminalRequest } from "./terminalRequests.ts";
+import { useContextMenu } from "../overlay/useContextMenu.ts";
 import {
   Maximize2,
   X,
@@ -27,6 +31,14 @@ interface TerminalViewProps {
   onZoomPane?: () => void;
   onSwitchTerminal?: (newTerminalId: string) => void;
   onRelaunch?: () => void;
+  /** Saves a new name for the terminal, from the header menu's Rename. */
+  onRename?: (newName: string) => void;
+  /** Switches the terminal between Skip and Ask. */
+  onToggleAsk?: () => void;
+  /** Closes the terminal itself, as the Rail row's close button does. */
+  onCloseTerminal?: () => void;
+  /** How many panes the stage shows, which decides whether Close pane can run. */
+  paneCount?: number;
   className?: string;
   style?: CSSProperties;
 }
@@ -43,10 +55,16 @@ export const TerminalView: FC<TerminalViewProps> = ({
   onZoomPane,
   onSwitchTerminal,
   onRelaunch,
+  onRename,
+  onToggleAsk,
+  onCloseTerminal,
+  paneCount = 1,
   className = "",
   style,
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const menu = useContextMenu<string>();
   const [a2aNotification, setA2aNotification] = useState<{
     fromName: string;
     content: string;
@@ -100,6 +118,16 @@ export const TerminalView: FC<TerminalViewProps> = ({
     focusTerminal,
     repaintTerminal,
   } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch);
+
+  // The terminal menu on a Rail row asks this pane to redraw or search (#508).
+  useEffect(
+    () =>
+      onTerminalRequest(terminalId, (request) => {
+        if (request === "redraw") repaintTerminal();
+        else setIsSearchOpen(true);
+      }),
+    [terminalId, repaintTerminal]
+  );
 
   // Hotkey listener for Ctrl+F when pane is focused
   useEffect(() => {
@@ -177,8 +205,10 @@ export const TerminalView: FC<TerminalViewProps> = ({
   const showPluginHint = !!terminal?.plugin_hint && terminal.claude_status !== "exited";
 
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o
+    <>
+    {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- xterm.js owns the focusable textarea inside this pane; keyboard pane switching uses Ctrl+Shift+B o */}
     <div
+      data-terminal-pane
       onClick={(e) => {
         onSelect?.();
         if (!(e.target instanceof Element && e.target.closest("[data-no-terminal-focus]"))) {
@@ -206,7 +236,16 @@ export const TerminalView: FC<TerminalViewProps> = ({
     >
       {/* Pane Header (only displayed in split/grid layout) */}
       {showPaneHeader && (
-        <div
+        // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Rail row.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- a labelled group that opens its terminal menu from the keyboard
+        <div role="group" tabIndex={0}
+          aria-label={`Pane ${terminal?.name ?? terminalId}`}
+          onContextMenu={(e) => {
+            if (!isRenaming) menu.onContextMenu(e, terminalId);
+          }}
+          onKeyDown={(e) => {
+            if (e.target === e.currentTarget) menu.onKeyDown(e, terminalId);
+          }}
           className={`h-7 px-2.5 border-b border-[#30363d]/60 flex items-center justify-between text-xs select-none shrink-0 transition-colors ${
             isFocused ? "bg-[#21262d] text-white" : "bg-[#161b22] text-[#8b949e]"
           }`}
@@ -215,7 +254,15 @@ export const TerminalView: FC<TerminalViewProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             {renderIcon()}
 
-            {allTerminals.length > 1 && onSwitchTerminal ? (
+            {isRenaming && terminal ? (
+              <RenameInput
+                name={terminal.name}
+                onDone={(newName) => {
+                  if (newName !== null) onRename?.(newName);
+                  setIsRenaming(false);
+                }}
+              />
+            ) : allTerminals.length > 1 && onSwitchTerminal ? (
               <select
                 value={terminalId}
                 onChange={(e) => onSwitchTerminal(e.target.value)}
@@ -394,5 +441,33 @@ export const TerminalView: FC<TerminalViewProps> = ({
         />
       </div>
     </div>
+
+    {/* Outside the pane, whose clicks select it and focus the terminal: the portal still
+        bubbles React events from the menu to the element that renders it. */}
+    {menu.open && terminal && (
+      <TerminalMenu
+        terminal={terminal}
+        surface={{ kind: "pane", paneCount }}
+        at={menu.open.at}
+        onClose={menu.close}
+        handlers={{
+          rename: () => setIsRenaming(true),
+          relaunch: onRelaunch,
+          toggleAsk: onToggleAsk,
+          // Zooms this pane, not whichever pane had focus.
+          zoomPane:
+            onZoomPane &&
+            (() => {
+              onSelect?.();
+              onZoomPane();
+            }),
+          redraw: repaintTerminal,
+          find: () => setIsSearchOpen(true),
+          closePane: onClosePane,
+          closeTerminal: onCloseTerminal,
+        }}
+      />
+    )}
+    </>
   );
 };

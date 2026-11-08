@@ -32,6 +32,8 @@ export const RenameInput: FC<RenameInputProps> = ({ name, onDone, className = ""
       ref={inputRef}
       type="text"
       aria-label="Terminal name"
+      // A pane leaves focus here rather than giving it to its terminal.
+      data-no-terminal-focus
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => finish(true)}
