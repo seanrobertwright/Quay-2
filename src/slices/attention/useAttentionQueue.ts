@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
 import { PermissionRequestPayload } from "../bridge/PermissionModal";
-import { TerminalInfo, TerminalStatusPayload } from "../terminal/types";
+import { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types";
 import {
   applyAttentionEvent,
   attentionItems,
@@ -12,6 +12,7 @@ import {
   type PendingPermission,
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
+import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
@@ -39,6 +40,9 @@ const toPendingPermission = (
  * `terminal-status` that moves the terminal to Working, for the CLIs that send no turn start
  * (Codex goes Working on its first tool; Antigravity on its own turn report).
  *
+ * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
+ * terminal list (closed), or the user relaunches it.
+ *
  * Returns the waiting items, oldest first.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
@@ -49,8 +53,15 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
   terminalsRef.current = terminals;
 
   // An item queued before its terminal was known (the terminal list loads after the pending
-  // permissions on a webview reload) takes its project once the terminal shows up
+  // permissions on a webview reload) takes its project once the terminal shows up. A terminal
+  // gone from the list was closed, whichever way: its own close, its worktree's or its project's.
+  const listedIds = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
+    const ids = new Set(terminals.map((t) => t.id));
+    for (const id of listedIds.current) {
+      if (!ids.has(id)) dispatch({ type: "terminalEnded", terminalId: id });
+    }
+    listedIds.current = ids;
     dispatch({
       type: "terminalsKnown",
       terminals: terminals.map((t) => ({ terminalId: t.id, project: t.project_path })),
@@ -97,6 +108,9 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
           dispatch({ type: "turnStarted", terminalId, subagent });
         }
       }),
+      listen<TerminalExitedPayload>("terminal-exited", ({ payload }) =>
+        dispatch({ type: "terminalEnded", terminalId: payload.terminal_id })
+      ),
       listen<TerminalStatusPayload>("terminal-status", ({ payload }) => {
         if (payload.claude_status === "working") {
           dispatch({ type: "turnStarted", terminalId: payload.terminal_id, subagent: false });
@@ -104,8 +118,12 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
       }),
     ];
     const stopInput = onUserInput((terminalId) => dispatch({ type: "userInput", terminalId }));
+    const stopRelaunched = onTerminalRelaunched((terminalId) =>
+      dispatch({ type: "terminalEnded", terminalId })
+    );
     return () => {
       stopInput();
+      stopRelaunched();
       for (const unlisten of unlistens) unlisten.then((stop) => stop());
     };
   }, []);
