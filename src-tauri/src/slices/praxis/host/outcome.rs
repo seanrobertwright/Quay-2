@@ -265,8 +265,8 @@ fn record(stdout: &[u8], format: &str) -> Result<Value, CallOutcome> {
     }
 }
 
-/// A failure Quay can't read further: a refusal, except for a creation, where it can't tell whether
-/// the run was created.
+/// A failure Quay can't read further: a refusal, except for a write ([`Verb::writes`]), where it
+/// can't tell whether the write took effect.
 fn unread_failure(verb: Verb, text: String) -> CallOutcome {
     if verb.writes() {
         CallOutcome::Unknown { detail: text, request_id: None }
@@ -369,8 +369,8 @@ fn by_exit(verb: Verb, code: i32, stderr: &str) -> CallOutcome {
 
 /// The host condition `outcome` shows, or `None` when it says nothing new about the host. A
 /// record, and a refusal that carries the host's code, show the host answered this session. A
-/// refusal without one, an unknown creation outcome, a timeout, a cancel or a record Quay can't read leave
-/// the last condition standing.
+/// refusal without one, an unknown outcome of a write, a timeout, a cancel or a record Quay can't
+/// read leave the last condition standing.
 pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
     let simulated = |record: &Value| record.get("simulatedIdentity") == Some(&Value::Bool(true));
     match outcome {

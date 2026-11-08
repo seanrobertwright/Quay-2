@@ -22,8 +22,10 @@ use crate::slices::praxis::template_name::{check_graph_workflow_name, check_temp
 #[derive(Debug, Clone, Copy)]
 pub struct CallBounds {
     pub read: Duration,
-    /// Run creation: `run`'s own resends can take about 64 s (#362).
-    pub create: Duration,
+    /// A write ([`Verb::writes`]): a run creation, a graph workflow submission or a withdrawal.
+    /// `praxis` resends each while its outcome is unknown, and `run`'s own resends can take
+    /// about 64 s (#362).
+    pub write: Duration,
     pub stdout_cap: usize,
     pub stderr_cap: usize,
     /// How long `node --version` may take.
@@ -34,7 +36,7 @@ impl Default for CallBounds {
     fn default() -> Self {
         Self {
             read: Duration::from_secs(15),
-            create: Duration::from_secs(75),
+            write: Duration::from_secs(75),
             stdout_cap: 8 * 1024 * 1024,
             stderr_cap: 64 * 1024,
             node_check: Duration::from_secs(10),
@@ -279,7 +281,7 @@ impl PraxisCli {
             // projects can share one process.
             cmd.current_dir(&project).arg(&launch.script).args(&argv);
             let bounds = Bounds {
-                timeout: if verb.writes() { inner.bounds.create } else { inner.bounds.read },
+                timeout: if verb.writes() { inner.bounds.write } else { inner.bounds.read },
                 stdout_cap: inner.bounds.stdout_cap,
                 stderr_cap: inner.bounds.stderr_cap,
             };

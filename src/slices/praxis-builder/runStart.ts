@@ -26,7 +26,7 @@ export type RunStart =
   /** Exit 2, or a format Quay doesn't read. */
   | { kind: "needsUpdate"; message: string };
 
-/** How long the runner lets a creation take before it kills it: `CallBounds::create` in the backend. */
+/** How long the runner lets a creation take before it kills it: `CallBounds::write` in the backend. */
 export const RUN_CREATE_TIMEOUT_S = 75;
 
 /** The words of every outcome that can't say whether the run was created. */

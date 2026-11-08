@@ -313,8 +313,8 @@ fn a_timeout_kills_the_whole_tree() {
 #[test]
 fn run_creation_has_its_own_longer_timeout() {
     assert_eq!(CallBounds::default().read, Duration::from_secs(15));
-    assert_eq!(CallBounds::default().create, Duration::from_secs(75));
-    let h = Harness::with_bounds(CallBounds { read: Duration::from_millis(500), create: Duration::from_secs(20), ..CallBounds::default() });
+    assert_eq!(CallBounds::default().write, Duration::from_secs(75));
+    let h = Harness::with_bounds(CallBounds { read: Duration::from_millis(500), write: Duration::from_secs(20), ..CallBounds::default() });
     h.scenario(json!({ "stdout": fixture("WorkflowRunResult"), "delayMs": 1500 }));
     assert!(matches!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::Record { .. }));
     assert_eq!(h.call(Verb::Runs, &["runs", "review-code"]), CallOutcome::TimedOut);
@@ -561,7 +561,7 @@ fn a_repeated_run_while_one_is_in_flight_joins_the_same_process() {
 
 #[test]
 fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
-    let h = Harness::with_bounds(CallBounds { create: Duration::from_secs(2), ..CallBounds::default() });
+    let h = Harness::with_bounds(CallBounds { write: Duration::from_secs(2), ..CallBounds::default() });
     let created = fixture("WorkflowRunResult");
     h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
     assert_eq!(h.call(Verb::Run, &["run", "review-code"]), CallOutcome::TimedOut);
