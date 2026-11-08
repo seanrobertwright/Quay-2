@@ -77,8 +77,9 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align 
     });
   }, [at.x, at.y, align]);
   const buttons = () => [...(rootRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [])];
+  // Without scrolling, since a scroll closes the menu.
   useEffect(() => {
-    buttons()[0]?.focus();
+    buttons()[0]?.focus({ preventScroll: true });
   }, []);
   // A press anywhere outside closes the menu, leaving focus where the press puts it. The menu
   // sits at a point in the window, so a scroll or a resize, which moves what is under it, closes
