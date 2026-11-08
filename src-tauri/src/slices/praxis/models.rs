@@ -173,6 +173,14 @@ pub struct DefinitionFile {
     pub bindings_problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bindings_hash: Option<String>,
+    /// For a trigger, `.praxis/trigger-targets/<id>.json` the same way (#472): the graph
+    /// workflow it starts, with `target_hash` the hash of its bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_problem: Option<FileProblem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_hash: Option<String>,
 }
 
 /// One node's position as the builder sends it on save.
@@ -207,6 +215,15 @@ pub struct BindingsInput {
     pub grants: Vec<String>,
 }
 
+/// A trigger's target as the builder sends it on save (#472): the graph workflow it starts,
+/// written to `.praxis/trigger-targets/<trigger-id>.json`, or `None` for a trigger that starts
+/// none, whose target file the save removes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetInput {
+    pub graph_workflow: Option<String>,
+}
+
 /// Why a save didn't write: the file changed since the draft loaded it, or was deleted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -233,6 +250,12 @@ pub enum SaveOutcome {
         bindings_hash: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         bindings_error: Option<String>,
+        /// For a trigger saved with its target, the hash of the target file as written, or
+        /// `None` when it has none; `target_error` when writing or removing it failed.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        target_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        target_error: Option<String>,
         /// For a workflow template, the written file's digest as the Praxis host computes it.
         #[serde(skip_serializing_if = "Option::is_none")]
         template_digest: Option<String>,

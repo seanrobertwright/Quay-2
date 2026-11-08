@@ -13,7 +13,7 @@ use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::template_digest::template_digest;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
-    IdMismatch, LayoutInput, PraxisKind, SaveOutcome,
+    IdMismatch, LayoutInput, PraxisKind, SaveOutcome, TargetInput,
 };
 use crate::atomic_file::write_atomic;
 
@@ -320,6 +320,9 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
             bindings: None,
             bindings_problem: None,
             bindings_hash: None,
+            target: None,
+            target_problem: None,
+            target_hash: None,
         });
     };
     let (content, problem, content_hash) = match read_capped(&path) {
@@ -343,22 +346,12 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
     } else {
         (None, None)
     };
-    // Bindings that can't be read are reported, and the contract opens with none.
-    let (bindings, bindings_problem, bindings_hash) = if kind == PraxisKind::Contracts {
-        match companion_file(repo, BINDINGS_DIR, id) {
-            Err(why) => (None, Some(FileProblem::new(why)), None),
-            Ok(None) => (None, None, None),
-            Ok(Some(file)) => match read_capped(&file) {
-                Err(problem) => (None, Some(problem), None),
-                Ok(bytes) => {
-                    let (value, problem) = split(parse_object(&bytes));
-                    (value, problem, Some(super::canonical::content_hash(&bytes)))
-                }
-            },
-        }
-    } else {
-        (None, None, None)
-    };
+    // Bindings that can't be read are reported, and the contract opens with none. A trigger's
+    // target is read the same way (#472).
+    let (bindings, bindings_problem, bindings_hash) =
+        if kind == PraxisKind::Contracts { read_companion(repo, BINDINGS_DIR, id) } else { (None, None, None) };
+    let (target, target_problem, target_hash) =
+        if kind == PraxisKind::Triggers { read_companion(repo, TRIGGER_TARGETS_DIR, id) } else { (None, None, None) };
     Ok(DefinitionFile {
         id: id.to_string(),
         kind,
@@ -371,7 +364,27 @@ pub fn read_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Defini
         bindings,
         bindings_problem,
         bindings_hash,
+        target,
+        target_problem,
+        target_hash,
     })
+}
+
+/// `.praxis/<folder>/<id>.json`, a file that belongs to a definition: its object, or why it
+/// can't be used, and the hash of its bytes when they could be read. All `None` when there is
+/// no such file.
+fn read_companion(repo: &Path, folder: &str, id: &str) -> (Option<Value>, Option<FileProblem>, Option<String>) {
+    match companion_file(repo, folder, id) {
+        Err(why) => (None, Some(FileProblem::new(why)), None),
+        Ok(None) => (None, None, None),
+        Ok(Some(file)) => match read_capped(&file) {
+            Err(problem) => (None, Some(problem), None),
+            Ok(bytes) => {
+                let (value, problem) = split(parse_object(&bytes));
+                (value, problem, Some(content_hash(&bytes)))
+            }
+        },
+    }
 }
 
 /// `.praxis/<folder>/<id>.json`, a file that belongs to a definition, when it exists and
@@ -383,14 +396,27 @@ fn companion_file(repo: &Path, folder: &str, id: &str) -> Result<Option<PathBuf>
     }
 }
 
-/// The hash of a contract's bindings file as it is now, or `None` when there is none.
-fn bindings_hash_now(repo: &Path, id: &str) -> Result<Option<String>, String> {
-    match companion_file(repo, BINDINGS_DIR, id)? {
+/// The hash of `.praxis/<folder>/<id>.json`, a contract's bindings file or a trigger's target,
+/// as it is now, or `None` when there is none.
+fn companion_hash_now(repo: &Path, folder: &str, id: &str) -> Result<Option<String>, String> {
+    match companion_file(repo, folder, id)? {
         None => Ok(None),
         Some(path) => std::fs::read(&path)
             .map(|bytes| Some(content_hash(&bytes)))
-            .map_err(|e| format!("{}/{}/{}.json can't be read: {}", PRAXIS_DIR, BINDINGS_DIR, id, e)),
+            .map_err(|e| format!("{}/{}/{}.json can't be read: {}", PRAXIS_DIR, folder, id, e)),
     }
+}
+
+/// The `version` a trigger's target file is written with.
+pub const TARGET_VERSION: u64 = 1;
+
+/// A trigger target file's JSON, `{version, graphWorkflow}`, or `None` for a trigger that
+/// starts nothing. Refuses a graph workflow id that isn't filename-safe, since no graph
+/// workflow could have it.
+fn target_value(target: &TargetInput) -> Result<Option<Value>, String> {
+    let Some(id) = &target.graph_workflow else { return Ok(None) };
+    validate_id(id).map_err(|why| format!("The graph workflow id '{}' isn't valid. {}", id, why))?;
+    Ok(Some(json!({"version": TARGET_VERSION, "graphWorkflow": id})))
 }
 
 /// The bindings file's JSON: each list with its ids in the order given and repeats
@@ -548,7 +574,8 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// filename-safe, and a new workflow template's or graph workflow's must follow the host's name
 /// rule too; a file already saved under another name still saves. An invalid definition is still written: whatever later runs it refuses
 /// it. The definition is written first, so a layout that fails to write afterwards is
-/// reported in the outcome and the definition stays saved.
+/// reported in the outcome and the definition stays saved. A saved file that already holds
+/// the bytes the save would write is left alone.
 ///
 /// A graph binding's unset `graphRevision` and `graphDigest` are filled from its graph as
 /// saved on disk first (#247, `graph_bindings::fill_pins`).
@@ -568,6 +595,46 @@ pub fn save_definition(
     expected_bindings_hash: Option<&str>,
     force: bool,
 ) -> Result<SaveOutcome, String> {
+    let companions = Companions { layout, bindings: bindings.map(|b| (b, expected_bindings_hash)), target: None };
+    save(repo, kind, id, content, companions, expected_hash, force)
+}
+
+/// Saves a trigger with its target (#472): the trigger as `save_definition` saves it, then
+/// its target file, written with the graph workflow `target` names, or removed when it names
+/// none. The target never changes the trigger's record, so setting or clearing it alone
+/// leaves the trigger file as it is. For a trigger saved before, `expected_target_hash` is the
+/// hash of the target file the draft loaded, `None` for no file, and a target file changed
+/// since is a conflict too.
+pub fn save_trigger_with_target(
+    repo: &Path,
+    id: &str,
+    content: Value,
+    target: &TargetInput,
+    expected_hash: Option<&str>,
+    expected_target_hash: Option<&str>,
+    force: bool,
+) -> Result<SaveOutcome, String> {
+    let companions = Companions { layout: None, bindings: None, target: Some((target, expected_target_hash)) };
+    save(repo, PraxisKind::Triggers, id, content, companions, expected_hash, force)
+}
+
+/// What a save writes beside a definition: a graph's layout, a contract's bindings and a
+/// trigger's target, the last two each with the hash of its file the draft loaded.
+struct Companions<'a> {
+    layout: Option<&'a LayoutInput>,
+    bindings: Option<(&'a BindingsInput, Option<&'a str>)>,
+    target: Option<(&'a TargetInput, Option<&'a str>)>,
+}
+
+fn save(
+    repo: &Path,
+    kind: PraxisKind,
+    id: &str,
+    content: Value,
+    companions: Companions,
+    expected_hash: Option<&str>,
+    force: bool,
+) -> Result<SaveOutcome, String> {
     if expected_hash.is_none()
         && let Some(problem) = kind.name_problem(id)
     {
@@ -581,12 +648,16 @@ pub fn save_definition(
         super::graph_bindings::fill_pins(repo, &mut record);
     }
     let record = canonical_record(kind, record);
-    let layout = match layout {
+    let layout = match companions.layout {
         Some(layout) if kind == PraxisKind::Graphs => Some(layout_value(layout, &record)?),
         _ => None,
     };
-    let bindings = match bindings {
-        Some(bindings) if kind == PraxisKind::Contracts => Some(bindings_value(bindings)?),
+    let bindings = match companions.bindings {
+        Some((bindings, expected)) if kind == PraxisKind::Contracts => Some((bindings_value(bindings)?, expected)),
+        _ => None,
+    };
+    let target = match companions.target {
+        Some((target, expected)) if kind == PraxisKind::Triggers => Some((target_value(target)?, expected)),
         _ => None,
     };
 
@@ -594,54 +665,49 @@ pub fn save_definition(
     let dir = ensure_confined_dir(repo, kind.folder())?;
     let existing = confined_file(repo, &dir, id)?;
     let taken = || format!("The id '{}' is already taken by another {} file.", id, kind.folder());
+    let mut on_disk = None;
     match (&existing, expected_hash) {
         (Some(_), None) => return Err(taken()),
         (None, None) if id_taken_ignoring_case(&dir, id)? => return Err(taken()),
         (None, None) => {}
         (None, Some(_)) if !force => return Ok(SaveOutcome::Conflict { reason: ConflictReason::Deleted }),
-        (Some(path), Some(expected)) if !force => {
+        (Some(path), Some(expected)) => {
             let bytes = std::fs::read(path).map_err(|e| format!("{}.json can't be read: {}", id, e))?;
-            if content_hash(&bytes) != expected {
+            if !force && content_hash(&bytes) != expected {
                 return Ok(SaveOutcome::Conflict { reason: ConflictReason::Changed });
             }
+            on_disk = Some(bytes);
         }
         _ => {}
     }
-    if bindings.is_some()
-        && expected_hash.is_some()
-        && !force
-        && bindings_hash_now(repo, id)?.as_deref() != expected_bindings_hash
-    {
-        return Ok(SaveOutcome::Conflict { reason: ConflictReason::Changed });
+    if expected_hash.is_some() && !force {
+        let expected_companions = [
+            bindings.as_ref().map(|(_, expected)| (BINDINGS_DIR, *expected)),
+            target.as_ref().map(|(_, expected)| (TRIGGER_TARGETS_DIR, *expected)),
+        ];
+        for (folder, expected) in expected_companions.into_iter().flatten() {
+            if companion_hash_now(repo, folder, id)?.as_deref() != expected {
+                return Ok(SaveOutcome::Conflict { reason: ConflictReason::Changed });
+            }
+        }
     }
 
     let value = Value::Object(record);
     let text = to_canonical_text(&value);
-    write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
-        .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, kind.folder(), id, e))?;
+    if on_disk.as_deref() != Some(text.as_bytes()) {
+        write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
+            .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, kind.folder(), id, e))?;
+    }
 
-    let layout_error = layout.and_then(|layout| {
-        let write = || -> Result<(), String> {
-            let dir = ensure_confined_dir(repo, LAYOUT_DIR)?;
-            confined_file(repo, &dir, id)?;
-            write_atomic(&dir.join(format!("{}.json", id)), to_canonical_text(&layout).as_bytes())
-                .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, LAYOUT_DIR, id, e))
-        };
-        write().err()
-    });
+    let layout_error = layout.and_then(|layout| write_companion(repo, LAYOUT_DIR, id, &layout).err());
     let (bindings_hash, bindings_error) = match bindings {
         None => (None, None),
-        Some(bindings) => {
-            let write = || -> Result<String, String> {
-                let dir = ensure_confined_dir(repo, BINDINGS_DIR)?;
-                confined_file(repo, &dir, id)?;
-                let text = to_canonical_text(&bindings);
-                write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
-                    .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, BINDINGS_DIR, id, e))?;
-                Ok(content_hash(text.as_bytes()))
-            };
-            split(write())
-        }
+        Some((bindings, _)) => split(write_companion(repo, BINDINGS_DIR, id, &bindings)),
+    };
+    let (target_hash, target_error) = match target {
+        None => (None, None),
+        Some((Some(target), _)) => split(write_companion(repo, TRIGGER_TARGETS_DIR, id, &target)),
+        Some((None, _)) => (None, remove_companion(repo, TRIGGER_TARGETS_DIR, id).err()),
     };
     Ok(SaveOutcome::Saved {
         content: value,
@@ -649,8 +715,32 @@ pub fn save_definition(
         layout_error,
         bindings_hash,
         bindings_error,
+        target_hash,
+        target_error,
         template_digest: (kind == PraxisKind::Templates).then(|| template_digest(text.as_bytes())).flatten(),
     })
+}
+
+/// Writes `.praxis/<folder>/<id>.json`, a file that belongs to a definition, in canonical form,
+/// and returns the hash of what it wrote.
+fn write_companion(repo: &Path, folder: &str, id: &str, value: &Value) -> Result<String, String> {
+    let dir = ensure_confined_dir(repo, folder)?;
+    confined_file(repo, &dir, id)?;
+    let text = to_canonical_text(value);
+    write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
+        .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, folder, id, e))?;
+    Ok(content_hash(text.as_bytes()))
+}
+
+/// Removes `.praxis/<folder>/<id>.json` when there is one. A link is removed, not the file
+/// it leads to.
+fn remove_companion(repo: &Path, folder: &str, id: &str) -> Result<(), String> {
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(()) };
+    if confined_file(repo, &dir, id)?.is_none() {
+        return Ok(());
+    }
+    std::fs::remove_file(dir.join(format!("{}.json", id)))
+        .map_err(|e| format!("{}/{}/{}.json can't be removed: {}", PRAXIS_DIR, folder, id, e))
 }
 
 #[cfg(test)]
@@ -1394,6 +1484,117 @@ mod tests {
         assert_eq!(file.bindings, None);
         assert!(file.bindings_problem.is_some());
         assert!(file.bindings_hash.is_some());
+    }
+
+    // --- trigger targets (#472) ----------------------------------------------------------
+
+    fn starts(id: Option<&str>) -> TargetInput {
+        TargetInput { graph_workflow: id.map(str::to_string) }
+    }
+
+    fn saved_target(outcome: SaveOutcome) -> (String, Option<String>, Option<String>) {
+        match outcome {
+            SaveOutcome::Saved { content_hash, target_hash, target_error, .. } => (content_hash, target_hash, target_error),
+            other => panic!("expected a save, got {other:?}"),
+        }
+    }
+
+    fn trigger_record() -> Value {
+        json!({"id": "t", "contractId": "c"})
+    }
+
+    #[test]
+    fn saving_a_trigger_with_a_target_writes_the_target_file_and_reads_it_back() {
+        let repo = temp_repo();
+        let (_, hash, error) = saved_target(
+            save_trigger_with_target(&repo, "t", trigger_record(), &starts(Some("ship")), None, None, false).unwrap(),
+        );
+        assert_eq!(error, None);
+        let text = read(&repo, ".praxis/trigger-targets/t.json");
+        assert_eq!(text, "{\n  \"version\": 1,\n  \"graphWorkflow\": \"ship\"\n}\n");
+        assert_eq!(hash, Some(content_hash(text.as_bytes())));
+        // The trigger file stays a plain trigger, the same as one saved without a target.
+        let trigger = read(&repo, ".praxis/triggers/t.json");
+        let plain = temp_repo();
+        saved(save_definition(&plain, PraxisKind::Triggers, "t", trigger_record(), None, None, None, None, false).unwrap());
+        assert_eq!(trigger, read(&plain, ".praxis/triggers/t.json"));
+        assert!(!trigger.contains("ship"));
+
+        let file = read_definition(&repo, PraxisKind::Triggers, "t").unwrap();
+        assert_eq!(file.target, Some(json!({"version": 1, "graphWorkflow": "ship"})));
+        assert_eq!(file.target_hash, hash);
+        assert_eq!(file.target_problem, None);
+    }
+
+    /// The trigger file's modified time, after setting it to an old time so a rewrite shows.
+    fn aged(repo: &Path, rel: &str) -> std::time::SystemTime {
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let file = std::fs::OpenOptions::new().write(true).open(repo.join(rel)).unwrap();
+        file.set_modified(old).unwrap();
+        std::fs::metadata(repo.join(rel)).unwrap().modified().unwrap()
+    }
+
+    #[test]
+    fn setting_or_clearing_a_target_leaves_the_trigger_file_alone_and_clearing_removes_the_target() {
+        let repo = temp_repo();
+        let (hash, _, _) =
+            saved_target(save_definition(&repo, PraxisKind::Triggers, "t", trigger_record(), None, None, None, None, false).unwrap());
+        let content = read_definition(&repo, PraxisKind::Triggers, "t").unwrap().content.unwrap();
+        let before = aged(&repo, ".praxis/triggers/t.json");
+
+        let (hash, target_hash, error) = saved_target(
+            save_trigger_with_target(&repo, "t", content.clone(), &starts(Some("ship")), Some(&hash), None, false).unwrap(),
+        );
+        assert_eq!(error, None);
+        assert!(repo.join(".praxis/trigger-targets/t.json").is_file());
+        assert_eq!(std::fs::metadata(repo.join(".praxis/triggers/t.json")).unwrap().modified().unwrap(), before);
+
+        let (_, cleared, error) = saved_target(
+            save_trigger_with_target(&repo, "t", content, &starts(None), Some(&hash), target_hash.as_deref(), false).unwrap(),
+        );
+        assert_eq!((cleared, error), (None, None));
+        assert!(!repo.join(".praxis/trigger-targets/t.json").exists());
+        assert_eq!(std::fs::metadata(repo.join(".praxis/triggers/t.json")).unwrap().modified().unwrap(), before);
+        let file = read_definition(&repo, PraxisKind::Triggers, "t").unwrap();
+        assert_eq!((file.target, file.target_hash), (None, None));
+    }
+
+    #[test]
+    fn a_target_file_changed_since_the_draft_loaded_it_is_a_conflict_until_forced() {
+        let repo = temp_repo();
+        let (hash, target_hash, _) = saved_target(
+            save_trigger_with_target(&repo, "t", trigger_record(), &starts(Some("ship")), None, None, false).unwrap(),
+        );
+        write(&repo, ".praxis/trigger-targets/t.json", "{\"version\": 1, \"graphWorkflow\": \"other\"}\n");
+        let save = |force| {
+            save_trigger_with_target(&repo, "t", trigger_record(), &starts(None), Some(&hash), target_hash.as_deref(), force).unwrap()
+        };
+        assert_eq!(save(false), SaveOutcome::Conflict { reason: ConflictReason::Changed });
+        assert!(repo.join(".praxis/trigger-targets/t.json").is_file(), "nothing was removed");
+        saved_target(save(true));
+        assert!(!repo.join(".praxis/trigger-targets/t.json").exists());
+    }
+
+    #[test]
+    fn a_target_refuses_a_graph_workflow_id_that_isnt_filename_safe_and_only_triggers_have_one() {
+        let repo = temp_repo();
+        assert!(save_trigger_with_target(&repo, "t", trigger_record(), &starts(Some("a/b")), None, None, false).is_err());
+        assert!(!repo.join(".praxis").exists(), "nothing is written");
+    }
+
+    #[test]
+    fn a_target_file_that_doesnt_parse_is_reported_and_the_trigger_opens() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/triggers/t.json", "{\"id\": \"t\"}\n");
+        write(&repo, ".praxis/trigger-targets/t.json", "{nope");
+        let file = read_definition(&repo, PraxisKind::Triggers, "t").unwrap();
+        assert!(file.content.is_some());
+        assert_eq!(file.target, None);
+        assert!(file.target_problem.is_some());
+        assert!(file.target_hash.is_some());
+        // Other kinds read no target.
+        write(&repo, ".praxis/contracts/t.json", "{\"id\": \"t\"}\n");
+        assert_eq!(read_definition(&repo, PraxisKind::Contracts, "t").unwrap().target_problem, None);
     }
 
     #[test]
