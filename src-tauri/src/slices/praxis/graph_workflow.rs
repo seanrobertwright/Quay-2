@@ -8,10 +8,9 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::grants::read_record;
 use super::graph_bindings::validate_graph_binding;
 use super::models::PraxisKind;
-use super::store::{validate_id, BINDINGS_DIR};
+use super::store::{read_record, validate_id, BINDINGS_DIR};
 use super::validate::{check_size, field_issue, validate_contract, validate_graph, Diagnostic, Found, Severity, Validation};
 
 /// A graph workflow's local checks (#459), against the records it names as saved on disk,

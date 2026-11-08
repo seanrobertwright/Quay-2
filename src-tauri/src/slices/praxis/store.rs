@@ -41,7 +41,8 @@ pub const BINDINGS_VERSION: u64 = 1;
 /// The most ids each list of a bindings file holds, as the SDK caps its id lists.
 pub const MAX_BINDINGS: usize = 1000;
 
-/// The most trigger files `contract_triggers` reads.
+/// The most trigger files, or trigger target files, one lookup of the triggers that start a
+/// contract or a graph workflow reads.
 pub const MAX_TRIGGERS_SCANNED: usize = 10_000;
 
 /// Serializes saves, renames and deletes, so two of them from Quay can't interleave their
@@ -140,6 +141,28 @@ pub(super) fn confined_dir(repo: &Path, folder: &str) -> Result<Option<PathBuf>,
         return Err(format!("{}/{} is not a folder.", PRAXIS_DIR, folder));
     }
     Ok(Some(canonical))
+}
+
+/// The ids of the `.praxis/<folder>/*.json` files in id order, the first `cap` of them. When
+/// there are more, a line saying how many weren't searched goes in `unchecked`. A missing folder
+/// has none.
+pub(super) fn capped_ids(repo: &Path, folder: &str, cap: usize, unchecked: &mut Vec<String>) -> Result<Vec<String>, String> {
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(Vec::new()) };
+    let mut ids = json_ids(&dir, folder)?;
+    if ids.len() > cap {
+        unchecked.push(format!("{}/{}/: the {} files after the first {} weren't searched.", PRAXIS_DIR, folder, ids.len() - cap, cap));
+        ids.truncate(cap);
+    }
+    Ok(ids)
+}
+
+/// `.praxis/<folder>/<id>.json` as one JSON object: `Ok(None)` when there is no such file,
+/// and `Err` with the reason when it can't be read or isn't an object.
+pub(super) fn read_record(repo: &Path, folder: &str, id: &str) -> Result<Option<Value>, String> {
+    validate_id(id)?;
+    let Some(dir) = confined_dir(repo, folder)? else { return Ok(None) };
+    let Some(path) = confined_file(repo, &dir, id)? else { return Ok(None) };
+    parse_object_file(&path).map(Some).map_err(|p| p.message)
 }
 
 /// The canonical path of `<dir>/<id>.json`, or `None` when there is no such file.
@@ -468,23 +491,8 @@ pub fn contract_triggers(repo: &Path, contract_id: &str) -> Result<ContractTrigg
     validate_id(contract_id)?;
     let folder = PraxisKind::Triggers.folder();
     let mut out = ContractTriggers { ids: Vec::new(), unchecked: Vec::new() };
-    let Some(dir) = confined_dir(repo, folder)? else { return Ok(out) };
-    let ids = json_ids(&dir, folder)?;
-    if ids.len() > MAX_TRIGGERS_SCANNED {
-        out.unchecked.push(format!(
-            "{}/{}/: the {} files after the first {} weren't searched.",
-            PRAXIS_DIR,
-            folder,
-            ids.len() - MAX_TRIGGERS_SCANNED,
-            MAX_TRIGGERS_SCANNED
-        ));
-    }
-    for id in ids.into_iter().take(MAX_TRIGGERS_SCANNED) {
-        let record = match confined_file(repo, &dir, &id) {
-            Ok(Some(path)) => parse_object_file(&path).map_err(|p| p.message),
-            Ok(None) => Err("The file disappeared.".to_string()),
-            Err(why) => Err(why),
-        };
+    for id in capped_ids(repo, folder, MAX_TRIGGERS_SCANNED, &mut out.unchecked)? {
+        let record = read_record(repo, folder, &id).and_then(|r| r.ok_or_else(|| "The file disappeared.".to_string()));
         match record {
             Ok(record) if record.get("contractId").and_then(Value::as_str) == Some(contract_id) => out.ids.push(id),
             Ok(_) => {}

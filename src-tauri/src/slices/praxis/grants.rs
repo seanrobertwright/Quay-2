@@ -10,20 +10,11 @@ use serde_json::Value;
 
 use super::lifecycle::MAX_SCANNED;
 use super::models::{BoundContract, ChainBreak, ChainLink, GrantCheck, PraxisKind};
-use super::store::{confined_dir, confined_file, json_ids, parse_object, read_capped, validate_id, BINDINGS_DIR, PRAXIS_DIR};
+use super::store::{capped_ids, read_record, validate_id, BINDINGS_DIR, PRAXIS_DIR};
 use super::validate::validate_grant_on_mission;
 
 /// The most ancestors a chain walk reads. A deeper chain stops with a break.
 pub const MAX_CHAIN: usize = 1000;
-
-/// `.praxis/<folder>/<id>.json` as one JSON object: `Ok(None)` when there is no such file,
-/// and `Err` with the reason when it can't be read or isn't an object.
-pub(super) fn read_record(repo: &Path, folder: &str, id: &str) -> Result<Option<Value>, String> {
-    validate_id(id)?;
-    let Some(dir) = confined_dir(repo, folder)? else { return Ok(None) };
-    let Some(path) = confined_file(repo, &dir, id)? else { return Ok(None) };
-    read_capped(&path).and_then(|bytes| parse_object(&bytes)).map(Some).map_err(|p| p.message)
-}
 
 /// The saved ancestors of the grant `id` whose parent is `parent`, root first, and the grant
 /// that stopped the walk, when one did.
@@ -72,18 +63,7 @@ pub(super) struct Binder {
 pub(super) fn binding_contracts(repo: &Path, list: &str, id: &str) -> Result<(Vec<Binder>, Vec<String>), String> {
     let mut ids = Vec::new();
     let mut unchecked = Vec::new();
-    let Some(dir) = confined_dir(repo, BINDINGS_DIR)? else { return Ok((ids, unchecked)) };
-    let files = json_ids(&dir, BINDINGS_DIR)?;
-    if files.len() > MAX_SCANNED {
-        unchecked.push(format!(
-            "{}/{}/: the {} files after the first {} weren't searched.",
-            PRAXIS_DIR,
-            BINDINGS_DIR,
-            files.len() - MAX_SCANNED,
-            MAX_SCANNED
-        ));
-    }
-    for contract in files.into_iter().take(MAX_SCANNED) {
+    for contract in capped_ids(repo, BINDINGS_DIR, MAX_SCANNED, &mut unchecked)? {
         match read_record(repo, BINDINGS_DIR, &contract) {
             Ok(Some(record)) => {
                 let listed: Vec<String> = record

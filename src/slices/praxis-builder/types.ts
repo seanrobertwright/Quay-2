@@ -352,6 +352,14 @@ export interface GraphWorkflowCheck {
   diagnostics: Diagnostic[];
 }
 
+/** The triggers that start a graph workflow (#479): those whose saved target file names it. */
+export interface GraphWorkflowTriggers {
+  /** The trigger ids, in id order. */
+  ids: string[];
+  /** One line per target file that wasn't searched or was left out, saying which and why. */
+  unchecked: string[];
+}
+
 /** A kind or action a picker still lists that a graph trigger can't take, with the host's code. */
 export interface RefusedValue {
   field: string;
