@@ -82,6 +82,7 @@ pub fn init(dir: &Path) -> Option<WorkerGuard> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TempDir;
     use std::fs;
     use tracing::Dispatch;
 
@@ -93,10 +94,8 @@ mod tests {
         Some((guard, Dispatch::new(tracing_subscriber::registry().with(file_layer(writer)))))
     }
 
-    fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quay2-logging-{}-{}", name, uuid::Uuid::new_v4().simple()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_dir(name: &str) -> TempDir {
+        TempDir::new(&format!("logging-{name}"))
     }
 
     fn log_files(dir: &Path) -> Vec<String> {
