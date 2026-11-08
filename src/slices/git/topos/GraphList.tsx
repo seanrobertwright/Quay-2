@@ -25,7 +25,8 @@ import {
 import type { GraphFeed, GraphStatus } from "./graphFeed";
 import { hitNode, rowAt } from "./graphHit";
 import type { Badge, RefsView } from "./graphRefs";
-import { badgeMenu, commitMenu, graphKey, nextBadge, primaryAction, refMenuItems, type MenuItem, type PrimaryAction, type RefAction, type RefContext } from "./refActions";
+import { badgeMenu, commitMenu, graphKey, nextBadge, primaryAction, type MenuItem, type PrimaryAction, type RefAction, type RefContext } from "./refActions";
+import { refMenuItems } from "./refMenu";
 import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
 import type { GraphAgent } from "./graphPage";
 import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";

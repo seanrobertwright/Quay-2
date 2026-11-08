@@ -3,7 +3,8 @@
 // `badgeMenu` and `commitMenu` give, in order, with each disabled one's reason as its hint.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { badgeMenu, commitMenu, refMenuItems, type RefAction, type RefContext } from "./refActions.ts";
+import { badgeMenu, commitMenu, type RefAction, type RefContext } from "./refActions.ts";
+import { refMenuItems } from "./refMenu.ts";
 
 const A = "a".repeat(40);
 

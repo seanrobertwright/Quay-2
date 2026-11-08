@@ -1,7 +1,6 @@
 // What Topos offers on a ref badge and a commit row (#367, #393, #394, #396): the context menus'
 // items, what a double-click or Enter on a badge checks out, and the graph's keys for them.
 
-import type { ContextMenuItem } from "../../overlay/ContextMenu.tsx";
 import { isSamePath } from "../../../utils/paths.ts";
 import type { Operation } from "./composer.ts";
 import { errorMessage, parseGitError } from "./gitVersion.ts";
@@ -146,19 +145,6 @@ export function commitMenu(oid: string, ctx: RefContext): MenuItem[] {
     checkoutItem("Checkout detached", { kind: "detached", at: oid }, ctx),
     { label: "Copy SHA", action: { kind: "copySha", oid } },
   ];
-}
-
-/**
- * A badge's or a commit row's menu items as the shared context menu shows them (#510): in order, in
- * one group, a disabled item with its reason as its hint. Choosing an enabled item runs its action.
- */
-export function refMenuItems(items: readonly MenuItem[], run: (action: RefAction) => void): ContextMenuItem[] {
-  return items.map((item) => {
-    const { action } = item;
-    return action === null
-      ? { name: item.label, enabled: false, group: "ref", hint: item.disabledReason, onChoose: () => {} }
-      : { name: item.label, enabled: true, group: "ref", onChoose: () => run(action) };
-  });
 }
 
 /** What a double-click or Enter on a badge does: an action, why it can't, or nothing. */
