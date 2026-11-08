@@ -136,7 +136,7 @@ On the canvas, a graph shows **Runs under:** chips for the contracts that bind i
 
 ### Changed since last commit
 
-Contracts, grants, graph bindings, workflow templates and graph workflows whose files have uncommitted changes carry a **changed since last commit** badge in the list, so an agent's edits are visible before anyone acts on them. The badge opens the file's diff against the last commit. A project that isn't a git repository shows no badge. Committing a grant doesn't approve it: only a human in Praxis does.
+Contracts, grants, graph bindings and workflow templates whose files have uncommitted changes carry a **changed since last commit** badge in the list, so an agent's edits are visible before anyone acts on them. The badge opens the file's diff against the last commit. A project that isn't a git repository shows no badge. Committing a grant doesn't approve it: only a human in Praxis does.
 
 ---
 

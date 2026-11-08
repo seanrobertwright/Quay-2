@@ -11,8 +11,8 @@ use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
 /// the diff by joining this list.
-pub const SHOWS_CHANGES: [PraxisKind; 5] =
-    [PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::GraphBindings, PraxisKind::Templates, PraxisKind::GraphWorkflows];
+pub const SHOWS_CHANGES: [PraxisKind; 4] =
+    [PraxisKind::Contracts, PraxisKind::Grants, PraxisKind::GraphBindings, PraxisKind::Templates];
 
 /// Whether `repo` is the root of a git repository or worktree. A folder inside some other
 /// repository isn't, since that repository isn't the project's.
@@ -184,16 +184,6 @@ mod tests {
         let diff = file_diff(&repo, PraxisKind::GraphBindings, "g-1").unwrap();
         assert_eq!(diff.path, ".praxis/graph-bindings/g-1.json");
         assert_eq!(diff.status, Some(ChangeStatus::Modified));
-    }
-
-    #[test]
-    fn a_new_graph_workflow_is_added_since_the_last_commit_and_has_a_diff() {
-        let repo = committed_repo(&[]);
-        write(&repo, ".praxis/graph-workflows/ship.json", "{\"version\":1}\n");
-        assert_eq!(changed_files(&repo).unwrap().files, vec![changed(PraxisKind::GraphWorkflows, "ship", ChangeStatus::Added)]);
-        let diff = file_diff(&repo, PraxisKind::GraphWorkflows, "ship").unwrap();
-        assert_eq!(diff.path, ".praxis/graph-workflows/ship.json");
-        assert_eq!(diff.status, Some(ChangeStatus::Added));
     }
 
     #[test]
