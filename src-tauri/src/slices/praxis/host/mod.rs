@@ -1,8 +1,10 @@
 //! The Praxis CLI runner (#446): the one backend module through which Quay runs `praxis`, as
 //! #228 decided. It finds and launches the CLI ([`launch`]), runs bounded headless calls
 //! ([`process`], [`runner`]), turns their `--json` records into typed outcomes ([`outcome`]) and
-//! keeps one [`HostCondition`] per project's builder session.
+//! keeps one [`HostCondition`] per project's builder session. A graph workflow's bundle goes to
+//! `praxis` as the paths of its saved files ([`bundle`]).
 
+mod bundle;
 pub mod commands;
 mod launch;
 mod outcome;

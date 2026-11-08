@@ -14,6 +14,10 @@ pub enum Verb {
     Runs,
     Status,
     Run,
+    /// `praxis graphs check <name> <bundle>`: the host's checks of a bundle, which write nothing.
+    GraphsCheck,
+    /// `praxis graphs submit <name> <bundle>`: submits a bundle as a candidate revision.
+    GraphsSubmit,
     /// `praxis graphs list`: the host's graph workflows, in name order.
     GraphsList,
     /// `praxis graphs show <name>`: one graph workflow with its newest revisions.
@@ -42,6 +46,8 @@ impl Verb {
             // here; the builder reads the fields it draws leniently.
             Verb::Status => "coding-operator-view/1",
             Verb::Run => "aiws-workflow-run-result/1",
+            Verb::GraphsCheck => "aiws-graph-workflow-check-result/1",
+            Verb::GraphsSubmit => "aiws-graph-workflow-submit-result/1",
             Verb::GraphsList => "aiws-graph-workflows/1",
             Verb::GraphsShow => "aiws-graph-workflow/1",
             Verb::GraphsRevisions => "aiws-graph-workflow-revisions/1",
@@ -56,7 +62,7 @@ impl Verb {
     /// can't read leaves its outcome unknown rather than refused. `praxis` resends each of them
     /// while their outcome is unknown.
     pub fn writes(self) -> bool {
-        matches!(self, Verb::Run | Verb::GraphsWithdraw | Verb::GraphRun)
+        matches!(self, Verb::Run | Verb::GraphsSubmit | Verb::GraphsWithdraw | Verb::GraphRun)
     }
 
     /// The record format of the refusal `praxis run` prints with exit 7, when an earlier run that
@@ -65,6 +71,16 @@ impl Verb {
         match self {
             Verb::Run => Some(RUN_ERROR_FORMAT),
             Verb::GraphRun => Some(GRAPH_RUN_ERROR_FORMAT),
+            _ => None,
+        }
+    }
+
+    /// The record format `praxis` prints with exit 9, when the host found faults in a bundle:
+    /// `check` prints its result, and `submit` the host's refusal, each with the findings.
+    fn bundle_invalid_format(self) -> Option<&'static str> {
+        match self {
+            Verb::GraphsCheck => Some(self.format()),
+            Verb::GraphsSubmit => Some("aiws-graph-workflow-error/1"),
             _ => None,
         }
     }
@@ -82,6 +98,8 @@ impl Verb {
             Verb::Runs | Verb::GraphRuns => &["runs"],
             Verb::Status | Verb::GraphStatus => &["status"],
             Verb::Run | Verb::GraphRun => &["run"],
+            Verb::GraphsCheck => &["graphs", "check"],
+            Verb::GraphsSubmit => &["graphs", "submit"],
             Verb::GraphsList => &["graphs", "list"],
             Verb::GraphsShow | Verb::GraphsRevisions => &["graphs", "show"],
             Verb::GraphsWithdraw => &["graphs", "withdraw"],
@@ -113,6 +131,17 @@ impl Verb {
             _ => None,
         }
     }
+
+    /// Where in [`args`](Self::args) the graph workflow name is, for the commands that take one:
+    /// right after the command's words.
+    pub fn graph_workflow_arg(self) -> Option<usize> {
+        match self {
+            Verb::GraphsCheck | Verb::GraphsSubmit | Verb::GraphsShow | Verb::GraphsRevisions | Verb::GraphsWithdraw | Verb::GraphRun | Verb::GraphRuns => {
+                Some(self.words().len())
+            }
+            _ => None,
+        }
+    }
 }
 
 /// The record format `praxis run` prints with exit 7.
@@ -133,6 +162,9 @@ pub enum CallOutcome {
         #[serde(skip_serializing_if = "Option::is_none")]
         trust_hint: Option<String>,
     },
+    /// `praxis graphs check` or `submit` exit 9: the host found faults in the bundle, and
+    /// `record` lists them as `findings`, each naming the bundle file it is about.
+    BundleInvalid { record: Value },
     /// `praxis run` exit 7: a held run, or one awaiting approval, blocks new runs.
     Blocked { record: Value, blocking_run_address: String },
     /// Exit 2, or a record Quay doesn't read: "Quay needs an update for this praxis".
@@ -152,10 +184,18 @@ pub enum CallOutcome {
     Refused { message: String },
     /// `praxis` couldn't be found or started, or Node is older than 24.
     CliNotFound { reason: String },
-    /// A run creation ended in a way that doesn't say whether the run was created: `praxis`
-    /// stopped without an exit code, or exited with a code `run` doesn't document. Its pending
-    /// creation stays in the profile, so the next `run` of the name resumes it (#361).
-    Unknown { detail: String },
+    /// A write ([`Verb::writes`]) ended in a way that doesn't say whether it took effect:
+    /// `praxis` stopped without an exit code, exited with a code the command doesn't document,
+    /// or said the outcome is unknown. A run creation's pending creation stays in the profile,
+    /// so the next `run` of the name resumes it (#361), and it carries no `request_id`. A graph
+    /// workflow submission or withdrawal whose outcome `praxis` couldn't confirm carries the
+    /// `request_id` it sent, which `--request-id` resends; the host answers that from what it
+    /// stored.
+    Unknown {
+        detail: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     /// Quay's own timeout passed and the call was killed.
     TimedOut,
     /// The caller cancelled.
@@ -228,7 +268,7 @@ fn record(stdout: &[u8], format: &str) -> Result<Value, CallOutcome> {
 /// the run was created.
 fn unread_failure(verb: Verb, text: String) -> CallOutcome {
     if verb.writes() {
-        CallOutcome::Unknown { detail: text }
+        CallOutcome::Unknown { detail: text, request_id: None }
     } else {
         CallOutcome::Refused { message: text }
     }
@@ -254,12 +294,18 @@ fn praxis_error(stdout: &[u8]) -> Option<(Value, String, String)> {
 /// know, which the record says to handle by the exit code. The record has no code of its own for
 /// a missing connection descriptor, an `ENGINE` failure, so that one is still told by its phrase.
 /// An `AUTHENTICATION` failure that carries the host's code is the host refusing the session; one
-/// without it is the profile holding none.
-fn from_error_record(record: &Value, code: &str, message: String) -> Option<CallOutcome> {
+/// without it is the profile holding none. A host that doesn't serve the format Quay asks for
+/// needs an update of the host or of Quay, and `OUTCOME_UNKNOWN` leaves a write unknown.
+fn from_error_record(verb: Verb, record: &Value, code: &str, message: String) -> Option<CallOutcome> {
     let host_code = record.get("hostCode").and_then(Value::as_str);
     Some(match code {
         "USAGE" => CallOutcome::NeedsUpdate { detail: format!("praxis didn't accept Quay's arguments: {message}") },
         "CONNECTION" => CallOutcome::HostDown { message },
+        "FORMAT_NOT_SERVED" => CallOutcome::NeedsUpdate { detail: message },
+        "OUTCOME_UNKNOWN" if verb.writes() => CallOutcome::Unknown {
+            detail: message,
+            request_id: record.get("requestId").and_then(Value::as_str).map(str::to_string),
+        },
         "AUTHENTICATION" if host_code.is_some() => CallOutcome::Expired { message },
         "AUTHENTICATION" => CallOutcome::NotSignedIn { message },
         "ENGINE" => match (host_code, phrase(&message)) {
@@ -294,7 +340,8 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
             },
             Err(outcome) => outcome,
         },
-        _ => match praxis_error(stdout).and_then(|(record, kind, message)| from_error_record(&record, &kind, message)) {
+        9 if let Some(format) = verb.bundle_invalid_format() => record(stdout, format).map_or_else(|o| o, |record| CallOutcome::BundleInvalid { record }),
+        _ => match praxis_error(stdout).and_then(|(record, kind, message)| from_error_record(verb, &record, &kind, message)) {
             Some(outcome) => outcome,
             None => by_exit(verb, code, stderr),
         },
@@ -326,7 +373,10 @@ fn by_exit(verb: Verb, code: i32, stderr: &str) -> CallOutcome {
 pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
     let simulated = |record: &Value| record.get("simulatedIdentity") == Some(&Value::Bool(true));
     match outcome {
-        CallOutcome::Record { record, .. } | CallOutcome::Blocked { record, .. } | CallOutcome::HostRefused { record, .. } => {
+        CallOutcome::Record { record, .. }
+        | CallOutcome::Blocked { record, .. }
+        | CallOutcome::BundleInvalid { record }
+        | CallOutcome::HostRefused { record, .. } => {
             Some(if simulated(record) { HostCondition::SimulatedHost } else { HostCondition::SignedIn })
         }
         CallOutcome::NoHost { .. } => Some(HostCondition::NoHostSetUp),

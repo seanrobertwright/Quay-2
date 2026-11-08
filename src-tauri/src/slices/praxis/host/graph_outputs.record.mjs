@@ -114,14 +114,18 @@ await example.host.close();
 await record('host down', ['graphs', 'list', '--limit', '100', '--format', 'aiws-graph-workflows/1']);
 for (const close of closers.reverse()) await close();
 
-// A simulated host's session can't be missing or refused, so these two are made by the engine's
-// own errorRecord from the messages engine/src/praxis-client.ts writes, as runPraxis prints them.
+// A simulated host's session can't be missing or refused, a send can't be left unconfirmed and
+// it serves every format, so these are made by the engine's own errorRecord from the messages
+// engine/src/praxis-client.ts, praxis-graphs.ts and praxis-format.ts write, as runPraxis prints them.
 const installation = 'C:\\Users\\me\\AppData\\Local\\Praxis\\installation';
-for (const [name, message, detail] of [
+const requestId = '3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d';
+for (const [name, message, detail, exit = 1] of [
+  ['graphs submit: outcome unknown (made)', `The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id ${requestId} to resend it.`, { code: 'OUTCOME_UNKNOWN', requestId, simulated: true }],
+  ['format not served (made)', 'The host does not serve aiws-graph-workflows/1: it serves aiws-graph-workflows/2. Upgrade the host or this client.', { code: 'FORMAT_NOT_SERVED', requestedFormat: 'aiws-graph-workflows/1', servedFormats: ['aiws-graph-workflows/2'], simulated: true }, 8],
   ['not signed in (made)', `There is no CLI session for this host in C:\\Users\\me\\AppData\\Local\\Praxis\\cli. Run praxis login --state ${installation}.`, { code: 'AUTHENTICATION' }],
   ['session refused (made)', `The host did not accept the CLI session (UNAUTHENTICATED). Run praxis login --state ${installation}.`, { code: 'AUTHENTICATION', hostCode: 'UNAUTHENTICATED' }],
 ]) {
-  const failure = new PraxisFailure(1, message, false, detail);
+  const failure = new PraxisFailure(exit, message, false, detail);
   cases.push({ name, args: ['graphs', 'list', '--limit', '100', '--format', 'aiws-graph-workflows/1'], exit: failure.exitCode, stdout: errorRecord(failure), stderr: `praxis: ${message}\n` });
 }
 

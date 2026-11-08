@@ -77,14 +77,14 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-workflow-submit-result/1",
-        "requestId": "a7606c0b-d282-43bc-bfb7-4061df548873",
+        "requestId": "f76290d6-5568-40ab-b5b2-1892b3609735",
         "disposition": "COMMITTED",
         "name": "release-review",
         "revision": 1,
         "status": "CANDIDATE",
         "baseRevision": null,
         "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
-        "admissionPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#graph-workflow=release-review&revision=1",
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -107,7 +107,7 @@
       "exit": 9,
       "stdout": {
         "format": "aiws-graph-workflow-error/1",
-        "requestId": "f80657b8-1900-4cec-a837-817c7515c330",
+        "requestId": "b4814fe6-1f83-4c80-b8a7-f495d87d0f72",
         "code": "BUNDLE_INVALID",
         "commitStatus": "NOT_COMMITTED",
         "findings": [
@@ -141,14 +141,14 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-workflow-submit-result/1",
-        "requestId": "d950d7ea-b85b-4d34-a82f-8a90729cddc2",
+        "requestId": "bf37595d-a03f-429f-ac0c-2cf16c796161",
         "disposition": "COMMITTED",
         "name": "release-review",
         "revision": 2,
         "status": "CANDIDATE",
         "baseRevision": 1,
         "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
-        "admissionPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#graph-workflow=release-review&revision=2",
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -204,11 +204,11 @@
             "status": "CANDIDATE",
             "baseRevision": 1,
             "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
-            "submittedAt": "2026-11-08T23:01:49.272Z",
+            "submittedAt": "2026-11-08T23:30:17.762Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "d96602a6-648e-40a5-8ce3-adb08dce21a8"
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
             }
           },
           {
@@ -216,18 +216,18 @@
             "status": "CANDIDATE",
             "baseRevision": null,
             "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
-            "submittedAt": "2026-11-08T23:01:47.486Z",
+            "submittedAt": "2026-11-08T23:30:15.433Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "d96602a6-648e-40a5-8ce3-adb08dce21a8"
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
             }
           }
         ],
         "nextBefore": null,
         "review": null,
         "retireDigest": null,
-        "admissionPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#graph-workflow=release-review&revision=2",
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -255,11 +255,11 @@
             "status": "CANDIDATE",
             "baseRevision": null,
             "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
-            "submittedAt": "2026-11-08T23:01:47.486Z",
+            "submittedAt": "2026-11-08T23:30:15.433Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "d96602a6-648e-40a5-8ce3-adb08dce21a8"
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
             }
           }
         ],
@@ -300,7 +300,7 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-workflow-withdraw-result/1",
-        "requestId": "5703ed6f-9130-4d10-9427-ac9d5793fa82",
+        "requestId": "e2da2e4a-9b6d-4124-9055-f61b23f41f4f",
         "disposition": "COMMITTED",
         "name": "release-review",
         "revision": 1,
@@ -324,7 +324,7 @@
         "code": "ENGINE",
         "message": "The host refused the request (REVISION_NOT_PENDING).",
         "hostCode": "REVISION_NOT_PENDING",
-        "requestId": "fea83fdb-b63f-429b-bf3f-a808adba97d8",
+        "requestId": "667b2611-bf17-484a-af28-d05c1738b56e",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
@@ -354,17 +354,17 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-run-result/1",
-        "requestId": "946035ea-11de-4e4c-9cb0-0b334a928b54",
+        "requestId": "6a571888-4d3c-47d1-adbb-5a6a8a221668",
         "disposition": "COMMITTED",
-        "workOrderId": "wo-4542e876-531c-44d0-9e00-73026f9cbffb",
-        "runId": "run-f3e09997-3bec-4e71-96d8-7ac34305c41a",
+        "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
         "revision": 1,
         "status": "AWAITING_APPROVAL",
         "workflow": {
           "name": "nightly-build",
           "revision": 1
         },
-        "runPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#work-order=wo-4542e876-531c-44d0-9e00-73026f9cbffb",
+        "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -378,11 +378,11 @@
       "exit": 7,
       "stdout": {
         "format": "aiws-graph-run-error/1",
-        "requestId": "ed142d2e-0aba-4ee7-85b6-ab24aca0fdaa",
+        "requestId": "328780ff-218d-41cc-a3ad-4426d303994a",
         "code": "WORKFLOW_RUN_PENDING_APPROVAL",
         "commitStatus": "NOT_COMMITTED",
-        "blockingWorkOrderId": "wo-4542e876-531c-44d0-9e00-73026f9cbffb",
-        "blockingRunAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#work-order=wo-4542e876-531c-44d0-9e00-73026f9cbffb",
+        "blockingWorkOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "blockingRunAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -403,18 +403,18 @@
         "workflow": "nightly-build",
         "runs": [
           {
-            "workOrderId": "wo-4542e876-531c-44d0-9e00-73026f9cbffb",
-            "runId": "run-f3e09997-3bec-4e71-96d8-7ac34305c41a",
+            "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+            "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
             "workflowRevision": 1,
-            "createdAt": "2026-11-08T23:01:54.235Z",
-            "updatedAt": "2026-11-08T23:01:54.235Z",
+            "createdAt": "2026-11-08T23:30:27.751Z",
+            "updatedAt": "2026-11-08T23:30:27.751Z",
             "status": "AWAITING_APPROVAL",
             "outcome": null,
             "control": "RUNNING",
             "held": false,
             "awaitingApproval": true,
             "trigger": null,
-            "runPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#work-order=wo-4542e876-531c-44d0-9e00-73026f9cbffb"
+            "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b"
           }
         ],
         "simulatedIdentity": true
@@ -447,15 +447,15 @@
       "name": "status: awaiting approval",
       "args": [
         "status",
-        "wo-4542e876-531c-44d0-9e00-73026f9cbffb",
+        "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
         "--format",
         "aiws-graph-operator-view/1"
       ],
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-operator-view/1",
-        "workOrderId": "wo-4542e876-531c-44d0-9e00-73026f9cbffb",
-        "runId": "run-f3e09997-3bec-4e71-96d8-7ac34305c41a",
+        "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
         "graphId": "release-review",
         "graphDigest": "sha256:266e7ba076496cb10c857a8f2720b31ca8711b8215a639d758cf4a8c8a8ce189",
         "bindingRevision": "1",
@@ -522,10 +522,10 @@
           }
         ],
         "triggerRefusals": null,
-        "runPageAddress": "https://praxis-zvlnlvgnaw.localhost:49960/#work-order=wo-4542e876-531c-44d0-9e00-73026f9cbffb",
+        "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
         "simulatedIdentity": true
       },
-      "stderr": "Simulated identity: nothing decided on this host is a human decision.\nYour browser does not trust this host's certificate yet: run praxis trust --state C:\\Temp\\praxis-example-qb6KIQ\\installation first.\n"
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\nYour browser does not trust this host's certificate yet: run praxis trust --state C:\\Temp\\praxis-example-cql0g4\\installation first.\n"
     },
     {
       "name": "status: no such run",
@@ -542,7 +542,7 @@
         "code": "ENGINE",
         "message": "This host has no run with work order wo-nothing-here.",
         "hostCode": "NOT_FOUND",
-        "requestId": "9a26656a-c2ab-4dae-8105-2035ed1fced1",
+        "requestId": "da067eb3-1ad4-40f4-a4e8-bee8bf2620b8",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
@@ -597,10 +597,55 @@
         "format": "praxis-error/1",
         "exitCode": 1,
         "code": "CONNECTION",
-        "message": "Could not connect to the host at https://127.0.0.1:49960; is it running?",
+        "message": "Could not connect to the host at https://127.0.0.1:49889; is it running?",
         "simulatedIdentity": true
       },
-      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: Could not connect to the host at https://127.0.0.1:49960; is it running?\n"
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: Could not connect to the host at https://127.0.0.1:49889; is it running?\n"
+    },
+    {
+      "name": "graphs submit: outcome unknown (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "OUTCOME_UNKNOWN",
+        "message": "The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.",
+        "requestId": "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d",
+        "simulatedIdentity": true
+      },
+      "stderr": "praxis: The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.\n"
+    },
+    {
+      "name": "format not served (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 8,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 8,
+        "code": "FORMAT_NOT_SERVED",
+        "message": "The host does not serve aiws-graph-workflows/1: it serves aiws-graph-workflows/2. Upgrade the host or this client.",
+        "requestedFormat": "aiws-graph-workflows/1",
+        "servedFormats": [
+          "aiws-graph-workflows/2"
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "praxis: The host does not serve aiws-graph-workflows/1: it serves aiws-graph-workflows/2. Upgrade the host or this client.\n"
     },
     {
       "name": "not signed in (made)",
