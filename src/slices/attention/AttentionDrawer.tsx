@@ -49,8 +49,8 @@ const kindLabel = (item: AttentionItem) =>
 
 /**
  * The attention queue's drawer: every session waiting on the user, oldest first, across all
- * projects. A row focuses its terminal; a finished-turn row can be dismissed. Focusing a terminal
- * leaves its row in the queue: only input, a new turn or a dismiss clears a finished turn.
+ * projects. A row focuses its terminal; a finished-turn row can be dismissed. Focusing sends the
+ * queue no event, so the focused terminal's row stays until the queue itself clears it.
  */
 export const AttentionDrawer: FC<AttentionDrawerProps> = ({
   isOpen,
