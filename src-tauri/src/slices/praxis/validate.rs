@@ -139,6 +139,13 @@ impl Found {
             self.omitted.count(d.severity);
         }
     }
+
+    /// The diagnostics as a validation whose verdict is the first error's code, for a check
+    /// that is Quay's own rather than an SDK verdict.
+    pub(super) fn into_validation(self) -> Validation {
+        let verdict = self.kept.iter().find(|d| d.severity == Severity::Error).map(|d| d.code.clone());
+        Validation { verdict, diagnostics: self.kept, omitted: self.omitted }
+    }
 }
 
 /// Whether `value` serializes to at most `limit` bytes. Serialization stops as soon as it
