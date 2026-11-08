@@ -47,8 +47,9 @@ use slices::praxis::{
     praxis_reveal, praxis_save, praxis_validate,
 };
 use slices::praxis::host::{
-    praxis_cli_settings_read, praxis_cli_settings_write, praxis_host_cancel, praxis_host_condition, praxis_host_run,
-    praxis_host_runs, praxis_host_status, praxis_host_terminal_argv, praxis_host_workflow_show, praxis_host_workflows_list,
+    praxis_cli_settings_read, praxis_cli_settings_write, praxis_host_cancel, praxis_host_condition, praxis_host_graph_check,
+    praxis_host_graph_revisions, praxis_host_graph_run, praxis_host_graph_runs, praxis_host_graph_show, praxis_host_graph_status,
+    praxis_host_graph_submit, praxis_host_graph_withdraw, praxis_host_graphs_list, praxis_host_run, praxis_host_runs, praxis_host_status, praxis_host_terminal_argv, praxis_host_workflow_show, praxis_host_workflows_list,
     PraxisCli,
 };
 use slices::pty::{
@@ -330,6 +331,15 @@ pub fn run() {
             praxis_cli_settings_write,
             praxis_host_cancel,
             praxis_host_condition,
+            praxis_host_graph_check,
+            praxis_host_graph_revisions,
+            praxis_host_graph_run,
+            praxis_host_graph_runs,
+            praxis_host_graph_show,
+            praxis_host_graph_status,
+            praxis_host_graph_submit,
+            praxis_host_graph_withdraw,
+            praxis_host_graphs_list,
             praxis_host_run,
             praxis_host_runs,
             praxis_host_status,

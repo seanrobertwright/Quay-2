@@ -916,3 +916,14 @@ fn a_graph_record_in_a_format_quay_does_not_read_or_one_the_host_does_not_serve_
     assert_eq!(outcome, CallOutcome::NeedsUpdate { detail: case["stdout"]["message"].as_str().unwrap().to_string() });
     assert_eq!(h.condition(), HostCondition::NotCheckedYet);
 }
+
+#[test]
+fn graph_command_bounds_refuse_what_praxis_would_refuse() {
+    use super::commands::{check_page_limit, check_revision, MAX_PAGE_LIMIT};
+    assert_eq!(MAX_PAGE_LIMIT, 100);
+    assert!(check_page_limit(1).is_ok() && check_page_limit(100).is_ok());
+    assert_eq!(check_page_limit(0).unwrap_err(), "The limit must be from 1 to 100, not 0.");
+    assert!(check_page_limit(101).is_err());
+    assert!(check_revision(1).is_ok());
+    assert_eq!(check_revision(0).unwrap_err(), "A revision is a whole number from 1, not 0.");
+}
