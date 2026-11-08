@@ -2,7 +2,7 @@ import {
   TerminalInfo,
   PermissionMode,
   isAgentRunKind,
-  neverAsksBeforeTools,
+  offersAskToggle,
 } from "../terminal/types";
 import {
   Loader2,
@@ -205,7 +205,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
         )}
 
         {/* Live Permission Mode Switcher */}
-        {isAgent && !neverAsksBeforeTools(terminal.run_kind) && onToggleLiveMode && (
+        {offersAskToggle(terminal.run_kind) && onToggleLiveMode && (
           <button
             type="button"
             onClick={onToggleLiveMode}

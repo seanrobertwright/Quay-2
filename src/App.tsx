@@ -568,6 +568,10 @@ export function App() {
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenInVsCode={handleOpenInVsCode}
         onRelaunchTerminal={relaunchTerminal}
+        onToggleTerminalAsk={(id) => {
+          const term = terminals.find((t) => t.id === id);
+          if (term) toggleTerminalLiveMode(term.id, term.live_mode);
+        }}
       />
 
       {/* Main Workspace Stage */}

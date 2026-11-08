@@ -1,7 +1,11 @@
-import { useState, useRef, useEffect, MouseEvent, KeyboardEvent } from "react";
+import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types";
-import { AgentIcon } from "../terminal/AgentIcons";
+import { type TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types.ts";
+import { AgentIcon } from "../terminal/AgentIcons.tsx";
+import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
+import { RenameInput } from "../terminal/RenameInput.tsx";
+import { requestTerminal } from "../terminal/terminalRequests.ts";
+import { useContextMenu } from "../overlay/useContextMenu.ts";
 import {
   Terminal as TerminalIcon,
   X,
@@ -19,9 +23,11 @@ interface TerminalRowProps {
   terminal: TerminalInfo;
   isActive: boolean;
   onSelect: () => void;
-  onClose: (e: MouseEvent<HTMLButtonElement>) => void;
+  onClose: () => void;
   onRename?: (id: string, newName: string) => void;
   onRelaunch?: (id: string) => void;
+  /** Switches the terminal between Skip and Ask, as the status strip's mode switch does. */
+  onToggleAsk?: (id: string) => void;
 }
 
 export const TerminalRow = ({
@@ -32,12 +38,12 @@ export const TerminalRow = ({
   onClose,
   onRename,
   onRelaunch,
+  onToggleAsk,
 }: TerminalRowProps) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(terminal.name);
   const [hasRecentA2A, setHasRecentA2A] = useState(false);
   const [recentA2APrompt, setRecentA2APrompt] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const menu = useContextMenu<string>();
 
   const isAgent = isAgentRunKind(terminal.run_kind);
   const launchedModel = launchModel(terminal.custom_flags);
@@ -72,34 +78,9 @@ export const TerminalRow = ({
     };
   }, [terminal.id]);
 
-  useEffect(() => {
-    setEditValue(terminal.name);
-  }, [terminal.name]);
-
-  useEffect(() => {
-    if (isEditing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [isEditing]);
-
-  const handleSaveRename = () => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== terminal.name && onRename) {
-      onRename(terminal.id, trimmed);
-    }
+  const handleRenameDone = (newName: string | null) => {
+    if (newName !== null) onRename?.(terminal.id, newName);
     setIsEditing(false);
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleSaveRename();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setEditValue(terminal.name);
-      setIsEditing(false);
-    }
   };
 
   const renderIcon = () => {
@@ -242,15 +223,25 @@ export const TerminalRow = ({
   };
 
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
+      aria-haspopup="menu"
       onClick={onSelect}
+      // Right-click opens the terminal menu and leaves the selection as it is. The rename box
+      // keeps the native menu, with its Cut, Copy and Paste.
+      onContextMenu={(e) => {
+        if (!isEditing) menu.onContextMenu(e, terminal.id);
+      }}
       onKeyDown={(e) => {
-        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
+          return;
         }
+        menu.onKeyDown(e, terminal.id);
       }}
       className={`group flex flex-col gap-1 px-2.5 py-1.5 text-xs rounded-md cursor-pointer transition-colors ${
         isActive
@@ -267,16 +258,7 @@ export const TerminalRow = ({
           {renderIcon()}
 
           {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={handleSaveRename}
-              onKeyDown={handleKeyDown}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[#0d1117] text-white border border-[#58a6ff] rounded px-1.5 py-0.2 text-xs font-medium focus:outline-none w-36"
-            />
+            <RenameInput name={terminal.name} onDone={handleRenameDone} />
           ) : (
             <div className="flex items-center gap-1 min-w-0 truncate">
               <span
@@ -350,7 +332,10 @@ export const TerminalRow = ({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 hover:text-[#ff7b72] rounded transition-opacity"
             title="Close terminal"
             aria-label={`Close terminal ${terminal.name}`}
@@ -374,6 +359,31 @@ export const TerminalRow = ({
         )}
       </div>
     </div>
+
+      {/* Outside the row, whose click selects the terminal: the portal still bubbles React
+          events from the menu to the element that renders it. */}
+      {menu.open && (
+        <TerminalMenu
+          terminal={terminal}
+          surface={{ kind: "rail" }}
+          at={menu.open.at}
+          onClose={menu.close}
+          handlers={{
+            rename: () => setIsEditing(true),
+            relaunch: onRelaunch && (() => onRelaunch(terminal.id)),
+            toggleAsk: onToggleAsk && (() => onToggleAsk(terminal.id)),
+            showInFocusedPane: onSelect,
+            redraw: () => requestTerminal(terminal.id, "redraw"),
+            // The search shows in the terminal's pane, so the terminal is shown first.
+            find: () => {
+              onSelect();
+              requestTerminal(terminal.id, "find");
+            },
+            closeTerminal: onClose,
+          }}
+        />
+      )}
+    </>
   );
 };
 

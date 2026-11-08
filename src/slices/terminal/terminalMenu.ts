@@ -6,7 +6,7 @@
 // is shown disabled, with the reason as its hint.
 
 import type { ContextMenuItem } from "../overlay/ContextMenu.tsx";
-import { isAgentRunKind, neverAsksBeforeTools, type TerminalInfo } from "./types.ts";
+import { offersAskToggle, type TerminalInfo } from "./types.ts";
 
 /** What a terminal menu item asks for. */
 export type TerminalMenuAction =
@@ -58,14 +58,6 @@ export function terminalMenu(terminal: TerminalMenuTarget, surface: TerminalMenu
     { action: "closeTerminal", name: "Close terminal", group: "close", enabled: true },
   ];
   return items.filter((item) => item !== null);
-}
-
-/**
- * Whether a terminal of this run kind can switch between Skip and Ask: an agent whose CLI asks
- * before tool calls. The status strip's mode switch shows under the same rule.
- */
-export function offersAskToggle(kind: TerminalInfo["run_kind"]): boolean {
-  return isAgentRunKind(kind) && !neverAsksBeforeTools(kind);
 }
 
 /** The menu's accessible name, which names the terminal it acts on. */

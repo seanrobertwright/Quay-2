@@ -29,7 +29,7 @@ let invokeImpl: Invoke = (cmd) => Promise.reject(new Error(`no fake for ${cmd}`)
 Object.assign(window, { __TAURI_INTERNALS__: { invoke: (cmd: string, args: Record<string, unknown>) => invokeImpl(cmd, args) } });
 
 const globals = globalThis as Record<string, unknown>;
-for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "KeyboardEvent", "MouseEvent", "getComputedStyle"]) {
+for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle"]) {
   // Node's own `navigator` is a getter, so each global is defined rather than assigned.
   Object.defineProperty(globalThis, key, { value: (window as unknown as Record<string, unknown>)[key], configurable: true, writable: true });
 }
