@@ -1,4 +1,4 @@
-import { FC, useEffect, useId, useRef, useState } from "react";
+import { type FC, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
@@ -13,9 +13,9 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { TerminalInfo } from "../terminal/types";
-import { AgentIcon } from "../terminal/AgentIcons";
-import { formatDateTime, formatDuration, formatRelative } from "../../lib/dates";
+import type { TerminalInfo } from "../terminal/types.ts";
+import { AgentIcon } from "../terminal/AgentIcons.tsx";
+import { formatDateTime, formatDuration, formatRelative } from "../../lib/dates.ts";
 import {
   agentName,
   formatUsd,
@@ -26,8 +26,8 @@ import {
   stageTextClass,
   STATUS_LABEL,
   statusBadgeClass,
-} from "./format";
-import { CheckResult, HoldReason, MachinaWorkOrder, StageRecord } from "./types";
+} from "./format.ts";
+import type { CheckResult, HoldReason, MachinaWorkOrder, StageRecord } from "./types.ts";
 
 export type RunAction = (
   label: string,
@@ -624,14 +624,14 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
               disabled={isBusy}
               onClick={() =>
                 run(
-                  "Merge",
+                  "Accept",
                   () => invoke("machina_accept_and_merge", { workOrderId: wo.id }),
                   `${wo.id} squash-merged into ${wo.baseBranch}.`
                 )
               }
             >
               <GitMerge className="w-3.5 h-3.5" aria-hidden="true" />
-              Squash-merge into {wo.baseBranch}
+              Accept: squash-merge into {wo.baseBranch}
             </button>
             <p className="text-[11px] text-[#8b949e]">
               The main checkout at {wo.repoPath} must be on {wo.baseBranch} with no uncommitted changes to tracked

@@ -1,41 +1,50 @@
 # Machina Software Factory Cockpit
 
-**Machina** is an industrial-grade AI software manufacturing engine built on deterministic state machines, deliverable gates, and formal work orders.
+**Machina is Quay's local factory.** It runs inside Quay 2 on this machine, with no host, no sign-in and no browser. An agent does each piece of work, a **work order**, in its own git worktree; your project's own checks gate it; and you **Accept** it to squash-merge it into its base branch. Every decision on a work order is made in Quay.
 
-Quay 2 features an embedded, native **Machina Cockpit** (`Ctrl+Shift+B F`), providing direct oversight over automated software production pipelines without external servers.
+The **Factory Station** (`Ctrl+Shift+B F`) is Machina's cockpit. Its title reads **Machina: local**. Open it with the shortcut, the stage's **Factory** button, or **Machina Factory Station...** in the command palette.
+
+## Machina is not Praxis
+
+[Praxis](./praxis-builder.md) is the AI-WS-SDK's workflow engine, and it runs on a Praxis host. The two engines stay side by side and never mix (ADR 0006 in `.scratch/machina-praxis/adr/`):
+
+| | Machina | Praxis |
+| --- | --- | --- |
+| Where it runs | In Quay, on this machine | On a Praxis host |
+| Sign-in | None | `praxis login` |
+| Its words | Work order, hold, Accept | Run, decision |
+| Where you decide | In the Factory Station | In the host's browser page |
+| Its surface in Quay | The Factory Station | The Praxis Builder |
+
+A Machina work order never becomes a Praxis run, and neither surface lists or links to the other's work.
 
 ---
 
-## Architecture & Native Sidecar Supervision
+## How a work order moves
 
 ```mermaid
 flowchart LR
-    Quay["Quay 2 Desktop"] --> Supervisor["Rust Praxis Supervisor"]
-    Supervisor --> Node["Embedded Node 24 Runtime"]
-    Node --> DB[("%LOCALAPPDATA%\Quay2\praxis\praxis.db")]
-    Supervisor --> Cockpit["Machina Cockpit UI (Ctrl+Shift+B F)"]
-    
-    Cockpit --> Stages["Pipeline Stages (Spec -> Design -> Code -> Verify)"]
-    Cockpit --> Gates["Deliverable Gate Checkpoints"]
-    Cockpit --> Holds["Human-in-the-Loop Holds"]
+    Admission["Admission"] --> Scaffold["Worktree & vault"]
+    Scaffold --> Author["Author agent"]
+    Author --> Gate["Gate"]
+    Gate -->|fails| Corrections["Corrections"]
+    Corrections --> Author
+    Gate -->|passes| Accept["Accept: squash-merge"]
 ```
 
-### 1. In-Process Sidecar Management
-- Automatically manages headless Node.js runtimes in background mode.
-- Initializes and migrates SQLite schemas in `%LOCALAPPDATA%\Quay2\praxis\praxis.db`.
-- Recovers work orders and active jobs cleanly across application restarts.
+1. **Admission.** Out-of-scope and protected-path checks, and the work orders it depends on.
+2. **Worktree & vault.** Quay creates the branch `machina/wo-<n>` in a git worktree under `.machina/worktrees/`, copies `.machina/holdbacks/` to a vault outside the repository, hides the holdbacks from the worktree and runs the setup commands.
+3. **Author agent.** You launch the author agent in the worktree and send it the brief.
+4. **Gate.** The gate commits the candidate, checks the changed paths, runs the pre-PR audit and the Tier 1 commands, then, only when Tier 1 is green, the Tier 2 commands with the holdbacks restored. The author sees Tier 2 failures only as `HOLDOUT_FAIL:` lines.
+5. **Corrections.** A failed gate goes back to the author, up to the work order's limit.
+6. **Accept.** A work order whose gate passed offers **Accept: squash-merge into** its base branch. The main checkout must be on that branch with no uncommitted changes to tracked files.
 
-### 2. Milestone Stages & Deliverable Gates
-Machina divides engineering work into deterministic stages:
-1. **Intake & Scope**: Validates work order requirements and capability manifests.
-2. **Architecture & Contract**: Ratifies interfaces, schemas, and schemas before code is generated.
-3. **Implementation**: Dispatches autonomous worker agents against isolated worktrees.
-4. **Verification & Audit**: Validates deliverables through test runners, linters, and security audit gates.
+Each repository describes its gate in `.machina/factory.json`. Its commands run only after you approve that exact file in **Factory config**.
 
-### 3. Human-in-the-Loop Hold Resolution
-When a deliverable fails verification or requires human discretion (e.g. destructive schema migration or unexpected breaking change), Machina enters a **HOLD** state.
+## Holds
 
-The Quay 2 Cockpit highlights held work orders in amber, allowing the operator to:
-- Review the proposed deliverable diff.
-- Provide clarification or revised instructions.
-- Ratify and release the hold with 1 click.
+A hold stops a work order until you resolve it in the Factory Station. Machina raises one only for a real condition: scope drift, an overlap with a protected path, too many corrections, a gate that couldn't judge, a spent budget, or a work order an agent submitted that waits for you to admit it.
+
+## Where Machina keeps its state
+
+Work orders are kept in `%LOCALAPPDATA%\Quay2\machina\state.json`, and holdback vaults under `%LOCALAPPDATA%\Quay2\machina\vault\`. The **Epoch** chip counts Quay starts: work cut off by a restart is marked **Interrupted** and can be resumed.

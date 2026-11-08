@@ -1,11 +1,11 @@
-import { RunKind } from "../terminal/types";
-import {
+import type { RunKind } from "../terminal/types.ts";
+import type {
   CheckOutcome,
   GateVerdict,
   StageId,
   StageStatus,
   WorkOrderStatus,
-} from "./types";
+} from "./types.ts";
 
 /** "$1.23"; amounts under a cent but above zero read "<$0.01". */
 export function formatUsd(v: number): string {

@@ -65,7 +65,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+Shift+B Q` | **Waiting on You** | Toggles the attention drawer: every session waiting on you across all projects, oldest first. A row focuses its terminal; a finished turn can be dismissed. The **Waiting** badge in the status strip opens it too |
 | `Ctrl+Shift+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
-| `Ctrl+Shift+B F` | **Machina** | Opens native AI Software Factory cockpit |
+| `Ctrl+Shift+B F` | **Machina** | Opens the [Factory Station](../features/machina-praxis.md), Quay's local factory: work orders, holds and Accept |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Toggles the [Praxis Builder](../features/praxis-builder.md), which lists the project's `.praxis/` definitions and shows a graph you can edit on the canvas and in the inspector, undo with `Ctrl+Z`, redo with `Ctrl+Shift+Z` or `Ctrl+Y`, and save with `Ctrl+S` (`Cmd` on macOS). `Ctrl+F` goes to a node by id or kind, and `Tab`, `Enter`, the arrow keys and `Delete` work the canvas without a mouse. Press `?` in the canvas for the rest of its keys |
 | `Ctrl+Shift+B C` | **Topos** | Toggles Topos, the Git cockpit, for the project or worktree selected in the Rail. It needs git 2.36 or newer |
 | `Ctrl+Shift+B M` | **Mission Control** | Opens Mission Control, where you send messages to agents on the A2A bus and read its message trail |

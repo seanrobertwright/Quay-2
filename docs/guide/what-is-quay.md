@@ -4,7 +4,7 @@
 
 While AI coding tools such as **Claude Code**, **Antigravity CLI**, **OpenAI Codex**, **Pi**, **Google Gemini CLI**, and **Aider** have revolutionized autonomous engineering, supervising multiple long-running agents simultaneously in conventional terminal emulators or console multiplexers is fragmented and error-prone.
 
-Quay 2 solves this by bridging the raw execution speed of the native **Windows ConPTY** API with an embedded **Agent-to-Agent (A2A) MCP orchestration bus**, an integrated **Archon & Spec-Driven Development (SDD) Graph Inspector**, a native **Machina Software Factory cockpit**, and deep **Git Worktree** isolation.
+Quay 2 solves this by bridging the raw execution speed of the native **Windows ConPTY** API with an embedded **Agent-to-Agent (A2A) MCP orchestration bus**, an integrated **Archon & Spec-Driven Development (SDD) Graph Inspector**, **Machina**, Quay's local software factory, and deep **Git Worktree** isolation.
 
 ---
 
