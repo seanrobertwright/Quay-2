@@ -211,3 +211,20 @@ test("a record that passes every check is valid, and the shape check's issues sh
   assert.match(text(bad.root), /The version must be 1\./);
   assert.deepEqual(bad.verdicts, ["INVALID_FIELD"]);
 });
+
+test("a binding of another graph isn't flagged as missing, though only the chosen graph's are offered", async () => {
+  fakeBackend({ grants: [], diagnostics: [] });
+  const { root } = await render({ ...WORKFLOW, graphBindingId: "other-1" });
+  const binding = field(root, "Graph binding");
+  assert.doesNotMatch(binding.messages, /No graph binding has this id/);
+  assert.deepEqual(binding.options, ["g-1", "g-2"]);
+});
+
+test("a contract no saved record has carries no grants and gets no link", async () => {
+  fakeBackend({ grants: [], diagnostics: [issue("NOT_FOUND", "/contractId", "No saved contract has the id nope.")] });
+  const { root } = await render({ ...WORKFLOW, contractId: "nope" });
+  const grants = sectionTitled(root, "Grants");
+  assert.match(text(grants), /No saved contract has the id nope, so there are no grants to carry\./);
+  assert.doesNotMatch(text(grants), /lists no grants/);
+  assert.equal([...(grants?.querySelectorAll("button") ?? [])].length, 0);
+});

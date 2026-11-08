@@ -82,6 +82,8 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   const set = (key: string, value: string) => onEdit({ type: "set-field", key, value, live: true });
   const bindingsOfGraph = [...new Set(graphBindings.filter((b) => b.graphId === graphId).map((b) => b.id))];
   const grants = check.state === "done" ? check.check.grants : null;
+  // A contract that isn't saved has no bindings file, so the grant set says why it is empty.
+  const contractMissing = check.state === "done" && check.check.diagnostics.some((d) => d.path === "/contractId" && d.code === "NOT_FOUND");
 
   const fields = (
     <>
@@ -112,14 +114,15 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
           label="Graph binding"
           noun="graph binding"
           value={asString(w.graphBindingId)}
-          known={bindingsOfGraph}
+          known={graphBindings.map((b) => b.id)}
+          offered={bindingsOfGraph}
           issues={at("/graphBindingId")}
           onChange={(v) => set("graphBindingId", v)}
           onOpen={onOpen}
           hint={graphId ? `How each node of ${graphId} runs. Only that graph's bindings are offered.` : "Pick a graph first to see its bindings."}
         />
       </Section>
-      <GrantSet contractId={contractId} grants={grants} onOpen={onOpen} />
+      <GrantSet contractId={contractId} grants={grants} missing={contractMissing} onOpen={onOpen} />
     </>
   );
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
@@ -154,22 +157,25 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
 };
 
 /**
- * A picker for the id of another record: a text field with the known ids as suggestions, which
- * also takes an id no record has and flags it as missing, unless a local check already says
- * so. An id that isn't filename-safe is refused inline and not applied.
+ * A picker for the id of another record: a text field suggesting `offered`, or every `known` id,
+ * which also takes an id no record has and flags it as missing, unless a local check already
+ * says so. An id that isn't filename-safe is refused inline and not applied.
  */
 const IdPicker: FC<{
   label: string;
   noun: string;
   value: string;
+  /** The ids of the records of the kind, which aren't missing. */
   known: readonly string[];
+  /** The ids the field suggests, when only some of the known ones fit; all of them otherwise. */
+  offered?: readonly string[];
   issues: readonly Diagnostic[] | undefined;
   /** The kind Open opens a known id as; without it there is no Open. */
   openAs?: PraxisKind;
   hint: string;
   onChange: (value: string) => void;
   onOpen: (ref: DefinitionRef) => void;
-}> = ({ label, noun, value, known, issues, openAs, hint, onChange, onOpen }) => {
+}> = ({ label, noun, value, known, offered = known, issues, openAs, hint, onChange, onOpen }) => {
   const id = useId();
   const optionsId = useId();
   const messagesId = useId();
@@ -208,7 +214,7 @@ const IdPicker: FC<{
           {...described(messagesId, shown, hintId)}
         />
         <datalist id={optionsId}>
-          {known.map((k) => (
+          {offered.map((k) => (
             <option key={k} value={k} />
           ))}
         </datalist>
@@ -232,13 +238,16 @@ const IdPicker: FC<{
 };
 
 /** The grant set the graph workflow carries: its contract's bindings file's grants, read-only. */
-const GrantSet: FC<{ contractId: string; grants: readonly string[] | null; onOpen: (ref: DefinitionRef) => void }> = ({
-  contractId,
-  grants,
-  onOpen,
-}) => {
+const GrantSet: FC<{
+  contractId: string;
+  grants: readonly string[] | null;
+  /** No saved contract has `contractId`, so there is nothing to carry or link to. */
+  missing: boolean;
+  onOpen: (ref: DefinitionRef) => void;
+}> = ({ contractId, grants, missing, onOpen }) => {
   let body: ReactNode;
   if (contractId === "") body = <p className={hintClass}>Pick a contract: the grants are its bindings file&apos;s.</p>;
+  else if (missing) body = <p className={hintClass}>No saved contract has the id {contractId}, so there are no grants to carry.</p>;
   else if (grants === null) body = <p className={hintClass}>Reading the grants…</p>;
   else if (grants.length === 0) body = <p className={hintClass}>Contract {contractId}&apos;s bindings file lists no grants.</p>;
   else
@@ -257,7 +266,7 @@ const GrantSet: FC<{ contractId: string; grants: readonly string[] | null; onOpe
         The grants this graph workflow carries are its contract&apos;s, from its bindings file. Change them on the contract.
       </p>
       {body}
-      {contractId !== "" && (
+      {contractId !== "" && !missing && (
         <button type="button" onClick={() => onOpen({ kind: "contracts", id: contractId })} className="text-xs text-[#58a6ff] hover:underline">
           Open contract {contractId}
         </button>
