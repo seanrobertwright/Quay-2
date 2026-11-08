@@ -23,7 +23,7 @@ export interface OpenContextMenu<T> {
 export type MenuOpener = HTMLElement | (() => HTMLElement | null);
 
 /** Whether a keydown opens a context menu: Shift+F10 or the Menu key, with no other modifier. */
-export function isContextMenuKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): boolean {
+function isContextMenuKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): boolean {
   if (e.ctrlKey || e.altKey || e.metaKey) return false;
   return (e.key === "F10" && e.shiftKey) || e.key === "ContextMenu";
 }
