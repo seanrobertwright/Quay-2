@@ -377,14 +377,13 @@ const GraphLanes = React.memo<{
 
 const jumpTitle = (store: GraphStore, track: number) => `Scroll to where ${store.trackLabel(track)} starts`;
 
+/** The color of a track's lane, as its dot shows it in the strip and in the More menu. */
+const trackColor = (store: GraphStore, track: number) => slotColor(store.trackSlot(track));
+
 /** A track's color dot and name, as the strip shows it. */
 const TrackName: React.FC<{ store: GraphStore; track: number }> = ({ store, track }) => (
   <>
-    <span
-      aria-hidden="true"
-      className="w-2 h-2 shrink-0 rounded-full"
-      style={{ background: slotColor(store.trackSlot(track)) }}
-    />
+    <span aria-hidden="true" className="w-2 h-2 shrink-0 rounded-full" style={{ background: trackColor(store, track) }} />
     <span className="truncate">{store.trackLabel(track)}</span>
   </>
 );
@@ -401,21 +400,21 @@ const TrackStrip = React.memo<{
   topRow: number;
   onJump: (row: number) => void;
 }>(function TrackStrip({ store, topRow, onJump }) {
-  // Where the More menu opens while it is open: under its button, their right edges lined up. It
-  // is the shared context menu (#510), which closes on a scroll, so it never rebuilds per frame.
-  const [menuPoint, setMenuPoint] = useState<MenuPoint | null>(null);
+  // The More menu while it is open: where it opens, under its button with their right edges lined
+  // up, and which item takes focus. It closes on a scroll, so it never rebuilds per frame.
+  const [menuOpen, setMenuOpen] = useState<{ at: MenuPoint; focus: "first" | "last" } | null>(null);
   const menuId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const tracks = store ? store.tracksPassing(topRow) : [];
   const { shown, more } = splitStrip(tracks);
-  const open = menuPoint !== null && more.length > 0;
+  const open = menuOpen !== null && more.length > 0;
 
-  const show = () => {
+  const show = (focus: "first" | "last") => {
     const box = trigger.current?.getBoundingClientRect();
-    if (box) setMenuPoint({ x: box.right, y: box.bottom + 4 });
+    if (box) setMenuOpen({ at: { x: box.right, y: box.bottom + 4 }, focus });
   };
   const close = useCallback((refocus: boolean) => {
-    setMenuPoint(null);
+    setMenuOpen(null);
     if (refocus) trigger.current?.focus();
   }, []);
 
@@ -450,11 +449,11 @@ const TrackStrip = React.memo<{
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}
             aria-label={`+${more.length.toLocaleString()} more ${more.length === 1 ? "track" : "tracks"} above`}
-            onClick={() => (open ? close(false) : show())}
+            onClick={() => (open ? close(false) : show("first"))}
             onKeyDown={(e) => {
               if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
               e.preventDefault();
-              show();
+              show(e.key === "ArrowDown" ? "first" : "last");
             }}
             className="px-1.5 py-0.5 rounded text-[11px] text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
           >
@@ -468,11 +467,13 @@ const TrackStrip = React.memo<{
                 name: store.trackLabel(t.track),
                 enabled: true,
                 group: "tracks",
-                swatch: slotColor(store.trackSlot(t.track)),
+                swatch: trackColor(store, t.track),
+                title: jumpTitle(store, t.track),
                 onChoose: () => onJump(t.startRow),
               }))}
-              at={menuPoint}
+              at={menuOpen.at}
               align="end"
+              focus={menuOpen.focus}
               onClose={close}
               anchorRef={trigger}
             />
