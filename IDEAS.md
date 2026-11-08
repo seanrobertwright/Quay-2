@@ -158,10 +158,12 @@ Two notebook pages, kept in `.ideas/`. The numbers are the notebook's own.
 * **7.** **Open-project dialog: double-click opens a folder, not the project.**
   Double-clicking a folder in `OpenProjectDialog` should show its
   sub-directories. Only the "Open" button opens the project. (The top of the
-  page is cut off; this is the legible part.)
+  page is cut off; this is the legible part.) Ticket #512.
 * **8.** **A context menu for each area.** Only the Topos graph and the Praxis
-  builder have context menus today. The rail, terminals, stage, and project
-  list need ones that fit what they show.
+  builder have context menus today. Planned in spec #506: menus for project,
+  worktree, and terminal rows in the Rail, for pane headers, and for the
+  terminal body, on one shared menu, and no browser menu on right-click
+  anywhere else. Tickets #507 to #511.
 * **9.** **Run PowerShell with administrator privileges.** An elevated process
   cannot run inside a terminal owned by a non-elevated Quay, so this needs
   an elevated helper and a clear marker on elevated panes. Treat it as a
@@ -183,7 +185,7 @@ or L.
 | Priority | Feature | Effort | Why this rank |
 | :--- | :--- | :--- | :--- |
 | **P1** | **Attention queue** (idea 11) | M | With several agents and Archon runs at once, a missed prompt stalls work. The bridge already raises an event, with a chime, when a session asks for permission. |
-| **P2** | **Context menus** (idea 8) and **open-project double-click** (idea 7) | S–M | Daily friction in the core UI; small, independent changes. |
+| **P2** | **Context menus** (idea 8) and **open-project double-click** (idea 7) | S–M | Daily friction in the core UI; small, independent changes. Specified in #506 (tickets #507 to #511) and #512; start with #507. |
 | **P3** | **Visual "What's Next?" Pipeline Runner** | M | Removes prompt copy-pasting from the `/ask-sean` workflow. Its cards can feed the attention queue. |
 | **P4** | **Drag and drop** for projects and terminals (idea 10) | M | Layout comfort; needs a decision on what a drop changes (order, pane, worktree). |
 | **P5** | **Agentic group chat** (idea 2) | L | High value, and builds on the A2A bus and council preset, but needs a design for turns, consensus, and cost limits. |
