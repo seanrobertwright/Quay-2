@@ -1,4 +1,4 @@
-// The fields the record forms share (#223): the contract, grant, trigger and template forms lay these out in
+// The fields the record forms share (#223): the contract, grant, trigger, template and graph workflow forms lay these out in
 // sections. Integer and time inputs refuse what can't be stored as the user types; the
 // SDK's issues, and any inline check a form adds, show under the field they are about.
 import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";

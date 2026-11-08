@@ -44,7 +44,8 @@ pub async fn praxis_list(
     blocking(move || store::list_definitions(&project_root(&workspace, &project_path)?, kind)).await
 }
 
-/// Reads one definition, and a graph's layout file or a contract's bindings file.
+/// Reads one definition, and a graph's layout file, a contract's bindings file or a trigger's
+/// target file.
 #[tauri::command]
 pub async fn praxis_read(
     project_path: String,
