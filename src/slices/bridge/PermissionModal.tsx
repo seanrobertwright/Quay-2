@@ -1,4 +1,4 @@
-import { FC, useState, useEffect } from "react";
+import { FC, useState, useEffect, useId } from "react";
 import {
   ShieldAlert,
   Check,
@@ -9,8 +9,10 @@ import {
   Sparkles,
   Command as CommandIcon,
   CheckCheck,
+  Clock,
 } from "lucide-react";
 import { TerminalInfo } from "../terminal/types";
+import type { PermissionItem } from "../attention/attentionQueue";
 
 export interface PermissionRequestPayload {
   requestId: string;
@@ -22,7 +24,8 @@ export interface PermissionRequestPayload {
 }
 
 interface PermissionModalProps {
-  pendingRequests: PermissionRequestPayload[];
+  /** The requests to show, from the attention queue; the first is shown when the modal opens. */
+  pendingRequests: PermissionItem[];
   terminals: TerminalInfo[];
   onResolve: (
     requestId: string,
@@ -30,13 +33,17 @@ interface PermissionModalProps {
     reason?: string,
     rememberForSession?: boolean
   ) => void;
+  /** Hides the modal and leaves the shown requests waiting in the attention queue. */
+  onLater: () => void;
 }
 
 export const PermissionModal: FC<PermissionModalProps> = ({
   pendingRequests,
   terminals,
   onResolve,
+  onLater,
 }) => {
+  const denyReasonId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [denyReason, setDenyReason] = useState("");
   const [copied, setCopied] = useState(false);
@@ -51,11 +58,12 @@ export const PermissionModal: FC<PermissionModalProps> = ({
   if (pendingRequests.length === 0) return null;
 
   const currentReq = pendingRequests[currentIndex] || pendingRequests[0];
-  const targetTerminal = terminals.find((t) => t.id === currentReq.tag);
+  const targetTerminal = terminals.find((t) => t.id === currentReq.terminalId);
+  // The tool's arguments, in whatever shape the agent sent them
+  const input: any = currentReq.input;
 
   // Format tool arguments / payload
   const renderInputPayload = () => {
-    const input = currentReq.input;
     if (!input) return <span className="text-[#8b949e] italic">No parameters provided</span>;
 
     if (currentReq.tool === "Bash" || currentReq.tool === "bash") {
@@ -102,9 +110,9 @@ export const PermissionModal: FC<PermissionModalProps> = ({
 
   const copyPayload = () => {
     const raw =
-      typeof currentReq.input === "object"
-        ? currentReq.input.command || JSON.stringify(currentReq.input, null, 2)
-        : String(currentReq.input);
+      typeof input === "object" && input !== null
+        ? input.command || JSON.stringify(input, null, 2)
+        : String(input);
     navigator.clipboard.writeText(raw);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -157,6 +165,7 @@ export const PermissionModal: FC<PermissionModalProps> = ({
                 type="button"
                 disabled={currentIndex === 0}
                 onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                aria-label="Previous request"
                 className="p-1 hover:bg-[#30363d] text-[#c9d1d9] disabled:opacity-30 rounded cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -170,6 +179,7 @@ export const PermissionModal: FC<PermissionModalProps> = ({
                 onClick={() =>
                   setCurrentIndex((prev) => Math.min(pendingRequests.length - 1, prev + 1))
                 }
+                aria-label="Next request"
                 className="p-1 hover:bg-[#30363d] text-[#c9d1d9] disabled:opacity-30 rounded cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -221,10 +231,11 @@ export const PermissionModal: FC<PermissionModalProps> = ({
           {/* Optional Denial Reason input */}
           <div className="space-y-1 pt-1">
             <div className="flex items-center justify-between text-[11px] text-[#8b949e]">
-              <span>Feedback on Deny (optional):</span>
+              <label htmlFor={denyReasonId}>Feedback on Deny (optional):</label>
               <span className="text-[10px] text-[#6e7681]">Sent back to Claude</span>
             </div>
             <input
+              id={denyReasonId}
               type="text"
               value={denyReason}
               onChange={(e) => setDenyReason(e.target.value)}
@@ -236,14 +247,26 @@ export const PermissionModal: FC<PermissionModalProps> = ({
 
         {/* Modal Actions */}
         <div className="px-4 py-3 bg-[#0d1117] border-t border-[#30363d] flex items-center justify-between">
-          <button
-            type="button"
-            onClick={handleDeny}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#da3633] hover:bg-[#f85149] text-white rounded-md text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>Deny</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDeny}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#da3633] hover:bg-[#f85149] text-white rounded-md text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Deny</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onLater}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] rounded-md text-xs font-semibold transition-colors cursor-pointer"
+              title="Hide this for now. The request keeps waiting and counting in Waiting on you"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Later</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2">
             <button

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
@@ -8,8 +8,10 @@ import {
   applyAttentionEvent,
   attentionItems,
   emptyAttentionQueue,
+  modalPermissions,
   type AttentionItem,
   type PendingPermission,
+  type PermissionItem,
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
 
@@ -26,7 +28,31 @@ const toPendingPermission = (
   terminalId: payload.tag ?? null,
   project: projectOf(terminals, payload.tag),
   tool: payload.tool,
+  input: payload.input,
+  reason: payload.reason,
 });
+
+export interface AttentionQueueView {
+  /** Every waiting item, oldest first. */
+  items: AttentionItem[];
+  /** The permission requests the permission modal shows, oldest first; none when it is closed. */
+  modalPermissions: PermissionItem[];
+  /** Puts `requestIds` off with Later: they leave the modal and stay in the queue. */
+  deferPermissions: (requestIds: readonly string[]) => void;
+  /** Shows deferred `requestIds` in the permission modal again. */
+  reopenPermissions: (requestIds: readonly string[]) => void;
+  /**
+   * Sends the user's answer to the backend and clears the request once the backend takes it.
+   * The request also clears on the backend's `permission-resolved`, but that is not sent when the
+   * agent has stopped waiting, so the answer clears it here too.
+   */
+  answerPermission: (
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+    rememberForSession?: boolean
+  ) => Promise<void>;
+}
 
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
@@ -39,9 +65,9 @@ const toPendingPermission = (
  * `terminal-status` that moves the terminal to Working, for the CLIs that send no turn start
  * (Codex goes Working on its first tool; Antigravity on its own turn report).
  *
- * Returns the waiting items, oldest first.
+ * Returns the waiting items, the requests the permission modal shows, and the user's actions on them.
  */
-export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
+export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
 
   // Listeners read the project of the terminal an event names at the time it arrives
@@ -110,5 +136,38 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
     };
   }, []);
 
-  return useMemo(() => attentionItems(queue), [queue]);
+  const deferPermissions = useCallback(
+    (requestIds: readonly string[]) => dispatch({ type: "permissionsDeferred", requestIds }),
+    []
+  );
+  const reopenPermissions = useCallback(
+    (requestIds: readonly string[]) => dispatch({ type: "permissionsReopened", requestIds }),
+    []
+  );
+  const answerPermission = useCallback<AttentionQueueView["answerPermission"]>(
+    async (requestId, decision, reason, rememberForSession = false) => {
+      try {
+        await invoke("resolve_permission", {
+          requestId,
+          decision,
+          reason: reason || null,
+          rememberForSession,
+        });
+        dispatch({ type: "permissionResolved", requestId });
+      } catch (err) {
+        console.error("Failed to resolve permission:", err);
+      }
+    },
+    []
+  );
+
+  const items = useMemo(() => attentionItems(queue), [queue]);
+  const modal = useMemo(() => modalPermissions(queue), [queue]);
+  return {
+    items,
+    modalPermissions: modal,
+    deferPermissions,
+    reopenPermissions,
+    answerPermission,
+  };
 }

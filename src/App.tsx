@@ -126,14 +126,23 @@ export function App() {
     openInVsCode,
   } = useWorkspace();
 
-  const { events, activeTools, pendingPermissions, resolvePermission, getTerminalEvents } =
-    useBridgeEvents();
-  const waitingItems = useAttentionQueue(terminals);
+  const { events, activeTools, getTerminalEvents } = useBridgeEvents();
+  const {
+    items: waitingItems,
+    modalPermissions,
+    deferPermissions,
+    reopenPermissions,
+    answerPermission,
+  } = useAttentionQueue(terminals);
+  // Every permission request still waiting, deferred or not
+  const pendingPermissionIds = useMemo(
+    () => waitingItems.flatMap((item) => (item.kind === "permission" ? [item.requestId] : [])),
+    [waitingItems]
+  );
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
 
-  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
   const [detectedUpdate, setDetectedUpdate] = useState<UpdateInfo | null>(null);
   const [worktreeRemovalPrompt, setWorktreeRemovalPrompt] = useState<WorktreeRemovalPrompt | null>(
     null
@@ -191,13 +200,6 @@ export function App() {
 
     return () => clearTimeout(timer);
   }, [setIsUpdateModalOpen]);
-
-  // Auto-surface permission approval modal when a tool requests approval
-  useEffect(() => {
-    if (pendingPermissions.length > 0) {
-      setIsPermissionModalOpen(true);
-    }
-  }, [pendingPermissions.length]);
 
   const currentTool = activeTerminalId ? activeTools[activeTerminalId] : null;
   const currentEvents = getTerminalEvents(activeTerminalId);
@@ -587,7 +589,7 @@ export function App() {
         splitRatio={splitRatio}
         zoomedFromLayout={zoomedFromLayout}
         activeTool={currentTool}
-        pendingPermissionsCount={pendingPermissions.length}
+        pendingPermissionsCount={pendingPermissionIds.length}
         waitingCount={waitingItems.length}
         diffCount={diffCount}
         claudeStats={claudeStats}
@@ -603,12 +605,12 @@ export function App() {
         onSplitGrid={splitGrid}
         onNewTerminal={() => setIsNewTerminalOpen(true)}
         onOpenActionLog={() => setIsActionLogOpen(true)}
-        onOpenPermissionModal={() => setIsPermissionModalOpen(true)}
+        onOpenPermissionModal={() => reopenPermissions(pendingPermissionIds)}
         onOpenAttentionQueue={() => {
           // Until the queue has its drawer, the badge goes to the item that has waited longest
           const oldest = waitingItems[0];
           if (!oldest) return;
-          if (oldest.kind === "permission") setIsPermissionModalOpen(true);
+          if (oldest.kind === "permission") reopenPermissions([oldest.requestId]);
           else selectTerminal(oldest.terminalId);
         }}
         onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
@@ -725,17 +727,13 @@ export function App() {
         activeTerminalId={activeTerminalId}
       />
 
-      {/* Interactive Tool Approval Modal */}
-      {isPermissionModalOpen && pendingPermissions.length > 0 && (
+      {/* Interactive Tool Approval Modal: open while the queue holds a request not put off with Later */}
+      {modalPermissions.length > 0 && (
         <PermissionModal
-          pendingRequests={pendingPermissions}
+          pendingRequests={modalPermissions}
           terminals={terminals}
-          onResolve={(reqId, decision, reason, remember) => {
-            resolvePermission(reqId, decision, reason, remember);
-            if (pendingPermissions.length <= 1) {
-              setIsPermissionModalOpen(false);
-            }
-          }}
+          onResolve={answerPermission}
+          onLater={() => deferPermissions(modalPermissions.map((request) => request.requestId))}
         />
       )}
 
