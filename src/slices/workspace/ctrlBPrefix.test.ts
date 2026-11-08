@@ -53,6 +53,7 @@ function recordingActions(calls: string[]): CtrlBActions {
     togglePraxisBuilder: record("togglePraxisBuilder"),
     toggleTopos: record("toggleTopos"),
     toggleUpdateModal: record("toggleUpdateModal"),
+    toggleAttentionQueue: record("toggleAttentionQueue"),
     openA2A: record("openA2A"),
     focusNextPane: record("focusNextPane"),
     toggleZoom: record("toggleZoom"),
@@ -188,6 +189,8 @@ test("every Ctrl+Shift+B chord keeps its key and is swallowed", () => {
     ["c", "toggleTopos"],
     ["C", "toggleTopos"],
     ["u", "toggleUpdateModal"],
+    ["q", "toggleAttentionQueue"],
+    ["Q", "toggleAttentionQueue"],
     ["m", "openA2A"],
     ["o", "focusNextPane"],
     ["Z", "toggleZoom"],
@@ -225,7 +228,7 @@ test("a non-chord key after Ctrl+Shift+B ends the prefix and reaches the termina
   const handle = createCtrlBKeyHandler(createCtrlBPrefix(fakeClock().clock), recordingActions(calls));
 
   handle(keydown("B", { ctrlKey: true, shiftKey: true }));
-  for (const key of ["q", "z"]) {
+  for (const key of ["y", "z"]) {
     const event = keydown(key);
     assert.equal(handle(event), false, `${key} is left for the terminal`);
     assert.equal(event.defaultPrevented || event.propagationStopped, false, `${key} is not swallowed`);

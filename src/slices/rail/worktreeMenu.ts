@@ -20,6 +20,11 @@ export function worktreeBranch(worktree: Pick<GitWorktree, "branch">): string | 
   return worktree.branch.startsWith("refs/heads/") ? worktree.branch.slice("refs/heads/".length) : worktree.branch;
 }
 
+/** What a worktree's Rail row shows for it: its branch, or its HEAD's short hash when that is detached. */
+export function worktreeRowName(worktree: Pick<GitWorktree, "branch" | "head">): string {
+  return worktreeBranch(worktree) ?? worktree.head.slice(0, 7);
+}
+
 /** The worktree menu for `worktree`, in order, its groups kept together. */
 export function worktreeMenu(worktree: Pick<GitWorktree, "branch">): WorktreeMenuEntry[] {
   const onBranch = worktreeBranch(worktree) !== null;

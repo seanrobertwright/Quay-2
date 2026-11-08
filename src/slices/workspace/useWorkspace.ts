@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   TerminalInfo,
   TerminalStatusPayload,
+  TerminalExitedPayload,
   SpawnTerminalRequest,
   StageLayout,
   PermissionMode,
@@ -18,6 +19,7 @@ import { playTurnCompletedChime, playAttentionChime } from "../metrics/audioChim
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
+import { reportTerminalRelaunched } from "../terminal/terminalRelaunched";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
@@ -36,11 +38,6 @@ import {
 } from "./viewState";
 
 export type { Project };
-
-interface PtyExitPayload {
-  terminal_id: string;
-  exit_code?: number | null;
-}
 
 /** How long a project's view must sit still before it is written to disk. */
 const VIEW_SAVE_DEBOUNCE_MS = 500;
@@ -71,6 +68,7 @@ export function useWorkspace() {
   const [isGithubDrawerOpen, setIsGithubDrawerOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
+  const [isAttentionQueueOpen, setIsAttentionQueueOpen] = useState(false);
   const [isTokenSpendOpen, setIsTokenSpendOpen] = useState(false);
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
@@ -233,7 +231,7 @@ export function useWorkspace() {
 
   // Listen for terminal process exits
   useEffect(() => {
-    const unlistenPromise = listen<PtyExitPayload>("terminal-exited", (event) => {
+    const unlistenPromise = listen<TerminalExitedPayload>("terminal-exited", (event) => {
       const { terminal_id, exit_code } = event.payload;
       setTerminals((prev) =>
         prev.map((t) =>
@@ -1230,6 +1228,8 @@ export function useWorkspace() {
 
   // Relaunch an exited or restored dormant terminal
   const relaunchTerminal = async (terminalId: string) => {
+    // Before the new launch can raise anything of its own
+    reportTerminalRelaunched(terminalId);
     try {
       const dims = getTerminalDimensions(terminalId);
       const updated = await invoke<TerminalInfo>("relaunch_terminal", {
@@ -1282,6 +1282,7 @@ export function useWorkspace() {
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
       toggleTopos: () => setIsToposOpen((prev) => !prev),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
+      toggleAttentionQueue: () => setIsAttentionQueueOpen((prev) => !prev),
       openA2A: () => setIsA2AOpen(true),
       focusNextPane,
       toggleZoom,
@@ -1440,6 +1441,8 @@ export function useWorkspace() {
     setIsAuditModalOpen,
     isSessionHistoryOpen,
     setIsSessionHistoryOpen,
+    isAttentionQueueOpen,
+    setIsAttentionQueueOpen,
     isTokenSpendOpen,
     setIsTokenSpendOpen,
     isArchonGraphOpen,

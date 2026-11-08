@@ -1,8 +1,9 @@
 /**
  * The attention queue: every session waiting on the user, oldest first. It takes plain events
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
- * that feeds it (`useAttentionQueue`) turns bridge events into these events, the status strip
- * badge renders its count, and the permission modal shows its `modalPermissions`.
+ * that feeds it (`useAttentionQueue`) turns bridge events into these events. The status strip
+ * badge renders its count, the attention drawer its rows, and the permission modal its
+ * `modalPermissions`.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */
@@ -83,21 +84,35 @@ export type AttentionEvent =
   /** The user dismissed the terminal's finished turn without acting on it. */
   | { type: "finishedTurnDismissed"; terminalId: string }
   /**
+   * The terminal closed, its process exited, or it was relaunched. Nothing it was waiting on can
+   * be answered any more, so all its items go.
+   */
+  | { type: "terminalEnded"; terminalId: string }
+  /**
    * The terminals the app knows now. An item queued before its terminal was known, such as a
    * permission rebuilt on a webview reload before the terminal list loads, takes its project.
    */
   | { type: "terminalsKnown"; terminals: readonly KnownTerminal[] };
 
+/**
+ * The most permission items one terminal keeps. Past it the oldest is dropped, so one runaway
+ * agent cannot bury the other sessions. Requests that name no terminal share one such cap.
+ */
+export const PERMISSIONS_PER_TERMINAL = 20;
+
 export interface AttentionQueue {
-  /** Permission items by request id. */
+  /** Permission items by request id, at most `PERMISSIONS_PER_TERMINAL` per terminal. */
   readonly permissions: ReadonlyMap<string, PermissionItem>;
   /** Finished-turn items by terminal id, so a terminal has at most one. */
   readonly finishedTurns: ReadonlyMap<string, FinishedTurnItem>;
+  /** By terminal id, how many permission items the cap dropped; a terminal with none is absent. */
+  readonly droppedPermissions: ReadonlyMap<string | null, number>;
 }
 
 export const emptyAttentionQueue: AttentionQueue = {
   permissions: new Map(),
   finishedTurns: new Map(),
+  droppedPermissions: new Map(),
 };
 
 /** The queue after `event`. Returns a new queue and leaves `queue` as it was. */
@@ -135,6 +150,8 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
     case "userInput":
     case "finishedTurnDismissed":
       return clearFinishedTurn(queue, event.terminalId);
+    case "terminalEnded":
+      return endTerminal(queue, event.terminalId);
     case "terminalsKnown":
       return fillProjects(queue, event.terminals);
   }
@@ -142,7 +159,8 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
 
 /**
  * The queue with `requests` waiting from `at`. A request already queued keeps its item and its
- * original waiting time, so a request heard twice stays one item.
+ * original waiting time, so a request heard twice stays one item. A terminal pushed past
+ * `PERMISSIONS_PER_TERMINAL` loses its oldest items, and the queue counts them as dropped.
  */
 function addPermissions(
   queue: AttentionQueue,
@@ -155,7 +173,20 @@ function addPermissions(
   for (const request of fresh) {
     permissions.set(request.requestId, { kind: "permission", ...request, waitingSince: at, deferred: false });
   }
-  return { ...queue, permissions };
+  let droppedPermissions = queue.droppedPermissions;
+  for (const terminalId of new Set(fresh.map((request) => request.terminalId))) {
+    // Oldest first; the sort is stable, so items that started waiting together keep arrival order
+    const held = [...permissions.values()]
+      .filter((item) => item.terminalId === terminalId)
+      .sort((a, b) => a.waitingSince - b.waitingSince);
+    const excess = held.length - PERMISSIONS_PER_TERMINAL;
+    if (excess <= 0) continue;
+    for (const item of held.slice(0, excess)) permissions.delete(item.requestId);
+    const dropped = new Map(droppedPermissions);
+    dropped.set(terminalId, (dropped.get(terminalId) ?? 0) + excess);
+    droppedPermissions = dropped;
+  }
+  return { ...queue, permissions, droppedPermissions };
 }
 
 /** The queue with each of `requestIds` that still waits set to `deferred`. */
@@ -187,7 +218,17 @@ function fillProjects(queue: AttentionQueue, terminals: readonly KnownTerminal[]
   const permissions = fill(queue.permissions);
   const finishedTurns = fill(queue.finishedTurns);
   if (permissions === queue.permissions && finishedTurns === queue.finishedTurns) return queue;
-  return { permissions, finishedTurns };
+  return { ...queue, permissions, finishedTurns };
+}
+
+/** The queue without any of `terminalId`'s items, and with its dropped count back at zero. */
+function endTerminal(queue: AttentionQueue, terminalId: string): AttentionQueue {
+  const permissions = new Map(
+    [...queue.permissions].filter(([, item]) => item.terminalId !== terminalId)
+  );
+  const droppedPermissions = new Map(queue.droppedPermissions);
+  droppedPermissions.delete(terminalId);
+  return { ...clearFinishedTurn(queue, terminalId), permissions, droppedPermissions };
 }
 
 /** The queue without `terminalId`'s finished-turn item. */
@@ -220,4 +261,38 @@ export function attentionItems(queue: AttentionQueue): AttentionItem[] {
   return [...queue.permissions.values(), ...queue.finishedTurns.values()].sort(
     (a, b) => a.waitingSince - b.waitingSince
   );
+}
+
+/**
+ * A key for `item` that names the thing waiting, never its place in the list: the request id
+ * for a permission, the terminal for a finished turn (a terminal has at most one).
+ */
+export function attentionItemKey(item: AttentionItem): string {
+  return item.kind === "permission" ? `permission:${item.requestId}` : `finishedTurn:${item.terminalId}`;
+}
+
+/**
+ * How long an item that started waiting at `waitingSince` has waited by `now`, both in epoch
+ * milliseconds, in its two largest units: "45s", "3m", "1h 5m", "1d 2h". A `now` before
+ * `waitingSince` reads "0s".
+ */
+export function waitedLabel(waitingSince: number, now: number): string {
+  const seconds = Math.floor(Math.max(0, now - waitingSince) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const pair = (big: number, bigUnit: string, small: number, smallUnit: string) =>
+    small === 0 ? `${big}${bigUnit}` : `${big}${bigUnit} ${small}${smallUnit}`;
+  if (hours < 24) return pair(hours, "h", minutes % 60, "m");
+  return pair(Math.floor(hours / 24), "d", hours % 24, "h");
+}
+
+/**
+ * How many of `terminalId`'s permission requests the queue dropped to stay within
+ * `PERMISSIONS_PER_TERMINAL`, since the terminal was launched. Null counts the requests that
+ * named no terminal.
+ */
+export function droppedPermissionCount(queue: AttentionQueue, terminalId: string | null): number {
+  return queue.droppedPermissions.get(terminalId) ?? 0;
 }

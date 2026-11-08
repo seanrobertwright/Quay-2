@@ -3,12 +3,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyAttentionEvent,
+  attentionItemKey,
   attentionItems,
+  droppedPermissionCount,
   emptyAttentionQueue,
   modalPermissions,
   pendingPermissionIds,
   type AttentionEvent,
   type AttentionQueue,
+  waitedLabel,
 } from "./attentionQueue.ts";
 
 /** The queue after `events`, applied in order to a new, empty queue. */
@@ -295,4 +298,85 @@ test("every waiting permission request is pending, deferred or not, oldest first
     { type: "permissionsDeferred", requestIds: ["req-late"] }
   );
   assert.deepEqual(pendingPermissionIds(queue), ["req-early", "req-late"]);
+});
+
+test("each item's key comes from its request or its terminal, so it stays put as the list changes", () => {
+  const keys = (queue: AttentionQueue) => attentionItems(queue).map(attentionItemKey);
+  const before = run(requested("req-1", "term-a", 200), finished("term-a", 300));
+  assert.deepEqual(keys(before), ["permission:req-1", "finishedTurn:term-a"]);
+  // An older item joining ahead of them moves them down the list but leaves their keys alone
+  const after = applyAttentionEvent(before, finished("term-b", 100));
+  assert.deepEqual(keys(after), ["finishedTurn:term-b", "permission:req-1", "finishedTurn:term-a"]);
+});
+
+test("how long an item has waited reads in its largest units", () => {
+  const second = 1000;
+  const minute = 60 * second;
+  const hour = 60 * minute;
+  const since = 1_000_000;
+  const cases: [number, string][] = [
+    [0, "0s"],
+    [45 * second, "45s"],
+    [59 * second + 999, "59s"],
+    [3 * minute + 5 * second, "3m"],
+    [hour, "1h"],
+    [hour + 5 * minute, "1h 5m"],
+    [26 * hour + 30 * minute, "1d 2h"],
+    // A clock that stepped back never shows a negative wait
+    [-5 * second, "0s"],
+  ];
+  for (const [waited, label] of cases) {
+    assert.equal(waitedLabel(since, since + waited), label, `${waited} ms`);
+  }
+});
+
+test("a terminal ending removes all its items and leaves other terminals' items", () => {
+  const queue = run(
+    requested("req-a1", "term-a", 100),
+    requested("req-a2", "term-a", 200),
+    finished("term-a", 300),
+    requested("req-b", "term-b", 150),
+    finished("term-b", 250),
+    { type: "terminalEnded", terminalId: "term-a" }
+  );
+  assert.deepEqual(keys(queue), ["permission:req-b", "finishedTurn:term-b"]);
+});
+
+/** `count` permission requests from `terminalId`, `req-<terminal>-1` first, one time unit apart from `start`. */
+const requests = (terminalId: string, count: number, start: number): AttentionEvent[] =>
+  Array.from({ length: count }, (_, i) => requested(`req-${terminalId}-${i + 1}`, terminalId, start + i));
+
+test("a terminal past 20 permission requests keeps its newest 20 and counts the ones dropped", () => {
+  const queue = run(...requests("term-a", 23, 100));
+  assert.deepEqual(
+    keys(queue),
+    Array.from({ length: 20 }, (_, i) => `permission:req-term-a-${i + 4}`)
+  );
+  assert.equal(droppedPermissionCount(queue, "term-a"), 3);
+});
+
+test("a terminal at its cap never evicts another terminal's permission requests", () => {
+  const queue = run(
+    requested("req-b-early", "term-b", 10),
+    ...requests("term-a", 25, 100),
+    requested("req-b-late", "term-b", 500)
+  );
+  const termB = attentionItems(queue).filter((item) => item.terminalId === "term-b");
+  assert.deepEqual(
+    termB.map((item) => item.kind === "permission" && item.requestId),
+    ["req-b-early", "req-b-late"]
+  );
+  assert.equal(attentionItems(queue).filter((item) => item.terminalId === "term-a").length, 20);
+  assert.equal(droppedPermissionCount(queue, "term-a"), 5);
+  assert.equal(droppedPermissionCount(queue, "term-b"), 0);
+});
+
+test("a terminal ending forgets how many of its requests were dropped, and leaves other terminals' counts", () => {
+  const queue = run(
+    ...requests("term-a", 22, 100),
+    ...requests("term-b", 21, 200),
+    { type: "terminalEnded", terminalId: "term-a" }
+  );
+  assert.equal(droppedPermissionCount(queue, "term-a"), 0);
+  assert.equal(droppedPermissionCount(queue, "term-b"), 1);
 });
