@@ -3,12 +3,9 @@
 // in what order and groups, which are disabled and why, and the hints.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { terminalMenu, terminalMenuLabel, type TerminalMenuEntry } from "./terminalMenu.ts";
-import type { TerminalInfo } from "./types.ts";
+import { terminalMenu, terminalMenuLabel, type TerminalMenuEntry, type TerminalMenuTarget } from "./terminalMenu.ts";
 
-type Shown = Pick<TerminalInfo, "name" | "run_kind" | "claude_status" | "live_mode">;
-
-const claude: Shown = { name: "claude-1", run_kind: "claude", claude_status: "working", live_mode: "skip" };
+const claude: TerminalMenuTarget = { name: "claude-1", run_kind: "claude", claude_status: "working", live_mode: "skip" };
 
 /** Each item as `name`, `name [hint]`, `name (disabled: why)` or `[x] name`, with `---` between groups. */
 function shown(items: TerminalMenuEntry[]): string[] {
@@ -68,14 +65,14 @@ test("Relaunch agent runs once the agent has exited", () => {
 });
 
 test("the Ask toggle is checked while the terminal asks before tool calls, and clear in Skip", () => {
-  const ask = (live_mode: Shown["live_mode"]) =>
+  const ask = (live_mode: TerminalMenuTarget["live_mode"]) =>
     terminalMenu({ ...claude, live_mode }, { kind: "rail" }).find((i) => i.action === "toggleAsk")?.checked;
   assert.equal(ask("normal"), true);
   assert.equal(ask("skip"), false);
 });
 
 test("pi and PiG, which never ask before tool calls, get no Ask toggle, nor does a plain shell", () => {
-  const names = (run_kind: Shown["run_kind"]) => terminalMenu({ ...claude, run_kind }, { kind: "rail" }).map((i) => i.name);
+  const names = (run_kind: TerminalMenuTarget["run_kind"]) => terminalMenu({ ...claude, run_kind }, { kind: "rail" }).map((i) => i.name);
   for (const kind of ["pi", "pig", "powershell", "command"] as const) {
     assert.ok(!names(kind).includes("Ask before tool calls"), kind);
   }

@@ -38,6 +38,7 @@ const ONLY_ONE_PANE = "Only one pane";
 export function terminalMenu(terminal: TerminalMenuTarget, surface: TerminalMenuSurface): TerminalMenuEntry[] {
   const onPane = surface.kind === "pane";
   const exited = terminal.claude_status === "exited";
+  const severalPanes = surface.kind === "pane" && surface.paneCount > 1;
   const items: (TerminalMenuEntry | null)[] = [
     { action: "rename", name: "Rename…", group: "session", enabled: true },
     { action: "relaunch", name: "Relaunch agent", group: "session", enabled: exited, hint: exited ? undefined : STILL_RUNNING },
@@ -51,9 +52,7 @@ export function terminalMenu(terminal: TerminalMenuTarget, surface: TerminalMenu
     { action: "copyWorkingDirectory", name: "Copy working directory", group: "folder", enabled: true },
     { action: "openFolder", name: "Open folder in Explorer", group: "folder", enabled: true },
     onPane
-      ? surface.paneCount > 1
-        ? { action: "closePane", name: "Close pane", group: "close", enabled: true }
-        : { action: "closePane", name: "Close pane", group: "close", enabled: false, hint: ONLY_ONE_PANE }
+      ? { action: "closePane", name: "Close pane", group: "close", enabled: severalPanes, hint: severalPanes ? undefined : ONLY_ONE_PANE }
       : null,
     { action: "closeTerminal", name: "Close terminal", group: "close", enabled: true },
   ];
