@@ -144,6 +144,8 @@ type CanvasMenu = { kind: "node"; nodeId: string } | { kind: "pane"; pasteAt: XY
 const canvasMenuKey = (menu: CanvasMenu): unknown => (menu.kind === "node" ? menu.nodeId : menu);
 
 const nodeSelector = (id: string) => `.react-flow__node[data-id="${CSS.escape(id)}"]`;
+/** A node's card on the canvas in `box`, if it is drawn. */
+const findCard = (box: HTMLElement | null, id: string) => box?.querySelector<HTMLElement>(nodeSelector(id)) ?? null;
 
 /** The canvas item an element is, or is inside. */
 function itemOf(el: Element | null): CanvasItem | null {
@@ -205,7 +207,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   const focusNode = useCallback((nodeId: string) => {
     let frames = 0;
     const attempt = () => {
-      const card = canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId));
+      const card = findCard(canvasBox.current, nodeId);
       if (card) card.focus({ preventScroll: true });
       else if (++frames < 10) requestAnimationFrame(attempt);
     };
@@ -314,18 +316,24 @@ const GraphViewInner: FC<GraphViewProps> = ({
     setMenuPositions(positions);
     if (contextMenu.open) closeMenu(false);
   }
+  const selectForMenu = useCallback(
+    (nodeId: string) => {
+      if (!selected.has(nodeId)) choose(nodeId);
+    },
+    [selected, choose]
+  );
   const openMenu = useCallback(
     (nodeId: string, at: XYPosition) => {
-      if (openMenuAt({ kind: "node", nodeId }, at, canvasBox.current) && !selected.has(nodeId)) choose(nodeId);
+      if (openMenuAt({ kind: "node", nodeId }, at, canvasBox.current)) selectForMenu(nodeId);
     },
-    [openMenuAt, selected, choose]
+    [openMenuAt, selectForMenu]
   );
   /** Opens a node's menu at its card's lower left corner, as Shift+F10 does. */
   const openNodeMenu = (nodeId: string) => {
-    const card = canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId));
+    const card = findCard(canvasBox.current, nodeId);
     if (!card) return;
-    if (!selected.has(nodeId)) choose(nodeId);
-    openMenuBelow({ kind: "node", nodeId }, card, () => canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId)) ?? canvasBox.current);
+    selectForMenu(nodeId);
+    openMenuBelow({ kind: "node", nodeId }, card, () => findCard(canvasBox.current, nodeId) ?? canvasBox.current);
   };
   // The canvas handed to the builder is made once, so its calls go through this.
   const latest = useRef({ goToNode, openNodeMenu });
@@ -347,7 +355,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   );
   const dismissMenu = useCallback(() => closeMenu(false), [closeMenu]);
   const menu = contextMenu.open;
-  const paneMenu = menu?.target.kind === "pane" ? menu.target : null;
+  const paneMenu = menu?.target.kind === "pane" ? { ...menu.target, at: menu.at } : null;
 
   /**
    * Adds a node of `kind` centred on a point on screen, if it is on the canvas. A press, with
@@ -433,7 +441,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
               at={menu.at}
             />
           )}
-          {menu && paneMenu && (
+          {paneMenu && (
             <ContextMenu
               label="Canvas"
               items={[
@@ -447,7 +455,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
                 },
               ]}
               onClose={closeMenu}
-              at={menu.at}
+              at={paneMenu.at}
             />
           )}
         </div>

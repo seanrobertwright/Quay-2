@@ -41,16 +41,16 @@ export const ArrangeMenuButton: FC<{ selectedCount: number; onChoose: (action: A
   onChoose,
 }) => {
   // Where the menu opens while it is open: under the button, their right edges lined up.
-  const [openAt, setOpenAt] = useState<MenuPoint | null>(null);
-  const open = openAt !== null;
+  const [menuPoint, setMenuPoint] = useState<MenuPoint | null>(null);
+  const open = menuPoint !== null;
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuId = useId();
   const show = () => {
     const box = buttonRef.current?.getBoundingClientRect();
-    if (box) setOpenAt({ x: box.right, y: box.bottom + 4 });
+    if (box) setMenuPoint({ x: box.right, y: box.bottom + 4 });
   };
   const close = (refocus: boolean) => {
-    setOpenAt(null);
+    setMenuPoint(null);
     if (refocus) buttonRef.current?.focus();
   };
   return (
@@ -74,7 +74,7 @@ export const ArrangeMenuButton: FC<{ selectedCount: number; onChoose: (action: A
       >
         <LayoutGrid className="w-4 h-4" aria-hidden="true" />
       </button>
-      {openAt && (
+      {menuPoint && (
         <ArrangeMenu
           id={menuId}
           label="Arrange"
@@ -83,7 +83,7 @@ export const ArrangeMenuButton: FC<{ selectedCount: number; onChoose: (action: A
           onChoose={onChoose}
           onClose={close}
           anchorRef={buttonRef}
-          at={openAt}
+          at={menuPoint}
           align="end"
         />
       )}
