@@ -43,13 +43,15 @@ export function useContextMenu<T>({ keyOf = (t: T) => t }: Options<T> = {}) {
   /**
    * Opens the menu for `target` at a point in the window, as a right-click does. The Menu key
    * can fire a contextmenu event after its keydown has opened the menu; that second opening is
-   * ignored, so the menu doesn't move and keeps what to give focus back to.
+   * ignored, so the menu doesn't move and keeps what to give focus back to. Says whether the
+   * menu opened.
    */
-  const openAt = useCallback((target: T, at: MenuPoint, opener: MenuOpener | null) => {
+  const openAt = useCallback((target: T, at: MenuPoint, opener: MenuOpener | null): boolean => {
     const key = keyOfRef.current(target);
-    if (current.current?.fromKey && Object.is(current.current.key, key)) return;
+    if (current.current?.fromKey && Object.is(current.current.key, key)) return false;
     current.current = { key, fromKey: false, opener };
     setOpen({ target, at });
+    return true;
   }, []);
 
   /** Opens the menu for `target` at `el`'s lower left corner, as Shift+F10 does; focus goes back to `opener`, or else `el`. */

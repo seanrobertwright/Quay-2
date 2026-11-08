@@ -9,9 +9,11 @@
 // validated against the graph draft, its attach checks' warnings under the graph's contracts
 // are added (#274), its problems join the graph's, its marks show on the cards, and the
 // inspector edits it.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 import { ReactFlowProvider, useReactFlow, type Viewport } from "@xyflow/react";
-import { ArrangeMenu, Menu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
+import { ContextMenu } from "../overlay/ContextMenu.tsx";
+import { useContextMenu } from "../overlay/useContextMenu.ts";
+import { ArrangeMenu, NODE_MENU_ACTIONS } from "./ArrangeMenu.tsx";
 import type { ArrangeAction } from "./arrange.ts";
 import { GraphCanvas, type CanvasControls } from "./GraphCanvas.tsx";
 import { Inspector } from "./Inspector.tsx";
@@ -131,6 +133,15 @@ const NO_DIAGNOSTICS: never[] = [];
  * axes: the middle of the view drifts as the Problems list under it grows.
  */
 const STACK_OFFSET = 24;
+
+/**
+ * What a canvas menu is for: a node, or the empty canvas, with the point on the canvas a paste
+ * goes to and why Paste is unavailable, if it is.
+ */
+type CanvasMenu = { kind: "node"; nodeId: string } | { kind: "pane"; pasteAt: XYPosition; pasteBlocked: string | null };
+
+/** Names the thing a canvas menu is for: a node by its id. */
+const canvasMenuKey = (menu: CanvasMenu): unknown => (menu.kind === "node" ? menu.nodeId : menu);
 
 const nodeSelector = (id: string) => `.react-flow__node[data-id="${CSS.escape(id)}"]`;
 
@@ -291,68 +302,52 @@ const GraphViewInner: FC<GraphViewProps> = ({
   const clearSelection = useCallback(() => choose(null), [choose]);
 
   // A right-click on a card outside the selection selects that card alone, as file managers do.
-  // The menu sits at a point on screen, so it closes when the cards or the view move. `at` is
-  // in the canvas box; a pane menu also keeps the point on the canvas a paste goes to, and
-  // why Paste is unavailable, if it is.
-  // A menu opened from the keyboard gives focus back to its node's card when it closes.
-  const [menu, setMenu] = useState<
-    | { kind: "node"; at: XYPosition; returnTo?: string }
-    | { kind: "pane"; at: XYPosition; pasteAt: XYPosition; pasteBlocked: string | null }
-    | null
-  >(null);
+  // The menu sits at a point on screen, so it closes when the cards or the view move. A pane
+  // menu also keeps the point on the canvas a paste goes to, and why Paste is unavailable, if
+  // it is. A menu opened from the keyboard gives focus back to its node's card when it closes;
+  // one opened with the pointer gives it to the canvas.
+  const contextMenu = useContextMenu<CanvasMenu>({ keyOf: canvasMenuKey });
+  const { openAt: openMenuAt, openBelow: openMenuBelow, close: closeMenu } = contextMenu;
   const nodeCount = graph.nodes.length;
   const [menuPositions, setMenuPositions] = useState(positions);
   if (menuPositions !== positions) {
     setMenuPositions(positions);
-    setMenu(null);
+    if (contextMenu.open) closeMenu(false);
   }
   const openMenu = useCallback(
-    (nodeId: string, at: XYPosition, returnTo?: string) => {
-      const box = canvasBox.current?.getBoundingClientRect();
-      if (!box) return;
-      // The Menu key can fire a contextmenu event after the keydown has opened the menu; that
-      // second opening would move it and lose the card to give focus back to.
-      if (returnTo === undefined && menu?.kind === "node" && menu.returnTo === nodeId) return;
-      if (!selected.has(nodeId)) choose(nodeId);
-      setMenu({ kind: "node", at: { x: at.x - box.left, y: at.y - box.top }, returnTo });
+    (nodeId: string, at: XYPosition) => {
+      if (openMenuAt({ kind: "node", nodeId }, at, canvasBox.current) && !selected.has(nodeId)) choose(nodeId);
     },
-    [selected, choose, menu]
+    [openMenuAt, selected, choose]
   );
   /** Opens a node's menu at its card's lower left corner, as Shift+F10 does. */
   const openNodeMenu = (nodeId: string) => {
     const card = canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId));
     if (!card) return;
-    const r = card.getBoundingClientRect();
-    openMenu(nodeId, { x: r.left, y: r.bottom }, nodeId);
+    if (!selected.has(nodeId)) choose(nodeId);
+    openMenuBelow({ kind: "node", nodeId }, card, () => canvasBox.current?.querySelector<HTMLElement>(nodeSelector(nodeId)) ?? canvasBox.current);
   };
   // The canvas handed to the builder is made once, so its calls go through this.
   const latest = useRef({ goToNode, openNodeMenu });
   latest.current = { goToNode, openNodeMenu };
   const openPaneMenu = useCallback(
     (at: XYPosition) => {
-      const box = canvasBox.current?.getBoundingClientRect();
-      if (!box) return;
       const envelope = getClipboard();
-      setMenu({
-        kind: "pane",
-        at: { x: at.x - box.left, y: at.y - box.top },
-        pasteAt: flow.screenToFlowPosition(at),
-        pasteBlocked: envelope === null ? "Nothing copied" : pasteFits(nodeCount, envelope) ? null : "Graph full",
-      });
+      openMenuAt(
+        {
+          kind: "pane",
+          pasteAt: flow.screenToFlowPosition(at),
+          pasteBlocked: envelope === null ? "Nothing copied" : pasteFits(nodeCount, envelope) ? null : "Graph full",
+        },
+        at,
+        canvasBox.current
+      );
     },
-    [flow, nodeCount]
+    [openMenuAt, flow, nodeCount]
   );
-  const dismissMenu = useCallback(() => setMenu(null), []);
-  const returnTo = menu?.kind === "node" ? menu.returnTo : undefined;
-  const closeMenu = useCallback(
-    (refocus: boolean) => {
-      setMenu(null);
-      if (!refocus) return;
-      const card = returnTo === undefined ? null : canvasBox.current?.querySelector<HTMLElement>(nodeSelector(returnTo));
-      (card ?? canvasBox.current)?.focus({ preventScroll: true });
-    },
-    [returnTo]
-  );
+  const dismissMenu = useCallback(() => closeMenu(false), [closeMenu]);
+  const menu = contextMenu.open;
+  const paneMenu = menu?.target.kind === "pane" ? menu.target : null;
 
   /**
    * Adds a node of `kind` centred on a point on screen, if it is on the canvas. A press, with
@@ -428,34 +423,32 @@ const GraphViewInner: FC<GraphViewProps> = ({
             onReady={canvasReady}
           />
           <Palette onAdd={addNode} full={graph.nodes.length >= MAX_NODES} />
-          {menu?.kind === "node" && (
-            <PlacedMenu at={menu.at} bounds={canvasBox}>
-              <ArrangeMenu
-                label="Node"
-                actions={NODE_MENU_ACTIONS}
-                selectedCount={selected.size}
-                onChoose={onArrange}
-                onClose={closeMenu}
-              />
-            </PlacedMenu>
+          {menu?.target.kind === "node" && (
+            <ArrangeMenu
+              label="Node"
+              actions={NODE_MENU_ACTIONS}
+              selectedCount={selected.size}
+              onChoose={onArrange}
+              onClose={closeMenu}
+              at={menu.at}
+            />
           )}
-          {menu?.kind === "pane" && (
-            <PlacedMenu at={menu.at} bounds={canvasBox}>
-              <Menu
-                label="Canvas"
-                items={[
-                  {
-                    name: "Paste",
-                    enabled: menu.pasteBlocked === null,
-                    group: "clipboard",
-                    hint: menu.pasteBlocked ?? shortcutLabel("paste"),
-                    ariaKeyShortcuts: ariaKeyShortcuts("paste"),
-                    onChoose: () => onPaste(menu.pasteAt),
-                  },
-                ]}
-                onClose={closeMenu}
-              />
-            </PlacedMenu>
+          {menu && paneMenu && (
+            <ContextMenu
+              label="Canvas"
+              items={[
+                {
+                  name: "Paste",
+                  enabled: paneMenu.pasteBlocked === null,
+                  group: "clipboard",
+                  hint: paneMenu.pasteBlocked ?? shortcutLabel("paste"),
+                  ariaKeyShortcuts: ariaKeyShortcuts("paste"),
+                  onChoose: () => onPaste(paneMenu.pasteAt),
+                },
+              ]}
+              onClose={closeMenu}
+              at={menu.at}
+            />
           )}
         </div>
         <ProblemsPanel
@@ -484,30 +477,6 @@ const GraphViewInner: FC<GraphViewProps> = ({
           inspectorRef.current?.focus();
         }}
       />
-    </div>
-  );
-};
-
-/** A context menu at a point in the canvas box, moved in to stay inside it. */
-const PlacedMenu: FC<{
-  at: XYPosition;
-  bounds: RefObject<HTMLDivElement | null>;
-  children: ReactNode;
-}> = ({ at, bounds, children }) => {
-  const wrapper = useRef<HTMLDivElement | null>(null);
-  const [place, setPlace] = useState(at);
-  useLayoutEffect(() => {
-    const box = bounds.current;
-    const menu = wrapper.current;
-    if (!box || !menu) return;
-    setPlace({
-      x: Math.max(0, Math.min(at.x, box.clientWidth - menu.offsetWidth)),
-      y: Math.max(0, Math.min(at.y, box.clientHeight - menu.offsetHeight)),
-    });
-  }, [at, bounds]);
-  return (
-    <div ref={wrapper} className="absolute" style={{ left: place.x, top: place.y }}>
-      {children}
     </div>
   );
 };

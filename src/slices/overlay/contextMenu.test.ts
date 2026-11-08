@@ -354,3 +354,15 @@ test("a right-click on the open menu shows no native menu and doesn't reach the 
   assert.equal(e.defaultPrevented, true);
   assert.deepEqual(surfaceHeard, []);
 });
+
+test("a menu aligned to its end has its top right corner at the point, and flips right when the left edge is near", () => {
+  const restore = withSizes({ width: 800, height: 600 }, { width: 200, height: 150 });
+  try {
+    render(createElement(ContextMenu, { label: "Arrange", items: items(["Auto-arrange"]), at: { x: 400, y: 40 }, align: "end", onClose: () => {} }));
+    assert.deepEqual(placeOf(), { x: 200, y: 40 });
+    act(() => mounted?.root.render(createElement(ContextMenu, { label: "Arrange", items: items(["Auto-arrange"]), at: { x: 120, y: 40 }, align: "end", onClose: () => {} })));
+    assert.deepEqual(placeOf(), { x: 120, y: 40 });
+  } finally {
+    restore();
+  }
+});

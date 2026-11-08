@@ -37,10 +37,13 @@ export interface ContextMenuProps {
   id?: string;
   items: readonly ContextMenuItem[];
   /**
-   * Where the menu opens: its top left corner. Near the window's right or bottom edge it flips
-   * to end at the point instead, or is clamped inside the window when neither side has room.
+   * Where the menu opens: its top left corner, or its top right one with `align` "end". Near
+   * the window's edge it flips to the other side of the point, or is clamped inside the window
+   * when neither side has room.
    */
   at: MenuPoint;
+  /** Which corner of the menu's top edge is at the point. Defaults to its start, the left. */
+  align?: "start" | "end";
   /** Called when the menu should go away; `refocus` is false when focus has moved on already. */
   onClose: (refocus: boolean) => void;
   /** The button that opened the menu, whose own presses toggle it rather than close it. */
@@ -48,17 +51,18 @@ export interface ContextMenuProps {
 }
 
 /**
- * Where a menu `size` long on one axis starts, opened at `at` in a window `room` long: at the
- * point when it fits, else ending at the point, else as far in as fits.
+ * Where a menu `size` long on one axis starts, opened at `at` in a window `room` long: starting
+ * at the point when it fits, else ending at the point, else as far in as fits. With `fromEnd` it
+ * tries ending at the point first.
  */
-function placeOnAxis(at: number, size: number, room: number): number {
-  if (at + size <= room) return at;
-  if (at - size >= 0) return at - size;
-  return Math.max(0, room - size);
+function placeOnAxis(at: number, size: number, room: number, fromEnd = false): number {
+  const after = at + size <= room ? at : null;
+  const before = at - size >= 0 ? at - size : null;
+  return (fromEnd ? (before ?? after) : (after ?? before)) ?? Math.max(0, room - size);
 }
 
 /** A list of items following the WAI-ARIA menu pattern described at the top of this file. */
-export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, onClose, anchorRef }) => {
+export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, align = "start", onClose, anchorRef }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // On the Escape stack, so Escape closes the menu before any overlay behind it.
   usePopupLayer(true, () => onClose(true), rootRef);
@@ -68,10 +72,10 @@ export const ContextMenu: FC<ContextMenuProps> = ({ label, id, items, at, onClos
     const root = rootRef.current;
     if (!root) return;
     setPlace({
-      x: placeOnAxis(at.x, root.offsetWidth, window.innerWidth),
+      x: placeOnAxis(at.x, root.offsetWidth, window.innerWidth, align === "end"),
       y: placeOnAxis(at.y, root.offsetHeight, window.innerHeight),
     });
-  }, [at.x, at.y]);
+  }, [at.x, at.y, align]);
   const buttons = () => [...(rootRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [])];
   useEffect(() => {
     buttons()[0]?.focus();
