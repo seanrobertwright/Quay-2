@@ -1,9 +1,10 @@
-import { useEffect, useId, useState, FC } from "react";
+import { useEffect, useId, useMemo, useState, FC } from "react";
 import { BellRing, X } from "lucide-react";
 import { useOverlay } from "../overlay/useOverlay";
 import { TerminalInfo } from "../terminal/types";
 import { Project } from "../workspace/types";
 import { GitWorktree } from "../git/types";
+import { worktreeRowName } from "../rail/worktreeMenu";
 import { isSamePath } from "../../utils/paths";
 import { attentionItemKey, waitedLabel, type AttentionItem } from "./attentionQueue";
 
@@ -27,8 +28,8 @@ interface AttentionDrawerProps {
 const baseName = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() ?? path;
 
 /**
- * The name the Rail shows for `path`: a project's name, a worktree as "project › branch", or the
- * folder name for a path the Rail does not list.
+ * Names the project at `path`: a project's name, a worktree as "project › " followed by the name its
+ * Rail row shows, or the folder name for a path the Rail does not list.
  */
 function projectLabel(
   path: string | null,
@@ -39,7 +40,7 @@ function projectLabel(
   for (const project of projects) {
     if (isSamePath(project.path, path)) return project.name;
     const worktree = projectWorktrees[project.path]?.find((wt) => isSamePath(wt.path, path));
-    if (worktree) return `${project.name} › ${worktree.branch || baseName(worktree.path)}`;
+    if (worktree) return `${project.name} › ${worktreeRowName(worktree)}`;
   }
   return baseName(path);
 }
@@ -64,6 +65,7 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
 }) => {
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
   const [now, setNow] = useState(() => Date.now());
+  const terminalsById = useMemo(() => new Map(terminals.map((t) => [t.id, t])), [terminals]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -115,21 +117,20 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
             </div>
           ) : (
             <ul className="space-y-2" aria-label="Sessions waiting on you, oldest first">
-              {items.map((item) => (
-                <AttentionRow
-                  key={attentionItemKey(item)}
-                  item={item}
-                  terminalName={terminals.find((t) => t.id === item.terminalId)?.name ?? null}
-                  project={projectLabel(
-                    item.project ?? terminals.find((t) => t.id === item.terminalId)?.project_path ?? null,
-                    projects,
-                    projectWorktrees
-                  )}
-                  waited={waitedLabel(item.waitingSince, now)}
-                  onFocusTerminal={onFocusTerminal}
-                  onDismissFinishedTurn={onDismissFinishedTurn}
-                />
-              ))}
+              {items.map((item) => {
+                const terminal = item.terminalId ? terminalsById.get(item.terminalId) : undefined;
+                return (
+                  <AttentionRow
+                    key={attentionItemKey(item)}
+                    item={item}
+                    terminalName={terminal?.name ?? null}
+                    project={projectLabel(item.project ?? terminal?.project_path ?? null, projects, projectWorktrees)}
+                    waited={waitedLabel(item.waitingSince, now)}
+                    onFocusTerminal={onFocusTerminal}
+                    onDismissFinishedTurn={onDismissFinishedTurn}
+                  />
+                );
+              })}
             </ul>
           )}
         </div>
