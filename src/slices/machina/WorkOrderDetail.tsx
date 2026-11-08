@@ -624,14 +624,14 @@ export const WorkOrderDetail: FC<WorkOrderDetailProps> = ({
               disabled={isBusy}
               onClick={() =>
                 run(
-                  "Merge",
+                  "Accept",
                   () => invoke("machina_accept_and_merge", { workOrderId: wo.id }),
                   `${wo.id} squash-merged into ${wo.baseBranch}.`
                 )
               }
             >
               <GitMerge className="w-3.5 h-3.5" aria-hidden="true" />
-              Squash-merge into {wo.baseBranch}
+              Accept: squash-merge into {wo.baseBranch}
             </button>
             <p className="text-[11px] text-[#8b949e]">
               The main checkout at {wo.repoPath} must be on {wo.baseBranch} with no uncommitted changes to tracked

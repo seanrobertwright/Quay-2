@@ -1,7 +1,8 @@
 /// <reference types="node" />
-// The Factory Station header names its engine and where it runs (#481, ADR 0006): Machina is
-// Quay's local factory, so an operator can tell it apart from a Praxis host. The real modal is
-// rendered into happy-dom, with only Tauri's `invoke` (and event listening) faked.
+// The Factory Station in Machina's own words (#481, ADR 0006): its header names the engine and
+// where it runs, since Machina is Quay's local factory and not a Praxis host, and a work order is
+// taken with Accept. The real modal is rendered into happy-dom, with only Tauri's `invoke` (and
+// event listening) faked.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -28,9 +29,44 @@ const STATUS = {
   runningJobs: 0,
 };
 
+/** A work order whose gate passed, waiting for the operator's Accept. */
+const AWAITING = {
+  id: "WO-1",
+  title: "Add a greeting",
+  objective: "Say hello",
+  repoPath: "C:\src\repo",
+  baseBranch: "main",
+  baseSha: "a".repeat(40),
+  branchName: "machina/wo-1",
+  worktreePath: "C:\src\repo\.machina\worktrees\wo-1",
+  authorAgent: "claude",
+  authorTerminalId: null,
+  allowedOutputPaths: ["src/**"],
+  dependsOn: [],
+  maxCorrections: 2,
+  attempts: 1,
+  budgetUsd: 5,
+  spend: { measured: true, usd: 0.5, responses: 3, note: "" },
+  status: "AWAITING_ACCEPTANCE",
+  stages: [],
+  hold: null,
+  vault: null,
+  setupChecks: [],
+  lastGate: null,
+  mergeCommit: null,
+  worktreeRemoved: false,
+  error: null,
+  epoch: 3,
+  createdAtMs: 0,
+  updatedAtMs: 0,
+  events: [],
+};
+
+let workOrders: unknown[] = [];
 let mounted: { root: Root; container: HTMLElement } | null = null;
 
 beforeEach(() => {
+  workOrders = [];
   fakeInvoke(async (cmd) => {
     switch (cmd) {
       case "plugin:event|listen":
@@ -40,7 +76,7 @@ beforeEach(() => {
       case "machina_get_status":
         return STATUS;
       case "machina_list_work_orders":
-        return [];
+        return workOrders;
       default:
         throw new Error(`no fake for ${cmd}`);
     }
@@ -81,4 +117,11 @@ test("the Factory Station's title names Machina and says it runs locally", async
   const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
   const title = document.getElementById(dialog.getAttribute("aria-labelledby")!)!;
   assert.equal(title.textContent, "Machina: local");
+});
+
+test("a work order whose gate passed offers Accept, which squash-merges it into its base branch", async () => {
+  workOrders = [AWAITING];
+  const container = await renderStation();
+  const names = [...container.querySelectorAll("button")].map((b) => b.textContent?.trim());
+  assert.ok(names.includes("Accept: squash-merge into main"), `buttons: ${names.join(" | ")}`);
 });
