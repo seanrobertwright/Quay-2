@@ -1,4 +1,4 @@
-import { isContextMenuKey } from "../overlay/useContextMenu.ts";
+import { isContextMenuKey } from "../overlay/menuKeys.ts";
 
 /** The modifier and key parts of a keyboard event that decide what a terminal does with it. */
 export interface TerminalKey {
