@@ -1,8 +1,8 @@
-import { FC, FormEvent, useId, useState } from "react";
+import { type FC, type FormEvent, useId, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { RunKind } from "../terminal/types";
-import { AGENT_OPTIONS, SPEND_MEASURED_AGENTS, agentName, splitList } from "./format";
-import { MachinaWorkOrder, ProjectFactoryInfo } from "./types";
+import type { RunKind } from "../terminal/types.ts";
+import { AGENT_OPTIONS, SPEND_MEASURED_AGENTS, agentName, splitList } from "./format.ts";
+import type { MachinaWorkOrder, ProjectFactoryInfo } from "./types.ts";
 
 interface WorkOrderComposerProps {
   activeProject: string;
@@ -239,7 +239,7 @@ export const WorkOrderComposer: FC<WorkOrderComposerProps> = ({
       {!SPEND_MEASURED_AGENTS.includes(agent) && (
         <p className="text-[11px] text-[#d29922]">
           Spend is measured only for {SPEND_MEASURED_AGENTS.map(agentName).join(" and ")}, so the budget cannot
-          stop a {agentName(agent)} run.
+          stop a {agentName(agent)} author.
         </p>
       )}
 

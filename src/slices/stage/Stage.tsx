@@ -532,7 +532,7 @@ export const Stage: FC<StageProps> = ({
               type="button"
               onClick={onOpenFactoryStation}
               className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded border border-[#58a6ff]/30 transition-colors text-xs font-medium cursor-pointer"
-              title="Machina AI Software Factory Cockpit (Ctrl+Shift+B F)"
+              title="Machina Factory Station: local, on this machine (Ctrl+Shift+B F)"
             >
               <Cpu className="w-3.5 h-3.5" />
               <span>Factory</span>

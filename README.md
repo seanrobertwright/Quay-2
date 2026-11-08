@@ -78,13 +78,15 @@ flowchart LR
 - Built-in Architectural Decision Records (ADR) viewer and Spec Task progress checklists.
 - 1-click **"Implement with Archon"** integration directly from GitHub issues.
 
-### 🏭 Machina AI Software Factory Cockpit
-- Native supervisor for the Machina deterministic software manufacturing engine.
-- SQLite-backed state persistence in `%LOCALAPPDATA%\Quay2\praxis\`.
-- Real-time milestone stages, deliverable gates, hold resolution, and operator claim management.
+### 🏭 Machina: Quay's Local Factory
+- **Machina is Quay's local factory.** It runs inside Quay on this machine, with no host, no sign-in and no browser, and every decision is made in Quay. The Factory Station's title reads **Machina: local**. It is not Praxis: a Machina work order never becomes a Praxis run (see ADR 0006 in `.scratch/machina-praxis/adr/`).
+- Opens with `Ctrl+Shift+B F`, the stage's **Factory** button or **Machina Factory Station...** in the command palette.
+- Each work order gets its own git worktree, is gated by the project's own checks in `.machina/factory.json` with hidden holdbacks, and is squash-merged into its base branch only when you **Accept** it. Holds stop a work order until you resolve them.
+- State is kept in `%LOCALAPPDATA%\Quay2\machina\state.json`.
 
 ### 🧭 Praxis Builder
 
+- **Praxis is the AI-WS-SDK's workflow engine, and it runs on a Praxis host, not in Quay.** The builder authors Praxis definitions as files in your project and reads the host through the `praxis` CLI; a run's decisions are made in the host's browser page. The host chip in its header shows the host's condition. It is not Machina, Quay's local factory, and it has no work orders.
 - Opens with `Ctrl+Shift+B P` or **Praxis Builder...** in the command palette.
 - Lists the active project's Praxis definitions in `.praxis/` (graphs with their graph bindings, contracts, grants, triggers, workflow templates and graph workflows) and shows a graph on a canvas, laid out from `.praxis/layout/<graph-id>.json` or by dagre.
 - Edit a graph on the canvas: drag a kind from the palette strip to add a node, drag from one card's handle to another to add a dependency, and drag from a decision's green `then` or red `else` handle to set that branch. The inspector beside the canvas edits the selected node's id, its kind's config, its `dependsOn`, and its `inputSchema` and `outputSchema` (as a table of field name, type and required, or as raw JSON for a schema the table can't show), shows the problems found in each field, and deletes the node. Renaming or deleting a node updates every `dependsOn`, decision branch and layout entry that names it.
@@ -172,7 +174,7 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B H` | **Session History** | Search and auto-resume past Claude sessions |
 | `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Open Archon DAG, logs, and spec inspector |
-| `Ctrl+Shift+B F` | **Machina** | Open AI Software Factory cockpit |
+| `Ctrl+Shift+B F` | **Machina** | Open the Factory Station, Quay's local factory |
 | `Ctrl+Shift+B P` | **Praxis Builder** | Browse the project's Praxis definitions and graphs |
 | `Ctrl+Shift+B C` | **Topos** | Open the Git cockpit for the active project |
 | `Ctrl+Shift+P` | **Command Palette** | Global searchable command palette. `Ctrl+K` also opens it when a terminal does not have focus |
@@ -260,7 +262,7 @@ Comprehensive, searchable documentation is hosted on **GitHub Pages**:
 - **[Architecture Deep-Dive](https://seanrobertwright.github.io/Quay-2/guide/architecture)**: Vertical Slice Architecture, ConPTY lifecycle, and wire protocols.
 - **[A2A Orchestration Protocol](https://seanrobertwright.github.io/Quay-2/features/a2a-orchestration)**: JSON-RPC tools and autonomous multi-agent handoff recipes.
 - **[Archon & SDD Workflows](https://seanrobertwright.github.io/Quay-2/features/archon-sdd)**: Visual DAG execution, live streaming logs, and ADR tracking.
-- **[Machina Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Software manufacturing pipeline setup.
+- **[Machina Cockpit](https://seanrobertwright.github.io/Quay-2/features/machina-praxis)**: Quay's local factory: work orders, holds and Accept.
 - **[API & IPC Specification](https://seanrobertwright.github.io/Quay-2/reference/ipc-api)**: Tauri IPC command contracts and event structures.
 
 To run the documentation locally:

@@ -473,7 +473,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-factory-station",
         category: "Tools & Actions",
         title: "Machina Factory Station...",
-        subtitle: "AI Software Factory Cockpit: 6-Stage Pipeline DAG, Holdback Vault & Governed Holds",
+        subtitle: "Machina, local: Quay's factory on this machine. Work orders, holds and Accept, all decided in Quay",
         icon: <Cpu className="w-4 h-4 text-[#58a6ff]" />,
         shortcut: "Ctrl+Shift+B f",
         action: () => onOpenFactoryStation(),

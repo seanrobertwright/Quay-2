@@ -1,4 +1,4 @@
-import { RunKind } from "../terminal/types";
+import type { RunKind } from "../terminal/types.ts";
 
 // Mirrors src-tauri/src/slices/machina/models.rs and config.rs. Option<T> arrives as null.
 
