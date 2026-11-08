@@ -11,8 +11,10 @@ export function splitStrip<T>(tracks: readonly T[]): { shown: T[]; more: T[] } {
 }
 
 /**
- * The item the More menu's `key` moves focus to from `index`, of `count` items, or null for a key
- * it doesn't handle. Arrows wrap, and Home and End go to either end.
+ * The item a menu's `key` moves focus to from `index`, of `count` items, or null for a key it
+ * doesn't handle. Arrows wrap, and Home and End go to either end. The More menu no longer calls
+ * it: since #510 it is the shared context menu, which moves focus the same way itself. It stays,
+ * unused, so Topos's existing tests run unchanged; removing it and its test is a follow-up.
  */
 export function menuIndexByKey(index: number, count: number, key: string): number | null {
   if (count === 0) return null;

@@ -10,7 +10,8 @@ import React, {
 } from "react";
 import { Bot, Cloud, FolderGit2, GitBranch, Tag } from "lucide-react";
 import { formatDateTime } from "../../../lib/dates";
-import { usePopupLayer } from "../../overlay/useOverlay";
+import { ContextMenu, type MenuPoint } from "../../overlay/ContextMenu";
+import { useContextMenu } from "../../overlay/useContextMenu";
 import { AgentIcon } from "../../terminal/AgentIcons";
 import type { RunKind } from "../../terminal/types";
 import {
@@ -24,7 +25,7 @@ import {
 import type { GraphFeed, GraphStatus } from "./graphFeed";
 import { hitNode, rowAt } from "./graphHit";
 import type { Badge, RefsView } from "./graphRefs";
-import { badgeMenu, commitMenu, graphKey, nextBadge, primaryAction, type MenuItem, type PrimaryAction, type RefAction, type RefContext } from "./refActions";
+import { badgeMenu, commitMenu, graphKey, nextBadge, primaryAction, refMenuItems, type MenuItem, type PrimaryAction, type RefAction, type RefContext } from "./refActions";
 import { collapsedLane, laneX, NODE_RADIUS, rowY, slotPaths } from "./graphPaths";
 import type { GraphAgent } from "./graphPage";
 import { authorLine, nodeLabel, nodeTooltip, splitAgents } from "./provenance";
@@ -38,7 +39,7 @@ import { useAgentHighlight } from "./useAgentHighlight";
 import type { HighlightKind } from "./agentHighlight";
 import type { RefSet } from "./graphFilters";
 import { slotColor } from "./laneColors";
-import { menuIndexByKey, splitStrip } from "./trackStrip";
+import { splitStrip } from "./trackStrip";
 import {
   clampOffset,
   keyOffset,
@@ -376,7 +377,7 @@ const GraphLanes = React.memo<{
 
 const jumpTitle = (store: GraphStore, track: number) => `Scroll to where ${store.trackLabel(track)} starts`;
 
-/** A track's color dot and name, as the strip and its More menu show it. */
+/** A track's color dot and name, as the strip shows it. */
 const TrackName: React.FC<{ store: GraphStore; track: number }> = ({ store, track }) => (
   <>
     <span
@@ -400,52 +401,23 @@ const TrackStrip = React.memo<{
   topRow: number;
   onJump: (row: number) => void;
 }>(function TrackStrip({ store, topRow, onJump }) {
-  const [isOpen, setOpen] = useState(false);
-  const [focusIndex, setFocusIndex] = useState(0);
+  // Where the More menu opens while it is open: under its button, their right edges lined up. It
+  // is the shared context menu (#510), which closes on a scroll, so it never rebuilds per frame.
+  const [menuPoint, setMenuPoint] = useState<MenuPoint | null>(null);
   const menuId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLUListElement>(null);
-  const items = useRef<(HTMLButtonElement | null)[]>([]);
   const tracks = store ? store.tracksPassing(topRow) : [];
   const { shown, more } = splitStrip(tracks);
-  const open = isOpen && more.length > 0;
-  // A refresh can shorten the menu under its focused item.
-  const focused = Math.min(focusIndex, more.length - 1);
+  const open = menuPoint !== null && more.length > 0;
 
-  // Scrolling closes the menu, so an open menu never rebuilds per frame; focus inside it goes back
-  // to the trigger rather than falling to the page.
-  const openedAt = useRef(topRow);
-  useLayoutEffect(() => {
-    if (openedAt.current === topRow) return;
-    openedAt.current = topRow;
-    if (menu.current?.contains(document.activeElement)) trigger.current?.focus();
-    setOpen(false);
-  }, [topRow]);
-
-  useEffect(() => {
-    if (open) items.current[focused]?.focus();
-  }, [open, focused]);
-
-  const close = (refocus: boolean) => {
-    setOpen(false);
+  const show = () => {
+    const box = trigger.current?.getBoundingClientRect();
+    if (box) setMenuPoint({ x: box.right, y: box.bottom + 4 });
+  };
+  const close = useCallback((refocus: boolean) => {
+    setMenuPoint(null);
     if (refocus) trigger.current?.focus();
-  };
-  const jump = (row: number) => {
-    setOpen(false);
-    onJump(row);
-  };
-  // Escape reaches the overlay stack before the menu, so the menu joins it to close first.
-  usePopupLayer(open, () => close(true), menu);
-  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLUListElement>) => {
-    const next = menuIndexByKey(focused, more.length, e.key);
-    if (next === null) return;
-    e.preventDefault();
-    setFocusIndex(next);
-  };
-  // Focus leaving the trigger and the menu, by a click outside or by Tab, closes it.
-  const onBlur = (e: React.FocusEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
-  };
+  }, []);
 
   const itemClass =
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-[#c9d1d9] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60";
@@ -470,7 +442,7 @@ const TrackStrip = React.memo<{
         )}
       </div>
       {store && more.length > 0 && (
-        <div className="shrink-0 pr-2" onBlur={onBlur}>
+        <div className="shrink-0 pr-2">
           <button
             ref={trigger}
             type="button"
@@ -478,48 +450,32 @@ const TrackStrip = React.memo<{
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}
             aria-label={`+${more.length.toLocaleString()} more ${more.length === 1 ? "track" : "tracks"} above`}
-            onClick={() => {
-              if (open) return close(false);
-              setFocusIndex(0);
-              setOpen(true);
-            }}
+            onClick={() => (open ? close(false) : show())}
             onKeyDown={(e) => {
               if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
               e.preventDefault();
-              setFocusIndex(e.key === "ArrowDown" ? 0 : more.length - 1);
-              setOpen(true);
+              show();
             }}
             className="px-1.5 py-0.5 rounded text-[11px] text-[#8b949e] hover:bg-[#161b22] hover:text-[#c9d1d9] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60"
           >
             +{more.length.toLocaleString()} more
           </button>
           {open && (
-            <ul
-              ref={menu}
+            <ContextMenu
               id={menuId}
-              role="menu"
-              aria-label="More tracks above"
-              onKeyDown={onMenuKeyDown}
-              className="absolute right-2 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto p-1 flex flex-col rounded border border-[#30363d] bg-[#161b22] shadow-lg"
-            >
-              {more.map((t, i) => (
-                <li key={t.track} role="none">
-                  <button
-                    ref={(el) => {
-                      items.current[i] = el;
-                    }}
-                    type="button"
-                    role="menuitem"
-                    tabIndex={i === focused ? 0 : -1}
-                    onClick={() => jump(t.startRow)}
-                    title={jumpTitle(store, t.track)}
-                    className={`${itemClass} w-full hover:bg-[#0d1117]`}
-                  >
-                    <TrackName store={store} track={t.track} />
-                  </button>
-                </li>
-              ))}
-            </ul>
+              label="More tracks above"
+              items={more.map((t) => ({
+                name: store.trackLabel(t.track),
+                enabled: true,
+                group: "tracks",
+                swatch: slotColor(store.trackSlot(t.track)),
+                onChoose: () => onJump(t.startRow),
+              }))}
+              at={menuPoint}
+              align="end"
+              onClose={close}
+              anchorRef={trigger}
+            />
           )}
         </div>
       )}
@@ -534,85 +490,17 @@ function badgeIndexAt(target: EventTarget): number | null {
   return Number.isSafeInteger(index) && index >= 0 ? index : null;
 }
 
-/** An open badge or commit-row menu: where it shows, in the list's own px, and what it offers. */
-interface OpenMenu {
-  x: number;
-  y: number;
+/** What a badge's or a commit row's menu is for: the row, the badge by its index or null for the row, and what it offers. */
+interface RefMenuTarget {
+  row: number;
+  index: number | null;
   /** Untrusted text: a ref name or a short oid, only ever rendered as text. */
   label: string;
   items: MenuItem[];
 }
 
-const MENU_WIDTH = 224;
-
-/**
- * A badge's or a commit row's context menu (#367, #393), following the menu pattern: focus starts
- * on its first item, the arrows, Home and End move it, Enter or Space runs an item, and Escape, Tab
- * or a click outside closes it. A disabled item stays focusable and says why in its title.
- */
-const RefMenu: React.FC<{ menu: OpenMenu; onRun: (action: RefAction) => void; onClose: (refocus: boolean) => void }> = ({
-  menu,
-  onRun,
-  onClose,
-}) => {
-  const list = useRef<HTMLUListElement>(null);
-  const items = useRef<(HTMLButtonElement | null)[]>([]);
-  const [focused, setFocused] = useState(0);
-  useEffect(() => {
-    items.current[focused]?.focus();
-  }, [focused, menu]);
-  usePopupLayer(true, () => onClose(true), list);
-  return (
-    <ul
-      ref={list}
-      role="menu"
-      aria-label={`Actions for ${menu.label}`}
-      onKeyDown={(e) => {
-        const next = menuIndexByKey(focused, menu.items.length, e.key);
-        if (next !== null) {
-          e.preventDefault();
-          setFocused(next);
-        } else if (e.key === "Tab") {
-          e.preventDefault();
-          onClose(true);
-        }
-      }}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose(false);
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-      className="absolute z-30 p-1 flex flex-col rounded border border-[#30363d] bg-[#161b22] shadow-lg"
-      style={{ left: menu.x, top: menu.y, width: MENU_WIDTH }}
-    >
-      {menu.items.map((item, i) => (
-        <li key={item.label} role="none">
-          <button
-            ref={(el) => {
-              items.current[i] = el;
-            }}
-            type="button"
-            role="menuitem"
-            tabIndex={i === focused ? 0 : -1}
-            aria-disabled={item.action === null}
-            title={item.disabledReason}
-            onClick={() => {
-              if (item.action === null) return;
-              onClose(true);
-              onRun(item.action);
-            }}
-            onMouseEnter={() => setFocused(i)}
-            className={`w-full text-left px-2 py-1 rounded text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#06B6D4]/60 ${
-              item.action === null ? "text-[#6e7681] cursor-default" : "text-[#c9d1d9] hover:bg-[#0d1117] focus:bg-[#0d1117]"
-            }`}
-          >
-            <span className="block truncate">{item.label}</span>
-            {item.disabledReason && <span className="block truncate text-[10px] text-[#6e7681]">{item.disabledReason}</span>}
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-};
+/** Names a menu's row and badge, so a second opening for the same one compares equal. */
+const refMenuKey = (target: RefMenuTarget) => `${target.row}:${target.index ?? "row"}`;
 
 /**
  * The commit list (#374): one scroll container over a spacer as tall as every loaded row, with
@@ -668,10 +556,9 @@ export const GraphList: React.FC<GraphListProps> = ({
   // The badge the keyboard cursor is on in the active row (#393), by its index among the shown
   // badges, or null for the row itself. Keyed by the row, so it resets when the row changes.
   const [cursor, setCursor] = useState<{ row: number; index: number } | null>(null);
-  const [menu, setMenu] = useState<OpenMenu | null>(null);
-  // The box menus are placed in: the overlay's backdrop filter makes `position: fixed` relative to
-  // it, so menus are placed in this frame's own px instead.
-  const frame = useRef<HTMLDivElement>(null);
+  // The badge and row menus (#367, #393) are the shared context menu (#510), which renders in the
+  // document body, outside the overlay's backdrop filter, and stays inside the window by itself.
+  const menu = useContextMenu<RefMenuTarget>({ keyOf: refMenuKey });
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const idPrefix = useId();
   const scale = useMemo(() => scrollScale(rowCount * ROW_HEIGHT, height), [rowCount, height]);
@@ -893,9 +780,9 @@ export const GraphList: React.FC<GraphListProps> = ({
   /** The badges `row` shows, the ones a cursor or a click can land on. */
   const shownBadges = (row: number): Badge[] => (store ? (refs.badges.get(store.oid(row)) ?? []).slice(0, SHOWN_BADGES) : []);
 
-  /** Opens the menu of `row`'s badge `index`, or of the row itself, at `point` in viewport px. */
-  const openMenu = (row: number, index: number | null, point: { x: number; y: number }) => {
-    if (!store || refContext === null) return;
+  /** The menu of `row`'s badge `index`, or of the row itself, or null when it offers none. */
+  const menuTarget = (row: number, index: number | null): RefMenuTarget | null => {
+    if (!store || refContext === null) return null;
     const oid = store.oid(row);
     const badge = index === null ? undefined : shownBadges(row)[index];
     let items = badge ? badgeMenu(badge, oid, refContext) : [];
@@ -905,26 +792,21 @@ export const GraphList: React.FC<GraphListProps> = ({
       items = commitMenu(oid, refContext);
       label = shortOid(oid);
     }
-    const box = frame.current?.getBoundingClientRect();
-    if (!box) return;
-    const x = Math.max(0, Math.min(point.x - box.left, box.width - MENU_WIDTH));
-    const y = Math.max(0, Math.min(point.y - box.top, box.height - items.length * 40 - 8));
-    setMenu({ x, y, label, items });
+    return { row, index, label, items };
   };
 
-  const closeMenu = useCallback((refocus: boolean) => {
-    setMenu(null);
-    if (refocus) scroller.current?.focus({ preventScroll: true });
-  }, []);
-
-  /** Opens the active row's menu, or its cursor badge's, under it. */
+  /**
+   * Opens the active row's menu, or its cursor badge's, at that badge's or row's lower left
+   * corner. Focus goes back to the list when it closes, since the rows are drawn afresh.
+   */
   const openMenuByKey = () => {
     if (activeRow === null) return;
     const rowEl = document.getElementById(`${idPrefix}-row-${activeRow}`);
-    const badgeEl = cursorIndex === null ? null : rowEl?.querySelector(`[data-badge="${cursorIndex}"]`);
-    const anchor = (badgeEl ?? rowEl)?.getBoundingClientRect();
-    if (!anchor) return;
-    openMenu(activeRow, cursorIndex, { x: anchor.left + (badgeEl ? 0 : 48), y: anchor.bottom });
+    const badgeEl = cursorIndex === null ? null : rowEl?.querySelector<HTMLElement>(`[data-badge="${cursorIndex}"]`);
+    const anchor = badgeEl ?? rowEl;
+    const target = menuTarget(activeRow, cursorIndex);
+    if (!anchor || !target) return;
+    menu.openBelow(target, anchor, () => scroller.current);
   };
 
   const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -933,7 +815,7 @@ export const GraphList: React.FC<GraphListProps> = ({
     // A keyboard-opened menu (Shift+F10, the menu key) targets the listbox itself and opens at the
     // active row; one from the pointer opens where it was clicked.
     if (e.target === e.currentTarget) {
-      if (menu === null) openMenuByKey();
+      if (menu.open === null) openMenuByKey();
       return;
     }
     const row = rowAt(e.clientY - (layer.current?.getBoundingClientRect().top ?? 0), win);
@@ -942,7 +824,8 @@ export const GraphList: React.FC<GraphListProps> = ({
     setActive({ sessionId: store.sessionId, row });
     onSelect(store.oid(row));
     setCursor(index === null ? null : { row, index });
-    openMenu(row, index, { x: e.clientX, y: e.clientY });
+    const target = menuTarget(row, index);
+    if (target) menu.openAt(target, { x: e.clientX, y: e.clientY }, () => scroller.current);
   };
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1128,7 +1011,7 @@ export const GraphList: React.FC<GraphListProps> = ({
       <TrackStrip store={store} topRow={stripRow} onJump={jumpTo} />
       {findBar && <GraphFindBar {...findBar} />}
       {wip && <WipRow wip={wip} store={store} layout={layout} />}
-      <div ref={frame} className="relative flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scroller}
           onScroll={onScroll}
@@ -1185,7 +1068,14 @@ export const GraphList: React.FC<GraphListProps> = ({
             </div>
           </div>
         </div>
-        {menu && <RefMenu menu={menu} onRun={onRefAction} onClose={closeMenu} />}
+        {menu.open && (
+          <ContextMenu
+            label={`Actions for ${menu.open.target.label}`}
+            items={refMenuItems(menu.open.target.items, onRefAction)}
+            at={menu.open.at}
+            onClose={menu.close}
+          />
+        )}
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow) */}
         <div role="separator" tabIndex={0}
           aria-orientation="vertical"
