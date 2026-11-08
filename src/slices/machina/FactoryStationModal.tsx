@@ -1,19 +1,19 @@
-import { FC, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FC, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Cpu, FileCode2, GitBranch, OctagonAlert, Plus, X } from "lucide-react";
-import { SpawnTerminalRequest, TerminalInfo } from "../terminal/types";
-import { formatRelative } from "../../lib/dates";
-import { FactoryConfigPanel } from "./FactoryConfigPanel";
-import { WorkOrderComposer } from "./WorkOrderComposer";
-import { RunAction, WorkOrderDetail } from "./WorkOrderDetail";
-import { formatUsd, stageBarClass, STATUS_LABEL, statusBadgeClass } from "./format";
-import {
+import type { SpawnTerminalRequest, TerminalInfo } from "../terminal/types.ts";
+import { formatRelative } from "../../lib/dates.ts";
+import { FactoryConfigPanel } from "./FactoryConfigPanel.tsx";
+import { WorkOrderComposer } from "./WorkOrderComposer.tsx";
+import { type RunAction, WorkOrderDetail } from "./WorkOrderDetail.tsx";
+import { formatUsd, stageBarClass, STATUS_LABEL, statusBadgeClass } from "./format.ts";
+import type {
   FactoryLoopMode,
   MachinaStatus,
   MachinaWorkOrder,
   ProjectFactoryInfo,
-} from "./types";
+} from "./types.ts";
 
 interface FactoryStationModalProps {
   isOpen: boolean;
@@ -214,8 +214,12 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 id={titleId} className="text-sm font-bold text-white tracking-wide">
-                  MACHINA
+                <h2
+                  id={titleId}
+                  className="text-sm font-bold text-white tracking-wide"
+                  title="Machina is Quay's local factory: it runs on this machine, with no host, no sign-in and no browser"
+                >
+                  Machina: local
                 </h2>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d]">
                   Ctrl+Shift+B F
@@ -230,7 +234,8 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-[#8b949e] truncate">
-                Agent work in isolated git worktrees, gated by your project's own checks, merged by a human
+                Quay's local factory: work orders in isolated git worktrees, gated by your project's own checks,
+                with every hold and Accept decided here in Quay
               </p>
             </div>
           </div>
