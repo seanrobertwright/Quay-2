@@ -133,6 +133,10 @@ pub struct DefinitionEntry {
     /// [`template_digest`](super::template_digest::template_digest), when it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_digest: Option<String>,
+    /// A graph workflow's `contractId`, when it is a string, so a trigger that picks it as its
+    /// target can take its contract (#472).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_id: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more

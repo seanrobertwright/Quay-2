@@ -14,6 +14,7 @@ use super::models::{
     FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome, TargetInput,
 };
 use super::store;
+use super::trigger_target::{self, TriggerTargetCheck};
 use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
 
@@ -119,6 +120,20 @@ pub async fn praxis_check_graph_workflow(
 ) -> Result<GraphWorkflowCheck, String> {
     let workspace = workspace.inner().clone();
     blocking(move || graph_workflow::check_graph_workflow(&project_root(&workspace, &project_path)?, &content)).await
+}
+
+/// A trigger's checks as a graph trigger (#472), with `content` as its draft and `target` the
+/// graph workflow it starts: the Praxis host's graph trigger rules, and its contract against the
+/// target's as saved. A trigger without a target gets none of them.
+#[tauri::command]
+pub async fn praxis_check_trigger(
+    project_path: String,
+    content: serde_json::Value,
+    target: Option<String>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<TriggerTargetCheck, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || trigger_target::check_trigger_target(&project_root(&workspace, &project_path)?, &content, target.as_deref())).await
 }
 
 /// The ids used across the project's saved graph bindings, and the agents of its saved workflow

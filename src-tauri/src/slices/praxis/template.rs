@@ -108,7 +108,7 @@ fn check(document: &Value, def: &str) -> Validation {
 }
 
 fn issue(code: &str, path: String, message: String) -> Diagnostic {
-    Diagnostic { code: code.to_string(), severity: Severity::Error, message, path, node_id: None, field: None }
+    Diagnostic { code: code.to_string(), severity: Severity::Error, message, path, node_id: None, field: None, hint: None }
 }
 
 fn escape(key: &str) -> String {

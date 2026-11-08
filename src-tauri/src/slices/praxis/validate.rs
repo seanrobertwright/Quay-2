@@ -91,6 +91,10 @@ pub struct Diagnostic {
     /// is on part of the node rather than the whole of it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
+    /// How to fix it, for an issue that carries the Praxis host's code, such as a graph
+    /// trigger rule (#472).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 /// A record's validation result.
@@ -410,6 +414,7 @@ fn revision_issue(record: &Value, noun: &str) -> Option<Diagnostic> {
         path: "/revision".to_string(),
         node_id: None,
         field: None,
+        hint: None,
     })
 }
 
@@ -609,6 +614,7 @@ fn record_issue(code: &str, message: &str) -> Diagnostic {
         path: String::new(),
         node_id: None,
         field: None,
+        hint: None,
     }
 }
 
@@ -630,7 +636,7 @@ fn at(graph: &Value, path: &str, code: &str, severity: Severity, message: String
             field = Some(rest.join("."));
         }
     }
-    Diagnostic { code: code.to_string(), severity, message, path: path.to_string(), node_id, field }
+    Diagnostic { code: code.to_string(), severity, message, path: path.to_string(), node_id, field, hint: None }
 }
 
 /// The SDK's bundled schema with its root pointed at the `$defs` record `name`, as the SDK
@@ -712,7 +718,7 @@ fn grant_message(grant: &Value, path: &str) -> Option<String> {
 
 /// An error at `path` of a record that isn't a graph, so is on no node.
 pub(super) fn field_issue(path: &str, code: &str, message: String) -> Diagnostic {
-    Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None }
+    Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None, hint: None }
 }
 
 /// The schema issues of the `$defs` record `name`, with `message`'s plainer wording where it

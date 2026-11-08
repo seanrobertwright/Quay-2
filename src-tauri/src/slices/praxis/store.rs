@@ -244,7 +244,8 @@ pub(super) fn json_ids(dir: &Path, folder: &str) -> Result<Vec<String>, String> 
 /// Lists a kind's definitions in id order, at most `MAX_LISTED` of them. Only `*.json`
 /// files directly in the kind's folder are listed. A missing folder is an empty list. Each
 /// file is parsed, so one that can't be opened, or whose `id` isn't its name, is flagged.
-/// A workflow template or graph workflow whose name breaks the host's rule is flagged too.
+/// A workflow template or graph workflow whose name breaks the host's rule is flagged too. A
+/// graph binding lists with its graph and cost unit, and a graph workflow with its contract.
 pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
     let Some(dir) = confined_dir(repo, kind.folder())? else {
         return Ok(DefinitionList { entries: Vec::new(), truncated: false });
@@ -272,13 +273,17 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 graph_id: None,
                 cost_unit: None,
                 template_digest: None,
+                contract_id: None,
             };
             match parsed {
                 Err(problem) => empty(id, Some(problem)),
                 Ok((record, bytes)) => {
                     let Some(id_field) = kind.id_field() else {
                         let template_digest = (kind == PraxisKind::Templates).then(|| template_digest(&bytes)).flatten();
-                        return DefinitionEntry { template_digest, ..empty(id, None) };
+                        let contract_id = (kind == PraxisKind::GraphWorkflows)
+                            .then(|| record.get("contractId").and_then(Value::as_str).map(str::to_string))
+                            .flatten();
+                        return DefinitionEntry { template_digest, contract_id, ..empty(id, None) };
                     };
                     let found = record.get(id_field).and_then(Value::as_str);
                     let id_mismatch =
@@ -1063,6 +1068,20 @@ mod tests {
         assert_eq!(by_id("Ship_It").problem, None, "it still opens");
         let read = read_definition(&repo, PraxisKind::GraphWorkflows, "ship-it").unwrap();
         assert_eq!(read.content.unwrap()["graphBindingId"], "g-1");
+    }
+
+    #[test]
+    fn a_graph_workflow_lists_with_its_contract_id_so_a_trigger_can_take_it() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graph-workflows/ship.json", WORKFLOW);
+        write(&repo, ".praxis/graph-workflows/odd.json", "{\"version\": 1, \"contractId\": 3}");
+        write(&repo, ".praxis/triggers/t.json", "{\"id\": \"t\", \"contractId\": \"c\"}");
+        let list = list_definitions(&repo, PraxisKind::GraphWorkflows).unwrap();
+        let contract = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().contract_id.clone();
+        assert_eq!(contract("ship").as_deref(), Some("c"));
+        assert_eq!(contract("odd"), None);
+        // Only graph workflows list it.
+        assert_eq!(list_definitions(&repo, PraxisKind::Triggers).unwrap().entries[0].contract_id, None);
     }
 
     #[test]
