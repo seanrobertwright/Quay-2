@@ -2,7 +2,8 @@
  * The attention queue: every session waiting on the user, oldest first. It takes plain events
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
  * that feeds it (`useAttentionQueue`) turns bridge events into these events. The status strip
- * badge renders its count and the attention drawer its rows.
+ * badge renders its count, the attention drawer its rows, and the permission modal its
+ * `modalPermissions`.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */
@@ -13,6 +14,10 @@ export interface PendingPermission {
   /** The terminal's project, or null while the terminal is not known yet. */
   project: string | null;
   tool: string;
+  /** The tool's arguments as the agent sent them, for the permission modal to show. */
+  input?: unknown;
+  /** Why the agent asks, when it said. */
+  reason?: string;
 }
 
 /** A permission request an agent is blocked on until the user answers it. */
@@ -20,6 +25,11 @@ export interface PermissionItem extends PendingPermission {
   kind: "permission";
   /** When the item started waiting, in epoch milliseconds. */
   waitingSince: number;
+  /**
+   * Whether the user put the request off with the modal's Later. A deferred request still waits
+   * and still counts, but the permission modal does not show it until it is reopened.
+   */
+  deferred: boolean;
 }
 
 /** An agent that finished its turn and sits idle until the user gives it the next one. */
@@ -50,6 +60,10 @@ export type AttentionEvent =
   | { type: "pendingPermissionsLoaded"; requests: readonly PendingPermission[]; at: number }
   /** The request was answered, wherever it was answered. */
   | { type: "permissionResolved"; requestId: string }
+  /** The user chose Later on the permission modal while it showed `requestIds`. */
+  | { type: "permissionsDeferred"; requestIds: readonly string[] }
+  /** The user chose to see deferred requests again, so the permission modal shows them. */
+  | { type: "permissionsReopened"; requestIds: readonly string[] }
   | {
       type: "turnCompleted";
       terminalId: string;
@@ -113,6 +127,10 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
       permissions.delete(event.requestId);
       return { ...queue, permissions };
     }
+    case "permissionsDeferred":
+      return setDeferred(queue, event.requestIds, true);
+    case "permissionsReopened":
+      return setDeferred(queue, event.requestIds, false);
     case "turnCompleted": {
       // A subagent's turn says nothing about whether the terminal's own agent is idle
       if (event.subagent) return queue;
@@ -153,7 +171,7 @@ function addPermissions(
   if (fresh.length === 0) return queue;
   const permissions = new Map(queue.permissions);
   for (const request of fresh) {
-    permissions.set(request.requestId, { kind: "permission", ...request, waitingSince: at });
+    permissions.set(request.requestId, { kind: "permission", ...request, waitingSince: at, deferred: false });
   }
   let droppedPermissions = queue.droppedPermissions;
   for (const terminalId of new Set(fresh.map((request) => request.terminalId))) {
@@ -169,6 +187,18 @@ function addPermissions(
     droppedPermissions = dropped;
   }
   return { ...queue, permissions, droppedPermissions };
+}
+
+/** The queue with each of `requestIds` that still waits set to `deferred`. */
+function setDeferred(queue: AttentionQueue, requestIds: readonly string[], deferred: boolean): AttentionQueue {
+  let permissions: Map<string, PermissionItem> | null = null;
+  for (const requestId of requestIds) {
+    const item = queue.permissions.get(requestId);
+    if (!item || item.deferred === deferred) continue;
+    permissions ??= new Map(queue.permissions);
+    permissions.set(requestId, { ...item, deferred });
+  }
+  return permissions ? { ...queue, permissions } : queue;
 }
 
 /** The queue with each item that has no project given its terminal's project from `terminals`. */
@@ -207,6 +237,23 @@ function clearFinishedTurn(queue: AttentionQueue, terminalId: string): Attention
   const finishedTurns = new Map(queue.finishedTurns);
   finishedTurns.delete(terminalId);
   return { ...queue, finishedTurns };
+}
+
+/**
+ * The permission requests the permission modal shows: every request not deferred with Later,
+ * oldest first by when it started waiting. The modal is open while this holds any request.
+ */
+export function modalPermissions(queue: AttentionQueue): PermissionItem[] {
+  return [...queue.permissions.values()]
+    .filter((item) => !item.deferred)
+    .sort((a, b) => a.waitingSince - b.waitingSince);
+}
+
+/** The ids of every permission request still waiting, deferred or not, oldest first. */
+export function pendingPermissionIds(queue: AttentionQueue): string[] {
+  return [...queue.permissions.values()]
+    .sort((a, b) => a.waitingSince - b.waitingSince)
+    .map((item) => item.requestId);
 }
 
 /** Every waiting item, oldest first by when it started waiting, across all kinds. */

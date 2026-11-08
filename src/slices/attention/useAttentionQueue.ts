@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Envelope, isSubagentTurn, PermissionResolvedPayload } from "../bridge/useBridgeEvents";
-import { PermissionRequestPayload } from "../bridge/PermissionModal";
+import {
+  Envelope,
+  isSubagentTurn,
+  PermissionRequestPayload,
+  PermissionResolvedPayload,
+} from "../bridge/useBridgeEvents";
 import { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types";
 import {
   applyAttentionEvent,
   attentionItems,
   emptyAttentionQueue,
+  modalPermissions,
+  pendingPermissionIds,
   type AttentionItem,
   type PendingPermission,
+  type PermissionItem,
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
 import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
@@ -27,11 +34,35 @@ const toPendingPermission = (
   terminalId: payload.tag ?? null,
   project: projectOf(terminals, payload.tag),
   tool: payload.tool,
+  input: payload.input,
+  reason: payload.reason,
 });
 
-export interface AttentionQueueState {
+/** Sends the user's answer to permission request `requestId`. */
+export type AnswerPermission = (
+  requestId: string,
+  decision: "allow" | "deny",
+  reason?: string,
+  rememberForSession?: boolean
+) => Promise<void>;
+
+export interface AttentionQueueView {
   /** Every waiting item, oldest first. */
   items: AttentionItem[];
+  /** The permission requests the permission modal shows, oldest first; none when it is closed. */
+  modalPermissions: PermissionItem[];
+  /** The ids of every permission request still waiting, deferred or not, oldest first. */
+  pendingPermissionIds: string[];
+  /** Puts `requestIds` off with Later: they leave the modal and stay in the queue. */
+  deferPermissions: (requestIds: readonly string[]) => void;
+  /** Shows deferred `requestIds` in the permission modal again. */
+  reopenPermissions: (requestIds: readonly string[]) => void;
+  /**
+   * Sends the user's answer to the backend and clears the request once the backend takes it.
+   * The request also clears on the backend's `permission-resolved`, but that is not sent when the
+   * agent has stopped waiting, so the answer clears it here too.
+   */
+  answerPermission: AnswerPermission;
   /** Clears the terminal's finished turn without acting on it. Its permission requests stay. */
   dismissFinishedTurn: (terminalId: string) => void;
 }
@@ -40,7 +71,8 @@ export interface AttentionQueueState {
  * The attention queue, fed from the backend: permission requests and their resolutions, the
  * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
  * only, so an app restart starts it empty; on a webview reload the backend's pending permissions
- * rebuild its permission items.
+ * rebuild its permission items. Which requests were put off with Later is not kept across a
+ * reload, so the rebuilt requests show in the permission modal again.
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
@@ -50,9 +82,10 @@ export interface AttentionQueueState {
  * A terminal's items all go when it ends: its process exits (`terminal-exited`), it leaves the
  * terminal list (closed), or the user relaunches it.
  *
- * Returns the waiting items, oldest first, and the action that dismisses a terminal's finished turn.
+ * Returns the waiting items, the requests the permission modal shows, the ids of every pending
+ * request, and the user's actions on them, including dismissing a terminal's finished turn.
  */
-export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueState {
+export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
 
   // Listeners read the project of the terminal an event names at the time it arrives
@@ -135,10 +168,46 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueStat
     };
   }, []);
 
-  const items = useMemo(() => attentionItems(queue), [queue]);
+  const deferPermissions = useCallback(
+    (requestIds: readonly string[]) => dispatch({ type: "permissionsDeferred", requestIds }),
+    []
+  );
+  const reopenPermissions = useCallback(
+    (requestIds: readonly string[]) => dispatch({ type: "permissionsReopened", requestIds }),
+    []
+  );
+  const answerPermission = useCallback<AnswerPermission>(
+    async (requestId, decision, reason, rememberForSession = false) => {
+      try {
+        await invoke("resolve_permission", {
+          requestId,
+          decision,
+          reason: reason || null,
+          rememberForSession,
+        });
+        dispatch({ type: "permissionResolved", requestId });
+      } catch (err) {
+        console.error("Failed to resolve permission:", err);
+      }
+    },
+    []
+  );
+
   const dismissFinishedTurn = useCallback(
     (terminalId: string) => dispatch({ type: "finishedTurnDismissed", terminalId }),
     []
   );
-  return { items, dismissFinishedTurn };
+
+  const items = useMemo(() => attentionItems(queue), [queue]);
+  const modal = useMemo(() => modalPermissions(queue), [queue]);
+  const pending = useMemo(() => pendingPermissionIds(queue), [queue]);
+  return {
+    items,
+    modalPermissions: modal,
+    pendingPermissionIds: pending,
+    deferPermissions,
+    reopenPermissions,
+    answerPermission,
+    dismissFinishedTurn,
+  };
 }
