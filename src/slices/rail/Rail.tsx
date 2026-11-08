@@ -242,6 +242,17 @@ export const Rail: React.FC<RailProps> = ({
       run();
     });
 
+  /** A project or worktree row's `onKeyDown`: Enter and Space activate the row, Shift+F10 and the Menu key open its menu. */
+  const onRowKeyDown = (e: KeyboardEvent<HTMLElement>, target: RowMenuTarget, activate: () => void) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activate();
+    } else {
+      rowMenu.onKeyDown(e, target);
+    }
+  };
+
   const renderRowMenu = () => {
     const open = rowMenu.open;
     if (!open) return null;
@@ -482,15 +493,7 @@ export const Rail: React.FC<RailProps> = ({
                   tabIndex={0}
                   onClick={() => onSelectProject(proj.path)}
                   onContextMenu={(e) => rowMenu.onContextMenu(e, { kind: "project", path: proj.path })}
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSelectProject(proj.path);
-                    } else {
-                      rowMenu.onKeyDown(e, { kind: "project", path: proj.path });
-                    }
-                  }}
+                  onKeyDown={(e) => onRowKeyDown(e, { kind: "project", path: proj.path }, () => onSelectProject(proj.path))}
                   className={`group flex items-center justify-between px-2.5 py-1.5 text-xs rounded-t cursor-pointer transition-colors ${
                     isProjectActive
                       ? "bg-[#21262d] text-white font-medium"
@@ -679,31 +682,21 @@ export const Rail: React.FC<RailProps> = ({
                             const wtMenuTarget: RowMenuTarget = { kind: "worktree", repoPath: proj.path, path: wt.path };
                             const isWtActive = isSamePath(activeProject, wt.path);
                             const wtTerminals = terminals.filter((t) => isSamePath(t.project_path, wt.path));
+                            const selectWorktree = () => {
+                              onSelectProject(wt.path);
+                              if (wtTerminals.length > 0) {
+                                onSelectTerminal(wtTerminals[0].id);
+                              }
+                            };
 
                             return (
                               <div key={wt.path} className="flex flex-col">
                                 <div
                                   role="button"
                                   tabIndex={0}
-                                  onClick={() => {
-                                    onSelectProject(wt.path);
-                                    if (wtTerminals.length > 0) {
-                                      onSelectTerminal(wtTerminals[0].id);
-                                    }
-                                  }}
+                                  onClick={selectWorktree}
                                   onContextMenu={(e) => rowMenu.onContextMenu(e, wtMenuTarget)}
-                                  onKeyDown={(e) => {
-                                    if (e.target !== e.currentTarget) return;
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      onSelectProject(wt.path);
-                                      if (wtTerminals.length > 0) {
-                                        onSelectTerminal(wtTerminals[0].id);
-                                      }
-                                    } else {
-                                      rowMenu.onKeyDown(e, wtMenuTarget);
-                                    }
-                                  }}
+                                  onKeyDown={(e) => onRowKeyDown(e, wtMenuTarget, selectWorktree)}
                                   className={`group/wt flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer transition-colors ${
                                     isWtActive
                                       ? "bg-[#21262d] text-[#58a6ff] font-medium border border-[#58a6ff]/30"
