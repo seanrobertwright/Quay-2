@@ -32,6 +32,8 @@ pub const LAYOUT_VERSION: u64 = 1;
 pub(super) const PRAXIS_DIR: &str = ".praxis";
 pub(super) const LAYOUT_DIR: &str = "layout";
 pub(super) const BINDINGS_DIR: &str = "bindings";
+/// The folder of trigger targets (#472): `<trigger-id>.json` names the graph workflow a trigger starts.
+pub(super) const TRIGGER_TARGETS_DIR: &str = "trigger-targets";
 
 /// The `version` a contract's bindings file is written with.
 pub const BINDINGS_VERSION: u64 = 1;
