@@ -23,7 +23,7 @@ test("graph workflows are listed as Graph workflows, after templates, and the bu
 });
 
 test("a new graph workflow names nothing yet and holds no id", () => {
-  assert.deepEqual(newGraphWorkflowContent("ship"), { version: 1, contractId: "", graphId: "", graphBindingId: "" });
+  assert.deepEqual(newGraphWorkflowContent(), { version: 1, contractId: "", graphId: "", graphBindingId: "" });
 });
 
 test("a graph workflow opens as a clean draft, a new one is dirty, and a rename puts no id inside", () => {
@@ -32,7 +32,7 @@ test("a graph workflow opens as a clean draft, a new one is dirty, and a rename 
   const opened = createDraft(ref, { id: "a", kind: "graph-workflows", missing: false, content, contentHash: "h" });
   assert.ok(opened.ok);
   assert.equal(isDirty(opened.value), false);
-  const fresh = createNewDraft(ref, newGraphWorkflowContent("a"));
+  const fresh = createNewDraft(ref, newGraphWorkflowContent());
   assert.ok(fresh.ok);
   assert.equal(isDirty(fresh.value), true);
   const renamed = withId(opened.value, { kind: "graph-workflows", id: "b" });

@@ -17,7 +17,7 @@ export const GRAPH_WORKFLOW_REFERENCES = {
 export type GraphWorkflowReference = keyof typeof GRAPH_WORKFLOW_REFERENCES;
 
 /** A new graph workflow's record: it names no contract, graph or binding until they are picked. */
-export function newGraphWorkflowContent(_name: string): JsonObject {
+export function newGraphWorkflowContent(): JsonObject {
   return { version: GRAPH_WORKFLOW_VERSION, contractId: "", graphId: "", graphBindingId: "" };
 }
 
