@@ -15,9 +15,9 @@ import {
   GitCompare,
   Coins,
   History,
-  BellRing,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
+import { AttentionBadge } from "../attention/AttentionBadge";
 import { ClaudeTokenStats } from "../sessions/types";
 
 interface StatusStripProps {
@@ -196,18 +196,8 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
 
       <div className="flex min-w-0 items-center gap-2">
         {/* Attention queue badge: every session waiting on the user, in any project */}
-        {waitingCount > 0 && onOpenAttentionQueue && (
-          <button
-            type="button"
-            onClick={onOpenAttentionQueue}
-            className="flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 font-semibold text-[11px] cursor-pointer hover:bg-[#1f6feb]/30 transition-colors"
-            title={`${waitingCount} waiting on you. Click to go to the one that has waited longest`}
-            aria-label={`Waiting on you (${waitingCount})`}
-          >
-            <BellRing className="w-3.5 h-3.5 shrink-0" />
-            <span className="@max-[56rem]:hidden">Waiting</span>
-            <span className="shrink-0">({waitingCount})</span>
-          </button>
+        {onOpenAttentionQueue && (
+          <AttentionBadge waitingCount={waitingCount} onOpen={onOpenAttentionQueue} />
         )}
 
         {/* Pending Approvals Alert Pill */}

@@ -4,6 +4,7 @@ import { TerminalView } from "../terminal/TerminalView";
 import { SkipBanner } from "./SkipBanner";
 import { StatusStrip } from "./StatusStrip";
 import { Placeholder } from "./Placeholder";
+import { AttentionBadge } from "../attention/AttentionBadge";
 import { singleLayoutTerminalId } from "./singlePane";
 import {
   Square,
@@ -291,6 +292,13 @@ export const Stage: FC<StageProps> = ({
     return (
       <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
         <Placeholder onNewTerminal={onNewTerminal} />
+        {/* With no terminal there is no status strip, so the badge gets a strip of its own: it is
+            visible from every project, including one with no terminals */}
+        {waitingCount > 0 && onOpenAttentionQueue && (
+          <div className="@container h-8 bg-[#161b22] border-t border-[#30363d] px-4 flex items-center justify-end shrink-0 text-xs">
+            <AttentionBadge waitingCount={waitingCount} onOpen={onOpenAttentionQueue} />
+          </div>
+        )}
         <div key="stage-viewport" className="hidden" aria-hidden="true">
           {terminalViews}
           {/* A second child keeps the panes nested as they are in the stage viewport below;
