@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
+import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -127,6 +128,7 @@ export function App() {
 
   const { events, activeTools, pendingPermissions, resolvePermission, getTerminalEvents } =
     useBridgeEvents();
+  const waitingItems = useAttentionQueue(terminals);
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
@@ -586,6 +588,7 @@ export function App() {
         zoomedFromLayout={zoomedFromLayout}
         activeTool={currentTool}
         pendingPermissionsCount={pendingPermissions.length}
+        waitingCount={waitingItems.length}
         diffCount={diffCount}
         claudeStats={claudeStats}
         onSelectTerminal={selectTerminal}
@@ -601,6 +604,13 @@ export function App() {
         onNewTerminal={() => setIsNewTerminalOpen(true)}
         onOpenActionLog={() => setIsActionLogOpen(true)}
         onOpenPermissionModal={() => setIsPermissionModalOpen(true)}
+        onOpenAttentionQueue={() => {
+          // Until the queue has its drawer, the badge goes to the item that has waited longest
+          const oldest = waitingItems[0];
+          if (!oldest) return;
+          if (oldest.kind === "permission") setIsPermissionModalOpen(true);
+          else selectTerminal(oldest.terminalId);
+        }}
         onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
         onOpenSwarm={() => setIsSwarmModalOpen(true)}
         onOpenDiffInspector={() => setIsDiffInspectorOpen(true)}

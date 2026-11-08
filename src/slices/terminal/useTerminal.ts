@@ -6,7 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
 import { attachTerminalKeys } from "./terminalBody";
-import { isTerminalReport, splitPendingQueries } from "./terminalReports";
+import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminalReports";
+import { reportUserInput } from "../attention/userInput";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
 
@@ -206,6 +207,9 @@ export function useTerminal(
       // The replay holds old queries, and xterm answers them as it parses. Those replies would
       // reach the live program as typed input, so drop them; the user's own keys still go through.
       if (replaying && isTerminalReport(data)) return;
+      // Keys and paste are the user acting on the terminal; xterm's own replies, such as the
+      // focus-in report, and mouse reports from a click that focuses the pane are not.
+      if (!isTerminalReport(data) && !isMouseReport(data)) reportUserInput(terminalId);
       invoke("write_pty", { terminalId, data }).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });

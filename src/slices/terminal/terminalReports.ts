@@ -35,6 +35,17 @@ export function isTerminalReport(data: string): boolean {
   return TERMINAL_REPORTS.some((re) => re.test(data));
 }
 
+// SGR mouse (ESC[<button;col;rowM or m), and the default encoding: ESC[M and three bytes
+const MOUSE_REPORT = /^\x1b\[(?:<\d+;\d+;\d+[Mm]|M[\s\S]{3})$/;
+
+/**
+ * Whether an onData payload is a mouse report xterm sends while the program tracks the mouse,
+ * as on a click that focuses the pane, rather than keys or a paste.
+ */
+export function isMouseReport(data: string): boolean {
+  return MOUSE_REPORT.test(data);
+}
+
 /**
  * A cursor position query (ESC[6n, or DECXCPR's ESC[?6n) as the last thing in a snapshot. ConPTY
  * sends one as a new terminal's first output and starts the shell only once it is answered.

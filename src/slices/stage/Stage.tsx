@@ -41,6 +41,7 @@ interface StageProps {
   zoomedFromLayout: StageLayout | null;
   activeTool?: string | null;
   pendingPermissionsCount?: number;
+  waitingCount?: number;
   diffCount?: number;
   onSelectTerminal: (id: string) => void;
   onSelectPane: (pane: "primary" | "secondary" | number) => void;
@@ -55,6 +56,7 @@ interface StageProps {
   onNewTerminal: () => void;
   onOpenActionLog: () => void;
   onOpenPermissionModal?: () => void;
+  onOpenAttentionQueue?: () => void;
   onOpenWorkspaceSettings?: () => void;
   onOpenSwarm?: () => void;
   onOpenDiffInspector?: () => void;
@@ -85,6 +87,7 @@ export const Stage: FC<StageProps> = ({
   zoomedFromLayout,
   activeTool,
   pendingPermissionsCount = 0,
+  waitingCount = 0,
   diffCount = 0,
   claudeStats,
   onSelectPane,
@@ -98,6 +101,7 @@ export const Stage: FC<StageProps> = ({
   onNewTerminal,
   onOpenActionLog,
   onOpenPermissionModal,
+  onOpenAttentionQueue,
   onOpenWorkspaceSettings,
   onOpenSwarm,
   onOpenDiffInspector,
@@ -697,6 +701,7 @@ export const Stage: FC<StageProps> = ({
         terminal={activeTerminal}
         activeTool={activeTool}
         pendingCount={pendingPermissionsCount}
+        waitingCount={waitingCount}
         diffCount={diffCount}
         claudeStats={claudeStats}
         onOpenActionLog={onOpenActionLog}
@@ -706,6 +711,7 @@ export const Stage: FC<StageProps> = ({
         onOpenSessionHistory={onOpenSessionHistory}
         onOpenTokenSpend={onOpenTokenSpend}
         onOpenPermissionModal={onOpenPermissionModal}
+        onOpenAttentionQueue={onOpenAttentionQueue}
         onToggleLiveMode={
           onToggleLiveMode
             ? () => onToggleLiveMode(activeTerminal.id, activeTerminal.live_mode)

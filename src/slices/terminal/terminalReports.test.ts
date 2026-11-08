@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isTerminalReport, splitPendingQueries } from "./terminalReports.ts";
+import { isMouseReport, isTerminalReport, splitPendingQueries } from "./terminalReports.ts";
 
 const ESC = "\x1b";
 const BEL = "\x07";
@@ -98,5 +98,17 @@ test("queries followed by later output were already answered", () => {
 test("output that only ends like a query is not pending", () => {
   for (const data of [`${ESC}[2J`, `${ESC}[?25l`, `${ESC}[0m`, "6n", `${ESC}]0;title${BEL}`]) {
     assert.deepEqual(splitPendingQueries(data), { replayed: data, pending: "" }, JSON.stringify(data));
+  }
+});
+
+test("mouse reports, in SGR and in the default encoding, are mouse reports", () => {
+  for (const data of [`${ESC}[<0;12;5M`, `${ESC}[<0;12;5m`, `${ESC}[<64;1;1M`, `${ESC}[M !!`, `${ESC}[M#\x7f\x7f`]) {
+    assert.equal(isMouseReport(data), true, JSON.stringify(data));
+  }
+});
+
+test("keys, arrows and pasted text are not mouse reports", () => {
+  for (const data of ["a", "\r", `${ESC}[A`, `${ESC}[1;5R`, "[M is not a report", `${ESC}[200~text${ESC}[201~`]) {
+    assert.equal(isMouseReport(data), false, JSON.stringify(data));
   }
 });
