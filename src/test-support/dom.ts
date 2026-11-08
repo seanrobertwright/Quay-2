@@ -37,6 +37,11 @@ for (const key of ["requestAnimationFrame", "cancelAnimationFrame"] as const) {
   // Called bare by components, so each is bound to the window it belongs to.
   globals[key] = window[key].bind(window);
 }
+for (const key of ["setTimeout", "clearTimeout"] as const) {
+  // happy-dom keeps its own copy of Node's timers, so a component's `window.setTimeout` would
+  // escape `mock.timers`. Each call goes to the global at call time instead.
+  Object.assign(window, { [key]: (...args: unknown[]) => (globalThis[key] as (...a: unknown[]) => unknown)(...args) });
+}
 globals.window = window;
 // Tells React that updates are wrapped in `act`.
 globals.IS_REACT_ACT_ENVIRONMENT = true;
