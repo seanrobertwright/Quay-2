@@ -14,7 +14,7 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { useOverlay } from "../overlay/useOverlay";
+import { useOverlay } from "../overlay/useOverlay.ts";
 import {
   applyCompletion,
   baseName,
@@ -30,7 +30,7 @@ import {
   verdictFor,
   type FolderInfo,
   type Verdict,
-} from "./openProjectPaths";
+} from "./openProjectPaths.ts";
 
 interface FolderEntry {
   name: string;
@@ -502,7 +502,7 @@ export const OpenProjectDialog: React.FC<OpenProjectDialogProps> = ({
                           setPathText(entry.path);
                           setSuggestionsOpen(false);
                         }}
-                        onDoubleClick={() => (entry.is_git ? void openPath(entry.path) : goTo(entry.path))}
+                        onDoubleClick={() => goTo(entry.path)}
                         className={`w-full text-left px-3 py-1.5 rounded flex items-center gap-3 cursor-default ${
                           isSelected ? "bg-[#1f6feb]/25" : "hover:bg-[#21262d]"
                         }`}
@@ -531,7 +531,7 @@ export const OpenProjectDialog: React.FC<OpenProjectDialogProps> = ({
               )}
             </ul>
             <div className="text-[11px] text-[#6e7681] px-3 pb-1.5">
-              Click to select · double-click to enter a folder or open a repo
+              Click to select · double-click to go into a folder · Open opens the selected folder
             </div>
           </section>
         </div>

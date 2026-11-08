@@ -24,6 +24,7 @@ import {
   GitBranch,
   Cpu,
 } from "lucide-react";
+import { VsCodeIcon } from "../workspace/VsCodeIcon";
 import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath } from "../../utils/paths";
 
@@ -63,6 +64,7 @@ interface StageProps {
   onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
   onOpenFactoryStation?: () => void;
+  onOpenInVsCode?: (projectPath: string) => void;
   claudeStats?: ClaudeTokenStats | null;
   onToggleLiveMode?: (terminalId: string, currentMode: "skip" | "normal") => void;
   onRelaunchTerminal?: (terminalId: string) => void;
@@ -103,6 +105,7 @@ export const Stage: FC<StageProps> = ({
   onOpenSessionHistory,
   onOpenTokenSpend,
   onOpenFactoryStation,
+  onOpenInVsCode,
   onToggleLiveMode,
   onRelaunchTerminal,
 }) => {
@@ -349,6 +352,17 @@ export const Stage: FC<StageProps> = ({
               title={`Workspace Settings (Env Vars & Flags) for ${projectName}`}
             >
               <Settings className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onOpenInVsCode && (
+            <button
+              type="button"
+              onClick={() => onOpenInVsCode(activeProject)}
+              className="p-1 text-[#8b949e] hover:text-[#007acc] hover:bg-[#21262d] rounded transition-colors"
+              title={`Open ${projectName} in VS Code`}
+              aria-label={`Open ${projectName} in VS Code`}
+            >
+              <VsCodeIcon className="w-3.5 h-3.5" />
             </button>
           )}
           <span className="text-[#30363d]">/</span>
