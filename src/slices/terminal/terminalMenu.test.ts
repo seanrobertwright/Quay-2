@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { shownMenu as shown } from "../../test-support/menuEntries.ts";
-import { terminalMenu, terminalMenuLabel, type TerminalMenuTarget } from "./terminalMenu.ts";
+import { terminalBodyMenu, terminalMenu, terminalMenuLabel, type TerminalMenuTarget } from "./terminalMenu.ts";
 
 const claude: TerminalMenuTarget = { name: "claude-1", run_kind: "claude", claude_status: "working", live_mode: "skip" };
 
@@ -72,4 +72,37 @@ test("pi and PiG, which never ask before tool calls, get no Ask toggle, nor does
 
 test("the menu's accessible name names the terminal", () => {
   assert.equal(terminalMenuLabel({ name: "claude-1" }), "Terminal claude-1");
+});
+
+test("the terminal body menu puts the clipboard group above the pane's terminal menu, with Find… once", () => {
+  assert.deepEqual(shown(terminalBodyMenu(claude, 2, true)), [
+    "Copy [Ctrl+C]",
+    "Paste [Ctrl+V]",
+    "Select all",
+    "Find… [Ctrl+F]",
+    "Copy scrollback",
+    "---",
+    "Rename…",
+    "Relaunch agent (disabled: Still running)",
+    "[ ] Ask before tool calls",
+    "---",
+    "Zoom pane [Ctrl+Shift+B z]",
+    "Redraw [Ctrl+L]",
+    "---",
+    "Copy working directory",
+    "Open folder in Explorer",
+    "---",
+    "Close pane",
+    "Close terminal",
+  ]);
+});
+
+test("Copy is disabled with its reason when nothing is selected, and the rest of the clipboard group still runs", () => {
+  assert.deepEqual(shown(terminalBodyMenu(claude, 1, false).filter((i) => i.group === "clipboard")), [
+    "Copy (disabled: No selection)",
+    "Paste [Ctrl+V]",
+    "Select all",
+    "Find… [Ctrl+F]",
+    "Copy scrollback",
+  ]);
 });
