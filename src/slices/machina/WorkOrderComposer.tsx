@@ -239,7 +239,7 @@ export const WorkOrderComposer: FC<WorkOrderComposerProps> = ({
       {!SPEND_MEASURED_AGENTS.includes(agent) && (
         <p className="text-[11px] text-[#d29922]">
           Spend is measured only for {SPEND_MEASURED_AGENTS.map(agentName).join(" and ")}, so the budget cannot
-          stop a {agentName(agent)} run.
+          stop a {agentName(agent)} author.
         </p>
       )}
 

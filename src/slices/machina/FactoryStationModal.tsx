@@ -264,7 +264,7 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                   title={
                     mode === "ACTIVE"
                       ? "Queued work orders start when their dependencies merge"
-                      : "Queued work orders wait; running work continues"
+                      : "Queued work orders wait; work already started continues"
                   }
                 >
                   <input
@@ -373,8 +373,8 @@ export const FactoryStationModal: FC<FactoryStationModalProps> = ({
                   {status?.activeHolds ?? "—"}
                 </div>
               </div>
-              <div className="px-2 py-1 rounded bg-[#0d1117] border border-[#30363d]">
-                <div className="text-[#8b949e]">RUNNING</div>
+              <div className="px-2 py-1 rounded bg-[#0d1117] border border-[#30363d]" title="Scaffolds and gates in progress">
+                <div className="text-[#8b949e]">JOBS</div>
                 <div className="font-bold text-xs text-[#58a6ff]">{status?.runningJobs ?? "—"}</div>
               </div>
             </div>

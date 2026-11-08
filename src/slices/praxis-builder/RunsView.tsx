@@ -43,7 +43,7 @@ type Started = { start: RunStart; copied: string | null };
 export const RunsView: FC<RunsViewProps> = ({ projectPath, name, shown, content, runInTerminal, host = null, onInstall, unsaved = false, changed }) => {
   const { list, view } = useRunsList(projectPath, name, shown);
   const [notice, setNotice] = useState<string | null>(null);
-  // The work order whose detail is shown, if any.
+  // The `workOrderId` of the run whose detail is shown, if any.
   const [selected, setSelected] = useState<string | null>(null);
   const selectedRow = view.runs?.find((r) => r.workOrderId === selected) ?? null;
   const [confirming, setConfirming] = useState(false);
