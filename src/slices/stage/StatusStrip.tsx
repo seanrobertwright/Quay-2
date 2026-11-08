@@ -17,12 +17,15 @@ import {
   History,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
+import { AttentionBadge } from "../attention/AttentionBadge";
 import { ClaudeTokenStats } from "../sessions/types";
 
 interface StatusStripProps {
   terminal: TerminalInfo;
   activeTool?: string | null;
   pendingCount?: number;
+  /** How many items wait in the attention queue, across every project. */
+  waitingCount?: number;
   diffCount?: number;
   claudeStats?: ClaudeTokenStats | null;
   onOpenActionLog: () => void;
@@ -33,6 +36,7 @@ interface StatusStripProps {
   onOpenTokenSpend?: () => void;
   onToggleLiveMode?: () => void;
   onOpenPermissionModal?: () => void;
+  onOpenAttentionQueue?: () => void;
 }
 
 const LIVE_MODES: Record<
@@ -91,6 +95,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   terminal,
   activeTool,
   pendingCount,
+  waitingCount = 0,
   diffCount = 0,
   claudeStats,
   onOpenActionLog,
@@ -101,6 +106,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   onOpenTokenSpend,
   onToggleLiveMode,
   onOpenPermissionModal,
+  onOpenAttentionQueue,
 }) => {
   const isAgent = isAgentRunKind(terminal.run_kind);
   const workingTool = terminal.current_tool || activeTool;
@@ -189,6 +195,11 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
       </div>
 
       <div className="flex min-w-0 items-center gap-2">
+        {/* Attention queue badge: every session waiting on the user, in any project */}
+        {onOpenAttentionQueue && (
+          <AttentionBadge waitingCount={waitingCount} onOpen={onOpenAttentionQueue} />
+        )}
+
         {/* Pending Approvals Alert Pill */}
         {pendingCount !== undefined && pendingCount > 0 && onOpenPermissionModal && (
           <button
