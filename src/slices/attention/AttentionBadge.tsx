@@ -3,6 +3,7 @@ import { BellRing } from "lucide-react";
 interface AttentionBadgeProps {
   /** How many items wait in the attention queue, across every project. */
   waitingCount: number;
+  /** Opens the attention drawer. */
   onOpen: () => void;
 }
 
@@ -18,7 +19,7 @@ export const AttentionBadge: React.FC<AttentionBadgeProps> = ({ waitingCount, on
       type="button"
       onClick={onOpen}
       className="flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full bg-[#1f6feb]/20 text-[#58a6ff] border border-[#1f6feb]/40 font-semibold text-[11px] cursor-pointer hover:bg-[#1f6feb]/30 transition-colors"
-      title={`${waitingCount} waiting on you. Click to go to the one that has waited longest`}
+      title={`${waitingCount} waiting on you. Click to see them all (Ctrl+Shift+B q)`}
       aria-label={`Waiting on you (${waitingCount})`}
     >
       <BellRing className="w-3.5 h-3.5 shrink-0" />

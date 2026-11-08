@@ -3,10 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyAttentionEvent,
+  attentionItemKey,
   attentionItems,
   emptyAttentionQueue,
   type AttentionEvent,
   type AttentionQueue,
+  waitedLabel,
 } from "./attentionQueue.ts";
 
 /** The queue after `events`, applied in order to a new, empty queue. */
@@ -187,4 +189,34 @@ test("a known terminal leaves an item's project as it was when the item already 
     attentionItems(queue).map((item) => item.project),
     ["E:/proj"]
   );
+});
+
+test("each item's key comes from its request or its terminal, so it stays put as the list changes", () => {
+  const keys = (queue: AttentionQueue) => attentionItems(queue).map(attentionItemKey);
+  const before = run(requested("req-1", "term-a", 200), finished("term-a", 300));
+  assert.deepEqual(keys(before), ["permission:req-1", "finishedTurn:term-a"]);
+  // An older item joining ahead of them moves them down the list but leaves their keys alone
+  const after = applyAttentionEvent(before, finished("term-b", 100));
+  assert.deepEqual(keys(after), ["finishedTurn:term-b", "permission:req-1", "finishedTurn:term-a"]);
+});
+
+test("how long an item has waited reads in its largest units", () => {
+  const second = 1000;
+  const minute = 60 * second;
+  const hour = 60 * minute;
+  const since = 1_000_000;
+  const cases: [number, string][] = [
+    [0, "0s"],
+    [45 * second, "45s"],
+    [59 * second + 999, "59s"],
+    [3 * minute + 5 * second, "3m"],
+    [hour, "1h"],
+    [hour + 5 * minute, "1h 5m"],
+    [26 * hour + 30 * minute, "1d 2h"],
+    // A clock that stepped back never shows a negative wait
+    [-5 * second, "0s"],
+  ];
+  for (const [waited, label] of cases) {
+    assert.equal(waitedLabel(since, since + waited), label, `${waited} ms`);
+  }
 });

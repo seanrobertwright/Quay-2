@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   GitBranch,
   History,
+  BellRing,
   Coins,
   ShieldAlert,
   Cpu,
@@ -90,6 +91,7 @@ interface CommandPaletteProps {
   onOpenGithubDrawer?: () => void;
   onOpenPrePrAudit?: () => void;
   onOpenSessionHistory?: () => void;
+  onOpenAttentionQueue?: () => void;
   onOpenTokenSpend?: () => void;
   onOpenArchonGraph?: () => void;
   onOpenFactoryStation?: () => void;
@@ -128,6 +130,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenGithubDrawer,
   onOpenPrePrAudit,
   onOpenSessionHistory,
+  onOpenAttentionQueue,
   onOpenTokenSpend,
   onOpenArchonGraph,
   onOpenFactoryStation,
@@ -429,6 +432,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
 
+    if (onOpenAttentionQueue) {
+      items.push({
+        id: "action-attention-queue",
+        category: "Tools & Actions",
+        title: "Waiting on You...",
+        subtitle: "Every session waiting on you, oldest first: permission requests and finished turns",
+        icon: <BellRing className="w-4 h-4 text-[#58a6ff]" />,
+        shortcut: "Ctrl+Shift+B q",
+        action: () => onOpenAttentionQueue(),
+      });
+    }
+
     if (onOpenTokenSpend) {
       items.push({
         id: "action-token-spend",
@@ -633,6 +648,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onOpenDiffInspector,
     onOpenPrePrAudit,
     onOpenSessionHistory,
+    onOpenAttentionQueue,
     onOpenTokenSpend,
     onOpenArchonGraph,
     onOpenFactoryStation,
