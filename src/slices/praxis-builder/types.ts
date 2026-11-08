@@ -15,7 +15,7 @@ export interface DefinitionEntry {
   problem?: FileProblem;
   /** Set when the file parses but its `id` isn't its name: `found` is the id inside, if it has a string one. */
   idMismatch?: { found?: string };
-  /** For a workflow template or graph workflow whose name the Praxis host refuses (#447, #459), the host's name rule. Renaming fixes it. */
+  /** For a workflow template or graph workflow, or a trigger with a saved target (#473), whose name the Praxis host refuses (#447, #459), the host's name rule. Renaming fixes it. */
   nameProblem?: string;
   /** A graph binding's or graph workflow's `graphId`, when it is a string, so the list nests a binding under its graph and a graph's canvas shows the graph workflows that name it (#467). */
   graphId?: string;
@@ -27,6 +27,8 @@ export interface DefinitionEntry {
   contractId?: string;
   /** A graph workflow's `graphBindingId`, when it is a string, so a graph's canvas says which binding it uses (#467). */
   graphBindingId?: string;
+  /** For a trigger, the graph workflow its saved target file names (#472), which puts it under the host's name rule (#473). */
+  target?: string;
 }
 
 /**

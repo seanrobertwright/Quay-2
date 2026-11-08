@@ -1,6 +1,7 @@
 // Creating and renaming definitions (#222): the filename-safe id rule the list checks as
 // the user types, the narrower name rule workflow templates and graph workflows follow (#447,
-// #459), the id a new definition starts with, and a new graph's record. The backend checks the same rules
+// #459), and triggers with a Starts target too (#473), the id a new definition starts with,
+// and a new graph's record. The backend checks the same rules
 // (`validate_id` in src-tauri/src/slices/praxis/store.rs and its `template_name` module)
 // before it writes anything, so these copies only give early feedback.
 import type { JsonObject } from "./model.ts";
@@ -61,6 +62,16 @@ export const HOST_NAME_RULES: Partial<Record<PraxisKind, string>> = {
   "graph-workflows": GRAPH_WORKFLOW_NAME_RULE,
 };
 
+/**
+ * The host's graph trigger name rule, as the backend states it (#473): the template rule with
+ * the name `check` refused too, as AI-WS-SDK `spec/engine-v1/GRAPH-WORKFLOWS.md`, "Names",
+ * gives it. Only a trigger with a Starts target follows it, since only such a trigger reaches
+ * the host.
+ */
+export const TRIGGER_NAME_RULE =
+  "A graph trigger name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, " +
+  "and isn't check or a Windows device name such as con, nul, com1 or lpt1. The Praxis host refuses any other name.";
+
 const TEMPLATE_NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 const isHostName = (name: string) => TEMPLATE_NAME.test(name) && !DEVICE_NAME.test(name);
@@ -75,19 +86,30 @@ export function templateNameProblem(name: string): string | null {
   return isHostName(name) ? null : TEMPLATE_NAME_RULE;
 }
 
-/** The host's rule for `kind`, when the host knows `kind` by its file name and refuses `name`, or null. */
-export function hostNameProblem(kind: PraxisKind, name: string): string | null {
+/**
+ * The host's rule for a definition of `kind` named `name`, when the host knows it by that name
+ * and refuses it, or null. The host knows a trigger by its name only once it has a Starts
+ * `target` (#473); a trigger without one keeps the id rules.
+ */
+export function hostNameProblem(kind: PraxisKind, name: string, target: string | null = null): string | null {
+  if (kind === "triggers") return target === null || (isHostName(name) && name !== "check") ? null : TRIGGER_NAME_RULE;
   const rule = HOST_NAME_RULES[kind];
   return rule === undefined || isHostName(name) ? null : rule;
 }
 
 /**
  * Why `id` can't name a new or renamed definition of `kind`, or null when it can. A
- * workflow template or graph workflow must follow the host's name rule first; every kind
- * follows {@link definitionIdProblem}.
+ * workflow template or graph workflow, or a trigger with a Starts `target`, must follow the
+ * host's name rule first; every kind follows {@link definitionIdProblem}.
  */
-export function namingProblem(kind: PraxisKind, id: string, taken: Iterable<string>, self?: string): string | null {
-  return hostNameProblem(kind, id) ?? definitionIdProblem(id, taken, self);
+export function namingProblem(
+  kind: PraxisKind,
+  id: string,
+  taken: Iterable<string>,
+  self?: string,
+  target: string | null = null
+): string | null {
+  return hostNameProblem(kind, id, target) ?? definitionIdProblem(id, taken, self);
 }
 
 /** `<prefix>-<n>` with the smallest `n` from 1 that no id in `taken` has, ignoring case. */

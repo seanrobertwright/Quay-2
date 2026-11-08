@@ -257,3 +257,34 @@ test("a new or renamed graph workflow follows the host's rule before the id rule
   assert.equal(namingProblem("graph-workflows", "ship-it", ["ship-it"], "ship-it"), null);
   assert.equal(hostNameProblem("graph-workflows", nextDefinitionId("graph-workflow", [])), null);
 });
+
+// --- trigger names: the host's rule once a trigger has a target (#473) ------------------
+
+/** The vectors the backend's graph trigger name rule is tested against too. */
+const triggerNames = JSON.parse(
+  readFileSync(new URL("../../../src-tauri/src/slices/praxis/trigger_names.vectors.json", import.meta.url), "utf8")
+) as { rule: string; cases: { name: string; valid: boolean }[] };
+
+test("a trigger with a target gets the verdict the backend's vectors record", () => {
+  for (const { name, valid } of triggerNames.cases) {
+    assert.equal(hostNameProblem("triggers", name, "ship"), valid ? null : triggerNames.rule, JSON.stringify(name));
+  }
+});
+
+test("a trigger without a target keeps the id rules", () => {
+  for (const name of ["Nightly.Review", "check", "nightly_review"]) {
+    assert.equal(hostNameProblem("triggers", name), null, name);
+    assert.equal(hostNameProblem("triggers", name, null), null, name);
+    assert.equal(namingProblem("triggers", name, []), null, name);
+  }
+  assert.match(namingProblem("triggers", "con", []) ?? "", /reserved device name/);
+});
+
+test("a trigger renamed with a target follows the host's rule before the id rule", () => {
+  assert.equal(namingProblem("triggers", "Nightly", [], "t", "ship"), triggerNames.rule);
+  assert.equal(namingProblem("triggers", "check", [], "t", "ship"), triggerNames.rule);
+  assert.equal(namingProblem("triggers", "nightly", [], "t", "ship"), null);
+  assert.match(namingProblem("triggers", "nightly", ["Nightly"], "t", "ship") ?? "", /taken/);
+  // A target names no other kind's rule.
+  assert.equal(namingProblem("contracts", "Nightly", [], "c", "ship"), null);
+});

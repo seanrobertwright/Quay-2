@@ -50,7 +50,7 @@ import {
 import { normalizePath } from "../../utils/paths.ts";
 import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
-import { namingProblem, nextDefinitionId } from "./lifecycle.ts";
+import { hostNameProblem, namingProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
 import { GoToNode, type GoToEntry } from "./GoToNode.tsx";
 import { ArrangeMenuButton } from "./ArrangeMenu.tsx";
@@ -1491,12 +1491,25 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const crossRecord = open && open.kind !== "graphs" && (
     <CrossRecordSection issues={issuesOn(contexts, open)} checked={contexts.checked} error={projectContexts.error} onOpen={openDefinition} />
   );
+  /**
+   * The Starts target that puts trigger `ref` under the host's name rule (#473): its draft's,
+   * which may not be saved yet, or else its saved target file's. Null for any other kind.
+   */
+  const startsTarget = (ref: DefinitionRef): string | null => {
+    if (ref.kind !== "triggers") return null;
+    const draft = session?.drafts[definitionKey(ref)];
+    return draft ? draft.target : (listedEntries(ref.kind).find((e) => e.id === ref.id)?.target ?? null);
+  };
   const namingError =
     naming === null
       ? null
       : naming.mode === "new"
         ? namingProblem(naming.kind, naming.value, takenIds(naming.kind))
-        : namingProblem(naming.ref.kind, naming.value, takenIds(naming.ref.kind), naming.ref.id);
+        : namingProblem(naming.ref.kind, naming.value, takenIds(naming.ref.kind), naming.ref.id, startsTarget(naming.ref));
+  // The host's name rule the open definition's name breaks. A trigger's follows its draft's
+  // target, so picking or clearing a target shows or hides it before a save (#473).
+  const openNameProblem =
+    open?.kind === "triggers" && openDraft ? (hostNameProblem(open.kind, open.id, openDraft.target) ?? undefined) : openEntry?.nameProblem;
 
   /** "+ New" and the empty project's New graph (#222): an inline name field in the kind's list. */
   const startNew = (entry: RecordKindEntry) => {
@@ -2250,14 +2263,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
             </nav>
 
             <main className="flex-1 min-w-0 relative flex flex-col">
-              {open && openEntry?.nameProblem !== undefined && (
+              {open && openNameProblem !== undefined && (
                 <div
                   role="status"
                   className="shrink-0 px-4 py-1.5 flex items-center gap-2 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]"
                 >
                   <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="break-words min-w-0">
-                    The Praxis host can't {open.kind === "graph-workflows" ? "take" : "install"} {open.id}: {openEntry.nameProblem}
+                    The Praxis host can't {open.kind === "templates" ? "install" : "take"} {open.id}: {openNameProblem}
                   </span>
                   <button
                     type="button"

@@ -1,0 +1,27 @@
+{
+  "about": "Graph trigger names and whether the host's name rule admits them, and the message that states the rule. AI-WS-SDK spec/engine-v1/GRAPH-WORKFLOWS.md, \"Names\", gives a graph trigger name the template name rule with the name check refused too. The rule binds only a trigger with a Starts target. The Rust rule and the builder's copy are both tested against these.",
+  "rule": "A graph trigger name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and isn't check or a Windows device name such as con, nul, com1 or lpt1. The Praxis host refuses any other name.",
+  "cases": [
+    { "name": "nightly-review", "valid": true },
+    { "name": "a", "valid": true },
+    { "name": "trigger-1", "valid": true },
+    { "name": "checks", "valid": true },
+    { "name": "check-in", "valid": true },
+    { "name": "conf", "valid": true },
+    { "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "valid": true },
+    { "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "valid": false },
+    { "name": "", "valid": false },
+    { "name": "check", "valid": false },
+    { "name": "Check", "valid": false },
+    { "name": "1st", "valid": false },
+    { "name": "-a", "valid": false },
+    { "name": "Nightly", "valid": false },
+    { "name": "nightly.v1", "valid": false },
+    { "name": "nightly_review", "valid": false },
+    { "name": "nightly review", "valid": false },
+    { "name": "con", "valid": false },
+    { "name": "nul", "valid": false },
+    { "name": "com1", "valid": false },
+    { "name": "lpt9", "valid": false }
+  ]
+}
