@@ -15,16 +15,21 @@ pub enum PraxisKind {
     /// Workflow templates (#224): coding plans without identities, which `praxis run <name>`
     /// starts. A template file is the host's bare template, so it holds no `id`.
     Templates,
+    /// Graph workflows (#444, #459): `{version, contractId, graphId, graphBindingId}`, the unit
+    /// Quay submits to a Praxis host. Like a template, its file name is its name, so it holds no id.
+    #[serde(rename = "graph-workflows")]
+    GraphWorkflows,
 }
 
 impl PraxisKind {
-    pub const ALL: [PraxisKind; 6] = [
+    pub const ALL: [PraxisKind; 7] = [
         PraxisKind::Graphs,
         PraxisKind::Contracts,
         PraxisKind::Grants,
         PraxisKind::Triggers,
         PraxisKind::GraphBindings,
         PraxisKind::Templates,
+        PraxisKind::GraphWorkflows,
     ];
 
     /// The kind whose files `folder` holds, or `None` for a folder that holds no kind's
@@ -42,26 +47,29 @@ impl PraxisKind {
             PraxisKind::Triggers => "triggers",
             PraxisKind::GraphBindings => "graph-bindings",
             PraxisKind::Templates => "templates",
+            PraxisKind::GraphWorkflows => "graph-workflows",
         }
     }
 
     /// The record field that holds a definition's id, which must equal its file name, or
-    /// `None` for a kind whose records hold no id: a template's name is its file name alone.
-    /// A graph binding names itself `graphBindingId`, apart from a protocol binding's `bindingId`.
+    /// `None` for a kind whose records hold no id: a template's or graph workflow's name is its
+    /// file name alone. A graph binding names itself `graphBindingId`, apart from a protocol
+    /// binding's `bindingId`; a graph workflow's `graphBindingId` names the binding it runs with.
     pub fn id_field(self) -> Option<&'static str> {
         match self {
             PraxisKind::GraphBindings => Some("graphBindingId"),
-            PraxisKind::Templates => None,
+            PraxisKind::Templates | PraxisKind::GraphWorkflows => None,
             _ => Some("id"),
         }
     }
 
     /// Why `id` can't name a new definition of this kind, beyond the filename-safe rule every
-    /// kind shares, or `None` when it can. Only a template narrows it, to the Praxis host's
-    /// template-name rule.
+    /// kind shares, or `None` when it can. A template and a graph workflow narrow it, to the
+    /// Praxis host's name rule, since the host knows each by its file name.
     pub fn name_problem(self, id: &str) -> Option<String> {
         match self {
             PraxisKind::Templates => super::template_name::check_template_name(id).err(),
+            PraxisKind::GraphWorkflows => super::template_name::check_graph_workflow_name(id).err(),
             _ => None,
         }
     }
@@ -104,8 +112,8 @@ pub struct DefinitionEntry {
     pub problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_mismatch: Option<IdMismatch>,
-    /// For a workflow template whose file name is a filename-safe id but breaks the host's
-    /// template name rule, the rule. The file still opens; renaming it fixes this.
+    /// For a workflow template or graph workflow whose file name is a filename-safe id but
+    /// breaks the host's name rule, the rule. The file still opens; renaming it fixes this.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name_problem: Option<String>,
     /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.

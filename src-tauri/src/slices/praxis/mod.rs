@@ -5,6 +5,7 @@ pub mod commands;
 pub mod context;
 pub mod grants;
 pub mod graph_bindings;
+pub mod graph_workflow;
 pub mod host;
 pub mod lifecycle;
 pub mod models;

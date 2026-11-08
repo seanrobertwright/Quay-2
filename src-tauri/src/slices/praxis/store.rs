@@ -242,7 +242,7 @@ pub(super) fn json_ids(dir: &Path, folder: &str) -> Result<Vec<String>, String> 
 /// Lists a kind's definitions in id order, at most `MAX_LISTED` of them. Only `*.json`
 /// files directly in the kind's folder are listed. A missing folder is an empty list. Each
 /// file is parsed, so one that can't be opened, or whose `id` isn't its name, is flagged.
-/// A workflow template whose name breaks the host's rule is flagged too.
+/// A workflow template or graph workflow whose name breaks the host's rule is flagged too.
 pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
     let Some(dir) = confined_dir(repo, kind.folder())? else {
         return Ok(DefinitionList { entries: Vec::new(), truncated: false });
@@ -543,8 +543,8 @@ fn id_taken_ignoring_case(dir: &Path, id: &str) -> Result<bool, String> {
 /// longer has that hash, or no longer exists, nothing is written and the conflict is
 /// returned, unless `force` says to overwrite. When it is `None` the definition is new,
 /// and the save is refused when its id is already taken, ignoring case. The id must be
-/// filename-safe, and a new workflow template's must follow the host's template name rule
-/// too; a template file already saved under another name still saves. An invalid definition is still written: whatever later runs it refuses
+/// filename-safe, and a new workflow template's or graph workflow's must follow the host's name
+/// rule too; a file already saved under another name still saves. An invalid definition is still written: whatever later runs it refuses
 /// it. The definition is written first, so a layout that fails to write afterwards is
 /// reported in the outcome and the definition stays saved.
 ///
@@ -655,7 +655,7 @@ pub fn save_definition(
 mod tests {
     use super::*;
     use crate::test_support::TempDir;
-    use crate::slices::praxis::template_name::TEMPLATE_NAME_RULE;
+    use crate::slices::praxis::template_name::{GRAPH_WORKFLOW_NAME_RULE, TEMPLATE_NAME_RULE};
 
     fn temp_repo() -> TempDir {
         TempDir::canonical("praxis")
@@ -952,6 +952,40 @@ mod tests {
         let hash = read_definition(&repo, PraxisKind::Templates, "Old.Name").unwrap().content_hash.unwrap();
         let outcome = save_definition(&repo, PraxisKind::Templates, "Old.Name", json!({"description": "e"}), None, None, Some(&hash), None, false);
         assert!(matches!(outcome, Ok(SaveOutcome::Saved { .. })), "{outcome:?}");
+    }
+
+    // --- graph workflows (#459) ------------------------------------------------------------
+
+    const WORKFLOW: &str = r#"{"graphBindingId": "g-1", "graphId": "g", "contractId": "c", "version": 1}"#;
+
+    #[test]
+    fn a_graph_workflow_is_named_by_its_file_and_one_the_host_refuses_is_flagged() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/graph-workflows/ship-it.json", WORKFLOW);
+        write(&repo, ".praxis/graph-workflows/Ship_It.json", WORKFLOW);
+        let list = list_definitions(&repo, PraxisKind::GraphWorkflows).unwrap();
+        let by_id = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().clone();
+        assert_eq!(by_id("ship-it").id_mismatch, None, "a graph workflow holds no id");
+        assert_eq!(by_id("ship-it").name_problem, None);
+        assert_eq!(by_id("Ship_It").name_problem.as_deref(), Some(GRAPH_WORKFLOW_NAME_RULE));
+        assert_eq!(by_id("Ship_It").problem, None, "it still opens");
+        let read = read_definition(&repo, PraxisKind::GraphWorkflows, "ship-it").unwrap();
+        assert_eq!(read.content.unwrap()["graphBindingId"], "g-1");
+    }
+
+    #[test]
+    fn a_new_graph_workflow_must_have_a_name_the_host_accepts_and_saves_in_record_order() {
+        let repo = temp_repo();
+        let workflow: Value = serde_json::from_str(WORKFLOW).unwrap();
+        let why = save_definition(&repo, PraxisKind::GraphWorkflows, "Ship.It", workflow.clone(), None, None, None, None, false).unwrap_err();
+        assert_eq!(why, GRAPH_WORKFLOW_NAME_RULE);
+        assert!(!repo.join(".praxis/graph-workflows/Ship.It.json").exists());
+        let outcome = save_definition(&repo, PraxisKind::GraphWorkflows, "ship-it", workflow, None, None, None, None, false).unwrap();
+        assert!(matches!(outcome, SaveOutcome::Saved { template_digest: None, .. }), "{outcome:?}");
+        assert_eq!(
+            read(&repo, ".praxis/graph-workflows/ship-it.json"),
+            "{\n  \"version\": 1,\n  \"contractId\": \"c\",\n  \"graphId\": \"g\",\n  \"graphBindingId\": \"g-1\"\n}\n"
+        );
     }
 
     #[test]
