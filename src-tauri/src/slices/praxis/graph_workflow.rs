@@ -28,19 +28,22 @@ pub struct GraphWorkflowCheck {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// A record as saved: missing, unreadable with why, or its content.
-enum Saved {
-    Missing,
-    Unreadable(String),
-    Found(Value),
+/// The saved record of `kind` that `field` names, or none after an issue on that field saying
+/// it doesn't exist or can't be read. `noun` names the kind in the issue's message.
+fn saved(found: &mut Found, repo: &Path, kind: PraxisKind, field: &str, noun: &str, id: &str) -> Option<Value> {
+    let path = format!("/{}", field);
+    match read_record(repo, kind.folder(), id) {
+        Ok(Some(record)) => return Some(record),
+        Ok(None) => found.push(field_issue(&path, "NOT_FOUND", format!("No saved {} has the id {}.", noun, id))),
+        Err(why) => found.push(field_issue(&path, "UNREADABLE", format!("{} {} can't be read: {}", capitalized(noun), id, why))),
+    }
+    None
 }
 
-fn saved(repo: &Path, kind: PraxisKind, id: &str) -> Saved {
-    match read_record(repo, kind.folder(), id) {
-        Ok(None) => Saved::Missing,
-        Ok(Some(record)) => Saved::Found(record),
-        Err(why) => Saved::Unreadable(why),
-    }
+/// `noun` with its first letter in upper case.
+fn capitalized(noun: &str) -> String {
+    let mut chars = noun.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
 /// The id in `field` when it is a filename-safe string; otherwise the shape check flags it and
@@ -82,21 +85,17 @@ pub fn check_graph_workflow(repo: &Path, workflow: &Value) -> Result<GraphWorkfl
     // `Some(None)` when it has no bindings file.
     let mut bound_graphs: Option<Option<Vec<String>>> = None;
     if let Some(cid) = contract_id {
-        match saved(repo, PraxisKind::Contracts, cid) {
-            Saved::Missing => push(&mut found, "/contractId", "NOT_FOUND", format!("No saved contract has the id {}.", cid)),
-            Saved::Unreadable(why) => push(&mut found, "/contractId", "UNREADABLE", format!("Contract {} can't be read: {}", cid, why)),
-            Saved::Found(contract) => {
-                invalid(&mut found, "/contractId", "Contract", cid, validate_contract(&contract));
-                match read_record(repo, BINDINGS_DIR, cid) {
-                    Ok(None) => bound_graphs = Some(None),
-                    Ok(Some(bindings)) => {
-                        grants = strings(bindings.get("grants"));
-                        bound_graphs = Some(Some(strings(bindings.get("graphs"))));
-                    }
-                    Err(why) => {
-                        let message = format!("Contract {}'s bindings file can't be read: {}", cid, why);
-                        push(&mut found, "/contractId", "UNREADABLE", message);
-                    }
+        if let Some(contract) = saved(&mut found, repo, PraxisKind::Contracts, "contractId", "contract", cid) {
+            invalid(&mut found, "/contractId", "Contract", cid, validate_contract(&contract));
+            match read_record(repo, BINDINGS_DIR, cid) {
+                Ok(None) => bound_graphs = Some(None),
+                Ok(Some(bindings)) => {
+                    grants = strings(bindings.get("grants"));
+                    bound_graphs = Some(Some(strings(bindings.get("graphs"))));
+                }
+                Err(why) => {
+                    let message = format!("Contract {}'s bindings file can't be read: {}", cid, why);
+                    push(&mut found, "/contractId", "UNREADABLE", message);
                 }
             }
         }
@@ -104,13 +103,9 @@ pub fn check_graph_workflow(repo: &Path, workflow: &Value) -> Result<GraphWorkfl
 
     let mut graph = None;
     if let Some(gid) = graph_id {
-        match saved(repo, PraxisKind::Graphs, gid) {
-            Saved::Missing => push(&mut found, "/graphId", "NOT_FOUND", format!("No saved graph has the id {}.", gid)),
-            Saved::Unreadable(why) => push(&mut found, "/graphId", "UNREADABLE", format!("Graph {} can't be read: {}", gid, why)),
-            Saved::Found(record) => {
-                invalid(&mut found, "/graphId", "Graph", gid, validate_graph(&record));
-                graph = Some(record);
-            }
+        if let Some(record) = saved(&mut found, repo, PraxisKind::Graphs, "graphId", "graph", gid) {
+            invalid(&mut found, "/graphId", "Graph", gid, validate_graph(&record));
+            graph = Some(record);
         }
         if let (Some(cid), Some(bound)) = (contract_id, &bound_graphs) {
             let message = match bound {
@@ -127,24 +122,18 @@ pub fn check_graph_workflow(repo: &Path, workflow: &Value) -> Result<GraphWorkfl
     }
 
     if let Some(bid) = binding_id {
-        match saved(repo, PraxisKind::GraphBindings, bid) {
-            Saved::Missing => push(&mut found, "/graphBindingId", "NOT_FOUND", format!("No saved graph binding has the id {}.", bid)),
-            Saved::Unreadable(why) => {
-                push(&mut found, "/graphBindingId", "UNREADABLE", format!("Graph binding {} can't be read: {}", bid, why))
+        if let Some(binding) = saved(&mut found, repo, PraxisKind::GraphBindings, "graphBindingId", "graph binding", bid) {
+            let binds = binding.get("graphId").and_then(Value::as_str);
+            if let Some(gid) = graph_id.filter(|gid| binds != Some(*gid)) {
+                let message = match binds {
+                    Some(other) => format!("Graph binding {} binds graph {}, not {}.", bid, other, gid),
+                    None => format!("Graph binding {} binds no graph, not {}.", bid, gid),
+                };
+                push(&mut found, "/graphBindingId", "BINDING_GRAPH_MISMATCH", message);
             }
-            Saved::Found(binding) => {
-                let binds = binding.get("graphId").and_then(Value::as_str);
-                if let Some(gid) = graph_id.filter(|gid| binds != Some(*gid)) {
-                    let message = match binds {
-                        Some(other) => format!("Graph binding {} binds graph {}, not {}.", bid, other, gid),
-                        None => format!("Graph binding {} binds no graph, not {}.", bid, gid),
-                    };
-                    push(&mut found, "/graphBindingId", "BINDING_GRAPH_MISMATCH", message);
-                }
-                // Checked against the graph too when it is the one the binding binds.
-                let against = graph.as_ref().filter(|_| binds.is_some() && binds == graph_id);
-                invalid(&mut found, "/graphBindingId", "Graph binding", bid, validate_graph_binding(&binding, against));
-            }
+            // Checked against the graph too when it is the one the binding binds.
+            let against = graph.as_ref().filter(|_| binds.is_some() && binds == graph_id);
+            invalid(&mut found, "/graphBindingId", "Graph binding", bid, validate_graph_binding(&binding, against));
         }
     }
 
