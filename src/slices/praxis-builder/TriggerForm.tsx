@@ -1,11 +1,17 @@
 // The trigger form (#223): a trigger opens full width in the work area and shows only the
 // fields that apply to its kind and action. `schedule` is for SCHEDULED, `conditionMode` for
 // CONDITION and `waitId` for RESUME_WAIT; `filter` is required for CONDITION and optional for
-// the rest. Changing the kind or action adds and removes those fields as one undo step. Quay
-// links a trigger only to its contract: Praxis doesn't say which graph a triggered run
-// attaches, and a wait id is known only at run time.
+// the rest. Changing the kind or action adds and removes those fields as one undo step. A wait
+// id is known only at run time, so it isn't linked to a graph node.
+//
+// The Starts picker (#472) names the graph workflow the trigger starts, saved in the trigger's
+// target file under the same dirty flag and undo history. Picking one fills an empty contract
+// with the workflow's. A trigger with a target also gets the Praxis host's graph trigger rules
+// from the backend, each an error with the host's code and a hint; the Kind and Action pickers
+// still list every value and mark the ones the rules refuse. A contract other than the target's
+// is an error with a Use <contract> fix. A trigger without a target is checked as before.
 import { useEffect, useId, type FC, type ReactNode } from "react";
-import { Info, Plus, X } from "lucide-react";
+import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
 import {
@@ -14,6 +20,7 @@ import {
   DateTimeInput,
   DurationInput,
   hintClass,
+  IdPicker,
   inline,
   IntegerInput,
   issuesByPath,
@@ -38,13 +45,22 @@ import {
   type NestedKey,
   type TriggerEdit,
 } from "./trigger.ts";
+import { useTriggerCheck } from "./useTriggerCheck.ts";
 import { useValidation } from "./useValidation.ts";
-import type { DefinitionRef, Diagnostic } from "./types.ts";
+import { targetPath } from "./session.ts";
+import type { DefinitionRef, Diagnostic, FileProblem, GraphWorkflowChoice, ValidationStatus } from "./types.ts";
 
 interface TriggerFormProps {
+  projectPath: string;
   draft: Draft;
+  /** Why the target file was ignored, when it couldn't be read. */
+  targetProblem?: FileProblem;
   /** The ids of the contracts in the project, listed or drafted, for the contract picker. */
   contracts: readonly string[];
+  /** The project's graph workflows, listed or drafted, each with its contract when it names one, for the Starts picker. */
+  graphWorkflows: readonly GraphWorkflowChoice[];
+  /** Counts up when the builder saves, renames or deletes a record, so the target's checks run again. */
+  refresh: number;
   /** The record's cross-record checks (#269), shown under the verdict. */
   crossRecord: ReactNode;
   onEdit: (edit: TriggerEdit) => void;
@@ -52,18 +68,47 @@ interface TriggerFormProps {
   onValidated: (verdict: string | null) => void;
 }
 
-const START_RUN_NOTE =
-  "Praxis doesn't yet say which graph a triggered run attaches, so Quay doesn't link this trigger to a graph.";
-
 const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
   SKIP: "skip the slots it missed",
   LATEST: "fire once for the latest slot it missed",
   ALL: "fire for each slot it missed, up to the most to catch up",
 };
 
-export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecord, onEdit, onOpen, onValidated }) => {
-  const status = useValidation("triggers", draft.content);
-  const verdict = status.state === "done" ? status.validation.verdict : undefined;
+/**
+ * The SDK's check and the target's checks as one status: done once both have a result, with the
+ * SDK's issues first. The verdict is the SDK's, else the first target check's error. While a newer
+ * target check runs, the last one's issues stay shown.
+ */
+function combined(sdk: ValidationStatus, target: ReturnType<typeof useTriggerCheck>): { status: ValidationStatus; settled: boolean } {
+  if (sdk.state !== "done") return { status: sdk, settled: false };
+  if (target.state === "checking") return { status: target, settled: false };
+  if (target.state === "failed") return { status: { state: "failed", error: target.error }, settled: true };
+  const { validation } = sdk;
+  const local = target.check.diagnostics;
+  if (local.length === 0) return { status: sdk, settled: !target.pending };
+  const verdict = validation.verdict ?? local.find((d) => d.severity === "error")?.code ?? null;
+  return {
+    status: { state: "done", validation: { ...validation, verdict, diagnostics: [...validation.diagnostics, ...local] } },
+    settled: !target.pending,
+  };
+}
+
+export const TriggerForm: FC<TriggerFormProps> = ({
+  projectPath,
+  draft,
+  targetProblem,
+  contracts,
+  graphWorkflows,
+  refresh,
+  crossRecord,
+  onEdit,
+  onOpen,
+  onValidated,
+}) => {
+  const sdk = useValidation("triggers", draft.content);
+  const targetCheck = useTriggerCheck(projectPath, draft.content, draft.target, refresh);
+  const { status, settled } = combined(sdk, targetCheck);
+  const verdict = settled && status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
     if (verdict !== undefined) onValidated(verdict);
   }, [verdict, onValidated]);
@@ -84,13 +129,28 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecor
   const filter = isObject(t.filter) ? t.filter : null;
   const set = (key: string, value: Json | undefined, live = false) => onEdit({ type: "set-field", key, value, live });
   const setIn = (key: NestedKey, field: string, value: Json, live = false) => onEdit({ type: "set-nested", key, field, value, live });
+  const check = targetCheck.state === "done" ? targetCheck.check : null;
+  // The values the graph trigger rules refuse, by field, each with the host's code.
+  const refused = (field: string) => new Map((check?.refused ?? []).filter((r) => r.field === field).map((r) => [r.value, r.code]));
+  const contractIssues = at("/contractId");
+  // The Use <contract> fix, for a contract other than the target's.
+  const useContract = contractIssues?.some((d) => d.code === "CONTRACT_MISMATCH") ? check?.contractId : undefined;
 
   const fields = (
     <>
       <Section title="Trigger">
         <ReadOnly label="Id" value={draft.ref.id} issues={at("/id")} hint="Rename the trigger from the list." />
         <ReadOnly label="Revision" value={asString(t.revision)} issues={at("/revision")} hint="Set from the content each time the trigger is saved." />
-        <ContractPicker value={asString(t.contractId)} contracts={contracts} issues={at("/contractId")} onChange={(v) => set("contractId", v, true)} onOpen={onOpen} />
+        <ContractPicker value={asString(t.contractId)} contracts={contracts} issues={contractIssues} onChange={(v) => set("contractId", v, true)} onOpen={onOpen} />
+        {useContract !== undefined && (
+          <button
+            type="button"
+            onClick={() => set("contractId", useContract)}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[11px] text-[#c9d1d9]"
+          >
+            Use {useContract}
+          </button>
+        )}
         <Checkbox
           label="Enabled"
           checked={t.enabled === true}
@@ -105,6 +165,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecor
           label="Kind"
           value={kind}
           options={TRIGGER_KINDS}
+          refused={refused("kind")}
           issues={at("/kind")}
           // A kind outside the list, as in a hand-edited file, is shown but can't be picked back.
           onChange={(v) => isTriggerKind(v) && onEdit({ type: "set-kind", kind: v })}
@@ -170,15 +231,23 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecor
           label="Action"
           value={action}
           options={TRIGGER_ACTIONS}
+          refused={refused("action")}
           issues={at("/action")}
           onChange={(v) => isTriggerAction(v) && onEdit({ type: "set-action", action: v })}
         />
-        {action === "START_RUN" && (
-          <p role="note" className="flex items-start gap-1.5 text-[11px] text-[#79c0ff]">
-            <Info className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
-            <span>{START_RUN_NOTE}</span>
-          </p>
-        )}
+        <IdPicker
+          label="Starts"
+          noun="graph workflow"
+          value={draft.target ?? ""}
+          known={graphWorkflows.map((w) => w.id)}
+          issues={at("/target")}
+          openAs="graph-workflows"
+          onChange={(v) =>
+            onEdit({ type: "set-target", target: v === "" ? null : v, contractId: graphWorkflows.find((w) => w.id === v)?.contractId, live: true })
+          }
+          onOpen={onOpen}
+          hint="The graph workflow each fire starts a run of, which gives the trigger the Praxis host's graph trigger rules. Leave it empty to keep the trigger a local record."
+        />
         {action === "RESUME_WAIT" && (
           <TextInput
             label="Wait id"
@@ -243,21 +312,34 @@ export const TriggerForm: FC<TriggerFormProps> = ({ draft, contracts, crossRecor
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Trigger ${draft.ref.id}`}>
         <Summary noun="trigger" status={status} recordIssues={untaken} />
         {crossRecord}
+        {targetProblem && (
+          <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#e3b341]">
+            <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+            <span className="break-words">
+              {targetPath(draft.ref.id)} was ignored, so the trigger starts no graph workflow. Saving replaces it:{" "}
+              {targetProblem.message}
+            </span>
+          </p>
+        )}
         {fields}
       </form>
     </div>
   );
 };
 
-/** A choice of one value from a fixed list. A value outside it, as in a hand-edited file, shows as it is. */
+/**
+ * A choice of one value from a fixed list. A value outside it, as in a hand-edited file, shows as it
+ * is. A `refused` value is still listed, marked with the code it is refused with.
+ */
 const Select: FC<{
   label: string;
   value: string;
   options: readonly string[];
+  refused?: ReadonlyMap<string, string>;
   hint?: string;
   issues: readonly Diagnostic[] | undefined;
   onChange: (value: string) => void;
-}> = ({ label, value, options, hint, issues, onChange }) => {
+}> = ({ label, value, options, refused, hint, issues, onChange }) => {
   const id = useId();
   const messagesId = useId();
   const hintId = useId();
@@ -276,7 +358,7 @@ const Select: FC<{
       >
         {shown.map((o) => (
           <option key={o} value={o}>
-            {o === "" ? "(not set)" : o}
+            {o === "" ? "(not set)" : refused?.has(o) ? `${o} (refused for a graph trigger: ${refused.get(o)})` : o}
           </option>
         ))}
       </select>

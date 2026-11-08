@@ -161,7 +161,7 @@ impl Found<'_> {
 
     fn issue(&mut self, kind: PraxisKind, id: &str, path: &str, code: &str, message: String) {
         let diagnostic =
-            Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None };
+            Diagnostic { code: code.to_string(), severity: Severity::Error, message, path: path.to_string(), node_id: None, field: None, hint: None };
         self.push(kind, id, diagnostic);
     }
 }

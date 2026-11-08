@@ -11,9 +11,10 @@ use super::graph_workflow::{self, GraphWorkflowCheck};
 use super::lifecycle;
 use super::models::{
     BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
-    FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome,
+    FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome, TargetInput,
 };
 use super::store;
+use super::trigger_target::{self, TriggerTargetCheck};
 use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
 
@@ -43,7 +44,8 @@ pub async fn praxis_list(
     blocking(move || store::list_definitions(&project_root(&workspace, &project_path)?, kind)).await
 }
 
-/// Reads one definition, and a graph's layout file or a contract's bindings file.
+/// Reads one definition, and a graph's layout file, a contract's bindings file or a trigger's
+/// target file.
 #[tauri::command]
 pub async fn praxis_read(
     project_path: String,
@@ -121,6 +123,20 @@ pub async fn praxis_check_graph_workflow(
     blocking(move || graph_workflow::check_graph_workflow(&project_root(&workspace, &project_path)?, &content)).await
 }
 
+/// A trigger's checks as a graph trigger (#472), with `content` as its draft and `target` the
+/// graph workflow it starts: the Praxis host's graph trigger rules, and its contract against the
+/// target's as saved. A trigger without a target gets none of them.
+#[tauri::command]
+pub async fn praxis_check_trigger(
+    project_path: String,
+    content: serde_json::Value,
+    target: Option<String>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<TriggerTargetCheck, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || trigger_target::check_trigger_target(&project_root(&workspace, &project_path)?, &content, target.as_deref())).await
+}
+
 /// The ids used across the project's saved graph bindings, and the agents of its saved workflow
 /// templates (#247), which the Runs as section suggests for its agent, protocol-binding, action
 /// and resource fields.
@@ -166,10 +182,12 @@ pub async fn praxis_path(
     .await
 }
 
-/// Saves one definition in its canonical form, and a graph's layout or a contract's
-/// bindings. Nothing is written when the file no longer has `expectedHash` (the hash the
-/// draft loaded), or a contract's bindings file no longer has `expectedBindingsHash`, unless
-/// `force` is set; `expectedHash` is null for a definition that has never been saved.
+/// Saves one definition in its canonical form, and a graph's layout, a contract's bindings or
+/// a trigger's target (#472). Nothing is written when the file no longer has `expectedHash` (the
+/// hash the draft loaded), or a contract's bindings file no longer has `expectedBindingsHash`, or
+/// a trigger's target file no longer has `expectedTargetHash`, unless `force` is set;
+/// `expectedHash` is null for a definition that has never been saved. A trigger saved without
+/// `target` leaves its target file as it is.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn praxis_save(
@@ -181,12 +199,18 @@ pub async fn praxis_save(
     bindings: Option<BindingsInput>,
     expected_hash: Option<String>,
     expected_bindings_hash: Option<String>,
+    target: Option<TargetInput>,
+    expected_target_hash: Option<String>,
     force: bool,
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<SaveOutcome, String> {
     let workspace = workspace.inner().clone();
     blocking(move || {
         let repo = project_root(&workspace, &project_path)?;
+        if let (PraxisKind::Triggers, Some(target)) = (kind, &target) {
+            let (expected, expected_target) = (expected_hash.as_deref(), expected_target_hash.as_deref());
+            return store::save_trigger_with_target(&repo, &id, content, target, expected, expected_target, force);
+        }
         store::save_definition(
             &repo,
             kind,

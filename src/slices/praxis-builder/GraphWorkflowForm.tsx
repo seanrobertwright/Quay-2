@@ -5,16 +5,14 @@
 // its local checks against the saved records it names: each exists and is valid, the contract's
 // bindings file lists the graph, and the binding binds that graph. Each issue shows on the field
 // that names the record at fault. Nothing here calls a Praxis host.
-import { useEffect, useId, type FC, type ReactNode } from "react";
+import { useEffect, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
-import { described, FieldMessages, inputClass, labelClass } from "./ConfigForms.tsx";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
-import { idProblem } from "./lifecycle.ts";
-import { asString, hintClass, inline, issuesByPath, Section, Summary, useSyncedText } from "./RecordFields.tsx";
+import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useValidation } from "./useValidation.ts";
-import type { DefinitionRef, Diagnostic, PraxisKind, ValidationStatus } from "./types.ts";
+import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
 interface GraphWorkflowFormProps {
   projectPath: string;
@@ -152,87 +150,6 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
         />
         {fields}
       </form>
-    </div>
-  );
-};
-
-/**
- * A picker for the id of another record: a text field suggesting `offered`, or every `known` id,
- * which also takes an id no record has and flags it as missing, unless a local check already
- * says so. An id that isn't filename-safe is refused inline and not applied.
- */
-const IdPicker: FC<{
-  label: string;
-  noun: string;
-  value: string;
-  /** The ids of the records of the kind, which aren't missing. */
-  known: readonly string[];
-  /** The ids the field suggests, when only some of the known ones fit; all of them otherwise. */
-  offered?: readonly string[];
-  issues: readonly Diagnostic[] | undefined;
-  /** The kind Open opens a known id as; without it there is no Open. */
-  openAs?: PraxisKind;
-  hint: string;
-  onChange: (value: string) => void;
-  onOpen: (ref: DefinitionRef) => void;
-}> = ({ label, noun, value, known, offered = known, issues, openAs, hint, onChange, onOpen }) => {
-  const id = useId();
-  const optionsId = useId();
-  const messagesId = useId();
-  const hintId = useId();
-  const { text, setText, onKeyDown } = useSyncedText(value);
-  const typed = text.trim();
-  const problem = typed === "" ? null : idProblem(typed);
-  const exists = known.includes(value);
-  const reported = issues?.some((d) => d.code === "NOT_FOUND") ?? false;
-  const missing: Diagnostic[] =
-    value !== "" && !exists && !problem && !reported
-      ? [{ code: "MISSING_REFERENCE", severity: "info", message: `No ${noun} has this id.`, path: "" }]
-      : [];
-  const shown = problem ? inline(problem) : [...(issues ?? []), ...missing];
-  return (
-    <div>
-      <label htmlFor={id} className={labelClass}>
-        {label}
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          id={id}
-          type="text"
-          list={optionsId}
-          spellCheck={false}
-          value={text}
-          placeholder={`${noun} id`}
-          onKeyDown={onKeyDown}
-          onChange={(e) => {
-            const next = e.target.value;
-            setText(next);
-            const trimmed = next.trim();
-            if (trimmed === "" || idProblem(trimmed) === null) onChange(trimmed);
-          }}
-          className={`${inputClass} font-mono`}
-          {...described(messagesId, shown, hintId)}
-        />
-        <datalist id={optionsId}>
-          {offered.map((k) => (
-            <option key={k} value={k} />
-          ))}
-        </datalist>
-        {openAs && exists && (
-          <button
-            type="button"
-            onClick={() => onOpen({ kind: openAs, id: value })}
-            className="shrink-0 text-xs text-[#58a6ff] hover:underline"
-            title={`Open ${noun} ${value}`}
-          >
-            Open
-          </button>
-        )}
-      </div>
-      <p id={hintId} className={hintClass}>
-        {hint} Pick one, or type an id for one not made yet.
-      </p>
-      <FieldMessages id={messagesId} issues={shown} />
     </div>
   );
 };

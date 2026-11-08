@@ -11,7 +11,7 @@ import {
   parseEquals,
   triggerStepFor,
 } from "./trigger.ts";
-import { createDraft, createNewDraft, editTriggerDraft, hasDrafts, isDirty } from "./drafts.ts";
+import { createDraft, createNewDraft, editTriggerDraft, hasDrafts, isDirty, markSaved, reconcileWithDisk } from "./drafts.ts";
 import { applyRename, changeDraft, EMPTY_SESSION, undoDraft, type BuilderSession } from "./session.ts";
 import type { JsonObject } from "./model.ts";
 import type { DefinitionFile } from "./types.ts";
@@ -162,4 +162,110 @@ test("renaming a contract rewrites an open trigger draft's contractId as the bac
     done: ["Wrote .praxis/contracts/c2.json"],
   });
   assert.equal(after.drafts["triggers/t"].content.contractId, "c2");
+});
+
+// --- the Starts target (#472) ----------------------------------------------------------
+
+const targetedFile = (graphWorkflow: string): DefinitionFile => ({
+  ...triggerFile({ id: "t", contractId: "c" }),
+  target: { version: 1, graphWorkflow },
+  targetHash: "th1",
+});
+
+/** A saved trigger draft that starts graph workflow `ship`, after an edit that leaves it dirty. */
+function dirtyTargeted() {
+  const created = createDraft(tref, targetedFile("ship"));
+  assert.ok(created.ok);
+  return editTriggerDraft(created.value, { type: "set-field", key: "source", value: "github" });
+}
+
+test("a trigger opens with the target its target file names, and setting another makes it dirty until set back", () => {
+  const created = createDraft(tref, targetedFile("ship"));
+  assert.ok(created.ok);
+  const draft = created.value;
+  assert.equal(draft.target, "ship");
+  assert.equal(draft.baseTargetHash, "th1");
+  assert.equal(isDirty(draft), false);
+  const other = editTriggerDraft(draft, { type: "set-target", target: "review" });
+  assert.equal(isDirty(other), true);
+  assert.equal(other.content, draft.content, "the trigger's record is untouched");
+  assert.equal(isDirty(editTriggerDraft(other, { type: "set-target", target: "ship" })), false);
+  // A target file that names no graph workflow opens as none.
+  const odd = createDraft(tref, { ...targetedFile("x"), target: { version: 1, graphWorkflow: 3 } });
+  assert.ok(odd.ok);
+  assert.equal(odd.value.target, null);
+});
+
+test("setting the target is one undo step with the contract it fills", () => {
+  const created = createNewDraft(tref, newTriggerContent("t"));
+  assert.ok(created.ok);
+  const edit = { type: "set-target", target: "ship", contractId: "c" } as const;
+  let session: BuilderSession = { ...EMPTY_SESSION, open: tref, drafts: { "triggers/t": created.value } };
+  session = changeDraft(session, tref, (d) => editTriggerDraft(d, edit), triggerStepFor(edit), 0);
+  assert.equal(session.drafts["triggers/t"].target, "ship");
+  assert.equal(session.drafts["triggers/t"].content.contractId, "c");
+  const undone = undoDraft(session, tref);
+  assert.ok(undone);
+  assert.equal(undone.label, "Set the Starts target");
+  assert.equal(undone.session.drafts["triggers/t"].target, null);
+  assert.equal(undone.session.drafts["triggers/t"].content.contractId, "");
+});
+
+test("a save makes the target sent the new base, and one the save couldn't write keeps the draft dirty", () => {
+  const draft = editTriggerDraft(dirtyTargeted(), { type: "set-target", target: "review" });
+  const sent = { content: draft.content, layout: null, target: { graphWorkflow: "review" } };
+  const saved = markSaved(draft, { content: draft.content, contentHash: "h2", targetHash: "th2" }, sent);
+  assert.equal(isDirty(saved), false);
+  assert.equal(saved.baseTargetHash, "th2");
+  const cleared = editTriggerDraft(saved, { type: "set-target", target: null });
+  const removed = markSaved(cleared, { content: cleared.content, contentHash: "h2" }, { ...sent, target: { graphWorkflow: null } });
+  assert.equal(isDirty(removed), false);
+  assert.equal(removed.baseTargetHash, null);
+  const failed = markSaved(draft, { content: draft.content, contentHash: "h2", targetError: "disk full" }, sent);
+  assert.equal(isDirty(failed), true);
+  assert.equal(failed.baseTargetHash, "th1");
+});
+
+test("a target file changed on disk reloads a clean trigger draft", () => {
+  const created = createDraft(tref, targetedFile("ship"));
+  assert.ok(created.ok);
+  assert.equal(reconcileWithDisk(created.value, targetedFile("ship")).action, "keep");
+  assert.equal(reconcileWithDisk(created.value, { ...targetedFile("other"), targetHash: "th9" }).action, "reload");
+});
+
+test("renaming a graph workflow rewrites a dirty trigger draft's target and expects the rewritten file", () => {
+  const session: BuilderSession = { ...EMPTY_SESSION, drafts: { "triggers/t": dirtyTargeted() } };
+  const after = applyRename(session, { kind: "graph-workflows", id: "ship" }, "ship-it", {
+    changes: [{ path: ".praxis/trigger-targets/t.json", hashes: { previous: "th1", next: "th2" } }],
+    unchecked: [],
+    drafts: [],
+    done: ["Rewrote .praxis/trigger-targets/t.json"],
+  });
+  const t = after.drafts["triggers/t"];
+  assert.equal(t.target, "ship-it");
+  assert.equal(t.baseTargetHash, "th2");
+  assert.equal(t.content.source, "github", "the unsaved edit stays");
+});
+
+test("renaming a graph workflow drops a clean trigger draft whose target file it rewrote, so it reloads", () => {
+  const created = createDraft(tref, targetedFile("ship"));
+  assert.ok(created.ok);
+  const session: BuilderSession = { ...EMPTY_SESSION, drafts: { "triggers/t": created.value } };
+  const after = applyRename(session, { kind: "graph-workflows", id: "ship" }, "ship-it", {
+    changes: [{ path: ".praxis/trigger-targets/t.json", hashes: { previous: "th1", next: "th2" } }],
+    unchecked: [],
+    drafts: [],
+    done: ["Rewrote .praxis/trigger-targets/t.json"],
+  });
+  assert.equal(after.drafts["triggers/t"], undefined);
+});
+
+test("renaming a graph workflow rewrites an unsaved trigger draft's target, and another kind's rename leaves it", () => {
+  const created = createNewDraft(tref, newTriggerContent("t"));
+  assert.ok(created.ok);
+  const unsaved = editTriggerDraft(created.value, { type: "set-target", target: "ship" });
+  const session: BuilderSession = { ...EMPTY_SESSION, drafts: { "triggers/t": unsaved } };
+  const none = { changes: [], unchecked: [], drafts: [], done: ["Wrote"] };
+  assert.equal(applyRename(session, { kind: "graph-workflows", id: "ship" }, "ship-it", none).drafts["triggers/t"].target, "ship-it");
+  assert.equal(applyRename(session, { kind: "contracts", id: "ship" }, "other", none).drafts["triggers/t"].target, "ship");
 });

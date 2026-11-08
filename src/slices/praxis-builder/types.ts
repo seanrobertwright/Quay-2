@@ -23,6 +23,14 @@ export interface DefinitionEntry {
   costUnit?: string;
   /** A workflow template file's digest as the Praxis host computes it (#449), when it has one. */
   templateDigest?: string;
+  /** A graph workflow's `contractId`, when it is a string, which a trigger that starts it takes (#472). */
+  contractId?: string;
+}
+
+/** A graph workflow a trigger can start (#472), with its contract when it names one. */
+export interface GraphWorkflowChoice {
+  id: string;
+  contractId?: string;
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
@@ -50,6 +58,10 @@ export interface DefinitionFile {
   bindingsProblem?: FileProblem;
   /** The hash of the bindings file's bytes, when it exists and can be read. */
   bindingsHash?: string;
+  /** A trigger's `.praxis/trigger-targets/<id>.json` (#472), the graph workflow it starts, the same way. */
+  target?: Record<string, unknown>;
+  targetProblem?: FileProblem;
+  targetHash?: string;
 }
 
 /** Names one definition, the way every backend command takes it. */
@@ -62,6 +74,11 @@ export interface DefinitionRef {
 export interface LayoutInput {
   nodes: { id: string; x: number; y: number }[];
   viewport: { x: number; y: number; zoom: number } | null;
+}
+
+/** A trigger's target as `praxis_save` takes it (#472): the graph workflow it starts, or null for none. */
+export interface TargetInput {
+  graphWorkflow: string | null;
 }
 
 /** A contract's binding record as `praxis_save` takes it. */
@@ -83,6 +100,9 @@ export type SaveOutcome =
       layoutError?: string;
       bindingsHash?: string;
       bindingsError?: string;
+      /** For a trigger saved with its target, the hash of the target file written; none when it starts nothing (#472). */
+      targetHash?: string;
+      targetError?: string;
       /** For a workflow template, the written file's digest as the Praxis host computes it (#449). */
       templateDigest?: string;
     }
@@ -165,6 +185,8 @@ export interface Diagnostic {
   nodeId?: string;
   /** The place inside that node, dotted (`config.then`), when it isn't the whole node. */
   field?: string;
+  /** How to fix it, for an issue that carries the Praxis host's code, such as a graph trigger rule (#472). */
+  hint?: string;
 }
 
 /** `praxis_validate`'s result. With a verdict, the first diagnostic carries its code. */
@@ -320,5 +342,22 @@ export interface GraphWorkflowCheck {
   /** The grants of the contract's bindings file, in file order; empty without one. */
   grants: string[];
   /** Each failed check, an error on the field that names the record at fault. */
+  diagnostics: Diagnostic[];
+}
+
+/** A kind or action a picker still lists that a graph trigger can't take, with the host's code. */
+export interface RefusedValue {
+  field: string;
+  value: string;
+  code: string;
+}
+
+/**
+ * `praxis_check_trigger` (#472): a trigger's checks as a graph trigger, all empty for one without
+ * a target. `contractId` is the saved target's contract, which the trigger must name.
+ */
+export interface TriggerTargetCheck {
+  contractId?: string;
+  refused: RefusedValue[];
   diagnostics: Diagnostic[];
 }

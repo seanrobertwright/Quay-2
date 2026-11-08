@@ -229,7 +229,7 @@ fn graph_nodes(graph: &Value) -> impl Iterator<Item = &Value> {
 
 /// An issue about one node's entry, placed on that node so its card and the Problems list show it.
 fn entry_issue(code: &str, severity: Severity, path: String, node_id: &str, message: String) -> Diagnostic {
-    Diagnostic { code: code.to_string(), severity, message, path, node_id: Some(node_id.to_string()), field: None }
+    Diagnostic { code: code.to_string(), severity, message, path, node_id: Some(node_id.to_string()), field: None, hint: None }
 }
 
 /// The builder's diagnostics and the SDK-style verdict: the code of the first error found.

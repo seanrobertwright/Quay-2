@@ -85,7 +85,7 @@ fn decimal(v: Option<&Value>) -> Option<(usize, &str)> {
 
 /// A warning on the binding found by contract `cid`'s attach checks.
 fn warning(code: &str, path: String, node_id: Option<&str>, message: String) -> Diagnostic {
-    Diagnostic { code: code.to_string(), severity: Severity::Warning, message, path, node_id: node_id.map(str::to_string), field: None }
+    Diagnostic { code: code.to_string(), severity: Severity::Warning, message, path, node_id: node_id.map(str::to_string), field: None, hint: None }
 }
 
 /// The strings of a JSON array, in order; none when it isn't one.

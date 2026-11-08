@@ -1,4 +1,4 @@
-// The fields the record forms share (#223): the contract, grant, trigger and template forms lay these out in
+// The fields the record forms share (#223): the contract, grant, trigger, template and graph workflow forms lay these out in
 // sections. Integer and time inputs refuse what can't be stored as the user types; the
 // SDK's issues, and any inline check a form adds, show under the field they are about.
 import { useId, useState, type FC, type KeyboardEvent, type ReactNode } from "react";
@@ -13,8 +13,9 @@ import {
 } from "../../lib/dates.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import { DURATION_UNITS, durationMs, durationParts, integerProblem, timeMs, type DurationUnit } from "./contract.ts";
+import { idProblem } from "./lifecycle.ts";
 import type { Json } from "./model.ts";
-import type { Diagnostic, ValidationStatus } from "./types.ts";
+import type { DefinitionRef, Diagnostic, PraxisKind, ValidationStatus } from "./types.ts";
 
 /** How `Contract.budget` and `Grant.limit` are labelled and explained (#231). */
 export const COST_UNIT_LABEL = "in the installation's ledger cost unit";
@@ -485,6 +486,87 @@ export const StringList: FC<{
           {hint}
         </p>
       )}
+      <FieldMessages id={messagesId} issues={shown} />
+    </div>
+  );
+};
+
+/**
+ * A picker for the id of another record: a text field suggesting `offered`, or every `known` id,
+ * which also takes an id no record has and flags it as missing, unless a local check already
+ * says so. An id that isn't filename-safe is refused inline and not applied.
+ */
+export const IdPicker: FC<{
+  label: string;
+  noun: string;
+  value: string;
+  /** The ids of the records of the kind, which aren't missing. */
+  known: readonly string[];
+  /** The ids the field suggests, when only some of the known ones fit; all of them otherwise. */
+  offered?: readonly string[];
+  issues: readonly Diagnostic[] | undefined;
+  /** The kind Open opens a known id as; without it there is no Open. */
+  openAs?: PraxisKind;
+  hint: string;
+  onChange: (value: string) => void;
+  onOpen: (ref: DefinitionRef) => void;
+}> = ({ label, noun, value, known, offered = known, issues, openAs, hint, onChange, onOpen }) => {
+  const id = useId();
+  const optionsId = useId();
+  const messagesId = useId();
+  const hintId = useId();
+  const { text, setText, onKeyDown } = useSyncedText(value);
+  const typed = text.trim();
+  const problem = typed === "" ? null : idProblem(typed);
+  const exists = known.includes(value);
+  const reported = issues?.some((d) => d.code === "NOT_FOUND") ?? false;
+  const missing: Diagnostic[] =
+    value !== "" && !exists && !problem && !reported
+      ? [{ code: "MISSING_REFERENCE", severity: "info", message: `No ${noun} has this id.`, path: "" }]
+      : [];
+  const shown = problem ? inline(problem) : [...(issues ?? []), ...missing];
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          id={id}
+          type="text"
+          list={optionsId}
+          spellCheck={false}
+          value={text}
+          placeholder={`${noun} id`}
+          onKeyDown={onKeyDown}
+          onChange={(e) => {
+            const next = e.target.value;
+            setText(next);
+            const trimmed = next.trim();
+            if (trimmed === "" || idProblem(trimmed) === null) onChange(trimmed);
+          }}
+          className={`${inputClass} font-mono`}
+          {...described(messagesId, shown, hintId)}
+        />
+        <datalist id={optionsId}>
+          {offered.map((k) => (
+            <option key={k} value={k} />
+          ))}
+        </datalist>
+        {openAs && exists && (
+          <button
+            type="button"
+            onClick={() => onOpen({ kind: openAs, id: value })}
+            className="shrink-0 text-xs text-[#58a6ff] hover:underline"
+            title={`Open ${noun} ${value}`}
+          >
+            Open
+          </button>
+        )}
+      </div>
+      <p id={hintId} className={hintClass}>
+        {hint} Pick one, or type an id for one not made yet.
+      </p>
       <FieldMessages id={messagesId} issues={shown} />
     </div>
   );

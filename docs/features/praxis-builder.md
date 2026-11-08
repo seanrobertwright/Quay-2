@@ -28,6 +28,7 @@ Everything the builder edits is a JSON file under `.praxis/` in the project, so 
 ├── bindings/<contract-id>.json # the graphs and grants a contract binds
 ├── grants/<id>.json
 ├── triggers/<id>.json
+├── trigger-targets/<trigger-id>.json # the graph workflow a trigger starts
 ├── graph-bindings/<id>.json    # what each node of a graph runs as
 ├── templates/<name>.json       # workflow templates
 └── graph-workflows/<name>.json # a contract, a graph and one of its bindings
@@ -82,8 +83,8 @@ Every edit goes to an in-memory draft first. Unsaved drafts show `*` in the list
 ### Creating, renaming and deleting
 
 - **New** asks for the kind, then names the definition in the list (`graph-1` to start) and checks the name as you type. A new graph starts with a single `END` node, and nothing is written until its first save.
-- **Rename** lists every file it will touch, moves the definition and its layout file, and changes the id inside. References follow: renaming a graph or grant rewrites the contract bindings that list it, renaming a contract rewrites the `contractId` of its triggers, renaming a grant rewrites the `parentId` of the grants under it, and renaming a contract, graph or graph binding rewrites the `contractId`, `graphId` or `graphBindingId` of the graph workflows that name it.
-- **Delete** names what refers to the definition and moves it, with its layout file, to the Recycle Bin or Trash. Deleting a graph offers to delete its graph bindings too.
+- **Rename** lists every file it will touch, moves the definition and its layout file, and changes the id inside. References follow: renaming a graph or grant rewrites the contract bindings that list it, renaming a contract rewrites the `contractId` of its triggers, renaming a grant rewrites the `parentId` of the grants under it, and renaming a contract, graph or graph binding rewrites the `contractId`, `graphId` or `graphBindingId` of the graph workflows that name it, and renaming a graph workflow rewrites the trigger targets that name it. A trigger's target file moves with the trigger.
+- **Delete** names what refers to the definition and moves it, with its layout file or a trigger's target file, to the Recycle Bin or Trash. The trigger targets that name a deleted graph workflow stay, and the trigger form flags their target as missing. Deleting a graph offers to delete its graph bindings too.
 - Neither rename nor delete can be undone in the builder.
 
 ---
@@ -124,7 +125,8 @@ These open as full-width forms in place of the canvas.
 
 - **Contracts** are edited in sections for scope, limits, timing and delivery. The **Graphs** and **Grants** sections bind definitions to the contract, and **Triggers** links to the triggers that name it. Saving writes the contract and `.praxis/bindings/<contract-id>.json` together. Each contract is checked with the SDK's `create_mission`.
 - **Grants** carry a fixed note that a grant is a proposal and takes effect only when a human approves it in Praxis. The form shows the delegation chain from the root grant down, and checks the limit as you type against the parent grant's limit and the budget of every contract that binds the grant.
-- **Triggers** show only the fields their kind and action use. Each is checked with the SDK's `registerTrigger` on a scratch mission.
+- **Triggers** show only the fields their kind and action use. Each is checked with the SDK's `registerTrigger` on a scratch mission. The **Starts** picker names the graph workflow the trigger starts, or takes an id no graph workflow has yet and flags it as missing. It is saved with the trigger to `.praxis/trigger-targets/<trigger-id>.json` as `{version, graphWorkflow}`, so the trigger file stays a plain SDK trigger. Picking a target fills an empty contract with the graph workflow's, and a different contract is an error with a **Use** fix that sets the graph workflow's.
+- **A trigger with a target** also gets the Praxis host's graph trigger rules, as errors with the host's code and a hint: only `SCHEDULED`, `EVENT` and `CONDITION` kinds, only `START_RUN`, a `maxDepth` of 0, no filter on `SCHEDULED`, and a condition mode only on `CONDITION`. The **Kind** and **Action** pickers still list every value and mark the refused ones. An `EVENT` or `CONDITION` trigger with a target also needs its source and event type, which Quay can't look up. A trigger without a target is checked as before.
 
 Budgets and limits are shown in the installation's ledger cost unit. Deadlines and other times are picked in your local time zone, with the UTC time shown.
 

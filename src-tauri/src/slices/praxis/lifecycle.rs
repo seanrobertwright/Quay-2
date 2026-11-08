@@ -12,7 +12,7 @@ use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{DeleteOutcome, DraftContent, FileChange, HashChange, PraxisKind, RenameOutcome};
 use super::store::{
     confined_dir, confined_file, json_ids, parse_object, read_capped, validate_id, BINDINGS_DIR,
-    LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK,
+    LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK, TRIGGER_TARGETS_DIR,
 };
 use crate::atomic_file::write_atomic;
 
@@ -178,10 +178,33 @@ pub const GRAPH_WORKFLOW_HOOK: ReferenceHook = ReferenceHook {
     rewrite: rewrite_graph_workflow,
 };
 
+/// Rewrites a trigger target's `graphWorkflow` when it names the graph workflow `old` (#472).
+fn rewrite_trigger_target(folder: &str, record: &mut Map<String, Value>, target: PraxisKind, old: &str, new: Option<&str>) -> bool {
+    if target != PraxisKind::GraphWorkflows
+        || folder != TRIGGER_TARGETS_DIR
+        || record.get("graphWorkflow").and_then(Value::as_str) != Some(old)
+    {
+        return false;
+    }
+    if let Some(new) = new {
+        record.insert("graphWorkflow".to_string(), Value::String(new.to_string()));
+    }
+    true
+}
+
+/// A trigger owns its target file (#472), which names the graph workflow it starts, so the
+/// file moves with the trigger on rename and goes to the trash with it on delete. A rename of
+/// the graph workflow rewrites the target files that name it, and a delete names them.
+pub const TRIGGER_HOOK: ReferenceHook = ReferenceHook {
+    companions: &[(PraxisKind::Triggers, TRIGGER_TARGETS_DIR)],
+    scans: &[TRIGGER_TARGETS_DIR],
+    rewrite: rewrite_trigger_target,
+};
+
 /// Every kind's hook. A kind adds one here when it owns files, or when other files refer to
 /// it, as triggers refer to a contract and grants to a parent grant, which the referred-to
 /// kind's hook rewrites. A graph workflow's hook rewrites the references it holds.
-pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK, GRAPH_WORKFLOW_HOOK];
+pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK, GRAPH_WORKFLOW_HOOK, TRIGGER_HOOK];
 
 /// A file's path relative to the repository, as reports show it.
 fn shown(folder: &str, id: &str) -> String {
@@ -1095,6 +1118,81 @@ mod tests {
         assert_eq!(outcome.files, vec![".praxis/graph-workflows/ship.json"]);
         assert!(outcome.referrers.is_empty(), "{:?}", outcome.referrers);
         assert_eq!(names(&repo, ".praxis/graph-workflows"), vec!["crossed.json", "review.json"]);
+    }
+
+    // --- trigger targets (#472) ----------------------------------------------------------
+
+    const TARGET: &str = r#"{"version": 1, "graphWorkflow": "ship"}"#;
+
+    /// Two triggers that start graph workflow `ship`, one that starts `review`, and the
+    /// graph workflows themselves.
+    fn target_repo() -> TempDir {
+        let repo = workflow_repo();
+        for t in ["t1", "t2", "t3"] {
+            write(&repo, &format!(".praxis/triggers/{t}.json"), &format!(r#"{{"id": "{t}", "contractId": "c1"}}"#));
+        }
+        write(&repo, ".praxis/trigger-targets/t1.json", TARGET);
+        write(&repo, ".praxis/trigger-targets/t2.json", TARGET);
+        write(&repo, ".praxis/trigger-targets/t3.json", r#"{"version": 1, "graphWorkflow": "review"}"#);
+        repo
+    }
+
+    #[test]
+    fn renaming_a_trigger_moves_its_target_and_leaves_the_trigger_s_other_fields() {
+        let repo = target_repo();
+        let outcome = rename_definition(&repo, PraxisKind::Triggers, "t1", "t9", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/trigger-targets"), vec!["t2.json", "t3.json", "t9.json"]);
+        assert_eq!(read(&repo, ".praxis/trigger-targets/t9.json"), serde_json::from_str::<Value>(TARGET).unwrap());
+        assert_eq!(read(&repo, ".praxis/triggers/t9.json")["contractId"], "c1");
+        let moved = outcome.changes.iter().find(|c| c.path == ".praxis/trigger-targets/t1.json").unwrap();
+        assert_eq!(moved.new_path.as_deref(), Some(".praxis/trigger-targets/t9.json"));
+    }
+
+    #[test]
+    fn deleting_a_trigger_trashes_its_target_too() {
+        let repo = target_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::Triggers, "t1", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.files, vec![".praxis/triggers/t1.json", ".praxis/trigger-targets/t1.json"]);
+        assert_eq!(names(&repo, ".praxis/trigger-targets"), vec!["t2.json", "t3.json"]);
+    }
+
+    #[test]
+    fn renaming_a_graph_workflow_rewrites_every_target_that_names_it() {
+        let repo = target_repo();
+        let outcome = rename_definition(&repo, PraxisKind::GraphWorkflows, "ship", "ship-it", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        for t in ["t1", "t2"] {
+            let saved = read(&repo, &format!(".praxis/trigger-targets/{t}.json"));
+            assert_eq!(saved, json!({"version": 1, "graphWorkflow": "ship-it"}), "{t}");
+        }
+        assert_eq!(read(&repo, ".praxis/trigger-targets/t3.json")["graphWorkflow"], "review");
+        // The triggers themselves aren't touched.
+        assert_eq!(read(&repo, ".praxis/triggers/t1.json"), json!({"id": "t1", "contractId": "c1"}));
+        let t1 = outcome.changes.iter().find(|c| c.path == ".praxis/trigger-targets/t1.json").unwrap();
+        let hashes = t1.hashes.as_ref().unwrap();
+        assert_eq!(hashes.previous, content_hash(TARGET.as_bytes()));
+        assert_eq!(hashes.next, content_hash(&std::fs::read(repo.join(".praxis/trigger-targets/t1.json")).unwrap()));
+    }
+
+    #[test]
+    fn a_contract_or_graph_named_like_a_graph_workflow_isn_t_a_trigger_s_target() {
+        let repo = target_repo();
+        write(&repo, ".praxis/contracts/ship.json", r#"{"id": "ship"}"#);
+        rename_definition(&repo, PraxisKind::Contracts, "ship", "other", &[], false, HOOKS).unwrap();
+        assert_eq!(read(&repo, ".praxis/trigger-targets/t1.json")["graphWorkflow"], "ship");
+    }
+
+    #[test]
+    fn deleting_a_graph_workflow_names_the_targets_that_name_it_and_leaves_them() {
+        let repo = target_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let outcome = delete_definition(&repo, PraxisKind::GraphWorkflows, "ship", false, HOOKS, &trash).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.referrers, vec![".praxis/trigger-targets/t1.json", ".praxis/trigger-targets/t2.json"]);
+        assert_eq!(read(&repo, ".praxis/trigger-targets/t1.json"), serde_json::from_str::<Value>(TARGET).unwrap());
     }
 
     #[test]
