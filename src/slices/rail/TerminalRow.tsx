@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { type PermissionMode, type TerminalInfo, isAgentRunKind, launchModel } from "../terminal/types.ts";
+import { type PermissionMode, type TerminalInfo, isAgentRunKind, launchModel, relaunchLabel } from "../terminal/types.ts";
 import { AgentIcon } from "../terminal/AgentIcons.tsx";
 import { TerminalMenu } from "../terminal/TerminalMenu.tsx";
 import { RenameInput } from "../terminal/RenameInput.tsx";
@@ -317,7 +317,8 @@ export const TerminalRow = ({
                   onRelaunch(terminal.id);
                 }}
                 className="p-0.5 text-[#3fb950] hover:text-[#56d364] hover:bg-[#238636]/20 rounded transition-colors"
-                title="Relaunch agent process"
+                title={relaunchLabel(terminal.run_kind)}
+                aria-label={relaunchLabel(terminal.run_kind)}
               >
                 <Play className="w-3 h-3 fill-current" />
               </button>

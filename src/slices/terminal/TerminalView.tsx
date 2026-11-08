@@ -2,7 +2,7 @@ import { FC, CSSProperties, MouseEvent, useState, useEffect, useCallback } from 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTerminal } from "./useTerminal";
-import { TerminalInfo, isAgentRunKind } from "./types";
+import { TerminalInfo, isAgentRunKind, relaunchLabel } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
@@ -454,7 +454,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-[#238636] hover:bg-[#2ea043] text-white font-medium rounded text-xs transition-colors cursor-pointer shadow-xs"
                 >
                   <Play className="w-3 h-3 fill-white" />
-                  <span>Relaunch Agent</span>
+                  <span>{relaunchLabel(terminal?.run_kind)}</span>
                 </button>
               )}
             </div>

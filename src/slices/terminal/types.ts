@@ -33,6 +33,14 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
   );
 }
 /**
+ * What a control that restarts a terminal's process is called: "Relaunch agent" on an agent
+ * terminal, plain "Relaunch" on a shell, which has no agent. The terminal menu and the Rail
+ * row's relaunch button both use it.
+ */
+export function relaunchLabel(kind?: RunKind | string | null): "Relaunch agent" | "Relaunch" {
+  return isAgentRunKind(kind) ? "Relaunch agent" : "Relaunch";
+}
+/**
  * Each CLI's level on the A2A bus. Mirrors `RunKind::bus_level` in the backend, which
  * decides how Quay treats a message; a run kind in none of these lists is not a peer.
  * Each list stays on one line: the backend's `bus_levels_match_the_frontend` test reads it.
