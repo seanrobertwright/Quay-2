@@ -15,10 +15,7 @@ const run = (...events: AttentionEvent[]): AttentionQueue =>
 
 const requested = (requestId: string, terminalId: string | null, at: number, tool = "Bash"): AttentionEvent => ({
   type: "permissionRequested",
-  requestId,
-  terminalId,
-  project: "E:/proj",
-  tool,
+  request: { requestId, terminalId, project: "E:/proj", tool },
   at,
 });
 
@@ -156,5 +153,38 @@ test("a request heard twice stays one item that keeps its original waiting time"
   assert.deepEqual(
     attentionItems(queue).map((item) => item.waitingSince),
     [100]
+  );
+});
+
+test("an item queued before its terminal was known takes the terminal's project once it is", () => {
+  const queue = run(
+    {
+      type: "pendingPermissionsLoaded",
+      requests: [{ requestId: "req-old", terminalId: "term-b", project: null, tool: "Write" }],
+      at: 500,
+    },
+    { type: "turnCompleted", terminalId: "term-c", project: null, subagent: false, at: 600 },
+    {
+      type: "terminalsKnown",
+      terminals: [
+        { terminalId: "term-b", project: "E:/b" },
+        { terminalId: "term-c", project: "E:/c" },
+      ],
+    }
+  );
+  assert.deepEqual(attentionItems(queue), [
+    { kind: "permission", requestId: "req-old", terminalId: "term-b", project: "E:/b", tool: "Write", waitingSince: 500 },
+    { kind: "finishedTurn", terminalId: "term-c", project: "E:/c", waitingSince: 600 },
+  ]);
+});
+
+test("a known terminal leaves an item's project as it was when the item already had one", () => {
+  const queue = run(requested("req-1", "term-a", 100), {
+    type: "terminalsKnown",
+    terminals: [{ terminalId: "term-a", project: "E:/moved" }],
+  });
+  assert.deepEqual(
+    attentionItems(queue).map((item) => item.project),
+    ["E:/proj"]
   );
 });

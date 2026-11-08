@@ -5,14 +5,19 @@
  * strip badge renders its count.
  */
 
-/** A permission request an agent is blocked on until the user answers it. */
-export interface PermissionItem {
-  kind: "permission";
+/** A permission request as the backend reports it: an agent is blocked until the user answers. */
+export interface PendingPermission {
   requestId: string;
   /** The terminal that asked, or null when the request named none. */
   terminalId: string | null;
+  /** The terminal's project, or null while the terminal is not known yet. */
   project: string | null;
   tool: string;
+}
+
+/** A permission request an agent is blocked on until the user answers it. */
+export interface PermissionItem extends PendingPermission {
+  kind: "permission";
   /** When the item started waiting, in epoch milliseconds. */
   waitingSince: number;
 }
@@ -21,6 +26,7 @@ export interface PermissionItem {
 export interface FinishedTurnItem {
   kind: "finishedTurn";
   terminalId: string;
+  /** The terminal's project, or null while the terminal is not known yet. */
   project: string | null;
   /** When the item started waiting, in epoch milliseconds. */
   waitingSince: number;
@@ -29,23 +35,14 @@ export interface FinishedTurnItem {
 /** One thing waiting on the user. A tagged union on `kind`, so more kinds can join later. */
 export type AttentionItem = PermissionItem | FinishedTurnItem;
 
-/** A permission request as the backend lists it. */
-export interface PendingPermission {
-  requestId: string;
-  terminalId: string | null;
+/** A terminal and the project it belongs to. */
+export interface KnownTerminal {
+  terminalId: string;
   project: string | null;
-  tool: string;
 }
 
 export type AttentionEvent =
-  | {
-      type: "permissionRequested";
-      requestId: string;
-      terminalId: string | null;
-      project: string | null;
-      tool: string;
-      at: number;
-    }
+  | { type: "permissionRequested"; request: PendingPermission; at: number }
   /**
    * The requests the backend still holds, as it lists them when the webview (re)loads. The
    * backend gives no time a request was made, so a request not yet queued waits from `at`.
@@ -71,7 +68,12 @@ export type AttentionEvent =
   /** The user typed or pasted into the terminal. Focusing it is not input. */
   | { type: "userInput"; terminalId: string }
   /** The user dismissed the terminal's finished turn without acting on it. */
-  | { type: "finishedTurnDismissed"; terminalId: string };
+  | { type: "finishedTurnDismissed"; terminalId: string }
+  /**
+   * The terminals the app knows now. An item queued before its terminal was known, such as a
+   * permission rebuilt on a webview reload before the terminal list loads, takes its project.
+   */
+  | { type: "terminalsKnown"; terminals: readonly KnownTerminal[] };
 
 export interface AttentionQueue {
   /** Permission items by request id. */
@@ -88,27 +90,10 @@ export const emptyAttentionQueue: AttentionQueue = {
 /** The queue after `event`. Returns a new queue and leaves `queue` as it was. */
 export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent): AttentionQueue {
   switch (event.type) {
-    case "permissionRequested": {
-      if (queue.permissions.has(event.requestId)) return queue;
-      const permissions = new Map(queue.permissions);
-      permissions.set(event.requestId, {
-        kind: "permission",
-        requestId: event.requestId,
-        terminalId: event.terminalId,
-        project: event.project,
-        tool: event.tool,
-        waitingSince: event.at,
-      });
-      return { ...queue, permissions };
-    }
-    case "pendingPermissionsLoaded": {
-      const permissions = new Map(queue.permissions);
-      for (const request of event.requests) {
-        if (permissions.has(request.requestId)) continue;
-        permissions.set(request.requestId, { kind: "permission", ...request, waitingSince: event.at });
-      }
-      return { ...queue, permissions };
-    }
+    case "permissionRequested":
+      return addPermissions(queue, [event.request], event.at);
+    case "pendingPermissionsLoaded":
+      return addPermissions(queue, event.requests, event.at);
     case "permissionResolved": {
       const permissions = new Map(queue.permissions);
       permissions.delete(event.requestId);
@@ -133,7 +118,47 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
     case "userInput":
     case "finishedTurnDismissed":
       return clearFinishedTurn(queue, event.terminalId);
+    case "terminalsKnown":
+      return fillProjects(queue, event.terminals);
   }
+}
+
+/**
+ * The queue with `requests` waiting from `at`. A request already queued keeps its item and its
+ * original waiting time, so a request heard twice stays one item.
+ */
+function addPermissions(
+  queue: AttentionQueue,
+  requests: readonly PendingPermission[],
+  at: number
+): AttentionQueue {
+  const fresh = requests.filter((request) => !queue.permissions.has(request.requestId));
+  if (fresh.length === 0) return queue;
+  const permissions = new Map(queue.permissions);
+  for (const request of fresh) {
+    permissions.set(request.requestId, { kind: "permission", ...request, waitingSince: at });
+  }
+  return { ...queue, permissions };
+}
+
+/** The queue with each item that has no project given its terminal's project from `terminals`. */
+function fillProjects(queue: AttentionQueue, terminals: readonly KnownTerminal[]): AttentionQueue {
+  const projects = new Map(terminals.map((t) => [t.terminalId, t.project]));
+  const fill = <T extends AttentionItem>(items: ReadonlyMap<string, T>): ReadonlyMap<string, T> => {
+    let filled: Map<string, T> | null = null;
+    for (const [key, item] of items) {
+      if (item.project !== null || item.terminalId === null) continue;
+      const project = projects.get(item.terminalId);
+      if (!project) continue;
+      filled ??= new Map(items);
+      filled.set(key, { ...item, project });
+    }
+    return filled ?? items;
+  };
+  const permissions = fill(queue.permissions);
+  const finishedTurns = fill(queue.finishedTurns);
+  if (permissions === queue.permissions && finishedTurns === queue.finishedTurns) return queue;
+  return { permissions, finishedTurns };
 }
 
 /** The queue without `terminalId`'s finished-turn item. */

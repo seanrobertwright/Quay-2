@@ -9,8 +9,24 @@ import {
   attentionItems,
   emptyAttentionQueue,
   type AttentionItem,
+  type PendingPermission,
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
+
+/** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
+const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
+  terminals.find((t) => t.id === terminalId)?.project_path ?? null;
+
+/** A permission request as the queue takes it, with its terminal's project from `terminals`. */
+const toPendingPermission = (
+  payload: PermissionRequestPayload,
+  terminals: TerminalInfo[]
+): PendingPermission => ({
+  requestId: payload.requestId,
+  terminalId: payload.tag ?? null,
+  project: projectOf(terminals, payload.tag),
+  tool: payload.tool,
+});
 
 /**
  * The attention queue, fed from the backend: permission requests and their resolutions, the
@@ -31,20 +47,22 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
   // Listeners read the project of the terminal an event names at the time it arrives
   const terminalsRef = useRef(terminals);
   terminalsRef.current = terminals;
-  const projectOf = (terminalId: string | null | undefined): string | null =>
-    terminalsRef.current.find((t) => t.id === terminalId)?.project_path ?? null;
+
+  // An item queued before its terminal was known (the terminal list loads after the pending
+  // permissions on a webview reload) takes its project once the terminal shows up
+  useEffect(() => {
+    dispatch({
+      type: "terminalsKnown",
+      terminals: terminals.map((t) => ({ terminalId: t.id, project: t.project_path })),
+    });
+  }, [terminals]);
 
   useEffect(() => {
     invoke<PermissionRequestPayload[]>("get_pending_permissions")
       .then((requests) =>
         dispatch({
           type: "pendingPermissionsLoaded",
-          requests: (requests ?? []).map((r) => ({
-            requestId: r.requestId,
-            terminalId: r.tag ?? null,
-            project: projectOf(r.tag),
-            tool: r.tool,
-          })),
+          requests: (requests ?? []).map((r) => toPendingPermission(r, terminalsRef.current)),
           at: Date.now(),
         })
       )
@@ -56,10 +74,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
       listen<PermissionRequestPayload>("permission-requested", ({ payload }) =>
         dispatch({
           type: "permissionRequested",
-          requestId: payload.requestId,
-          terminalId: payload.tag ?? null,
-          project: projectOf(payload.tag),
-          tool: payload.tool,
+          request: toPendingPermission(payload, terminalsRef.current),
           at: Date.now(),
         })
       ),
@@ -74,7 +89,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionItem[] {
           dispatch({
             type: "turnCompleted",
             terminalId,
-            project: projectOf(terminalId),
+            project: projectOf(terminalsRef.current, terminalId),
             subagent,
             at: Date.now(),
           });
