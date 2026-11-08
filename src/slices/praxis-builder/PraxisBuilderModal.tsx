@@ -79,7 +79,7 @@ import { graphWorkflowStepFor, type GraphWorkflowEdit } from "./graphWorkflow.ts
 import { TemplateForm } from "./TemplateForm.tsx";
 import { templateStepFor, type TemplateEdit } from "./template.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
-import { CrossRecordSection, RunContextPanel, RunsUnder } from "./RunContextPanel.tsx";
+import { CrossRecordSection, RunContextPanel, RunsUnder, SubmittedAs } from "./RunContextPanel.tsx";
 import { graphRunContext, issuesOn, recordsWithErrors, type GraphRunContext } from "./runContext.ts";
 import { useBindingAttach } from "./useBindingAttach.ts";
 import { useRunContexts } from "./useRunContexts.ts";
@@ -1452,15 +1452,24 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .filter((d) => d.ref.kind === kind)
       .map((d) => d.ref.id),
   ];
-  /** The graph workflows a trigger can start, listed or drafted, each with its contract (#472). A draft's contract wins. */
+  /**
+   * The graph workflows, listed or drafted, each with the contract, graph and binding it names: the
+   * ones a trigger can start (#472) and a graph's Submitted as chips (#467). A draft's fields win.
+   */
   const graphWorkflowChoices = (): GraphWorkflowChoice[] => {
     const drafted = Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-workflows");
     const ids = new Set(drafted.map((d) => d.ref.id));
+    const field = (content: JsonObject, key: string) => (typeof content[key] === "string" ? content[key] : undefined);
     return [
       ...listedEntries("graph-workflows")
         .filter((e) => !ids.has(e.id))
-        .map((e) => ({ id: e.id, contractId: e.contractId })),
-      ...drafted.map((d) => ({ id: d.ref.id, contractId: typeof d.content.contractId === "string" ? d.content.contractId : undefined })),
+        .map((e) => ({ id: e.id, contractId: e.contractId, graphId: e.graphId, graphBindingId: e.graphBindingId })),
+      ...drafted.map((d) => ({
+        id: d.ref.id,
+        contractId: field(d.content, "contractId"),
+        graphId: field(d.content, "graphId"),
+        graphBindingId: field(d.content, "graphBindingId"),
+      })),
     ];
   };
   /** The graph bindings a graph workflow can pick, listed or drafted, each with the graph it binds (#459). */
@@ -2416,6 +2425,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   problemsShown={problemsShown}
                   onToggleProblems={toggleProblems}
                   run={openRun}
+                  submittedAs={
+                    <SubmittedAs
+                      graphId={open.id}
+                      workflows={graphWorkflowChoices()}
+                      shownBinding={pickerBindings.some((b) => b.id === chosenId) ? chosenId : null}
+                      onOpen={openDefinition}
+                    />
+                  }
                   runContext={
                     <RunContextPanel
                       graphId={open.id}
@@ -2812,6 +2829,8 @@ const GraphDraftView: FC<{
   problemsShown: boolean;
   onToggleProblems: () => void;
   run: GraphRunContext;
+  /** The graph's Submitted as chips (#467), which sit with its Runs under chips and Binding picker. */
+  submittedAs: ReactNode;
   runContext: ReactNode;
   onOpen: (ref: DefinitionRef) => void;
   /** The graph binding chosen in the picker, or null for None (#273). */
@@ -2835,6 +2854,7 @@ const GraphDraftView: FC<{
   problemsShown,
   onToggleProblems,
   run,
+  submittedAs,
   runContext,
   onOpen,
   binding,
@@ -2848,6 +2868,7 @@ const GraphDraftView: FC<{
     <>
       {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
       <RunsUnder run={run} onOpen={onOpen} />
+      {submittedAs}
       {bindingBar}
       {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">

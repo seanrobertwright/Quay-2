@@ -29,10 +29,15 @@ export interface DefinitionEntry {
   graphBindingId?: string;
 }
 
-/** A graph workflow a trigger can start (#472), with its contract when it names one. */
+/**
+ * A graph workflow, listed or drafted, as a trigger offers it (#472) and a graph's canvas shows it
+ * under Submitted as (#467): with the contract, graph and graph binding it names, when it names one.
+ */
 export interface GraphWorkflowChoice {
   id: string;
   contractId?: string;
+  graphId?: string;
+  graphBindingId?: string;
 }
 
 /** One kind's definitions in id order; `truncated` when the folder held more than the cap. */
