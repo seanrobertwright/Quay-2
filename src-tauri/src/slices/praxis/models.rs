@@ -118,8 +118,9 @@ pub struct DefinitionEntry {
     pub problem: Option<FileProblem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_mismatch: Option<IdMismatch>,
-    /// For a workflow template or graph workflow whose file name is a filename-safe id but
-    /// breaks the host's name rule, the rule. The file still opens; renaming it fixes this.
+    /// For a workflow template or graph workflow, or a trigger with a target (#473), whose file
+    /// name is a filename-safe id but breaks the host's name rule, the rule. The file still
+    /// opens; renaming it fixes this.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name_problem: Option<String>,
     /// A graph binding's or graph workflow's `graphId`, when it is a string, so the list can nest
@@ -142,6 +143,10 @@ pub struct DefinitionEntry {
     /// binding each graph workflow that names the graph uses (#467).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_binding_id: Option<String>,
+    /// For a trigger, the graph workflow its saved target file names (#472), so the builder knows
+    /// which triggers follow the host's graph trigger name rule (#473).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more

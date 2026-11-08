@@ -11,6 +11,7 @@ use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::template_digest::template_digest;
+use super::template_name::check_trigger_name;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
     IdMismatch, LayoutInput, PraxisKind, SaveOutcome, TargetInput,
@@ -275,6 +276,7 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 template_digest: None,
                 contract_id: None,
                 graph_binding_id: None,
+                target: None,
             };
             match parsed {
                 Err(problem) => empty(id, Some(problem)),
@@ -304,13 +306,17 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                     };
                     let graph_id = binding_field("graphId");
                     let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
-                    DefinitionEntry { id_mismatch, graph_id, cost_unit, ..empty(id, None) }
+                    let target = (kind == PraxisKind::Triggers).then(|| saved_target(repo, &id)).flatten();
+                    DefinitionEntry { id_mismatch, graph_id, cost_unit, target, ..empty(id, None) }
                 }
             }
         })
         .map(|mut entry: DefinitionEntry| {
             if validate_id(&entry.id).is_ok() {
                 entry.name_problem = kind.name_problem(&entry.id);
+                if entry.target.is_some() {
+                    entry.name_problem = check_trigger_name(&entry.id).err();
+                }
             }
             entry
         })
@@ -404,6 +410,13 @@ fn read_companion(repo: &Path, folder: &str, id: &str) -> Companion {
             }
         },
     }
+}
+
+/// The graph workflow the saved target file of trigger `id` names (#472), or `None` when it has
+/// no target file, or one that can't be read or names none, which the builder opens as no target.
+pub fn saved_target(repo: &Path, id: &str) -> Option<String> {
+    let id = read_companion(repo, TRIGGER_TARGETS_DIR, id).value?.get("graphWorkflow")?.as_str()?.to_string();
+    (!id.is_empty()).then_some(id)
 }
 
 /// `.praxis/<folder>/<id>.json`, a file that belongs to a definition, when it exists and
@@ -622,7 +635,8 @@ pub fn save_definition(
 /// none. The target never changes the trigger's record, so setting or clearing it alone
 /// leaves the trigger file as it is. For a trigger saved before, `expected_target_hash` is the
 /// hash of the target file the draft loaded, `None` for no file, and a target file changed
-/// since is a conflict too.
+/// since is a conflict too. A new trigger saved with a target must have a name the host's
+/// graph trigger rule admits (#473); a trigger saved before keeps saving under its name.
 pub fn save_trigger_with_target(
     repo: &Path,
     id: &str,
@@ -657,6 +671,12 @@ fn save(
         && let Some(problem) = kind.name_problem(id)
     {
         return Err(problem);
+    }
+    // A new trigger saved with a target is a name the host will see (#473).
+    if expected_hash.is_none()
+        && let Some((TargetInput { graph_workflow: Some(_) }, _)) = companions.target
+    {
+        check_trigger_name(id)?;
     }
     validate_id(id)?;
     let Value::Object(mut record) = content else {
@@ -767,7 +787,7 @@ fn remove_companion(repo: &Path, folder: &str, id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::test_support::TempDir;
-    use crate::slices::praxis::template_name::{GRAPH_WORKFLOW_NAME_RULE, TEMPLATE_NAME_RULE};
+    use crate::slices::praxis::template_name::{GRAPH_WORKFLOW_NAME_RULE, TEMPLATE_NAME_RULE, TRIGGER_NAME_RULE};
 
     fn temp_repo() -> TempDir {
         TempDir::canonical("praxis")
@@ -1630,6 +1650,67 @@ mod tests {
         let repo = temp_repo();
         assert!(save_trigger_with_target(&repo, "t", trigger_record(), &starts(Some("a/b")), None, None, false).is_err());
         assert!(!repo.join(".praxis").exists(), "nothing is written");
+    }
+
+    // --- trigger names with a target (#473) ---------------------------------------------
+
+    #[test]
+    fn a_new_trigger_with_a_target_must_have_a_name_the_host_accepts() {
+        let repo = temp_repo();
+        for bad in ["Nightly.Review", "check"] {
+            let record = json!({"id": bad, "contractId": "c"});
+            let why = save_trigger_with_target(&repo, bad, record, &starts(Some("ship")), None, None, false).unwrap_err();
+            assert_eq!(why, TRIGGER_NAME_RULE, "{bad}");
+            assert!(!repo.join(format!(".praxis/triggers/{bad}.json")).exists(), "{bad}");
+            assert!(!repo.join(format!(".praxis/trigger-targets/{bad}.json")).exists(), "{bad}");
+        }
+        let record = json!({"id": "nightly-review", "contractId": "c"});
+        saved_target(save_trigger_with_target(&repo, "nightly-review", record, &starts(Some("ship")), None, None, false).unwrap());
+    }
+
+    #[test]
+    fn a_new_trigger_without_a_target_keeps_the_id_rules() {
+        let repo = temp_repo();
+        let record = json!({"id": "Nightly.Review", "contractId": "c"});
+        saved_target(save_trigger_with_target(&repo, "Nightly.Review", record.clone(), &starts(None), None, None, false).unwrap());
+        let record = json!({"id": "check", "contractId": "c"});
+        saved_target(save_definition(&repo, PraxisKind::Triggers, "check", record, None, None, None, None, false).unwrap());
+    }
+
+    #[test]
+    fn a_trigger_lists_with_its_target_and_only_one_with_a_target_has_its_name_flagged() {
+        let repo = temp_repo();
+        for id in ["nightly", "Nightly.V2", "check", "Loose.V2", "broken"] {
+            write(&repo, &format!(".praxis/triggers/{id}.json"), &format!("{{\"id\": \"{id}\"}}"));
+        }
+        for id in ["nightly", "Nightly.V2", "check"] {
+            write(&repo, &format!(".praxis/trigger-targets/{id}.json"), "{\"version\": 1, \"graphWorkflow\": \"ship\"}");
+        }
+        // A target file that can't be read opens as no target.
+        write(&repo, ".praxis/trigger-targets/broken.json", "{nope");
+        let list = list_definitions(&repo, PraxisKind::Triggers).unwrap();
+        let by_id = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().clone();
+        assert_eq!(by_id("nightly").target.as_deref(), Some("ship"));
+        assert_eq!(by_id("nightly").name_problem, None);
+        assert_eq!(by_id("Nightly.V2").name_problem.as_deref(), Some(TRIGGER_NAME_RULE));
+        assert_eq!(by_id("check").name_problem.as_deref(), Some(TRIGGER_NAME_RULE));
+        assert_eq!((by_id("Loose.V2").target, by_id("Loose.V2").name_problem), (None, None));
+        assert_eq!((by_id("broken").target, by_id("broken").name_problem), (None, None));
+        // Only triggers have a target.
+        write(&repo, ".praxis/contracts/nightly.json", "{\"id\": \"nightly\"}");
+        assert_eq!(list_definitions(&repo, PraxisKind::Contracts).unwrap().entries[0].target, None);
+    }
+
+    /// Like a template file named badly, a saved trigger named badly can be given a target and
+    /// saved, and its list entry flags the name until it is renamed.
+    #[test]
+    fn a_saved_trigger_named_badly_can_take_a_target_and_save() {
+        let repo = temp_repo();
+        let record = json!({"id": "Nightly", "contractId": "c"});
+        let (hash, _, _) =
+            saved_target(save_definition(&repo, PraxisKind::Triggers, "Nightly", record.clone(), None, None, None, None, false).unwrap());
+        saved_target(save_trigger_with_target(&repo, "Nightly", record, &starts(Some("ship")), Some(&hash), None, false).unwrap());
+        assert!(repo.join(".praxis/trigger-targets/Nightly.json").is_file());
     }
 
     #[test]

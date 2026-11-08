@@ -10,8 +10,9 @@ use serde_json::{Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{DeleteOutcome, DraftContent, FileChange, HashChange, PraxisKind, RenameOutcome};
+use super::template_name::check_trigger_name;
 use super::store::{
-    confined_dir, confined_file, json_ids, parse_object, read_capped, validate_id, BINDINGS_DIR,
+    confined_dir, confined_file, json_ids, parse_object, read_capped, saved_target, validate_id, BINDINGS_DIR,
     LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK, TRIGGER_TARGETS_DIR,
 };
 use crate::atomic_file::write_atomic;
@@ -353,7 +354,9 @@ fn taken_by_another(dir: &Path, folder: &str, id: &str, new_id: &str) -> Result<
 /// id inside and nothing else, which is how a file whose name and id differ is fixed.
 ///
 /// Refused, with nothing written, when either id isn't filename-safe, a workflow template's or
-/// graph workflow's `new_id` breaks the host's name rule, the definition doesn't exist or can't be
+/// graph workflow's `new_id` breaks the host's name rule, a trigger whose saved target file names
+/// a graph workflow is given a `new_id` the host's graph trigger name rule refuses (#473), the
+/// definition doesn't exist or can't be
 /// read, or `new_id` is taken by another file, ignoring case.
 /// With `dry_run` it reports what it would do and writes nothing.
 pub fn rename_definition(
@@ -369,7 +372,6 @@ pub fn rename_definition(
     if let Some(problem) = kind.name_problem(new_id) {
         return Err(problem);
     }
-    validate_id(new_id)?;
     if drafts.len() > MAX_DRAFTS {
         return Err(format!("A rename takes at most {} drafts.", MAX_DRAFTS));
     }
@@ -380,6 +382,11 @@ pub fn rename_definition(
     let dir = confined_dir(repo, folder)?.ok_or_else(missing)?;
     let old_path = existing_file(repo, &dir, id)?.ok_or_else(missing)?;
     let same_id = id == new_id;
+    // A trigger with a target is a name the host will see (#473).
+    if kind == PraxisKind::Triggers && !same_id && saved_target(repo, id).is_some() {
+        check_trigger_name(new_id)?;
+    }
+    validate_id(new_id)?;
     // On a file system that ignores case, `G.json` and `g.json` are one file, so writing
     // the new name and removing the old would remove both. A case-only rename rewrites the
     // file in place and then renames it.
@@ -1147,6 +1154,42 @@ mod tests {
         assert_eq!(read(&repo, ".praxis/triggers/t9.json")["contractId"], "c1");
         let moved = outcome.changes.iter().find(|c| c.path == ".praxis/trigger-targets/t1.json").unwrap();
         assert_eq!(moved.new_path.as_deref(), Some(".praxis/trigger-targets/t9.json"));
+    }
+
+    #[test]
+    fn a_trigger_with_a_target_renames_only_to_a_name_the_host_accepts() {
+        let repo = target_repo();
+        for bad in ["T9", "t9.v2", "check", "nul", "9t", "t_9"] {
+            let why = rename_definition(&repo, PraxisKind::Triggers, "t1", bad, &[], true, HOOKS).unwrap_err();
+            assert_eq!(why, crate::slices::praxis::template_name::TRIGGER_NAME_RULE, "{bad}");
+        }
+        assert_eq!(names(&repo, ".praxis/triggers"), vec!["t1.json", "t2.json", "t3.json"]);
+        let outcome = rename_definition(&repo, PraxisKind::Triggers, "t1", "nightly-review", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(names(&repo, ".praxis/trigger-targets"), vec!["nightly-review.json", "t2.json", "t3.json"]);
+    }
+
+    #[test]
+    fn a_trigger_without_a_target_keeps_the_id_rules_on_rename() {
+        let repo = target_repo();
+        write(&repo, ".praxis/triggers/loose.json", r#"{"id": "loose", "contractId": "c1"}"#);
+        let outcome = rename_definition(&repo, PraxisKind::Triggers, "loose", "Loose.V2", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        let outcome = rename_definition(&repo, PraxisKind::Triggers, "Loose.V2", "check", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert!(repo.join(".praxis/triggers/check.json").is_file());
+    }
+
+    /// Setting the id inside a badly named trigger to its file name is a rename to the same id,
+    /// which changes no name, so a target doesn't stop it.
+    #[test]
+    fn a_badly_named_trigger_with_a_target_can_still_have_its_id_fixed() {
+        let repo = target_repo();
+        write(&repo, ".praxis/triggers/Odd.json", r#"{"id": "other", "contractId": "c1"}"#);
+        write(&repo, ".praxis/trigger-targets/Odd.json", TARGET);
+        let outcome = rename_definition(&repo, PraxisKind::Triggers, "Odd", "Odd", &[], false, HOOKS).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(read(&repo, ".praxis/triggers/Odd.json")["id"], "Odd");
     }
 
     #[test]
