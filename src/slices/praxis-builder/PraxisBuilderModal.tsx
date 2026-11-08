@@ -261,6 +261,12 @@ const LISTED_KINDS: PraxisKind[] = [...RECORD_KINDS.map((k) => k.kind), "graph-b
 /** A graph binding's file, relative to the repository. */
 const bindingRef = (id: string): DefinitionRef => ({ kind: "graph-bindings", id });
 
+/** A draft's string field, or undefined when the draft is missing or the field isn't a string. */
+const stringField = (content: JsonObject | undefined, key: string): string | undefined => {
+  const value = content?.[key];
+  return typeof value === "string" ? value : undefined;
+};
+
 const IS_WINDOWS = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
 const TRASH_NAME = IS_WINDOWS ? "the Recycle Bin" : "the Trash";
 
@@ -1459,16 +1465,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const graphWorkflowChoices = (): GraphWorkflowChoice[] => {
     const drafted = Object.values(session?.drafts ?? {}).filter((d) => d.ref.kind === "graph-workflows");
     const ids = new Set(drafted.map((d) => d.ref.id));
-    const field = (content: JsonObject, key: string) => (typeof content[key] === "string" ? content[key] : undefined);
     return [
       ...listedEntries("graph-workflows")
         .filter((e) => !ids.has(e.id))
         .map((e) => ({ id: e.id, contractId: e.contractId, graphId: e.graphId, graphBindingId: e.graphBindingId })),
       ...drafted.map((d) => ({
         id: d.ref.id,
-        contractId: field(d.content, "contractId"),
-        graphId: field(d.content, "graphId"),
-        graphBindingId: field(d.content, "graphBindingId"),
+        contractId: stringField(d.content, "contractId"),
+        graphId: stringField(d.content, "graphId"),
+        graphBindingId: stringField(d.content, "graphBindingId"),
       })),
     ];
   };
@@ -1477,7 +1482,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     ...listedEntries("graph-bindings").map((e) => ({ id: e.id, graphId: e.graphId })),
     ...Object.values(session?.drafts ?? {})
       .filter((d) => d.ref.kind === "graph-bindings")
-      .map((d) => ({ id: d.ref.id, graphId: typeof d.content.graphId === "string" ? d.content.graphId : undefined })),
+      .map((d) => ({ id: d.ref.id, graphId: stringField(d.content, "graphId") })),
   ];
   const projectContexts = runChecks.forProject(projectKey);
   const contexts = projectContexts.contexts;
@@ -1758,10 +1763,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const bindingRows = (() => {
     const entries = currentListing?.byKind["graph-bindings"]?.list?.entries ?? [];
     const drafts = Object.values(session?.drafts ?? {});
-    const draftedGraphId = (id: string) => {
-      const graphId = session?.drafts[definitionKey(bindingRef(id))]?.content.graphId;
-      return typeof graphId === "string" ? graphId : undefined;
-    };
+    const draftedGraphId = (id: string) => stringField(session?.drafts[definitionKey(bindingRef(id))]?.content, "graphId");
     const listed = new Set(entries.map((e) => e.id));
     const rows: BindingRow[] = [
       ...entries.map((e) => ({ id: e.id, graphId: draftedGraphId(e.id) ?? e.graphId, problem: e.problem, idMismatch: e.idMismatch })),
@@ -2907,7 +2909,7 @@ const GraphDraftView: FC<{
  * bindings. It can't be edited without its graph, so it shows read-only, with how to fix it.
  */
 const UnattachedBindingView: FC<{ draft: Draft }> = ({ draft }) => {
-  const graphId = typeof draft.content.graphId === "string" ? draft.content.graphId : undefined;
+  const graphId = stringField(draft.content, "graphId");
   return (
     <div className="flex-1 overflow-auto">
       {draft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(draft.ref)} />}
