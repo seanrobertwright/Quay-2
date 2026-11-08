@@ -17,7 +17,7 @@ export interface DefinitionEntry {
   idMismatch?: { found?: string };
   /** For a workflow template or graph workflow whose name the Praxis host refuses (#447, #459), the host's name rule. Renaming fixes it. */
   nameProblem?: string;
-  /** A graph binding's `graphId`, when it is a string, so the list nests it under its graph. */
+  /** A graph binding's or graph workflow's `graphId`, when it is a string, so the list nests a binding under its graph and a graph's canvas shows the graph workflows that name it (#467). */
   graphId?: string;
   /** A graph binding's `costUnit`, when it is a string that isn't empty (#231, #274). */
   costUnit?: string;
@@ -25,6 +25,8 @@ export interface DefinitionEntry {
   templateDigest?: string;
   /** A graph workflow's `contractId`, when it is a string, which a trigger that starts it takes (#472). */
   contractId?: string;
+  /** A graph workflow's `graphBindingId`, when it is a string, so a graph's canvas says which binding it uses (#467). */
+  graphBindingId?: string;
 }
 
 /** A graph workflow a trigger can start (#472), with its contract when it names one. */

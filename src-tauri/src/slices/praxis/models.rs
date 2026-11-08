@@ -122,7 +122,8 @@ pub struct DefinitionEntry {
     /// breaks the host's name rule, the rule. The file still opens; renaming it fixes this.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name_problem: Option<String>,
-    /// A graph binding's `graphId`, when it is a string, so the list can nest it under its graph.
+    /// A graph binding's or graph workflow's `graphId`, when it is a string, so the list can nest
+    /// a binding under its graph and a graph's canvas can show the graph workflows that name it (#467).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_id: Option<String>,
     /// A graph binding's `costUnit`, when it is a string that isn't empty, so a contract form can
@@ -137,6 +138,10 @@ pub struct DefinitionEntry {
     /// target can take its contract (#472).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contract_id: Option<String>,
+    /// A graph workflow's `graphBindingId`, when it is a string, so a graph's canvas can say which
+    /// binding each graph workflow that names the graph uses (#467).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_binding_id: Option<String>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more
