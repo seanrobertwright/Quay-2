@@ -74,6 +74,8 @@ import { ContractForm, type TriggersStatus } from "./ContractForm.tsx";
 import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
+import { GraphWorkflowForm } from "./GraphWorkflowForm.tsx";
+import { graphWorkflowStepFor, type GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { TemplateForm } from "./TemplateForm.tsx";
 import { templateStepFor, type TemplateEdit } from "./template.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
@@ -86,6 +88,7 @@ import {
   createNewDraft,
   editContractDraft,
   editGrantDraft,
+  editGraphWorkflowDraft,
   editTemplateDraft,
   editTriggerDraft,
   hasDrafts,
@@ -945,6 +948,20 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     [projectPath, open, changeSessions]
   );
 
+  // And a graph workflow form's (#459).
+  const editOpenGraphWorkflow = useCallback(
+    (edit: GraphWorkflowEdit) => {
+      if (!projectPath || !open) return;
+      const now = Date.now();
+      changeSessions((s) =>
+        updateSession(s, projectPath, (cur) =>
+          changeDraft(cur, open, (d) => editGraphWorkflowDraft(d, edit), graphWorkflowStepFor(edit), now)
+        )
+      );
+    },
+    [projectPath, open, changeSessions]
+  );
+
   /** Ends any typing step of the open draft, so the next keystroke starts a new one. */
   const endTyping = useCallback(() => {
     if (!projectPath || !open) return;
@@ -1418,6 +1435,13 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
       .filter((d) => d.ref.kind === kind)
       .map((d) => d.ref.id),
   ];
+  /** The graph bindings a graph workflow can pick, listed or drafted, each with the graph it binds (#459). */
+  const graphBindingChoices = (): { id: string; graphId?: string }[] => [
+    ...listedEntries("graph-bindings").map((e) => ({ id: e.id, graphId: e.graphId })),
+    ...Object.values(session?.drafts ?? {})
+      .filter((d) => d.ref.kind === "graph-bindings")
+      .map((d) => ({ id: d.ref.id, graphId: typeof d.content.graphId === "string" ? d.content.graphId : undefined })),
+  ];
   const projectContexts = runChecks.forProject(projectKey);
   const contexts = projectContexts.contexts;
   const crossErrors = useMemo(() => recordsWithErrors(contexts), [contexts]);
@@ -1437,7 +1461,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     setNewMenuShown(false);
     setListShown(true);
     setNotice(null);
-    setNaming({ mode: "new", kind: entry.kind, value: nextDefinitionId(entry.singular, takenIds(entry.kind)) });
+    setNaming({ mode: "new", kind: entry.kind, value: nextDefinitionId(entry.idPrefix ?? entry.singular, takenIds(entry.kind)) });
   };
 
   const startRename = (ref: DefinitionRef) => {
@@ -2194,7 +2218,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                 >
                   <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="break-words min-w-0">
-                    The Praxis host can't install {open.id}: {openEntry.nameProblem}
+                    The Praxis host can't {open.kind === "graph-workflows" ? "take" : "install"} {open.id}: {openEntry.nameProblem}
                   </span>
                   <button
                     type="button"
@@ -2322,6 +2346,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           }
                         : null
                     }
+                  />
+                </>
+              ) : openDraft && projectPath && open.kind === "graph-workflows" ? (
+                <>
+                  {openDraft.deletedOnDisk && <DeletedOnDiskNotice path={definitionPath(open)} />}
+                  <GraphWorkflowForm
+                    key={`${projectKey}|${openKey}`}
+                    projectPath={projectPath}
+                    draft={openDraft}
+                    contracts={[...new Set(takenIds("contracts"))]}
+                    graphs={[...new Set(takenIds("graphs"))]}
+                    graphBindings={graphBindingChoices()}
+                    refresh={refreshCount}
+                    onEdit={editOpenGraphWorkflow}
+                    onOpen={openDefinition}
+                    onValidated={recordValidity}
                   />
                 </>
               ) : openDraft ? (
