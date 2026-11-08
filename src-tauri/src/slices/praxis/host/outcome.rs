@@ -228,8 +228,9 @@ enum Phrase {
 }
 
 /// The stable phrases `praxis` prints on stderr with exit 1, at the pinned SDK commit
-/// (`engine/src/praxis-client.ts`). This is the one place they live, so it can go once
-/// AI-WS-SDK #327 writes errors as a JSON record.
+/// (`engine/src/praxis-client.ts`). This is the one place they live. A `praxis` that prints the
+/// `praxis-error/1` record is read by its code instead, except for the missing connection
+/// descriptor, which the record files under `ENGINE` and only [`Phrase::NoHost`] tells apart.
 const PHRASES: [(&str, Phrase); 5] = [
     ("There is no Praxis host connection descriptor at", Phrase::NoHost),
     ("; is it running?", Phrase::HostDown),

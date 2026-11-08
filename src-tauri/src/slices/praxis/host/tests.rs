@@ -1,6 +1,8 @@
 //! The runner against a fake `praxis` (#446): `fake_praxis.mjs`, laid out as a checkout's
 //! `engine` package, replays recorded `--json` records, the stderr phrases `praxis` prints at
-//! the SDK pin, and exit codes. The records are the vendored read-model fixtures.
+//! the SDK pin, and exit codes. The template commands' records are the vendored read-model
+//! fixtures. The graph commands' (#460) are `graph_outputs.fixture.json`, what the real `praxis`
+//! printed for each, refusals and `praxis-error/1` records included.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
