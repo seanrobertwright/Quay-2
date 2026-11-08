@@ -53,6 +53,15 @@ test("Relaunch agent runs once the agent has exited", () => {
   assert.deepEqual(relaunch && { enabled: relaunch.enabled, hint: relaunch.hint }, { enabled: true, hint: undefined });
 });
 
+test("the relaunch item names the agent only on an agent terminal, and reads Relaunch on a plain shell", () => {
+  const relaunchName = (run_kind: TerminalMenuTarget["run_kind"]) =>
+    terminalMenu({ ...claude, run_kind }, { kind: "rail" }).find((i) => i.action === "relaunch")?.name;
+  assert.equal(relaunchName("claude"), "Relaunch agent");
+  assert.equal(relaunchName("archon"), "Relaunch agent");
+  assert.equal(relaunchName("powershell"), "Relaunch");
+  assert.equal(relaunchName("command"), "Relaunch");
+});
+
 test("the Ask toggle is checked while the terminal asks before tool calls, and clear in Skip", () => {
   const ask = (live_mode: TerminalMenuTarget["live_mode"]) =>
     terminalMenu({ ...claude, live_mode }, { kind: "rail" }).find((i) => i.action === "toggleAsk")?.checked;
