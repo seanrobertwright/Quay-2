@@ -6,7 +6,7 @@
 // is shown disabled, with the reason as its hint.
 
 import type { ContextMenuItem } from "../overlay/ContextMenu.tsx";
-import { isAgentRunKind, offersAskToggle, type TerminalInfo } from "./types.ts";
+import { offersAskToggle, relaunchLabel, type TerminalInfo } from "./types.ts";
 
 /** What a terminal menu item asks for. */
 export type TerminalMenuAction =
@@ -41,7 +41,7 @@ export function terminalMenu(terminal: TerminalMenuTarget, surface: TerminalMenu
   const severalPanes = surface.kind === "pane" && surface.paneCount > 1;
   const items: (TerminalMenuEntry | null)[] = [
     { action: "rename", name: "Rename…", group: "session", enabled: true },
-    { action: "relaunch", name: isAgentRunKind(terminal.run_kind) ? "Relaunch agent" : "Relaunch", group: "session", enabled: exited, hint: exited ? undefined : STILL_RUNNING },
+    { action: "relaunch", name: relaunchLabel(terminal.run_kind), group: "session", enabled: exited, hint: exited ? undefined : STILL_RUNNING },
     offersAskToggle(terminal.run_kind)
       ? { action: "toggleAsk", name: "Ask before tool calls", group: "session", enabled: true, checked: terminal.live_mode === "normal" }
       : null,

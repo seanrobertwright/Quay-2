@@ -141,6 +141,24 @@ test("a disabled item says why and does nothing", () => {
   assert.deepEqual(calls, []);
 });
 
+test("an exited row's relaunch button names the agent only on an agent terminal", () => {
+  const relaunchButton = (run_kind: Terminal["run_kind"]) => {
+    renderRow({ ...TERMINAL, run_kind, claude_status: "exited" });
+    const button = document.querySelector<HTMLElement>('button[aria-label^="Relaunch"]');
+    const name = button?.getAttribute("aria-label");
+    act(() => button?.click());
+    act(() => mounted?.root.unmount());
+    mounted?.container.remove();
+    mounted = null;
+    return name;
+  };
+  assert.equal(relaunchButton("claude"), "Relaunch agent");
+  assert.equal(relaunchButton("archon"), "Relaunch agent");
+  assert.equal(relaunchButton("powershell"), "Relaunch");
+  assert.equal(relaunchButton("command"), "Relaunch");
+  assert.deepEqual(calls, ["relaunch t1"]);
+});
+
 test("Rename… opens the row's rename box, and Enter saves the new name", () => {
   const row = renderRow();
   choose(row, "Rename…");
