@@ -577,3 +577,180 @@ fn a_creation_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() 
     assert_eq!(profile["pending"], Value::Null);
     assert_eq!(h.calls(), [["run", "review-code", "--json"], ["run", "review-code", "--json"]]);
 }
+
+// The graph commands (#460) against what the real `praxis` printed for each, recorded by
+// graph_outputs.record.mjs against the SDK's simulated host.
+
+/// The recorded case `name`: the arguments Quay gave, the exit, the stdout record and stderr.
+fn recorded(name: &str) -> Value {
+    let file: Value = serde_json::from_str(include_str!("graph_outputs.fixture.json")).unwrap();
+    file["cases"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap_or_else(|| panic!("no recorded case {name}")).clone()
+}
+
+/// A scenario that replays `case` as `praxis` printed it.
+fn replay(case: &Value) -> Value {
+    let stdout = if case["stdout"].is_null() { json!("") } else { case["stdout"].clone() };
+    json!({ "stdout": stdout, "stderr": case["stderr"], "exit": case["exit"] })
+}
+
+/// The recorded arguments of `case`, which the real `praxis` took.
+fn recorded_args(case: &Value) -> Vec<String> {
+    case["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect()
+}
+
+/// Runs `verb` with `operands` as the Tauri commands build them, against `case` replayed.
+fn graph_call(h: &Harness, verb: Verb, operands: &[&str], case: &Value) -> CallOutcome {
+    h.scenario(replay(case));
+    let args = verb.args(operands.iter().map(|o| o.to_string()));
+    h.cli.call(&h.project, verb, &args, Uuid::new_v4())
+}
+
+#[test]
+fn graphs_list_reads_the_host_s_graph_workflows_and_updates_the_condition() {
+    let h = Harness::new();
+    let case = recorded("graphs list");
+    let outcome = graph_call(&h, Verb::GraphsList, &["--limit", "100"], &case);
+    assert_eq!(outcome, CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
+    let mut expected = recorded_args(&case);
+    expected.push("--json".into());
+    assert_eq!(h.calls(), [expected]);
+    assert_eq!(h.condition(), HostCondition::SimulatedHost);
+}
+
+#[test]
+fn a_praxis_error_record_says_which_host_condition_failed_in_its_own_words() {
+    let h = Harness::new();
+    for (name, kind, condition) in [
+        ("no host set up", "noHost", HostCondition::NoHostSetUp),
+        ("host down", "hostDown", HostCondition::HostUnreachable),
+        ("not signed in (made)", "notSignedIn", HostCondition::NotSignedIn),
+        ("session refused (made)", "expired", HostCondition::NotSignedIn),
+    ] {
+        let case = recorded(name);
+        let outcome = serde_json::to_value(graph_call(&h, Verb::GraphsList, &["--limit", "100"], &case)).unwrap();
+        assert_eq!(outcome["kind"], kind, "{name}");
+        assert_eq!(outcome["message"], case["stdout"]["message"], "{name}");
+        assert_eq!(h.condition(), condition, "{name}");
+    }
+}
+
+#[test]
+fn a_usage_error_record_needs_an_update_and_keeps_the_condition() {
+    let h = Harness::new();
+    let case = recorded("usage: unknown graphs command, exit 2");
+    let outcome = graph_call(&h, Verb::GraphsList, &[], &case);
+    assert_eq!(outcome, CallOutcome::NeedsUpdate { detail: "praxis didn't accept Quay's arguments: unknown graphs command: lsit".into() });
+    assert_eq!(h.condition(), HostCondition::NotCheckedYet);
+}
+
+#[test]
+fn graphs_show_reads_one_graph_workflow_with_its_revisions_and_admission_page() {
+    let h = Harness::new();
+    let case = recorded("graphs show");
+    let outcome = graph_call(&h, Verb::GraphsShow, &["release-review"], &case);
+    let CallOutcome::Record { record, .. } = outcome else { panic!("{outcome:?}") };
+    assert_eq!(record, case["stdout"]);
+    assert_eq!(record["revisions"].as_array().unwrap().len(), 2);
+    assert!(record["admissionPageAddress"].as_str().unwrap().ends_with("#graph-workflow=release-review&revision=2"));
+    let mut expected = recorded_args(&case);
+    expected.push("--json".into());
+    assert_eq!(h.calls(), [expected]);
+}
+
+#[test]
+fn a_host_refusal_carries_the_host_s_code_and_says_the_host_answered() {
+    let h = Harness::new();
+    let case = recorded("graphs show: not submitted");
+    let outcome = graph_call(&h, Verb::GraphsShow, &["nothing-here"], &case);
+    assert_eq!(
+        outcome,
+        CallOutcome::HostRefused {
+            message: "The host refused the request (NOT_FOUND).".into(),
+            host_code: "NOT_FOUND".into(),
+            record: case["stdout"].clone(),
+        }
+    );
+    let json = serde_json::to_value(&outcome).unwrap();
+    assert_eq!((json["kind"].as_str(), json["hostCode"].as_str()), (Some("hostRefused"), Some("NOT_FOUND")));
+    // The host answered this session, so it is signed in, here as the simulated host.
+    assert_eq!(h.condition(), HostCondition::SimulatedHost);
+}
+
+/// Each recorded read `praxis` answered with a record: the verb and operands Quay gives it, and
+/// the case. The arguments the runner builds must be the ones the real CLI took.
+#[test]
+fn each_graph_read_is_read_with_the_arguments_praxis_took() {
+    let status = recorded("status: awaiting approval");
+    let work_order = status["stdout"]["workOrderId"].as_str().unwrap().to_string();
+    let cases: [(Verb, Vec<&str>, &str); 4] = [
+        (Verb::GraphsRevisions, vec!["release-review", "--before", "2", "--limit", "20"], "graphs show: older revisions"),
+        (Verb::GraphsWithdraw, vec!["release-review", "1"], "graphs withdraw: a pending candidate"),
+        (Verb::GraphRuns, vec!["nightly-build", "--limit", "20"], "runs"),
+        (Verb::GraphStatus, vec![&work_order], "status: awaiting approval"),
+    ];
+    for (verb, operands, name) in cases {
+        let h = Harness::new();
+        let case = recorded(name);
+        let outcome = graph_call(&h, verb, &operands, &case);
+        let CallOutcome::Record { record, .. } = outcome else { panic!("{name}: {outcome:?}") };
+        assert_eq!(record, case["stdout"], "{name}");
+        let mut expected = recorded_args(&case);
+        expected.push("--json".into());
+        assert_eq!(h.calls(), [expected], "{name}");
+        assert_eq!(h.condition(), HostCondition::SimulatedHost, "{name}");
+    }
+}
+
+#[test]
+fn a_graph_run_is_created_or_blocked_by_a_run_that_needs_a_person() {
+    let h = Harness::new();
+    let case = recorded("run: created");
+    assert_eq!(graph_call(&h, Verb::GraphRun, &["nightly-build"], &case), CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
+    let mut expected = recorded_args(&case);
+    expected.push("--json".into());
+    assert_eq!(h.calls(), [expected]);
+
+    let case = recorded("run: blocked by a run awaiting approval, exit 7");
+    let address = case["stdout"]["blockingRunAddress"].as_str().unwrap().to_string();
+    assert_eq!(
+        graph_call(&h, Verb::GraphRun, &["nightly-build"], &case),
+        CallOutcome::Blocked { record: case["stdout"].clone(), blocking_run_address: address }
+    );
+    assert_eq!(h.condition(), HostCondition::SimulatedHost);
+}
+
+#[test]
+fn a_graph_status_passes_on_the_certificate_hint() {
+    let h = Harness::new();
+    let case = recorded("status: awaiting approval");
+    let work_order = case["stdout"]["workOrderId"].as_str().unwrap().to_string();
+    let CallOutcome::Record { trust_hint, .. } = graph_call(&h, Verb::GraphStatus, &[&work_order], &case) else { panic!("not a record") };
+    let stderr = case["stderr"].as_str().unwrap();
+    assert!(stderr.contains(trust_hint.as_deref().unwrap()) && trust_hint.unwrap().starts_with("Your browser does not trust this host's certificate"));
+}
+
+#[test]
+fn each_graph_command_s_recorded_refusal() {
+    for (verb, operands, name, host_code) in [
+        (Verb::GraphsWithdraw, &["release-review", "1"][..], "graphs withdraw: not pending", Some("REVISION_NOT_PENDING")),
+        (Verb::GraphRuns, &["nothing-here", "--limit", "20"][..], "runs: not submitted", Some("NOT_FOUND")),
+        (Verb::GraphStatus, &["wo-nothing-here"][..], "status: no such run", Some("NOT_FOUND")),
+        // praxis refuses this itself, after reading the graph workflow, so no host code comes.
+        (Verb::GraphRun, &["release-review"][..], "run: no admitted revision", None),
+    ] {
+        let h = Harness::new();
+        let case = recorded(name);
+        let outcome = graph_call(&h, verb, operands, &case);
+        let message = case["stdout"]["message"].as_str().unwrap().to_string();
+        match host_code {
+            Some(code) => {
+                assert_eq!(outcome, CallOutcome::HostRefused { message, host_code: code.into(), record: case["stdout"].clone() }, "{name}");
+                assert_eq!(h.condition(), HostCondition::SimulatedHost, "{name}");
+            }
+            None => {
+                assert_eq!(outcome, CallOutcome::Refused { message }, "{name}");
+                assert_eq!(h.condition(), HostCondition::NotCheckedYet, "{name}");
+            }
+        }
+    }
+}

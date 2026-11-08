@@ -275,7 +275,7 @@ impl PraxisCli {
             // projects can share one process.
             cmd.current_dir(&project).arg(&launch.script).args(&argv);
             let bounds = Bounds {
-                timeout: if verb.creates() { inner.bounds.create } else { inner.bounds.read },
+                timeout: if verb.writes() { inner.bounds.create } else { inner.bounds.read },
                 stdout_cap: inner.bounds.stdout_cap,
                 stderr_cap: inner.bounds.stderr_cap,
             };
