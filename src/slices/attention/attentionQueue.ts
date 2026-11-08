@@ -1,8 +1,8 @@
 /**
  * The attention queue: every session waiting on the user, oldest first. It takes plain events
  * and returns the ordered list of waiting items. It knows nothing of Tauri or React; the hook
- * that feeds it (`useAttentionQueue`) turns bridge events into these events, and the status
- * strip badge renders its count.
+ * that feeds it (`useAttentionQueue`) turns bridge events into these events, the status strip
+ * badge renders its count, and the permission modal shows its `modalPermissions`.
  */
 
 /** A permission request as the backend reports it: an agent is blocked until the user answers. */

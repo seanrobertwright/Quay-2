@@ -58,7 +58,8 @@ export interface AttentionQueueView {
  * The attention queue, fed from the backend: permission requests and their resolutions, the
  * bridge's turn events, terminal status, and the user's input to a terminal. It lives in memory
  * only, so an app restart starts it empty; on a webview reload the backend's pending permissions
- * rebuild its permission items.
+ * rebuild its permission items. Which requests were put off with Later is not kept across a
+ * reload, so the rebuilt requests show in the permission modal again.
  *
  * A new turn starting is the bridge's `turn.started` from the terminal's own session (Claude,
  * OpenCode and PiG send it, including for a prompt a peer typed in over A2A), or a
