@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { menuIndexByKey, splitStrip, STRIP_LIMIT } from "./trackStrip.ts";
+import { splitStrip, STRIP_LIMIT } from "./trackStrip.ts";
 
 const tracks = (n: number) => Array.from({ length: n }, (_, i) => i);
 
@@ -22,19 +22,4 @@ test("a wide history shows the leftmost tracks and puts the rest behind More, in
 test("the strip's inline names never grow with the number of tracks", () => {
   assert.deepEqual(splitStrip(tracks(STRIP_LIMIT + 1)), { shown: tracks(STRIP_LIMIT), more: [STRIP_LIMIT] });
   assert.equal(splitStrip(tracks(10_000)).shown.length, STRIP_LIMIT);
-});
-
-test("arrows move through the More menu and wrap, and Home and End go to either end", () => {
-  assert.equal(menuIndexByKey(0, 5, "ArrowDown"), 1);
-  assert.equal(menuIndexByKey(4, 5, "ArrowDown"), 0);
-  assert.equal(menuIndexByKey(0, 5, "ArrowUp"), 4);
-  assert.equal(menuIndexByKey(3, 5, "ArrowUp"), 2);
-  assert.equal(menuIndexByKey(3, 5, "Home"), 0);
-  assert.equal(menuIndexByKey(1, 5, "End"), 4);
-});
-
-test("the More menu ignores other keys, and an empty menu has nowhere to go", () => {
-  assert.equal(menuIndexByKey(1, 5, "a"), null);
-  assert.equal(menuIndexByKey(1, 5, "Enter"), null);
-  assert.equal(menuIndexByKey(0, 0, "ArrowDown"), null);
 });

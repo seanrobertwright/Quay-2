@@ -9,23 +9,3 @@ export const STRIP_LIMIT = 12;
 export function splitStrip<T>(tracks: readonly T[]): { shown: T[]; more: T[] } {
   return { shown: tracks.slice(0, STRIP_LIMIT), more: tracks.slice(STRIP_LIMIT) };
 }
-
-/**
- * The item the More menu's `key` moves focus to from `index`, of `count` items, or null for a key
- * it doesn't handle. Arrows wrap, and Home and End go to either end.
- */
-export function menuIndexByKey(index: number, count: number, key: string): number | null {
-  if (count === 0) return null;
-  switch (key) {
-    case "ArrowDown":
-      return (index + 1) % count;
-    case "ArrowUp":
-      return (index - 1 + count) % count;
-    case "Home":
-      return 0;
-    case "End":
-      return count - 1;
-    default:
-      return null;
-  }
-}
