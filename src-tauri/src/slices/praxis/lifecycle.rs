@@ -538,6 +538,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::slices::praxis::trigger_target::{graph_workflow_triggers, GraphWorkflowTriggers};
     use crate::test_support::TempDir;
 
     fn temp_repo() -> TempDir {
@@ -1175,6 +1176,33 @@ mod tests {
         let hashes = t1.hashes.as_ref().unwrap();
         assert_eq!(hashes.previous, content_hash(TARGET.as_bytes()));
         assert_eq!(hashes.next, content_hash(&std::fs::read(repo.join(".praxis/trigger-targets/t1.json")).unwrap()));
+    }
+
+    #[test]
+    fn a_renamed_graph_workflow_is_still_started_by_its_triggers_and_its_old_name_by_none() {
+        let repo = target_repo();
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap().ids, vec!["t1", "t2"]);
+        rename_definition(&repo, PraxisKind::GraphWorkflows, "ship", "ship-it", &[], false, HOOKS).unwrap();
+        assert_eq!(graph_workflow_triggers(&repo, "ship-it").unwrap().ids, vec!["t1", "t2"]);
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap().ids, Vec::<String>::new());
+        assert_eq!(graph_workflow_triggers(&repo, "review").unwrap().ids, vec!["t3"]);
+    }
+
+    #[test]
+    fn a_renamed_trigger_starts_its_graph_workflow_under_its_new_id() {
+        let repo = target_repo();
+        rename_definition(&repo, PraxisKind::Triggers, "t1", "a-first", &[], false, HOOKS).unwrap();
+        let found = graph_workflow_triggers(&repo, "ship").unwrap();
+        assert_eq!(found.ids, vec!["a-first", "t2"]);
+        assert_eq!(found.skipped, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_deleted_trigger_no_longer_starts_its_graph_workflow() {
+        let repo = target_repo();
+        let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        delete_definition(&repo, PraxisKind::Triggers, "t1", false, HOOKS, &trash).unwrap();
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap(), GraphWorkflowTriggers { ids: vec!["t2".into()], skipped: vec![] });
     }
 
     #[test]

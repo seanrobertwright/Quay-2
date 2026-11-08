@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::grants::read_record;
 use super::models::PraxisKind;
-use super::store::validate_id;
+use super::store::{confined_dir, json_ids, validate_id, MAX_TRIGGERS_SCANNED, PRAXIS_DIR, TRIGGER_TARGETS_DIR};
 use super::validate::{check_size, field_issue, Diagnostic};
 
 /// What breaks one graph trigger rule.
@@ -197,6 +197,58 @@ pub fn check_trigger_target(repo: &Path, trigger: &Value, target: Option<&str>) 
     Ok(TriggerTargetCheck { contract_id, refused, diagnostics })
 }
 
+/// The triggers that start a graph workflow (#479), for its form's Triggers section.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphWorkflowTriggers {
+    /// The ids of the triggers whose target file names the graph workflow, in id order.
+    pub ids: Vec<String>,
+    /// One line per target file that wasn't searched or was left out: it can't be read, it is
+    /// past `MAX_TRIGGERS_SCANNED`, or no trigger has it.
+    pub skipped: Vec<String>,
+}
+
+/// The triggers whose target file, `.praxis/trigger-targets/<trigger-id>.json`, names the graph
+/// workflow `graph_workflow` as its `graphWorkflow` (#479), read as saved. A rename keeps this
+/// true without a second record: renaming a trigger moves its target file and renaming the graph
+/// workflow rewrites the target files that name it (#472). A target file whose trigger doesn't
+/// exist is skipped, since there is no trigger to open.
+pub fn graph_workflow_triggers(repo: &Path, graph_workflow: &str) -> Result<GraphWorkflowTriggers, String> {
+    validate_id(graph_workflow)?;
+    let mut out = GraphWorkflowTriggers::default();
+    let Some(dir) = confined_dir(repo, TRIGGER_TARGETS_DIR)? else { return Ok(out) };
+    let ids = json_ids(&dir, TRIGGER_TARGETS_DIR)?;
+    let shown = |id: &str| format!("{}/{}/{}.json", PRAXIS_DIR, TRIGGER_TARGETS_DIR, id);
+    if ids.len() > MAX_TRIGGERS_SCANNED {
+        out.skipped.push(format!(
+            "{}/{}/: the {} files after the first {} weren't searched.",
+            PRAXIS_DIR,
+            TRIGGER_TARGETS_DIR,
+            ids.len() - MAX_TRIGGERS_SCANNED,
+            MAX_TRIGGERS_SCANNED
+        ));
+    }
+    for id in ids.into_iter().take(MAX_TRIGGERS_SCANNED) {
+        let target = match read_record(repo, TRIGGER_TARGETS_DIR, &id) {
+            Ok(Some(target)) => target,
+            Ok(None) => continue,
+            Err(why) => {
+                out.skipped.push(format!("{}: {}", shown(&id), why));
+                continue;
+            }
+        };
+        if target.get("graphWorkflow").and_then(Value::as_str) != Some(graph_workflow) {
+            continue;
+        }
+        match read_record(repo, PraxisKind::Triggers.folder(), &id) {
+            Ok(Some(_)) => out.ids.push(id),
+            Ok(None) => out.skipped.push(format!("{}: no trigger {} has this target file.", shown(&id), id)),
+            Err(why) => out.skipped.push(format!("{}: its trigger can't be read: {}", shown(&id), why)),
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -353,6 +405,51 @@ mod tests {
         t["kind"] = json!("SCHEDULED");
         t["source"] = json!("");
         assert_eq!(codes(&check(&t)), vec![]);
+    }
+
+    // --- the triggers that start a graph workflow (#479) ------------------------------------
+
+    /// Trigger `id` with a target file naming `target` as its `graphWorkflow`.
+    fn targeted(repo: &Path, id: &str, target: &str) {
+        write(repo, &format!(".praxis/triggers/{id}.json"), &format!(r#"{{"id": "{id}", "contractId": "c"}}"#));
+        write(repo, &format!(".praxis/trigger-targets/{id}.json"), &format!(r#"{{"version": 1, "graphWorkflow": "{target}"}}"#));
+    }
+
+    #[test]
+    fn a_graph_workflow_s_triggers_are_those_whose_target_file_names_it_in_id_order() {
+        let repo = repo();
+        targeted(&repo, "nightly", "ship");
+        targeted(&repo, "Alpha", "ship");
+        targeted(&repo, "other", "review");
+        // A trigger with no target file starts nothing, whatever its contract.
+        write(&repo, ".praxis/triggers/plain.json", r#"{"id": "plain", "contractId": "c"}"#);
+        let found = graph_workflow_triggers(&repo, "ship").unwrap();
+        assert_eq!(found.ids, vec!["Alpha", "nightly"]);
+        assert_eq!(found.skipped, Vec::<String>::new());
+        assert_eq!(graph_workflow_triggers(&repo, "review").unwrap().ids, vec!["other"]);
+    }
+
+    #[test]
+    fn no_trigger_starts_a_graph_workflow_when_none_names_it_or_there_are_no_targets() {
+        let repo = repo();
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap(), GraphWorkflowTriggers::default());
+        targeted(&repo, "t", "review");
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap(), GraphWorkflowTriggers::default());
+        assert!(graph_workflow_triggers(&repo, "../ship").is_err(), "an unsafe id is refused");
+    }
+
+    #[test]
+    fn a_target_file_that_can_t_be_read_or_has_no_trigger_is_skipped_and_named() {
+        let repo = repo();
+        targeted(&repo, "good", "ship");
+        write(&repo, ".praxis/trigger-targets/broken.json", "{nope");
+        // A target file left behind with no trigger, as only a hand edit leaves one.
+        write(&repo, ".praxis/trigger-targets/orphan.json", r#"{"version": 1, "graphWorkflow": "ship"}"#);
+        let found = graph_workflow_triggers(&repo, "ship").unwrap();
+        assert_eq!(found.ids, vec!["good"]);
+        assert_eq!(found.skipped.len(), 2, "{:?}", found.skipped);
+        assert!(found.skipped[0].starts_with(".praxis/trigger-targets/broken.json: "), "{}", found.skipped[0]);
+        assert_eq!(found.skipped[1], ".praxis/trigger-targets/orphan.json: no trigger orphan has this target file.");
     }
 
     #[test]

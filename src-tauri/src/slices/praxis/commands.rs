@@ -14,7 +14,7 @@ use super::models::{
     FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome, TargetInput,
 };
 use super::store;
-use super::trigger_target::{self, TriggerTargetCheck};
+use super::trigger_target::{self, GraphWorkflowTriggers, TriggerTargetCheck};
 use super::validate::{self, Validation};
 use crate::slices::workspace::WorkspaceManager;
 
@@ -135,6 +135,18 @@ pub async fn praxis_check_trigger(
 ) -> Result<TriggerTargetCheck, String> {
     let workspace = workspace.inner().clone();
     blocking(move || trigger_target::check_trigger_target(&project_root(&workspace, &project_path)?, &content, target.as_deref())).await
+}
+
+/// The triggers whose saved target file names the graph workflow `graphWorkflowId` (#479), for the
+/// graph workflow form's Triggers section.
+#[tauri::command]
+pub async fn praxis_graph_workflow_triggers(
+    project_path: String,
+    graph_workflow_id: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<GraphWorkflowTriggers, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || trigger_target::graph_workflow_triggers(&project_root(&workspace, &project_path)?, &graph_workflow_id)).await
 }
 
 /// The ids used across the project's saved graph bindings, and the agents of its saved workflow
