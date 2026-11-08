@@ -113,10 +113,13 @@ export const TerminalView: FC<TerminalViewProps> = ({
     setIsSearchOpen((prev) => !prev);
   }, []);
 
+  // Focus goes back to the terminal's own textarea when its body menu closes.
+  const refocus = (term: BodyTerminal) => () => term.textarea ?? null;
+
   // Shift+F10 or the Menu key in the focused terminal opens its body menu below the body.
   const openBodyMenuBelow = (body: HTMLElement) => {
     const term = getTerminal();
-    if (term) bodyMenu.openBelow(term, body, () => term.textarea ?? null);
+    if (term) bodyMenu.openBelow(term, body, refocus(term));
   };
 
   const {
@@ -129,7 +132,10 @@ export const TerminalView: FC<TerminalViewProps> = ({
     focusTerminal,
     repaintTerminal,
     getTerminal,
-  } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch, openBodyMenuBelow);
+  } = useTerminal(terminalId, isVisible, isFocused, {
+    onToggleSearch: handleToggleSearch,
+    onOpenMenu: openBodyMenuBelow,
+  });
 
   // What the pane's own items do, in its header's menu and its body's menu alike.
   const paneHandlers: Partial<TerminalMenuHandlers> = {
@@ -465,7 +471,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
               if (!term || !rightClickOpensMenu(term, e)) return;
               e.preventDefault();
               e.stopPropagation();
-              bodyMenu.openAt(term, { x: e.clientX, y: e.clientY }, () => term.textarea ?? null);
+              bodyMenu.openAt(term, { x: e.clientX, y: e.clientY }, refocus(term));
             }}
             className="w-full h-full focus:outline-hidden"
           />

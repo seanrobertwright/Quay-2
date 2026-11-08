@@ -43,13 +43,19 @@ export function getTerminalDimensions(terminalId: string): { cols: number; rows:
   return fittedTerminalDimensions.get(terminalId) ?? getGlobalTerminalDimensions();
 }
 
+/** What a terminal's keys ask of the pane that shows it. */
+export interface TerminalKeyCallbacks {
+  /** Opens or closes the pane's scrollback search, from Ctrl+F. */
+  onToggleSearch?: () => void;
+  /** Opens the terminal body menu, from Shift+F10 or the Menu key; gets the terminal body's element. */
+  onOpenMenu?: (body: HTMLElement) => void;
+}
+
 export function useTerminal(
   terminalId: string,
   isVisible: boolean,
   isFocused: boolean = false,
-  onToggleSearch?: () => void,
-  /** Opens the terminal body menu, from Shift+F10 or the Menu key; gets the terminal body's element. */
-  onOpenMenu?: (body: HTMLElement) => void
+  { onToggleSearch, onOpenMenu }: TerminalKeyCallbacks = {}
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
