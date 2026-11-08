@@ -86,9 +86,13 @@ export function runStartOf(outcome: CallOutcome, name: string): RunStart {
     case "cancelled":
       return { kind: "unknown", message: `praxis was stopped before it said whether the run was created. ${UNKNOWN_OUTCOME_ADVICE}` };
     case "refused":
+    case "hostRefused":
       return { kind: "refused", message: outcome.message };
     case "needsUpdate":
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} ${outcome.detail}` };
+    case "bundleInvalid":
+      // `praxis run` never checks a bundle, so this answer is one Quay can't read.
+      return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis answered the run with a bundle's faults.` };
   }
 }
 

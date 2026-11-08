@@ -21,15 +21,22 @@ export type HostCondition =
 export type CallOutcome =
   | { kind: "record"; record: Record<string, unknown>; trustHint?: string }
   | { kind: "blocked"; record: Record<string, unknown>; blockingRunAddress: string }
+  /** `praxis graphs check` or `submit` exit 9: `record.findings` names the bundle file of each fault. */
+  | { kind: "bundleInvalid"; record: Record<string, unknown> }
   | { kind: "needsUpdate"; detail: string }
   | { kind: "noHost"; message: string }
   | { kind: "hostDown"; message: string }
   | { kind: "notSignedIn"; message: string }
   | { kind: "expired"; message: string }
+  /** The host refused the request: `hostCode` is its code, such as `NOT_FOUND`, and `record` the `praxis-error/1` record. */
+  | { kind: "hostRefused"; message: string; hostCode: string; record: Record<string, unknown> }
   | { kind: "refused"; message: string }
   | { kind: "cliNotFound"; reason: string }
-  /** A run creation that ended without saying whether the run was created. */
-  | { kind: "unknown"; detail: string }
+  /**
+   * A write that ended without saying whether it took effect. An unconfirmed graph workflow
+   * submission or withdrawal carries the `requestId` that resends it.
+   */
+  | { kind: "unknown"; detail: string; requestId?: string }
   | { kind: "timedOut" }
   | { kind: "cancelled" };
 
@@ -52,7 +59,10 @@ export function outcomeMessage(outcome: CallOutcome): string {
   switch (outcome.kind) {
     case "needsUpdate":
       return `Quay needs an update for this praxis: ${outcome.detail}`;
+    case "bundleInvalid":
+      return "The host found faults in the bundle.";
     case "refused":
+    case "hostRefused":
     case "noHost":
     case "hostDown":
     case "notSignedIn":
