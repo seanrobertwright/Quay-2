@@ -224,10 +224,10 @@ const StartedBy: FC<{
         ) : (
           <TriggerLinks ids={triggers.found.ids} badge={badge} onOpen={onOpen} />
         )}
-        {triggers.found.skipped.length > 0 && (
+        {triggers.found.unchecked.length > 0 && (
           <ul className="space-y-0.5">
             {/* Each line names a different file, so it is its own key. */}
-            {triggers.found.skipped.map((line) => (
+            {triggers.found.unchecked.map((line) => (
               <li key={line} className="text-[11px] text-[#e3b341] break-words">
                 Skipped: {line}
               </li>

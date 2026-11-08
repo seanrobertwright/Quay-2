@@ -357,7 +357,7 @@ export interface GraphWorkflowTriggers {
   /** The trigger ids, in id order. */
   ids: string[];
   /** One line per target file that wasn't searched or was left out, saying which and why. */
-  skipped: string[];
+  unchecked: string[];
 }
 
 /** A kind or action a picker still lists that a graph trigger can't take, with the host's code. */

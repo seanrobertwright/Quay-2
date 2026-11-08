@@ -13,10 +13,9 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use super::grants::read_record;
 use super::lifecycle::MAX_SCANNED;
 use super::models::{ContextCheck, ContractContext, PraxisKind, RecordIssue, RecordRef};
-use super::store::{confined_dir, json_ids, validate_id, BINDINGS_DIR, MAX_TRIGGERS_SCANNED, PRAXIS_DIR};
+use super::store::{capped_ids, confined_dir, json_ids, read_record, validate_id, BINDINGS_DIR, MAX_TRIGGERS_SCANNED, PRAXIS_DIR};
 use super::validate::{describe, describe_grant, describe_trigger, grant_issues_on_mission, Diagnostic, Severity, MAX_DIAGNOSTICS};
 
 /// The graphs and grants a contract's bindings file lists, in file order.
@@ -39,12 +38,7 @@ struct Project {
 /// The rest, and those that can't be read, are named in `unchecked`.
 fn read_folder(repo: &Path, folder: &str, cap: usize, unchecked: &mut Vec<String>) -> Result<BTreeMap<String, Value>, String> {
     let mut out = BTreeMap::new();
-    let Some(dir) = confined_dir(repo, folder)? else { return Ok(out) };
-    let ids = json_ids(&dir, folder)?;
-    if ids.len() > cap {
-        unchecked.push(format!("{}/{}/: the {} files after the first {} weren't searched.", PRAXIS_DIR, folder, ids.len() - cap, cap));
-    }
-    for id in ids.into_iter().take(cap) {
+    for id in capped_ids(repo, folder, cap, unchecked)? {
         match read_record(repo, folder, &id) {
             Ok(Some(record)) => {
                 out.insert(id, record);

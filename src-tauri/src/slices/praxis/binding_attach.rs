@@ -21,10 +21,10 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::grants::{binding_contracts, read_record};
+use super::grants::binding_contracts;
 use super::graph_bindings::{saved_bindings, MAX_BINDINGS_SCANNED};
 use super::models::PraxisKind;
-use super::store::{validate_id, PRAXIS_DIR};
+use super::store::{read_record, validate_id, PRAXIS_DIR};
 use super::validate::{escape, Diagnostic, Severity, MAX_DIAGNOSTICS};
 
 /// One contract criterion at a VERIFICATION node, and the Validation ancestors whose entries list it.

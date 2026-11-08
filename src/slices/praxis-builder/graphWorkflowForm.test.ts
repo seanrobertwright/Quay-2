@@ -30,7 +30,7 @@ afterEach(() => {
 
 const accepted: Validation = { verdict: null, diagnostics: [], omitted: { errors: 0, warnings: 0, info: 0 } };
 
-const NO_TRIGGERS: GraphWorkflowTriggers = { ids: [], skipped: [] };
+const NO_TRIGGERS: GraphWorkflowTriggers = { ids: [], unchecked: [] };
 
 /**
  * The backend: `praxis_validate` gives `shape`, `praxis_check_graph_workflow` gives `check`, and
@@ -259,7 +259,7 @@ test("a contract no saved record has carries no grants and gets no link", async 
 const triggerLinks = (root: HTMLElement) => [...(sectionTitled(root, "Triggers")?.querySelectorAll("a") ?? [])];
 
 test("the Triggers section lists each trigger that starts the workflow as a link to its form", async () => {
-  const sent = fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly", "on-push"], skipped: [] });
+  const sent = fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly", "on-push"], unchecked: [] });
   const { root, opened } = await render(WORKFLOW);
   const links = triggerLinks(root);
   assert.deepEqual(links.map(text), ["nightly", "on-push"]);
@@ -286,7 +286,7 @@ test("a workflow no trigger starts says so in its Triggers section", async () =>
 test("after a rename the section reads the triggers of the new name", async () => {
   // As on disk after the rename: the target files that named ship now name ship-it (#472).
   const sent = fakeBackend({ grants: [], diagnostics: [] }, accepted, (id) =>
-    id === "ship" ? { ids: ["nightly"], skipped: [] } : id === "ship-it" ? { ids: ["nightly", "on-push"], skipped: [] } : NO_TRIGGERS
+    id === "ship" ? { ids: ["nightly"], unchecked: [] } : id === "ship-it" ? { ids: ["nightly", "on-push"], unchecked: [] } : NO_TRIGGERS
   );
   const { root, rerender } = await render(WORKFLOW);
   assert.deepEqual(triggerLinks(root).map(text), ["nightly"]);
@@ -312,13 +312,13 @@ test("an answer for the old name that comes after a rename is never shown", asyn
   });
   const { root, rerender } = await render(WORKFLOW);
   await rerender(WORKFLOW, { id: "ship-it", refresh: 1 });
-  await act(async () => answers.get("ship-it")!({ ids: ["renamed"], skipped: [] }));
-  await act(async () => answers.get("ship")!({ ids: ["stale"], skipped: [] }));
+  await act(async () => answers.get("ship-it")!({ ids: ["renamed"], unchecked: [] }));
+  await act(async () => answers.get("ship")!({ ids: ["stale"], unchecked: [] }));
   assert.deepEqual(triggerLinks(root).map(text), ["renamed"]);
 });
 
 test("without graph trigger host state each trigger shows only its id", async () => {
-  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly"], skipped: [] });
+  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly"], unchecked: [] });
   const { root } = await render(WORKFLOW);
   const items = [...(sectionTitled(root, "Triggers")?.querySelectorAll("li") ?? [])];
   assert.deepEqual(items.map(text), ["nightly"]);
@@ -326,7 +326,7 @@ test("without graph trigger host state each trigger shows only its id", async ()
 });
 
 test("a trigger's host state badge shows next to its id once there is one", async () => {
-  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly", "on-push"], skipped: [] });
+  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: ["nightly", "on-push"], unchecked: [] });
   const badge = (id: string) => (id === "on-push" ? createElement("span", { "data-badge": id }, "Candidate (revision 2)") : null);
   const { root } = await render(WORKFLOW, { triggerBadge: badge });
   const items = [...(sectionTitled(root, "Triggers")?.querySelectorAll("li") ?? [])];
@@ -339,7 +339,7 @@ test("a trigger's host state badge shows next to its id once there is one", asyn
 
 test("a target file the lookup skipped is named, and a failed lookup says why", async () => {
   const skipped = ".praxis/trigger-targets/orphan.json: no trigger orphan has this target file.";
-  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: [], skipped: [skipped] });
+  fakeBackend({ grants: [], diagnostics: [] }, accepted, { ids: [], unchecked: [skipped] });
   const { root } = await render(WORKFLOW);
   assert.match(text(sectionTitled(root, "Triggers")), /No saved trigger starts this graph workflow\./);
   const lines = [...(sectionTitled(root, "Triggers")?.querySelectorAll("li") ?? [])].map(text);

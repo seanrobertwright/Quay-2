@@ -8,9 +8,8 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::grants::read_record;
 use super::models::PraxisKind;
-use super::store::{confined_dir, json_ids, validate_id, MAX_TRIGGERS_SCANNED, PRAXIS_DIR, TRIGGER_TARGETS_DIR};
+use super::store::{capped_ids, read_record, validate_id, MAX_TRIGGERS_SCANNED, PRAXIS_DIR, TRIGGER_TARGETS_DIR};
 use super::validate::{check_size, field_issue, Diagnostic};
 
 /// What breaks one graph trigger rule.
@@ -203,37 +202,26 @@ pub fn check_trigger_target(repo: &Path, trigger: &Value, target: Option<&str>) 
 pub struct GraphWorkflowTriggers {
     /// The ids of the triggers whose target file names the graph workflow, in id order.
     pub ids: Vec<String>,
-    /// One line per target file that wasn't searched or was left out: it can't be read, it is
-    /// past `MAX_TRIGGERS_SCANNED`, or no trigger has it.
-    pub skipped: Vec<String>,
+    /// One line per target file that wasn't searched or was left out, as `ContractTriggers`
+    /// names its own: it can't be read, it is past `MAX_TRIGGERS_SCANNED`, or no trigger has it.
+    pub unchecked: Vec<String>,
 }
 
 /// The triggers whose target file, `.praxis/trigger-targets/<trigger-id>.json`, names the graph
 /// workflow `graph_workflow` as its `graphWorkflow` (#479), read as saved. A rename keeps this
 /// true without a second record: renaming a trigger moves its target file and renaming the graph
 /// workflow rewrites the target files that name it (#472). A target file whose trigger doesn't
-/// exist is skipped, since there is no trigger to open.
+/// exist is named in `unchecked` rather than listed, since there is no trigger to open.
 pub fn graph_workflow_triggers(repo: &Path, graph_workflow: &str) -> Result<GraphWorkflowTriggers, String> {
     validate_id(graph_workflow)?;
     let mut out = GraphWorkflowTriggers::default();
-    let Some(dir) = confined_dir(repo, TRIGGER_TARGETS_DIR)? else { return Ok(out) };
-    let ids = json_ids(&dir, TRIGGER_TARGETS_DIR)?;
     let shown = |id: &str| format!("{}/{}/{}.json", PRAXIS_DIR, TRIGGER_TARGETS_DIR, id);
-    if ids.len() > MAX_TRIGGERS_SCANNED {
-        out.skipped.push(format!(
-            "{}/{}/: the {} files after the first {} weren't searched.",
-            PRAXIS_DIR,
-            TRIGGER_TARGETS_DIR,
-            ids.len() - MAX_TRIGGERS_SCANNED,
-            MAX_TRIGGERS_SCANNED
-        ));
-    }
-    for id in ids.into_iter().take(MAX_TRIGGERS_SCANNED) {
+    for id in capped_ids(repo, TRIGGER_TARGETS_DIR, MAX_TRIGGERS_SCANNED, &mut out.unchecked)? {
         let target = match read_record(repo, TRIGGER_TARGETS_DIR, &id) {
             Ok(Some(target)) => target,
             Ok(None) => continue,
             Err(why) => {
-                out.skipped.push(format!("{}: {}", shown(&id), why));
+                out.unchecked.push(format!("{}: {}", shown(&id), why));
                 continue;
             }
         };
@@ -242,8 +230,8 @@ pub fn graph_workflow_triggers(repo: &Path, graph_workflow: &str) -> Result<Grap
         }
         match read_record(repo, PraxisKind::Triggers.folder(), &id) {
             Ok(Some(_)) => out.ids.push(id),
-            Ok(None) => out.skipped.push(format!("{}: no trigger {} has this target file.", shown(&id), id)),
-            Err(why) => out.skipped.push(format!("{}: its trigger can't be read: {}", shown(&id), why)),
+            Ok(None) => out.unchecked.push(format!("{}: no trigger {} has this target file.", shown(&id), id)),
+            Err(why) => out.unchecked.push(format!("{}: its trigger can't be read: {}", shown(&id), why)),
         }
     }
     Ok(out)
@@ -425,7 +413,7 @@ mod tests {
         write(&repo, ".praxis/triggers/plain.json", r#"{"id": "plain", "contractId": "c"}"#);
         let found = graph_workflow_triggers(&repo, "ship").unwrap();
         assert_eq!(found.ids, vec!["Alpha", "nightly"]);
-        assert_eq!(found.skipped, Vec::<String>::new());
+        assert_eq!(found.unchecked, Vec::<String>::new());
         assert_eq!(graph_workflow_triggers(&repo, "review").unwrap().ids, vec!["other"]);
     }
 
@@ -447,9 +435,9 @@ mod tests {
         write(&repo, ".praxis/trigger-targets/orphan.json", r#"{"version": 1, "graphWorkflow": "ship"}"#);
         let found = graph_workflow_triggers(&repo, "ship").unwrap();
         assert_eq!(found.ids, vec!["good"]);
-        assert_eq!(found.skipped.len(), 2, "{:?}", found.skipped);
-        assert!(found.skipped[0].starts_with(".praxis/trigger-targets/broken.json: "), "{}", found.skipped[0]);
-        assert_eq!(found.skipped[1], ".praxis/trigger-targets/orphan.json: no trigger orphan has this target file.");
+        assert_eq!(found.unchecked.len(), 2, "{:?}", found.unchecked);
+        assert!(found.unchecked[0].starts_with(".praxis/trigger-targets/broken.json: "), "{}", found.unchecked[0]);
+        assert_eq!(found.unchecked[1], ".praxis/trigger-targets/orphan.json: no trigger orphan has this target file.");
     }
 
     #[test]

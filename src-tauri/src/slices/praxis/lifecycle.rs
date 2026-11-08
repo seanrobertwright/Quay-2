@@ -1194,7 +1194,7 @@ mod tests {
         rename_definition(&repo, PraxisKind::Triggers, "t1", "a-first", &[], false, HOOKS).unwrap();
         let found = graph_workflow_triggers(&repo, "ship").unwrap();
         assert_eq!(found.ids, vec!["a-first", "t2"]);
-        assert_eq!(found.skipped, Vec::<String>::new());
+        assert_eq!(found.unchecked, Vec::<String>::new());
     }
 
     #[test]
@@ -1202,7 +1202,7 @@ mod tests {
         let repo = target_repo();
         let trash = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
         delete_definition(&repo, PraxisKind::Triggers, "t1", false, HOOKS, &trash).unwrap();
-        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap(), GraphWorkflowTriggers { ids: vec!["t2".into()], skipped: vec![] });
+        assert_eq!(graph_workflow_triggers(&repo, "ship").unwrap(), GraphWorkflowTriggers { ids: vec!["t2".into()], unchecked: vec![] });
     }
 
     #[test]
