@@ -59,6 +59,38 @@ export function terminalMenu(terminal: TerminalMenuTarget, surface: TerminalMenu
   return items.filter((item) => item !== null);
 }
 
+/** What an item of the terminal body's clipboard group asks for; its Find… is the terminal menu's `find`. */
+export type ClipboardMenuAction = "copy" | "paste" | "selectAll" | "copyScrollback";
+
+/** One item of the terminal body menu, before its action is bound to a handler. */
+export type TerminalBodyMenuEntry = Omit<ContextMenuItem, "onChoose"> & { action: TerminalMenuAction | ClipboardMenuAction };
+
+const NO_SELECTION = "No selection";
+
+/**
+ * The menu a right-click in a terminal's body opens, on a stage showing `paneCount` panes: the
+ * clipboard group, then the pane's terminal menu. Find… sits in the clipboard group, so the
+ * terminal menu below leaves its own out rather than show it twice.
+ */
+export function terminalBodyMenu(terminal: TerminalMenuTarget, paneCount: number, hasSelection: boolean): TerminalBodyMenuEntry[] {
+  const clipboard: TerminalBodyMenuEntry[] = [
+    {
+      action: "copy",
+      name: "Copy",
+      group: "clipboard",
+      enabled: hasSelection,
+      hint: hasSelection ? "Ctrl+C" : NO_SELECTION,
+      ariaKeyShortcuts: "Control+C",
+    },
+    { action: "paste", name: "Paste", group: "clipboard", enabled: true, hint: "Ctrl+V", ariaKeyShortcuts: "Control+V" },
+    { action: "selectAll", name: "Select all", group: "clipboard", enabled: true },
+    { action: "find", name: "Find…", group: "clipboard", enabled: true, hint: "Ctrl+F", ariaKeyShortcuts: "Control+F" },
+    { action: "copyScrollback", name: "Copy scrollback", group: "clipboard", enabled: true },
+  ];
+  const rest = terminalMenu(terminal, { kind: "pane", paneCount }).filter((item) => item.action !== "find");
+  return [...clipboard, ...rest];
+}
+
 /** The menu's accessible name, which names the terminal it acts on. */
 export function terminalMenuLabel(terminal: Pick<TerminalInfo, "name">): string {
   return `Terminal ${terminal.name}`;

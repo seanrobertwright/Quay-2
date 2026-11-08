@@ -7,10 +7,12 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
-import { TerminalMenu } from "./TerminalMenu.tsx";
+import { TerminalBodyMenu, TerminalMenu, type TerminalMenuHandlers } from "./TerminalMenu.tsx";
 import { RenameInput } from "./RenameInput";
 import { onTerminalRequest } from "./terminalRequests";
 import { useTerminalMenu } from "./useTerminalMenu";
+import { rightClickOpensMenu, type BodyTerminal } from "./terminalBody";
+import { useContextMenu } from "../overlay/useContextMenu";
 import {
   Maximize2,
   X,
@@ -65,6 +67,9 @@ export const TerminalView: FC<TerminalViewProps> = ({
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { menu, isRenaming, startRename, renameDone, onContextMenu, onKeyDown } = useTerminalMenu(terminalId, onRename);
+  // The terminal body menu (#511), for the xterm terminal it acts on. Focus goes back to that
+  // terminal when it closes.
+  const bodyMenu = useContextMenu<BodyTerminal>();
   const [a2aNotification, setA2aNotification] = useState<{
     fromName: string;
     content: string;
@@ -108,6 +113,15 @@ export const TerminalView: FC<TerminalViewProps> = ({
     setIsSearchOpen((prev) => !prev);
   }, []);
 
+  // Focus goes back to the terminal's own textarea when its body menu closes.
+  const refocus = (term: BodyTerminal) => () => term.textarea ?? null;
+
+  // Shift+F10 or the Menu key in the focused terminal opens its body menu below the body.
+  const openBodyMenuBelow = (body: HTMLElement) => {
+    const term = getTerminal();
+    if (term) bodyMenu.openBelow(term, body, refocus(term));
+  };
+
   const {
     containerRef,
     findNext,
@@ -117,7 +131,29 @@ export const TerminalView: FC<TerminalViewProps> = ({
     searchResult,
     focusTerminal,
     repaintTerminal,
-  } = useTerminal(terminalId, isVisible, isFocused, handleToggleSearch);
+    getTerminal,
+  } = useTerminal(terminalId, isVisible, isFocused, {
+    onToggleSearch: handleToggleSearch,
+    onOpenMenu: openBodyMenuBelow,
+  });
+
+  // What the pane's own items do, in its header's menu and its body's menu alike.
+  const paneHandlers: Partial<TerminalMenuHandlers> = {
+    rename: startRename,
+    relaunch: onRelaunch,
+    toggleAsk: onToggleAsk,
+    // Zooms this pane, not whichever pane had focus.
+    zoomPane:
+      onZoomPane &&
+      (() => {
+        onSelect?.();
+        onZoomPane();
+      }),
+    redraw: repaintTerminal,
+    find: () => setIsSearchOpen(true),
+    closePane: onClosePane,
+    closeTerminal: onCloseTerminal,
+  };
 
   // The terminal menu on a Rail row asks this pane to redraw or search (#508).
   useEffect(
@@ -424,9 +460,19 @@ export const TerminalView: FC<TerminalViewProps> = ({
             </div>
           )}
 
+          {/* A right-click here opens the body menu, unless the running program has turned on
+              mouse reporting and has the click. The app-wide policy cancels the native menu here
+              either way. */}
           <div
             ref={containerRef}
             tabIndex={-1}
+            onContextMenu={(e) => {
+              const term = getTerminal();
+              if (!term || !rightClickOpensMenu(term, e)) return;
+              e.preventDefault();
+              e.stopPropagation();
+              bodyMenu.openAt(term, { x: e.clientX, y: e.clientY }, refocus(term));
+            }}
             className="w-full h-full focus:outline-hidden"
           />
         </div>
@@ -440,22 +486,20 @@ export const TerminalView: FC<TerminalViewProps> = ({
           surface={{ kind: "pane", paneCount }}
           at={menu.open.at}
           onClose={menu.close}
-          handlers={{
-            rename: startRename,
-            relaunch: onRelaunch,
-            toggleAsk: onToggleAsk,
-            // Zooms this pane, not whichever pane had focus.
-            zoomPane:
-              onZoomPane &&
-              (() => {
-                onSelect?.();
-                onZoomPane();
-              }),
-            redraw: repaintTerminal,
-            find: () => setIsSearchOpen(true),
-            closePane: onClosePane,
-            closeTerminal: onCloseTerminal,
-          }}
+          handlers={paneHandlers}
+        />
+      )}
+      {bodyMenu.open && terminal && (
+        <TerminalBodyMenu
+          terminal={terminal}
+          paneCount={paneCount}
+          term={bodyMenu.open.target}
+          scrollback={exportScrollback}
+          at={bodyMenu.open.at}
+          onClose={bodyMenu.close}
+          // The rename box sits in the pane header, so a pane without one leaves Rename… out;
+          // the terminal's Rail row still offers it.
+          handlers={showPaneHeader ? paneHandlers : { ...paneHandlers, rename: undefined }}
         />
       )}
     </>

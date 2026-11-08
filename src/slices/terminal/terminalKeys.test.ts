@@ -44,3 +44,10 @@ test("plain typing and other modifiers go to the shell", () => {
   assert.equal(terminalKeyAction(key("v", { ctrlKey: true, altKey: true }), false), "shell");
   assert.equal(terminalKeyAction(key("c", { metaKey: true }), true), "shell");
 });
+
+test("Shift+F10 and the Menu key open the terminal menu, and plain F10 still goes to the shell", () => {
+  assert.equal(terminalKeyAction(key("F10", { shiftKey: true }), false), "menu");
+  assert.equal(terminalKeyAction(key("ContextMenu"), true), "menu");
+  assert.equal(terminalKeyAction(key("F10"), false), "shell");
+  assert.equal(terminalKeyAction(key("F10", { shiftKey: true, ctrlKey: true }), false), "shell");
+});

@@ -5,7 +5,7 @@ import { SearchAddon, ISearchOptions } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { PtyOutputPayload, TerminalOutputPayload } from "./types";
-import { terminalKeyAction } from "./terminalKeys";
+import { attachTerminalKeys } from "./terminalBody";
 import { isTerminalReport, splitPendingQueries } from "./terminalReports";
 import { registerClaudeUnicodeProvider } from "./terminalUnicode";
 import { isOverlayOpen } from "../overlay/useOverlay";
@@ -43,11 +43,19 @@ export function getTerminalDimensions(terminalId: string): { cols: number; rows:
   return fittedTerminalDimensions.get(terminalId) ?? getGlobalTerminalDimensions();
 }
 
+/** What a terminal's keys ask of the pane that shows it. */
+export interface TerminalKeyCallbacks {
+  /** Opens or closes the pane's scrollback search, from Ctrl+F. */
+  onToggleSearch?: () => void;
+  /** Opens the terminal body menu, from Shift+F10 or the Menu key; gets the terminal body's element. */
+  onOpenMenu?: (body: HTMLElement) => void;
+}
+
 export function useTerminal(
   terminalId: string,
   isVisible: boolean,
   isFocused: boolean = false,
-  onToggleSearch?: () => void
+  { onToggleSearch, onOpenMenu }: TerminalKeyCallbacks = {}
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -62,6 +70,8 @@ export function useTerminal(
   // Keep latest props in refs so the main Terminal instance is never disposed on React re-renders
   const onToggleSearchRef = useRef(onToggleSearch);
   onToggleSearchRef.current = onToggleSearch;
+  const onOpenMenuRef = useRef(onOpenMenu);
+  onOpenMenuRef.current = onOpenMenu;
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
   const isFocusedRef = useRef(isFocused);
@@ -182,40 +192,12 @@ export function useTerminal(
       setSearchResult({ index: e.resultIndex, count: e.resultCount });
     });
 
-    // Copy, paste and search keys (terminalKeys.ts). xterm runs this for keydown, keypress and
-    // keyup, so the action runs on keydown only while every phase is kept from the shell.
-    term.attachCustomKeyEventHandler((e) => {
-      const action = terminalKeyAction(e, term.hasSelection());
-      if (action === "shell") return true;
-
-      e.preventDefault();
-      if (e.type !== "keydown") return false;
-      // The pane's window Ctrl+F listener would toggle the search a second time.
-      e.stopPropagation();
-
-      if (action === "copy") {
-        const selection = term.getSelection();
-        if (selection) {
-          navigator.clipboard.writeText(selection).catch((err) => {
-            console.error("Failed to copy terminal selection:", err);
-          });
-          term.clearSelection();
-        }
-      } else if (action === "paste") {
-        // xterm turns Ctrl+V into ^V and cancels it, so no paste event fires; read the clipboard
-        // here. term.paste applies bracketed paste mode and line-ending fixes.
-        navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) term.paste(text);
-          })
-          .catch((err) => {
-            console.error("Failed to paste into terminal:", err);
-          });
-      } else {
-        onToggleSearchRef.current?.();
-      }
-      return false;
+    // Copy, paste, search and menu keys (terminalBody.ts).
+    attachTerminalKeys(term, {
+      search: () => onToggleSearchRef.current?.(),
+      menu: () => {
+        if (containerRef.current) onOpenMenuRef.current?.(containerRef.current);
+      },
     });
 
     // Send user keystrokes to Rust ConPTY
@@ -476,6 +458,9 @@ export function useTerminal(
     return lines.join("\n");
   }, []);
 
+  /** The xterm terminal, once the pane has mounted. */
+  const getTerminal = useCallback(() => termRef.current, []);
+
   const repaintTerminal = useCallback(() => {
     if (!termRef.current) return;
     try {
@@ -494,5 +479,6 @@ export function useTerminal(
     searchResult,
     focusTerminal,
     repaintTerminal,
+    getTerminal,
   };
 }

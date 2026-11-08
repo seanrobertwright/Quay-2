@@ -9,6 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { MenuPoint } from "./ContextMenu.tsx";
+import { isContextMenuKey } from "./menuKeys.ts";
 
 /** A menu that is open: what it is for, and where it opens. */
 export interface OpenContextMenu<T> {
@@ -21,12 +22,6 @@ export interface OpenContextMenu<T> {
  * surface whose element may have been drawn afresh while the menu was open.
  */
 export type MenuOpener = HTMLElement | (() => HTMLElement | null);
-
-/** Whether a keydown opens a context menu: Shift+F10 or the Menu key, with no other modifier. */
-function isContextMenuKey(e: { key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): boolean {
-  if (e.ctrlKey || e.altKey || e.metaKey) return false;
-  return (e.key === "F10" && e.shiftKey) || e.key === "ContextMenu";
-}
 
 interface Options<T> {
   /** Names the thing a menu is for, so two targets for the same thing compare equal. Defaults to the target itself. */
