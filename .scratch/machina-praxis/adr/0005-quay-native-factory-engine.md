@@ -1,6 +1,8 @@
 # ADR 0005: Quay-Native Factory Engine; Praxis Sidecar Deferred
 
-- **Status**: Accepted
+> Amended by [ADR 0006](0006-machina-stays-beside-praxis.md) (2026-11-08): Machina stays beside Praxis for good, and the Praxis sidecar is retired, not deferred.
+
+- **Status**: Accepted, amended by [ADR 0006](0006-machina-stays-beside-praxis.md) (2026-11-08)
 - **Date**: 2026-10-18
 - **Supersedes**: [ADR 0001](0001-machina-praxis-supervised-sidecar.md)
 - **Amends**: [ADR 0002](0002-dual-protocol-mcp-and-a2a-agent-interface.md), [ADR 0003](0003-two-tier-holdback-validation-pipeline.md), [ADR 0004](0004-factory-station-operator-cockpit.md)
@@ -33,4 +35,4 @@ Quay's Rust backend (`src-tauri/src/slices/machina/`) runs the factory itself. N
 - Removed: credential leases, `CREDENTIAL_REQUIRED` and `PRICE_REQUIRED` holds, the TLS origin, mutation calibration, the `MISSION.md` bootstrap writer, and agent-side hold resolution. They return only with a real implementation.
 - Holdbacks are hidden from the worktree, not sandboxed. An agent with unrestricted disk access can still find the vault. Committed holdbacks stay readable through git history; the UI warns about this.
 - Budgets only stop Claude Code runs, because no other agent's spend is measured.
-- The Praxis sidecar (ADR 0001) remains the target for the governance features listed under "Removed".
+- The governance features listed under "Removed" return only if they are built inside Machina. The Praxis sidecar (ADR 0001) is retired; see [ADR 0006](0006-machina-stays-beside-praxis.md).

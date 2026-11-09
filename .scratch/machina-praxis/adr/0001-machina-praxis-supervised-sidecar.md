@@ -1,6 +1,6 @@
 # ADR 0001: Supervised Node 24 Praxis Sidecar with Epoch-Fenced Crash Recovery
 
-- **Status**: Superseded by [ADR 0005](0005-quay-native-factory-engine.md) (2026-10-18)
+- **Status**: Superseded by [ADR 0005](0005-quay-native-factory-engine.md) (2026-10-18); retired by [ADR 0006](0006-machina-stays-beside-praxis.md) (2026-11-08)
 - **Date**: 2026-10-16
 - **Source Tickets**: [01: Research: Praxis Engine Packaging & Node 24 Sidecar Strategy](../issues/01-research-praxis-engine-packaging.md), [03: Spec: Sidecar Supervisor Daemon & Health Monitoring in Rust](../issues/03-spec-praxis-sidecar-supervisor-lifecycle.md)
 

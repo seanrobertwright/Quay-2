@@ -4,6 +4,11 @@
 //! follow it (#224), and `graph-workflows/` ids, which are host names too (#444). New and
 //! renamed templates and graph workflows must follow it, the list flags a file whose name
 //! breaks it, and the runner refuses to give `praxis` such a template name.
+//!
+//! A graph trigger name follows the same rule with the name `check` refused too, as AI-WS-SDK
+//! `spec/engine-v1/GRAPH-WORKFLOWS.md`, "Names", states it, since the host's check endpoint holds
+//! that path segment. It binds only a trigger with a Starts target (#473), the only trigger the
+//! host will see.
 
 /// The longest name the rule allows.
 pub const MAX_TEMPLATE_NAME_LEN: usize = 63;
@@ -27,6 +32,13 @@ pub const TEMPLATE_NAME_RULE: &str = name_rule!("workflow template");
 /// The rule as a refusal of a graph workflow name states it. A graph workflow's file name is
 /// its name on the host too, and follows the same rule as a template's (#444).
 pub const GRAPH_WORKFLOW_NAME_RULE: &str = name_rule!("graph workflow");
+
+/// The rule as a refusal of a graph trigger name states it (#473). It names `check` as well.
+pub const TRIGGER_NAME_RULE: &str = concat!(
+    "A graph trigger name is a lowercase letter, then at most 62 lowercase letters, digits and hyphens, ",
+    "and isn't check or a Windows device name such as con, nul, com1 or lpt1. ",
+    "The Praxis host refuses any other name."
+);
 
 /// The Windows reserved device names the rule refuses, in the lowercase the pattern allows.
 const RESERVED: [&str; 22] = [
@@ -62,6 +74,12 @@ pub fn check_graph_workflow_name(name: &str) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+/// Refuses a graph trigger name the host's rule doesn't admit, with a message stating the rule.
+/// Only a trigger with a Starts target has to pass it.
+pub fn check_trigger_name(name: &str) -> Result<(), String> {
+    if is_template_name(name) && name != "check" { Ok(()) } else { Err(TRIGGER_NAME_RULE.to_string()) }
 }
 
 #[cfg(test)]
@@ -103,7 +121,7 @@ mod tests {
     #[test]
     fn a_graph_workflow_name_follows_the_same_vectors_and_its_refusal_names_a_graph_workflow() {
         for (name, valid) in vectors() {
-            let why = PraxisKind::GraphWorkflows.name_problem(&name);
+            let why = PraxisKind::GraphWorkflows.name_problem(&name, false);
             assert_eq!(why.is_none(), valid, "{name:?}");
             assert!(why.is_none_or(|why| why == GRAPH_WORKFLOW_NAME_RULE), "{name:?}");
         }
@@ -147,6 +165,34 @@ mod tests {
         for name in names {
             assert_eq!(is_template_name(&name), schema.is_valid(&json!(name)), "{name:?}");
         }
+    }
+
+    fn trigger_vectors() -> (String, Vec<(String, bool)>) {
+        let file: Value = serde_json::from_str(include_str!("trigger_names.vectors.json")).unwrap();
+        let cases = file["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| (c["name"].as_str().unwrap().to_string(), c["valid"].as_bool().unwrap()))
+            .collect();
+        (file["rule"].as_str().unwrap().to_string(), cases)
+    }
+
+    #[test]
+    fn a_trigger_name_gets_its_recorded_verdict_and_the_refusal_states_the_rule() {
+        let (rule, cases) = trigger_vectors();
+        for (name, valid) in cases {
+            assert_eq!(check_trigger_name(&name).err(), (!valid).then(|| rule.clone()), "{name:?}");
+        }
+    }
+
+    /// The SDK gives a graph trigger name the template rule, with `check` refused as well.
+    #[test]
+    fn a_trigger_name_follows_every_template_vector() {
+        for (name, valid) in vectors() {
+            assert_eq!(check_trigger_name(&name).is_ok(), valid, "{name:?}");
+        }
+        assert!(is_template_name("check"));
     }
 
     #[test]

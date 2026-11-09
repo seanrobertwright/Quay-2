@@ -440,6 +440,16 @@ test("exit 2 or an unknown format says Quay needs an update for this praxis", as
   }
 });
 
+test("a created run Quay can't follow is called a run, in Praxis's words, never a work order (#481)", async () => {
+  const backend = fakeBackend();
+  const root = await renderRuns();
+  const call = await startRun(backend, root);
+  await act(async () => call.answer({ kind: "record", record: { format: "aiws-workflow-run-result/1", disposition: "COMMITTED", runId: "run-new" } }));
+  const shown = text(notice(root, "Run not started"));
+  assert.match(shown, /praxis started a run of review-code, but its result names no run Quay can follow/);
+  assert.doesNotMatch(shown, /work order/i);
+});
+
 test("an unknown outcome says Run again can't create a second run", async () => {
   const backend = fakeBackend();
   const root = await renderRuns();

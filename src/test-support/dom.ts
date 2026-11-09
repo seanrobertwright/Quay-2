@@ -1,7 +1,7 @@
 /// <reference types="node" />
 // Component tests under `node --test`. Importing this module installs a happy-dom window as the
-// globals React renders into, a fake Tauri `invoke` (the out-of-process boundary), and a load
-// hook that compiles `.tsx` with TypeScript, which Node's own type stripping doesn't handle.
+// globals React renders into, a fake Tauri `invoke` (the out-of-process boundary), stand-ins for
+// Tauri's event listening, and a load hook that compiles `.tsx` with TypeScript, which Node's own type stripping doesn't handle.
 // Static imports are all loaded before any module runs, so a test imports the components it
 // renders with `await import(...)` after this module.
 import { readFileSync } from "node:fs";
@@ -26,7 +26,18 @@ type Invoke = (cmd: string, args: Record<string, unknown>) => Promise<unknown>;
 
 const window = new Window({ url: "http://localhost/" });
 let invokeImpl: Invoke = (cmd) => Promise.reject(new Error(`no fake for ${cmd}`));
-Object.assign(window, { __TAURI_INTERNALS__: { invoke: (cmd: string, args: Record<string, unknown>) => invokeImpl(cmd, args) } });
+// A component's `listen` and its unlisten reach Tauri's event internals and the event plugin's
+// commands as well as `invoke`. They get stand-ins that do nothing, so a test fakes only the
+// commands its component calls, and no event is ever delivered.
+const fakeEventCommands = new Map<string, unknown>([["plugin:event|listen", 1], ["plugin:event|unlisten", null]]);
+Object.assign(window, {
+  __TAURI_INTERNALS__: {
+    invoke: (cmd: string, args: Record<string, unknown>) =>
+      fakeEventCommands.has(cmd) ? Promise.resolve(fakeEventCommands.get(cmd)) : invokeImpl(cmd, args),
+    transformCallback: () => 1,
+  },
+  __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
+});
 
 const globals = globalThis as Record<string, unknown>;
 for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle"]) {
@@ -46,7 +57,7 @@ globals.window = window;
 // Tells React that updates are wrapped in `act`.
 globals.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Answers the components' Tauri `invoke` calls with `impl` until the next call. */
+/** Answers the components' Tauri `invoke` calls, except event listening, with `impl` until the next call. */
 export function fakeInvoke(impl: Invoke): void {
   invokeImpl = impl;
 }

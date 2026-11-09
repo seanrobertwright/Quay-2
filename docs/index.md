@@ -36,7 +36,7 @@ features:
     icon: 📐
     link: /features/archon-sdd
   - title: 🏭 Machina Factory
-    details: Native deterministic AI software manufacturing cockpit with stage progression, deliverable gates, and worker oversight.
+    details: Quay's local factory. Each work order gets its own worktree and your project's gate, and is squash-merged only when you Accept it.
     icon: 🏭
     link: /features/machina-praxis
   - title: 🪟 Swarm Presets & Splits
