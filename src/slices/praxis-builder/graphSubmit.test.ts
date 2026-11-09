@@ -267,7 +267,7 @@ test("Submit is disabled, with the host's rule shown, when the name breaks it", 
   const { root } = await renderForm({ nameProblem: rule });
   await flush();
   assert.equal(submitButton(root)?.getAttribute("aria-disabled"), "true");
-  assert.match(submitReason(root), new RegExp(`${rule.replace(/[.]/g, "\.")} Rename it from the list\.`));
+  assert.ok(submitReason(root).includes(`${rule} Rename it from the list.`), submitReason(root));
 });
 
 test("Submit is disabled, with the reason shown, unless the host is signed in or simulated", async () => {
@@ -385,7 +385,7 @@ test("a bundle identical to a pending candidate or the current revision is refus
     assert.ok(backend.shows().length > showsBefore, "the host state is reread before comparing");
     assert.equal(dialog(root), null, `revision ${revision}: no confirm`);
     assert.equal(backend.submits().length, 0);
-    assert.match(text(root.querySelector('[role="alert"]')), new RegExp(`Nothing has changed since revision ${revision}\.`));
+    assert.ok(text(root.querySelector('[role="alert"]')).includes(`Nothing has changed since revision ${revision}.`), `revision ${revision}: the refusal names it`);
     unmount();
   }
 });
