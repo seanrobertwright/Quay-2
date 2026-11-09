@@ -123,10 +123,13 @@ import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
+import { useTriggerHost } from "./useTriggerHost.ts";
+import { triggerRowBadges } from "./triggerHostStatus.ts";
+import type { GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
-import { hostGroupHeader, hostOnlySection, rowBadges, type RowBadge } from "./hostList.ts";
+import { hostGroupHeader, hostOnlySection, rowBadges, withHostBadge, type RowBadge } from "./hostList.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
@@ -403,9 +406,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // The cross-record checks (#269): a full check when the builder is shown and on a reload, rename
   // or delete; opening or saving a record re-checks the contracts it affects.
   const runChecks = useRunContexts(isOpen, projectPath, openKind, openId);
-  // The host chip (#448). A workflow template's or graph workflow's work area is the view that
-  // needs the host, so the 60 s recheck runs only while one is shown and its host condition is failing.
-  const host = useHostCondition(projectPath, isOpen && (openKind === "templates" || openKind === "graph-workflows"));
+  // The host chip (#448). A workflow template's, graph workflow's or trigger's work area is the
+  // view that needs the host, so the 60 s recheck runs only while one is shown and its host
+  // condition is failing.
+  const host = useHostCondition(projectPath, isOpen && (openKind === "templates" || openKind === "graph-workflows" || openKind === "triggers"));
   // Each workflow template's host state (#449), for the views that draw it. The Workflow
   // templates group is shown whenever the builder is open with the project listed.
   const listedTemplates = listing?.projectKey === projectKey ? listing.byKind.templates.list?.entries : undefined;
@@ -443,6 +447,27 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           onWithdraw: (revision: number) => shownGraphs.withdraw(name, revision),
         }
       : null;
+  // Each graph trigger's host state (#475). The Triggers group shows the host whenever the builder
+  // is open with the project listed and it lists a graph trigger, one with a saved target, so a
+  // project without one never reads the host's triggers; the open trigger's form is on screen.
+  const listedTriggers = listing?.projectKey === projectKey ? listing.byKind.triggers.list?.entries : undefined;
+  const listsGraphTrigger = listedTriggers?.some((e) => e.target !== undefined) ?? false;
+  const { triggers: shownTriggers } = useTriggerHost(
+    projectPath,
+    listedTriggers,
+    host.condition,
+    isOpen && listsGraphTrigger,
+    isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
+  );
+  /** Trigger `name`'s host state for its form, read from the model on each render; null when it isn't a graph trigger. */
+  const graphTriggerHost = (name: string): GraphTriggerHost | null =>
+    shownTriggers?.has(name)
+      ? {
+          view: shownTriggers.trigger(name),
+          condition: host.condition,
+          onCheckAgain: () => void shownTriggers.checkAgain(name),
+        }
+      : null;
   /**
    * What graph workflow `name`'s Check on host and Submit need from the builder (#462): which
    * records have drafts with edits their saved files lack, and a reread of its host state.
@@ -478,6 +503,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     const graphs = shownGraphs;
     if (kind === "graph-workflows" && graphs) {
       return { checkHost: () => graphs.checkHost(), badges: (id, changed) => graphRowBadges(id, changed, graphs.workflow(id), now) };
+    }
+    const triggers = shownTriggers;
+    // A trigger without a saved target stays a local record, so its row has only its git badge.
+    if (kind === "triggers" && triggers && listsGraphTrigger) {
+      return {
+        checkHost: () => triggers.checkHost(),
+        badges: (id, changed) => (triggers.has(id) ? triggerRowBadges(id, changed, triggers.trigger(id), now) : withHostBadge(changed, null)),
+      };
     }
     return null;
   };
@@ -2148,7 +2181,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   const namingNew = naming?.mode === "new" && naming.kind === kind;
                   // The Workflow templates group carries the host's state (#363): the condition
                   // in its header, a host badge on each row and the On host only subsection. The
-                  // Graph workflows group carries the condition and a badge on each row (#461).
+                  // Graph workflows group carries the condition and a badge on each row (#461),
+                  // and so does the Triggers group, on each graph trigger's row (#475).
                   const groupHost = groupHostOf(kind, Date.now());
                   const onHostOnly = kind === "templates" ? hostOnlyShown : null;
                   const badgesOf = groupHost?.badges ?? null;
@@ -2439,6 +2473,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onEdit={editOpenTrigger}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
+                    host={graphTriggerHost(open.id)}
                   />
                 </>
               ) : openDraft && open.kind === "templates" ? (

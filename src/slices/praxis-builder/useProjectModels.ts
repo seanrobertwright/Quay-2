@@ -1,5 +1,5 @@
-// One model per project for the builder's session, as the host catalog (#449) and the graph host
-// model (#461) each keep: made on first ask, kept in memory while the builder is mounted, and
+// One model per project for the builder's session, as the host catalog (#449), the graph host
+// model (#461) and the trigger host model (#475) each keep: made on first ask, kept in memory while the builder is mounted, and
 // disposed, with its calls and timers, on unmount.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizePath } from "../../utils/paths.ts";

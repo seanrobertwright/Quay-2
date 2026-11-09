@@ -157,6 +157,10 @@ pub struct DefinitionEntry {
     /// which triggers follow the host's graph trigger name rule (#473).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// For a trigger, its saved `enabled`, when it is a boolean, so its form can say when the
+    /// host's enabled state differs from the file's (#475).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
 }
 
 /// A kind's definitions in id order. `truncated` is true when the folder held more

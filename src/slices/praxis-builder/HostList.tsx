@@ -3,7 +3,7 @@
 // `hostList.ts`'s view of the host catalog (#449) and never call `praxis` themselves: Check host
 // asks the catalog, whose reads go through the Praxis CLI runner (#446).
 import { useEffect, useId, useRef, useState, type FC } from "react";
-import { Archive, Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleHelp, CircleX, CloudOff, FileDiff, Hourglass, RefreshCw } from "lucide-react";
+import { Archive, Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleHelp, CirclePause, CircleX, CloudOff, FileDiff, Hourglass, OctagonAlert, RefreshCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HostActionButton } from "./HostChip.tsx";
 import type { HostTone } from "./hostCondition.ts";
@@ -20,6 +20,8 @@ const BADGE_ICONS: Record<HostLook, LucideIcon> = {
   invalidOnHost: CircleX,
   differs: FileDiff,
   notReady: CircleAlert,
+  disabled: CirclePause,
+  blocked: OctagonAlert,
   installed: Check,
   failed: CircleDashed,
   unknown: CircleHelp,

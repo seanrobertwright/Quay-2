@@ -9,7 +9,7 @@ use uuid::Uuid;
 use super::{put, replay, Harness};
 use crate::slices::praxis::host::commands::{check_fire_id, trigger_submit_operands, MAX_FIRE_ID};
 use crate::slices::praxis::host::outcome::{CallOutcome, HostCondition, Verb};
-use crate::slices::praxis::host::trigger::trigger_operands;
+use crate::slices::praxis::host::trigger::{trigger_digest, trigger_operands};
 use crate::slices::praxis::template_name::{GRAPH_WORKFLOW_NAME_RULE, TRIGGER_NAME_RULE};
 
 /// The recorded case `name`.
@@ -294,4 +294,44 @@ fn fire_ids_are_the_whole_numbers_praxis_takes() {
     assert!(check_fire_id(1).is_ok() && check_fire_id(MAX_FIRE_ID).is_ok());
     assert_eq!(check_fire_id(0).unwrap_err(), "A fire id is a whole number from 1 to 999999999999999, not 0.");
     assert!(check_fire_id(MAX_FIRE_ID + 1).is_err());
+}
+
+/// Saves the trigger of `trigger_digest.fixture.json` with its Starts target, and gives the digest
+/// the AI-WS-SDK engine computes for each revision of it. The fixture says how it was made.
+fn engine_trigger(project: &Path) -> Value {
+    let fixture: Value = serde_json::from_str(include_str!("trigger_digest.fixture.json")).unwrap();
+    let id = fixture["trigger"]["id"].as_str().unwrap();
+    std::fs::create_dir_all(project.join(".praxis/triggers")).unwrap();
+    std::fs::write(project.join(format!(".praxis/triggers/{id}.json")), fixture["trigger"]["file"].as_str().unwrap()).unwrap();
+    put(project, &format!("trigger-targets/{id}.json"), json!({ "version": 1, "graphWorkflow": fixture["workflow"] }));
+    fixture["digests"].clone()
+}
+
+#[test]
+fn a_saved_trigger_s_digest_at_each_revision_is_the_one_the_engine_gives_it() {
+    let h = Harness::new();
+    let digests = engine_trigger(&h.project);
+    for revision in [1, 2] {
+        assert_eq!(trigger_digest(&root(&h), "nightly", revision).as_deref(), digests[revision.to_string()].as_str(), "revision {revision}");
+    }
+}
+
+#[test]
+fn a_trigger_quay_can_t_digest_as_the_host_does_has_no_digest() {
+    let digest = |id: &str, change: &dyn Fn(&Path)| {
+        let h = Harness::new();
+        engine_trigger(&h.project);
+        change(&h.project);
+        trigger_digest(&root(&h), id, 1)
+    };
+    let nothing = |_: &Path| {};
+    assert!(digest("nightly", &nothing).is_some());
+    assert_eq!(digest("weekly", &nothing), None, "no saved file");
+    assert_eq!(digest("check", &nothing), None, "a name the host refuses");
+    let untargeted = |p: &Path| std::fs::remove_file(p.join(".praxis/trigger-targets/nightly.json")).unwrap();
+    assert_eq!(digest("nightly", &untargeted), None, "no Starts target");
+    let not_strict = |p: &Path| std::fs::write(p.join(".praxis/triggers/nightly.json"), r#"{"id": "nightly", "id": "nightly"}"#).unwrap();
+    assert_eq!(digest("nightly", &not_strict), None, "a file praxis refuses as not strict JSON");
+    let not_object = |p: &Path| std::fs::write(p.join(".praxis/triggers/nightly.json"), "[]").unwrap();
+    assert_eq!(digest("nightly", &not_object), None, "a file that holds no record");
 }

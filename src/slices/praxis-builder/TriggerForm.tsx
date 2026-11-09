@@ -10,6 +10,10 @@
 // from the backend, each an error with the host's code and a hint; the Kind and Action pickers
 // still list every value and mark the ones the rules refuse. A contract other than the target's
 // is an error with a Use <contract> fix. A trigger without a target is checked as before.
+//
+// A trigger with a saved target is a graph trigger, and given its state on the Praxis host (#475)
+// the form shows it in a status line above the fields and a Revisions panel below them, which
+// read the builder's trigger host model.
 import { useEffect, useId, type FC, type ReactNode } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
@@ -45,6 +49,7 @@ import {
   type NestedKey,
   type TriggerEdit,
 } from "./trigger.ts";
+import { TriggerHostStatusLine, TriggerRevisionsPanel, type GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
 import { useValidation } from "./useValidation.ts";
 import { targetPath } from "./session.ts";
@@ -66,6 +71,8 @@ interface TriggerFormProps {
   onEdit: (edit: TriggerEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
+  /** Its state on the Praxis host, from the builder's trigger host model; absent for a trigger with no saved target. */
+  host?: GraphTriggerHost | null;
 }
 
 const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
@@ -104,6 +111,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   onEdit,
   onOpen,
   onValidated,
+  host,
 }) => {
   const sdk = useValidation("triggers", draft.content);
   const targetCheck = useTriggerCheck(projectPath, draft.content, draft.target, refresh);
@@ -310,6 +318,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Trigger ${draft.ref.id}`}>
+        {host && <TriggerHostStatusLine name={draft.ref.id} host={host} />}
         <Summary noun="trigger" status={status} recordIssues={untaken} />
         {crossRecord}
         {targetProblem && (
@@ -322,6 +331,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
           </p>
         )}
         {fields}
+        {host && <TriggerRevisionsPanel view={host.view} />}
       </form>
     </div>
   );

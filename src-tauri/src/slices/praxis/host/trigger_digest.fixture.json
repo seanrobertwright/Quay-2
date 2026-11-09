@@ -1,0 +1,12 @@
+{
+  "provenance": "graphTriggerDigest from engine/src/graph-triggers.ts of seanrobertwright/AI-WS-SDK at 0e7f473d, run by trigger_digest.fixture.mjs on Node 24.20.0.",
+  "workflow": "release-review",
+  "trigger": {
+    "id": "nightly",
+    "file": "{\n  \"filter\": {\n    \"field\": \"note\",\n    \"equals\": \"café, naïve, 日本語 and 🚀\"\n  },\n  \"schedule\": {\n    \"startMs\": \"1700000000000\",\n    \"intervalMs\": \"60000\",\n    \"catchUp\": \"ALL\",\n    \"maxCatchUp\": \"3\"\n  },\n  \"maxDepth\": \"0\",\n  \"rateWindowMs\": \"3600000\",\n  \"rateLimit\": \"100\",\n  \"maxConcurrent\": \"5\",\n  \"maxAgeMs\": \"3600000\",\n  \"expiresAt\": \"4102444800000\",\n  \"notBefore\": \"0\",\n  \"enabled\": true,\n  \"action\": \"START_RUN\",\n  \"contractId\": \"release\",\n  \"eventType\": \"schedule.tick\",\n  \"source\": \"praxis\",\n  \"kind\": \"SCHEDULED\",\n  \"revision\": \"7\",\n  \"id\": \"nightly\"\n}\n"
+  },
+  "digests": {
+    "1": "sha256:5716be778d561b267834f4996a10581f58e084625884f07928fd1bf0f52b0560",
+    "2": "sha256:83ee3d02511e4c3ea9d1a1a76044522a87f3399d8c8ce44cfbdd4dc69dc1494f"
+  }
+}
