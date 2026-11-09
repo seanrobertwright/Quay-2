@@ -10,7 +10,9 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft, editTriggerDraft, type Draft } from "./drafts.ts";
+import type { HostCondition } from "./praxisHost.ts";
 import type { TriggerEdit } from "./trigger.ts";
+import type { EventSourceSummary } from "./triggerHost.ts";
 import type { Diagnostic, TriggerTargetCheck, Validation } from "./types.ts";
 
 const { TriggerForm } = await import("./TriggerForm.tsx");
@@ -84,7 +86,14 @@ interface Rendered {
 }
 
 /** Renders the form over a draft held in state, which each edit changes as the builder's does. */
-async function render(content: Record<string, unknown>, target?: string): Promise<Rendered> {
+async function render(
+  content: Record<string, unknown>,
+  target?: string,
+  extra: {
+    eventSources?: ReadonlyMap<string, EventSourceSummary>;
+    hostCondition?: HostCondition;
+  } = {},
+): Promise<Rendered> {
   const edits: TriggerEdit[] = [];
   const verdicts: (string | null)[] = [];
   let current = draftOf(content, target);
@@ -111,6 +120,7 @@ async function render(content: Record<string, unknown>, target?: string): Promis
       },
       onOpen: () => {},
       onValidated: (v: string | null) => verdicts.push(v),
+      ...extra,
     });
   };
   await act(async () => root.render(createElement(Harness)));
@@ -259,4 +269,111 @@ test("each graph trigger rule a trigger breaks shows on its field with the host'
   assert.match(field(root, "Source").messages, /needs their source\. Type the name of an event source the host admits\. SOURCE_NOT_SET/);
   assert.match(text(root.querySelector('[role="status"]')), /4 problems/);
   assert.deepEqual(verdicts, ["MANUAL_USE_GRAPH_RUNS"]);
+});
+
+const ADMITTED_SOURCES = new Map<string, EventSourceSummary>([
+  ["github", { name: "github", state: "ENABLED", currentRevision: 1, eventTypes: ["push", "pull_request"] }],
+  ["stripe", { name: "stripe", state: "DISABLED", currentRevision: 2, eventTypes: ["payment_intent.succeeded"] }],
+]);
+const SIGNED_IN: HostCondition = { state: "signedIn" };
+
+test("suggests admitted event sources on Source and declared event types on Event type for EVENT and CONDITION triggers", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "github", eventType: "push" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.deepEqual(field(root, "Source").suggestions, ["github", "stripe"]);
+  assert.deepEqual(field(root, "Event type").suggestions, ["push", "pull_request"]);
+});
+
+test("dynamically filters Event type suggestions when switching event sources", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "github", eventType: "push" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.deepEqual(field(root, "Event type").suggestions, ["push", "pull_request"]);
+  await type(field(root, "Source").input as HTMLInputElement, "stripe");
+  assert.deepEqual(field(root, "Event type").suggestions, ["payment_intent.succeeded"]);
+});
+
+test("clearing Source clears Event type suggestions and mismatch diagnostics", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "github", eventType: "push" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  await type(field(root, "Source").input as HTMLInputElement, "");
+  assert.deepEqual(field(root, "Event type").suggestions, []);
+  assert.doesNotMatch(field(root, "Source").messages, /No event source on the host has this name/);
+});
+
+test("emits SOURCE_NOT_ADMITTED info diagnostic for unknown source and does not block draft saving", async () => {
+  fakeBackend();
+  const { root, draft, verdicts } = await render(
+    { ...TRIGGER, source: "custom-source", eventType: "custom-event" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.match(field(root, "Source").messages, /No event source on the host has this name\./);
+  assert.equal(verdicts[verdicts.length - 1], null);
+  assert.equal(draft().content.source, "custom-source");
+  assert.equal(draft().content.eventType, "custom-event");
+});
+
+test("emits SOURCE_DISABLED info diagnostic for disabled source", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "stripe", eventType: "payment_intent.succeeded" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.match(field(root, "Source").messages, /Event source "stripe" is DISABLED on the host\./);
+  assert.doesNotMatch(field(root, "Event type").messages, /does not declare/);
+});
+
+test("emits EVENT_TYPE_UNDECLARED info diagnostic for undeclared event type", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "github", eventType: "issue_comment" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.match(field(root, "Event type").messages, /Event source "github" does not declare event type "issue_comment"\./);
+});
+
+test("CONDITION trigger also gets Source and Event type suggestions and diagnostics", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, kind: "CONDITION", source: "github", eventType: "push" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: SIGNED_IN },
+  );
+
+  assert.deepEqual(field(root, "Source").suggestions, ["github", "stripe"]);
+  assert.deepEqual(field(root, "Event type").suggestions, ["push", "pull_request"]);
+});
+
+test("omits suggestions and suppresses unadmitted diagnostics when offline or unreachable", async () => {
+  fakeBackend();
+  const { root } = await render(
+    { ...TRIGGER, source: "custom-source", eventType: "custom-event" },
+    undefined,
+    { eventSources: ADMITTED_SOURCES, hostCondition: { state: "hostUnreachable" } },
+  );
+
+  assert.deepEqual(field(root, "Source").suggestions, []);
+  assert.deepEqual(field(root, "Event type").suggestions, []);
+  assert.doesNotMatch(field(root, "Source").messages, /No event source on the host has this name/);
+  assert.doesNotMatch(field(root, "Event type").messages, /does not declare/);
 });

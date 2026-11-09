@@ -57,6 +57,9 @@ import { TriggerHostStatusLine, TriggerRevisionsPanel, type GraphTriggerHost } f
 import { TriggerSubmitBar, type GraphTriggerSubmit } from "./TriggerSubmit.tsx";
 import { TriggerControlBar } from "./TriggerControls.tsx";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
+import { online } from "./hostReadSession.ts";
+import type { HostCondition } from "./praxisHost.ts";
+import type { EventSourceSummary } from "./triggerHost.ts";
 import { useValidation } from "./useValidation.ts";
 import { targetPath } from "./session.ts";
 import type { DefinitionRef, Diagnostic, FileProblem, GraphWorkflowChoice, ValidationStatus } from "./types.ts";
@@ -83,6 +86,10 @@ interface TriggerFormProps {
   submit?: GraphTriggerSubmit;
   /** What the Fires panel needs from the builder; without it, or a host, there is none. */
   fires?: TriggerFires;
+  /** Admitted event sources on the host; falls back to host.view.eventSources when omitted. */
+  eventSources?: ReadonlyMap<string, EventSourceSummary>;
+  /** Host condition, when provided directly. */
+  hostCondition?: HostCondition;
 }
 
 const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
@@ -92,16 +99,65 @@ const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
 };
 
 /**
+ * Emits non-blocking info diagnostics for unadmitted or disabled event sources (#559, #562).
+ * Suppressed when offline or unreachable.
+ */
+export function hostEventSourceDiagnostics(
+  kind: string,
+  source: string,
+  eventType: string,
+  sources: ReadonlyMap<string, EventSourceSummary> | undefined,
+  isOnline: boolean,
+): Diagnostic[] {
+  if (!isOnline || !sources || (kind !== "EVENT" && kind !== "CONDITION")) {
+    return [];
+  }
+  if (!source) return [];
+  const diagnostics: Diagnostic[] = [];
+  const found = sources.get(source);
+  if (!found) {
+    diagnostics.push({
+      code: "SOURCE_NOT_ADMITTED",
+      severity: "info",
+      path: "/source",
+      message: "No event source on the host has this name.",
+    });
+  } else {
+    if (found.state !== "ENABLED") {
+      diagnostics.push({
+        code: "SOURCE_DISABLED",
+        severity: "info",
+        path: "/source",
+        message: `Event source "${source}" is ${found.state} on the host.`,
+      });
+    }
+    if (eventType && !found.eventTypes.includes(eventType)) {
+      diagnostics.push({
+        code: "EVENT_TYPE_UNDECLARED",
+        severity: "info",
+        path: "/eventType",
+        message: `Event source "${source}" does not declare event type "${eventType}".`,
+      });
+    }
+  }
+  return diagnostics;
+}
+
+/**
  * The SDK's check and the target's checks as one status: done once both have a result, with the
  * SDK's issues first. The verdict is the SDK's, else the first target check's error. While a newer
  * target check runs, the last one's issues stay shown.
  */
-function combined(sdk: ValidationStatus, target: ReturnType<typeof useTriggerCheck>): { status: ValidationStatus; settled: boolean } {
+function combined(
+  sdk: ValidationStatus,
+  target: ReturnType<typeof useTriggerCheck>,
+  hostDiagnostics: readonly Diagnostic[] = [],
+): { status: ValidationStatus; settled: boolean } {
   if (sdk.state !== "done") return { status: sdk, settled: false };
   if (target.state === "checking") return { status: target, settled: false };
   if (target.state === "failed") return { status: { state: "failed", error: target.error }, settled: true };
   const { validation } = sdk;
-  const local = target.check.diagnostics;
+  const local = [...target.check.diagnostics, ...hostDiagnostics];
   if (local.length === 0) return { status: sdk, settled: !target.pending };
   const verdict = validation.verdict ?? local.find((d) => d.severity === "error")?.code ?? null;
   return {
@@ -124,10 +180,22 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   host,
   submit,
   fires,
+  eventSources,
+  hostCondition,
 }) => {
+  const effectiveCondition = host?.condition ?? hostCondition;
+  const isOnline = effectiveCondition ? online(effectiveCondition) : false;
+  const availableSources = eventSources ?? host?.view.eventSources;
+
+  const t = draft.content;
+  const kind = asString(t.kind);
+  const source = asString(t.source);
+  const eventType = asString(t.eventType);
+
+  const hostIssues = hostEventSourceDiagnostics(kind, source, eventType, availableSources, isOnline);
   const sdk = useValidation("triggers", draft.content);
   const targetCheck = useTriggerCheck(projectPath, draft.content, draft.target, refresh);
-  const { status, settled } = combined(sdk, targetCheck);
+  const { status, settled } = combined(sdk, targetCheck, hostIssues);
   const verdict = settled && status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
     if (verdict !== undefined) onValidated(verdict);
@@ -142,8 +210,6 @@ export const TriggerForm: FC<TriggerFormProps> = ({
     return byPath.get(path);
   };
 
-  const t = draft.content;
-  const kind = asString(t.kind);
   const action = asString(t.action);
   const schedule = isObject(t.schedule) ? t.schedule : null;
   const filter = isObject(t.filter) ? t.filter : null;
@@ -155,6 +221,16 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   const contractIssues = at("/contractId");
   // The Use <contract> fix, for a contract other than the target's.
   const useContract = contractIssues?.some((d) => d.code === "CONTRACT_MISMATCH") ? check?.contractId : undefined;
+
+  const sourceSuggestions =
+    isOnline && (kind === "EVENT" || kind === "CONDITION") && availableSources
+      ? [...availableSources.keys()]
+      : undefined;
+  const selectedSource = availableSources && source ? availableSources.get(source) : undefined;
+  const eventTypeSuggestions =
+    isOnline && (kind === "EVENT" || kind === "CONDITION") && selectedSource
+      ? selectedSource.eventTypes
+      : undefined;
 
   const fields = (
     <>
@@ -191,8 +267,22 @@ export const TriggerForm: FC<TriggerFormProps> = ({
           onChange={(v) => isTriggerKind(v) && onEdit({ type: "set-kind", kind: v })}
           hint="Changing the kind adds or removes the fields that only some kinds have."
         />
-        <TextInput label="Source" value={asString(t.source)} issues={at("/source")} onChange={(v) => set("source", v, true)} hint="Where the events that fire it come from." />
-        <TextInput label="Event type" value={asString(t.eventType)} issues={at("/eventType")} onChange={(v) => set("eventType", v, true)} hint="The type of event that fires it." />
+        <TextInput
+          label="Source"
+          value={asString(t.source)}
+          issues={at("/source")}
+          onChange={(v) => set("source", v, true)}
+          datalist={sourceSuggestions}
+          hint="Where the events that fire it come from."
+        />
+        <TextInput
+          label="Event type"
+          value={asString(t.eventType)}
+          issues={at("/eventType")}
+          onChange={(v) => set("eventType", v, true)}
+          datalist={eventTypeSuggestions}
+          hint="The type of event that fires it."
+        />
         {kind === "SCHEDULED" && (
           <Group title="Schedule" issues={at("/schedule")}>
             {schedule && (

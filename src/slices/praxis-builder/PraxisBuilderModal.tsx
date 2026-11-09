@@ -2525,6 +2525,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     host={graphTriggerHost(open.id)}
                     submit={graphTriggerSubmit(open.id)}
                     fires={triggerFires(open.id)}
+                    eventSources={shownTriggers?.eventSources()}
+                    hostCondition={host.condition}
                   />
                 </>
               ) : openDraft && open.kind === "templates" ? (

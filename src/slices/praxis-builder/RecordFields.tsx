@@ -127,10 +127,14 @@ export const TextInput: FC<{
   hint?: string;
   issues: readonly Diagnostic[] | undefined;
   onChange: (value: string) => void;
-}> = ({ label, value, hint, issues, onChange }) => {
+  datalist?: readonly string[];
+  list?: string;
+}> = ({ label, value, hint, issues, onChange, datalist, list: listIdProp }) => {
   const id = useId();
   const messagesId = useId();
   const hintId = useId();
+  const autoListId = useId();
+  const listId = listIdProp ?? (datalist && datalist.length > 0 ? autoListId : undefined);
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
@@ -142,9 +146,17 @@ export const TextInput: FC<{
         spellCheck={false}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        list={listId}
         className={`${inputClass} font-mono`}
         {...described(messagesId, issues, hint ? hintId : undefined)}
       />
+      {datalist && datalist.length > 0 && (
+        <datalist id={listId}>
+          {datalist.map((item) => (
+            <option key={item} value={item} />
+          ))}
+        </datalist>
+      )}
       {hint && (
         <p id={hintId} className={hintClass}>
           {hint}
