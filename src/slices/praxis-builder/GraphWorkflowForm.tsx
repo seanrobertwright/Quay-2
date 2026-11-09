@@ -14,6 +14,7 @@ import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { GraphHostStatusLine, RevisionsPanel, type GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunsView } from "./GraphRunsView.tsx";
+import type { RunInTerminal } from "./praxisHost.ts";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
@@ -41,6 +42,8 @@ interface GraphWorkflowFormProps {
    * only hidden when it closes. Without it there is no Workflow | Runs switch.
    */
   runsShown?: boolean;
+  /** How a graph run's detail opens a visible terminal for `praxis trust`. */
+  runInTerminal?: RunInTerminal;
 }
 
 /**
@@ -73,6 +76,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onOpen,
   onValidated,
   runsShown,
+  runInTerminal,
 }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
   const shape = useValidation("graph-workflows", draft.content);
@@ -153,7 +157,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} />
+          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} runInTerminal={runInTerminal} />
         </div>
       </div>
     );
