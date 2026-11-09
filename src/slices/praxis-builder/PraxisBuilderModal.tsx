@@ -125,7 +125,7 @@ import { graphRowBadges } from "./graphHostStatus.ts";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
-import { hostGroupHeader, hostOnlySection, rowBadges } from "./hostList.ts";
+import { hostGroupHeader, hostOnlySection, rowBadges, type RowBadge } from "./hostList.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
@@ -435,6 +435,25 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   /** Graph workflow `name`'s host state for its form, read from the model on each render. */
   const graphWorkflowHost = (name: string): GraphWorkflowHost | null =>
     shownGraphs ? { view: shownGraphs.workflow(name), condition: host.condition, onCheckAgain: () => void shownGraphs.checkAgain(name) } : null;
+  /**
+   * The host part of a list group that shows host state, picked once per group: what its
+   * header's Check host rereads, and each row's badges, git state first and host state second.
+   * Null for a kind with no host state, or before its model exists.
+   */
+  const groupHostOf = (
+    kind: PraxisKind,
+    now: number,
+  ): { checkHost: () => Promise<void>; badges: (id: string, changed: ChangeStatus | undefined) => RowBadge[] } | null => {
+    const catalog = shownCatalog;
+    if (kind === "templates" && catalog) {
+      return { checkHost: () => catalog.checkHost(), badges: (id, changed) => rowBadges(id, changed, catalog.template(id), now) };
+    }
+    const graphs = shownGraphs;
+    if (kind === "graph-workflows" && graphs) {
+      return { checkHost: () => graphs.checkHost(), badges: (id, changed) => graphRowBadges(id, changed, graphs.workflow(id), now) };
+    }
+    return null;
+  };
   const hostOnlyShown = useMemo(
     () => (shownCatalog ? hostOnlySection(shownCatalog.hostOnly()) : null),
     // `catalogVersion` is bumped on every catalog change, which `hostOnly()` reads.
@@ -2101,34 +2120,16 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                   // The Workflow templates group carries the host's state (#363): the condition
                   // in its header, a host badge on each row and the On host only subsection. The
                   // Graph workflows group carries the condition and a badge on each row (#461).
-                  const catalog = kind === "templates" ? hostCatalog.catalog : null;
-                  const graphHost = kind === "graph-workflows" ? shownGraphs : null;
-                  const onHostOnly = catalog ? hostOnlyShown : null;
-                  const now = Date.now();
-                  /** A row's badges, git state first and host state second, in a group that shows host state. */
-                  const badgesOf = catalog
-                    ? (id: string, changed: ChangeStatus | undefined) => rowBadges(id, changed, catalog.template(id), now)
-                    : graphHost
-                      ? (id: string, changed: ChangeStatus | undefined) => graphRowBadges(id, changed, graphHost.workflow(id), now)
-                      : null;
+                  const groupHost = groupHostOf(kind, Date.now());
+                  const onHostOnly = kind === "templates" ? hostOnlyShown : null;
+                  const badgesOf = groupHost?.badges ?? null;
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
                       <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
                         <Icon className="w-3 h-3" aria-hidden="true" /> {label}
                       </h3>
-                      {catalog && (
-                        <HostGroupHeaderBar
-                          header={hostGroupHeader(host.condition)}
-                          onCheckHost={() => catalog.checkHost()}
-                          onRun={runHostCommand}
-                        />
-                      )}
-                      {graphHost && (
-                        <HostGroupHeaderBar
-                          header={hostGroupHeader(host.condition)}
-                          onCheckHost={() => graphHost.checkHost()}
-                          onRun={runHostCommand}
-                        />
+                      {groupHost && (
+                        <HostGroupHeaderBar header={hostGroupHeader(host.condition)} onCheckHost={groupHost.checkHost} onRun={runHostCommand} />
                       )}
                       {entry.error !== undefined && (
                         <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
