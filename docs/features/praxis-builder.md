@@ -2,7 +2,7 @@
 
 **Praxis** is the workflow engine in the AI-WS-SDK. It runs finite-v1 graphs under contracts, grants and triggers, and it runs coding plans from workflow templates.
 
-The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reaches a Praxis host only through the `praxis` CLI, to show the host's state, the state on it of each workflow template and graph workflow, and their runs. It changes the host only by submitting a graph workflow as a candidate, withdrawing a pending candidate, starting a run, and withdrawing, disabling or retiring a graph trigger. Admitting a candidate, enabling a graph trigger and every decision on a run [happen in the host's browser page](#decisions-happen-in-the-browser), never in Quay.
+The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reaches a Praxis host only through the `praxis` CLI, to show the host's state, the state on it of each workflow template, graph workflow and graph trigger, their runs, and a graph trigger's fires. It changes the host only by submitting a graph workflow or graph trigger as a candidate, withdrawing a pending candidate, starting a run, and disabling or retiring a graph trigger. Admitting a candidate, enabling a graph trigger and every decision on a run [happen in the host's browser page](#decisions-happen-in-the-browser), never in Quay, and Quay never fires a trigger by hand.
 
 ---
 
@@ -34,7 +34,7 @@ Everything the builder edits is a JSON file under `.praxis/` in the project, so 
 └── graph-workflows/<name>.json # a contract, a graph and one of its bindings
 ```
 
-- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template or graph workflow holds no id, so its file name alone names it, and that name follows the Praxis host's narrower rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and no Windows device name.
+- **The file name is the id.** Ids use letters, digits, `.`, `_` and `-`, up to 128 characters, with no leading dot and no Windows device name. No two definitions of the same kind may share an id, ignoring case. A file whose id doesn't match its file name is listed with a warning and offers to set the id to the file name. A workflow template or graph workflow holds no id, so its file name alone names it, and that name follows the Praxis host's narrower rule: a lowercase letter, then at most 62 lowercase letters, digits and hyphens, and no Windows device name. A trigger with a [Starts target](#graph-triggers) follows that rule too, and the host also refuses the name `check` for a graph workflow and a graph trigger.
 - **Files are written in one canonical form**, so a save that changes nothing makes no diff. Saving sets a content-digest `revision` on graphs and triggers, and `graphBindingRevision` on graph bindings.
 - **Broken files still list.** A file that isn't valid JSON is listed with an error badge, and opening it shows the line and column of the error.
 
@@ -125,10 +125,7 @@ These open as full-width forms in place of the canvas.
 
 - **Contracts** are edited in sections for scope, limits, timing and delivery. The **Graphs** and **Grants** sections bind definitions to the contract, and **Triggers** links to the triggers that name it. Saving writes the contract and `.praxis/bindings/<contract-id>.json` together. Each contract is checked with the SDK's `create_mission`.
 - **Grants** carry a fixed note that a grant is a proposal and takes effect only when a human approves it in Praxis. The form shows the delegation chain from the root grant down, and checks the limit as you type against the parent grant's limit and the budget of every contract that binds the grant.
-- **Triggers** show only the fields their kind and action use. Each is checked with the SDK's `registerTrigger` on a scratch mission. The **Starts** picker names the graph workflow the trigger starts, or takes an id no graph workflow has yet and flags it as missing. It is saved with the trigger to `.praxis/trigger-targets/<trigger-id>.json` as `{version, graphWorkflow}`, so the trigger file stays a plain SDK trigger. Picking a target fills an empty contract with the graph workflow's, and a different contract is an error with a **Use** fix that sets the graph workflow's.
-- **A trigger with a target** also gets the Praxis host's graph trigger rules, as errors with the host's code and a hint: only `SCHEDULED`, `EVENT` and `CONDITION` kinds, only `START_RUN`, a `maxDepth` of 0, no filter on `SCHEDULED`, and a condition mode only on `CONDITION`. The **Kind** and **Action** pickers still list every value and mark the refused ones. An `EVENT` or `CONDITION` trigger with a target also needs its source and event type, which Quay can't look up. A trigger without a target is checked as before.
-- **A trigger with a target follows the host's name rule**, a template's rule with the name `check` refused too. A new trigger with a target can't be saved, and one with a target can't be renamed, under a name the host would refuse, and rename says why as you type. A trigger named that way shows an issue above its form with a **Rename** button as soon as it has a target, and a warning in the list once the target is saved. A trigger without a target keeps the id rules every definition follows.
-- **A trigger with a saved target shows its state on the Praxis host**, worst first: a name the host refuses, not submitted, retired, a candidate waiting for admission, differs from host, admitted but disabled, admitted but blocked with the host's reason (such as its event source being disabled or its target having no admitted revision), and admitted and enabled. A rejected or withdrawn candidate falls back to the admitted revision's state. The state shows as a badge after the git badge in the **Triggers** list, which gets **Check host** once it lists a trigger with a target, and as a status line with **Check again** above the trigger's form, with **Open in browser** for a pending candidate's admission page. **Differs** compares the saved trigger and target files with the admitted revision by the digest the host gives it; when either digest is missing, the status line gives the revision number and submit time instead. When the host's enabled state differs from the file's `enabled`, a note says that disabling a trigger on the host doesn't change its file. A **Revisions** panel under the form lists the host's revisions, newest first. Readings follow the graph workflow rules: they stay in memory, turn muted after ten minutes and are dropped offline, and a pending candidate is read every 15 seconds while its form is on screen. A trigger without a target has no host state.
+- **Triggers** show only the fields their kind and action use. Each is checked with the SDK's `registerTrigger` on a scratch mission. A trigger whose **Starts** picker names a graph workflow is a [graph trigger](#graph-triggers), which Quay can submit to a Praxis host.
 
 Budgets and limits are shown in the installation's ledger cost unit. Deadlines and other times are picked in your local time zone, with the UTC time shown.
 
@@ -185,9 +182,22 @@ A graph workflow (`.praxis/graph-workflows/<name>.json`) ties a contract, a grap
 
 ---
 
+## Graph triggers
+
+A graph trigger is a trigger with a saved **Starts** target: the graph workflow it starts on a Praxis host. The SDK's trigger record has no target field, so the target lives in a file of its own, `.praxis/trigger-targets/<trigger-id>.json`, as `{version, graphWorkflow}`, and the trigger file stays a plain SDK trigger. A trigger without a target stays a local record: it has no state on the host and can't be submitted.
+
+- **Starts** picks the graph workflow the trigger starts, or takes an id no graph workflow has yet and flags it as missing. The target is saved with the trigger, under its one dirty flag and undo history. Picking one fills an empty contract with the graph workflow's, and a different contract is an error with a **Use** fix that sets the graph workflow's.
+- **Praxis's graph trigger rules.** A trigger with a target also gets the host's graph trigger rules, as errors with the host's code and a hint: only `SCHEDULED`, `EVENT` and `CONDITION` kinds, only `START_RUN`, a `maxDepth` of 0, no filter on `SCHEDULED`, and a condition mode only on `CONDITION`. The rules live in one table in Quay's Rust backend. The **Kind** and **Action** pickers still list every value and mark the refused ones, so a refused value stays in the file until you change it. An `EVENT` or `CONDITION` trigger with a target also needs its source and event type, which are free text, because Quay can't list the event sources a host admits.
+- **Names follow the host's rule** once a trigger has a target: a workflow template's rule, with the name `check` refused too. A new trigger with a target can't be saved, and one with a target can't be renamed, under a name the host would refuse, and rename says why as you type. A trigger named that way shows an issue above its form with a **Rename** button as soon as it has a target, and a warning in the list once the target is saved. A trigger without a target keeps the id rules every definition follows.
+- **Renames and deletes.** Renaming a trigger moves its target file, and deleting it deletes the target file with it. Renaming a graph workflow rewrites the target files that name it, and deleting one names them.
+- **On the host.** Under the form's header, a status line shows the trigger's [state on the host](#graph-trigger-host-states), with **Check on host** and **Submit** under it ([Check a graph trigger and Submit it](#check-a-graph-trigger-and-submit-it)), then **Withdraw**, **Disable**, **Enable in browser** or **Retire** as the host state allows ([Withdraw, Disable and Retire](#withdraw-disable-and-retire)). A **Revisions** panel and a [**Fires** panel](#fires) end the form.
+- **Triggers** on a [graph workflow's form](#graph-workflows) lists the triggers whose saved target file names it, each a link to the trigger's form.
+
+---
+
 ## The Praxis host
 
-The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
+The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. For graph triggers they are `triggers list`, `triggers show`, `triggers check`, `triggers submit`, `triggers withdraw`, `triggers disable`, `triggers retire` and `triggers fires`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, never fires a trigger by hand, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
 
 ### Linking the `praxis` CLI
 
@@ -195,7 +205,7 @@ Quay runs `praxis` from an AI-WS-SDK checkout, with Node 24 or later. To link it
 
 - **How Quay finds it.** Quay never starts `praxis` through npm's `praxis.cmd` shim or `cmd.exe`. It follows npm's global link for `@aiws/engine` into the checkout, looking beside each `praxis` shim on `PATH`, under `NPM_CONFIG_PREFIX` and under npm's default prefix. It reads `bin.praxis` from that package's `package.json` and runs `node <script>` with the first `node` on `PATH`, once `node --version` says 24 or later. The [`checkout` setting](#per-user-settings) replaces the link.
 - **A found `praxis` is kept for 60 seconds** before Quay looks it up again. A failed lookup is never kept, so linking the CLI takes effect on the next call.
-- **Every call is bounded.** A read, `graphs check` included, may take 15 seconds, and a write (a run creation, a submission or a withdrawal) 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
+- **Every call is bounded.** A read, `graphs check` included, may take 15 seconds, and a write (a run creation, a submission, a withdrawal, or disabling or retiring a graph trigger) 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
 - **A `praxis` Quay can't read**, one that refuses Quay's arguments or prints a record in a format this Quay doesn't read, gets "Quay needs an update for this praxis".
 
 ### Per-user settings
@@ -231,7 +241,7 @@ The chip in the builder's header shows the project's host condition as the lates
 
 - **Press the chip** to open a panel that says what the condition means and what to do about it. `Escape` closes it.
 - **Set up host, Start host and Sign in** each open a new terminal in the project, running that command for you to answer, and hide the builder so the terminal shows. The terminal runs the same `node <script>` as the headless calls, with `--state` when an installation is set, and never a flag that skips a confirmation. Leave the `praxis serve` terminal open.
-- **The chip never calls `praxis` itself**, except to recheck: while a failing condition holds, a workflow template or graph workflow is open and Quay's window is shown, Quay checks the host again every 60 seconds, each check starting 60 seconds after the last one ended. The recheck stops, and stops its call, when that view leaves the screen.
+- **The chip never calls `praxis` itself**, except to recheck: while a failing condition holds, a workflow template, graph workflow or trigger is open and Quay's window is shown, Quay checks the host again every 60 seconds, each check starting 60 seconds after the last one ended. The recheck stops, and stops its call, when that view leaves the screen.
 - **A simulated host** gets an amber chip and a standing banner across the builder: "This is a simulated Praxis host: its approvals aren't made by a person. Don't treat its runs as reviewed."
 
 #### Signing in lasts about 5 minutes on a real host
@@ -366,6 +376,78 @@ A submission is stored on the host as a candidate revision. Nothing runs until t
 - **Its outcomes are a template run's.** A started run is selected and followed. A run that blocks new ones is named with **Open in browser**, and with **Show run** when `praxis` names its work order. After a timeout or an outcome `praxis` didn't report, the notice says **Run** again finishes the pending creation and can't create a second run. See [Run](#run) for the rest.
 - **A template of the same name runs instead.** `praxis run` tries a workflow template of the name first, so when the host has a template and a graph workflow of one name, it starts the template, and Quay can't read what `praxis` prints.
 
+### Graph trigger host states
+
+Each [graph trigger](#graph-triggers) has a state on the host, from `praxis triggers list`, read page by page, then `praxis triggers show <name>` for each local graph trigger the host has, at most two at a time. A graph trigger shows one of these states, listed worst first:
+
+| State | When |
+| --- | --- |
+| **Name the host refuses** | The trigger's name breaks the host's name rule. Quay never asks the host about it. |
+| **Not submitted** | The host has no trigger of that name, or one with no admitted revision and no pending candidate, such as when every candidate was rejected or withdrawn. |
+| **Retired** | It was retired on the host. It fires again only once the owner admits a new revision. |
+| **Candidate waiting for admission (revision N)** | The host holds a pending candidate, and N is the newest. The owner admits or rejects it in the browser. |
+| **Differs from host** | The saved trigger and target files aren't the admitted revision's. |
+| **Admitted, disabled** | The admitted revision doesn't fire until the owner enables it in the browser. |
+| **Admitted, blocked** | The admitted revision is enabled, but the host says it can't fire, and gives each reason. |
+| **Admitted, enabled** | The host has the saved files admitted and enabled, and nothing blocks them. |
+
+A pending candidate outranks the admitted revision's state, and a rejected or withdrawn one falls back to it. A read that failed shows **Couldn't check**, with what it said, and a graph trigger not read yet shows **Not checked yet**.
+
+- **Blocked, and why.** The host names each block by a code, and Quay puts the ones it knows in words with the code: the trigger's `notBefore` time hasn't come or its `expiresAt` time has passed, its contract's deadline has passed, its target graph workflow is retired or has no admitted revision, its event source isn't admitted, is disabled or is revoked, or the source doesn't declare its event type. A code Quay doesn't know shows as the host gave it.
+- **Differs, by digest.** The host's digest of a revision covers the revision number, so Quay asks its backend for the saved files' digest at the admitted revision after each read and compares that. When either digest is missing, it can't tell **Differs from host**, so the disabled, blocked and enabled states also give "Revision N, submitted T".
+- **When Quay reads.** The host's triggers are read once the builder is shown with a project that lists a graph trigger, so a project without one never reads them. **Check host** in the Triggers group header, offered once the list has a graph trigger, rereads everything, and **Check again** on the form rereads one graph trigger. A submission and each write below read that graph trigger again.
+- **A pending candidate is polled.** While a graph trigger's form is on screen, shows a pending candidate and Quay's window is shown, Quay reads it again 15 seconds after each read ends, so the owner's decision in the browser shows up.
+- **Readings live in memory** for as long as Quay runs, never on disk. After 10 minutes a reading is shown muted and marked "may be out of date", never dropped. While the host can't be used, every reading is dropped and the state is unknown.
+- **In the list**, each graph trigger's row in **Triggers** shows its host state as a badge, whose tooltip gives the state and the host's reason, and screen readers hear the state as text. A trigger without a target, or whose state is unknown, shows none.
+- **On the form**, the status line under the header shows the state in words, the host's reason, when it was checked, and **Check again**. For a pending candidate it adds **Open in browser** for the candidate's admission page. While the host can't be used, it reads "Host state unknown:" and the chip's label.
+- **The host's `enabled` isn't the file's.** When the host's enabled state differs from the saved file's `enabled`, a note on the status line says so: disabling a trigger on the host doesn't change its file, and the file reaches the host only as a revision the owner admits.
+- **The Revisions panel** under the fields lists what the latest `triggers show` gave, newest first: each revision's number, status (**Candidate, waiting for admission**, **Admitted**, **Rejected** or **Withdrawn**), the revision it was based on, when it was submitted, and which one is current. It shows 20 rows, and **Show N more** adds up to 20 at a time. When the host holds older revisions than it listed, the panel says so.
+
+### Check a graph trigger and Submit it
+
+**Check on host** and **Submit** sit under the trigger form's status line.
+
+- **Check on host** runs `praxis triggers check <name> --workflow <target> --trigger <file>`, which writes nothing, on the saved files, and lists the host's findings by code and place, such as `EVENT_SOURCE_NOT_ADMITTED at /source`. Quay refuses to run it, and says why, when the trigger has no saved file or no saved target, its name or its target's name breaks the host's rule, or its saved files break a rule the form checks.
+- **Submit** sends only the saved trigger file, as it is on disk, and names the graph workflow its saved target file names. It is disabled, with each reason shown, while:
+  - the trigger has no **Starts** target;
+  - the trigger or its target has unsaved edits, or was never saved;
+  - the name breaks the host's rule;
+  - the trigger's local checks, the SDK's and the graph trigger rules, are running or fail;
+  - the host isn't signed in or simulated;
+  - the target graph workflow isn't on the host, which says to submit it from its form first.
+- **Warnings don't disable it.** Submit warns when the trigger file or its target file has changes that aren't committed, which are submitted as saved, or when Quay can't read git status. It warns too when the target graph workflow has no admitted revision on the host, because the host refuses the trigger's fires until the owner admits one.
+- **When Quay reads the target.** With a saved target and a host it can use, the form reads the target graph workflow on the host with `praxis graphs show`, and again whenever the builder saves, renames or deletes a record.
+- **Submit checks first.** It reads the target on the host again, then runs the check, and opens the confirm only when the target is there and the check passes. A failed read of the target stops it, with what the read said. Once the check passes, it reads the trigger's host state and git status again, and sends the host's current revision as the one the submission is based on.
+- **The confirm** says the trigger becomes a candidate that doesn't fire until the owner admits it in the browser, and whether it starts enabled once admitted, from the saved file's `enabled`. It repeats the warning when the target has no admitted revision, and lists the trigger file and the target file, each with an **Uncommitted** badge when it has changes that aren't committed. Once the host stores it, the confirm names the new revision and offers **Open in browser** for its admission page, and the trigger's host state is read again.
+- **Faults found at submission** close the confirm and show as the check's findings.
+- **When Quay can't tell** whether the host stored the candidate, the confirm says so and offers **Submit again**, which resends the same submission, so it can't store a second candidate.
+
+### Withdraw, Disable and Retire
+
+Any session may stop a graph trigger's new work, so these controls sit under **Submit** on the trigger form, each shown only when the host state allows it and each behind a confirm. They are the only writes Quay makes to a graph trigger besides a submission.
+
+- **Withdraw** is on the newest pending candidate, with `praxis triggers withdraw <name> <revision>`. The confirm names the revision and says the owner can no longer admit it. The host keeps it in the history as withdrawn, and the trigger falls back to its admitted revision's state, or to **Not submitted** when it has none.
+- **Disable** is on a trigger the host holds an active, enabled revision of, with `praxis triggers disable <name>`. The confirm says new fires stop from when the host takes the request, that runs the trigger started already go on, that only the owner can enable it again in the browser, and that disabling it on the host doesn't change its saved file.
+- **Retire** is on a trigger the host holds an active revision of, enabled or not, with `praxis triggers retire <name>`. Its confirm is stronger: its title and a warning say retiring can't be undone, that no one can bring the revision back, in Quay or in the browser, and that a retired trigger fires nothing until the owner admits a later revision. **Retire** is withheld until you tick that you understand.
+- **Disable and Retire act on the trigger as it stands on the host.** `praxis` sends no revision with either, so the host has none to check the request against. Retire's confirm says the host retires the trigger as it stands when the request lands, which may not be the revision Quay shows.
+- **The confirm closes** once the host has answered and the trigger has been read again, so the form shows the host's state afterwards.
+- **A refusal stays in the confirm** in the host's words, and its button is then withheld. A candidate that is no longer pending, because the owner admitted or rejected it or it was withdrawn already, is refused that way.
+- **When Quay can't tell** whether the host did it, the confirm says so, and pressing the button again resends the same request. Pressing it while one is in flight joins it. Closing the builder doesn't stop a write.
+
+#### Enable in browser
+
+Enabling a graph trigger is the owner's decision, so a trigger the host has disabled gets **Enable in browser**, not an enable button. It asks `praxis triggers show <name> --revision <N>` for the current revision's review page, where the owner enables the trigger, and opens it as **Open in browser** does, only on this machine's Praxis host. When `praxis` gives no page, or one elsewhere, Quay opens nothing and a notice says why.
+
+### Fires
+
+The **Fires** panel at the end of a graph trigger's form lists what the host did with each occurrence of the trigger, from `praxis triggers fires <name> --limit <N> --json`, newest first. It is closed until you press **Show fires**, and **Read again** rereads it at once.
+
+- **Each fire** shows when the host received it, in local time, its disposition (`ADMITTED`, `FILTERED`, `REFUSED` or `SKIPPED`, as the host gives it) and the host's reason code, such as `RUN_HELD`. A fire that created a graph run has **Show run**, which opens the target graph workflow on its [Runs](#graph-runs) view with that run's detail shown.
+- **The newest 20 fires** show first. **Show more**, offered when the host holds older fires, lists the newest 100, the most one `praxis triggers fires` page gives. When the host holds older fires still, the panel says they aren't shown.
+- **The panel reads** as soon as it opens, then 15 seconds after each read while it is open, the builder is shown and Quay's window is shown, or 60 seconds after a read fails. Closing the panel, opening another definition, closing the builder or hiding the window stops it, along with the `praxis` call in flight, and only the newest read's answer is kept.
+- **While the host can't be used**, the last list stays, dimmed, with the time it was read and why. Any other failed read keeps the last list too, with what the read said.
+- **A name the host refuses** is never sent, so the panel says so and reads nothing.
+
 ### Decisions happen in the browser
 
-Admitting or rejecting a graph workflow candidate, retiring a graph workflow, approving a run, pausing it, cancelling it and resolving a hold are decided only in the host's browser page. Quay has no control for any of them, not even a disabled one, and never runs `praxis hold` or `praxis open`. **Open in browser** and **Resolve in browser** open the admission page or the run's page in your browser, and only when it is on this machine's Praxis host: an `https` address at the host's browser origin, `https://praxis-<label>.localhost:<port>/`, or at `https://127.0.0.1:<port>/`. Quay refuses any other address and says what `praxis` gave.
+Admitting or rejecting a graph workflow or graph trigger candidate, retiring a graph workflow, enabling a graph trigger, approving a run, pausing it, cancelling it and resolving a hold are decided only in the host's browser page. Quay has no control for any of them, not even a disabled one, and never runs `praxis hold` or `praxis open`. Quay never fires a trigger by hand or sends a test event either: a trigger fires only on the host, and **Fires** shows what the host did with each occurrence. **Open in browser**, **Enable in browser** and **Resolve in browser** open the admission page, the review page or the run's page in your browser, and only when it is on this machine's Praxis host: an `https` address at the host's browser origin, `https://praxis-<label>.localhost:<port>/`, or at `https://127.0.0.1:<port>/`. Quay refuses any other address and says what `praxis` gave.
