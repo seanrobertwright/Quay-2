@@ -5,15 +5,18 @@
 // its local checks against the saved records it names: each exists and is valid, the contract's
 // bindings file lists the graph, and the binding binds that graph. Each issue shows on the field
 // that names the record at fault. A Triggers section lists the triggers that start the graph
-// workflow, read from their saved target files (#479). Nothing here calls a Praxis host.
-import { useEffect, type FC, type ReactNode } from "react";
+// workflow, read from their saved target files (#479). Nothing on the form calls a Praxis host; a
+// Workflow | Runs switch turns the work area to the graph workflow's runs on the host (#464).
+import { useEffect, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
+import { GraphRunsView } from "./GraphRunsView.tsx";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
 import { useValidation } from "./useValidation.ts";
+import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
 interface GraphWorkflowFormProps {
@@ -29,6 +32,11 @@ interface GraphWorkflowFormProps {
   onEdit: (edit: GraphWorkflowEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
+  /**
+   * Whether the builder is shown, for the Runs view, which polls only while it is: the builder is
+   * only hidden when it closes. Without it there is no Workflow | Runs switch.
+   */
+  runsShown?: boolean;
 }
 
 /**
@@ -59,7 +67,9 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onEdit,
   onOpen,
   onValidated,
+  runsShown,
 }) => {
+  const [shownView, setShownView] = useState<WorkAreaView>("record");
   const shape = useValidation("graph-workflows", draft.content);
   const check = useGraphWorkflowCheck(projectPath, draft.content, refresh);
   const triggers = useGraphWorkflowTriggers(projectPath, draft.ref.id, refresh);
@@ -129,8 +139,24 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   );
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
 
+  const viewSwitch = runsShown !== undefined && (
+    <WorkAreaSwitch recordLabel="Workflow" shown={shownView} onShow={setShownView} />
+  );
+
+  if (runsShown !== undefined && shownView === "runs") {
+    return (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {viewSwitch}
+        <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
+          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
+      {viewSwitch}
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Graph workflow ${draft.ref.id}`}>
         <header className="space-y-2">
           <h2 className="text-sm font-semibold text-[#c9d1d9]">

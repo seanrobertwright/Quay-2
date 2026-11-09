@@ -27,6 +27,35 @@ export const runsRecord = (template: string, entries: unknown[], extra: Record<s
 export const BROWSER_ORIGIN = "https://praxis-abcdefghij.localhost:7443";
 
 /**
+ * Graph run `n` as an `aiws-graph-runs/1` entry, shaped like the one `praxis runs <name> --format
+ * aiws-graph-runs/1 --json` printed against the SDK's simulated host (graph_outputs.fixture.json),
+ * with `extra` fields replacing its defaults.
+ */
+export function graphRunEntry(n: number, extra: Record<string, unknown> = {}) {
+  return {
+    workOrderId: `wo-${n}`,
+    runId: `run-${n}`,
+    workflowRevision: 1,
+    createdAt: "2026-11-08T09:30:00.000Z",
+    updatedAt: "2026-11-08T09:31:00.000Z",
+    status: "RUNNING",
+    outcome: null,
+    control: "RUNNING",
+    held: false,
+    awaitingApproval: false,
+    trigger: null,
+    runPageAddress: `${BROWSER_ORIGIN}/#work-order=wo-${n}`,
+    ...extra,
+  };
+}
+
+/** A `record` outcome listing `entries` for graph workflow `workflow`, with `extra` record fields. */
+export const graphRunsRecord = (workflow: string, entries: unknown[], extra: Record<string, unknown> = {}): CallOutcome => ({
+  kind: "record",
+  record: { format: "aiws-graph-runs/1", workflow, runs: entries, ...extra },
+});
+
+/**
  * Run `n`'s `coding-operator-view/1`, as `praxis status wo-<n> --json` prints it with its
  * `runPageAddress`, holding only the fields the run detail draws, with `extra` replacing them.
  */

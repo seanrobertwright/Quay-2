@@ -2418,6 +2418,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onEdit={editOpenGraphWorkflow}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
+                    // The builder is only hidden when it closes, so the Runs view is told when.
+                    runsShown={isOpen}
                   />
                 </>
               ) : openDraft ? (
