@@ -2,12 +2,14 @@
 //! paths of the saved files its record names, the graph, the graph binding and the contract, and
 //! of each grant its contract's bindings file lists. Only saved files go, so an unsaved draft
 //! never does, and `praxis` reads each file itself. The same files give the bundle digest the
-//! host reports on each revision (#461), so the builder can tell when they differ from it.
+//! host reports on each revision (#461), so the builder can tell when they differ from it, and
+//! the uncommitted changes a graph run's confirm warns about (#466).
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
+use crate::slices::praxis::changes::path_changes;
 use crate::slices::praxis::graph_workflow::validate_graph_workflow;
 use crate::slices::praxis::models::PraxisKind;
 use crate::slices::praxis::store::{definition_path, display_path, read_capped, read_record, BINDINGS_DIR, PRAXIS_DIR};
@@ -19,6 +21,8 @@ pub const MAX_BUNDLE_GRANTS: usize = 64;
 
 /// The saved files of a graph workflow's bundle, in the order `praxis` is given them.
 struct BundleFiles {
+    /// The id of the contract, whose bindings file lists the grants.
+    contract_id: String,
     graph: PathBuf,
     binding: PathBuf,
     contract: PathBuf,
@@ -53,6 +57,7 @@ fn bundle_files(repo: &Path, name: &str) -> Result<BundleFiles, String> {
         ));
     }
     Ok(BundleFiles {
+        contract_id: contract.clone(),
         graph: definition_path(repo, PraxisKind::Graphs, &id("graphId"))?,
         binding: definition_path(repo, PraxisKind::GraphBindings, &id("graphBindingId"))?,
         contract: definition_path(repo, PraxisKind::Contracts, &contract)?,
@@ -105,4 +110,44 @@ pub fn bundle_digest(repo: &Path, name: &str) -> Option<String> {
         "grants": grants,
     });
     aiws_sdk::digest(&record).ok()
+}
+
+/// One of a graph workflow's files with changes since the last commit, as [`bundle_changes`] lists
+/// them for a graph run's confirm (#466): `path` relative to the project, with `/` between its parts.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleFileChange {
+    pub path: String,
+    pub status: crate::slices::praxis::models::ChangeStatus,
+}
+
+/// What [`bundle_changes`] found, as the `praxis_graph_workflow_changes` command gives it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleChanges {
+    pub files: Vec<BundleFileChange>,
+}
+
+/// The files of the graph workflow `name` in `repo` that have changed since the last commit, in
+/// path order: its own record, the bundle's graph, graph binding, contract and grants, and the
+/// contract's bindings file, which picks the grants. Empty when `repo` isn't a git repository.
+/// Refused as [`bundle_files`] refuses, since Quay then can't tell which files the bundle has.
+pub fn bundle_changes(repo: &Path, name: &str) -> Result<Vec<BundleFileChange>, String> {
+    let files = bundle_files(repo, name)?;
+    // Each file as git names it, from its folder and its name on disk.
+    let relative = |kind: PraxisKind, path: &Path| -> Result<String, String> {
+        let file = path.file_name().and_then(|f| f.to_str()).ok_or_else(|| format!("{} has no file name Quay can read.", path.display()))?;
+        Ok(format!("{PRAXIS_DIR}/{}/{file}", kind.folder()))
+    };
+    let mut paths = vec![
+        format!("{PRAXIS_DIR}/{}/{name}.json", PraxisKind::GraphWorkflows.folder()),
+        relative(PraxisKind::Graphs, &files.graph)?,
+        relative(PraxisKind::GraphBindings, &files.binding)?,
+        relative(PraxisKind::Contracts, &files.contract)?,
+        format!("{PRAXIS_DIR}/{BINDINGS_DIR}/{}.json", files.contract_id),
+    ];
+    for grant in &files.grants {
+        paths.push(relative(PraxisKind::Grants, grant)?);
+    }
+    Ok(path_changes(repo, &paths)?.into_iter().map(|(path, status)| BundleFileChange { path, status }).collect())
 }

@@ -43,7 +43,7 @@ use slices::orchestrator::{
 };
 use slices::praxis::{
     praxis_binding_suggestions, praxis_changes, praxis_check_binding, praxis_check_context, praxis_check_grant, praxis_check_graph_workflow, praxis_check_trigger,
-    praxis_contract_triggers, praxis_delete, praxis_diff, praxis_graph_pin, praxis_graph_workflow_triggers, praxis_list, praxis_path, praxis_read, praxis_rename,
+    praxis_contract_triggers, praxis_delete, praxis_diff, praxis_graph_pin, praxis_graph_workflow_changes, praxis_graph_workflow_triggers, praxis_list, praxis_path, praxis_read, praxis_rename,
     praxis_reveal, praxis_save, praxis_validate,
 };
 use slices::praxis::host::{
@@ -320,6 +320,7 @@ pub fn run() {
             praxis_delete,
             praxis_diff,
             praxis_graph_pin,
+            praxis_graph_workflow_changes,
             praxis_graph_workflow_triggers,
             praxis_list,
             praxis_path,
