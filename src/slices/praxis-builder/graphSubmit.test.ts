@@ -188,7 +188,12 @@ async function renderForm(opts: FormOptions = {}): Promise<{ root: HTMLElement; 
       graphs: ["release-review"],
       graphBindings: [{ id: "release-review.binding", graphId: "release-review" }],
       refresh: 0,
-      host: { view: model.workflow(NAME), condition, onCheckAgain: () => void model.checkAgain(NAME) },
+      host: {
+        view: model.workflow(NAME),
+        condition,
+        onCheckAgain: () => void model.checkAgain(NAME),
+        onWithdraw: (revision: number) => model.withdraw(NAME, revision),
+      },
       submit: {
         unsaved: (ref: DefinitionRef) => unsaved.has(refKey(ref)),
         reread: async () => {
