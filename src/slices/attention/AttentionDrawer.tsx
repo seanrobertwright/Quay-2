@@ -233,7 +233,7 @@ const AttentionRow: FC<AttentionRowProps> = ({
       >
         <span className="block text-xs font-semibold text-white truncate">{name}</span>
         <span id={detailId} className="block mt-0.5 text-[11px] text-[#8b949e]">
-          <span className="block truncate">
+          <span className="block break-words">
             <span className="font-mono text-[#58a6ff]">{project}</span>
             <span aria-hidden="true"> • </span>
             <span className={item.kind === "permission" ? "text-[#e3b341]" : "text-[#3fb950]"}>
