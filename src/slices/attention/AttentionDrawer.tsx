@@ -1,12 +1,12 @@
-import { useEffect, useId, useMemo, useState, FC } from "react";
+import { useEffect, useId, useMemo, useState, type FC } from "react";
 import { BellRing, X } from "lucide-react";
-import { useOverlay } from "../overlay/useOverlay";
-import { TerminalInfo } from "../terminal/types";
-import { Project } from "../workspace/types";
-import { GitWorktree } from "../git/types";
-import { worktreeRowName } from "../rail/worktreeMenu";
-import { isSamePath } from "../../utils/paths";
-import { attentionItemKey, waitedLabel, type AttentionItem } from "./attentionQueue";
+import { useOverlay } from "../overlay/useOverlay.ts";
+import type { TerminalInfo } from "../terminal/types.ts";
+import type { Project } from "../workspace/types.ts";
+import type { GitWorktree } from "../git/types.ts";
+import { worktreeRowName } from "../rail/worktreeMenu.ts";
+import { isSamePath } from "../../utils/paths.ts";
+import { attentionItemKey, waitedLabel, type AttentionItem } from "./attentionQueue.ts";
 
 /** How often the open drawer refreshes each row's wait time. */
 const WAIT_TICK_MS = 1000;

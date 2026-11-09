@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  Envelope,
+  type Envelope,
   isSubagentTurn,
-  PermissionRequestPayload,
-  PermissionResolvedPayload,
-} from "../bridge/useBridgeEvents";
-import { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types";
+  type PermissionRequestPayload,
+  type PermissionResolvedPayload,
+} from "../bridge/useBridgeEvents.ts";
+import type { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types.ts";
 import {
   applyAttentionEvent,
   attentionItems,
@@ -19,9 +19,9 @@ import {
   type PermissionItem,
   type UndeliveredAnswer,
   undeliveredAnswer,
-} from "./attentionQueue";
-import { onUserInput } from "../terminal/userInput";
-import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
+} from "./attentionQueue.ts";
+import { onUserInput } from "../terminal/userInput.ts";
+import { onTerminalRelaunched } from "../terminal/terminalRelaunched.ts";
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { playAttentionChime } from "../metrics/audioChime";
+import { playAttentionChime } from "../metrics/audioChime.ts";
 
 export interface Envelope {
   v: number;

@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useId } from "react";
+import { type FC, useState, useEffect, useId } from "react";
 import {
   ShieldAlert,
   Check,
@@ -11,9 +11,9 @@ import {
   CheckCheck,
   Clock,
 } from "lucide-react";
-import { TerminalInfo } from "../terminal/types";
-import type { PermissionItem } from "../attention/attentionQueue";
-import type { AnswerPermission } from "../attention/useAttentionQueue";
+import type { TerminalInfo } from "../terminal/types.ts";
+import type { PermissionItem } from "../attention/attentionQueue.ts";
+import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
 
 interface PermissionModalProps {
   /** The requests to show, from the attention queue; the first is shown when the modal opens. */
