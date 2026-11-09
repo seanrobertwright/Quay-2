@@ -286,3 +286,87 @@ test("unmounting the form stops the followed run, kills its call and leaves no t
   mounted = null;
   await stopped(backend, callId);
 });
+
+/** A run awaiting its approval, as the recorded `status: awaiting approval` case reads. */
+const awaiting = (extra: Record<string, unknown> = {}) =>
+  graphOperatorView(1, { status: "READY", pending: [{ key: "RUN_APPROVAL", kind: "RUN_APPROVAL" }], ...extra });
+const banner = (root: HTMLElement) => detail(root)?.querySelector('[aria-label="Waiting for a decision"]') as HTMLElement | null;
+
+test("a run awaiting approval gets the Awaiting approval chip and the waiting banner, whose Open in browser opens the run page", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { status: "AWAITING_APPROVAL", awaitingApproval: true, runPageAddress: undefined })]);
+  await answer(backend.statuses()[0], statusRecord(awaiting()));
+  assert.match(text(header(root)), /READY/);
+  assert.match(text(header(root)), /Awaiting approval/);
+  assert.match(text(banner(root)), /This run waits for the run's approval, decided in the browser\./);
+  await click(button(header(root), /^Open in browser for run-1$/));
+  await flush();
+  await click(button(banner(root) as HTMLElement, /^Open in browser for run-1$/));
+  await flush();
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`, `${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  assert.equal(backend.statuses().length, 1, "the address came from the followed read");
+});
+
+test("the banner names each decision the run waits for, oldest first", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(
+      graphOperatorView(1, {
+        control: { status: "PAUSED", reason: null },
+        pending: [
+          { key: "NODE_APPROVAL:deploy", kind: "NODE_APPROVAL", nodeId: "deploy" },
+          { key: "NODE_ACCEPTANCE:review", kind: "NODE_ACCEPTANCE", nodeId: "review" },
+          { key: "RESUME_CONTROL", kind: "RESUME_CONTROL" },
+          { key: "SOMETHING_NEW", kind: "SOMETHING_NEW" },
+        ],
+      }),
+    ),
+  );
+  assert.match(text(banner(root)), /waits for approval of node deploy, acceptance of node review, resuming: the run is paused, decided in the browser/);
+  assert.doesNotMatch(text(header(root)), /Awaiting approval/, "only the run's own approval is Awaiting approval");
+});
+
+test("Open in browser opens a page on 127.0.0.1 too, and refuses any other address, saying so", async () => {
+  for (const [address, opens] of [
+    ["https://127.0.0.1:7443/#work-order=wo-1", true],
+    ["https://praxis-a2b3c4d5e7.localhost:51234/#work-order=wo-1", true],
+    ["https://example.com/#work-order=wo-1", false],
+    ["http://praxis-abcdefghij.localhost:7443/#work-order=wo-1", false],
+    ["https://localhost:7443/#work-order=wo-1", false],
+  ] as const) {
+    const backend = fakeBackend();
+    const root = await showRun(backend);
+    await answer(backend.statuses()[0], statusRecord(awaiting({ runPageAddress: address })));
+    await click(button(banner(root) as HTMLElement, /^Open in browser for run-1$/));
+    await flush();
+    assert.deepEqual(backend.opened(), opens ? [address] : [], address);
+    if (!opens) assert.match(text(detail(root)), /Quay opens only pages on this machine's Praxis host/, address);
+    unmount();
+  }
+});
+
+test("before status gives an address, Open in browser opens the one the run's row gave", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { runPageAddress: "https://127.0.0.1:7443/#work-order=wo-1" })]);
+  await click(button(header(root), /^Open in browser for run-1$/));
+  await flush();
+  assert.deepEqual(backend.opened(), ["https://127.0.0.1:7443/#work-order=wo-1"]);
+});
+
+test("a run that waits for nothing has no waiting banner", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], working(0));
+  assert.equal(banner(root), null);
+  assert.ok(button(header(root), /^Open in browser for run-1$/), "the header still opens the run's page");
+});
+
+test("a simulated host's run says its decisions aren't a person's", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting({ simulatedIdentity: true })));
+  assert.match(text(header(root)), /Simulated/);
+  assert.match(text(banner(root)), /This host is simulated: its decisions aren't made by a person\./);
+});
