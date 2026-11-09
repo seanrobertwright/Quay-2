@@ -128,6 +128,11 @@ export interface TriggerHost {
   /** Check again: rereads one graph trigger. */
   checkAgain(name: string): Promise<void>;
   /**
+   * Rereads one graph trigger after a write to it (#477): the read starts after any read of it in
+   * flight, so it sees what the write did.
+   */
+  reread(name: string): Promise<void>;
+  /**
    * The graph trigger whose form is on screen, or null when none is. While it shows a pending
    * candidate it is read again `CANDIDATE_POLL_MS` after each read ends; nothing else polls.
    */
@@ -438,6 +443,11 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
     checkAgain(name) {
       if (session.disposed || !local.has(name) || local.get(name)?.nameProblem) return Promise.resolve();
       return readShow(name);
+    },
+    reread(name) {
+      if (session.disposed || !local.has(name) || local.get(name)?.nameProblem) return Promise.resolve();
+      const joined = showsInFlight.get(name);
+      return joined ? joined.then(() => readShow(name)) : readShow(name);
     },
     watch(name) {
       if (name === watched) return;

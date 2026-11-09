@@ -50,6 +50,7 @@ import {
   type TriggerEdit,
 } from "./trigger.ts";
 import { TriggerHostStatusLine, TriggerRevisionsPanel, type GraphTriggerHost } from "./TriggerHostPanel.tsx";
+import { TriggerControlBar } from "./TriggerControls.tsx";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
 import { useValidation } from "./useValidation.ts";
 import { targetPath } from "./session.ts";
@@ -319,6 +320,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
     <div className="flex-1 min-h-0 overflow-y-auto">
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Trigger ${draft.ref.id}`}>
         {host && <TriggerHostStatusLine name={draft.ref.id} host={host} />}
+        {host?.control && <TriggerControlBar name={draft.ref.id} view={host.view} actions={host.control} />}
         <Summary noun="trigger" status={status} recordIssues={untaken} />
         {crossRecord}
         {targetProblem && (

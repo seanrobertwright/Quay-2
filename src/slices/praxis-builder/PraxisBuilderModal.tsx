@@ -124,6 +124,8 @@ import { useHostCatalog } from "./useHostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
 import { useTriggerHost } from "./useTriggerHost.ts";
+import { useTriggerControl } from "./useTriggerControl.ts";
+import { bindTriggerControl } from "./triggerControl.ts";
 import { triggerRowBadges } from "./triggerHostStatus.ts";
 import type { GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
@@ -459,6 +461,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     isOpen && listsGraphTrigger,
     isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
   );
+  // Withdraw, Disable and Retire on a graph trigger (#477).
+  const triggerControl = useTriggerControl(projectPath, shownTriggers);
   /** Trigger `name`'s host state for its form, read from the model on each render; null when it isn't a graph trigger. */
   const graphTriggerHost = (name: string): GraphTriggerHost | null =>
     shownTriggers?.has(name)
@@ -466,6 +470,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           view: shownTriggers.trigger(name),
           condition: host.condition,
           onCheckAgain: () => void shownTriggers.checkAgain(name),
+          control: triggerControl ? bindTriggerControl(triggerControl, name) : undefined,
         }
       : null;
   /**
