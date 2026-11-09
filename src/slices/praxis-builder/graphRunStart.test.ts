@@ -15,7 +15,7 @@ import { createDraft, type Draft } from "./drafts.ts";
 import { createGraphHost, type GraphHost } from "./graphHost.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
 import { graphRunEntry, graphRunsRecord } from "./fixtures/runs.ts";
-import { createRunStarts } from "./runStart.ts";
+import { createRunStarts, GRAPH_RUN } from "./runStart.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
 
@@ -526,7 +526,7 @@ test("a second Run of the same graph workflow while one is in flight joins it, a
     sentCalls.push(`${command} ${String(args.name)}`);
     return new Promise((resolve) => answers.push(resolve));
   };
-  const graphStarts = createRunStarts(fake, "praxis_host_graph_run", "graph workflow");
+  const graphStarts = createRunStarts(fake, GRAPH_RUN);
   const templateStarts = createRunStarts(fake);
   const first = graphStarts.start("C:/p", NAME);
   const second = graphStarts.start("C:/p", NAME);

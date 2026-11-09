@@ -189,11 +189,20 @@ export interface RunStarts {
   subscribe(listener: () => void): () => void;
 }
 
-/**
- * The creations of one kind of run: `command` is the runner's command that starts one, and `noun`
- * names what it starts from in the outcomes' words.
- */
-export function createRunStarts(call: Invoker = invoke, command = "praxis_host_run", noun: RunNoun = "template"): RunStarts {
+/** One kind of run: the runner's command that starts one, and what it starts from in the outcomes' words. */
+export interface RunKind {
+  command: string;
+  noun: RunNoun;
+}
+
+/** A workflow template's run. */
+export const TEMPLATE_RUN: RunKind = { command: "praxis_host_run", noun: "template" };
+
+/** A graph workflow's run. */
+export const GRAPH_RUN: RunKind = { command: "praxis_host_graph_run", noun: "graph workflow" };
+
+/** The creations of one kind of run. */
+export function createRunStarts(call: Invoker = invoke, { command, noun }: RunKind = TEMPLATE_RUN): RunStarts {
   const flights = new Map<string, Promise<RunStart>>();
   const listeners = new Set<() => void>();
   const keyOf = (projectPath: string, name: string) => `${normalizePath(projectPath)}\n${name}`;
@@ -228,4 +237,4 @@ export function createRunStarts(call: Invoker = invoke, command = "praxis_host_r
 export const runStarts = createRunStarts();
 
 /** The app's graph run creations. */
-export const graphRunStarts = createRunStarts(invoke, "praxis_host_graph_run", "graph workflow");
+export const graphRunStarts = createRunStarts(invoke, GRAPH_RUN);
