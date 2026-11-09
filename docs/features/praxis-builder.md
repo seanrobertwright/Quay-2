@@ -2,7 +2,7 @@
 
 **Praxis** is the workflow engine in the AI-WS-SDK. It runs finite-v1 graphs under contracts, grants and triggers, and it runs coding plans from workflow templates.
 
-The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reaches a Praxis host only through the `praxis` CLI, to show the host's state, the state on it of each workflow template and graph workflow, and their runs. It changes the host in three ways only: it submits a graph workflow as a candidate, withdraws a pending candidate, and starts a run. Admitting a candidate and every decision on a run happen in the host's browser page, never in Quay.
+The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reaches a Praxis host only through the `praxis` CLI, to show the host's state, the state on it of each workflow template and graph workflow, and their runs. It changes the host only by submitting a graph workflow as a candidate, withdrawing a pending candidate, and starting a run. Admitting a candidate and every decision on a run [happen in the host's browser page](#decisions-happen-in-the-browser), never in Quay.
 
 ---
 
@@ -186,7 +186,7 @@ A graph workflow (`.praxis/graph-workflows/<name>.json`) ties a contract, a grap
 
 ## The Praxis host
 
-The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, it never admits, rejects or retires a graph workflow, and it has no control for any decision on a run: [decisions happen in the browser](#decisions-happen-in-the-browser).
+The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, and admission, retirement and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
 
 ### Linking the `praxis` CLI
 
@@ -333,7 +333,7 @@ A pending candidate outranks the admitted revision's state, but the admitted rev
 
 ### Candidates and admission
 
-A submission is stored on the host as a candidate revision. Nothing runs until the owner admits it, and **the owner admits or rejects it only in the host's browser page.** Quay has no control to admit, reject or retire a graph workflow, not even a disabled one. **Open in browser**, on the status line or in the Submit confirm, opens the candidate's admission page when the host gives one. While the form is on screen, Quay polls the candidate, so the new state shows once the owner decides.
+A submission is stored on the host as a candidate revision. Nothing runs until the owner admits it, and **the owner admits or rejects it only in the host's browser page.** Quay has no control for it: [decisions happen in the browser](#decisions-happen-in-the-browser). **Open in browser**, on the status line or in the Submit confirm, opens the candidate's admission page when the host gives one. While the form is on screen, Quay polls the candidate, so the new state shows once the owner decides.
 
 **Withdraw**, on the status line or on a candidate's row in **Revisions**, withdraws a pending candidate with `praxis graphs withdraw <name> <revision>`. It asks first: the confirm names the revision and says the owner can no longer admit it. The host keeps it in the history as **Withdrawn**, and the graph workflow falls back to its admitted revision's state, or to **Not submitted** when it has none.
 
