@@ -90,3 +90,33 @@ export const attempt = (id: string, task: string, minute: number, delivery: stri
 /** A `record` outcome of `praxis status`, with the certificate hint praxis wrote on stderr. */
 export const statusRecord = (view: Record<string, unknown>, trustHint?: string): CallOutcome =>
   trustHint === undefined ? { kind: "record", record: view } : { kind: "record", record: view, trustHint };
+
+/**
+ * Graph run `n`'s `aiws-graph-operator-view/1`, as `praxis status wo-<n> --format
+ * aiws-graph-operator-view/1 --json` printed it against the SDK's simulated host
+ * (graph_outputs.fixture.json), with its nodes left out and `extra` replacing its fields. It is
+ * a running run that waits for nothing.
+ */
+export function graphOperatorView(n: number, extra: Record<string, unknown> = {}) {
+  return {
+    format: "aiws-graph-operator-view/1",
+    workOrderId: `wo-${n}`,
+    runId: `run-${n}`,
+    graphId: "release-review",
+    graphDigest: `sha256:${"a".repeat(64)}`,
+    bindingRevision: "1",
+    status: "RUNNING",
+    outcome: null,
+    control: { status: "RUNNING", reason: null },
+    revision: 0,
+    changeToken: "0".repeat(64),
+    scopes: {},
+    pending: [],
+    holds: [],
+    viewer: { mayDecide: [] },
+    nodes: [],
+    triggerRefusals: null,
+    runPageAddress: `${BROWSER_ORIGIN}/#work-order=wo-${n}`,
+    ...extra,
+  };
+}

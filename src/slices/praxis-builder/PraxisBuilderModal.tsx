@@ -435,7 +435,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
   /** Graph workflow `name`'s host state for its form, read from the model on each render. */
   const graphWorkflowHost = (name: string): GraphWorkflowHost | null =>
-    shownGraphs ? { view: shownGraphs.workflow(name), condition: host.condition, onCheckAgain: () => void shownGraphs.checkAgain(name) } : null;
+    shownGraphs
+      ? {
+          view: shownGraphs.workflow(name),
+          condition: host.condition,
+          onCheckAgain: () => void shownGraphs.checkAgain(name),
+          onWithdraw: (revision: number) => shownGraphs.withdraw(name, revision),
+        }
+      : null;
   /**
    * What graph workflow `name`'s Check on host and Submit need from the builder (#462): which
    * records have drafts with edits their saved files lack, and a reread of its host state.
@@ -2473,6 +2480,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onValidated={recordValidity}
                     // The builder is only hidden when it closes, so the Runs view is told when.
                     runsShown={isOpen}
+                    runInTerminal={onRunInTerminal}
                   />
                 </>
               ) : openDraft ? (

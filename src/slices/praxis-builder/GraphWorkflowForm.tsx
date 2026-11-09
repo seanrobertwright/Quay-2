@@ -7,10 +7,11 @@
 // that names the record at fault. A Triggers section lists the triggers that start the graph
 // workflow, read from their saved target files (#479). Given its state on the Praxis host (#461),
 // the form shows it in a status line and a Revisions panel, which read the builder's graph host
-// model. Given what Submit needs from the builder too, it draws Check on host and Submit under the
-// status line (#462), which run `praxis graphs check` and `submit` themselves. A Workflow | Runs
-// switch turns the work area to the graph workflow's runs on the host (#464).
-import { useEffect, useState, type FC, type ReactNode } from "react";
+// model, each with Withdraw on a pending candidate behind a confirm (#463). Given what Submit needs
+// from the builder too, it draws Check on host and Submit under the status line (#462), which run
+// `praxis graphs check` and `submit` themselves. A Workflow | Runs switch turns the work area to
+// the graph workflow's runs on the host (#464).
+import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
@@ -18,10 +19,12 @@ import { GraphHostStatusLine, RevisionsPanel, type GraphWorkflowHost } from "./G
 import { GraphRunsView } from "./GraphRunsView.tsx";
 import { GraphSubmitBar, type GraphWorkflowSubmit } from "./GraphSubmit.tsx";
 import { bundleRecords } from "./graphSubmit.ts";
+import type { RunInTerminal } from "./praxisHost.ts";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
 import { useValidation } from "./useValidation.ts";
+import { WithdrawConfirm } from "./WithdrawConfirm.tsx";
 import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
@@ -47,6 +50,8 @@ interface GraphWorkflowFormProps {
    * only hidden when it closes. Without it there is no Workflow | Runs switch.
    */
   runsShown?: boolean;
+  /** How a graph run's detail opens a visible terminal for `praxis trust`. */
+  runInTerminal?: RunInTerminal;
 }
 
 /**
@@ -80,8 +85,12 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onOpen,
   onValidated,
   runsShown,
+  runInTerminal,
 }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
+  // The revision whose Withdraw confirm is shown, or null.
+  const [withdrawing, setWithdrawing] = useState<number | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const shape = useValidation("graph-workflows", draft.content);
   const check = useGraphWorkflowCheck(projectPath, draft.content, refresh);
   const triggers = useGraphWorkflowTriggers(projectPath, draft.ref.id, refresh);
@@ -160,7 +169,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} />
+          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} runInTerminal={runInTerminal} />
         </div>
       </div>
     );
@@ -171,7 +180,8 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       {viewSwitch}
       <form className="max-w-3xl mx-auto px-6 py-5 space-y-6" onSubmit={(e) => e.preventDefault()} aria-label={`Graph workflow ${draft.ref.id}`}>
         <header className="space-y-2">
-          <h2 className="text-sm font-semibold text-[#c9d1d9]">
+          {/* Focusable only from code: the Withdraw confirm returns focus here when its opener is gone. */}
+          <h2 ref={headingRef} tabIndex={-1} className="text-sm font-semibold text-[#c9d1d9] focus:outline-none">
             Graph workflow
             <span className="ml-2 font-mono font-normal text-[#8b949e]">{draft.ref.id}</span>
           </h2>
@@ -182,7 +192,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
               contract&apos;s grants. Its name is its file name; rename it from the list.
             </span>
           </p>
-          {host && <GraphHostStatusLine name={draft.ref.id} host={host} />}
+          {host && <GraphHostStatusLine name={draft.ref.id} host={host} onWithdraw={setWithdrawing} />}
           {host && submit && (
             <GraphSubmitBar
               projectPath={projectPath}
@@ -204,8 +214,17 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
           refuses="The graph workflow fails its local checks"
         />
         {fields}
-        {host && <RevisionsPanel view={host.view} />}
+        {host && <RevisionsPanel view={host.view} onWithdraw={setWithdrawing} />}
       </form>
+      {host && withdrawing !== null && (
+        <WithdrawConfirm
+          name={draft.ref.id}
+          revision={withdrawing}
+          onWithdraw={host.onWithdraw}
+          onClose={() => setWithdrawing(null)}
+          returnFocus={headingRef}
+        />
+      )}
     </div>
   );
 };
