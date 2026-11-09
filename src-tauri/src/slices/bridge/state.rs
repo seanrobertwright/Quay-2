@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -126,16 +127,31 @@ impl BridgeState {
         }
     }
 
+    /// Adds a pending permission request. An error, and the list unchanged, when a request
+    /// with the same id is already pending.
     pub fn register_pending_permission(
         &self,
         request_id: String,
         payload: PermissionRequestPayload,
         tx: oneshot::Sender<PermissionResponsePayload>,
-    ) {
+    ) -> Result<(), String> {
         let mut pending = self.pending_permissions.lock();
-        pending.insert(request_id, PendingPermissionItem { payload, tx });
+        match pending.entry(request_id) {
+            Entry::Occupied(entry) => Err(format!(
+                "Permission request {} is already pending",
+                entry.key()
+            )),
+            Entry::Vacant(entry) => {
+                entry.insert(PendingPermissionItem { payload, tx });
+                Ok(())
+            }
+        }
     }
 
+    /// Sends the user's answer to pending request `request_id` and takes it off the pending
+    /// list. An error, whose message the frontend shows the user, when no agent is waiting
+    /// for that answer any more: the request is not pending, or its agent stopped waiting.
+    /// The tool is remembered for the session only when an allow reached the agent.
     pub fn resolve_permission(
         &self,
         request_id: &str,
@@ -143,25 +159,30 @@ impl BridgeState {
         reason: Option<String>,
         remember_for_session: bool,
     ) -> Result<(), String> {
+        let not_delivered = || {
+            format!(
+                "The agent is no longer waiting for permission request {}, so the answer was not delivered",
+                request_id
+            )
+        };
         let mut pending = self.pending_permissions.lock();
-        if let Some(item) = pending.remove(request_id) {
-            if remember_for_session && decision == "allow" {
-                if let Some(tag) = &item.payload.tag {
-                    let mut allowed = self.session_allowed_tools.lock();
-                    allowed
-                        .entry(tag.clone())
-                        .or_default()
-                        .insert(item.payload.tool.clone());
-                }
-            }
-            let _ = item.tx.send(PermissionResponsePayload {
+        let item = pending.remove(request_id).ok_or_else(not_delivered)?;
+        item.tx
+            .send(PermissionResponsePayload {
                 decision: decision.to_string(),
                 reason,
-            });
-            Ok(())
-        } else {
-            Err(format!("Pending permission request {} not found", request_id))
+            })
+            .map_err(|_| not_delivered())?;
+        if remember_for_session && decision == "allow" {
+            if let Some(tag) = &item.payload.tag {
+                let mut allowed = self.session_allowed_tools.lock();
+                allowed
+                    .entry(tag.clone())
+                    .or_default()
+                    .insert(item.payload.tool.clone());
+            }
         }
+        Ok(())
     }
 
     pub fn remove_pending_permission(&self, request_id: &str) -> Option<PendingPermissionItem> {
@@ -218,7 +239,7 @@ mod tests {
             reason: Some("Clean target".to_string()),
         };
 
-        state.register_pending_permission("req-123".to_string(), payload, tx);
+        state.register_pending_permission("req-123".to_string(), payload, tx).unwrap();
 
         let pending = state.list_pending_permissions();
         assert_eq!(pending.len(), 1);
@@ -234,5 +255,53 @@ mod tests {
         // Tool should now be remembered for session
         assert!(state.is_tool_allowed_for_session("term-1", "Bash"));
         assert!(!state.is_tool_allowed_for_session("term-1", "Edit"));
+    }
+
+    fn request(request_id: &str) -> PermissionRequestPayload {
+        PermissionRequestPayload {
+            request_id: request_id.to_string(),
+            session_id: "sess-1".to_string(),
+            tag: Some("term-1".to_string()),
+            tool: "Bash".to_string(),
+            input: serde_json::json!({ "command": "ls" }),
+            reason: None,
+        }
+    }
+
+    #[test]
+    fn answering_a_request_nobody_waits_for_any_more_is_an_error_and_clears_it() {
+        let state = BridgeState::new();
+        let (tx, rx) = oneshot::channel();
+        state.register_pending_permission("req-gone".to_string(), request("req-gone"), tx).unwrap();
+        drop(rx);
+
+        let res = state.resolve_permission("req-gone", "allow", None, true);
+
+        assert!(res.is_err(), "{res:?}");
+        assert!(state.list_pending_permissions().is_empty());
+        assert!(!state.is_tool_allowed_for_session("term-1", "Bash"));
+    }
+
+    #[test]
+    fn answering_an_unknown_request_is_an_error() {
+        let state = BridgeState::new();
+
+        assert!(state.resolve_permission("req-none", "deny", None, false).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_second_request_with_a_pending_requests_id_is_refused_and_leaves_the_first_waiting() {
+        let state = BridgeState::new();
+        let (tx_first, rx_first) = oneshot::channel();
+        let (tx_second, _rx_second) = oneshot::channel();
+        state
+            .register_pending_permission("req-1".to_string(), request("req-1"), tx_first)
+            .unwrap();
+
+        let second = state.register_pending_permission("req-1".to_string(), request("req-1"), tx_second);
+
+        assert!(second.is_err());
+        state.resolve_permission("req-1", "allow", None, false).unwrap();
+        assert_eq!(rx_first.await.unwrap().decision, "allow");
     }
 }

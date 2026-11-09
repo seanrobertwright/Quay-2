@@ -14,6 +14,7 @@ use super::models::{
     CommandsResponse, Envelope, EventsBatchRequest, PermissionRequestPayload,
     PermissionResponsePayload,
 };
+use super::pending::{PendingAnswer, PermissionResolved, ResolvedSink, PERMISSION_TIMEOUT};
 use super::state::BridgeState;
 use crate::slices::machina::MachinaManager;
 use crate::slices::orchestrator::router::strip_peer_prefix;
@@ -323,36 +324,20 @@ pub async fn handle_permission(
 
     // If Normal mode and not already allowed for session, wait for human approval
     if is_normal && !ctx.bridge_state.is_tool_allowed_for_session(tag, &payload.tool) {
+        let app_handle = ctx.app_handle.clone();
+        let on_resolved: ResolvedSink = Arc::new(move |resolved| {
+            let _ = app_handle.emit("permission-resolved", resolved);
+        });
+        let pending = PendingAnswer::register(&ctx.bridge_state, payload.clone(), on_resolved)
+            .map_err(|_| (StatusCode::CONFLICT, "A permission request with this id is already pending"))?;
         ctx.pty_manager.update_status(tag, ClaudeStatus::Waiting);
         ctx.pty_manager
             .update_current_tool(tag, Some(payload.tool.clone()));
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        ctx.bridge_state.register_pending_permission(
-            payload.request_id.clone(),
-            payload.clone(),
-            tx,
-        );
-
         // Broadcast to frontend modal
         let _ = ctx.app_handle.emit("permission-requested", payload.clone());
 
-        // Wait up to 10 minutes (600 seconds) for user decision
-        let result = match tokio::time::timeout(Duration::from_secs(600), rx).await {
-            Ok(Ok(resp)) => resp,
-            Ok(Err(_)) => PermissionResponsePayload {
-                decision: "deny".to_string(),
-                reason: Some("Permission request channel cancelled".to_string()),
-            },
-            Err(_) => {
-                ctx.bridge_state
-                    .remove_pending_permission(&payload.request_id);
-                PermissionResponsePayload {
-                    decision: "deny".to_string(),
-                    reason: Some("Timed out waiting for human approval".to_string()),
-                }
-            }
-        };
+        let result = pending.wait(PERMISSION_TIMEOUT).await;
 
         if result.decision == "allow" {
             ctx.pty_manager.update_status(tag, ClaudeStatus::Working);
@@ -360,16 +345,6 @@ pub async fn handle_permission(
         } else {
             ctx.pty_manager.update_status(tag, ClaudeStatus::Idle);
         }
-
-        let _ = ctx.app_handle.emit(
-            "permission-resolved",
-            serde_json::json!({
-                "requestId": payload.request_id,
-                "decision": result.decision,
-                "tool": payload.tool,
-                "tag": tag,
-            }),
-        );
 
         return Ok(Json(result).into_response());
     }
@@ -379,12 +354,12 @@ pub async fn handle_permission(
     let _ = ctx.app_handle.emit("permission-requested", payload.clone());
     let _ = ctx.app_handle.emit(
         "permission-resolved",
-        serde_json::json!({
-            "requestId": payload.request_id,
-            "decision": "allow",
-            "tool": payload.tool,
-            "tag": tag,
-        }),
+        PermissionResolved {
+            request_id: payload.request_id.clone(),
+            decision: "allow".to_string(),
+            tool: payload.tool.clone(),
+            tag: tag.to_string(),
+        },
     );
 
     let response = PermissionResponsePayload {
