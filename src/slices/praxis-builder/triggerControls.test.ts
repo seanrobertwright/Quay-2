@@ -339,3 +339,30 @@ test("a retirement the host refuses shows the host's message with Retire withhel
   assert.equal(buttonIn(dialog(root), "Retire")?.getAttribute("aria-disabled"), "true");
   assert.match(statusLine(root), /^On the host: Retired/);
 });
+
+test("a disabled trigger offers Enable in browser, which opens its review page through the loopback-only opener, and no enable, admit or reject", async () => {
+  const { host, root, opened } = await render("on-push", disabledOnPush());
+  const names = [...root.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? text(b).trim());
+  for (const name of ["Enable", "Admit", "Reject", "Disable"]) assert.ok(!names.includes(name), `no ${name} button`);
+  assert.ok(names.includes("Retire"), "a disabled trigger may still be retired");
+  await click(buttonIn(root, "Enable in browser"));
+  // No candidate is pending, so the page comes from the current revision's read.
+  const asked = host.calls.find((c) => c.command === "praxis_host_trigger_revision");
+  assert.deepEqual([asked?.args.name, asked?.args.revision], ["on-push", 1]);
+  const page = recordedTrigger("triggers show: a revision");
+  await host.answer("revision", { kind: "record", record: page });
+  assert.deepEqual(opened, [page.admissionPageAddress]);
+  assert.deepEqual(host.open(), [], "opening the page writes nothing");
+});
+
+test("Enable in browser opens nothing that isn't a page on this machine's Praxis host, and says so", async () => {
+  const { host, root, opened } = await render("on-push", disabledOnPush());
+  await click(buttonIn(root, "Enable in browser"));
+  const page = recordedTrigger("triggers show: a revision");
+  await host.answer("revision", { kind: "record", record: { ...page, admissionPageAddress: "https://example.com/#graph-trigger=on-push&revision=1" } });
+  assert.deepEqual(opened, []);
+  assert.equal(
+    text(root.querySelector('[role="group"] [role="alert"]')),
+    "Quay opens only pages on this machine's Praxis host. praxis gave https://example.com/#graph-trigger=on-push&revision=1 for on-push.",
+  );
+});

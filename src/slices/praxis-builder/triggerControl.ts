@@ -14,6 +14,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { outcomeMessage, type CallOutcome, type Invoker } from "./praxisHost.ts";
 import type { TriggerHost } from "./triggerHost.ts";
 
+/** Where a trigger's review page is, or why Quay couldn't find it. */
+export type ReviewPage = { kind: "address"; address: string } | { kind: "problem"; message: string };
+
 /** What one control came to, in the words its confirm shows. */
 export type ControlOutcome =
   | { kind: "done" }
@@ -32,6 +35,11 @@ export interface TriggerControl {
   disable(name: string): Promise<ControlOutcome>;
   /** Retires `name` (`praxis triggers retire`), then rereads it. Like disabling, it acts on the trigger as it stands. */
   retire(name: string): Promise<ControlOutcome>;
+  /**
+   * The address praxis gives for revision `revision`'s review page (`praxis triggers show
+   * --revision`), where the owner enables a disabled trigger. It writes nothing.
+   */
+  reviewPage(name: string, revision: number): Promise<ReviewPage>;
 }
 
 export interface TriggerControlOptions {
@@ -128,6 +136,12 @@ ${name}`, doing: `disable ${name}`, done: `disabled ${name}` });
       return send(name, { command: "praxis_host_trigger_retire", args: { name }, key: `retire
 ${name}`, doing: `retire ${name}`, done: `retired ${name}` });
     },
+    async reviewPage(name, revision) {
+      const outcome = await praxis("praxis_host_trigger_revision", { name, revision });
+      if (outcome.kind !== "record") return { kind: "problem", message: outcomeMessage(outcome) };
+      const address = outcome.record.admissionPageAddress;
+      return typeof address === "string" ? { kind: "address", address } : { kind: "problem", message: "praxis gave no review page address." };
+    },
   };
 }
 
@@ -136,6 +150,7 @@ export interface TriggerControlActions {
   withdraw(revision: number): Promise<ControlOutcome>;
   disable(): Promise<ControlOutcome>;
   retire(): Promise<ControlOutcome>;
+  reviewPage(revision: number): Promise<ReviewPage>;
 }
 
 /** `control` for graph trigger `name`, as its form uses it. */
@@ -144,5 +159,6 @@ export function bindTriggerControl(control: TriggerControl, name: string): Trigg
     withdraw: (revision) => control.withdraw(name, revision),
     disable: () => control.disable(name),
     retire: () => control.retire(name),
+    reviewPage: (revision) => control.reviewPage(name, revision),
   };
 }

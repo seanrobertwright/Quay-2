@@ -1,12 +1,16 @@
-// The controls any session may use on a graph trigger, on its form (#469, #477): Withdraw for a
-// pending candidate, each behind a confirm. They draw the trigger host model's view and never call
-// `praxis` themselves: each confirm asks the trigger control model, and closes once the host has
-// been read again. There is no enable, admit or reject: the owner decides in the browser.
+// The controls any session may use on a graph trigger, on its form (#469, #477): Withdraw for the
+// newest pending candidate, Disable for a trigger the host has enabled, and Retire for one it holds
+// an active revision of, each behind a confirm, and Enable in browser for a disabled one. They draw
+// the trigger host model's view and never call `praxis` themselves: each confirm asks the trigger
+// control model, and closes once the host has been read again. There is no enable, admit or
+// reject: the owner decides in the browser, and Enable in browser opens the current revision's
+// review page there through the loopback-only opener.
 import { useEffect, useId, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
-import { Archive, CirclePause, TriangleAlert, Undo2, type LucideIcon } from "lucide-react";
+import { Archive, CirclePause, ExternalLink, TriangleAlert, Undo2, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import type { ControlOutcome, TriggerControlActions } from "./triggerControl.ts";
 import type { GraphTriggerHostView } from "./triggerHost.ts";
+import { openRunPage } from "./runPage.ts";
 
 const buttonClass =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50 shrink-0";
@@ -20,12 +24,37 @@ const pendingRevision = (view: GraphTriggerHostView) => view.revisions.find((r) 
 /** The trigger form's controls for graph trigger `name`, and the confirm one of them opened. */
 export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; actions: TriggerControlActions }> = ({ name, view, actions }) => {
   const [shown, setShown] = useState<Shown | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Set on unmount, so a page found after the form closed opens nothing.
+  const gone = useRef(false);
+  useEffect(
+    () => () => {
+      gone.current = true;
+    },
+    [],
+  );
   // Where focus goes when a confirm closes and the control that opened it is gone.
   const returnFocus = useRef<HTMLDivElement | null>(null);
   const candidate = pendingRevision(view);
   // The host's enabled state of an active trigger with a current revision; null otherwise.
   const enabled = view.hostEnabled;
-  if (candidate === null && enabled === null && shown === null) return null;
+  if (candidate === null && enabled === null && shown === null && notice === null) return null;
+
+  /** Enable in browser: finds the current revision's review page and opens it through the loopback-only opener. */
+  const openReviewPage = async (revision: number) => {
+    setNotice(null);
+    const page = await actions.reviewPage(revision);
+    if (gone.current) return;
+    if (page.kind === "problem") {
+      setNotice(`Couldn't find ${name}'s review page: ${page.message}`);
+      return;
+    }
+    try {
+      if (!(await openRunPage(page.address))) setNotice(`Quay opens only pages on this machine's Praxis host. praxis gave ${page.address} for ${name}.`);
+    } catch (e) {
+      if (!gone.current) setNotice(`Couldn't open ${name}'s review page: ${String(e)}`);
+    }
+  };
   return (
     <div ref={returnFocus} tabIndex={-1} role="group" aria-label={`Controls for ${name} on the host`} className="flex items-start gap-1.5 flex-wrap text-[11px] focus:outline-none">
       {candidate !== null && (
@@ -62,6 +91,12 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
           </p>
         </ControlConfirm>
       )}
+      {enabled === false && view.current !== null && (
+        <button type="button" onClick={() => view.current && void openReviewPage(view.current.revision)} className={buttonClass}>
+          <ExternalLink className="w-3 h-3" aria-hidden="true" />
+          Enable in browser
+        </button>
+      )}
       {enabled !== null && view.current !== null && (
         <button type="button" onClick={() => view.current && setShown({ kind: "retire", revision: view.current.revision })} className={buttonClass}>
           <Archive className="w-3 h-3" aria-hidden="true" />
@@ -92,6 +127,11 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
             state, or to Not submitted when it has none.
           </p>
         </ControlConfirm>
+      )}
+      {notice && (
+        <p role="alert" className="basis-full text-[11px] text-[#ff7b72] break-words">
+          {notice}
+        </p>
       )}
     </div>
   );
