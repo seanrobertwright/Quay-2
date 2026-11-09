@@ -2,14 +2,8 @@
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  createHostCatalog,
-  HOST_STATE_ORDER,
-  MAX_SHOWS_IN_FLIGHT,
-  MUTED_AFTER_MS,
-  type HostCatalog,
-  type LocalTemplate,
-} from "./hostCatalog.ts";
+import { createHostCatalog, HOST_STATE_ORDER, type HostCatalog, type LocalTemplate } from "./hostCatalog.ts";
+import { MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_790_000_000_000 }));

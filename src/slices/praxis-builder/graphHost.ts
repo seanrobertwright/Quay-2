@@ -4,12 +4,12 @@
 // It reads the host only through the Praxis CLI runner's graph commands (#460): `graphs list`,
 // page by page, then `graphs show` for each local graph workflow the host has, at most two at a
 // time. Readings live in memory for the project's builder session, never on disk. Each is
-// stamped with the time it was read and turns muted, not dropped, after `MUTED_AFTER_MS`, the
-// template catalog's ten minutes. When the host goes offline, every reading is dropped.
+// stamped with the time it was read and turns muted, not dropped, after `MUTED_AFTER_MS`, ten
+// minutes, as a template's do. When the host goes offline, every reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
-import { createLimiter, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS } from "./hostCatalog.ts";
 import { hostConditionView } from "./hostCondition.ts";
-import { isHostLevelFailure, outcomeMessage, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { createHostReadSession, createLimiter, isObject, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS, online } from "./hostReadSession.ts";
+import { isHostLevelFailure, outcomeMessage, type HostCondition, type Invoker } from "./praxisHost.ts";
 
 /** A local graph workflow as the builder's list has it. */
 export interface LocalGraphWorkflow {
@@ -142,7 +142,6 @@ type Reading =
   | { at: number; failed: string }
   | { at: number; detail: Detail };
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const stringOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const revisionNumber = (v: unknown): number | null => (Number.isSafeInteger(v) && (v as number) >= 1 ? (v as number) : null);
 
@@ -188,14 +187,10 @@ function notReadyReasons(review: unknown): string[] {
 
 const NO_REASON = "The host says this graph workflow can't run, and gave no reason.";
 
-const online = (condition: HostCondition) => hostConditionView(condition).usable;
-
 /** The names on a `graphs list` page and its cursor, or null when it holds none Quay can read. */
 function parseListPage(record: Record<string, unknown>): { names: string[]; nextAfter: string | null } | null {
   if (!Array.isArray(record.workflows)) return null;
-  const names = record.workflows.flatMap((w) =>
-    typeof w === "object" && w !== null && typeof (w as Record<string, unknown>).name === "string" ? [(w as Record<string, unknown>).name as string] : [],
-  );
+  const names = record.workflows.flatMap((w) => (isObject(w) && typeof w.name === "string" ? [w.name] : []));
   return { names, nextAfter: typeof record.nextAfter === "string" ? record.nextAfter : null };
 }
 
@@ -232,31 +227,27 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
   const readings = new Map<string, Reading>();
   // Bumped whenever readings are dropped, so an answer to a call asked before is ignored.
   let generation = 0;
-  let disposed = false;
   let shown = false;
   // One call in flight per read: a second ask for the same read joins it.
   let listInFlight: Promise<Set<string> | null> | null = null;
   const showsInFlight = new Map<string, Promise<void>>();
-  const callIds = new Set<string>();
-  const listeners = new Set<() => void>();
   const limit = createLimiter(MAX_SHOWS_IN_FLIGHT);
-  let muteTimer: ReturnType<typeof setTimeout> | null = null;
   let watched: string | null = null;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const changed = () => {
-    if (disposed) return;
-    scheduleMute();
-    schedulePoll();
-    for (const listener of listeners) listener();
-  };
+  const session = createHostReadSession({
+    projectPath,
+    call,
+    stamps: () => [...readings.values()].map((r) => r.at),
+    onChange: () => schedulePoll(),
+  });
+  const { praxis, changed } = session;
 
   /**
    * Keeps the candidate poll's one timer set while the watched graph workflow shows a pending
    * candidate and no read of it is in flight, and clear otherwise.
    */
   function schedulePoll() {
-    const due = watched !== null && !disposed && !showsInFlight.has(watched) && stateOf(watched).state.kind === "candidate";
+    const due = watched !== null && !session.disposed && !showsInFlight.has(watched) && stateOf(watched).state.kind === "candidate";
     if (!due) {
       if (pollTimer !== null) clearTimeout(pollTimer);
       pollTimer = null;
@@ -270,36 +261,13 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
     }, CANDIDATE_POLL_MS);
   }
 
-  /** Wakes listeners when the next current reading turns muted. */
-  function scheduleMute() {
-    if (muteTimer !== null) clearTimeout(muteTimer);
-    muteTimer = null;
-    const now = Date.now();
-    const stamps = [...readings.values()].map((r) => r.at).filter((at) => now - at < MUTED_AFTER_MS);
-    if (stamps.length === 0) return;
-    muteTimer = setTimeout(changed, Math.min(...stamps) + MUTED_AFTER_MS - now);
-  }
-
-  /** One `praxis` call through the runner, cancelled by `dispose`. */
-  async function praxis(command: string, args: Record<string, unknown>): Promise<CallOutcome> {
-    const callId = crypto.randomUUID();
-    callIds.add(callId);
-    try {
-      return (await call(command, { projectPath, callId, ...args })) as CallOutcome;
-    } catch (e) {
-      return { kind: "refused", message: String(e) };
-    } finally {
-      callIds.delete(callId);
-    }
-  }
-
   /** Reads every `graphs list` page, up to `MAX_LIST_PAGES`; the names, or null when a page failed. */
   async function listNames(asked: number): Promise<Set<string> | null> {
     const names = new Set<string>();
     let after: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
       const outcome = await praxis("praxis_host_graphs_list", { limit: LIST_PAGE_LIMIT, after });
-      if (disposed || asked !== generation || outcome.kind !== "record") return null;
+      if (session.disposed || asked !== generation || outcome.kind !== "record") return null;
       const parsed = parseListPage(outcome.record);
       if (!parsed) return null;
       for (const name of parsed.names) names.add(name);
@@ -314,7 +282,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
     if (listInFlight) return listInFlight;
     const asked = generation;
     const read = listNames(asked).then((names) => {
-      if (!names || disposed || asked !== generation) return null;
+      if (!names || session.disposed || asked !== generation) return null;
       const at = Date.now();
       for (const name of local.keys()) if (!names.has(name)) readings.set(name, { at, absent: true });
       return names;
@@ -333,7 +301,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
     if (joined) return joined;
     const asked = generation;
     const read = limit(() => praxis("praxis_host_graph_show", { name })).then((outcome) => {
-      if (disposed || asked !== generation || outcome.kind === "cancelled") return;
+      if (session.disposed || asked !== generation || outcome.kind === "cancelled") return;
       const at = Date.now();
       if (outcome.kind === "record") {
         const detail = parseDetail(outcome.record);
@@ -357,7 +325,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
 
   async function readAll(): Promise<void> {
     const names = await readList();
-    if (!names || disposed) return;
+    if (!names || session.disposed) return;
     await Promise.all(sendable().filter((n) => names.has(n)).map(readShow));
   }
 
@@ -393,13 +361,13 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
       changed();
     },
     groupShown() {
-      if (shown || disposed) return Promise.resolve();
+      if (shown || session.disposed) return Promise.resolve();
       shown = true;
       return readAll();
     },
-    checkHost: () => (disposed ? Promise.resolve() : readAll()),
+    checkHost: () => (session.disposed ? Promise.resolve() : readAll()),
     checkAgain(name) {
-      if (disposed || local.get(name)?.nameProblem) return Promise.resolve();
+      if (session.disposed || local.get(name)?.nameProblem) return Promise.resolve();
       return readShow(name);
     },
     watch(name) {
@@ -425,23 +393,14 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
         olderRevisions: detail?.olderRevisions ?? false,
       };
     },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: session.subscribe,
     dispose() {
-      disposed = true;
+      session.dispose();
       generation += 1;
       readings.clear();
-      if (muteTimer !== null) clearTimeout(muteTimer);
-      muteTimer = null;
       if (pollTimer !== null) clearTimeout(pollTimer);
       pollTimer = null;
       watched = null;
-      listeners.clear();
-      for (const callId of callIds) void call("praxis_host_cancel", { callId }).catch(() => {});
     },
   };
 }

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createGraphHost, CANDIDATE_POLL_MS, GRAPH_STATE_ORDER, type GraphHost, type LocalGraphWorkflow } from "./graphHost.ts";
-import { MUTED_AFTER_MS } from "./hostCatalog.ts";
+import { MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_790_000_000_000 }));

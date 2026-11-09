@@ -3,12 +3,14 @@
 // It feeds the model the project's listed graph workflows and host condition, tells it when the
 // Graph workflows group is shown, and which graph workflow's form is on screen, so a pending
 // candidate is polled only while its form is. The views that draw host states read them from here.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { normalizePath } from "../../utils/paths.ts";
+import { useEffect, useState } from "react";
 import { createGraphHost, type GraphHost, type LocalGraphWorkflow } from "./graphHost.ts";
 import type { HostCondition } from "./praxisHost.ts";
 import type { DefinitionEntry } from "./types.ts";
 import { useDocumentVisible } from "./useDocumentVisible.ts";
+import { useProjectModels } from "./useProjectModels.ts";
+
+const newGraphHost = (projectPath: string) => createGraphHost({ projectPath });
 
 export interface GraphHostModel {
   /** The shown project's model; null without a project. */
@@ -29,31 +31,8 @@ export function useGraphHost(
   groupShown: boolean,
   onScreen: string | null,
 ): GraphHostModel {
-  const models = useRef(new Map<string, GraphHost>());
+  const { model: graphs } = useProjectModels(projectPath, newGraphHost);
   const [version, setVersion] = useState(0);
-
-  // Counts mounts, so a remount (as StrictMode does) makes fresh models after the cleanup
-  // disposed the old ones. No model exists before the first mount.
-  const [mounts, setMounts] = useState(0);
-  useEffect(() => {
-    setMounts((n) => n + 1);
-    const all = models.current;
-    return () => {
-      for (const m of all.values()) m.dispose();
-      all.clear();
-    };
-  }, []);
-
-  const graphs = useMemo(() => {
-    if (mounts === 0 || !projectPath) return null;
-    const key = normalizePath(projectPath);
-    let model = models.current.get(key);
-    if (!model) {
-      model = createGraphHost({ projectPath });
-      models.current.set(key, model);
-    }
-    return model;
-  }, [mounts, projectPath]);
 
   useEffect(() => graphs?.subscribe(() => setVersion((v) => v + 1)), [graphs]);
 
