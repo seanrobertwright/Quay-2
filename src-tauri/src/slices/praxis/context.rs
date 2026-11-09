@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use super::lifecycle::MAX_SCANNED;
 use super::models::{ContextCheck, ContractContext, PraxisKind, RecordIssue, RecordRef};
-use super::store::{capped_ids, confined_dir, json_ids, read_record, validate_id, BINDINGS_DIR, MAX_TRIGGERS_SCANNED, PRAXIS_DIR};
+use super::store::{capped_ids, confined_dir, json_ids, read_record, shown_path, validate_id, BINDINGS_DIR, MAX_TRIGGERS_SCANNED, PRAXIS_DIR};
 use super::validate::{describe, describe_grant, describe_trigger, grant_issues_on_mission, Diagnostic, Severity, MAX_DIAGNOSTICS};
 
 /// The graphs and grants a contract's bindings file lists, in file order.
@@ -44,7 +44,7 @@ fn read_folder(repo: &Path, folder: &str, cap: usize, unchecked: &mut Vec<String
                 out.insert(id, record);
             }
             Ok(None) => {}
-            Err(why) => unchecked.push(format!("{}/{}/{}.json: {}", PRAXIS_DIR, folder, id, why)),
+            Err(why) => unchecked.push(format!("{}: {}", shown_path(folder, &id), why)),
         }
     }
     Ok(out)

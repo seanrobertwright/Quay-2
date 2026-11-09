@@ -8,6 +8,7 @@ use super::context;
 use super::grants;
 use super::graph_bindings;
 use super::graph_workflow::{self, GraphWorkflowCheck};
+use super::host::{graph_workflow_bundle, GraphWorkflowBundle};
 use super::lifecycle;
 use super::models::{
     BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
@@ -121,6 +122,19 @@ pub async fn praxis_check_graph_workflow(
 ) -> Result<GraphWorkflowCheck, String> {
     let workspace = workspace.inner().clone();
     blocking(move || graph_workflow::check_graph_workflow(&project_root(&workspace, &project_path)?, &content)).await
+}
+
+/// The saved files graph workflow `name` submits (#462), as `praxis graphs submit` is given them,
+/// each with the name a host finding gives it, its record digest and its git change, for the
+/// Submit confirm and the findings' links. Refused as the submission's bundle is.
+#[tauri::command]
+pub async fn praxis_graph_workflow_bundle(
+    project_path: String,
+    name: String,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<GraphWorkflowBundle, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || graph_workflow_bundle(&project_root(&workspace, &project_path)?, &name)).await
 }
 
 /// A trigger's checks as a graph trigger (#472), with `content` as its draft and `target` the

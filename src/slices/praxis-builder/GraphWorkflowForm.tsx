@@ -6,14 +6,19 @@
 // bindings file lists the graph, and the binding binds that graph. Each issue shows on the field
 // that names the record at fault. A Triggers section lists the triggers that start the graph
 // workflow, read from their saved target files (#479). Given its state on the Praxis host (#461),
-// the form shows it in a status line and a Revisions panel, each with Withdraw on a pending
-// candidate behind a confirm (#463); nothing on the form calls the host itself. A Workflow | Runs switch turns the work area to the graph workflow's runs on the host (#464).
+// the form shows it in a status line and a Revisions panel, which read the builder's graph host
+// model, each with Withdraw on a pending candidate behind a confirm (#463). Given what Submit needs
+// from the builder too, it draws Check on host and Submit under the status line (#462), which run
+// `praxis graphs check` and `submit` themselves. A Workflow | Runs switch turns the work area to
+// the graph workflow's runs on the host (#464).
 import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { GraphHostStatusLine, RevisionsPanel, type GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunsView } from "./GraphRunsView.tsx";
+import { GraphSubmitBar, type GraphWorkflowSubmit } from "./GraphSubmit.tsx";
+import { bundleRecords } from "./graphSubmit.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
@@ -35,6 +40,8 @@ interface GraphWorkflowFormProps {
   refresh: number;
   /** Its state on the Praxis host, from the builder's graph host model; absent without one. */
   host?: GraphWorkflowHost | null;
+  /** What Check on host and Submit need from the builder; without it, or a host, there are none. */
+  submit?: GraphWorkflowSubmit;
   onEdit: (edit: GraphWorkflowEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -73,6 +80,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   graphBindings,
   refresh,
   host,
+  submit,
   onEdit,
   onOpen,
   onValidated,
@@ -185,6 +193,18 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             </span>
           </p>
           {host && <GraphHostStatusLine name={draft.ref.id} host={host} onWithdraw={setWithdrawing} />}
+          {host && submit && (
+            <GraphSubmitBar
+              projectPath={projectPath}
+              name={draft.ref.id}
+              records={bundleRecords(draft.ref.id, { contractId, graphId, graphBindingId: asString(w.graphBindingId) }, grants ?? [])}
+              local={!settled ? "checking" : status.state === "done" && status.validation.verdict === null ? "passes" : "fails"}
+              refresh={refresh}
+              host={host}
+              submit={submit}
+              onOpen={onOpen}
+            />
+          )}
         </header>
         <Summary
           noun="graph workflow"
