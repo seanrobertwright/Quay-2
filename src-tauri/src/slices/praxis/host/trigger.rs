@@ -73,5 +73,5 @@ pub fn trigger_digest(repo: &Path, name: &str, revision: u32) -> Option<String> 
 pub fn trigger_changes(repo: &Path, name: &str) -> Result<Vec<BundleFileChange>, String> {
     validate_id(name)?;
     let paths = [shown_path(PraxisKind::Triggers.folder(), name), shown_path(TRIGGER_TARGETS_DIR, name)];
-    Ok(path_changes(repo, &paths)?.into_iter().map(|(path, status)| BundleFileChange { path, status }).collect())
+    path_changes(repo, &paths)
 }

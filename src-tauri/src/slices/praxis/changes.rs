@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::models::{ChangeStatus, ChangedFile, ChangedFiles, FileDiff, PraxisKind};
+use super::models::{BundleFileChange, ChangeStatus, ChangedFile, ChangedFiles, FileDiff, PraxisKind};
 use super::store::{confined_dir, confined_file, shown_path, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
 use crate::slices::machina::git;
 
@@ -97,16 +97,16 @@ fn changed_paths(repo: &Path, pathspecs: &[String]) -> Result<Vec<(String, Chang
 
 /// How each of the files at `paths` (relative to `repo`, with forward slashes) differs from the
 /// last commit, staged or not, or whether it is new since it, whatever its kind, in path order:
-/// for the bundle a graph workflow submits (#462) and the files a graph run's confirm warns
-/// about (#466). A file that doesn't differ isn't returned. Empty when the project isn't a git
-/// repository.
-pub fn path_changes(repo: &Path, paths: &[String]) -> Result<Vec<(String, ChangeStatus)>, String> {
+/// for the bundle a graph workflow submits (#462), the files a graph run's confirm warns about
+/// (#466), and a graph trigger's files (#476). A file that doesn't differ isn't returned. Empty
+/// when the project isn't a git repository.
+pub fn path_changes(repo: &Path, paths: &[String]) -> Result<Vec<BundleFileChange>, String> {
     if paths.is_empty() || !is_repository(repo)? {
         return Ok(Vec::new());
     }
     let mut changed = changed_paths(repo, paths)?;
     changed.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(changed)
+    Ok(changed.into_iter().map(|(path, status)| BundleFileChange { path, status }).collect())
 }
 
 /// The most bytes of diff `file_diff` returns: enough for a file of the size Quay opens to be

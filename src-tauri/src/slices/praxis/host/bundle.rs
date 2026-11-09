@@ -184,7 +184,7 @@ pub fn bundle_changes(repo: &Path, name: &str) -> Result<Vec<BundleFileChange>, 
     let files = bundle_files(repo, name)?;
     let mut paths = vec![shown_path(PraxisKind::GraphWorkflows.folder(), name), shown_path(BINDINGS_DIR, &files.contract.id)];
     paths.extend(files.named().iter().map(|(_, f)| shown_path(f.kind.folder(), &f.id)));
-    Ok(path_changes(repo, &paths)?.into_iter().map(|(path, status)| BundleFileChange { path, status }).collect())
+    path_changes(repo, &paths)
 }
 
 /// The saved files of the graph workflow `name` in `repo` as `praxis` is given them, each with
@@ -199,7 +199,7 @@ pub fn graph_workflow_bundle(repo: &Path, name: &str) -> Result<GraphWorkflowBun
         Ok(changes) => (changes, None),
         Err(why) => (Vec::new(), Some(why)),
     };
-    let change_of = |path: &str| changes.iter().find(|(p, _)| p == path).map(|(_, status)| *status);
+    let change_of = |path: &str| changes.iter().find(|c| c.path == path).map(|c| c.status);
     let files_out = named
         .iter()
         .zip(&paths)
