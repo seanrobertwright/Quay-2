@@ -79,7 +79,7 @@ function fakeBackend(status: (workOrderId: string) => CallOutcome = () => ({ kin
   return { sent, reads, cancels, opened, lookups };
 }
 
-function form(props: { projectPath?: string; name?: string; shown?: boolean } = {}) {
+function form(props: { projectPath?: string; name?: string; shown?: boolean; showRun?: string } = {}) {
   const id = props.name ?? NAME;
   const ref = { kind: "graph-workflows" as const, id };
   const content = { version: 1, contractId: "c", graphId: "g", graphBindingId: "g-1" };
@@ -96,6 +96,7 @@ function form(props: { projectPath?: string; name?: string; shown?: boolean } = 
     onOpen: () => {},
     onValidated: () => {},
     runsShown: props.shown ?? true,
+    showRun: props.showRun,
   });
 }
 
@@ -414,4 +415,24 @@ test("a simulated host's runs carry amber markers named in words", async () => {
   assert.ok(marker, "the row is marked Simulated");
   assert.match(marker.className, /d29922/, "in amber");
   assert.match(text(root), /simulated host: their approvals aren't made by a person/);
+});
+
+test("a form asked to show a run, as a trigger's fire asks, opens on Runs with that run's detail followed and its row selected", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-2" }));
+  assert.equal(button(root, /^Runs$/)?.getAttribute("aria-checked"), "true", "the Runs view is shown");
+  assert.equal(root.querySelector("form"), null);
+  assert.equal(backend.reads().length, 1, "the runs are read");
+  assert.ok(backend.lookups().includes("wo-2"), "the run's detail follows it");
+  assert.ok(root.querySelector('section[aria-label^="Run "]'), "the run's detail is drawn");
+  await act(async () => backend.reads()[0].answer(runs([entry(3), entry(2), entry(1)])));
+  assert.equal(button(root, /^Show run-2$/)?.getAttribute("aria-pressed"), "true");
+  assert.equal(button(root, /^Show run-3$/)?.getAttribute("aria-pressed"), "false");
+});
+
+test("a form not asked to show a run opens on the workflow, with no run detail", async () => {
+  const backend = fakeBackend();
+  const root = await render(form());
+  assert.equal(button(root, /^Workflow$/)?.getAttribute("aria-checked"), "true");
+  assert.deepEqual(backend.lookups(), []);
 });
