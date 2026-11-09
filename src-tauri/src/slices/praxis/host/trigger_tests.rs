@@ -335,3 +335,34 @@ fn a_trigger_quay_can_t_digest_as_the_host_does_has_no_digest() {
     let not_object = |p: &Path| std::fs::write(p.join(".praxis/triggers/nightly.json"), "[]").unwrap();
     assert_eq!(digest("nightly", &not_object), None, "a file that holds no record");
 }
+
+#[test]
+fn a_graph_trigger_s_files_with_changes_since_the_last_commit() {
+    use crate::slices::praxis::host::trigger::trigger_changes;
+    use crate::slices::praxis::models::{BundleFileChange, ChangeStatus};
+    let h = Harness::new();
+    saved_trigger(&h.project, "nightly");
+    saved_trigger(&h.project, "weekly");
+    let repo = root(&h);
+    assert_eq!(trigger_changes(&repo, "nightly").unwrap(), vec![], "a project that isn't a git repository has none");
+
+    crate::slices::praxis::changes::commit_everything(&repo);
+    assert_eq!(trigger_changes(&repo, "nightly").unwrap(), vec![]);
+
+    // The target file counts with the trigger's own, since praxis is given the workflow it names.
+    put(&h.project, "trigger-targets/nightly.json", json!({ "version": 1, "graphWorkflow": "other" }));
+    // Files of other records don't count.
+    put(&h.project, "triggers/weekly.json", json!({ "id": "weekly" }));
+    put(&h.project, "graph-workflows/release-review.json", json!({ "version": 1 }));
+    let change = |path: &str, status| BundleFileChange { path: path.to_string(), status };
+    assert_eq!(trigger_changes(&repo, "nightly").unwrap(), vec![change(".praxis/trigger-targets/nightly.json", ChangeStatus::Modified)]);
+
+    put(&h.project, "triggers/nightly.json", json!({ "id": "nightly", "enabled": false }));
+    assert_eq!(
+        trigger_changes(&repo, "nightly").unwrap(),
+        vec![change(".praxis/trigger-targets/nightly.json", ChangeStatus::Modified), change(".praxis/triggers/nightly.json", ChangeStatus::Modified)],
+        "in path order"
+    );
+
+    assert!(trigger_changes(&repo, "../nightly").is_err(), "an unsafe id is refused");
+}
