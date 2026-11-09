@@ -128,8 +128,11 @@ export interface RunFollow<Run = RunDetail> {
 export interface FollowSource<Run extends FollowedRun> {
   /** The command that reads one run's status record. */
   statusCommand: "praxis_host_status" | "praxis_host_graph_status";
-  /** The record's `format`. A record in any other is one Quay can't read. */
-  format: string;
+  /**
+   * The record's `format`: a record in any other is one Quay can't read. Null when the follow
+   * doesn't check it, as a template run's doesn't (#453); the backend checks it either way.
+   */
+  format: string | null;
   /** The run as its detail draws it, from the record where it has a field and the row where it doesn't; null when neither names the run. */
   detailOf(view: Obj | null, row: RunRow | null, trustHint: string | null, workOrderId: string): Run | null;
   /** What a read compares to tell whether the run changed. */
@@ -260,7 +263,7 @@ function fingerprint(view: Obj): string {
 /** A template run: `praxis status`'s `coding-operator-view/1`, drawn on the stage strip. */
 export const TEMPLATE_RUN: FollowSource<RunDetail> = {
   statusCommand: "praxis_host_status",
-  format: "coding-operator-view/1",
+  format: null,
   detailOf: runDetailOf,
   fingerprint,
 };
@@ -294,12 +297,12 @@ export function createRunFollow<Run extends FollowedRun>({ projectPath, workOrde
   /**
    * Keeps the newest read's outcome and returns the wait before the next read: none once the run
    * ended, 15 s while it waits for a person, 3 s after a change, doubling to 15 s while nothing
-   * changes, and 60 s after any failure, a record in another format included. The last run read
-   * stays; only a host-level failure dims it.
+   * changes, and 60 s after any failure, including a record in a format the source refuses. The
+   * last run read stays; only a host-level failure dims it.
    */
   function recordAndNextDelay(outcome: CallOutcome): number | null {
     if (outcome.kind === "cancelled") return interval;
-    if (outcome.kind === "record" && outcome.record.format === source.format) {
+    if (outcome.kind === "record" && (source.format === null || outcome.record.format === source.format)) {
       record = outcome.record;
       trustHint = outcome.trustHint ?? null;
       shown = { readAt: Date.now(), dimmed: false, problem: null };
