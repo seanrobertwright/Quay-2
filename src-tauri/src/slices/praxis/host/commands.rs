@@ -419,6 +419,23 @@ pub async fn praxis_host_trigger_revisions(
     call(&cli, &workspace, &project_path, Verb::TriggersRevisions, operands, call_id).await
 }
 
+/// `praxis triggers show <name> --revision <revision> --json`: one revision of the graph trigger,
+/// with `admissionPageAddress`, its review page on the host's browser origin. The owner enables a
+/// disabled trigger there, so this is how Quay finds the page when no candidate is pending.
+#[tauri::command]
+pub async fn praxis_host_trigger_revision(
+    project_path: String,
+    name: String,
+    revision: u32,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_revision(revision)?;
+    let operands = vec![name, "--revision".into(), revision.to_string()];
+    call(&cli, &workspace, &project_path, Verb::TriggersRevision, operands, call_id).await
+}
+
 /// `praxis triggers fires <name> --limit <limit> [--before <fireId>] --json`: the trigger's fires,
 /// newest first, those older than the fire `before` when given, which is the `nextBefore` of the
 /// page before.

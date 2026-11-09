@@ -4,7 +4,8 @@
 // host's browser page, so a run that needs a person offers Open in browser and nothing else.
 // Show opens a run's detail (#465) above the list, followed while it is shown. Run in the header
 // starts a run of the host's admitted revision after a confirm (#466): a created run is selected
-// and followed, and every other outcome gets a notice of its own, as for a template run.
+// and followed, and every other outcome gets a notice of its own, as for a template run. A run
+// to show when the view opens, such as one a graph trigger's fire created (#478), starts selected.
 import { useState, type FC } from "react";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunConfirm } from "./GraphRunConfirm.tsx";
@@ -31,13 +32,15 @@ interface GraphRunsViewProps {
   host?: GraphWorkflowHost | null;
   /** The bundle's records whose drafts have edits their saved files don't. */
   unsaved?: readonly DefinitionRef[];
+  /** The `workOrderId` of the run whose detail is shown when the view opens; none when absent. */
+  initialRun?: string;
 }
 
-export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [] }) => {
+export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [], initialRun }) => {
   const { list, view } = useRunsList(projectPath, name, shown, GRAPH_RUNS);
   const pages = useRunPages(list);
   // The `workOrderId` of the run whose detail is shown, if any.
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialRun ?? null);
   const selectedRow = view.runs?.find((r) => r.workOrderId === selected) ?? null;
   const run = useRunStart(graphRunStarts, projectPath, name, (workOrderId) => {
     setSelected(workOrderId);

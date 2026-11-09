@@ -125,8 +125,11 @@ import { useHostCatalog } from "./useHostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
 import { useTriggerHost } from "./useTriggerHost.ts";
+import { useTriggerControl } from "./useTriggerControl.ts";
+import { bindTriggerControl } from "./triggerControl.ts";
 import { triggerRowBadges } from "./triggerHostStatus.ts";
 import type { GraphTriggerHost } from "./TriggerHostPanel.tsx";
+import type { TriggerFires } from "./FiresPanel.tsx";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
@@ -287,6 +290,20 @@ const PAST: Record<"Paste" | "Duplicate" | "Delete" | "Cut", string> = {
 };
 
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex="0"]';
+
+/** A graph trigger fire's run to show in its graph workflow's Runs view once that workflow's form opens (#478). */
+interface RunToShow {
+  projectKey: string;
+  workflow: string;
+  workOrderId: string;
+}
+
+/**
+ * The `workOrderId` of `run` when the open record is the graph workflow it belongs to, in its
+ * project; undefined for any other record.
+ */
+const runShownIn = (run: RunToShow | null, projectKey: string, openKind: string | undefined, openId: string | undefined): string | undefined =>
+  run && run.projectKey === projectKey && openKind === "graph-workflows" && openId === run.workflow ? run.workOrderId : undefined;
 
 /** The tab stops inside `root` that are shown, in document order. */
 const tabStops = (root: HTMLElement) =>
@@ -460,6 +477,23 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     isOpen && listsGraphTrigger,
     isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
   );
+  // Withdraw, Disable, Retire and the review page for Enable in browser on a graph trigger (#477).
+  const triggerControl = useTriggerControl(projectPath, shownTriggers);
+  // The run a graph trigger's fire created, to show in its graph workflow's Runs view once that
+  // workflow's form opens (#478). It is dropped as soon as another record is open.
+  const [runToShow, setRunToShow] = useState<RunToShow | null>(null);
+  useEffect(() => {
+    setRunToShow((r) => (runShownIn(r, projectKey, openKind, openId) === undefined ? null : r));
+  }, [projectKey, openKind, openId]);
+  /** What trigger `name`'s Fires panel needs: its saved target, and how a fire's run is shown there. */
+  const triggerFires = (name: string): TriggerFires => ({
+    shown: isOpen,
+    workflow: listedTriggers?.find((e) => e.id === name)?.target ?? null,
+    onShowRun: (workflow, workOrderId) => {
+      openDefinition({ kind: "graph-workflows", id: workflow });
+      setRunToShow({ projectKey, workflow, workOrderId });
+    },
+  });
   /** Trigger `name`'s host state for its form, read from the model on each render; null when it isn't a graph trigger. */
   const graphTriggerHost = (name: string): GraphTriggerHost | null =>
     shownTriggers?.has(name)
@@ -467,6 +501,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           view: shownTriggers.trigger(name),
           condition: host.condition,
           onCheckAgain: () => void shownTriggers.checkAgain(name),
+          control: triggerControl ? bindTriggerControl(triggerControl, name) : undefined,
         }
       : null;
   /** What trigger `name`'s Check on host and Submit need from the builder (#476): the host condition and a reread of its host state. */
@@ -2489,6 +2524,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onValidated={recordValidity}
                     host={graphTriggerHost(open.id)}
                     submit={graphTriggerSubmit(open.id)}
+                    fires={triggerFires(open.id)}
                   />
                 </>
               ) : openDraft && open.kind === "templates" ? (
@@ -2534,6 +2570,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     runsShown={isOpen}
                     runInTerminal={onRunInTerminal}
                     unsavedKeys={unsavedKeys}
+                    showRun={runShownIn(runToShow, projectKey, openKind, openId)}
                   />
                 </>
               ) : openDraft ? (

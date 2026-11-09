@@ -13,7 +13,10 @@
 //
 // A trigger with a saved target is a graph trigger, and given its state on the Praxis host (#475)
 // the form shows it in a status line above the fields and a Revisions panel below them, which
-// read the builder's trigger host model. Check on host and Submit (#476) sit under the status line.
+// read the builder's trigger host model. Check on host and Submit (#476) sit under the status line,
+// followed by Withdraw, Disable, Retire and Enable in browser (#477). Given what its Fires panel
+// needs from the builder too, the form draws the trigger's fires on the host under the Revisions
+// panel (#478).
 import { useEffect, useId, type FC, type ReactNode } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
@@ -49,8 +52,10 @@ import {
   type NestedKey,
   type TriggerEdit,
 } from "./trigger.ts";
+import { FiresPanel, type TriggerFires } from "./FiresPanel.tsx";
 import { TriggerHostStatusLine, TriggerRevisionsPanel, type GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import { TriggerSubmitBar, type GraphTriggerSubmit } from "./TriggerSubmit.tsx";
+import { TriggerControlBar } from "./TriggerControls.tsx";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
 import { useValidation } from "./useValidation.ts";
 import { targetPath } from "./session.ts";
@@ -76,6 +81,8 @@ interface TriggerFormProps {
   host?: GraphTriggerHost | null;
   /** What Check on host and Submit need from the builder; absent, the form has neither. */
   submit?: GraphTriggerSubmit;
+  /** What the Fires panel needs from the builder; without it, or a host, there is none. */
+  fires?: TriggerFires;
 }
 
 const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
@@ -116,6 +123,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   onValidated,
   host,
   submit,
+  fires,
 }) => {
   const sdk = useValidation("triggers", draft.content);
   const targetCheck = useTriggerCheck(projectPath, draft.content, draft.target, refresh);
@@ -335,6 +343,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
             submit={submit}
           />
         )}
+        {host?.control && <TriggerControlBar name={draft.ref.id} view={host.view} actions={host.control} />}
         <Summary noun="trigger" status={status} recordIssues={untaken} />
         {crossRecord}
         {targetProblem && (
@@ -348,6 +357,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
         )}
         {fields}
         {host && <TriggerRevisionsPanel view={host.view} />}
+        {host && fires && <FiresPanel projectPath={projectPath} name={draft.ref.id} host={host} fires={fires} />}
       </form>
     </div>
   );

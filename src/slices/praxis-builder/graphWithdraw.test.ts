@@ -211,7 +211,7 @@ test("a withdrawal the host refuses because the candidate is already decided sta
   assert.ok(shown, "the confirm stays open");
   assert.equal(
     text(shown.querySelector('[role="alert"]')),
-    "The host refused: revision 2 of ship is no longer pending. The owner has admitted or rejected it, or it was withdrawn already.",
+    "The host refused to withdraw revision 2 of ship: it is no longer pending. The owner has admitted or rejected it, or it was withdrawn already. The host refused the request (REVISION_NOT_PENDING).",
   );
   const withdraw = buttonIn(shown, "Withdraw");
   assert.equal(withdraw?.getAttribute("aria-disabled"), "true");

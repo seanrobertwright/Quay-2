@@ -49,7 +49,7 @@ use slices::praxis::{
 use slices::praxis::host::{
     praxis_cli_settings_read, praxis_cli_settings_write, praxis_host_cancel, praxis_host_condition, praxis_host_graph_check,
     praxis_host_graph_revisions, praxis_host_graph_run, praxis_host_graph_runs, praxis_host_graph_show, praxis_host_graph_status,
-    praxis_host_graph_submit, praxis_host_graph_withdraw, praxis_host_graphs_list, praxis_host_run, praxis_host_runs, praxis_host_status, praxis_host_terminal_argv, praxis_host_trigger_check, praxis_host_trigger_disable, praxis_host_trigger_fires, praxis_host_trigger_retire, praxis_host_trigger_revisions, praxis_host_trigger_show, praxis_host_trigger_submit, praxis_host_trigger_withdraw, praxis_host_triggers_list, praxis_host_workflow_show, praxis_host_workflows_list,
+    praxis_host_graph_submit, praxis_host_graph_withdraw, praxis_host_graphs_list, praxis_host_run, praxis_host_runs, praxis_host_status, praxis_host_terminal_argv, praxis_host_trigger_check, praxis_host_trigger_disable, praxis_host_trigger_fires, praxis_host_trigger_retire, praxis_host_trigger_revision, praxis_host_trigger_revisions, praxis_host_trigger_show, praxis_host_trigger_submit, praxis_host_trigger_withdraw, praxis_host_triggers_list, praxis_host_workflow_show, praxis_host_workflows_list,
     PraxisCli,
 };
 use slices::pty::{
@@ -353,6 +353,7 @@ pub fn run() {
             praxis_host_trigger_disable,
             praxis_host_trigger_fires,
             praxis_host_trigger_retire,
+            praxis_host_trigger_revision,
             praxis_host_trigger_revisions,
             praxis_host_trigger_show,
             praxis_host_trigger_submit,
