@@ -354,12 +354,7 @@ pub async fn handle_permission(
     let _ = ctx.app_handle.emit("permission-requested", payload.clone());
     let _ = ctx.app_handle.emit(
         "permission-resolved",
-        PermissionResolved {
-            request_id: payload.request_id.clone(),
-            decision: "allow".to_string(),
-            tool: payload.tool.clone(),
-            tag: tag.to_string(),
-        },
+        PermissionResolved::new(&payload, "allow"),
     );
 
     let response = PermissionResponsePayload {

@@ -20,6 +20,18 @@ pub struct PermissionResolved {
     pub tag: String,
 }
 
+impl PermissionResolved {
+    /// The request `payload` ended with `decision`.
+    pub fn new(payload: &PermissionRequestPayload, decision: &str) -> Self {
+        Self {
+            request_id: payload.request_id.clone(),
+            decision: decision.to_string(),
+            tool: payload.tool.clone(),
+            tag: payload.tag.clone().unwrap_or_default(),
+        }
+    }
+}
+
 /// Receives each `PermissionResolved`; the bridge route sends it to the frontend.
 pub type ResolvedSink = Arc<dyn Fn(PermissionResolved) + Send + Sync>;
 
@@ -76,12 +88,7 @@ impl PendingAnswer {
     }
 
     fn report(&self, decision: &str) {
-        (self.on_resolved)(PermissionResolved {
-            request_id: self.payload.request_id.clone(),
-            decision: decision.to_string(),
-            tool: self.payload.tool.clone(),
-            tag: self.payload.tag.clone().unwrap_or_default(),
-        });
+        (self.on_resolved)(PermissionResolved::new(&self.payload, decision));
     }
 }
 
@@ -113,12 +120,19 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
 
-    /// A bridge whose `/v1/permission` route waits on `await_permission_answer` over a real
+    /// A bridge whose `/v1/permission` route waits on `PendingAnswer::wait` over a real
     /// loopback HTTP listener, with every `PermissionResolved` it reports.
     struct TestBridge {
         state: BridgeState,
         resolved: Arc<Mutex<Vec<PermissionResolved>>>,
         port: u16,
+    }
+
+    impl TestBridge {
+        /// The decision of every `PermissionResolved` reported so far, in order.
+        fn decisions(&self) -> Vec<String> {
+            self.resolved.lock().iter().map(|r| r.decision.clone()).collect()
+        }
     }
 
     async fn start_bridge(timeout: Duration) -> TestBridge {
@@ -247,9 +261,7 @@ mod tests {
 
         assert_eq!(read_answer(&mut stream).await["decision"], "allow");
         assert!(bridge.state.list_pending_permissions().is_empty());
-        let decisions: Vec<String> =
-            bridge.resolved.lock().iter().map(|r| r.decision.clone()).collect();
-        assert_eq!(decisions, vec!["allow".to_string()]);
+        assert_eq!(bridge.decisions(), vec!["allow".to_string()]);
     }
 
     #[tokio::test]
@@ -262,8 +274,6 @@ mod tests {
         assert_eq!(answer["decision"], "deny");
         assert_eq!(answer["reason"], "Timed out waiting for human approval");
         assert!(bridge.state.list_pending_permissions().is_empty());
-        let decisions: Vec<String> =
-            bridge.resolved.lock().iter().map(|r| r.decision.clone()).collect();
-        assert_eq!(decisions, vec!["deny".to_string()]);
+        assert_eq!(bridge.decisions(), vec!["deny".to_string()]);
     }
 }
