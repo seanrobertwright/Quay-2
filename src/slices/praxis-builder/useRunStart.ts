@@ -1,7 +1,7 @@
 // One Runs view's Run (#454, #466): the creation in flight for its name, which a Run in the
 // header joins, and the outcome of the last one it started or joined. A creation outlives the
 // view: one in flight when the view comes back on screen is joined, so its outcome shows when it
-// ends. It draws nothing; the template and graph Runs views do.
+// ends. It draws nothing; `RunControl` does.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RunStart, RunStarts } from "./runStart.ts";
 

@@ -5,8 +5,9 @@
 // `graphRunStarts` in `runStart.ts`.
 import type { GraphWorkflowHostView } from "./graphHost.ts";
 import { hostConditionView } from "./hostCondition.ts";
+import { RECORD_KINDS } from "./kinds.ts";
 import type { HostCondition } from "./praxisHost.ts";
-import type { ChangeStatus, DefinitionRef } from "./types.ts";
+import type { BundleChanges, DefinitionRef } from "./types.ts";
 
 /**
  * Why Run in the Runs header is disabled, from what the host was last read to hold: no admitted
@@ -54,31 +55,20 @@ export interface GraphRunWarning {
   text: string;
 }
 
-/** A file of the bundle with changes since the last commit, as `praxis_graph_workflow_changes` gives it. */
-export interface BundleFileChange {
-  path: string;
-  status: ChangeStatus;
-}
-
 /** How the bundle's files differ from the last commit, or why Quay couldn't tell. */
-export type BundleChanges = { files: readonly BundleFileChange[] } | { error: string };
+export type BundleChangesRead = BundleChanges | { error: string };
 
-const NOUNS: Partial<Record<DefinitionRef["kind"], string>> = {
-  "graph-workflows": "graph workflow",
-  graphs: "graph",
-  "graph-bindings": "graph binding",
-  contracts: "contract",
-  grants: "grant",
-};
-
-/** A record as the warnings name it: "graph g". */
-export const recordLabel = (ref: DefinitionRef): string => `${NOUNS[ref.kind] ?? ref.kind} ${ref.id}`;
+/** A record as the warnings name it: "graph g". Graph bindings have no group in the left list. */
+export function recordLabel(ref: DefinitionRef): string {
+  const noun = ref.kind === "graph-bindings" ? "graph binding" : (RECORD_KINDS.find((k) => k.kind === ref.kind)?.singular ?? ref.kind);
+  return `${noun} ${ref.id}`;
+}
 
 /**
  * The confirm's warnings: the saved files aren't the current revision's, `unsaved` names records
  * of the bundle with unsaved edits, and `changes` says which of its files aren't committed.
  */
-export function graphRunWarnings(view: GraphWorkflowHostView, unsaved: readonly DefinitionRef[], changes: BundleChanges | null): GraphRunWarning[] {
+export function graphRunWarnings(view: GraphWorkflowHostView, unsaved: readonly DefinitionRef[], changes: BundleChangesRead | null): GraphRunWarning[] {
   const warnings: GraphRunWarning[] = [];
   const revision = view.current?.revision;
   const runs = revision === undefined ? "the host's admitted revision runs" : `admitted revision ${revision} runs`;
