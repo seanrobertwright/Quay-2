@@ -62,7 +62,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | `Ctrl+Shift+B I` | **GitHub Companion** | Toggles GitHub Issues & PR triage drawer |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
 | `Ctrl+Shift+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
-| `Ctrl+Shift+B Q` | **Waiting on You** | Toggles the attention drawer: every session waiting on you across all projects, oldest first. A row focuses its terminal; a finished turn can be dismissed. The **Waiting** badge in the status strip opens it too |
+| `Ctrl+Shift+B Q` | **Waiting on You** | Toggles the attention drawer: every session waiting on you across all projects, oldest first. A row focuses its terminal; a finished turn can be dismissed. A permission request is answered in place with **Allow** or **Deny**, and choosing a request put off with **Later** reopens the approval dialog on it. A terminal past its 20 permission requests shows **+N older not shown** on its oldest one. The **Waiting** badge in the status strip opens it too |
 | `Ctrl+Shift+B T` | **Token Spend** | Opens token meter and audio chime settings |
 | `Ctrl+Shift+B R` | **Archon & SDD** | Opens Archon visual DAG, streaming logs, and spec inspector |
 | `Ctrl+Shift+B F` | **Machina** | Opens the [Factory Station](../features/machina-praxis.md), Quay's local factory: work orders, holds and Accept |

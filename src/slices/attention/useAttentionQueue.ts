@@ -11,6 +11,7 @@ import type { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from 
 import {
   applyAttentionEvent,
   attentionItems,
+  droppedPermissionCount,
   emptyAttentionQueue,
   modalPermissions,
   pendingPermissionIds,
@@ -77,6 +78,11 @@ export interface AttentionQueueView {
   dismissUndeliveredAnswer: () => void;
   /** Clears the terminal's finished turn without acting on it. Its permission requests stay. */
   dismissFinishedTurn: (terminalId: string) => void;
+  /**
+   * How many of `terminalId`'s permission requests the queue dropped to stay within its cap, since
+   * the terminal was launched; null counts the requests that named no terminal.
+   */
+  droppedPermissionCount: (terminalId: string | null) => number;
 }
 
 /**
@@ -95,8 +101,8 @@ export interface AttentionQueueView {
  * terminal list (closed), or the user relaunches it.
  *
  * Returns the waiting items, the requests the permission modal shows, the ids of every pending
- * request, the latest answer that reached no agent, and the user's actions on them, including
- * dismissing a terminal's finished turn.
+ * request, the latest answer that reached no agent, each terminal's count of requests its cap
+ * dropped, and the user's actions on them, including dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
@@ -220,6 +226,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
   const items = useMemo(() => attentionItems(queue), [queue]);
   const modal = useMemo(() => modalPermissions(queue), [queue]);
   const pending = useMemo(() => pendingPermissionIds(queue), [queue]);
+  const dropped = useCallback((terminalId: string | null) => droppedPermissionCount(queue, terminalId), [queue]);
   return {
     items,
     modalPermissions: modal,
@@ -230,5 +237,6 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     undeliveredAnswer: undeliveredAnswer(queue),
     dismissUndeliveredAnswer,
     dismissFinishedTurn,
+    droppedPermissionCount: dropped,
   };
 }

@@ -224,3 +224,18 @@ test("focusing a deferred request's terminal from its row leaves the request wai
   assert.match(drawerRows()[0], /Permission request: Bash, deferred/);
   assert.equal(modalTool(), null);
 });
+
+test("a terminal past its cap of 20 requests shows how many older ones are not shown, once", async () => {
+  const flood = Array.from({ length: 23 }, (_, i) => request(`flood-${i + 1}`, "term-a", "Bash"));
+  await render([...flood, request("quiet-1", "term-b", "Write")]);
+
+  const rows = drawerRows();
+  const agentA = rows.filter((row) => row.startsWith("Agent A"));
+  assert.equal(agentA.length, 20);
+  assert.deepEqual(
+    rows.filter((row) => row.includes("older not shown")).map((row) => row.match(/\+\d+ older not shown/)?.[0]),
+    ["+3 older not shown"]
+  );
+  assert.match(agentA[0], /\+3 older not shown/, "the count sits on the terminal's oldest row");
+  assert.doesNotMatch(rows.find((row) => row.startsWith("Agent B")) ?? "", /older not shown/);
+});

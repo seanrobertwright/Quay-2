@@ -70,6 +70,7 @@ export const AttentionSurfaces: FC<AttentionSurfacesProps> = ({
         }}
         onDismissFinishedTurn={queue.dismissFinishedTurn}
         onAnswerPermission={queue.answerPermission}
+        droppedPermissionCount={queue.droppedPermissionCount}
         onReopenPermission={(requestId) => {
           queue.reopenPermissions([requestId]);
           setReopened({ requestId });

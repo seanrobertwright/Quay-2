@@ -27,6 +27,27 @@ interface AttentionDrawerProps {
   onAnswerPermission: AnswerPermission;
   /** Shows a request deferred with Later in the permission modal again, on that request. */
   onReopenPermission: (requestId: string) => void;
+  /** How many of the terminal's permission requests the queue's cap dropped; null for no terminal. */
+  droppedPermissionCount: (terminalId: string | null) => number;
+}
+
+/**
+ * By item key, how many older requests each terminal's oldest permission row reports as not
+ * shown, for each terminal whose cap dropped any. `items` are oldest first.
+ */
+function olderNotShownByRow(
+  items: AttentionItem[],
+  droppedPermissionCount: (terminalId: string | null) => number
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  const seen = new Set<string | null>();
+  for (const item of items) {
+    if (item.kind !== "permission" || seen.has(item.terminalId)) continue;
+    seen.add(item.terminalId);
+    const dropped = droppedPermissionCount(item.terminalId);
+    if (dropped > 0) counts.set(attentionItemKey(item), dropped);
+  }
+  return counts;
 }
 
 /** The last segment of `path`, or the path itself when it has none. */
@@ -73,10 +94,15 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
   onDismissFinishedTurn,
   onAnswerPermission,
   onReopenPermission,
+  droppedPermissionCount,
 }) => {
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
   const [now, setNow] = useState(() => Date.now());
   const terminalsById = useMemo(() => new Map(terminals.map((t) => [t.id, t])), [terminals]);
+  const olderNotShown = useMemo(
+    () => olderNotShownByRow(items, droppedPermissionCount),
+    [items, droppedPermissionCount]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -130,9 +156,11 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
             <ul className="space-y-2" aria-label="Sessions waiting on you, oldest first">
               {items.map((item) => {
                 const terminal = item.terminalId ? terminalsById.get(item.terminalId) : undefined;
+                const key = attentionItemKey(item);
                 return (
                   <AttentionRow
-                    key={attentionItemKey(item)}
+                    key={key}
+                    olderNotShown={olderNotShown.get(key) ?? 0}
                     item={item}
                     terminalName={terminal?.name ?? null}
                     project={projectLabel(item.project ?? terminal?.project_path ?? null, projects, projectWorktrees)}
@@ -162,6 +190,8 @@ interface AttentionRowProps {
   onDismissFinishedTurn: (terminalId: string) => void;
   onAnswerPermission: AnswerPermission;
   onReopenPermission: (requestId: string) => void;
+  /** How many of the terminal's older requests the cap dropped, shown on this row; 0 for none. */
+  olderNotShown: number;
 }
 
 /**
@@ -179,6 +209,7 @@ const AttentionRow: FC<AttentionRowProps> = ({
   onDismissFinishedTurn,
   onAnswerPermission,
   onReopenPermission,
+  olderNotShown,
 }) => {
   const detailId = useId();
   const terminalId = item.terminalId;
@@ -201,14 +232,19 @@ const AttentionRow: FC<AttentionRowProps> = ({
         aria-describedby={deferred ? detailId : undefined}
       >
         <span className="block text-xs font-semibold text-white truncate">{name}</span>
-        <span id={detailId} className="block mt-0.5 text-[11px] text-[#8b949e] truncate">
-          <span className="font-mono text-[#58a6ff]">{project}</span>
-          <span aria-hidden="true"> • </span>
-          <span className={item.kind === "permission" ? "text-[#e3b341]" : "text-[#3fb950]"}>
-            {kindLabel(item)}
+        <span id={detailId} className="block mt-0.5 text-[11px] text-[#8b949e]">
+          <span className="block truncate">
+            <span className="font-mono text-[#58a6ff]">{project}</span>
+            <span aria-hidden="true"> • </span>
+            <span className={item.kind === "permission" ? "text-[#e3b341]" : "text-[#3fb950]"}>
+              {kindLabel(item)}
+            </span>
+            <span aria-hidden="true"> • </span>
+            <span>waited {waited}</span>
           </span>
-          <span aria-hidden="true"> • </span>
-          <span>waited {waited}</span>
+          {olderNotShown > 0 && (
+            <span className="block mt-0.5 text-[#e3b341]">+{olderNotShown} older not shown</span>
+          )}
         </span>
       </button>
       {item.kind === "permission" && (
