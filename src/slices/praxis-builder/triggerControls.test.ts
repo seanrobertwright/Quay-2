@@ -288,3 +288,54 @@ test("a disabling the host refuses shows the host's message, and the state is th
   assert.equal(buttonIn(shown, "Disable")?.getAttribute("aria-disabled"), "true");
   assert.match(statusLine(root), /^On the host: Retired/);
 });
+
+/** The confirm's checkbox labelled `name`. */
+const checkbox = (root: HTMLElement, name: string) =>
+  [...(dialog(root)?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])].find((i) => text(i.closest("label")).trim() === name);
+
+test("Retire asks behind a stronger, danger-styled confirm that says it can't be undone and retires the trigger as it stands on the host", async () => {
+  const { host, root } = await render("on-push", enabledOnPush());
+  await click(buttonIn(root, "Retire"));
+  assert.equal(dialogTitle(root), "Retire on-push? This can't be undone.");
+  const shown = dialog(root);
+  assert.match(text(shown), /Retiring can't be undone\./);
+  assert.match(text(shown), /The host retires on-push as it stands when the request lands, which may not be revision 1 shown here/);
+  const retire = buttonIn(shown, "Retire");
+  assert.match(retire?.className ?? "", /bg-\[#da3633\]/, "the primary button is styled as danger");
+  // Stronger than Disable's: Retire is withheld until the person says they understand.
+  assert.equal(retire?.getAttribute("aria-disabled"), "true");
+  await click(retire);
+  assert.deepEqual(host.open(), [], "a withheld Retire sends nothing");
+  await click(checkbox(root, "I understand that retiring on-push can't be undone"));
+  assert.equal(buttonIn(dialog(root), "Retire")?.getAttribute("aria-disabled"), "false");
+
+  await click(buttonIn(dialog(root), "Retire"));
+  const sent = host.calls.find((c) => c.command === "praxis_host_trigger_retire");
+  assert.deepEqual(sent?.args && [sent.args.name, sent.args.requestId, "revision" in sent.args], ["on-push", null, false]);
+  assert.match(text(dialog(root)), /Retiring on-push/);
+  await host.answer("retire", recordOf("triggers retire"));
+  await host.answer("show", triggerShow("triggers show: retired", "on-push"));
+  assert.equal(dialog(root), null, "the confirm closes once the host has been read again");
+  assert.match(statusLine(root), /^On the host: Retired/);
+  for (const name of ["Retire", "Disable", "Enable in browser"]) assert.equal(buttonIn(root, name), undefined, `a retired trigger has no ${name}`);
+});
+
+test("a retirement the host refuses shows the host's message with Retire withheld; one praxis couldn't confirm may be sent again with its request id", async () => {
+  const { host, root } = await render("on-push", enabledOnPush());
+  await click(buttonIn(root, "Retire"));
+  await click(checkbox(root, "I understand that retiring on-push can't be undone"));
+  await click(buttonIn(dialog(root), "Retire"));
+  await host.answer("retire", refusal("triggers retire: outcome unknown (made)"));
+  await host.answer("show", enabledOnPush());
+  assert.match(text(dialog(root)?.querySelector('[role="alert"]')), /^Quay can't tell whether the host retired on-push: .* Pressing it again resends the same request\.$/);
+  assert.equal(buttonIn(dialog(root), "Retire")?.getAttribute("aria-disabled"), "false");
+
+  await click(buttonIn(dialog(root), "Retire"));
+  const resent = host.calls.filter((c) => c.command === "praxis_host_trigger_retire")[1];
+  assert.equal(resent?.args.requestId, "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d");
+  await host.answer("retire", refusal("triggers retire: already retired"));
+  await host.answer("show", triggerShow("triggers show: retired", "on-push"));
+  assert.equal(text(dialog(root)?.querySelector('[role="alert"]')), "The host refused to retire on-push: The host refused the request (TRIGGER_STATE_CONFLICT).");
+  assert.equal(buttonIn(dialog(root), "Retire")?.getAttribute("aria-disabled"), "true");
+  assert.match(statusLine(root), /^On the host: Retired/);
+});

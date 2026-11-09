@@ -3,7 +3,7 @@
 // `praxis` themselves: each confirm asks the trigger control model, and closes once the host has
 // been read again. There is no enable, admit or reject: the owner decides in the browser.
 import { useEffect, useId, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
-import { CirclePause, Undo2, type LucideIcon } from "lucide-react";
+import { Archive, CirclePause, TriangleAlert, Undo2, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import type { ControlOutcome, TriggerControlActions } from "./triggerControl.ts";
 import type { GraphTriggerHostView } from "./triggerHost.ts";
@@ -12,7 +12,7 @@ const buttonClass =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50 shrink-0";
 
 /** Which confirm is shown. */
-type Shown = { kind: "withdraw"; revision: number } | { kind: "disable" };
+type Shown = { kind: "withdraw"; revision: number } | { kind: "disable" } | { kind: "retire"; revision: number };
 
 /** The newest pending candidate the host lists, or null. Revisions are newest first. */
 const pendingRevision = (view: GraphTriggerHostView) => view.revisions.find((r) => r.status === "CANDIDATE")?.revision ?? null;
@@ -62,6 +62,15 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
           </p>
         </ControlConfirm>
       )}
+      {enabled !== null && view.current !== null && (
+        <button type="button" onClick={() => view.current && setShown({ kind: "retire", revision: view.current.revision })} className={buttonClass}>
+          <Archive className="w-3 h-3" aria-hidden="true" />
+          Retire
+        </button>
+      )}
+      {shown?.kind === "retire" && (
+        <RetireConfirm name={name} revision={shown.revision} onRetire={() => actions.retire()} onClose={() => setShown(null)} returnFocus={returnFocus} />
+      )}
       {shown?.kind === "withdraw" && (
         <ControlConfirm
           title={
@@ -85,6 +94,61 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
         </ControlConfirm>
       )}
     </div>
+  );
+};
+
+/**
+ * Retire's confirm, stronger than the others: it says retiring can't be undone, and Retire is
+ * withheld until the person ticks that they understand. praxis sends no revision with it, so it
+ * says the host retires the trigger as it stands, which may not be the revision Quay shows.
+ */
+const RetireConfirm: FC<{
+  name: string;
+  /** The current revision the form shows. */
+  revision: number;
+  onRetire: () => Promise<ControlOutcome>;
+  onClose: () => void;
+  returnFocus: RefObject<HTMLElement | null>;
+}> = ({ name, revision, onRetire, onClose, returnFocus }) => {
+  const [understood, setUnderstood] = useState(false);
+  const whyId = useId();
+  return (
+    <ControlConfirm
+      title={
+        <>
+          Retire <span className="font-mono">{name}</span>? This can&apos;t be undone.
+        </>
+      }
+      closeLabel="Close retire"
+      label="Retire"
+      icon={Archive}
+      sending={`Retiring ${name}…`}
+      onSend={onRetire}
+      onClose={onClose}
+      returnFocus={returnFocus}
+      withheld={understood ? null : { why: whyId }}
+    >
+      <p className="flex items-start gap-1.5 rounded-md border border-[#da3633] bg-[#da3633]/10 p-2 text-xs text-[#ffa198]">
+        <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+        <span>
+          Retiring can&apos;t be undone. No one can bring revision {revision} back, in Quay or in the browser: a retired trigger fires
+          nothing, and fires again only if the owner admits a later revision.
+        </span>
+      </p>
+      <p className="text-xs">
+        The host retires <span className="font-mono">{name}</span> as it stands when the request lands, which may not be revision{" "}
+        {revision} shown here: praxis sends no revision for the host to check it against.
+      </p>
+      <label className="flex items-start gap-1.5 text-xs">
+        <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} className="mt-0.5" />
+        <span>I understand that retiring {name} can&apos;t be undone</span>
+      </label>
+      {!understood && (
+        <p id={whyId} className="text-[11px] text-[#8b949e]">
+          Tick the box above to retire {name}.
+        </p>
+      )}
+    </ControlConfirm>
   );
 };
 

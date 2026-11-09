@@ -30,6 +30,8 @@ export interface TriggerControl {
    * host disables the trigger as it stands when the request lands.
    */
   disable(name: string): Promise<ControlOutcome>;
+  /** Retires `name` (`praxis triggers retire`), then rereads it. Like disabling, it acts on the trigger as it stands. */
+  retire(name: string): Promise<ControlOutcome>;
 }
 
 export interface TriggerControlOptions {
@@ -122,6 +124,10 @@ export function createTriggerControl({ projectPath, triggers, call = invoke }: T
       return send(name, { command: "praxis_host_trigger_disable", args: { name }, key: `disable
 ${name}`, doing: `disable ${name}`, done: `disabled ${name}` });
     },
+    retire(name) {
+      return send(name, { command: "praxis_host_trigger_retire", args: { name }, key: `retire
+${name}`, doing: `retire ${name}`, done: `retired ${name}` });
+    },
   };
 }
 
@@ -129,6 +135,7 @@ ${name}`, doing: `disable ${name}`, done: `disabled ${name}` });
 export interface TriggerControlActions {
   withdraw(revision: number): Promise<ControlOutcome>;
   disable(): Promise<ControlOutcome>;
+  retire(): Promise<ControlOutcome>;
 }
 
 /** `control` for graph trigger `name`, as its form uses it. */
@@ -136,5 +143,6 @@ export function bindTriggerControl(control: TriggerControl, name: string): Trigg
   return {
     withdraw: (revision) => control.withdraw(name, revision),
     disable: () => control.disable(name),
+    retire: () => control.retire(name),
   };
 }
