@@ -1,5 +1,5 @@
 import { useState, type FC } from "react";
-import { PermissionModal } from "./PermissionModal.tsx";
+import { PermissionModal, type ReopenRequest } from "./PermissionModal.tsx";
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -34,8 +34,7 @@ export const AttentionSurfaces: FC<AttentionSurfacesProps> = ({
   onFocusTerminal,
 }) => {
   // The request the user last reopened from its drawer row, for the permission modal to move to.
-  // A new object each time, so choosing the same row again moves the modal back to it.
-  const [reopened, setReopened] = useState<{ requestId: string } | null>(null);
+  const [reopened, setReopened] = useState<ReopenRequest | null>(null);
 
   return (
     <>

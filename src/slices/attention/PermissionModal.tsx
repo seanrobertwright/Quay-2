@@ -15,6 +15,15 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import type { PermissionItem } from "./attentionQueue.ts";
 import type { AnswerPermission } from "./useAttentionQueue.ts";
 
+/**
+ * Asks the permission modal to show one request, such as one reopened from its attention drawer
+ * row. The modal moves once per object, so pass a new object for each choice, even of the same
+ * request.
+ */
+export interface ReopenRequest {
+  requestId: string;
+}
+
 interface PermissionModalProps {
   /** The requests to show, from the attention queue; the first is shown when the modal opens. */
   pendingRequests: PermissionItem[];
@@ -22,11 +31,8 @@ interface PermissionModalProps {
   onResolve: AnswerPermission;
   /** Hides the modal and leaves the shown requests waiting in the attention queue. */
   onLater: () => void;
-  /**
-   * The request the user chose to see, such as one reopened from its attention drawer row. Each
-   * new object moves the modal to that request.
-   */
-  showRequest?: { requestId: string } | null;
+  /** The request the user last chose to see, or null when they have chosen none. */
+  showRequest?: ReopenRequest | null;
 }
 
 export const PermissionModal: FC<PermissionModalProps> = ({
