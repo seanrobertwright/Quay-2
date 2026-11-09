@@ -1036,27 +1036,17 @@ fn a_graph_run_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it()
     assert_eq!(h.calls(), [["run", "nightly-build", "--json"], ["run", "nightly-build", "--json"]]);
 }
 
-/// Runs git in `repo`, which must succeed.
-fn git_in(repo: &Path, args: &[&str]) {
-    crate::slices::machina::git::run_ok(repo, args).unwrap();
-}
-
 #[test]
 fn the_graph_workflow_s_files_with_changes_since_the_last_commit() {
-    use crate::slices::praxis::models::ChangeStatus;
-    use super::bundle::{bundle_changes, BundleFileChange};
+    use super::bundle::bundle_changes;
+    use crate::slices::praxis::models::{BundleFileChange, ChangeStatus};
     let h = Harness::new();
     saved_graph_workflow(&h.project);
     put(&h.project, "contracts/other.json", json!({ "id": "other" }));
     let repo = h.project.canonicalize().unwrap();
     assert_eq!(bundle_changes(&repo, "release-review").unwrap(), vec![], "a project that isn't a git repository has none");
 
-    git_in(&repo, &["init", "-q"]);
-    for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
-        git_in(&repo, &["config", k, v]);
-    }
-    git_in(&repo, &["add", "-A"]);
-    git_in(&repo, &["commit", "-q", "-m", "init"]);
+    crate::slices::praxis::changes::commit_everything(&repo);
     assert_eq!(bundle_changes(&repo, "release-review").unwrap(), vec![]);
 
     put(&h.project, "graphs/gr1.json", json!({ "id": "gr1", "nodes": [] }));

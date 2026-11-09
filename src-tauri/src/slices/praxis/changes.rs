@@ -149,6 +149,19 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
     Ok(FileDiff { path, status, diff, truncated })
 }
 
+/// Makes `repo` a git repository with one commit holding every file in it. For tests that need
+/// a committed project.
+#[cfg(test)]
+pub(crate) fn commit_everything(repo: &Path) {
+    let git = |args: &[&str]| git::run_ok(repo, args).unwrap();
+    git(&["init", "-q"]);
+    for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
+        git(&["config", k, v]);
+    }
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "init"]);
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -173,15 +186,10 @@ mod tests {
     /// A repository with one commit holding `files`.
     fn committed_repo(files: &[(&str, &str)]) -> TempDir {
         let repo = temp_dir();
-        git(&repo, &["init", "-q"]);
-        for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
-            git(&repo, &["config", k, v]);
-        }
         for (rel, body) in files {
             write(&repo, rel, body);
         }
-        git(&repo, &["add", "-A"]);
-        git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        commit_everything(&repo);
         repo
     }
 

@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::slices::praxis::changes::path_changes;
 use crate::slices::praxis::graph_workflow::validate_graph_workflow;
-use crate::slices::praxis::models::PraxisKind;
+use crate::slices::praxis::models::{BundleFileChange, PraxisKind};
 use crate::slices::praxis::store::{definition_path, display_path, read_capped, read_record, BINDINGS_DIR, PRAXIS_DIR};
 use crate::slices::praxis::template_name::check_graph_workflow_name;
 use crate::slices::praxis::validate::Severity;
@@ -110,22 +110,6 @@ pub fn bundle_digest(repo: &Path, name: &str) -> Option<String> {
         "grants": grants,
     });
     aiws_sdk::digest(&record).ok()
-}
-
-/// One of a graph workflow's files with changes since the last commit, as [`bundle_changes`] lists
-/// them for a graph run's confirm (#466): `path` relative to the project, with `/` between its parts.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BundleFileChange {
-    pub path: String,
-    pub status: crate::slices::praxis::models::ChangeStatus,
-}
-
-/// What [`bundle_changes`] found, as the `praxis_graph_workflow_changes` command gives it.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BundleChanges {
-    pub files: Vec<BundleFileChange>,
 }
 
 /// The files of the graph workflow `name` in `repo` that have changed since the last commit, in

@@ -8,10 +8,10 @@ use super::context;
 use super::grants;
 use super::graph_bindings;
 use super::graph_workflow::{self, GraphWorkflowCheck};
-use super::host::{self, BundleChanges};
+use super::host;
 use super::lifecycle;
 use super::models::{
-    BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
+    BindingSuggestions, BindingsInput, BundleChanges, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
     FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome, TargetInput,
 };
 use super::store;
