@@ -1,7 +1,7 @@
-import { FC } from "react";
+import type { FC } from "react";
 import { AlertCircle, X } from "lucide-react";
-import type { TerminalInfo } from "../terminal/types";
-import type { UndeliveredAnswer } from "./attentionQueue";
+import type { TerminalInfo } from "../terminal/types.ts";
+import type { UndeliveredAnswer } from "./attentionQueue.ts";
 
 interface UndeliveredAnswerNoticeProps {
   answer: UndeliveredAnswer;

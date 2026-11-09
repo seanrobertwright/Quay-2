@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useId } from "react";
+import { type FC, useState, useEffect, useId } from "react";
 import {
   ShieldAlert,
   Check,
@@ -11,9 +11,18 @@ import {
   CheckCheck,
   Clock,
 } from "lucide-react";
-import { TerminalInfo } from "../terminal/types";
-import type { PermissionItem } from "../attention/attentionQueue";
-import type { AnswerPermission } from "../attention/useAttentionQueue";
+import type { TerminalInfo } from "../terminal/types.ts";
+import type { PermissionItem } from "./attentionQueue.ts";
+import type { AnswerPermission } from "./useAttentionQueue.ts";
+
+/**
+ * Asks the permission modal to show one request, such as one reopened from its attention drawer
+ * row. The modal moves once per object, so pass a new object for each choice, even of the same
+ * request.
+ */
+export interface ReopenRequest {
+  requestId: string;
+}
 
 interface PermissionModalProps {
   /** The requests to show, from the attention queue; the first is shown when the modal opens. */
@@ -22,6 +31,8 @@ interface PermissionModalProps {
   onResolve: AnswerPermission;
   /** Hides the modal and leaves the shown requests waiting in the attention queue. */
   onLater: () => void;
+  /** The request the user last chose to see, or null when they have chosen none. */
+  showRequest?: ReopenRequest | null;
 }
 
 export const PermissionModal: FC<PermissionModalProps> = ({
@@ -29,9 +40,17 @@ export const PermissionModal: FC<PermissionModalProps> = ({
   terminals,
   onResolve,
   onLater,
+  showRequest = null,
 }) => {
   const denyReasonId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Move to the request the user chose, once per choice
+  const [shownRequest, setShownRequest] = useState(showRequest);
+  if (showRequest !== shownRequest) {
+    setShownRequest(showRequest);
+    const chosen = pendingRequests.findIndex((request) => request.requestId === showRequest?.requestId);
+    if (chosen >= 0) setCurrentIndex(chosen);
+  }
   const [denyReason, setDenyReason] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -116,8 +135,8 @@ export const PermissionModal: FC<PermissionModalProps> = ({
   };
 
   const handleDeny = () => {
-    const reason = denyReason.trim() || "User rejected tool execution";
-    onResolve(currentReq.requestId, "deny", reason, false);
+    // The queue sends its own reason for a denial with none, the same as a drawer row's Deny
+    onResolve(currentReq.requestId, "deny", denyReason, false);
     setDenyReason("");
   };
 

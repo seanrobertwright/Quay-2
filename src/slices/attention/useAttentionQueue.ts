@@ -2,15 +2,16 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  Envelope,
+  type Envelope,
   isSubagentTurn,
-  PermissionRequestPayload,
-  PermissionResolvedPayload,
-} from "../bridge/useBridgeEvents";
-import { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types";
+  type PermissionRequestPayload,
+  type PermissionResolvedPayload,
+} from "../bridge/useBridgeEvents.ts";
+import type { TerminalExitedPayload, TerminalInfo, TerminalStatusPayload } from "../terminal/types.ts";
 import {
   applyAttentionEvent,
   attentionItems,
+  droppedPermissionCount,
   emptyAttentionQueue,
   modalPermissions,
   pendingPermissionIds,
@@ -19,9 +20,9 @@ import {
   type PermissionItem,
   type UndeliveredAnswer,
   undeliveredAnswer,
-} from "./attentionQueue";
-import { onUserInput } from "../terminal/userInput";
-import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
+} from "./attentionQueue.ts";
+import { onUserInput } from "../terminal/userInput.ts";
+import { onTerminalRelaunched } from "../terminal/terminalRelaunched.ts";
 
 /** The project of the terminal `terminalId` names, or null when `terminals` has no such terminal. */
 const projectOf = (terminals: TerminalInfo[], terminalId: string | null | undefined): string | null =>
@@ -40,7 +41,13 @@ const toPendingPermission = (
   reason: payload.reason,
 });
 
-/** Sends the user's answer to permission request `requestId`. */
+/** The reason a denial sends the agent when the user gave none. */
+const DENIED_WITHOUT_REASON = "User rejected tool execution";
+
+/**
+ * Sends the user's answer to permission request `requestId`. A denial with no `reason` tells the
+ * agent the user rejected the tool.
+ */
 export type AnswerPermission = (
   requestId: string,
   decision: "allow" | "deny",
@@ -71,6 +78,11 @@ export interface AttentionQueueView {
   dismissUndeliveredAnswer: () => void;
   /** Clears the terminal's finished turn without acting on it. Its permission requests stay. */
   dismissFinishedTurn: (terminalId: string) => void;
+  /**
+   * How many of `terminalId`'s permission requests the queue dropped to stay within its cap, since
+   * the terminal was launched; null counts the requests that named no terminal.
+   */
+  droppedPermissionCount: (terminalId: string | null) => number;
 }
 
 /**
@@ -89,8 +101,8 @@ export interface AttentionQueueView {
  * terminal list (closed), or the user relaunches it.
  *
  * Returns the waiting items, the requests the permission modal shows, the ids of every pending
- * request, the latest answer that reached no agent, and the user's actions on them, including
- * dismissing a terminal's finished turn.
+ * request, the latest answer that reached no agent, each terminal's count of requests its cap
+ * dropped, and the user's actions on them, including dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
@@ -189,7 +201,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
         await invoke("resolve_permission", {
           requestId,
           decision,
-          reason: reason || null,
+          reason: reason?.trim() || (decision === "deny" ? DENIED_WITHOUT_REASON : null),
           rememberForSession,
         });
         dispatch({ type: "permissionResolved", requestId });
@@ -214,6 +226,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
   const items = useMemo(() => attentionItems(queue), [queue]);
   const modal = useMemo(() => modalPermissions(queue), [queue]);
   const pending = useMemo(() => pendingPermissionIds(queue), [queue]);
+  const dropped = useCallback((terminalId: string | null) => droppedPermissionCount(queue, terminalId), [queue]);
   return {
     items,
     modalPermissions: modal,
@@ -224,5 +237,6 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     undeliveredAnswer: undeliveredAnswer(queue),
     dismissUndeliveredAnswer,
     dismissFinishedTurn,
+    droppedPermissionCount: dropped,
   };
 }

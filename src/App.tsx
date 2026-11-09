@@ -3,15 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
-import { AttentionDrawer } from "./slices/attention/AttentionDrawer";
-import { UndeliveredAnswerNotice } from "./slices/attention/UndeliveredAnswerNotice";
+import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
 import { A2APanel } from "./slices/orchestrator/A2APanel";
-import { PermissionModal } from "./slices/bridge/PermissionModal";
 import { WorkspaceSettingsModal } from "./slices/workspace/WorkspaceSettingsModal";
 import { SwarmModal } from "./slices/orchestrator/SwarmModal";
 import { useSavedSwarms } from "./slices/orchestrator/useSavedSwarms";
@@ -131,17 +129,8 @@ export function App() {
   } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
-  const {
-    items: waitingItems,
-    modalPermissions,
-    pendingPermissionIds,
-    deferPermissions,
-    reopenPermissions,
-    answerPermission,
-    undeliveredAnswer,
-    dismissUndeliveredAnswer,
-    dismissFinishedTurn,
-  } = useAttentionQueue(terminals);
+  const attentionQueue = useAttentionQueue(terminals);
+  const { items: waitingItems, pendingPermissionIds, reopenPermissions } = attentionQueue;
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
@@ -725,24 +714,16 @@ export function App() {
         activeTerminalId={activeTerminalId}
       />
 
-      {/* Interactive Tool Approval Modal: open while the queue holds a request not put off with Later */}
-      {modalPermissions.length > 0 && (
-        <PermissionModal
-          pendingRequests={modalPermissions}
-          terminals={terminals}
-          onResolve={answerPermission}
-          onLater={() => deferPermissions(modalPermissions.map((request) => request.requestId))}
-        />
-      )}
-
-      {/* An answer to a permission request that reached no agent, because it had stopped waiting */}
-      {undeliveredAnswer && (
-        <UndeliveredAnswerNotice
-          answer={undeliveredAnswer}
-          terminals={terminals}
-          onDismiss={dismissUndeliveredAnswer}
-        />
-      )}
+      {/* The attention queue's permission modal, undelivered-answer notice and drawer (Ctrl+Shift+B q) */}
+      <AttentionSurfaces
+        queue={attentionQueue}
+        terminals={terminals}
+        projects={projects}
+        projectWorktrees={projectWorktrees}
+        isDrawerOpen={isAttentionQueueOpen}
+        onCloseDrawer={() => setIsAttentionQueueOpen(false)}
+        onFocusTerminal={selectTerminal}
+      />
 
       {/* Open Project Dialog */}
       <OpenProjectDialog
@@ -826,21 +807,6 @@ export function App() {
         projectName={activeProjectObj?.name || "Repo"}
         onClose={() => setIsAuditModalOpen(false)}
         onFixWithClaude={handleFixAuditWithClaude}
-      />
-
-      {/* Attention queue drawer: every session waiting on you (Ctrl+Shift+B q) */}
-      <AttentionDrawer
-        isOpen={isAttentionQueueOpen}
-        items={waitingItems}
-        terminals={terminals}
-        projects={projects}
-        projectWorktrees={projectWorktrees}
-        onClose={() => setIsAttentionQueueOpen(false)}
-        onFocusTerminal={(terminalId) => {
-          setIsAttentionQueueOpen(false);
-          selectTerminal(terminalId);
-        }}
-        onDismissFinishedTurn={dismissFinishedTurn}
       />
 
       {/* Claude Session History & Auto-Resume Drawer (Ctrl+Shift+B h) */}
