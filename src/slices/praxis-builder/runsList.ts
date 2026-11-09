@@ -40,6 +40,12 @@ export interface RunRow {
   createdAt: number | null;
   /** The host's creation time as it wrote it. */
   createdAtText: string;
+  /**
+   * When the run last changed, in ms since the epoch, and as the host wrote it; both null when
+   * the entry doesn't say, as a template run's doesn't, and the first when it can't be read.
+   */
+  updatedAt: number | null;
+  updatedAtText: string | null;
   status: string;
   /** The coding profile's stage; null for a graph run, which has none. */
   stage: string | null;
@@ -138,7 +144,7 @@ export const TEMPLATE_RUNS: RunsSource = {
     const { revision, stage } = v;
     if (common === null || typeof revision !== "number" || typeof stage !== "string") return null;
     const needsYou = common.held || common.status === AWAITING_APPROVAL;
-    return { ...common, revision, stage, awaitingApproval: null, needsYou, runPageAddress: null };
+    return { ...common, revision, stage, updatedAt: null, updatedAtText: null, awaitingApproval: null, needsYou, runPageAddress: null };
   },
 };
 
@@ -152,10 +158,12 @@ export const GRAPH_RUNS: RunsSource = {
   parseRun(v) {
     if (!isObject(v)) return null;
     const common = commonFields(v);
-    const { workflowRevision, awaitingApproval, runPageAddress = null } = v;
+    const { workflowRevision, awaitingApproval, runPageAddress = null, updatedAt } = v;
     if (common === null || typeof workflowRevision !== "number" || typeof awaitingApproval !== "boolean") return null;
     if (runPageAddress !== null && typeof runPageAddress !== "string") return null;
-    return { ...common, revision: workflowRevision, stage: null, awaitingApproval, needsYou: common.held || awaitingApproval, runPageAddress };
+    // The list doesn't draw the update time, so an entry without one is still listed.
+    const updated = typeof updatedAt === "string" ? { updatedAt: parseUtcTimestamp(updatedAt), updatedAtText: updatedAt } : { updatedAt: null, updatedAtText: null };
+    return { ...common, revision: workflowRevision, stage: null, ...updated, awaitingApproval, needsYou: common.held || awaitingApproval, runPageAddress };
   },
 };
 

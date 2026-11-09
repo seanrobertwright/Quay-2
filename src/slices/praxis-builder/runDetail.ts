@@ -1,6 +1,8 @@
-// A template run's detail (#362, #453): one run followed by polled `praxis status <wo> --json`
+// A run's detail (#362, #453, #465): one run followed by polled `praxis status <wo> --json`
 // through the Praxis CLI runner (#446), never `praxis follow`, whose `--json` gives only a final
-// view. It has no UI of its own; the Runs view draws it on the template's stage strip.
+// view. It has no UI of its own. A template run's detail is drawn on the template's stage strip;
+// a graph run's (graphRunDetail.ts) reads its own status record through the same follow, with
+// the same delays and stop rules.
 //
 // `coding-operator-view/1` isn't a contracted read model (#361), so only the fields drawn are
 // read, each leniently: a field that is missing or of another type falls back to the run's row
@@ -57,8 +59,16 @@ export interface HoldPanel {
   exits: HoldExit[];
 }
 
-/** A run as its detail draws it. */
-export interface RunDetail {
+/** What the follow needs of any run it reads to pick the next wait. */
+export interface FollowedRun {
+  /** True when the run ended: it is no longer read. */
+  ended: boolean;
+  /** True when the run waits for a person in the browser, so it changes only when they decide. */
+  waiting: boolean;
+}
+
+/** A template run as its detail draws it. */
+export interface RunDetail extends FollowedRun {
   workOrderId: string;
   runId: string;
   revision: number | null;
@@ -90,9 +100,9 @@ export interface RunDetail {
 }
 
 /** What the run detail draws. */
-export interface RunFollowView {
+export interface RunFollowView<Run = RunDetail> {
   /** The run as last read, else as its row lists it; null before either. */
-  run: RunDetail | null;
+  run: Run | null;
   /** When the run was last read, in ms since the epoch; null before the first. */
   readAt: number | null;
   /** True while the shown run may be out of date because the host can't be used. */
@@ -101,27 +111,40 @@ export interface RunFollowView {
   problem: string | null;
 }
 
-export const INITIAL_FOLLOW_VIEW: RunFollowView = { run: null, readAt: null, dimmed: false, problem: null };
+export const INITIAL_FOLLOW_VIEW: RunFollowView<never> = { run: null, readAt: null, dimmed: false, problem: null };
 
-export interface RunFollow {
+export interface RunFollow<Run = RunDetail> {
   /** The run detail is on screen, or has left it. Leaving stops the poller and kills its call. */
   set(onScreen: boolean): void;
   /** The run's row from the Runs list's last read, the fallback for every field the view lacks. */
   setRow(row: RunRow | null): void;
-  view(): RunFollowView;
+  view(): RunFollowView<Run>;
   subscribe(listener: () => void): () => void;
   /** Stops for good, killing the call in flight. */
   dispose(): void;
 }
 
-export interface RunFollowOptions {
+/** What a run follow reads: which status command, in which format, and how it draws the record. */
+export interface FollowSource<Run extends FollowedRun> {
+  /** The command that reads one run's status record. */
+  statusCommand: "praxis_host_status" | "praxis_host_graph_status";
+  /** The record's `format`. A record in any other is one Quay can't read. */
+  format: string;
+  /** The run as its detail draws it, from the record where it has a field and the row where it doesn't; null when neither names the run. */
+  detailOf(view: Obj | null, row: RunRow | null, trustHint: string | null, workOrderId: string): Run | null;
+  /** What a read compares to tell whether the run changed. */
+  fingerprint(view: Obj): string;
+}
+
+export interface RunFollowOptions<Run extends FollowedRun> {
   projectPath: string;
   workOrderId: string;
+  source: FollowSource<Run>;
   call?: Invoker;
 }
 
-type Obj = Record<string, unknown>;
-const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+export type Obj = Record<string, unknown>;
+export const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 
 const STAGE_OF: Readonly<Record<string, StageKey>> = {
@@ -170,7 +193,7 @@ function finishedOf(status: string, current: StageKey | null, corrections: numbe
 }
 
 /** The hold panel of a held run: its card, or the run's reason for a hold without one. */
-function holdOf(card: unknown, reason: string | null): HoldPanel {
+export function holdOf(card: unknown, reason: string | null): HoldPanel {
   if (!isObject(card)) return { reason: reason ?? "praxis gave no reason.", cause: null, phase: null, evidence: null, notes: [], exits: [] };
   const exits = (Array.isArray(card.exits) ? card.exits : []).filter(isObject).flatMap((e) => {
     const label = str(e.label);
@@ -234,12 +257,20 @@ function fingerprint(view: Obj): string {
   return JSON.stringify([view.revision, view.status, view.stage, control, view.pending, view.holdCard ? true : false, attempts]);
 }
 
-export function createRunFollow({ projectPath, workOrderId, call = invoke }: RunFollowOptions): RunFollow {
+/** A template run: `praxis status`'s `coding-operator-view/1`, drawn on the stage strip. */
+export const TEMPLATE_RUN: FollowSource<RunDetail> = {
+  statusCommand: "praxis_host_status",
+  format: "coding-operator-view/1",
+  detailOf: runDetailOf,
+  fingerprint,
+};
+
+export function createRunFollow<Run extends FollowedRun>({ projectPath, workOrderId, source, call = invoke }: RunFollowOptions<Run>): RunFollow<Run> {
   let row: RunRow | null = null;
   let record: Obj | null = null;
   let trustHint: string | null = null;
   let shown: Omit<RunFollowView, "run"> = { readAt: null, dimmed: false, problem: null };
-  let view = INITIAL_FOLLOW_VIEW;
+  let view: RunFollowView<Run> = INITIAL_FOLLOW_VIEW;
   // The wait the next unchanged read doubles, and what the last read saw.
   let interval = FOLLOW_FIRST_MS;
   let last: string | null = null;
@@ -249,13 +280,13 @@ export function createRunFollow({ projectPath, workOrderId, call = invoke }: Run
 
   const changed = () => {
     if (disposed) return;
-    view = { ...shown, run: runDetailOf(record, row, trustHint, workOrderId) };
+    view = { ...shown, run: source.detailOf(record, row, trustHint, workOrderId) };
     for (const listener of listeners) listener();
   };
 
   const poller = createPoller(async (signal) => {
     const id = requests.begin();
-    const outcome = await praxisCall("praxis_host_status", { projectPath, workOrderId }, signal, call);
+    const outcome = await praxisCall(source.statusCommand, { projectPath, workOrderId }, signal, call);
     if (!requests.isNewest(id) || disposed) return null;
     return recordAndNextDelay(outcome);
   });
@@ -263,16 +294,17 @@ export function createRunFollow({ projectPath, workOrderId, call = invoke }: Run
   /**
    * Keeps the newest read's outcome and returns the wait before the next read: none once the run
    * ended, 15 s while it waits for a person, 3 s after a change, doubling to 15 s while nothing
-   * changes, and 60 s after any failure. The last run read stays; only a host-level failure dims it.
+   * changes, and 60 s after any failure, a record in another format included. The last run read
+   * stays; only a host-level failure dims it.
    */
   function recordAndNextDelay(outcome: CallOutcome): number | null {
     if (outcome.kind === "cancelled") return interval;
-    if (outcome.kind === "record") {
+    if (outcome.kind === "record" && outcome.record.format === source.format) {
       record = outcome.record;
       trustHint = outcome.trustHint ?? null;
       shown = { readAt: Date.now(), dimmed: false, problem: null };
       changed();
-      const seen = fingerprint(outcome.record);
+      const seen = source.fingerprint(outcome.record);
       interval = seen === last ? Math.min(interval * 2, FOLLOW_MAX_MS) : FOLLOW_FIRST_MS;
       last = seen;
       const run = view.run;
@@ -280,7 +312,8 @@ export function createRunFollow({ projectPath, workOrderId, call = invoke }: Run
       if (run?.waiting) return FOLLOW_WAITING_MS;
       return interval;
     }
-    shown = { ...shown, dimmed: isHostLevelFailure(outcome), problem: outcomeMessage(outcome) };
+    const problem = outcome.kind === "record" ? "praxis gave a run status Quay can't read." : outcomeMessage(outcome);
+    shown = { ...shown, dimmed: isHostLevelFailure(outcome), problem };
     changed();
     return FOLLOW_FAILING_MS;
   }

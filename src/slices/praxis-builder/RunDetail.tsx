@@ -2,13 +2,15 @@
 // strip, followed while it is on screen. Decisions on a run (approve, pause, cancel, resolving a
 // hold) are made only in the host's browser page, so the detail has no control for any of them,
 // not even a disabled one: it shows where the run is and opens its page. Quay never runs
-// `praxis hold` or `praxis open`, and runs `praxis trust` only in a visible terminal.
+// `praxis hold` or `praxis open`, and runs `praxis trust` only in a visible terminal. A graph
+// run's detail (GraphRunDetail.tsx) shares its waiting banner, hold panel, certificate hint and
+// page actions.
 import { useId, useState, type FC, type ReactNode } from "react";
 import { ExternalLink, FlaskConical, Pause, ShieldCheck, UserCheck, X } from "lucide-react";
 import { formatClock } from "../../lib/dates.ts";
 import type { JsonObject } from "./model.ts";
 import { openPraxisTerminal, type RunInTerminal } from "./praxisHost.ts";
-import type { RunDetail as Run } from "./runDetail.ts";
+import type { FollowedRun, HoldPanel as Hold, RunFollowView } from "./runDetail.ts";
 import { openRunPageOf } from "./runPage.ts";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
 import { StageStrip } from "./StageStrip.tsx";
@@ -33,15 +35,23 @@ const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border bor
 /** The amber of a caution: a simulated run, or one waiting for a person. */
 export const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
 
-export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, content, shown, runPage, runInTerminal, onClose }) => {
-  const view = useRunDetail(projectPath, workOrderId, row, shown);
+/**
+ * A run detail's page actions: Open in browser for the run's page, loopback-only, and Trust
+ * certificate, which opens a visible terminal running `praxis trust`. `notice` says why the last
+ * one failed, if it did.
+ */
+export function useRunPageActions(
+  projectPath: string,
+  name: string,
+  address: string | null,
+  lookup: () => Promise<RunPageLookup>,
+  runInTerminal: RunInTerminal | undefined,
+): { notice: string | null; openButton: (label: string) => ReactNode; trust: () => void } {
   const [notice, setNotice] = useState<string | null>(null);
-  const run = view.run;
-  const name = run?.runId ?? row?.runId ?? workOrderId;
 
   const openInBrowser = async () => {
     setNotice(null);
-    setNotice(await openRunPageOf(name, run?.runPageAddress ?? null, () => runPage(workOrderId)));
+    setNotice(await openRunPageOf(name, address, lookup));
   };
 
   const trust = () => {
@@ -62,8 +72,15 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
       {label}
     </button>
   );
+  return { notice, openButton, trust };
+}
 
-  const readAt = view.readAt === null ? null : formatClock(view.readAt);
+export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, content, shown, runPage, runInTerminal, onClose }) => {
+  const view = useRunDetail(projectPath, workOrderId, row, shown);
+  const run = view.run;
+  const name = run?.runId ?? row?.runId ?? workOrderId;
+  const { notice, openButton, trust } = useRunPageActions(projectPath, name, run?.runPageAddress ?? null, () => runPage(workOrderId), runInTerminal);
+
   return (
     <section aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#c9d1d9]">
@@ -95,17 +112,7 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
           </button>
         </span>
       </header>
-      <div role="status" className="text-[11px] text-[#8b949e] space-y-1">
-        {view.readAt === null && view.problem === null && <p>Reading {name} on the host…</p>}
-        {view.dimmed && (
-          <p className="text-[#f85149]">
-            The host can't be used, so this run may be out of date{readAt ? `: it was read at ${readAt}` : ""}. {view.problem}
-          </p>
-        )}
-        {!view.dimmed && view.problem && <p className="text-[#f85149]">{view.problem}</p>}
-        {!view.dimmed && readAt && <p>{run?.ended ? `Read at ${readAt}. The run has ended, so it is no longer read.` : `Read at ${readAt}.`}</p>}
-        {notice && <p className="text-[#f85149]">{notice}</p>}
-      </div>
+      <FollowStatus name={name} view={view} notice={notice} />
       {run && (
         <div className={view.dimmed ? "opacity-50" : ""}>
           <StageStrip
@@ -114,14 +121,45 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
           />
         </div>
       )}
-      {run?.hold && <HoldPanel run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />}
+      {run?.hold && <HoldPanel hold={run.hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />}
       {run && run.waiting && !run.hold && <WaitingBanner run={run} openButton={openButton("Open in browser")} onTrust={trust} />}
     </section>
   );
 };
 
+/** A followed run's read status: reading, when it was read, why the last read failed, and the last action's notice. */
+export const FollowStatus: FC<{ name: string; view: RunFollowView<FollowedRun>; notice: string | null }> = ({ name, view, notice }) => {
+  const readAt = view.readAt === null ? null : formatClock(view.readAt);
+  return (
+    <div role="status" className="text-[11px] text-[#8b949e] space-y-1">
+      {view.readAt === null && view.problem === null && <p>Reading {name} on the host…</p>}
+      {view.dimmed && (
+        <p className="text-[#f85149]">
+          The host can't be used, so this run may be out of date{readAt ? `: it was read at ${readAt}` : ""}. {view.problem}
+        </p>
+      )}
+      {!view.dimmed && view.problem && <p className="text-[#f85149]">{view.problem}</p>}
+      {!view.dimmed && readAt && <p>{view.run?.ended ? `Read at ${readAt}. The run has ended, so it is no longer read.` : `Read at ${readAt}.`}</p>}
+      {notice && <p className="text-[#f85149]">{notice}</p>}
+    </div>
+  );
+};
+
+/** What the certificate hint needs of a run: the hint praxis gave, and whether `praxis trust` helps. */
+interface TrustFacts {
+  trustHint: string | null;
+  offersTrust: boolean;
+}
+
+/** What the waiting banner needs of a run. */
+interface WaitingFacts extends TrustFacts {
+  /** The decisions the run waits for, in words; empty when praxis named none Quay knows. */
+  decisions: string[];
+  simulated: boolean;
+}
+
 /** The certificate hint praxis gave, with Trust certificate when it asks for `praxis trust`. */
-const CertificateHint: FC<{ run: Run; onTrust: () => void }> = ({ run, onTrust }) =>
+const CertificateHint: FC<{ run: TrustFacts; onTrust: () => void }> = ({ run, onTrust }) =>
   run.trustHint === null ? null : (
     <p className="flex flex-wrap items-center gap-2 text-[11px] text-[#e3b341]">
       <span>{run.trustHint}</span>
@@ -135,7 +173,7 @@ const CertificateHint: FC<{ run: Run; onTrust: () => void }> = ({ run, onTrust }
   );
 
 /** A run that waits for a person: what it waits for, decided in the browser. */
-const WaitingBanner: FC<{ run: Run; openButton: ReactNode; onTrust: () => void }> = ({ run, openButton, onTrust }) => (
+export const WaitingBanner: FC<{ run: WaitingFacts; openButton: ReactNode; onTrust: () => void }> = ({ run, openButton, onTrust }) => (
   <div role="region" aria-label="Waiting for a decision" className="space-y-1.5 px-3 py-2 rounded-md border border-[#1f6feb]/60 bg-[#1f6feb]/10">
     <p className="flex flex-wrap items-center gap-2 text-xs text-[#c9d1d9]">
       <UserCheck className="w-3.5 h-3.5 text-[#79c0ff]" aria-hidden="true" />
@@ -157,10 +195,8 @@ const WaitingBanner: FC<{ run: Run; openButton: ReactNode; onTrust: () => void }
 );
 
 /** A held run's hold card: why it is held and the exits it offers, all taken in the browser. */
-const HoldPanel: FC<{ run: Run; openButton: ReactNode; onTrust: () => void }> = ({ run, openButton, onTrust }) => {
-  const hold = run.hold;
+export const HoldPanel: FC<{ hold: Hold; run: TrustFacts; openButton: ReactNode; onTrust: () => void }> = ({ hold, run, openButton, onTrust }) => {
   const headingId = useId();
-  if (!hold) return null;
   return (
     <div role="region" aria-labelledby={headingId} className="space-y-1.5 px-3 py-2 rounded-md border border-[#f0883e]/60 bg-[#f0883e]/10 text-xs text-[#c9d1d9]">
       <p className="flex flex-wrap items-center gap-2">
