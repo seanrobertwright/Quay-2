@@ -126,6 +126,7 @@ import { graphRowBadges } from "./graphHostStatus.ts";
 import { useTriggerHost } from "./useTriggerHost.ts";
 import { triggerRowBadges } from "./triggerHostStatus.ts";
 import type { GraphTriggerHost } from "./TriggerHostPanel.tsx";
+import type { TriggerFires } from "./FiresPanel.tsx";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
@@ -459,6 +460,21 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     isOpen && listsGraphTrigger,
     isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
   );
+  // The run a graph trigger's fire created, to show in its graph workflow's Runs view once that
+  // workflow's form opens (#478). It is dropped as soon as another record is open.
+  const [runToShow, setRunToShow] = useState<{ projectKey: string; workflow: string; workOrderId: string } | null>(null);
+  useEffect(() => {
+    setRunToShow((r) => (r && r.projectKey === projectKey && openKind === "graph-workflows" && openId === r.workflow ? r : null));
+  }, [projectKey, openKind, openId]);
+  /** What trigger `name`'s Fires panel needs: its saved target, and how a fire's run is shown there. */
+  const triggerFires = (name: string): TriggerFires => ({
+    shown: isOpen,
+    workflow: listedTriggers?.find((e) => e.id === name)?.target ?? null,
+    onShowRun: (workflow, workOrderId) => {
+      openDefinition({ kind: "graph-workflows", id: workflow });
+      setRunToShow({ projectKey, workflow, workOrderId });
+    },
+  });
   /** Trigger `name`'s host state for its form, read from the model on each render; null when it isn't a graph trigger. */
   const graphTriggerHost = (name: string): GraphTriggerHost | null =>
     shownTriggers?.has(name)
@@ -2474,6 +2490,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                     host={graphTriggerHost(open.id)}
+                    fires={triggerFires(open.id)}
                   />
                 </>
               ) : openDraft && open.kind === "templates" ? (
@@ -2519,6 +2536,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     runsShown={isOpen}
                     runInTerminal={onRunInTerminal}
                     unsavedKeys={unsavedKeys}
+                    showRun={runToShow?.projectKey === projectKey && runToShow.workflow === open.id ? runToShow.workOrderId : undefined}
                   />
                 </>
               ) : openDraft ? (
