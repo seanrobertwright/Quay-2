@@ -2,7 +2,8 @@
 // again, Open in browser for a pending candidate's admission page, and a note when the host's
 // enabled state differs from the saved file's, then the Revisions panel. They draw
 // `triggerHostStatus.ts`'s view of the trigger host model and never call `praxis` themselves:
-// Check again asks the model. There is no admit, reject or enable: the owner decides in the browser.
+// Check again asks the model. Withdraw, Disable and Retire are `TriggerControls.tsx`'s. There is no
+// admit, reject or enable: the owner decides in the browser.
 import { useState, type FC } from "react";
 import { HostStateLine, REVISIONS_SHOWN } from "./GraphHostPanel.tsx";
 import { useMinuteTick } from "./HostStatusLine.tsx";

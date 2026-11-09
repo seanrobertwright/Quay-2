@@ -13,7 +13,8 @@
 //
 // A trigger with a saved target is a graph trigger, and given its state on the Praxis host (#475)
 // the form shows it in a status line above the fields and a Revisions panel below them, which
-// read the builder's trigger host model.
+// read the builder's trigger host model, with Withdraw, Disable, Retire and Enable in browser
+// (#477) under the status line.
 import { useEffect, useId, type FC, type ReactNode } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";

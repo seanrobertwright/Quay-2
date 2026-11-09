@@ -72,7 +72,7 @@ function reasonOf(state: TriggerHostState): string | null {
     case "nameRefused":
       return state.rule;
     case "retired":
-      return "The owner retired it. It fires again only once the owner admits a new revision.";
+      return "It was retired on the host. It fires again only once the owner admits a new revision.";
     case "candidate":
       return "The owner admits or rejects it in the browser.";
     case "differs":
