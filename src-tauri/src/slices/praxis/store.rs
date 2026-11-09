@@ -459,7 +459,7 @@ fn companion_hash_now(repo: &Path, folder: &str, id: &str) -> Result<Option<Stri
         None => Ok(None),
         Some(path) => std::fs::read(&path)
             .map(|bytes| Some(content_hash(&bytes)))
-            .map_err(|e| format!("{}/{}/{}.json can't be read: {}", PRAXIS_DIR, folder, id, e)),
+            .map_err(|e| format!("{} can't be read: {}", shown_path(folder, id), e)),
     }
 }
 
@@ -510,7 +510,7 @@ pub fn contract_triggers(repo: &Path, contract_id: &str) -> Result<ContractTrigg
         match record {
             Ok(record) if record.get("contractId").and_then(Value::as_str) == Some(contract_id) => out.ids.push(id),
             Ok(_) => {}
-            Err(why) => out.unchecked.push(format!("{}/{}/{}.json: {}", PRAXIS_DIR, folder, id, why)),
+            Err(why) => out.unchecked.push(format!("{}: {}", shown_path(folder, &id), why)),
         }
     }
     Ok(out)
@@ -533,11 +533,17 @@ fn find_definition(repo: &Path, kind: PraxisKind, id: &str) -> Result<Option<Pat
     }
 }
 
+/// The path of the record `id` in `folder`, relative to the repository, as reports and git show
+/// it. The one home of the `.praxis/<folder>/<id>.json` layout.
+pub(super) fn shown_path(folder: &str, id: &str) -> String {
+    format!("{}/{}/{}.json", PRAXIS_DIR, folder, id)
+}
+
 /// The path of an existing definition file, confined to the repository, for "Reveal in
 /// folder".
 pub fn definition_path(repo: &Path, kind: PraxisKind, id: &str) -> Result<PathBuf, String> {
     find_definition(repo, kind, id)?
-        .ok_or_else(|| format!("{}/{}/{}.json doesn't exist.", PRAXIS_DIR, kind.folder(), id))
+        .ok_or_else(|| format!("{} doesn't exist.", shown_path(kind.folder(), id)))
 }
 
 /// `path` as a person would type it: without the `\\?\` prefix a canonical Windows path carries.
@@ -741,7 +747,7 @@ fn save(
     let unchanged = target.is_some() && on_disk.as_deref() == Some(text.as_bytes());
     if !unchanged {
         write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
-            .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, kind.folder(), id, e))?;
+            .map_err(|e| format!("{} can't be written: {}", shown_path(kind.folder(), id), e))?;
     }
 
     let layout_error = layout.and_then(|layout| write_companion(repo, LAYOUT_DIR, id, &layout).err());
@@ -773,7 +779,7 @@ fn write_companion(repo: &Path, folder: &str, id: &str, value: &Value) -> Result
     confined_file(repo, &dir, id)?;
     let text = to_canonical_text(value);
     write_atomic(&dir.join(format!("{}.json", id)), text.as_bytes())
-        .map_err(|e| format!("{}/{}/{}.json can't be written: {}", PRAXIS_DIR, folder, id, e))?;
+        .map_err(|e| format!("{} can't be written: {}", shown_path(folder, id), e))?;
     Ok(content_hash(text.as_bytes()))
 }
 
@@ -785,7 +791,7 @@ fn remove_companion(repo: &Path, folder: &str, id: &str) -> Result<(), String> {
         return Ok(());
     }
     std::fs::remove_file(dir.join(format!("{}.json", id)))
-        .map_err(|e| format!("{}/{}/{}.json can't be removed: {}", PRAXIS_DIR, folder, id, e))
+        .map_err(|e| format!("{} can't be removed: {}", shown_path(folder, id), e))
 }
 
 #[cfg(test)]

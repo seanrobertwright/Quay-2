@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use super::models::{ChangeStatus, ChangedFile, ChangedFiles, FileDiff, PraxisKind};
-use super::store::{confined_dir, confined_file, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
+use super::store::{confined_dir, confined_file, shown_path, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
 use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
@@ -120,7 +120,7 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
     if let Some(dir) = confined_dir(repo, kind.folder())? {
         confined_file(repo, &dir, id)?;
     }
-    let path = format!("{}/{}/{}.json", PRAXIS_DIR, kind.folder(), id);
+    let path = shown_path(kind.folder(), id);
     if !is_repository(repo)? {
         return Err(format!("The project isn't a git repository, so {} has no last commit to compare with.", path));
     }

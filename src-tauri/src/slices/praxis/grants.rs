@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::lifecycle::MAX_SCANNED;
 use super::models::{BoundContract, ChainBreak, ChainLink, GrantCheck, PraxisKind};
-use super::store::{capped_ids, read_record, validate_id, BINDINGS_DIR, PRAXIS_DIR};
+use super::store::{capped_ids, read_record, shown_path, validate_id, BINDINGS_DIR};
 use super::validate::validate_grant_on_mission;
 
 /// The most ancestors a chain walk reads. A deeper chain stops with a break.
@@ -76,7 +76,7 @@ pub(super) fn binding_contracts(repo: &Path, list: &str, id: &str) -> Result<(Ve
                 }
             }
             Ok(None) => {}
-            Err(why) => unchecked.push(format!("{}/{}/{}.json: {}", PRAXIS_DIR, BINDINGS_DIR, contract, why)),
+            Err(why) => unchecked.push(format!("{}: {}", shown_path(BINDINGS_DIR, &contract), why)),
         }
     }
     Ok((ids, unchecked))

@@ -11,8 +11,8 @@ use serde_json::{Map, Value};
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
 use super::models::{DeleteOutcome, DraftContent, FileChange, HashChange, PraxisKind, RenameOutcome};
 use super::store::{
-    confined_dir, confined_file, json_ids, parse_object, read_capped, target_graph_workflow, validate_id, BINDINGS_DIR,
-    LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK, TRIGGER_TARGETS_DIR,
+    confined_dir, confined_file, json_ids, parse_object, read_capped, shown_path, target_graph_workflow, validate_id,
+    BINDINGS_DIR, LAYOUT_DIR, PRAXIS_DIR, SAVE_LOCK, TRIGGER_TARGETS_DIR,
 };
 use crate::atomic_file::write_atomic;
 
@@ -206,11 +206,6 @@ pub const TRIGGER_HOOK: ReferenceHook = ReferenceHook {
 /// kind's hook rewrites. A graph workflow's hook rewrites the references it holds.
 pub const HOOKS: &[ReferenceHook] = &[GRAPH_HOOK, CONTRACT_HOOK, GRANT_HOOK, GRAPH_WORKFLOW_HOOK, TRIGGER_HOOK];
 
-/// A file's path relative to the repository, as reports show it.
-fn shown(folder: &str, id: &str) -> String {
-    format!("{}/{}/{}.json", PRAXIS_DIR, folder, id)
-}
-
 /// Runs every hook over `record`, and says whether any found a reference.
 fn rewrite_all(
     hooks: &[ReferenceHook],
@@ -275,7 +270,7 @@ fn find_referrers(
             if Some(target) == PraxisKind::from_folder(folder) && other == id {
                 continue;
             }
-            let shown = shown(folder, &other);
+            let shown = shown_path(folder, &other);
             let parsed = match confined_file(repo, &dir, &other) {
                 Ok(Some(path)) => read_capped(&path)
                     .and_then(|bytes| parse_object(&bytes).map(|value| (path, bytes, value)))
@@ -372,7 +367,7 @@ pub fn rename_definition(
         return Err(format!("A rename takes at most {} drafts.", MAX_DRAFTS));
     }
     let folder = kind.folder();
-    let missing = || format!("{} doesn't exist.", shown(folder, id));
+    let missing = || format!("{} doesn't exist.", shown_path(folder, id));
 
     let _guard = SAVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = confined_dir(repo, folder)?.ok_or_else(missing)?;
@@ -392,9 +387,9 @@ pub fn rename_definition(
     if !same_id && taken_by_another(&dir, folder, id, new_id)? {
         return Err(format!("The id '{}' is already taken by another {} file.", new_id, folder));
     }
-    let bytes = read_capped(&old_path).map_err(|p| format!("{} can't be renamed: {}", shown(folder, id), p.message))?;
+    let bytes = read_capped(&old_path).map_err(|p| format!("{} can't be renamed: {}", shown_path(folder, id), p.message))?;
     let Value::Object(mut record) =
-        parse_object(&bytes).map_err(|p| format!("{} can't be renamed: {}", shown(folder, id), p.message))?
+        parse_object(&bytes).map_err(|p| format!("{} can't be renamed: {}", shown_path(folder, id), p.message))?
     else {
         unreachable!("parse_object returns only objects");
     };
@@ -410,7 +405,7 @@ pub fn rename_definition(
     let mut writes = Vec::new();
     let mut finishes = Vec::new();
     let new_path = dir.join(format!("{}.json", new_id));
-    let (old_shown, new_shown) = (shown(folder, id), shown(folder, new_id));
+    let (old_shown, new_shown) = (shown_path(folder, id), shown_path(folder, new_id));
     changes.push(FileChange {
         path: old_shown.clone(),
         new_path: (!same_id).then(|| new_shown.clone()),
@@ -435,7 +430,7 @@ pub fn rename_definition(
             // Refuses a file at the new name that links out of the repository.
             confined_file(repo, &cdir, new_id)?;
             let to = cdir.join(format!("{}.json", new_id));
-            let (from_shown, to_shown) = (shown(companion, id), shown(companion, new_id));
+            let (from_shown, to_shown) = (shown_path(companion, id), shown_path(companion, new_id));
             changes.push(FileChange { path: from_shown.clone(), new_path: Some(to_shown.clone()), hashes: None });
             if case_only {
                 finishes.push(Step::Rename { from, to, line: format!("Renamed {} to {}", from_shown, to_shown) });
@@ -496,16 +491,16 @@ pub fn delete_definition(
 ) -> Result<DeleteOutcome, String> {
     validate_id(id)?;
     let folder = kind.folder();
-    let missing = || format!("{} doesn't exist.", shown(folder, id));
+    let missing = || format!("{} doesn't exist.", shown_path(folder, id));
 
     let _guard = SAVE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = confined_dir(repo, folder)?.ok_or_else(missing)?;
     let path = existing_file(repo, &dir, id)?.ok_or_else(missing)?;
-    let mut targets = vec![(path, shown(folder, id))];
+    let mut targets = vec![(path, shown_path(folder, id))];
     for companion in companion_folders(hooks, kind) {
         let Some(cdir) = confined_dir(repo, companion)? else { continue };
         if let Some(file) = existing_file(repo, &cdir, id)? {
-            targets.push((file, shown(companion, id)));
+            targets.push((file, shown_path(companion, id)));
         }
     }
     let (referrers, unchecked) = find_referrers(repo, hooks, kind, id)?;

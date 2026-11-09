@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use crate::slices::praxis::changes::path_changes;
 use crate::slices::praxis::graph_workflow::validate_graph_workflow;
 use crate::slices::praxis::models::{ChangeStatus, PraxisKind};
-use crate::slices::praxis::store::{definition_path, display_path, read_capped, read_record, BINDINGS_DIR, PRAXIS_DIR};
+use crate::slices::praxis::store::{definition_path, display_path, read_capped, read_record, shown_path, BINDINGS_DIR};
 use crate::slices::praxis::template_name::check_graph_workflow_name;
 use crate::slices::praxis::validate::Severity;
 
@@ -91,7 +91,7 @@ pub struct GraphWorkflowBundle {
 fn bundle_files(repo: &Path, name: &str) -> Result<BundleFiles, String> {
     check_graph_workflow_name(name)?;
     let folder = PraxisKind::GraphWorkflows.folder();
-    let workflow = read_record(repo, folder, name)?.ok_or_else(|| format!("{PRAXIS_DIR}/{folder}/{name}.json doesn't exist."))?;
+    let workflow = read_record(repo, folder, name)?.ok_or_else(|| format!("{} doesn't exist.", shown_path(folder, name)))?;
     let shape = validate_graph_workflow(&workflow);
     if shape.verdict.is_some() {
         let why = shape.diagnostics.iter().find(|d| d.severity == Severity::Error).map_or("", |d| d.message.as_str());
@@ -182,7 +182,7 @@ fn digest_of(files: &BundleFiles) -> Option<String> {
 pub fn graph_workflow_bundle(repo: &Path, name: &str) -> Result<GraphWorkflowBundle, String> {
     let files = bundle_files(repo, name)?;
     let named = files.named();
-    let paths: Vec<String> = named.iter().map(|(_, f)| format!("{PRAXIS_DIR}/{}/{}.json", f.kind.folder(), f.id)).collect();
+    let paths: Vec<String> = named.iter().map(|(_, f)| shown_path(f.kind.folder(), &f.id)).collect();
     let (changes, changes_error) = match path_changes(repo, &paths) {
         Ok(changes) => (changes, None),
         Err(why) => (Vec::new(), Some(why)),
