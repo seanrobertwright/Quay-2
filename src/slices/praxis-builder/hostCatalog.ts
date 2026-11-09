@@ -191,9 +191,9 @@ const online = (condition: HostCondition) => hostConditionView(condition).usable
 
 /**
  * Runs at most `limit` tasks at once, in the order they were queued. The limit is this queue's,
- * so no caller can run past it.
+ * so no caller can run past it. The graph workflow host model (#461) shares it.
  */
-function createLimiter(limit: number) {
+export function createLimiter(limit: number) {
   let running = 0;
   const queue: (() => void)[] = [];
   const next = () => {
