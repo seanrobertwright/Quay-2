@@ -153,7 +153,7 @@ pub fn bundle_digest(repo: &Path, name: &str) -> Option<String> {
 }
 
 /// The record a saved file holds, when it can be read and is strict JSON, as `praxis` needs it.
-fn read_strict(path: &Path) -> Option<Value> {
+pub(super) fn read_strict(path: &Path) -> Option<Value> {
     aiws_sdk::parse_strict(std::str::from_utf8(&read_capped(path).ok()?).ok()?).ok()
 }
 

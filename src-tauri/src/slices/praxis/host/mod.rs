@@ -17,6 +17,7 @@ mod tests;
 mod trigger;
 
 pub use bundle::{bundle_changes, bundle_digest, graph_workflow_bundle, GraphWorkflowBundle};
+pub use trigger::trigger_digest;
 pub use commands::*;
 pub use outcome::{CallOutcome, HostCondition};
 pub use runner::{ConditionChange, PraxisCli};

@@ -302,6 +302,7 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 contract_id: None,
                 graph_binding_id: None,
                 target: None,
+                enabled: None,
             };
             match parsed {
                 Err(problem) => empty(id, Some(problem)),
@@ -334,7 +335,8 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                     let graph_id = binding_field("graphId");
                     let cost_unit = binding_field("costUnit").filter(|u| !u.is_empty());
                     let target = (kind == PraxisKind::Triggers).then(|| target_graph_workflow(repo, &id)).flatten();
-                    DefinitionEntry { id_mismatch, graph_id, cost_unit, target, ..empty(id, None) }
+                    let enabled = (kind == PraxisKind::Triggers).then(|| record.get("enabled").and_then(Value::as_bool)).flatten();
+                    DefinitionEntry { id_mismatch, graph_id, cost_unit, target, enabled, ..empty(id, None) }
                 }
             }
         })
@@ -1825,6 +1827,20 @@ mod tests {
         // Only triggers have a target.
         write(&repo, ".praxis/contracts/nightly.json", "{\"id\": \"nightly\"}");
         assert_eq!(list_definitions(&repo, PraxisKind::Contracts).unwrap().entries[0].target, None);
+    }
+
+    #[test]
+    fn a_trigger_lists_with_its_saved_enabled_when_it_is_a_boolean() {
+        let repo = temp_repo();
+        write(&repo, ".praxis/triggers/on.json", "{\"id\": \"on\", \"enabled\": true}");
+        write(&repo, ".praxis/triggers/off.json", "{\"id\": \"off\", \"enabled\": false}");
+        write(&repo, ".praxis/triggers/odd.json", "{\"id\": \"odd\", \"enabled\": \"yes\"}");
+        let list = list_definitions(&repo, PraxisKind::Triggers).unwrap();
+        let enabled = |id: &str| list.entries.iter().find(|e| e.id == id).unwrap().enabled;
+        assert_eq!((enabled("on"), enabled("off"), enabled("odd")), (Some(true), Some(false), None));
+        // Only triggers have one.
+        write(&repo, ".praxis/contracts/c.json", "{\"id\": \"c\", \"enabled\": true}");
+        assert_eq!(list_definitions(&repo, PraxisKind::Contracts).unwrap().entries[0].enabled, None);
     }
 
     /// Like a template file named badly, a saved trigger named badly can be given a target and

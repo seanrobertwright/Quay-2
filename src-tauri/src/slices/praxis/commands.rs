@@ -8,7 +8,7 @@ use super::context;
 use super::grants;
 use super::graph_bindings;
 use super::graph_workflow::{self, GraphWorkflowCheck};
-use super::host::{self, graph_workflow_bundle, GraphWorkflowBundle};
+use super::host::{self, graph_workflow_bundle, trigger_digest, GraphWorkflowBundle};
 use super::lifecycle;
 use super::models::{
     BindingSuggestions, BindingsInput, BundleChanges, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
@@ -135,6 +135,20 @@ pub async fn praxis_graph_workflow_bundle(
 ) -> Result<GraphWorkflowBundle, String> {
     let workspace = workspace.inner().clone();
     blocking(move || graph_workflow_bundle(&project_root(&workspace, &project_path)?, &name)).await
+}
+
+/// The digest the Praxis host gives revision `revision` of graph trigger `name`, had it been
+/// submitted from the saved files (#475), so the builder can tell when they differ from the
+/// admitted revision; `None` when Quay can't compute it. See [`trigger_digest`].
+#[tauri::command]
+pub async fn praxis_trigger_digest(
+    project_path: String,
+    name: String,
+    revision: u32,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<Option<String>, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || Ok(trigger_digest(&project_root(&workspace, &project_path)?, &name, revision))).await
 }
 
 /// A trigger's checks as a graph trigger (#472), with `content` as its draft and `target` the

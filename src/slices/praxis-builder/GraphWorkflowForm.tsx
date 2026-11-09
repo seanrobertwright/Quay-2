@@ -281,8 +281,8 @@ const GrantSet: FC<{
 };
 
 /**
- * The triggers that start this graph workflow (#479), each a link that opens its form. Quay has
- * no graph trigger host state yet (#475), so each shows only its id.
+ * The triggers that start this graph workflow (#479), each a link that opens its form. Each shows
+ * only its id: its state on the host (#475) is in the Triggers list and on its own form.
  */
 const StartedBy: FC<{
   triggers: GraphWorkflowTriggersStatus;

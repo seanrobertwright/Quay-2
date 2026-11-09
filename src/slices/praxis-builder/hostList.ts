@@ -9,7 +9,7 @@ import type { ChangeStatus } from "./types.ts";
 /** A host badge's colour. It never carries the state alone: `text` does. */
 export type HostBadgeTone = "error" | "attention" | "muted" | "neutral";
 
-/** One template's or graph workflow's host badge. */
+/** One template's, graph workflow's or graph trigger's host badge. */
 export interface HostBadge {
   /** The state it shows, or `failed` when the last read failed. */
   state: Exclude<HostLook, "unknown">;
@@ -28,8 +28,11 @@ export type ShownHostState = KnownHostState | "failed" | "unknown";
 /** The graph workflow states (#461) a template has no counterpart for. */
 export type GraphOnlyState = "notSubmitted" | "retired" | "candidate" | "admitted";
 
+/** The graph trigger states (#475) neither a template nor a graph workflow has. */
+export type TriggerOnlyState = "disabled" | "blocked";
+
 /** Every state a host badge or status line draws, each with its own icon. */
-export type HostLook = ShownHostState | GraphOnlyState;
+export type HostLook = ShownHostState | GraphOnlyState | TriggerOnlyState;
 
 /** Each host state's text label, which carries the state without its colour. */
 export const HOST_STATE_LABELS: Record<ShownHostState, string> = {

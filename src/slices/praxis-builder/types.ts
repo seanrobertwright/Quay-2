@@ -31,6 +31,8 @@ export interface DefinitionEntry {
   graphBindingId?: string;
   /** For a trigger, the graph workflow its saved target file names (#472), which puts it under the host's name rule (#473). */
   target?: string;
+  /** For a trigger, its saved `enabled`, when it is a boolean, so its form can say when the host's enabled state differs (#475). */
+  enabled?: boolean;
 }
 
 /**

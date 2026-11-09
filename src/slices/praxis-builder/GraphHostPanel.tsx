@@ -4,10 +4,10 @@
 // draw `graphHostStatus.ts`'s view of the graph host model and never call `praxis` themselves:
 // Check again and Withdraw ask the model. There is no admit, reject or retire: the owner decides
 // in the browser.
-import { useState, type FC } from "react";
+import { useState, type FC, type ReactNode } from "react";
 import { ExternalLink, RefreshCw, Undo2 } from "lucide-react";
 import type { GraphWorkflowHostView, WithdrawOutcome } from "./graphHost.ts";
-import { graphStatusLine, revisionRows } from "./graphHostStatus.ts";
+import { graphStatusLine, revisionRows, type GraphStatusLine } from "./graphHostStatus.ts";
 import { hostStateLook } from "./HostList.tsx";
 import { useMinuteTick } from "./HostStatusLine.tsx";
 import type { HostCondition } from "./praxisHost.ts";
@@ -30,15 +30,25 @@ export const REVISIONS_SHOWN = 20;
 const buttonClass =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50 shrink-0";
 
-/** The status line under the form's header. `onWithdraw` shows the confirm for a revision. */
-export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; onWithdraw: (revision: number) => void }> = ({
+/** What a host status line draws, whichever kind of record it belongs to. */
+export type HostStateLineParts = Pick<
+  GraphStatusLine,
+  "look" | "tone" | "label" | "reason" | "revision" | "checked" | "checkAgain" | "checking" | "muted" | "admissionPage"
+>;
+
+/**
+ * A record's host status line: its state, Check again, and Open in browser for a pending
+ * candidate's admission page through the loopback-only opener. `children` are its own controls
+ * after them, and `note` a line under it.
+ */
+export const HostStateLine: FC<{ name: string; line: HostStateLineParts; onCheckAgain: () => void; note?: string | null; children?: ReactNode }> = ({
   name,
-  host,
-  onWithdraw,
+  line,
+  onCheckAgain,
+  note,
+  children,
 }) => {
-  useMinuteTick();
   const [notice, setNotice] = useState<string | null>(null);
-  const line = graphStatusLine(host.view, host.condition, Date.now());
   const { Icon, toneClass } = hostStateLook(line.look, line.tone, line.muted);
   const openAdmission = async (address: string) => {
     setNotice(null);
@@ -66,7 +76,7 @@ export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; on
             type="button"
             // Not `disabled`, which would drop focus while the check runs.
             aria-disabled={line.checking}
-            onClick={() => !line.checking && host.onCheckAgain()}
+            onClick={() => !line.checking && onCheckAgain()}
             className={buttonClass}
           >
             <RefreshCw className={`w-3 h-3 ${line.checking ? "animate-spin" : ""}`} aria-hidden="true" />
@@ -79,14 +89,30 @@ export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; on
             Open in browser
           </button>
         )}
-        {line.withdrawRevision !== null && <WithdrawButton revision={line.withdrawRevision} onWithdraw={onWithdraw} />}
+        {children}
       </div>
+      {note && <p className="text-[11px] text-[#e3b341] break-words">{note}</p>}
       {notice && (
         <p role="alert" className="text-[11px] text-[#ff7b72] break-words">
           {notice}
         </p>
       )}
     </div>
+  );
+};
+
+/** The status line under the form's header. `onWithdraw` shows the confirm for a revision. */
+export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; onWithdraw: (revision: number) => void }> = ({
+  name,
+  host,
+  onWithdraw,
+}) => {
+  useMinuteTick();
+  const line = graphStatusLine(host.view, host.condition, Date.now());
+  return (
+    <HostStateLine name={name} line={line} onCheckAgain={host.onCheckAgain}>
+      {line.withdrawRevision !== null && <WithdrawButton revision={line.withdrawRevision} onWithdraw={onWithdraw} />}
+    </HostStateLine>
   );
 };
 
