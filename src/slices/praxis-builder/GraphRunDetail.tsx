@@ -7,7 +7,6 @@
 import type { FC } from "react";
 import { Hourglass, Pause, X } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
-import { GRAPH_RUN } from "./graphRunDetail.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { AMBER, FollowStatus, HoldPanel, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
@@ -32,7 +31,7 @@ const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border bor
 const timeText = (ms: number | null, text: string | null) => (ms !== null ? formatDateTime(ms) : (text ?? "Not given"));
 
 export const GraphRunDetail: FC<GraphRunDetailProps> = ({ projectPath, workOrderId, row, shown, runPage, runInTerminal, onClose }) => {
-  const view = useRunDetail(projectPath, workOrderId, row, shown, GRAPH_RUN);
+  const view = useRunDetail(projectPath, workOrderId, row, shown, "graph");
   const run = view.run;
   const name = run?.runId ?? row?.runId ?? workOrderId;
   const { notice, openButton, trust } = useRunPageActions(projectPath, name, run?.runPageAddress ?? null, () => runPage(workOrderId), runInTerminal);
