@@ -3,8 +3,8 @@
 // hold) are made only in the host's browser page, so the detail has no control for any of them,
 // not even a disabled one: it shows where the run is and opens its page. Quay never runs
 // `praxis hold` or `praxis open`, and runs `praxis trust` only in a visible terminal. A graph
-// run's detail (GraphRunDetail.tsx) shares its waiting banner, hold panel, certificate hint and
-// page actions.
+// run's detail (GraphRunDetail.tsx) shares its header chips, Close button, waiting banner, hold
+// panel, certificate hint and page actions.
 import { useId, useState, type FC, type ReactNode } from "react";
 import { ExternalLink, FlaskConical, Pause, ShieldCheck, UserCheck, X } from "lucide-react";
 import { formatClock } from "../../lib/dates.ts";
@@ -35,23 +35,36 @@ const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border bor
 /** The amber of a caution: a simulated run, or one waiting for a person. */
 export const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
 
+/** What the page actions need: the run, its row and how to look its page up when neither gave it. */
+interface RunPageActionsOptions {
+  projectPath: string;
+  workOrderId: string;
+  /** The run as last read; its page address comes first. */
+  run: { runId: string; runPageAddress: string | null } | null;
+  row: RunRow | null;
+  runPage: (workOrderId: string) => Promise<RunPageLookup>;
+  runInTerminal: RunInTerminal | undefined;
+}
+
 /**
- * A run detail's page actions: Open in browser for the run's page, loopback-only, and Trust
- * certificate, which opens a visible terminal running `praxis trust`. `notice` says why the last
- * one failed, if it did.
+ * A run detail's name and page actions: the run's id as read, else as its row lists it, else
+ * the work order; Open in browser for the run's page, loopback-only; and Trust certificate,
+ * which opens a visible terminal running `praxis trust`. `notice` says why the last action
+ * failed, if it did.
  */
-export function useRunPageActions(
-  projectPath: string,
-  name: string,
-  address: string | null,
-  lookup: () => Promise<RunPageLookup>,
-  runInTerminal: RunInTerminal | undefined,
-): { notice: string | null; openButton: (label: string) => ReactNode; trust: () => void } {
+export function useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal }: RunPageActionsOptions): {
+  name: string;
+  notice: string | null;
+  openButton: (label: string) => ReactNode;
+  trust: () => void;
+} {
+  const name = run?.runId ?? row?.runId ?? workOrderId;
+  const address = run?.runPageAddress ?? null;
   const [notice, setNotice] = useState<string | null>(null);
 
   const openInBrowser = async () => {
     setNotice(null);
-    setNotice(await openRunPageOf(name, address, lookup));
+    setNotice(await openRunPageOf(name, address, () => runPage(workOrderId)));
   };
 
   const trust = () => {
@@ -72,14 +85,39 @@ export function useRunPageActions(
       {label}
     </button>
   );
-  return { notice, openButton, trust };
+  return { name, notice, openButton, trust };
 }
+
+/** A run detail's Close button. */
+export const CloseButton: FC<{ name: string; onClose: () => void }> = ({ name, onClose }) => (
+  <button type="button" onClick={onClose} aria-label={`Close ${name}`} className={BUTTON}>
+    <X className="w-3 h-3" aria-hidden="true" />
+    Close
+  </button>
+);
+
+/** A run's control chip, named for screen readers. */
+export const ControlChip: FC<{ control: string }> = ({ control }) => (
+  <span className="inline-flex items-center gap-1">
+    <span className="sr-only">Control </span>
+    <span data-chip="control" className="px-1.5 py-px rounded-full border border-[#30363d] bg-[#21262d] text-[10px]">
+      {control}
+    </span>
+  </span>
+);
+
+/** The badge of a held run. */
+export const HeldBadge: FC = () => (
+  <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full border border-[#f0883e]/60 text-[#f0883e] text-[10px]">
+    <Pause className="w-3 h-3" aria-hidden="true" />
+    Held
+  </span>
+);
 
 export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, content, shown, runPage, runInTerminal, onClose }) => {
   const view = useRunDetail(projectPath, workOrderId, row, shown);
   const run = view.run;
-  const name = run?.runId ?? row?.runId ?? workOrderId;
-  const { notice, openButton, trust } = useRunPageActions(projectPath, name, run?.runPageAddress ?? null, () => runPage(workOrderId), runInTerminal);
+  const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
 
   return (
     <section aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
@@ -88,28 +126,13 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
           {name}
         </h3>
         {run && <span>{run.status}</span>}
-        {run && (
-          <span className="inline-flex items-center gap-1">
-            <span className="sr-only">Control </span>
-            <span data-chip="control" className="px-1.5 py-px rounded-full border border-[#30363d] bg-[#21262d] text-[10px]">
-              {run.control}
-            </span>
-          </span>
-        )}
-        {run?.held && (
-          <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full border border-[#f0883e]/60 text-[#f0883e] text-[10px]">
-            <Pause className="w-3 h-3" aria-hidden="true" />
-            Held
-          </span>
-        )}
+        {run && <ControlChip control={run.control} />}
+        {run?.held && <HeldBadge />}
         {run?.revision !== null && run?.revision !== undefined && <span className="text-[#8b949e]">revision {run.revision}</span>}
         {run?.simulated && <span className={`px-1.5 py-px rounded-full border text-[10px] ${AMBER}`}>Simulated</span>}
         <span className="ml-auto inline-flex items-center gap-2">
           {openButton("Open in browser")}
-          <button type="button" onClick={onClose} aria-label={`Close ${name}`} className={BUTTON}>
-            <X className="w-3 h-3" aria-hidden="true" />
-            Close
-          </button>
+          <CloseButton name={name} onClose={onClose} />
         </span>
       </header>
       <FollowStatus name={name} view={view} notice={notice} />
