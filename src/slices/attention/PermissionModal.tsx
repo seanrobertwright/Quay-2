@@ -12,8 +12,8 @@ import {
   Clock,
 } from "lucide-react";
 import type { TerminalInfo } from "../terminal/types.ts";
-import type { PermissionItem } from "../attention/attentionQueue.ts";
-import type { AnswerPermission } from "../attention/useAttentionQueue.ts";
+import type { PermissionItem } from "./attentionQueue.ts";
+import type { AnswerPermission } from "./useAttentionQueue.ts";
 
 interface PermissionModalProps {
   /** The requests to show, from the attention queue; the first is shown when the modal opens. */

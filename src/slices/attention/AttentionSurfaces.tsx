@@ -1,5 +1,5 @@
 import { useState, type FC } from "react";
-import { PermissionModal } from "../bridge/PermissionModal.tsx";
+import { PermissionModal } from "./PermissionModal.tsx";
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
