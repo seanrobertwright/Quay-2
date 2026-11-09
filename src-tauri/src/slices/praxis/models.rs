@@ -490,9 +490,9 @@ pub struct ChangedFiles {
     pub files: Vec<ChangedFile>,
 }
 
-/// One of a graph workflow's files with changes since the last commit, as
-/// `host::bundle_changes` lists them for a graph run's confirm (#466): `path` relative to the
-/// project, with `/` between its parts.
+/// One file with changes since the last commit, as `changes::path_changes` lists them: a graph
+/// workflow's for a graph run's confirm (#466), or a graph trigger's for its Submit (#476). `path`
+/// is relative to the project, with `/` between its parts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleFileChange {
@@ -500,7 +500,7 @@ pub struct BundleFileChange {
     pub status: ChangeStatus,
 }
 
-/// What `host::bundle_changes` found, as the `praxis_graph_workflow_changes` command gives it.
+/// The changed files `praxis_graph_workflow_changes` or `praxis_trigger_changes` gives.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleChanges {

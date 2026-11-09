@@ -3,7 +3,8 @@
 //! `praxis` reads itself. Only a saved trigger with a saved Starts target goes, so an unsaved draft
 //! never does, and the caller never names the target: it is always the one the target file holds.
 //! The same files give the digest the host reports on each of the trigger's revisions (#475), so
-//! the builder can tell when they differ from the admitted one.
+//! the builder can tell when they differ from the admitted one, and their git changes warn the
+//! trigger form's Submit (#476).
 
 use std::path::Path;
 
@@ -11,8 +12,10 @@ use serde_json::{json, Value};
 
 use super::bundle::read_strict;
 
+use crate::slices::praxis::changes::path_changes;
+use crate::slices::praxis::models::BundleFileChange;
 use crate::slices::praxis::models::PraxisKind;
-use crate::slices::praxis::store::{definition_path, display_path, read_record, shown_path, target_graph_workflow, TRIGGER_TARGETS_DIR};
+use crate::slices::praxis::store::{definition_path, display_path, read_record, shown_path, target_graph_workflow, validate_id, TRIGGER_TARGETS_DIR};
 use crate::slices::praxis::template_name::{check_graph_workflow_name, check_trigger_name};
 use crate::slices::praxis::trigger_target::check_trigger_target;
 use crate::slices::praxis::validate::Severity;
@@ -62,4 +65,13 @@ pub fn trigger_digest(repo: &Path, name: &str, revision: u32) -> Option<String> 
     let mut trigger = read_strict(&definition_path(repo, PraxisKind::Triggers, name).ok()?)?;
     trigger.as_object_mut()?.insert("revision".into(), Value::String(revision.to_string()));
     aiws_sdk::digest(&json!({ "purpose": "aiws-graph-trigger/1", "workflow": workflow, "trigger": trigger })).ok()
+}
+
+/// The files of trigger `name` in `repo` that have changed since the last commit, in path order:
+/// its own file and its Starts target file, which names the graph workflow `praxis` is given.
+/// Empty when `repo` isn't a git repository. Refused for an unsafe id.
+pub fn trigger_changes(repo: &Path, name: &str) -> Result<Vec<BundleFileChange>, String> {
+    validate_id(name)?;
+    let paths = [shown_path(PraxisKind::Triggers.folder(), name), shown_path(TRIGGER_TARGETS_DIR, name)];
+    path_changes(repo, &paths)
 }

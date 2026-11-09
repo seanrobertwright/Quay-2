@@ -325,6 +325,14 @@ pub async fn praxis_graph_workflow_changes(project_path: String, name: String, w
     blocking(move || Ok(BundleChanges { files: host::bundle_changes(&project_root(&workspace, &project_path)?, &name)? })).await
 }
 
+/// The files of trigger `name`, its own and its Starts target file, that have changed since the
+/// last commit, for the trigger form's Submit (#476). See [`host::trigger_changes`].
+#[tauri::command]
+pub async fn praxis_trigger_changes(project_path: String, name: String, workspace: State<'_, WorkspaceManager>) -> Result<BundleChanges, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || Ok(BundleChanges { files: host::trigger_changes(&project_root(&workspace, &project_path)?, &name)? })).await
+}
+
 /// The diff of one contract, grant, template or graph binding file against the last commit, for the badge's diff view.
 #[tauri::command]
 pub async fn praxis_diff(

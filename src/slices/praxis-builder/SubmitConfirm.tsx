@@ -1,36 +1,40 @@
-// The Submit confirm dialog of a graph workflow (#444, #462). It opens only after the host's
-// check passed, and lists each bundle file with its digest and an Uncommitted badge, read when it
-// opened. It says the submission becomes a candidate the owner must admit in the browser before
-// anything runs. Once the host stores it, the dialog names the new revision and offers Open in
-// browser for its admission page, through the loopback-only opener, when the host gave one. An
-// unknown outcome offers Submit again, which resends the same submission by its request id.
+// The Submit confirm dialog of a graph workflow (#444, #462) or a graph trigger (#476). It opens
+// only after the host's check passed. Its body, which the caller gives, says what is sent and that
+// the submission becomes a candidate the owner must admit in the browser, marking each file with
+// changes that aren't committed with `UncommittedBadge`: a graph workflow's is `BundleFiles` in
+// `GraphSubmit.tsx`, a trigger's `TriggerFiles` in `TriggerSubmit.tsx`. Once the host stores
+// it, the dialog names the new revision and offers Open in browser for its admission page,
+// through the loopback-only opener, when the host gave one. An unknown outcome offers Submit
+// again, which resends the same submission by its request id.
 // Focus stays inside it while it is shown (the shared `useDialogFocus` trap) and goes back to the
 // form's Submit when it closes. Escape closes it.
-import { useEffect, useId, useRef, useState, type FC, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FC, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ExternalLink, Send, X } from "lucide-react";
-import type { Submission } from "./graphSubmit.ts";
+import type { Submission } from "./hostSubmit.ts";
 import { openRunPage } from "./runPage.ts";
-import type { GraphWorkflowBundle } from "./types.ts";
 import { useDialogFocus } from "../overlay/useOverlay.ts";
 
 const plainButton =
   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white";
 
+/** The badge on a file the confirm lists that has changes that aren't committed. */
+export const UncommittedBadge: FC = () => <span className="ml-2 px-1 rounded border border-[#9e6a03] text-[10px] text-[#e3b341]">Uncommitted</span>;
+
 export const SubmitConfirm: FC<{
   name: string;
-  /** The saved bundle, read when the confirm opened. */
-  bundle: GraphWorkflowBundle;
+  /** What is sent and what the submission becomes, under the title. */
+  children: ReactNode;
   /** Sends the submission, resending the one with `requestId` when given. */
-  onSend: (requestId: string | null) => Promise<Submission>;
+  onSend: (requestId: string | null) => Promise<Submission<unknown>>;
   onClose: () => void;
   /** Where focus goes when the dialog closes: the form's Submit. */
   returnFocus: RefObject<HTMLElement | null>;
-}> = ({ name, bundle, onSend, onClose, returnFocus }) => {
+}> = ({ name, children, onSend, onClose, returnFocus }) => {
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<Submission | null>(null);
+  const [result, setResult] = useState<Submission<unknown> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useDialogFocus(true, rootRef, returnFocus);
   // Cancel, not the first control (Close), takes focus on open.
@@ -91,21 +95,7 @@ export const SubmitConfirm: FC<{
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
-        <p className="text-xs">The submission becomes a candidate. Nothing runs until the owner admits it in the browser.</p>
-        <section aria-label="Bundle files" className="text-xs space-y-1">
-          <p className="text-[#8b949e]">Quay sends these saved files, as they are on disk:</p>
-          <ul className="space-y-1">
-            {bundle.files.map((f) => (
-              <li key={f.file} className="space-y-0.5">
-                <span className="font-mono text-[#c9d1d9] break-all">{f.path}</span>
-                {f.change !== undefined && (
-                  <span className="ml-2 px-1 rounded border border-[#9e6a03] text-[10px] text-[#e3b341]">Uncommitted</span>
-                )}
-                <span className="block font-mono text-[10px] text-[#8b949e] break-all">{f.digest ?? "No digest: Quay can't read this file."}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {children}
         {sending && <p role="status" className="text-xs">Submitting…</p>}
         {submitted && (
           <p role="status" className="text-xs text-[#3fb950]">
