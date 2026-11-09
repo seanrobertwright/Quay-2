@@ -16,6 +16,7 @@ import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from ".
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
 import { useValidation } from "./useValidation.ts";
+import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
 interface GraphWorkflowFormProps {
@@ -35,11 +36,8 @@ interface GraphWorkflowFormProps {
    * Whether the builder is shown, for the Runs view, which polls only while it is: the builder is
    * only hidden when it closes. Without it there is no Workflow | Runs switch.
    */
-  runs?: { shown: boolean } | null;
+  runsShown?: boolean;
 }
-
-/** What the graph workflow's work area shows. */
-type WorkAreaView = "workflow" | "runs";
 
 /**
  * The shape check and the local checks as one status: done once both have a result, with the
@@ -69,9 +67,9 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onEdit,
   onOpen,
   onValidated,
-  runs,
+  runsShown,
 }) => {
-  const [shownView, setShownView] = useState<WorkAreaView>("workflow");
+  const [shownView, setShownView] = useState<WorkAreaView>("record");
   const shape = useValidation("graph-workflows", draft.content);
   const check = useGraphWorkflowCheck(projectPath, draft.content, refresh);
   const triggers = useGraphWorkflowTriggers(projectPath, draft.ref.id, refresh);
@@ -141,28 +139,16 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   );
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
 
-  const viewSwitch = runs && (
-    <div role="group" aria-label="Show" className="max-w-3xl mx-auto px-6 pt-4 flex gap-1">
-      {(["workflow", "runs"] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          aria-pressed={shownView === v}
-          onClick={() => setShownView(v)}
-          className="px-2.5 py-1 rounded-md border border-[#30363d] text-xs text-[#c9d1d9] hover:bg-[#21262d] aria-pressed:bg-[#30363d] aria-pressed:text-white"
-        >
-          {v === "workflow" ? "Workflow" : "Runs"}
-        </button>
-      ))}
-    </div>
+  const viewSwitch = runsShown !== undefined && (
+    <WorkAreaSwitch recordLabel="Workflow" shown={shownView} onShow={setShownView} />
   );
 
-  if (runs && shownView === "runs") {
+  if (runsShown !== undefined && shownView === "runs") {
     return (
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runs.shown} />
+          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} />
         </div>
       </div>
     );

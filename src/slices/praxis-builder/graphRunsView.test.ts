@@ -95,7 +95,7 @@ function form(props: { projectPath?: string; name?: string; shown?: boolean } = 
     onEdit: () => {},
     onOpen: () => {},
     onValidated: () => {},
-    runs: { shown: props.shown ?? true },
+    runsShown: props.shown ?? true,
   });
 }
 
@@ -113,6 +113,8 @@ const text = (el: Element | null | undefined) => el?.textContent ?? "";
 const button = (root: HTMLElement, name: RegExp) =>
   [...root.querySelectorAll("button")].find((b) => name.test(b.getAttribute("aria-label") ?? text(b))) as HTMLButtonElement | undefined;
 const click = (el: HTMLElement | undefined) => act(async () => el?.click());
+const key = (el: HTMLElement, name: string) =>
+  act(async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true })));
 const flush = () => act(async () => {});
 const tick = (ms: number) => act(async () => mock.timers.tick(ms));
 const rows = (root: HTMLElement) => [...root.querySelectorAll('[aria-label="Runs"] li')] as HTMLElement[];
@@ -121,20 +123,43 @@ async function openRuns(root: HTMLElement): Promise<void> {
   await click(button(root, /^Runs$/));
 }
 
-test("the switch is two pressed-state buttons, Workflow first, and never tabs", async () => {
+test("the switch is a two-radio group, Workflow first, and never tabs", async () => {
   fakeBackend();
   const root = await render(form());
-  const workflow = button(root, /^Workflow$/);
+  const group = root.querySelector('[role="radiogroup"]');
+  assert.equal(group?.getAttribute("aria-label"), "Show");
+  const first = button(root, /^Workflow$/);
   const runsButton = button(root, /^Runs$/);
-  assert.equal(workflow?.getAttribute("aria-pressed"), "true");
-  assert.equal(runsButton?.getAttribute("aria-pressed"), "false");
+  // Compare DOM nodes by identity: deepEqual, or a failing equal, walks the whole document.
+  const radios = [...(group?.querySelectorAll('[role="radio"]') ?? [])];
+  assert.equal(radios.length, 2);
+  assert.ok(radios[0] === first && radios[1] === runsButton, "the radios are the switch's two buttons, in order");
+  assert.equal(first?.getAttribute("aria-checked"), "true");
+  assert.equal(runsButton?.getAttribute("aria-checked"), "false");
+  assert.ok(group?.querySelector("[aria-pressed]") === null, "the switch has no toggle buttons");
   assert.equal(root.querySelector('[role="tab"], [role="tablist"]'), null);
   await click(runsButton);
-  assert.equal(workflow?.getAttribute("aria-pressed"), "false");
-  assert.equal(runsButton?.getAttribute("aria-pressed"), "true");
+  assert.equal(first?.getAttribute("aria-checked"), "false");
+  assert.equal(runsButton?.getAttribute("aria-checked"), "true");
   assert.equal(root.querySelector("form"), null, "the form gives way to the runs");
-  await click(workflow);
+  await click(first);
   assert.ok(root.querySelector("form"), "and comes back");
+});
+
+test("the switch is one tab stop on the shown view, and the arrow keys move and show", async () => {
+  fakeBackend();
+  const root = await render(form());
+  const radios = () => [...root.querySelectorAll<HTMLElement>('[role="radio"]')];
+  assert.deepEqual(radios().map((r) => r.tabIndex), [0, -1]);
+  await key(radios()[0], "ArrowRight");
+  assert.equal(radios()[1].getAttribute("aria-checked"), "true");
+  assert.ok(document.activeElement === radios()[1], "focus follows to Runs");
+  assert.deepEqual(radios().map((r) => r.tabIndex), [-1, 0]);
+  await key(radios()[1], "ArrowDown");
+  assert.equal(radios()[0].getAttribute("aria-checked"), "true", "it wraps");
+  assert.ok(document.activeElement === radios()[0], "focus follows back");
+  await key(radios()[0], "ArrowLeft");
+  assert.equal(radios()[1].getAttribute("aria-checked"), "true", "and wraps back");
 });
 
 test("Runs lists the graph workflow's runs newest first with status, control as a chip, held, awaiting approval, revision and creation time", async () => {

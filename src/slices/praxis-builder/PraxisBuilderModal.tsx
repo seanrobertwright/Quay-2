@@ -2419,7 +2419,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                     // The builder is only hidden when it closes, so the Runs view is told when.
-                    runs={{ shown: isOpen }}
+                    runsShown={isOpen}
                   />
                 </>
               ) : openDraft ? (
