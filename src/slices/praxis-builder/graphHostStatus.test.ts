@@ -22,6 +22,8 @@ const view = (state: GraphHostState, extra: Partial<GraphWorkflowHostView> = {})
   admissionPageAddress: null,
   current: { revision: 1, submittedAt: SUBMITTED },
   compared: true,
+  differsFromCurrent: false,
+  reviewDigest: null,
   revisions: [],
   olderRevisions: false,
   ...extra,

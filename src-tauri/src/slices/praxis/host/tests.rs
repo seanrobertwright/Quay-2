@@ -960,3 +960,117 @@ fn graph_command_bounds_refuse_what_praxis_would_refuse() {
     assert!(check_revision(1).is_ok());
     assert_eq!(check_revision(0).unwrap_err(), "A revision is a whole number from 1, not 0.");
 }
+
+// Starting a graph run (#466): `praxis run <name> --json` for a graph workflow, with the outcomes
+// a template run has (#454).
+
+#[test]
+fn every_outcome_of_a_graph_run_creation() {
+    let h = Harness::new();
+    let run = || h.call(Verb::GraphRun, &["run", "nightly-build"]);
+    let kind = |outcome: &CallOutcome| serde_json::to_value(outcome).unwrap()["kind"].as_str().unwrap().to_string();
+
+    let created = recorded("run: created")["stdout"].clone();
+    h.scenario(json!({ "stdout": created }));
+    assert_eq!(run(), CallOutcome::Record { record: created.clone(), trust_hint: None });
+
+    let mut held = recorded("run: blocked by a run awaiting approval, exit 7")["stdout"].clone();
+    for code in ["WORKFLOW_RUN_HELD", "WORKFLOW_RUN_PENDING_APPROVAL"] {
+        held["code"] = json!(code);
+        h.scenario(json!({ "stdout": held, "exit": 7 }));
+        assert_eq!(kind(&run()), "blocked", "{code}");
+    }
+
+    for (stderr, expected) in [
+        (praxis_err("Could not connect to the host at https://127.0.0.1:7443; is it running?"), "hostDown"),
+        (praxis_err(r"There is no CLI session for this host in C:\x\cli. Run praxis login."), "notSignedIn"),
+        (praxis_err("The host did not accept the CLI session (UNAUTHENTICATED). Run praxis login."), "expired"),
+    ] {
+        h.scenario(json!({ "stderr": stderr, "exit": 1 }));
+        assert_eq!(kind(&run()), expected, "{stderr}");
+    }
+
+    let case = recorded("run: no admitted revision");
+    h.scenario(replay(&case));
+    assert_eq!(run(), CallOutcome::Refused { message: case["stdout"]["message"].as_str().unwrap().to_string() });
+
+    // An exit praxis doesn't document for `run` says nothing about whether the run was created.
+    h.scenario(json!({ "stderr": praxis_err("something broke"), "exit": 9 }));
+    let outcome = run();
+    assert!(matches!(&outcome, CallOutcome::Unknown { detail, .. } if detail.contains("something broke")), "{outcome:?}");
+    // Each creation ran praxis once: Quay retries none of them.
+    assert_eq!(h.calls().len(), 8);
+    assert!(h.calls().iter().all(|c| c == &["run", "nightly-build", "--json"]), "{:?}", h.calls());
+}
+
+#[test]
+fn a_repeated_graph_run_while_one_is_in_flight_joins_the_same_process() {
+    let h = Harness::new();
+    let created = recorded("run: created")["stdout"].clone();
+    h.scenario(json!({ "stdout": created, "delayMs": 1500 }));
+    let outcomes: Vec<CallOutcome> = std::thread::scope(|scope| {
+        let joins: Vec<_> = (0..2).map(|_| scope.spawn(|| h.call(Verb::GraphRun, &["run", "nightly-build"]))).collect();
+        joins.into_iter().map(|j| j.join().unwrap()).collect()
+    });
+    for outcome in &outcomes {
+        assert_eq!(outcome, &CallOutcome::Record { record: created.clone(), trust_hint: None });
+    }
+    assert_eq!(h.calls().len(), 1, "{:?}", h.calls());
+}
+
+#[test]
+fn a_graph_run_killed_by_the_timeout_stays_pending_and_the_next_run_resumes_it() {
+    let h = Harness::with_bounds(CallBounds { write: Duration::from_secs(2), ..CallBounds::default() });
+    let created = recorded("run: created")["stdout"].clone();
+    h.scenario(json!({ "stdout": created, "profile": true, "delayMs": 120000 }));
+    assert_eq!(h.call(Verb::GraphRun, &["run", "nightly-build"]), CallOutcome::TimedOut);
+    let profile: Value = serde_json::from_str(&std::fs::read_to_string(h.src().join("profile.json")).unwrap()).unwrap();
+    let pending = profile["pending"]["requestId"].clone();
+    assert!(pending.is_string(), "the killed creation is still pending: {profile}");
+    assert_eq!(h.calls().len(), 1);
+
+    h.scenario(json!({ "stdout": created, "profile": true }));
+    let CallOutcome::Record { record, .. } = h.call(Verb::GraphRun, &["run", "nightly-build"]) else { panic!("the next run didn't finish") };
+    assert_eq!(record["requestId"], pending, "the next run resumed the pending creation");
+    assert_eq!(record["workOrderId"], created["workOrderId"]);
+    assert_eq!(h.calls(), [["run", "nightly-build", "--json"], ["run", "nightly-build", "--json"]]);
+}
+
+#[test]
+fn the_graph_workflow_s_files_with_changes_since_the_last_commit() {
+    use super::bundle::bundle_changes;
+    use crate::slices::praxis::models::{BundleFileChange, ChangeStatus};
+    let h = Harness::new();
+    saved_graph_workflow(&h.project);
+    put(&h.project, "contracts/other.json", json!({ "id": "other" }));
+    let repo = h.project.canonicalize().unwrap();
+    assert_eq!(bundle_changes(&repo, "release-review").unwrap(), vec![], "a project that isn't a git repository has none");
+
+    crate::slices::praxis::changes::commit_everything(&repo);
+    assert_eq!(bundle_changes(&repo, "release-review").unwrap(), vec![]);
+
+    put(&h.project, "graphs/gr1.json", json!({ "id": "gr1", "nodes": [] }));
+    put(&h.project, "grants/g1.json", json!({ "id": "g1", "limit": "5" }));
+    put(&h.project, "bindings/c1.json", json!({ "version": 1, "graphs": ["gr1"], "grants": ["g2", "g1", "g3"] }));
+    put(&h.project, "grants/g3.json", json!({ "id": "g3" }));
+    // The graph workflow's own record counts, as the file that names the bundle.
+    let record = repo.join(".praxis/graph-workflows/release-review.json");
+    std::fs::write(&record, format!("{}\n", std::fs::read_to_string(&record).unwrap())).unwrap();
+    // Files outside the bundle don't count.
+    put(&h.project, "contracts/other.json", json!({ "id": "other", "x": 1 }));
+    let change = |path: &str, status| BundleFileChange { path: path.to_string(), status };
+    assert_eq!(
+        bundle_changes(&repo, "release-review").unwrap(),
+        vec![
+            change(".praxis/bindings/c1.json", ChangeStatus::Modified),
+            change(".praxis/grants/g1.json", ChangeStatus::Modified),
+            change(".praxis/grants/g3.json", ChangeStatus::Added),
+            change(".praxis/graph-workflows/release-review.json", ChangeStatus::Modified),
+            change(".praxis/graphs/gr1.json", ChangeStatus::Modified),
+        ],
+        "in path order"
+    );
+
+    put(&h.project, "graph-workflows/release-review.json", json!({ "version": 1, "contractId": "c1", "graphId": "gr1" }));
+    assert_eq!(bundle_changes(&repo, "release-review").unwrap_err(), "Graph workflow release-review isn't valid: Pick a graph binding.");
+}

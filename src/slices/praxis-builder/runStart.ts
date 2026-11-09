@@ -1,10 +1,10 @@
-// Starting a workflow template run (#362, #454): a headless `praxis run <name> --json` through the
-// Praxis CLI runner (#446), never in a terminal and never with `--follow`, which hides the work
-// order id. The runner bounds a creation at `RUN_CREATE_TIMEOUT_S` and kills its process tree
+// Starting a workflow template run (#362, #454) or a graph run (#444, #466): a headless
+// `praxis run <name> --json` through the Praxis CLI runner (#446), never in a terminal and never
+// with `--follow`, which hides the work order id. The runner bounds a creation at `RUN_CREATE_TIMEOUT_S` and kills its process tree
 // after that. praxis saves a pending creation in its profile before it sends one (#361), so a
 // killed creation stays pending and the next Run resumes it rather than creating a second run.
-// Quay never runs a creation again on its own. This module has no UI: the Runs view and its
-// confirm dialog draw it.
+// Quay never runs a creation again on its own. This module has no UI: the Runs views and their
+// confirm dialogs draw it.
 import { invoke } from "@tauri-apps/api/core";
 import type { TemplateHostState } from "./hostCatalog.ts";
 import { praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
@@ -38,8 +38,11 @@ export const NEEDS_UPDATE = "Quay needs an update for this praxis.";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
-/** What a `praxis_host_run` outcome means for the person who pressed Run. */
-export function runStartOf(outcome: CallOutcome, name: string): RunStart {
+/** What kind of record a run starts from, in the words the outcomes name it with. */
+export type RunNoun = "template" | "graph workflow";
+
+/** What a `praxis_host_run` or `praxis_host_graph_run` outcome means for the person who pressed Run. */
+export function runStartOf(outcome: CallOutcome, name: string, noun: RunNoun = "template"): RunStart {
   switch (outcome.kind) {
     case "record": {
       const workOrderId = str(outcome.record.workOrderId);
@@ -58,9 +61,9 @@ export function runStartOf(outcome: CallOutcome, name: string): RunStart {
       const code = outcome.record.code;
       const which =
         code === "WORKFLOW_RUN_HELD"
-          ? "A held run of this template"
+          ? `A held run of this ${noun}`
           : code === "WORKFLOW_RUN_PENDING_APPROVAL"
-            ? "A run of this template awaiting approval"
+            ? `A run of this ${noun} awaiting approval`
             : "A held run, or one awaiting approval,";
       return {
         kind: "blocked",
@@ -173,7 +176,7 @@ export function confirmRefusedBy(state: TemplateHostState): string | null {
   return hostStateNote(state).confirmRefusal;
 }
 
-/** Every Run in flight, one per project and template, shared by every Runs view. */
+/** Every Run in flight, one per project and name, shared by every Runs view of its kind. */
 export interface RunStarts {
   /**
    * Runs `praxis run <name> --json` for `projectPath`, or joins the creation in flight for that
@@ -186,7 +189,20 @@ export interface RunStarts {
   subscribe(listener: () => void): () => void;
 }
 
-export function createRunStarts(call: Invoker = invoke): RunStarts {
+/** One kind of run: the runner's command that starts one, and what it starts from in the outcomes' words. */
+export interface RunKind {
+  command: string;
+  noun: RunNoun;
+}
+
+/** A workflow template's run. */
+export const TEMPLATE_RUN: RunKind = { command: "praxis_host_run", noun: "template" };
+
+/** A graph workflow's run. */
+export const GRAPH_RUN: RunKind = { command: "praxis_host_graph_run", noun: "graph workflow" };
+
+/** The creations of one kind of run. */
+export function createRunStarts(call: Invoker = invoke, { command, noun }: RunKind = TEMPLATE_RUN): RunStarts {
   const flights = new Map<string, Promise<RunStart>>();
   const listeners = new Set<() => void>();
   const keyOf = (projectPath: string, name: string) => `${normalizePath(projectPath)}\n${name}`;
@@ -199,8 +215,8 @@ export function createRunStarts(call: Invoker = invoke): RunStarts {
       const joined = flights.get(key);
       if (joined) return joined;
       // A signal that is never aborted: closing the view doesn't kill a creation.
-      const flight = praxisCall("praxis_host_run", { projectPath, name }, new AbortController().signal, call)
-        .then((outcome) => runStartOf(outcome, name))
+      const flight = praxisCall(command, { projectPath, name }, new AbortController().signal, call)
+        .then((outcome) => runStartOf(outcome, name, noun))
         .finally(() => {
           flights.delete(key);
           changed();
@@ -217,5 +233,8 @@ export function createRunStarts(call: Invoker = invoke): RunStarts {
   };
 }
 
-/** The app's creations. */
+/** The app's template run creations. */
 export const runStarts = createRunStarts();
+
+/** The app's graph run creations. */
+export const graphRunStarts = createRunStarts(invoke, GRAPH_RUN);

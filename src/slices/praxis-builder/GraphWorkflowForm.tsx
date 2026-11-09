@@ -10,7 +10,7 @@
 // model, each with Withdraw on a pending candidate behind a confirm (#463). Given what Submit needs
 // from the builder too, it draws Check on host and Submit under the status line (#462), which run
 // `praxis graphs check` and `submit` themselves. A Workflow | Runs switch turns the work area to
-// the graph workflow's runs on the host (#464).
+// the graph workflow's runs on the host (#464), where Run starts one (#466).
 import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
@@ -26,6 +26,7 @@ import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./us
 import { useValidation } from "./useValidation.ts";
 import { WithdrawConfirm } from "./WithdrawConfirm.tsx";
 import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
+import { definitionKey } from "./session.ts";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
 interface GraphWorkflowFormProps {
@@ -52,6 +53,8 @@ interface GraphWorkflowFormProps {
   runsShown?: boolean;
   /** How a graph run's detail opens a visible terminal for `praxis trust`. */
   runInTerminal?: RunInTerminal;
+  /** The `definitionKey`s of the project's records whose drafts have unsaved edits, for Run's confirm. */
+  unsavedKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -86,6 +89,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onValidated,
   runsShown,
   runInTerminal,
+  unsavedKeys,
 }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
   // The revision whose Withdraw confirm is shown, or null.
@@ -158,6 +162,8 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <StartedBy triggers={triggers} onOpen={onOpen} />
     </>
   );
+  // The graph workflow and the records its bundle is made of, as far as the form knows them.
+  const bundle = bundleRecords(draft.ref.id, { contractId, graphId, graphBindingId: asString(w.graphBindingId) }, grants ?? []);
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
 
   const viewSwitch = runsShown !== undefined && (
@@ -169,7 +175,14 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} runInTerminal={runInTerminal} />
+          <GraphRunsView
+            projectPath={projectPath}
+            name={draft.ref.id}
+            shown={runsShown}
+            runInTerminal={runInTerminal}
+            host={host}
+            unsaved={bundle.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
+          />
         </div>
       </div>
     );
@@ -197,7 +210,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             <GraphSubmitBar
               projectPath={projectPath}
               name={draft.ref.id}
-              records={bundleRecords(draft.ref.id, { contractId, graphId, graphBindingId: asString(w.graphBindingId) }, grants ?? [])}
+              records={bundle}
               local={!settled ? "checking" : status.state === "done" && status.validation.verdict === null ? "passes" : "fails"}
               refresh={refresh}
               host={host}

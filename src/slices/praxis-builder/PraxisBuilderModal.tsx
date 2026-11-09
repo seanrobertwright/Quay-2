@@ -1508,6 +1508,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     currentListing !== null &&
     RECORD_KINDS.every(({ kind }) => currentListing.byKind[kind].list?.entries.length === 0);
   const openDirty = openDraft ? isDirty(openDraft) : false;
+  // The records of the shown project whose drafts have unsaved edits, for a graph run's confirm (#466).
+  const unsavedKeys = new Set(Object.entries(session?.drafts ?? {}).flatMap(([key, d]) => (isDirty(d) ? [key] : [])));
   const undoable = openHistory ? canUndo(openHistory) : false;
   const redoable = openHistory ? canRedo(openHistory) : false;
 
@@ -2481,6 +2483,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     // The builder is only hidden when it closes, so the Runs view is told when.
                     runsShown={isOpen}
                     runInTerminal={onRunInTerminal}
+                    unsavedKeys={unsavedKeys}
                   />
                 </>
               ) : openDraft ? (

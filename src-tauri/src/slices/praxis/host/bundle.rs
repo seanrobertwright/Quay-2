@@ -3,7 +3,8 @@
 //! of each grant its contract's bindings file lists. Only saved files go, so an unsaved draft
 //! never does, and `praxis` reads each file itself. The same files give the bundle digest the
 //! host reports on each revision (#461), so the builder can tell when they differ from it, and
-//! the list of files the Submit confirm shows, each with its record digest and git change (#462).
+//! the list of files the Submit confirm shows, each with its record digest and git change (#462),
+//! and the uncommitted changes a graph run's confirm warns about (#466).
 
 use std::path::{Path, PathBuf};
 
@@ -12,7 +13,7 @@ use serde_json::{json, Value};
 
 use crate::slices::praxis::changes::path_changes;
 use crate::slices::praxis::graph_workflow::validate_graph_workflow;
-use crate::slices::praxis::models::{ChangeStatus, PraxisKind};
+use crate::slices::praxis::models::{BundleFileChange, ChangeStatus, PraxisKind};
 use crate::slices::praxis::store::{definition_path, display_path, read_capped, read_record, shown_path, BINDINGS_DIR};
 use crate::slices::praxis::template_name::check_graph_workflow_name;
 use crate::slices::praxis::validate::Severity;
@@ -173,6 +174,17 @@ fn digest_of(files: &BundleFiles) -> Option<String> {
         "grants": grants,
     });
     aiws_sdk::digest(&record).ok()
+}
+
+/// The files of the graph workflow `name` in `repo` that have changed since the last commit, in
+/// path order: its own record, the bundle's graph, graph binding, contract and grants, and the
+/// contract's bindings file, which picks the grants. Empty when `repo` isn't a git repository.
+/// Refused as [`bundle_files`] refuses, since Quay then can't tell which files the bundle has.
+pub fn bundle_changes(repo: &Path, name: &str) -> Result<Vec<BundleFileChange>, String> {
+    let files = bundle_files(repo, name)?;
+    let mut paths = vec![shown_path(PraxisKind::GraphWorkflows.folder(), name), shown_path(BINDINGS_DIR, &files.contract.id)];
+    paths.extend(files.named().iter().map(|(_, f)| shown_path(f.kind.folder(), &f.id)));
+    Ok(path_changes(repo, &paths)?.into_iter().map(|(path, status)| BundleFileChange { path, status }).collect())
 }
 
 /// The saved files of the graph workflow `name` in `repo` as `praxis` is given them, each with

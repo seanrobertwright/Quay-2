@@ -1,6 +1,7 @@
 //! Which definitions have changed since the last commit, and how (#223): the badge and the
-//! diff that show an agent's edits before anyone submits them. Only the kinds in
-//! `SHOWS_CHANGES` are asked about. Git is only asked about the repository whose root is the
+//! diff that show an agent's edits before anyone submits them. The badge and the diff ask only
+//! about the kinds in `SHOWS_CHANGES`; `path_changes` asks about the files it is given, such as a
+//! graph workflow's bundle (#462, #466). Git is only asked about the repository whose root is the
 //! project, never one around it, so a project that isn't a repository shows no changes.
 
 use std::path::Path;
@@ -95,13 +96,17 @@ fn changed_paths(repo: &Path, pathspecs: &[String]) -> Result<Vec<(String, Chang
 }
 
 /// How each of the files at `paths` (relative to `repo`, with forward slashes) differs from the
-/// last commit, whatever its kind, for the bundle a graph workflow submits (#462). A file that
-/// doesn't differ isn't returned. Empty when the project isn't a git repository.
+/// last commit, staged or not, or whether it is new since it, whatever its kind, in path order:
+/// for the bundle a graph workflow submits (#462) and the files a graph run's confirm warns
+/// about (#466). A file that doesn't differ isn't returned. Empty when the project isn't a git
+/// repository.
 pub fn path_changes(repo: &Path, paths: &[String]) -> Result<Vec<(String, ChangeStatus)>, String> {
     if paths.is_empty() || !is_repository(repo)? {
         return Ok(Vec::new());
     }
-    changed_paths(repo, paths)
+    let mut changed = changed_paths(repo, paths)?;
+    changed.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(changed)
 }
 
 /// The most bytes of diff `file_diff` returns: enough for a file of the size Quay opens to be
@@ -146,6 +151,19 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
     Ok(FileDiff { path, status, diff, truncated })
 }
 
+/// Makes `repo` a git repository with one commit holding every file in it. For tests that need
+/// a committed project.
+#[cfg(test)]
+pub(crate) fn commit_everything(repo: &Path) {
+    let git = |args: &[&str]| git::run_ok(repo, args).unwrap();
+    git(&["init", "-q"]);
+    for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
+        git(&["config", k, v]);
+    }
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "init"]);
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -170,15 +188,10 @@ mod tests {
     /// A repository with one commit holding `files`.
     fn committed_repo(files: &[(&str, &str)]) -> TempDir {
         let repo = temp_dir();
-        git(&repo, &["init", "-q"]);
-        for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
-            git(&repo, &["config", k, v]);
-        }
         for (rel, body) in files {
             write(&repo, rel, body);
         }
-        git(&repo, &["add", "-A"]);
-        git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        commit_everything(&repo);
         repo
     }
 

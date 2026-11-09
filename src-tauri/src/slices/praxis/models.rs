@@ -486,6 +486,23 @@ pub struct ChangedFiles {
     pub files: Vec<ChangedFile>,
 }
 
+/// One of a graph workflow's files with changes since the last commit, as
+/// `host::bundle_changes` lists them for a graph run's confirm (#466): `path` relative to the
+/// project, with `/` between its parts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleFileChange {
+    pub path: String,
+    pub status: ChangeStatus,
+}
+
+/// What `host::bundle_changes` found, as the `praxis_graph_workflow_changes` command gives it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleChanges {
+    pub files: Vec<BundleFileChange>,
+}
+
 /// A definition file's diff against the last commit, as git's unified diff of `path`.
 /// `status` is `None`, and `diff` empty, when the file hasn't changed since the commit.
 /// `truncated` when the diff was cut at the cap.

@@ -169,6 +169,17 @@ export interface ChangedFiles {
   files: { kind: PraxisKind; id: string; status: ChangeStatus }[];
 }
 
+/** One of a graph workflow's files with changes since the last commit, its path relative to the project. */
+export interface BundleFileChange {
+  path: string;
+  status: ChangeStatus;
+}
+
+/** `praxis_graph_workflow_changes`: a graph workflow's files changed since the last commit, in path order, empty outside git. */
+export interface BundleChanges {
+  files: BundleFileChange[];
+}
+
 /** `praxis_diff`: one file's unified diff against the last commit; `status` is null when unchanged. */
 export interface FileDiff {
   path: string;

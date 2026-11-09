@@ -8,10 +8,10 @@ use super::context;
 use super::grants;
 use super::graph_bindings;
 use super::graph_workflow::{self, GraphWorkflowCheck};
-use super::host::{graph_workflow_bundle, GraphWorkflowBundle};
+use super::host::{self, graph_workflow_bundle, GraphWorkflowBundle};
 use super::lifecycle;
 use super::models::{
-    BindingSuggestions, BindingsInput, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
+    BindingSuggestions, BindingsInput, BundleChanges, ChangedFiles, ContextCheck, ContractTriggers, DefinitionFile, DefinitionList, DeleteOutcome, DraftContent,
     FileDiff, GrantCheck, GraphPin, LayoutInput, PraxisKind, RecordRef, RenameOutcome, SaveOutcome, TargetInput,
 };
 use super::store;
@@ -301,6 +301,14 @@ pub async fn praxis_check_context(
 pub async fn praxis_changes(project_path: String, workspace: State<'_, WorkspaceManager>) -> Result<ChangedFiles, String> {
     let workspace = workspace.inner().clone();
     blocking(move || changes::changed_files(&project_root(&workspace, &project_path)?)).await
+}
+
+/// The files of graph workflow `name`'s bundle that have changed since the last commit, for a graph
+/// run's confirm (#466). See [`host::bundle_changes`].
+#[tauri::command]
+pub async fn praxis_graph_workflow_changes(project_path: String, name: String, workspace: State<'_, WorkspaceManager>) -> Result<BundleChanges, String> {
+    let workspace = workspace.inner().clone();
+    blocking(move || Ok(BundleChanges { files: host::bundle_changes(&project_root(&workspace, &project_path)?, &name)? })).await
 }
 
 /// The diff of one contract, grant, template or graph binding file against the last commit, for the badge's diff view.
