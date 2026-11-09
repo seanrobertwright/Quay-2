@@ -16,15 +16,15 @@ use super::launch::{self, Launch, LookupEnv};
 use super::outcome::{condition_after, interpret, CallOutcome, HostCondition, Verb};
 use super::process::{self, Bounds, Ended};
 use super::settings::{PraxisCliSettings, SettingsStore};
-use crate::slices::praxis::template_name::{check_graph_workflow_name, check_template_name};
+use crate::slices::praxis::template_name::{check_graph_workflow_name, check_template_name, check_trigger_name};
 
 /// How long each kind of call may take and how much output it may print.
 #[derive(Debug, Clone, Copy)]
 pub struct CallBounds {
     pub read: Duration,
-    /// A write ([`Verb::writes`]): a run creation, a graph workflow submission or a withdrawal.
-    /// `praxis` resends each while its outcome is unknown, and `run`'s own resends can take
-    /// about 64 s (#362).
+    /// A write ([`Verb::writes`]): a run creation, a graph workflow's submission or withdrawal,
+    /// or a graph trigger's submission, withdrawal, disabling or retirement. `praxis` resends each
+    /// while its outcome is unknown, and `run`'s own resends can take about 64 s (#362).
     pub write: Duration,
     pub stdout_cap: usize,
     pub stderr_cap: usize,
@@ -186,14 +186,19 @@ impl PraxisCli {
     /// Runs `praxis <args> --json`, with `--state` when an installation is set, for `project`,
     /// and updates `project`'s host condition from the outcome. Blocks until it ends.
     ///
-    /// A command that names a workflow template or graph workflow whose name the host refuses,
-    /// or that lacks the name, is refused before anything runs, and the condition is left alone.
+    /// A command that names a workflow template, graph workflow or graph trigger whose name the
+    /// host refuses, or that lacks the name, is refused before anything runs, and the condition is
+    /// left alone.
     pub fn call(&self, project: &Path, verb: Verb, args: &[String], call_id: Uuid) -> CallOutcome {
         let name = |at: usize| args.get(at).map_or("", String::as_str);
-        let refused = match (verb.template_arg(), verb.graph_workflow_arg()) {
-            (Some(at), _) => check_template_name(name(at)).err(),
-            (_, Some(at)) => check_graph_workflow_name(name(at)).err(),
-            (None, None) => None,
+        let refused = if let Some(at) = verb.template_arg() {
+            check_template_name(name(at)).err()
+        } else if let Some(at) = verb.graph_workflow_arg() {
+            check_graph_workflow_name(name(at)).err()
+        } else if let Some(at) = verb.trigger_arg() {
+            check_trigger_name(name(at)).err()
+        } else {
+            None
         };
         if let Some(message) = refused {
             return CallOutcome::Refused { message };

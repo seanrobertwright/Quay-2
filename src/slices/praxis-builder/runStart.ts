@@ -93,9 +93,11 @@ export function runStartOf(outcome: CallOutcome, name: string, noun: RunNoun = "
       return { kind: "refused", message: outcome.message };
     case "needsUpdate":
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} ${outcome.detail}` };
+    // `praxis run` never checks a bundle or a graph trigger, so these answers are ones Quay can't read.
     case "bundleInvalid":
-      // `praxis run` never checks a bundle, so this answer is one Quay can't read.
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis answered the run with a bundle's faults.` };
+    case "triggerInvalid":
+      return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis answered the run with a graph trigger's faults.` };
   }
 }
 

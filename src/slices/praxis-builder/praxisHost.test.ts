@@ -87,6 +87,7 @@ test("only the outcomes that say the host itself can't be used are host-level fa
     { kind: "refused", message: "m" },
     { kind: "hostRefused", message: "m", hostCode: "NOT_FOUND", record: {} },
     { kind: "bundleInvalid", record: {} },
+    { kind: "triggerInvalid", record: {} },
     { kind: "unknown", detail: "d", requestId: "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d" },
     { kind: "cliNotFound", reason: "r" },
     { kind: "timedOut" },
@@ -144,4 +145,6 @@ test("a host's refusal reads in praxis's words, and a faulty bundle says the hos
   assert.equal(outcomeMessage(notFound), "The host refused the request (NOT_FOUND).");
   const faults: CallOutcome = { kind: "bundleInvalid", record: { format: "aiws-graph-workflow-error/1", findings: [{ file: "contract", path: "/deadline", code: "TIME_PASSED" }] } };
   assert.equal(outcomeMessage(faults), "The host found faults in the bundle.");
+  const triggerFaults: CallOutcome = { kind: "triggerInvalid", record: { format: "aiws-graph-trigger-error/1", code: "TRIGGER_INVALID", findings: [{ path: "/maxDepth", code: "TRIGGER_DEPTH_UNSUPPORTED" }] } };
+  assert.equal(outcomeMessage(triggerFaults), "The host found faults in the graph trigger.");
 });

@@ -1,0 +1,970 @@
+{
+  "provenance": "Recorded by trigger_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 173bcd3c, run against its simulated host on Node 24.20.0.",
+  "cases": [
+    {
+      "name": "triggers check: valid",
+      "args": [
+        "triggers",
+        "check",
+        "nightly",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-check-result/1",
+        "valid": true,
+        "findings": [],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers check: faults, exit 9",
+      "args": [
+        "triggers",
+        "check",
+        "nightly",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 9,
+      "stdout": {
+        "format": "aiws-graph-trigger-check-result/1",
+        "valid": false,
+        "findings": [
+          {
+            "path": "/source",
+            "code": "EVENT_SOURCE_NOT_ADMITTED"
+          }
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers check: target not on host",
+      "args": [
+        "triggers",
+        "check",
+        "nightly",
+        "--workflow",
+        "nothing-here",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "triggers submit: a candidate",
+      "args": [
+        "triggers",
+        "submit",
+        "nightly",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-submit-result/1",
+        "requestId": "59be1001-ac45-4cb8-a24b-52efaf0c4ec3",
+        "disposition": "COMMITTED",
+        "name": "nightly",
+        "revision": 1,
+        "status": "CANDIDATE",
+        "triggerDigest": "sha256:cd98a57b0fd44042fdf09c1d621e64649e37cf236adceb451cbab820f6df6d21",
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers submit: faults, exit 9",
+      "args": [
+        "triggers",
+        "submit",
+        "nightly",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 9,
+      "stdout": {
+        "format": "aiws-graph-trigger-error/1",
+        "requestId": "73830baa-961f-4c5c-b7c0-4b4a600a0f1f",
+        "code": "TRIGGER_INVALID",
+        "commitStatus": "NOT_COMMITTED",
+        "findings": [
+          {
+            "path": "/maxDepth",
+            "code": "TRIGGER_DEPTH_UNSUPPORTED"
+          }
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers submit: target not on host",
+      "args": [
+        "triggers",
+        "submit",
+        "nightly",
+        "--workflow",
+        "nothing-here",
+        "--trigger",
+        "nightly.json"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "requestId": "1e61bf2e-3210-4bb6-bc8a-f8493453ffc6",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "triggers show: a candidate",
+      "args": [
+        "triggers",
+        "show",
+        "nightly",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger/1",
+        "name": "nightly",
+        "workflow": "release-review",
+        "kind": "SCHEDULED",
+        "state": "PENDING",
+        "enabled": false,
+        "currentRevision": null,
+        "latestRevision": 1,
+        "pendingCount": 1,
+        "source": null,
+        "fires": {
+          "admitted": 0,
+          "filtered": 0,
+          "refused": 0,
+          "skipped": 0,
+          "lastAdmittedFire": null,
+          "lastFireAt": null,
+          "lastRefusal": null,
+          "rateWindowCount": 0,
+          "heldSince": null,
+          "condition": null
+        },
+        "revisions": [
+          {
+            "revision": 1,
+            "status": "CANDIDATE",
+            "baseRevision": null,
+            "digest": "sha256:cd98a57b0fd44042fdf09c1d621e64649e37cf236adceb451cbab820f6df6d21",
+            "submittedAt": "2026-11-09T15:37:05.912Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "enableDigest": null,
+        "blockedBy": [
+          "TRIGGER_NOT_ADMITTED"
+        ],
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: not submitted",
+      "args": [
+        "triggers",
+        "show",
+        "nothing-here",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "triggers list",
+      "args": [
+        "triggers",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-triggers/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-triggers/1",
+        "triggers": [
+          {
+            "name": "nightly",
+            "workflow": "release-review",
+            "kind": "SCHEDULED",
+            "state": "PENDING",
+            "enabled": false,
+            "currentRevision": null,
+            "latestRevision": 1,
+            "pendingCount": 1
+          }
+        ],
+        "nextAfter": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers withdraw: a pending candidate",
+      "args": [
+        "triggers",
+        "withdraw",
+        "nightly",
+        "1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-withdraw-result/1",
+        "requestId": "128d1412-62da-4e79-ad2e-e42176f23947",
+        "disposition": "COMMITTED",
+        "name": "nightly",
+        "revision": 1,
+        "status": "WITHDRAWN",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers withdraw: not pending",
+      "args": [
+        "triggers",
+        "withdraw",
+        "nightly",
+        "1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (REVISION_NOT_PENDING).",
+        "hostCode": "REVISION_NOT_PENDING",
+        "requestId": "bc96da72-7b8e-4d8e-964a-32489d7b6045",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (REVISION_NOT_PENDING).\n"
+    },
+    {
+      "name": "triggers submit: an event trigger",
+      "args": [
+        "triggers",
+        "submit",
+        "on-push",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "on-push.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-submit-result/1",
+        "requestId": "de14c5a5-2c37-4c86-bb06-c3e8764ede3f",
+        "disposition": "COMMITTED",
+        "name": "on-push",
+        "revision": 1,
+        "status": "CANDIDATE",
+        "triggerDigest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=1",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: admitted and enabled",
+      "args": [
+        "triggers",
+        "show",
+        "on-push",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger/1",
+        "name": "on-push",
+        "workflow": "release-review",
+        "kind": "EVENT",
+        "state": "ACTIVE",
+        "enabled": true,
+        "currentRevision": 1,
+        "latestRevision": 1,
+        "pendingCount": 0,
+        "source": {
+          "name": "github",
+          "status": "ENABLED"
+        },
+        "fires": {
+          "admitted": 0,
+          "filtered": 0,
+          "refused": 0,
+          "skipped": 0,
+          "lastAdmittedFire": null,
+          "lastFireAt": null,
+          "lastRefusal": null,
+          "rateWindowCount": 0,
+          "heldSince": null,
+          "condition": null
+        },
+        "revisions": [
+          {
+            "revision": 1,
+            "status": "ADMITTED",
+            "baseRevision": null,
+            "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "enableDigest": null,
+        "blockedBy": [],
+        "admissionPageAddress": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers submit: a second candidate",
+      "args": [
+        "triggers",
+        "submit",
+        "on-push",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "on-push.json",
+        "--base",
+        "1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-submit-result/1",
+        "requestId": "97e0f2af-1ec6-4c25-97bf-eb321836b842",
+        "disposition": "COMMITTED",
+        "name": "on-push",
+        "revision": 2,
+        "status": "CANDIDATE",
+        "triggerDigest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: older revisions",
+      "args": [
+        "triggers",
+        "show",
+        "on-push",
+        "--before",
+        "2",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-trigger-revisions/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-revisions/1",
+        "name": "on-push",
+        "revisions": [
+          {
+            "revision": 1,
+            "status": "ADMITTED",
+            "baseRevision": null,
+            "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers fires",
+      "args": [
+        "triggers",
+        "fires",
+        "on-push",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-trigger-fires/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-fires/1",
+        "name": "on-push",
+        "fires": [
+          {
+            "fireId": 3,
+            "trigger": "on-push",
+            "revision": 1,
+            "source": "github",
+            "eventId": "evt-3",
+            "occurredAt": "2026-11-09T15:37:10.868Z",
+            "receivedAt": "2026-11-09T15:37:11.875Z",
+            "materialDigest": "sha256:db62ad86d303b193c1891cbd53e282d9e5bc66081a9ebbfdf411cb7240440ce8",
+            "disposition": "REFUSED",
+            "reason": "RUN_HELD",
+            "workOrderId": null,
+            "skipped": null,
+            "requestedBy": {
+              "trigger": "on-push",
+              "revision": 1,
+              "admittedBy": "owner"
+            },
+            "retry": "NONE"
+          },
+          {
+            "fireId": 2,
+            "trigger": "on-push",
+            "revision": 1,
+            "source": "github",
+            "eventId": "evt-2",
+            "occurredAt": "2026-11-09T15:37:10.854Z",
+            "receivedAt": "2026-11-09T15:37:11.863Z",
+            "materialDigest": "sha256:90c2a86106e1471445391c990ade7755c59178b0fc86ce647e6ead835eca1fda",
+            "disposition": "REFUSED",
+            "reason": "RUN_HELD",
+            "workOrderId": null,
+            "skipped": null,
+            "requestedBy": {
+              "trigger": "on-push",
+              "revision": 1,
+              "admittedBy": "owner"
+            },
+            "retry": "NONE"
+          },
+          {
+            "fireId": 1,
+            "trigger": "on-push",
+            "revision": 1,
+            "source": "github",
+            "eventId": "evt-1",
+            "occurredAt": "2026-11-09T15:37:10.826Z",
+            "receivedAt": "2026-11-09T15:37:11.846Z",
+            "materialDigest": "sha256:1a6d527f159e4a224d86d186d0ff65facbfcf9eeed02312d24fd087d06b5c32b",
+            "disposition": "ADMITTED",
+            "reason": null,
+            "workOrderId": "wo-trigger-05f653bd88d7fc66065c75ab16ff6eb20ff522d00c5032439f9974ab4318a551",
+            "skipped": null,
+            "requestedBy": {
+              "trigger": "on-push",
+              "revision": 1,
+              "admittedBy": "owner"
+            },
+            "retry": "NONE"
+          }
+        ],
+        "nextBefore": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers fires: older",
+      "args": [
+        "triggers",
+        "fires",
+        "on-push",
+        "--limit",
+        "20",
+        "--before",
+        "3",
+        "--format",
+        "aiws-graph-trigger-fires/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-fires/1",
+        "name": "on-push",
+        "fires": [
+          {
+            "fireId": 2,
+            "trigger": "on-push",
+            "revision": 1,
+            "source": "github",
+            "eventId": "evt-2",
+            "occurredAt": "2026-11-09T15:37:10.854Z",
+            "receivedAt": "2026-11-09T15:37:11.863Z",
+            "materialDigest": "sha256:90c2a86106e1471445391c990ade7755c59178b0fc86ce647e6ead835eca1fda",
+            "disposition": "REFUSED",
+            "reason": "RUN_HELD",
+            "workOrderId": null,
+            "skipped": null,
+            "requestedBy": {
+              "trigger": "on-push",
+              "revision": 1,
+              "admittedBy": "owner"
+            },
+            "retry": "NONE"
+          },
+          {
+            "fireId": 1,
+            "trigger": "on-push",
+            "revision": 1,
+            "source": "github",
+            "eventId": "evt-1",
+            "occurredAt": "2026-11-09T15:37:10.826Z",
+            "receivedAt": "2026-11-09T15:37:11.846Z",
+            "materialDigest": "sha256:1a6d527f159e4a224d86d186d0ff65facbfcf9eeed02312d24fd087d06b5c32b",
+            "disposition": "ADMITTED",
+            "reason": null,
+            "workOrderId": "wo-trigger-05f653bd88d7fc66065c75ab16ff6eb20ff522d00c5032439f9974ab4318a551",
+            "skipped": null,
+            "requestedBy": {
+              "trigger": "on-push",
+              "revision": 1,
+              "admittedBy": "owner"
+            },
+            "retry": "NONE"
+          }
+        ],
+        "nextBefore": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers fires: not submitted",
+      "args": [
+        "triggers",
+        "fires",
+        "nothing-here",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-trigger-fires/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "triggers submit: not yet valid",
+      "args": [
+        "triggers",
+        "submit",
+        "later",
+        "--workflow",
+        "release-review",
+        "--trigger",
+        "later.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-submit-result/1",
+        "requestId": "8c521178-0581-43de-a790-3015eb17d4e0",
+        "disposition": "COMMITTED",
+        "name": "later",
+        "revision": 1,
+        "status": "CANDIDATE",
+        "triggerDigest": "sha256:e026827a30b2ca16ece998b7848f5e4114195ca4972cbfec3d0c6488aa124f3f",
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=later&revision=1",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: admitted but blocked",
+      "args": [
+        "triggers",
+        "show",
+        "later",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger/1",
+        "name": "later",
+        "workflow": "release-review",
+        "kind": "SCHEDULED",
+        "state": "ACTIVE",
+        "enabled": true,
+        "currentRevision": 1,
+        "latestRevision": 1,
+        "pendingCount": 0,
+        "source": null,
+        "fires": {
+          "admitted": 0,
+          "filtered": 0,
+          "refused": 0,
+          "skipped": 0,
+          "lastAdmittedFire": null,
+          "lastFireAt": null,
+          "lastRefusal": null,
+          "rateWindowCount": 0,
+          "heldSince": null,
+          "condition": null
+        },
+        "revisions": [
+          {
+            "revision": 1,
+            "status": "ADMITTED",
+            "baseRevision": null,
+            "digest": "sha256:e026827a30b2ca16ece998b7848f5e4114195ca4972cbfec3d0c6488aa124f3f",
+            "submittedAt": "2026-11-09T15:37:14.450Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "enableDigest": null,
+        "blockedBy": [
+          "TRIGGER_NOT_YET_VALID"
+        ],
+        "admissionPageAddress": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers fires: none",
+      "args": [
+        "triggers",
+        "fires",
+        "later",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-trigger-fires/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-fires/1",
+        "name": "later",
+        "fires": [],
+        "nextBefore": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers disable",
+      "args": [
+        "triggers",
+        "disable",
+        "on-push"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-control-result/1",
+        "requestId": "ff1193a9-9ec3-4454-8882-8c4fc7af27f9",
+        "disposition": "COMMITTED",
+        "name": "on-push",
+        "state": "ACTIVE",
+        "enabled": false,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: admitted but disabled",
+      "args": [
+        "triggers",
+        "show",
+        "on-push",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger/1",
+        "name": "on-push",
+        "workflow": "release-review",
+        "kind": "EVENT",
+        "state": "ACTIVE",
+        "enabled": false,
+        "currentRevision": 1,
+        "latestRevision": 2,
+        "pendingCount": 1,
+        "source": {
+          "name": "github",
+          "status": "ENABLED"
+        },
+        "fires": {
+          "admitted": 1,
+          "filtered": 0,
+          "refused": 2,
+          "skipped": 0,
+          "lastAdmittedFire": {
+            "fireId": 1,
+            "at": "2026-11-09T15:37:11.846Z"
+          },
+          "lastFireAt": "2026-11-09T15:37:11.875Z",
+          "lastRefusal": {
+            "reason": "RUN_HELD",
+            "at": "2026-11-09T15:37:11.875Z"
+          },
+          "rateWindowCount": 1,
+          "heldSince": "2026-11-09T15:37:11.863Z",
+          "condition": null
+        },
+        "revisions": [
+          {
+            "revision": 2,
+            "status": "CANDIDATE",
+            "baseRevision": 1,
+            "digest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
+            "submittedAt": "2026-11-09T15:37:11.112Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          },
+          {
+            "revision": 1,
+            "status": "ADMITTED",
+            "baseRevision": null,
+            "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "enableDigest": "sha256:bb8b48d2f0efbb00c04bf3992336e9b31306e96bcf4aa86431dd984c9400bfab",
+        "blockedBy": [
+          "TRIGGER_DISABLED"
+        ],
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers retire",
+      "args": [
+        "triggers",
+        "retire",
+        "on-push"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-control-result/1",
+        "requestId": "7c0d055b-8774-4912-a729-2de4a36a4f3d",
+        "disposition": "COMMITTED",
+        "name": "on-push",
+        "state": "RETIRED",
+        "enabled": false,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: retired",
+      "args": [
+        "triggers",
+        "show",
+        "on-push",
+        "--format",
+        "aiws-graph-trigger/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger/1",
+        "name": "on-push",
+        "workflow": "release-review",
+        "kind": "EVENT",
+        "state": "RETIRED",
+        "enabled": false,
+        "currentRevision": 1,
+        "latestRevision": 2,
+        "pendingCount": 1,
+        "source": {
+          "name": "github",
+          "status": "ENABLED"
+        },
+        "fires": {
+          "admitted": 1,
+          "filtered": 0,
+          "refused": 2,
+          "skipped": 0,
+          "lastAdmittedFire": {
+            "fireId": 1,
+            "at": "2026-11-09T15:37:11.846Z"
+          },
+          "lastFireAt": "2026-11-09T15:37:11.875Z",
+          "lastRefusal": {
+            "reason": "RUN_HELD",
+            "at": "2026-11-09T15:37:11.875Z"
+          },
+          "rateWindowCount": 1,
+          "heldSince": "2026-11-09T15:37:11.863Z",
+          "condition": null
+        },
+        "revisions": [
+          {
+            "revision": 2,
+            "status": "CANDIDATE",
+            "baseRevision": 1,
+            "digest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
+            "submittedAt": "2026-11-09T15:37:11.112Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          },
+          {
+            "revision": 1,
+            "status": "ADMITTED",
+            "baseRevision": null,
+            "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "enableDigest": null,
+        "blockedBy": [
+          "TRIGGER_RETIRED"
+        ],
+        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers disable: retired",
+      "args": [
+        "triggers",
+        "disable",
+        "on-push"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (TRIGGER_STATE_CONFLICT).",
+        "hostCode": "TRIGGER_STATE_CONFLICT",
+        "requestId": "46ae5f34-bee7-4adb-90c3-de89d26507a2",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (TRIGGER_STATE_CONFLICT).\n"
+    },
+    {
+      "name": "triggers retire: already retired",
+      "args": [
+        "triggers",
+        "retire",
+        "on-push"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (TRIGGER_STATE_CONFLICT).",
+        "hostCode": "TRIGGER_STATE_CONFLICT",
+        "requestId": "7e431de1-e384-461f-b5fc-3d8085193181",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (TRIGGER_STATE_CONFLICT).\n"
+    },
+    {
+      "name": "triggers retire: outcome unknown (made)",
+      "args": [
+        "triggers",
+        "retire",
+        "on-push",
+        "--request-id",
+        "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "OUTCOME_UNKNOWN",
+        "message": "The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.",
+        "requestId": "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d",
+        "simulatedIdentity": true
+      },
+      "stderr": "praxis: The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.\n"
+    }
+  ]
+}

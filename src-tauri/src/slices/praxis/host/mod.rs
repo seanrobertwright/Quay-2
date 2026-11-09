@@ -2,7 +2,8 @@
 //! #228 decided. It finds and launches the CLI ([`launch`]), runs bounded headless calls
 //! ([`process`], [`runner`]), turns their `--json` records into typed outcomes ([`outcome`]) and
 //! keeps one [`HostCondition`] per project's builder session. A graph workflow's bundle goes to
-//! `praxis` as the paths of its saved files ([`bundle`]).
+//! `praxis` as the paths of its saved files ([`bundle`]), and a graph trigger as its saved file
+//! with the target its target file names ([`trigger`]).
 
 mod bundle;
 pub mod commands;
@@ -13,6 +14,7 @@ mod runner;
 mod settings;
 #[cfg(test)]
 mod tests;
+mod trigger;
 
 pub use bundle::{bundle_changes, bundle_digest, graph_workflow_bundle, GraphWorkflowBundle};
 pub use commands::*;

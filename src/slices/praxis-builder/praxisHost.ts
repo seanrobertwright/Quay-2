@@ -23,6 +23,11 @@ export type CallOutcome =
   | { kind: "blocked"; record: Record<string, unknown>; blockingRunAddress: string }
   /** `praxis graphs check` or `submit` exit 9: `record.findings` names the bundle file of each fault. */
   | { kind: "bundleInvalid"; record: Record<string, unknown> }
+  /**
+   * `praxis triggers check` or `submit` exit 9: `record.findings` gives each fault's JSON Pointer
+   * `path` in the trigger and the host's `code`.
+   */
+  | { kind: "triggerInvalid"; record: Record<string, unknown> }
   | { kind: "needsUpdate"; detail: string }
   | { kind: "noHost"; message: string }
   | { kind: "hostDown"; message: string }
@@ -33,8 +38,10 @@ export type CallOutcome =
   | { kind: "refused"; message: string }
   | { kind: "cliNotFound"; reason: string }
   /**
-   * A write that ended without saying whether it took effect. An unconfirmed graph workflow
-   * submission or withdrawal carries the `requestId` that resends it.
+   * A write that ended without saying whether it took effect. When praxis says it couldn't
+   * confirm a write other than a run creation (a graph workflow's submission or withdrawal, or a
+   * graph trigger's submission, withdrawal, disabling or retirement), this carries the
+   * `requestId` that resends it.
    */
   | { kind: "unknown"; detail: string; requestId?: string }
   | { kind: "timedOut" }
@@ -61,6 +68,8 @@ export function outcomeMessage(outcome: CallOutcome): string {
       return `Quay needs an update for this praxis: ${outcome.detail}`;
     case "bundleInvalid":
       return "The host found faults in the bundle.";
+    case "triggerInvalid":
+      return "The host found faults in the graph trigger.";
     case "refused":
     case "hostRefused":
     case "noHost":
