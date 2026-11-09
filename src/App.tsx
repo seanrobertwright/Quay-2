@@ -4,6 +4,7 @@ import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionDrawer } from "./slices/attention/AttentionDrawer";
+import { UndeliveredAnswerNotice } from "./slices/attention/UndeliveredAnswerNotice";
 import { Rail } from "./slices/rail/Rail";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -137,6 +138,8 @@ export function App() {
     deferPermissions,
     reopenPermissions,
     answerPermission,
+    undeliveredAnswer,
+    dismissUndeliveredAnswer,
     dismissFinishedTurn,
   } = useAttentionQueue(terminals);
 
@@ -729,6 +732,15 @@ export function App() {
           terminals={terminals}
           onResolve={answerPermission}
           onLater={() => deferPermissions(modalPermissions.map((request) => request.requestId))}
+        />
+      )}
+
+      {/* An answer to a permission request that reached no agent, because it had stopped waiting */}
+      {undeliveredAnswer && (
+        <UndeliveredAnswerNotice
+          answer={undeliveredAnswer}
+          terminals={terminals}
+          onDismiss={dismissUndeliveredAnswer}
         />
       )}
 

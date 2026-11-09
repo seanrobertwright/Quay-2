@@ -45,6 +45,20 @@ export interface FinishedTurnItem {
 /** One thing waiting on the user. A tagged union on `kind`, so more kinds can join later. */
 export type AttentionItem = PermissionItem | FinishedTurnItem;
 
+/**
+ * An answer the user gave that reached no agent, because the agent had stopped waiting for it.
+ * The app tells the user, so they do not take the request as answered.
+ */
+export interface UndeliveredAnswer {
+  requestId: string;
+  /** The terminal that asked, or null when the request named none or was no longer queued. */
+  terminalId: string | null;
+  /** The tool the request was for, or null when the request was no longer queued. */
+  tool: string | null;
+  /** Why the answer was not delivered, as the backend said it. */
+  error: string;
+}
+
 /** A terminal and the project it belongs to. */
 export interface KnownTerminal {
   terminalId: string;
@@ -60,6 +74,13 @@ export type AttentionEvent =
   | { type: "pendingPermissionsLoaded"; requests: readonly PendingPermission[]; at: number }
   /** The request was answered, wherever it was answered. */
   | { type: "permissionResolved"; requestId: string }
+  /**
+   * The user answered the request, and the backend said no agent was waiting for the answer any
+   * more. The request goes, and the queue keeps `error` to tell the user.
+   */
+  | { type: "permissionAnswerUndelivered"; requestId: string; error: string }
+  /** The user closed the notice about the answer that reached nobody. */
+  | { type: "undeliveredAnswerDismissed" }
   /** The user chose Later on the permission modal while it showed `requestIds`. */
   | { type: "permissionsDeferred"; requestIds: readonly string[] }
   /** The user chose to see deferred requests again, so the permission modal shows them. */
@@ -107,12 +128,15 @@ export interface AttentionQueue {
   readonly finishedTurns: ReadonlyMap<string, FinishedTurnItem>;
   /** By terminal id, how many permission items the cap dropped; a terminal with none is absent. */
   readonly droppedPermissions: ReadonlyMap<string | null, number>;
+  /** The latest answer that reached nobody, until the user closes its notice. */
+  readonly undeliveredAnswer: UndeliveredAnswer | null;
 }
 
 export const emptyAttentionQueue: AttentionQueue = {
   permissions: new Map(),
   finishedTurns: new Map(),
   droppedPermissions: new Map(),
+  undeliveredAnswer: null,
 };
 
 /** The queue after `event`. Returns a new queue and leaves `queue` as it was. */
@@ -127,6 +151,20 @@ export function applyAttentionEvent(queue: AttentionQueue, event: AttentionEvent
       permissions.delete(event.requestId);
       return { ...queue, permissions };
     }
+    case "permissionAnswerUndelivered": {
+      const item = queue.permissions.get(event.requestId);
+      const permissions = new Map(queue.permissions);
+      permissions.delete(event.requestId);
+      const undeliveredAnswer: UndeliveredAnswer = {
+        requestId: event.requestId,
+        terminalId: item?.terminalId ?? null,
+        tool: item?.tool ?? null,
+        error: event.error,
+      };
+      return { ...queue, permissions, undeliveredAnswer };
+    }
+    case "undeliveredAnswerDismissed":
+      return queue.undeliveredAnswer ? { ...queue, undeliveredAnswer: null } : queue;
     case "permissionsDeferred":
       return setDeferred(queue, event.requestIds, true);
     case "permissionsReopened":
@@ -295,4 +333,9 @@ export function waitedLabel(waitingSince: number, now: number): string {
  */
 export function droppedPermissionCount(queue: AttentionQueue, terminalId: string | null): number {
   return queue.droppedPermissions.get(terminalId) ?? 0;
+}
+
+/** The latest answer the user gave that reached no agent, or null when there is none to show. */
+export function undeliveredAnswer(queue: AttentionQueue): UndeliveredAnswer | null {
+  return queue.undeliveredAnswer;
 }
