@@ -163,14 +163,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
     </>
   );
   // The graph workflow and the records its bundle is made of, as far as the form knows them.
-  const graphBindingId = asString(w.graphBindingId);
-  const bundleRecords: DefinitionRef[] = [
-    draft.ref,
-    ...(graphId ? [{ kind: "graphs" as const, id: graphId }] : []),
-    ...(graphBindingId ? [{ kind: "graph-bindings" as const, id: graphBindingId }] : []),
-    ...(contractId ? [{ kind: "contracts" as const, id: contractId }] : []),
-    ...(grants ?? []).map((id) => ({ kind: "grants" as const, id })),
-  ];
+  const bundle = bundleRecords(draft.ref.id, { contractId, graphId, graphBindingId: asString(w.graphBindingId) }, grants ?? []);
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
 
   const viewSwitch = runsShown !== undefined && (
@@ -188,7 +181,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             shown={runsShown}
             runInTerminal={runInTerminal}
             host={host}
-            unsaved={bundleRecords.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
+            unsaved={bundle.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
           />
         </div>
       </div>
@@ -217,7 +210,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             <GraphSubmitBar
               projectPath={projectPath}
               name={draft.ref.id}
-              records={bundleRecords(draft.ref.id, { contractId, graphId, graphBindingId: asString(w.graphBindingId) }, grants ?? [])}
+              records={bundle}
               local={!settled ? "checking" : status.state === "done" && status.validation.verdict === null ? "passes" : "fails"}
               refresh={refresh}
               host={host}

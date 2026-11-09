@@ -164,7 +164,12 @@ function savedDraft(): Draft {
 }
 
 function form() {
-  const host = graphs && { view: graphs.workflow(NAME), condition: SIGNED_IN, onCheckAgain: () => void graphs?.checkAgain(NAME) };
+  const host = graphs && {
+    view: graphs.workflow(NAME),
+    condition: SIGNED_IN,
+    onCheckAgain: () => void graphs?.checkAgain(NAME),
+    onWithdraw: () => assert.fail("no withdrawal in these tests"),
+  };
   return createElement(GraphWorkflowForm, {
     projectPath: project,
     draft: savedDraft(),
