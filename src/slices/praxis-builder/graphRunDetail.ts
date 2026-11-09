@@ -20,8 +20,10 @@ const ENDED = new Set(["COMPLETED", "FAILED", "CANCELED"]);
 
 /** One open hold of a graph run: its card's `holdId`, and its panel. */
 export interface GraphHold extends HoldPanel {
-  /** The card's `holdId`; `reconciliation` for the panel of a reconciliation with no card. */
-  holdId: string;
+  /** The card's `holdId`; null for a card without one, and for a reconciliation with no card. */
+  holdId: string | null;
+  /** Tells the run's panels apart: from the `holdId` when the card has one, else from the reason, else `reconciliation`. */
+  key: string;
 }
 
 /** A graph run as its detail draws it. */
@@ -95,10 +97,13 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
   const holds: GraphHold[] = [];
   for (const card of cards) {
     const panel = holdOf(card, null);
-    const holdId = str(card.holdId) ?? `unnamed: ${panel.reason}`;
-    if (!holds.some((h) => h.holdId === holdId)) holds.push({ holdId, ...panel });
+    const holdId = str(card.holdId);
+    const key = holdId !== null ? `hold:${holdId}` : `unnamed:${panel.reason}`;
+    if (!holds.some((h) => h.key === key)) holds.push({ holdId, key, ...panel });
   }
-  if (held && holds.length === 0) holds.push({ holdId: "reconciliation", ...holdOf(null, "An attempt's outcome is unknown, so it needs reconciliation.") });
+  if (held && holds.length === 0) {
+    holds.push({ holdId: null, key: "reconciliation", ...holdOf(null, "An attempt's outcome is unknown, so it needs reconciliation.") });
+  }
   const outcome = str(v.outcome);
   return {
     workOrderId,

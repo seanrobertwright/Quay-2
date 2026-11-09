@@ -421,6 +421,21 @@ test("a held run gets a Held badge and a hold panel per open hold, each with Res
   for (const panel of panels(root)) assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"]);
 });
 
+test("a card whose holdId reads like a card without one still gets its own panel", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  const { holdId: _, ...unnamed } = holdCard("", "The attempt failed");
+  await answer(
+    backend.statuses()[0],
+    statusRecord(graphOperatorView(1, { holds: [holdCard("unnamed: The attempt failed", "The node scope is spent"), unnamed, unnamed] })),
+  );
+  // A card without a holdId is kept once, beside the card whose holdId looks like its fallback.
+  const [first, second] = panels(root);
+  assert.equal(panels(root).length, 2);
+  assert.match(text(first), /^Held: The node scope is spent/);
+  assert.match(text(second), /^Held: The attempt failed/);
+});
+
 test("a run with reconciliation pending and no hold card is held too, with a panel saying why", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);

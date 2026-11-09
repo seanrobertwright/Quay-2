@@ -82,7 +82,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({ projectPath, workOrder
         </dl>
       )}
       {run?.holds.map((hold) => (
-        <HoldPanel key={hold.holdId} hold={hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />
+        <HoldPanel key={hold.key} hold={hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />
       ))}
       {run && run.waiting && run.holds.length === 0 && <WaitingBanner run={run} openButton={openButton("Open in browser")} onTrust={trust} />}
     </section>
