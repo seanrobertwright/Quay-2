@@ -10,7 +10,8 @@
 // model, each with Withdraw on a pending candidate behind a confirm (#463). Given what Submit needs
 // from the builder too, it draws Check on host and Submit under the status line (#462), which run
 // `praxis graphs check` and `submit` themselves. A Workflow | Runs switch turns the work area to
-// the graph workflow's runs on the host (#464), where Run starts one (#466).
+// the graph workflow's runs on the host (#464), where Run starts one (#466). Asked to show a run,
+// as a graph trigger's fire asks (#478), the form opens on Runs with that run's detail shown.
 import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
@@ -55,6 +56,8 @@ interface GraphWorkflowFormProps {
   runInTerminal?: RunInTerminal;
   /** The `definitionKey`s of the project's records whose drafts have unsaved edits, for Run's confirm. */
   unsavedKeys?: ReadonlySet<string>;
+  /** The `workOrderId` of a run to show when the form opens: it opens on Runs with that run's detail. */
+  showRun?: string;
 }
 
 /**
@@ -90,8 +93,9 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   runsShown,
   runInTerminal,
   unsavedKeys,
+  showRun,
 }) => {
-  const [shownView, setShownView] = useState<WorkAreaView>("record");
+  const [shownView, setShownView] = useState<WorkAreaView>(runsShown !== undefined && showRun !== undefined ? "runs" : "record");
   // The revision whose Withdraw confirm is shown, or null.
   const [withdrawing, setWithdrawing] = useState<number | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -182,6 +186,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             runInTerminal={runInTerminal}
             host={host}
             unsaved={bundle.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
+            initialRun={showRun}
           />
         </div>
       </div>
