@@ -5,22 +5,14 @@
 // (graph_outputs.fixture.json, recorded against the SDK's simulated host).
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createGraphHost, CANDIDATE_POLL_MS, GRAPH_STATE_ORDER, type GraphHost, type LocalGraphWorkflow } from "./graphHost.ts";
 import { MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
+import { notPending, RECORDED_DIGEST, recordedStdout as stdout, withdrawnRecord } from "./fixtures/graphOutputs.ts";
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_790_000_000_000 }));
 afterEach(() => mock.timers.reset());
 
-/** What the real `praxis --json` printed for each graph command, by case name. */
-const recorded = JSON.parse(
-  readFileSync(new URL("../../../src-tauri/src/slices/praxis/host/graph_outputs.fixture.json", import.meta.url), "utf8"),
-) as { cases: { name: string; stdout: Record<string, unknown> }[] };
-const stdout = (name: string) => structuredClone(recorded.cases.find((c) => c.name === name)!.stdout);
-
-/** The digest the recorded bundle has, on every revision the recorded host holds. */
-const RECORDED_DIGEST = "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f";
 const OTHER_DIGEST = `sha256:${"e".repeat(64)}`;
 const SIGNED_IN: HostCondition = { state: "signedIn" };
 
@@ -102,7 +94,9 @@ const label = (c: Call) =>
     ? `list${c.args.after ? ` after ${String(c.args.after)}` : ""}`
     : c.command === "praxis_host_graph_show"
       ? `show ${String(c.args.name)}`
-      : c.command;
+      : c.command === "praxis_host_graph_withdraw"
+        ? `withdraw ${String(c.args.name)} ${String(c.args.revision)}`
+        : c.command;
 
 /** Lets settled calls' follow-ups run; setImmediate isn't mocked. */
 const settle = async () => {
@@ -434,4 +428,64 @@ test("disposing cancels every praxis call in flight and keeps nothing", async ()
   host.answer("show a", admitted("a"));
   await settle();
   assert.deepEqual(graphs.workflow("a").state, { kind: "unknown", why: "notChecked" });
+});
+
+test("withdrawing a pending candidate sends its revision, then rereads: the record falls back to its admitted revision and the candidate shows withdrawn", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  assert.deepEqual(graphs.workflow("ship").state, { kind: "candidate", revision: 2 });
+  const done = graphs.withdraw("ship", 2);
+  await settle();
+  assert.deepEqual(host.open(), ["withdraw ship 2"]);
+  assert.equal(host.calls[host.calls.length - 1].args.requestId, null, "a first withdrawal resends nothing");
+  host.answer("withdraw ship 2", withdrawnRecord("ship", 2));
+  await settle();
+  // The withdrawal is done once the reread after it is in.
+  assert.deepEqual(host.open(), ["show ship"]);
+  host.answer("show ship", admitted("ship", { revisions: admittedOne("WITHDRAWN") }));
+  assert.deepEqual(await done, { kind: "withdrawn" });
+  const view = graphs.workflow("ship");
+  assert.deepEqual(view.state, { kind: "admitted", revision: 1 });
+  assert.deepEqual(view.revisions.map((r) => [r.revision, r.status, r.current]), [[2, "WITHDRAWN", false], [1, "CURRENT", true]]);
+});
+
+test("a withdrawal the host refuses because the candidate is already decided says so, and rereads what the owner decided", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  const done = graphs.withdraw("ship", 2);
+  await settle();
+  host.answer("withdraw ship 2", notPending());
+  await settle();
+  // The owner admitted revision 2 in the browser before the withdrawal reached the host.
+  host.answer("show ship", admitted("ship", { revisions: (rs: Revision[]) => [{ ...rs[0], status: "CURRENT" }, { ...rs[1], status: "ADMITTED" }], currentRevision: 2 }));
+  assert.deepEqual(await done, {
+    kind: "refused",
+    message: "The host refused: revision 2 of ship is no longer pending. The owner has admitted or rejected it, or it was withdrawn already.",
+  });
+  assert.deepEqual(graphs.workflow("ship").state, { kind: "admitted", revision: 2 });
+});
+
+test("a withdrawal praxis couldn't confirm is unknown, and the next one resends its request id", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  const requestId = "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d";
+  const first = graphs.withdraw("ship", 2);
+  // A second press while the first is in flight joins it.
+  assert.equal(graphs.withdraw("ship", 2), first);
+  await settle();
+  host.answer("withdraw ship 2", { kind: "unknown", detail: "The host didn't confirm the request.", requestId });
+  await settle();
+  host.answer("show ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  assert.deepEqual(await first, {
+    kind: "unknown",
+    message: "Quay can't tell whether the host withdrew revision 2 of ship: The host didn't confirm the request. Withdraw again resends the same request.",
+  });
+  assert.equal(host.calls.filter((c) => c.command === "praxis_host_graph_withdraw").length, 1);
+  const again = graphs.withdraw("ship", 2);
+  await settle();
+  assert.equal(host.calls[host.calls.length - 1].args.requestId, requestId);
+  host.answer("withdraw ship 2", withdrawnRecord("ship", 2));
+  await settle();
+  host.answer("show ship", admitted("ship"));
+  assert.deepEqual(await again, { kind: "withdrawn" });
 });

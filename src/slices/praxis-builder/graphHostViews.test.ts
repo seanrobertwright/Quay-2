@@ -74,7 +74,11 @@ const view = (state: GraphHostState, extra: Partial<GraphWorkflowHostView> = {})
   ...extra,
 });
 
-async function render(host: GraphWorkflowHost | undefined): Promise<HTMLElement> {
+/**
+ * The form for `ship`, given `host`. Withdraw has its own tests (graphWithdraw.test.ts); here it
+ * fails the test if it is ever sent.
+ */
+async function render(host: Omit<GraphWorkflowHost, "onWithdraw"> | undefined): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -93,7 +97,7 @@ async function render(host: GraphWorkflowHost | undefined): Promise<HTMLElement>
         graphs: ["g"],
         graphBindings: [{ id: "g-1", graphId: "g" }],
         refresh: 0,
-        host,
+        host: host && { ...host, onWithdraw: () => assert.fail("no withdrawal in these tests") },
         onEdit: () => {},
         onOpen: () => {},
         onValidated: () => {},
@@ -156,7 +160,7 @@ test("the Revisions panel lists number, status, submitted and decided times and 
   assert.ok(table, "the Revisions table");
   assert.deepEqual(
     [...table.querySelectorAll("thead th")].map(text),
-    ["Revision", "Status", "Submitted", "Decided", "Current"],
+    ["Revision", "Status", "Submitted", "Decided", "Current", "Actions"],
   );
   const rows = () => [...table.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("th, td")].map(text));
   assert.equal(rows().length, 20);
