@@ -388,6 +388,26 @@ pub async fn praxis_host_triggers_list(
     call(&cli, &workspace, &project_path, Verb::TriggersList, operands, call_id).await
 }
 
+/// `praxis event-sources list --limit <limit> [--after <name>] --json`: the host's event sources in
+/// name order, the page after `after` when given.
+#[tauri::command]
+pub async fn praxis_host_event_sources_list(
+    project_path: String,
+    limit: u32,
+    after: Option<String>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_page_limit(limit)?;
+    let mut operands = vec!["--limit".to_string(), limit.to_string()];
+    if let Some(after) = after {
+        check_trigger_name(&after)?;
+        operands.extend(["--after".to_string(), after]);
+    }
+    call(&cli, &workspace, &project_path, Verb::EventSourcesList, operands, call_id).await
+}
+
 /// `praxis triggers show <name> --json`: one graph trigger, its newest revisions, its fire counts
 /// and what blocks it from firing.
 #[tauri::command]

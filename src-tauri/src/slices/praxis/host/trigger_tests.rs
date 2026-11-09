@@ -215,6 +215,7 @@ fn every_trigger_write_has_the_write_timeout_and_every_read_pins_its_format() {
         (Verb::TriggersRevisions, "aiws-graph-trigger-revisions/1"),
         (Verb::TriggersRevision, "aiws-graph-trigger-revision/1"),
         (Verb::TriggersFires, "aiws-graph-trigger-fires/1"),
+        (Verb::EventSourcesList, "aiws-event-sources/1"),
     ] {
         assert!(!verb.writes(), "{verb:?}");
         assert_eq!(verb.args(["x".to_string()]).last().map(String::as_str), Some(format), "{verb:?}");
@@ -368,4 +369,51 @@ fn a_graph_trigger_s_files_with_changes_since_the_last_commit() {
     );
 
     assert!(trigger_changes(&repo, "../nightly").is_err(), "an unsafe id is refused");
+}
+
+#[test]
+fn event_sources_list_runs_with_the_format_praxis_expects() {
+    let h = Harness::new();
+    let case = json!({
+        "name": "event-sources list",
+        "args": ["event-sources", "list", "--limit", "100", "--format", "aiws-event-sources/1"],
+        "exit": 0,
+        "stdout": {
+            "format": "aiws-event-sources/1",
+            "sources": [
+                {
+                    "name": "github",
+                    "state": "ENABLED",
+                    "currentRevision": 1,
+                    "latestRevision": 1,
+                    "pendingCount": 0,
+                    "eventTypes": ["push"]
+                }
+            ],
+            "nextAfter": null
+        },
+        "stderr": ""
+    });
+    let outcome = call(&h, Verb::EventSourcesList, &["--limit", "100"], &case);
+    assert_eq!(outcome, CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
+    assert_eq!(h.condition(), HostCondition::SignedIn);
+}
+
+#[test]
+fn event_sources_list_with_after_cursor_runs_as_expected() {
+    let h = Harness::new();
+    let case = json!({
+        "name": "event-sources list with after",
+        "args": ["event-sources", "list", "--limit", "50", "--after", "github", "--format", "aiws-event-sources/1"],
+        "exit": 0,
+        "stdout": {
+            "format": "aiws-event-sources/1",
+            "sources": [],
+            "nextAfter": null
+        },
+        "stderr": ""
+    });
+    let outcome = call(&h, Verb::EventSourcesList, &["--limit", "50", "--after", "github"], &case);
+    assert_eq!(outcome, CallOutcome::Record { record: case["stdout"].clone(), trust_hint: None });
+    assert_eq!(h.condition(), HostCondition::SignedIn);
 }

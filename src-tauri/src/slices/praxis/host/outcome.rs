@@ -59,6 +59,8 @@ pub enum Verb {
     TriggersDisable,
     /// `praxis triggers retire <name>`: stops it firing until a later revision is admitted.
     TriggersRetire,
+    /// `praxis event-sources list`: the host's event sources, in name order.
+    EventSourcesList,
 }
 
 impl Verb {
@@ -89,6 +91,7 @@ impl Verb {
             Verb::TriggersFires => "aiws-graph-trigger-fires/1",
             Verb::TriggersWithdraw => "aiws-graph-trigger-withdraw-result/1",
             Verb::TriggersDisable | Verb::TriggersRetire => "aiws-graph-trigger-control-result/1",
+            Verb::EventSourcesList => "aiws-event-sources/1",
         }
     }
 
@@ -166,6 +169,7 @@ impl Verb {
             Verb::TriggersWithdraw => &["triggers", "withdraw"],
             Verb::TriggersDisable => &["triggers", "disable"],
             Verb::TriggersRetire => &["triggers", "retire"],
+            Verb::EventSourcesList => &["event-sources", "list"],
         }
     }
 
@@ -187,6 +191,7 @@ impl Verb {
                 | Verb::TriggersRevisions
                 | Verb::TriggersRevision
                 | Verb::TriggersFires
+                | Verb::EventSourcesList
         )
     }
 
