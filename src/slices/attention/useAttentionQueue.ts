@@ -40,7 +40,13 @@ const toPendingPermission = (
   reason: payload.reason,
 });
 
-/** Sends the user's answer to permission request `requestId`. */
+/** The reason a denial sends the agent when the user gave none. */
+const DENIED_WITHOUT_REASON = "User rejected tool execution";
+
+/**
+ * Sends the user's answer to permission request `requestId`. A denial with no `reason` tells the
+ * agent the user rejected the tool.
+ */
 export type AnswerPermission = (
   requestId: string,
   decision: "allow" | "deny",
@@ -189,7 +195,7 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
         await invoke("resolve_permission", {
           requestId,
           decision,
-          reason: reason || null,
+          reason: reason?.trim() || (decision === "deny" ? DENIED_WITHOUT_REASON : null),
           rememberForSession,
         });
         dispatch({ type: "permissionResolved", requestId });

@@ -22,6 +22,11 @@ interface PermissionModalProps {
   onResolve: AnswerPermission;
   /** Hides the modal and leaves the shown requests waiting in the attention queue. */
   onLater: () => void;
+  /**
+   * The request the user chose to see, such as one reopened from its attention drawer row. Each
+   * new object moves the modal to that request.
+   */
+  showRequest?: { requestId: string } | null;
 }
 
 export const PermissionModal: FC<PermissionModalProps> = ({
@@ -29,9 +34,17 @@ export const PermissionModal: FC<PermissionModalProps> = ({
   terminals,
   onResolve,
   onLater,
+  showRequest = null,
 }) => {
   const denyReasonId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Move to the request the user chose, once per choice
+  const [shownRequest, setShownRequest] = useState(showRequest);
+  if (showRequest !== shownRequest) {
+    setShownRequest(showRequest);
+    const chosen = pendingRequests.findIndex((request) => request.requestId === showRequest?.requestId);
+    if (chosen >= 0) setCurrentIndex(chosen);
+  }
   const [denyReason, setDenyReason] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -116,8 +129,8 @@ export const PermissionModal: FC<PermissionModalProps> = ({
   };
 
   const handleDeny = () => {
-    const reason = denyReason.trim() || "User rejected tool execution";
-    onResolve(currentReq.requestId, "deny", reason, false);
+    // The queue sends its own reason for a denial with none, the same as a drawer row's Deny
+    onResolve(currentReq.requestId, "deny", denyReason, false);
     setDenyReason("");
   };
 

@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useState, type FC } from "react";
 import { PermissionModal } from "../bridge/PermissionModal.tsx";
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
@@ -22,7 +22,7 @@ interface AttentionSurfacesProps {
 /**
  * Everything the attention queue shows over the workspace: the permission modal, open while the
  * queue holds a request not put off with Later; the notice for an answer that reached no agent;
- * and the attention drawer.
+ * and the attention drawer. Choosing a deferred request's drawer row reopens the modal on it.
  */
 export const AttentionSurfaces: FC<AttentionSurfacesProps> = ({
   queue,
@@ -32,37 +32,50 @@ export const AttentionSurfaces: FC<AttentionSurfacesProps> = ({
   isDrawerOpen,
   onCloseDrawer,
   onFocusTerminal,
-}) => (
-  <>
-    {queue.modalPermissions.length > 0 && (
-      <PermissionModal
-        pendingRequests={queue.modalPermissions}
-        terminals={terminals}
-        onResolve={queue.answerPermission}
-        onLater={() => queue.deferPermissions(queue.modalPermissions.map((request) => request.requestId))}
-      />
-    )}
+}) => {
+  // The request the user last reopened from its drawer row, for the permission modal to move to.
+  // A new object each time, so choosing the same row again moves the modal back to it.
+  const [reopened, setReopened] = useState<{ requestId: string } | null>(null);
 
-    {queue.undeliveredAnswer && (
-      <UndeliveredAnswerNotice
-        answer={queue.undeliveredAnswer}
-        terminals={terminals}
-        onDismiss={queue.dismissUndeliveredAnswer}
-      />
-    )}
+  return (
+    <>
+      {queue.modalPermissions.length > 0 && (
+        <PermissionModal
+          pendingRequests={queue.modalPermissions}
+          showRequest={reopened}
+          terminals={terminals}
+          onResolve={queue.answerPermission}
+          onLater={() => queue.deferPermissions(queue.modalPermissions.map((request) => request.requestId))}
+        />
+      )}
 
-    <AttentionDrawer
-      isOpen={isDrawerOpen}
-      items={queue.items}
-      terminals={terminals}
-      projects={projects}
-      projectWorktrees={projectWorktrees}
-      onClose={onCloseDrawer}
-      onFocusTerminal={(terminalId) => {
-        onCloseDrawer();
-        onFocusTerminal(terminalId);
-      }}
-      onDismissFinishedTurn={queue.dismissFinishedTurn}
-    />
-  </>
-);
+      {queue.undeliveredAnswer && (
+        <UndeliveredAnswerNotice
+          answer={queue.undeliveredAnswer}
+          terminals={terminals}
+          onDismiss={queue.dismissUndeliveredAnswer}
+        />
+      )}
+
+      <AttentionDrawer
+        isOpen={isDrawerOpen}
+        items={queue.items}
+        terminals={terminals}
+        projects={projects}
+        projectWorktrees={projectWorktrees}
+        onClose={onCloseDrawer}
+        onFocusTerminal={(terminalId) => {
+          onCloseDrawer();
+          onFocusTerminal(terminalId);
+        }}
+        onDismissFinishedTurn={queue.dismissFinishedTurn}
+        onAnswerPermission={queue.answerPermission}
+        onReopenPermission={(requestId) => {
+          queue.reopenPermissions([requestId]);
+          setReopened({ requestId });
+          onCloseDrawer();
+        }}
+      />
+    </>
+  );
+};

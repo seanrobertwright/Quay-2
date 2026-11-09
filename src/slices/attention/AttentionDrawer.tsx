@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState, type FC } from "react";
-import { BellRing, X } from "lucide-react";
+import { BellRing, Check, SquareTerminal, X } from "lucide-react";
 import { useOverlay } from "../overlay/useOverlay.ts";
 import type { TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
@@ -7,6 +7,7 @@ import type { GitWorktree } from "../git/types.ts";
 import { worktreeRowName } from "../rail/worktreeMenu.ts";
 import { isSamePath } from "../../utils/paths.ts";
 import { attentionItemKey, waitedLabel, type AttentionItem } from "./attentionQueue.ts";
+import type { AnswerPermission } from "./useAttentionQueue.ts";
 
 /** How often the open drawer refreshes each row's wait time. */
 const WAIT_TICK_MS = 1000;
@@ -22,6 +23,10 @@ interface AttentionDrawerProps {
   /** Focuses the terminal, switching to its project or worktree when it is in another. */
   onFocusTerminal: (terminalId: string) => void;
   onDismissFinishedTurn: (terminalId: string) => void;
+  /** Answers a permission request, the same way the permission modal does. */
+  onAnswerPermission: AnswerPermission;
+  /** Shows a request deferred with Later in the permission modal again, on that request. */
+  onReopenPermission: (requestId: string) => void;
 }
 
 /** The last segment of `path`, or the path itself when it has none. */
@@ -45,13 +50,17 @@ function projectLabel(
   return baseName(path);
 }
 
-const kindLabel = (item: AttentionItem) =>
-  item.kind === "permission" ? `Permission request: ${item.tool}` : "Finished turn";
+const kindLabel = (item: AttentionItem) => {
+  if (item.kind === "finishedTurn") return "Finished turn";
+  return item.deferred ? `Permission request: ${item.tool}, deferred` : `Permission request: ${item.tool}`;
+};
 
 /**
  * The attention queue's drawer: every session waiting on the user, oldest first, across all
- * projects. A row focuses its terminal; a finished-turn row can be dismissed. Focusing sends the
- * queue no event, so the focused terminal's row stays until the queue itself clears it.
+ * projects. A row focuses its terminal; a permission row is allowed or denied in place, and a
+ * request deferred with Later reopens in the permission modal from its row; a finished-turn row
+ * can be dismissed. Focusing sends the queue no event, so the focused terminal's row stays until
+ * the queue itself clears it.
  */
 export const AttentionDrawer: FC<AttentionDrawerProps> = ({
   isOpen,
@@ -62,6 +71,8 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
   onClose,
   onFocusTerminal,
   onDismissFinishedTurn,
+  onAnswerPermission,
+  onReopenPermission,
 }) => {
   const { backdropProps, panelProps } = useOverlay({ isOpen, onClose });
   const [now, setNow] = useState(() => Date.now());
@@ -128,6 +139,8 @@ export const AttentionDrawer: FC<AttentionDrawerProps> = ({
                     waited={waitedLabel(item.waitingSince, now)}
                     onFocusTerminal={onFocusTerminal}
                     onDismissFinishedTurn={onDismissFinishedTurn}
+                    onAnswerPermission={onAnswerPermission}
+                    onReopenPermission={onReopenPermission}
                   />
                 );
               })}
@@ -147,9 +160,16 @@ interface AttentionRowProps {
   waited: string;
   onFocusTerminal: (terminalId: string) => void;
   onDismissFinishedTurn: (terminalId: string) => void;
+  onAnswerPermission: AnswerPermission;
+  onReopenPermission: (requestId: string) => void;
 }
 
-/** One waiting item: a button that focuses its terminal, and a dismiss button for a finished turn. */
+/**
+ * One waiting item. Its main button focuses its terminal, or, for a request deferred with Later,
+ * reopens the permission modal on it; a deferred request's row then has its own button to focus
+ * the terminal. A permission row answers its request with Allow and Deny, and a finished-turn
+ * row can be dismissed.
+ */
 const AttentionRow: FC<AttentionRowProps> = ({
   item,
   terminalName,
@@ -157,19 +177,28 @@ const AttentionRow: FC<AttentionRowProps> = ({
   waited,
   onFocusTerminal,
   onDismissFinishedTurn,
+  onAnswerPermission,
+  onReopenPermission,
 }) => {
   const detailId = useId();
   const terminalId = item.terminalId;
   const name = terminalName ?? (terminalId ? "Unknown terminal" : "No terminal");
+  const deferred = item.kind === "permission" && item.deferred;
+  const focusTitle = terminalId ? `Focus ${name}` : "This request names no terminal";
 
   return (
     <li className="flex items-stretch gap-1 rounded-lg bg-[#161b22] border border-[#30363d] hover:border-[#58a6ff]/50 transition-colors">
       <button
         type="button"
-        disabled={!terminalId}
-        onClick={() => terminalId && onFocusTerminal(terminalId)}
+        disabled={!deferred && !terminalId}
+        onClick={() => {
+          if (item.kind === "permission" && item.deferred) onReopenPermission(item.requestId);
+          else if (terminalId) onFocusTerminal(terminalId);
+        }}
         className="flex-1 min-w-0 text-left px-3 py-2 rounded-lg cursor-pointer disabled:cursor-default focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[#58a6ff]"
-        title={terminalId ? `Focus ${name}` : "This request names no terminal"}
+        title={deferred ? "Reopen this request" : focusTitle}
+        aria-label={item.kind === "permission" && item.deferred ? `Reopen ${name}'s ${item.tool} request` : undefined}
+        aria-describedby={deferred ? detailId : undefined}
       >
         <span className="block text-xs font-semibold text-white truncate">{name}</span>
         <span id={detailId} className="block mt-0.5 text-[11px] text-[#8b949e] truncate">
@@ -182,6 +211,41 @@ const AttentionRow: FC<AttentionRowProps> = ({
           <span>waited {waited}</span>
         </span>
       </button>
+      {item.kind === "permission" && (
+        <div className="shrink-0 flex items-center gap-1 pr-2">
+          {deferred && terminalId && (
+            <button
+              type="button"
+              onClick={() => onFocusTerminal(terminalId)}
+              className="p-1 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[#58a6ff]"
+              title={focusTitle}
+              aria-label={focusTitle}
+            >
+              <SquareTerminal className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onAnswerPermission(item.requestId, "allow")}
+            className="flex items-center gap-1 px-2 py-1 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-[11px] font-semibold transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[#58a6ff]"
+            aria-label={`Allow ${item.tool} for ${name}`}
+            aria-describedby={detailId}
+          >
+            <Check className="w-3 h-3" aria-hidden="true" />
+            <span>Allow</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onAnswerPermission(item.requestId, "deny")}
+            className="flex items-center gap-1 px-2 py-1 bg-[#da3633] hover:bg-[#f85149] text-white rounded-md text-[11px] font-semibold transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[#58a6ff]"
+            aria-label={`Deny ${item.tool} for ${name}`}
+            aria-describedby={detailId}
+          >
+            <X className="w-3 h-3" aria-hidden="true" />
+            <span>Deny</span>
+          </button>
+        </div>
+      )}
       {item.kind === "finishedTurn" && (
         <button
           type="button"
