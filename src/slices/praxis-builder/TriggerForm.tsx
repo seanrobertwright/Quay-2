@@ -14,7 +14,8 @@
 // A trigger with a saved target is a graph trigger, and given its state on the Praxis host (#475)
 // the form shows it in a status line above the fields and a Revisions panel below them, which
 // read the builder's trigger host model, with Withdraw, Disable, Retire and Enable in browser
-// (#477) under the status line.
+// (#477) under the status line. Given what its Fires panel needs from the builder too, the form
+// draws the trigger's fires on the host under the Revisions panel (#478).
 import { useEffect, useId, type FC, type ReactNode } from "react";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
@@ -50,6 +51,7 @@ import {
   type NestedKey,
   type TriggerEdit,
 } from "./trigger.ts";
+import { FiresPanel, type TriggerFires } from "./FiresPanel.tsx";
 import { TriggerHostStatusLine, TriggerRevisionsPanel, type GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import { TriggerControlBar } from "./TriggerControls.tsx";
 import { useTriggerCheck } from "./useTriggerCheck.ts";
@@ -75,6 +77,8 @@ interface TriggerFormProps {
   onValidated: (verdict: string | null) => void;
   /** Its state on the Praxis host, from the builder's trigger host model; absent for a trigger with no saved target. */
   host?: GraphTriggerHost | null;
+  /** What the Fires panel needs from the builder; without it, or a host, there is none. */
+  fires?: TriggerFires;
 }
 
 const CATCH_UP_HINTS: Record<(typeof CATCH_UP_MODES)[number], string> = {
@@ -114,6 +118,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
   onOpen,
   onValidated,
   host,
+  fires,
 }) => {
   const sdk = useValidation("triggers", draft.content);
   const targetCheck = useTriggerCheck(projectPath, draft.content, draft.target, refresh);
@@ -335,6 +340,7 @@ export const TriggerForm: FC<TriggerFormProps> = ({
         )}
         {fields}
         {host && <TriggerRevisionsPanel view={host.view} />}
+        {host && fires && <FiresPanel projectPath={projectPath} name={draft.ref.id} host={host} fires={fires} />}
       </form>
     </div>
   );
