@@ -4,16 +4,9 @@
 // the same poller, with the same delays, stop rules and newest-response rule.
 import { invoke } from "@tauri-apps/api/core";
 import { parseUtcTimestamp } from "../../lib/dates.ts";
-import { HOST_RECHECK_MS } from "./hostRecheck.ts";
 import { createNewestRequest } from "./newestRequest.ts";
-import { createPoller } from "./poller.ts";
+import { createPoller, LIST_FAILING_POLL_MS, LIST_POLL_MS } from "./poller.ts";
 import { isHostLevelFailure, outcomeMessage, praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
-
-/** How often the list is read while the host answers. */
-export const RUNS_POLL_MS = 15_000;
-
-/** How often it is read after any failed read, host-level or not: the host recheck's interval, as every failing state polls. */
-export const RUNS_FAILING_POLL_MS = HOST_RECHECK_MS;
 
 /** How many runs the list asks for first: `praxis runs`'s own default. */
 export const RUNS_FIRST_LIMIT = 20;
@@ -207,17 +200,17 @@ export function createRunsList({ projectPath, name, source = TEMPLATE_RUNS, call
    * 60 s after any failure. The last list stays; only a host-level failure dims it.
    */
   function recordAndNextDelay(outcome: CallOutcome): number {
-    if (outcome.kind === "cancelled") return RUNS_POLL_MS;
+    if (outcome.kind === "cancelled") return LIST_POLL_MS;
     if (outcome.kind === "record" && Array.isArray(outcome.record.runs)) {
       const rows = outcome.record.runs.map(source.parseRun).filter((r): r is RunRow => r !== null);
       shown = { runs: rows, readAt: Date.now(), dimmed: false, problem: null, simulated: outcome.record.simulatedIdentity === true };
       changed();
-      return RUNS_POLL_MS;
+      return LIST_POLL_MS;
     }
     const problem = outcome.kind === "record" ? "praxis gave a runs list Quay can't read." : outcomeMessage(outcome);
     shown = { ...shown, dimmed: isHostLevelFailure(outcome), problem };
     changed();
-    return RUNS_FAILING_POLL_MS;
+    return LIST_FAILING_POLL_MS;
   }
 
   return {

@@ -1,17 +1,16 @@
 // A graph trigger's Fires list (#469, #478): `praxis triggers fires <name> --json` through the
 // Praxis CLI runner (#474), read in `aiws-graph-trigger-fires/1`, newest first. It has no UI of its
-// own. It is polled while the Fires panel is on screen through the Runs list's poller and
-// newest-request guard (#452), with the same delays and stop rules: 15 s while the host answers, 60 s
+// own. It is polled while the Fires panel is on screen through the poller and newest-request guard
+// the Runs list uses (#452), with the same delays and stop rules: 15 s while the host answers, 60 s
 // after any failure, nothing while the panel is off screen, and only the newest read's answer kept.
 import { invoke } from "@tauri-apps/api/core";
 import { parseUtcTimestamp } from "../../lib/dates.ts";
 import { createNewestRequest } from "./newestRequest.ts";
-import { createPoller } from "./poller.ts";
+import { createPoller, LIST_FAILING_POLL_MS, LIST_POLL_MS } from "./poller.ts";
 import { isHostLevelFailure, outcomeMessage, praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
-import { RUNS_FAILING_POLL_MS, RUNS_FIRST_LIMIT, RUNS_POLL_MS } from "./runsList.ts";
 
-/** How many fires the list asks for first: the newest 20, as for runs. */
-export const FIRES_FIRST_LIMIT = RUNS_FIRST_LIMIT;
+/** How many fires the list asks for first: the newest 20. */
+export const FIRES_FIRST_LIMIT = 20;
 
 /**
  * The most fires one `praxis triggers fires` page gives, and the backend's `MAX_PAGE_LIMIT`, which
@@ -129,18 +128,18 @@ export function createFiresList({ projectPath, name, call = invoke }: FiresListO
    * 60 s after any failure. The last list stays; only a host-level failure dims it.
    */
   function recordAndNextDelay(outcome: CallOutcome): number {
-    if (outcome.kind === "cancelled") return RUNS_POLL_MS;
+    if (outcome.kind === "cancelled") return LIST_POLL_MS;
     if (outcome.kind === "record" && Array.isArray(outcome.record.fires)) {
       const fires = outcome.record.fires.map(parseFire).filter((f): f is FireRow => f !== null);
       const { nextBefore } = outcome.record;
       const older = nextBefore === null ? false : typeof nextBefore === "number" ? true : null;
       shown = { fires, readAt: Date.now(), dimmed: false, problem: null, older };
       changed();
-      return RUNS_POLL_MS;
+      return LIST_POLL_MS;
     }
     shown = { ...shown, dimmed: isHostLevelFailure(outcome), problem: problemOf(outcome) };
     changed();
-    return RUNS_FAILING_POLL_MS;
+    return LIST_FAILING_POLL_MS;
   }
 
   function problemOf(outcome: CallOutcome): string {

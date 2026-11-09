@@ -1,11 +1,19 @@
 // A poller for the Runs view (#362, #452): reads at once when started, then again after the delay
-// each read asks for. The runs list asks for 15 s, or 60 s while the host is down; a followed
-// run's detail (#453) asks for its own delays, or for no more reads once the run has ended. Reads
-// never overlap: each wait starts when the last read ended.
+// each read asks for. A polled list, the Runs list or a graph trigger's Fires list (#478), asks for
+// `LIST_POLL_MS`, or `LIST_FAILING_POLL_MS` after a failed read; a followed run's detail (#453) asks
+// for its own delays, or for no more reads once the run has ended. Reads never overlap: each wait
+// starts when the last read ended.
 //
 // Stopping is explicit. The builder is only hidden when it closes, so a view that polls stops its
 // poller whenever it leaves the screen; stopping aborts the read in flight, whose owner kills its
 // `praxis` process, and clears the timer.
+import { HOST_RECHECK_MS } from "./hostRecheck.ts";
+
+/** How often a polled list is read while the host answers. */
+export const LIST_POLL_MS = 15_000;
+
+/** How often a polled list is read after any failed read, host-level or not: the host recheck's interval, as every failing state polls. */
+export const LIST_FAILING_POLL_MS = HOST_RECHECK_MS;
 
 /** One read. It resolves to the wait before the next, in ms, or null for no more reads. */
 export type PollRead = (signal: AbortSignal) => Promise<number | null>;
