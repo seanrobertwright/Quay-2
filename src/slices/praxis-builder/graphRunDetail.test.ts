@@ -370,3 +370,90 @@ test("a simulated host's run says its decisions aren't a person's", async () => 
   assert.match(text(header(root)), /Simulated/);
   assert.match(text(banner(root)), /This host is simulated: its decisions aren't made by a person\./);
 });
+
+/** A hold card as `aiws-hold-card/1` gives it at the SDK pin, with the fields the panel draws. */
+const holdCard = (holdId: string, reasonText: string, extra: Record<string, unknown> = {}) => ({
+  format: "aiws-hold-card/1",
+  holdId,
+  nodeId: "build",
+  reasonText,
+  cause: "The tool exited with 1.",
+  evidence: "3 tests failed.",
+  notes: ["The node used 2 of its 3 attempts."],
+  phaseText: "Raised after the attempt committed.",
+  exits: [
+    { exit: "RETRY", label: "Retry the node", does: "Starts another attempt.", available: true, unavailable: null, command: null },
+    { exit: "RECONCILE", label: "Reconcile", does: "Records what the attempt did.", available: false, unavailable: "Not available yet.", command: null },
+  ],
+  ...extra,
+});
+const panels = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[role="region"]') ?? [])].filter((r) => /^Held:/.test(text(r))) as HTMLElement[];
+const holdDecision = (holdId: string, nodeId: string) => ({ key: `HOLD_DECISION:${holdId}`, kind: "HOLD_DECISION", holdId, nodeId });
+
+test("a held run gets a Held badge and a hold panel per open hold, each with Resolve in browser, in place of the banner", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(
+      graphOperatorView(1, {
+        pending: [holdDecision("hold-1", "build"), holdDecision("hold-2", "test")],
+        holds: [holdCard("hold-1", "The attempt failed"), holdCard("hold-2", "The node scope is spent", { nodeId: "test", exits: [] })],
+      }),
+    ),
+  );
+  assert.match(text(header(root)), /Held/);
+  const [first, second] = panels(root);
+  assert.equal(panels(root).length, 2);
+  assert.match(text(first), /^Held: The attempt failed/);
+  assert.match(text(first), /The tool exited with 1\./);
+  assert.match(text(first), /3 tests failed\./);
+  assert.match(text(first), /The node used 2 of its 3 attempts\./);
+  assert.match(text(first), /Raised after the attempt committed\./);
+  assert.match(text(first), /Retry the node: Starts another attempt\./);
+  assert.match(text(first), /Reconcile: Records what the attempt did\. \(not available now\)/);
+  assert.match(text(second), /^Held: The node scope is spent/);
+  assert.equal(banner(root), null, "the hold panels stand in for the waiting banner");
+  await click(button(second, /^Resolve in browser for run-1$/));
+  await flush();
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  // The exits are words, never controls: only Resolve in browser is a button in a panel.
+  for (const panel of panels(root)) assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"]);
+});
+
+test("a run with reconciliation pending and no hold card is held too, with a panel saying why", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [{ key: "RECONCILIATION:att-1", kind: "RECONCILIATION", attemptId: "att-1" }] })));
+  assert.match(text(header(root)), /Held/);
+  assert.equal(panels(root).length, 1);
+  assert.match(text(panels(root)[0]), /^Held: An attempt's outcome is unknown, so it needs reconciliation\./);
+  assert.ok(button(panels(root)[0], /^Resolve in browser for run-1$/));
+});
+
+test("before its first read, a run is held as its row says", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  assert.match(text(header(root)), /Held/);
+});
+
+test("the detail has no approve, pause, cancel or hold control, not even a disabled one, and reads only", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true, awaitingApproval: true })]);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(
+      awaiting({
+        control: { status: "PAUSED", reason: null },
+        pending: [{ key: "RUN_APPROVAL", kind: "RUN_APPROVAL" }, holdDecision("hold-1", "build"), { key: "RESUME_CONTROL", kind: "RESUME_CONTROL" }],
+        holds: [holdCard("hold-1", "The attempt failed")],
+      }),
+    ),
+  );
+  const names = buttons(detail(root) as HTMLElement).map((b) => `${b.getAttribute("aria-label") ?? ""} ${text(b)}`);
+  for (const name of names) assert.doesNotMatch(name, /approve|accept|pause|resume|cancel|abandon|hold|reconcile|retry/i, name);
+  assert.equal(detail(root)?.querySelectorAll("[aria-disabled], button[disabled]").length, 0, "not even disabled ones");
+  for (const s of backend.sent) {
+    assert.ok(["praxis_validate", "praxis_check_graph_workflow", "praxis_graph_workflow_triggers", "praxis_host_graph_runs", "praxis_host_graph_status"].includes(s.command), s.command);
+  }
+});
