@@ -75,6 +75,7 @@ import { contractStepFor, type ContractEdit } from "./contract.ts";
 import { GrantForm } from "./GrantForm.tsx";
 import { grantStepFor, type GrantEdit } from "./grant.ts";
 import { GraphWorkflowForm } from "./GraphWorkflowForm.tsx";
+import type { GraphWorkflowSubmit } from "./GraphSubmit.tsx";
 import { graphWorkflowStepFor, type GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { TemplateForm } from "./TemplateForm.tsx";
 import { templateStepFor, type TemplateEdit } from "./template.ts";
@@ -435,6 +436,25 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   /** Graph workflow `name`'s host state for its form, read from the model on each render. */
   const graphWorkflowHost = (name: string): GraphWorkflowHost | null =>
     shownGraphs ? { view: shownGraphs.workflow(name), condition: host.condition, onCheckAgain: () => void shownGraphs.checkAgain(name) } : null;
+  /**
+   * What graph workflow `name`'s Check on host and Submit need from the builder (#462): which
+   * records have drafts with edits their saved files lack, and a reread of its host state.
+   */
+  const graphWorkflowSubmit = (name: string): GraphWorkflowSubmit | undefined => {
+    const graphs = shownGraphs;
+    if (!graphs || !session) return undefined;
+    const drafts = session.drafts;
+    return {
+      unsaved: (ref) => {
+        const draft = drafts[definitionKey(ref)];
+        return draft !== undefined && (isDirty(draft) || draft.baseHash === null);
+      },
+      reread: async () => {
+        await graphs.checkAgain(name);
+        return graphs.workflow(name);
+      },
+    };
+  };
   /**
    * The host part of a list group that shows host state, picked once per group: what its
    * header's Check host rereads, and each row's badges, git state first and host state second.
@@ -2447,6 +2467,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     graphBindings={graphBindingChoices()}
                     refresh={refreshCount}
                     host={graphWorkflowHost(open.id)}
+                    submit={graphWorkflowSubmit(open.id)}
                     onEdit={editOpenGraphWorkflow}
                     onOpen={openDefinition}
                     onValidated={recordValidity}
