@@ -5,22 +5,14 @@
 // (graph_outputs.fixture.json, recorded against the SDK's simulated host).
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createGraphHost, CANDIDATE_POLL_MS, GRAPH_STATE_ORDER, type GraphHost, type LocalGraphWorkflow } from "./graphHost.ts";
 import { MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
+import { notPending, RECORDED_DIGEST, recordedStdout as stdout, withdrawnRecord } from "./fixtures/graphOutputs.ts";
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_790_000_000_000 }));
 afterEach(() => mock.timers.reset());
 
-/** What the real `praxis --json` printed for each graph command, by case name. */
-const recorded = JSON.parse(
-  readFileSync(new URL("../../../src-tauri/src/slices/praxis/host/graph_outputs.fixture.json", import.meta.url), "utf8"),
-) as { cases: { name: string; stdout: Record<string, unknown> }[] };
-const stdout = (name: string) => structuredClone(recorded.cases.find((c) => c.name === name)!.stdout);
-
-/** The digest the recorded bundle has, on every revision the recorded host holds. */
-const RECORDED_DIGEST = "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f";
 const OTHER_DIGEST = `sha256:${"e".repeat(64)}`;
 const SIGNED_IN: HostCondition = { state: "signedIn" };
 
@@ -437,17 +429,6 @@ test("disposing cancels every praxis call in flight and keeps nothing", async ()
   await settle();
   assert.deepEqual(graphs.workflow("a").state, { kind: "unknown", why: "notChecked" });
 });
-
-/** The recorded withdrawal result, for `name`'s revision `revision`. */
-function withdrawnRecord(name: string, revision: number): CallOutcome {
-  return { kind: "record", record: { ...stdout("graphs withdraw: a pending candidate"), name, revision } };
-}
-
-/** The recorded refusal of a withdrawal whose candidate is no longer pending. */
-function notPending(): CallOutcome {
-  const record = stdout("graphs withdraw: not pending");
-  return { kind: "hostRefused", message: String(record.message), hostCode: String(record.hostCode), record };
-}
 
 test("withdrawing a pending candidate sends its revision, then rereads: the record falls back to its admitted revision and the candidate shows withdrawn", async () => {
   const { host, graphs } = setup([local("ship")]);

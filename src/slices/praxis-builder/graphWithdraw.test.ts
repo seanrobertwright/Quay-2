@@ -8,24 +8,18 @@
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { act, createElement, useEffect, useState, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
 import { createGraphHost, type GraphHost } from "./graphHost.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
+import { notPending, RECORDED_DIGEST, recordedStdout as stdout, withdrawnRecord } from "./fixtures/graphOutputs.ts";
 import type { GraphWorkflowCheck, Validation } from "./types.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
 
 const NAME = "ship";
 const SIGNED_IN: HostCondition = { state: "signedIn" };
-const RECORDED_DIGEST = "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f";
-
-const recorded = JSON.parse(
-  readFileSync(new URL("../../../src-tauri/src/slices/praxis/host/graph_outputs.fixture.json", import.meta.url), "utf8"),
-) as { cases: { name: string; stdout: Record<string, unknown> }[] };
-const stdout = (name: string) => structuredClone(recorded.cases.find((c) => c.name === name)!.stdout);
 
 type Revision = Record<string, unknown>;
 
@@ -44,12 +38,6 @@ function show(status2: string, fields: Record<string, unknown> = {}): CallOutcom
   return { kind: "record", record };
 }
 
-const withdrawn = (): CallOutcome => ({ kind: "record", record: { ...stdout("graphs withdraw: a pending candidate"), name: NAME, revision: 2 } });
-
-function notPending(): CallOutcome {
-  const record = stdout("graphs withdraw: not pending");
-  return { kind: "hostRefused", message: String(record.message), hostCode: String(record.hostCode), record };
-}
 
 interface Call {
   command: string;
@@ -203,7 +191,7 @@ test("after withdrawing, the record falls back to its admitted revision's state,
   await click(buttonIn(dialog(root), "Withdraw"));
   assert.deepEqual(host.open(), ["withdraw 2"]);
   assert.match(text(dialog(root)), /Withdrawing revision 2/);
-  await host.answer("withdraw 2", withdrawn());
+  await host.answer("withdraw 2", withdrawnRecord(NAME, 2));
   // The host is read again once it has answered.
   await host.answer("show", show("WITHDRAWN"));
   assert.equal(dialog(root), null, "the confirm closes once the withdrawal is done");
