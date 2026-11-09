@@ -262,6 +262,12 @@ function detailState(detail: Detail, digest: string | null): GraphHostState {
   return { kind: "admitted", revision };
 }
 
+/**
+ * The one key for a withdrawal of `name`'s revision `revision`, in the in-flight and unconfirmed
+ * maps. The revision, a number, follows the last line break, so no two pairs share a key.
+ */
+const withdrawalKey = (name: string, revision: number) => `${name}\n${revision}`;
+
 export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions): GraphHost {
   let local = new Map<string, LocalGraphWorkflow>();
   let condition: HostCondition = { state: "notCheckedYet" };
@@ -274,7 +280,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
   const showsInFlight = new Map<string, Promise<void>>();
   const limit = createLimiter(MAX_SHOWS_IN_FLIGHT);
   const withdrawalsInFlight = new Map<string, Promise<WithdrawOutcome>>();
-  // The request id of each withdrawal praxis couldn't confirm, by name and revision, to resend.
+  // The request id of each withdrawal praxis couldn't confirm, by `withdrawalKey`, to resend.
   const unconfirmed = new Map<string, string>();
   let watched: string | null = null;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -431,8 +437,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
       return readShow(name);
     },
     withdraw(name, revision) {
-      const key = `${name}
-${revision}`;
+      const key = withdrawalKey(name, revision);
       const joined = withdrawalsInFlight.get(key);
       if (joined) return joined;
       const sent = sendWithdrawal(name, revision, key).finally(() => {

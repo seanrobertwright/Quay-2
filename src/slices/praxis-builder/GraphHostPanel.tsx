@@ -79,7 +79,7 @@ export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; on
             Open in browser
           </button>
         )}
-        {line.withdraw !== null && <WithdrawButton revision={line.withdraw} onWithdraw={onWithdraw} />}
+        {line.withdrawRevision !== null && <WithdrawButton revision={line.withdrawRevision} onWithdraw={onWithdraw} />}
       </div>
       {notice && (
         <p role="alert" className="text-[11px] text-[#ff7b72] break-words">

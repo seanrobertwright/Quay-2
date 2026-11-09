@@ -99,7 +99,7 @@ export interface GraphStatusLine {
   /** The pending candidate's admission page, for Open in browser; null when there is none to open. */
   admissionPage: string | null;
   /** The pending candidate's revision, for Withdraw; null when nothing is pending. */
-  withdraw: number | null;
+  withdrawRevision: number | null;
 }
 
 /** Graph workflow `view`'s status line, under the project's host `condition`, at `now`. */
@@ -118,7 +118,7 @@ export function graphStatusLine(view: GraphWorkflowHostView, condition: HostCond
       checking: false,
       muted: false,
       admissionPage: null,
-      withdraw: null,
+      withdrawRevision: null,
     };
   }
   const shown = shownOf(state);
@@ -138,7 +138,7 @@ export function graphStatusLine(view: GraphWorkflowHostView, condition: HostCond
     checking: view.checking,
     muted: view.muted,
     admissionPage: state.kind === "candidate" ? view.admissionPageAddress : null,
-    withdraw: state.kind === "candidate" ? state.revision : null,
+    withdrawRevision: state.kind === "candidate" ? state.revision : null,
   };
 }
 
