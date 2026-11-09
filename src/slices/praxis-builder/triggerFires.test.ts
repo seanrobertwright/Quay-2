@@ -397,7 +397,7 @@ test("a trigger with no fires says so", async () => {
   assert.equal(list(root), null);
 });
 
-test("a skipped fire says how many slots it stands for", async () => {
+test("a skipped fire shows its time, disposition and reason, and nothing else", async () => {
   const backend = fakeBackend();
   const root = await render(form());
   await openFires(root);
@@ -407,7 +407,7 @@ test("a skipped fire says how many slots it stands for", async () => {
   const [skipped] = rows(root);
   assert.match(text(skipped), /SKIPPED/);
   assert.match(text(skipped), /CATCH_UP_SKIPPED/);
-  assert.match(text(skipped), /3 slots/);
+  assert.doesNotMatch(text(skipped), /slot/, "a row has only its time, disposition and reason code");
 });
 
 test("a fire that created a graph run links to that run in the target graph workflow's Runs view", async () => {

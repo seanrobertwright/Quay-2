@@ -35,8 +35,6 @@ export interface FireRow {
   reason: string | null;
   /** The graph run an admitted fire created; null for every other fire. */
   workOrderId: string | null;
-  /** How many slots a `SKIPPED` fire stands for; null when it isn't one or the host doesn't say. */
-  skippedCount: number | null;
 }
 
 /** What the Fires panel draws. */
@@ -83,11 +81,10 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 /** One entry of `aiws-graph-trigger-fires/1`, or null when it lacks a field the list shows. */
 function parseFire(v: unknown): FireRow | null {
   if (!isObject(v)) return null;
-  const { fireId, receivedAt, disposition, reason = null, workOrderId = null, skipped = null } = v;
+  const { fireId, receivedAt, disposition, reason = null, workOrderId = null } = v;
   if (typeof fireId !== "number" || typeof receivedAt !== "string" || typeof disposition !== "string") return null;
   if ((reason !== null && typeof reason !== "string") || (workOrderId !== null && typeof workOrderId !== "string")) return null;
-  const skippedCount = isObject(skipped) && typeof skipped.count === "number" ? skipped.count : null;
-  return { fireId, receivedAt: parseUtcTimestamp(receivedAt), receivedAtText: receivedAt, disposition, reason, workOrderId, skippedCount };
+  return { fireId, receivedAt: parseUtcTimestamp(receivedAt), receivedAtText: receivedAt, disposition, reason, workOrderId };
 }
 
 type Shown = Pick<FiresListView, "fires" | "readAt" | "dimmed" | "problem"> & {

@@ -106,7 +106,6 @@ const FireItem: FC<{ fire: FireRow; workflow: string | null; onShowRun: TriggerF
           {fire.reason}
         </span>
       )}
-      {fire.skippedCount !== null && <span className="text-[#8b949e]">{fire.skippedCount === 1 ? "1 slot" : `${fire.skippedCount} slots`}</span>}
       {run !== null && workflow !== null && (
         <button
           type="button"
