@@ -14,7 +14,7 @@ mod settings;
 #[cfg(test)]
 mod tests;
 
-pub use bundle::bundle_digest;
+pub use bundle::{bundle_digest, graph_workflow_bundle, GraphWorkflowBundle};
 pub use commands::*;
 pub use outcome::{CallOutcome, HostCondition};
 pub use runner::{ConditionChange, PraxisCli};

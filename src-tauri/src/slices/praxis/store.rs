@@ -1142,6 +1142,72 @@ mod tests {
         assert!(list_definitions(&repo, PraxisKind::Graphs).unwrap().entries.iter().all(|e| e.bundle_digest.is_none()));
     }
 
+    fn git(repo: &Path, args: &[&str]) {
+        crate::slices::machina::git::run_ok(repo, args).unwrap();
+    }
+
+    /// `repo` as a git repository with one commit holding everything in it.
+    fn commit_all(repo: &Path) {
+        git(repo, &["init", "-q"]);
+        for (k, v) in [("user.name", "Quay Test"), ("user.email", "quay@example.invalid"), ("core.autocrlf", "false")] {
+            git(repo, &["config", k, v]);
+        }
+        git(repo, &["add", "-A"]);
+        git(repo, &["commit", "-q", "-m", "init"]);
+    }
+
+    #[test]
+    fn a_graph_workflow_s_bundle_lists_each_file_as_praxis_names_it_with_its_record_digest_and_change() {
+        use crate::slices::praxis::host::graph_workflow_bundle;
+        use crate::slices::praxis::models::ChangeStatus;
+        let repo = temp_repo();
+        let digest = engine_bundle(&repo);
+        commit_all(&repo);
+        let fixture: Value = serde_json::from_str(include_str!("host/bundle_digest.fixture.json")).unwrap();
+        // The same grant record with other whitespace: changed for git, not for its digest.
+        let first_grant = &fixture["grants"][0];
+        let grant_path = format!(".praxis/grants/{}.json", first_grant["id"].as_str().unwrap());
+        let before = graph_workflow_bundle(&repo, "ship").unwrap();
+        let reformatted: Value = serde_json::from_str(first_grant["file"].as_str().unwrap()).unwrap();
+        write(&repo, &grant_path, &reformatted.to_string());
+        let bundle = graph_workflow_bundle(&repo, "ship").unwrap();
+        let files: Vec<(&str, PraxisKind, &str, &str)> =
+            bundle.files.iter().map(|f| (f.file.as_str(), f.kind, f.id.as_str(), f.path.as_str())).collect();
+        assert_eq!(
+            files,
+            vec![
+                ("graph", PraxisKind::Graphs, "release-review", ".praxis/graphs/release-review.json"),
+                ("binding", PraxisKind::GraphBindings, "release-review.binding", ".praxis/graph-bindings/release-review.binding.json"),
+                ("contract", PraxisKind::Contracts, "release", ".praxis/contracts/release.json"),
+                // In the order the contract's bindings file lists them, which is the order praxis numbers them.
+                ("grants/0", PraxisKind::Grants, "grant-one", ".praxis/grants/grant-one.json"),
+                ("grants/1", PraxisKind::Grants, "a-grant-sorted-first", ".praxis/grants/a-grant-sorted-first.json"),
+            ]
+        );
+        // A stored graph's digest is its binding's `graphDigest` (GRAPH-WORKFLOWS.md, "Store").
+        let binding: Value = serde_json::from_str(fixture["binding"]["file"].as_str().unwrap()).unwrap();
+        assert_eq!(bundle.files[0].digest.as_deref(), binding["graphDigest"].as_str());
+        assert_eq!(bundle.files[3].digest, before.files[3].digest, "a record's digest doesn't depend on its whitespace");
+        assert!(bundle.files.iter().all(|f| f.digest.as_ref().is_some_and(|d| d.len() == 71 && d.starts_with("sha256:"))));
+        assert_eq!(bundle.bundle_digest.as_deref(), Some(digest.as_str()));
+        let changes: Vec<Option<ChangeStatus>> = bundle.files.iter().map(|f| f.change).collect();
+        assert_eq!(changes, vec![None, None, None, Some(ChangeStatus::Modified), None]);
+        assert_eq!(bundle.changes_error, None);
+        assert_eq!(before.files.iter().filter(|f| f.change.is_some()).count(), 0);
+    }
+
+    #[test]
+    fn a_bundle_outside_git_has_no_changes_and_a_bundle_praxis_would_refuse_is_refused() {
+        use crate::slices::praxis::host::graph_workflow_bundle;
+        let repo = temp_repo();
+        engine_bundle(&repo);
+        let bundle = graph_workflow_bundle(&repo, "ship").unwrap();
+        assert!(bundle.files.iter().all(|f| f.change.is_none()));
+        assert_eq!(bundle.changes_error, None);
+        write(&repo, ".praxis/graph-workflows/ship.json", r#"{"version": 1}"#);
+        assert_eq!(graph_workflow_bundle(&repo, "ship").unwrap_err(), "Graph workflow ship isn't valid: Pick a contract.");
+    }
+
     #[test]
     fn a_graph_workflow_whose_bundle_isnt_whole_or_strict_json_has_no_bundle_digest() {
         let digest_after = |change: &dyn Fn(&Path)| {
