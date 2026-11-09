@@ -461,7 +461,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     isOpen && listsGraphTrigger,
     isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
   );
-  // Withdraw, Disable and Retire on a graph trigger (#477).
+  // Withdraw, Disable, Retire and the review page for Enable in browser on a graph trigger (#477).
   const triggerControl = useTriggerControl(projectPath, shownTriggers);
   /** Trigger `name`'s host state for its form, read from the model on each render; null when it isn't a graph trigger. */
   const graphTriggerHost = (name: string): GraphTriggerHost | null =>
