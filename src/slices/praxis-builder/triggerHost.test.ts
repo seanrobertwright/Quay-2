@@ -6,10 +6,10 @@
 // (trigger_outputs.fixture.json, recorded against the SDK's simulated host).
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { CANDIDATE_POLL_MS } from "./graphHost.ts";
+import { CANDIDATE_POLL_MS, MAX_LIST_PAGES } from "./graphHost.ts";
 import { MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
-import { createTriggerHost, TRIGGER_STATE_ORDER, type LocalGraphTrigger, type TriggerHost } from "./triggerHost.ts";
+import { createTriggerHost, TRIGGER_STATE_ORDER, type EventSourceSummary, type LocalGraphTrigger, type TriggerHost } from "./triggerHost.ts";
 import { ON_PUSH_DIGEST, recordedTrigger, triggerNotFound, triggerShow } from "./fixtures/triggerOutputs.ts";
 
 beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_790_000_000_000 }));
@@ -27,6 +27,17 @@ function listRecord(names: string[], nextAfter: string | null = null): CallOutco
   record.triggers = names.map((name) => ({ ...base, name }));
   record.nextAfter = nextAfter;
   return { kind: "record", record };
+}
+
+function eventSourcesRecord(sources: EventSourceSummary[], nextAfter: string | null = null): CallOutcome {
+  return {
+    kind: "record",
+    record: {
+      format: "aiws-event-sources/1",
+      sources,
+      nextAfter,
+    },
+  };
 }
 
 /** Revision 1 of the recorded `on-push`, admitted, under a newer revision 2 with `status2`. */
@@ -58,6 +69,15 @@ function fakeHost() {
     /** The saved files' digest of each trigger at each revision: the host's own for `on-push` revision 1, by default. */
     digestOf: (_name: string, _revision: number): string | null => ON_PUSH_DIGEST,
     holdDigests: false,
+    holdEventSources: false,
+    eventSourcesRecord: (): CallOutcome => ({
+      kind: "record",
+      record: {
+        format: "aiws-event-sources/1",
+        sources: [],
+        nextAfter: null,
+      },
+    }),
     invoker: (command: string, args: Record<string, unknown>) => {
       if (command === "praxis_host_cancel") {
         cancelled.push(args.callId);
@@ -66,6 +86,9 @@ function fakeHost() {
       if (command === "praxis_trigger_digest" && !fake.holdDigests) {
         calls.push({ command, args, answer: () => {}, answered: true });
         return Promise.resolve(fake.digestOf(String(args.name), Number(args.revision)));
+      }
+      if (command === "praxis_host_event_sources_list" && !fake.holdEventSources) {
+        return Promise.resolve(fake.eventSourcesRecord());
       }
       return new Promise<unknown>((resolve) => calls.push({ command, args, answer: resolve }));
     },
@@ -87,11 +110,13 @@ function fakeHost() {
 const label = (c: Call) =>
   c.command === "praxis_host_triggers_list"
     ? `list${c.args.after ? ` after ${String(c.args.after)}` : ""}`
-    : c.command === "praxis_host_trigger_show"
-      ? `show ${String(c.args.name)}`
-      : c.command === "praxis_trigger_digest"
-        ? `digest ${String(c.args.name)} ${String(c.args.revision)}`
-        : c.command;
+    : c.command === "praxis_host_event_sources_list"
+      ? `event-sources${c.args.after ? ` after ${String(c.args.after)}` : ""}`
+      : c.command === "praxis_host_trigger_show"
+        ? `show ${String(c.args.name)}`
+        : c.command === "praxis_trigger_digest"
+          ? `digest ${String(c.args.name)} ${String(c.args.revision)}`
+          : c.command;
 
 /** Lets settled calls' follow-ups run; setImmediate isn't mocked. */
 const settle = async () => {
@@ -440,4 +465,144 @@ test("disposing cancels every praxis call in flight and keeps nothing", async ()
   host.answer("show a", enabled("a"));
   await settle();
   assert.deepEqual(model.trigger("a").state, { kind: "unknown", why: "notChecked" });
+});
+
+test("event sources are queried on group shown / checkHost, parsed and cached as a map", async () => {
+  const { host, model } = setup([local("on-push")]);
+  host.holdEventSources = true;
+  void model.groupShown();
+  await settle();
+  assert.ok(host.open().includes("event-sources"));
+  host.answer("list", listRecord(["on-push"]));
+  host.answer(
+    "event-sources",
+    eventSourcesRecord([
+      { name: "github", state: "ENABLED", currentRevision: 1, eventTypes: ["push", "pull_request"] },
+      { name: "stripe", state: "DISABLED", currentRevision: 2, eventTypes: ["payment_intent.succeeded"] },
+    ]),
+  );
+  await settle();
+  host.answer("show on-push", enabled("on-push"));
+  await settle();
+
+  const sources = model.eventSources();
+  assert.equal(sources.size, 2);
+  assert.deepEqual(sources.get("github"), {
+    name: "github",
+    state: "ENABLED",
+    currentRevision: 1,
+    eventTypes: ["push", "pull_request"],
+  });
+  assert.deepEqual(sources.get("stripe"), {
+    name: "stripe",
+    state: "DISABLED",
+    currentRevision: 2,
+    eventTypes: ["payment_intent.succeeded"],
+  });
+  assert.deepEqual(model.trigger("on-push").eventSources?.get("github"), sources.get("github"));
+  assert.equal(model.eventSourcesView().online, true);
+  assert.equal(model.eventSourcesView().checking, false);
+});
+
+test("event sources pagination follows nextAfter up to MAX_LIST_PAGES", async () => {
+  const { host, model } = setup([local("on-push")]);
+  host.holdEventSources = true;
+  void model.checkHost();
+  await settle();
+  host.answer("list", listRecord([]));
+  assert.ok(host.open().includes("event-sources"));
+  host.answer(
+    "event-sources",
+    eventSourcesRecord([{ name: "src-1", state: "ENABLED", currentRevision: 1, eventTypes: ["event.one"] }], "src-1"),
+  );
+  await settle();
+  assert.ok(host.open().includes("event-sources after src-1"));
+  host.answer(
+    "event-sources after src-1",
+    eventSourcesRecord([{ name: "src-2", state: "ENABLED", currentRevision: 2, eventTypes: ["event.two"] }], null),
+  );
+  await settle();
+
+  const sources = model.eventSources();
+  assert.equal(sources.size, 2);
+  assert.ok(sources.has("src-1"));
+  assert.ok(sources.has("src-2"));
+});
+
+test("event sources pagination caps at MAX_LIST_PAGES without infinite loop", async () => {
+  const { host, model } = setup([]);
+  host.holdEventSources = true;
+  void model.checkHost();
+  await settle();
+  host.answer("list", listRecord([]));
+
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const labelToAnswer: string = cursor ? `event-sources after ${cursor}` : "event-sources";
+    assert.ok(host.open().includes(labelToAnswer));
+    const next = `cursor-${page + 1}`;
+    host.answer(labelToAnswer, eventSourcesRecord([{ name: `s-${page}`, state: "ENABLED", currentRevision: 1, eventTypes: [] }], next));
+    cursor = next;
+    await settle();
+  }
+  assert.deepEqual(host.open(), []);
+  assert.equal(model.eventSources().size, MAX_LIST_PAGES);
+});
+
+test("checkAgain refreshes event sources alongside the trigger reading", async () => {
+  const { host, model } = setup([local("on-push")]);
+  host.holdEventSources = true;
+  void model.groupShown();
+  await settle();
+  host.answer("list", listRecord(["on-push"]));
+  host.answer("event-sources", eventSourcesRecord([{ name: "github", state: "ENABLED", currentRevision: 1, eventTypes: ["push"] }]));
+  await settle();
+  host.answer("show on-push", enabled("on-push"));
+  await settle();
+  assert.equal(model.eventSources().size, 1);
+
+  void model.checkAgain("on-push");
+  await settle();
+  assert.ok(host.open().includes("show on-push"));
+  assert.ok(host.open().includes("event-sources"));
+  host.answer("show on-push", enabled("on-push"));
+  host.answer(
+    "event-sources",
+    eventSourcesRecord([
+      { name: "github", state: "ENABLED", currentRevision: 1, eventTypes: ["push"] },
+      { name: "gitlab", state: "ENABLED", currentRevision: 1, eventTypes: ["tag"] },
+    ]),
+  );
+  await settle();
+
+  assert.equal(model.eventSources().size, 2);
+  assert.ok(model.eventSources().has("gitlab"));
+});
+
+test("when host is offline or condition fails, event sources reflects offline state and invalidates cache without throwing", async () => {
+  const { host, model } = setup([local("on-push")], { state: "hostUnreachable" });
+  assert.equal(model.eventSources().size, 0);
+  assert.equal(model.eventSourcesView().online, false);
+
+  model.setCondition(SIGNED_IN);
+  host.holdEventSources = true;
+  void model.checkHost();
+  await settle();
+  host.answer("list", listRecord([]));
+  host.answer("event-sources", eventSourcesRecord([{ name: "github", state: "ENABLED", currentRevision: 1, eventTypes: ["push"] }]));
+  await settle();
+  assert.equal(model.eventSources().size, 1);
+
+  // Go failing condition (notSignedIn)
+  model.setCondition({ state: "notSignedIn" });
+  assert.equal(model.eventSources().size, 0);
+  assert.equal(model.eventSourcesView().online, false);
+
+  void model.checkAgain("on-push");
+  await settle();
+  host.answer("show on-push", { kind: "notSignedIn", message: "sign in first" });
+  host.answer("event-sources", { kind: "notSignedIn", message: "sign in first" });
+  await settle();
+  assert.equal(model.eventSources().size, 0);
+  assert.equal(model.eventSourcesView().online, false);
 });

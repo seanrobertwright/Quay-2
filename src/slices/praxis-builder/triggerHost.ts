@@ -114,6 +114,26 @@ export interface GraphTriggerHostView {
   revisions: (TriggerRevision & { current: boolean })[];
   /** True when the host holds revisions older than those listed. */
   olderRevisions: boolean;
+  /** The admitted event sources on the host, by name; empty when offline or none. */
+  eventSources?: ReadonlyMap<string, EventSourceSummary>;
+}
+
+/** An event source on the host, as `event-sources list` gives it (#559, #561). */
+export interface EventSourceSummary {
+  name: string;
+  state: string;
+  currentRevision: number | null;
+  eventTypes: string[];
+}
+
+/** The event sources reading on the host, and whether a read is in flight. */
+export interface EventSourcesHostView {
+  sources: ReadonlyMap<string, EventSourceSummary>;
+  checkedAt: number | null;
+  muted: boolean;
+  checking: boolean;
+  online: boolean;
+  failed?: string;
 }
 
 export interface TriggerHost {
@@ -125,8 +145,8 @@ export interface TriggerHost {
   groupShown(): Promise<void>;
   /** Check host: rereads everything. */
   checkHost(): Promise<void>;
-  /** Check again: rereads one graph trigger. */
-  checkAgain(name: string): Promise<void>;
+  /** Check again: rereads one graph trigger and event sources. */
+  checkAgain(name?: string): Promise<void>;
   /**
    * Rereads one graph trigger after a write to it (#477): the read starts after any read of it in
    * flight, so it sees what the write did.
@@ -140,6 +160,10 @@ export interface TriggerHost {
   /** True when `name` is a local graph trigger, so it has a host state at all. */
   has(name: string): boolean;
   trigger(name: string): GraphTriggerHostView;
+  /** The admitted event sources on the host, by name; empty when offline or none. */
+  eventSources(): ReadonlyMap<string, EventSourceSummary>;
+  /** The event sources view, including checking state and timestamp. */
+  eventSourcesView(): EventSourcesHostView;
   /** Calls `listener` after every change; returns the unsubscribe. */
   subscribe(listener: () => void): () => void;
   /** Cancels every call in flight, clears the timers and keeps nothing more. */
@@ -204,6 +228,25 @@ function parseListPage(record: Record<string, unknown>): { names: string[]; next
   return { names, nextAfter: typeof record.nextAfter === "string" ? record.nextAfter : null };
 }
 
+function parseEventSource(v: unknown): EventSourceSummary[] {
+  if (!isObject(v)) return [];
+  if (typeof v.name !== "string" || typeof v.state !== "string") return [];
+  const currentRevision = revisionNumber(v.currentRevision ?? v.current_revision);
+  const rawTypes = Array.isArray(v.eventTypes) ? v.eventTypes : Array.isArray(v.event_types) ? v.event_types : [];
+  const eventTypes = rawTypes.filter((t): t is string => typeof t === "string");
+  return [{ name: v.name, state: v.state, currentRevision, eventTypes }];
+}
+
+/** The event sources on an `event-sources list` page and its cursor, or null when it holds none Quay can read. */
+function parseEventSourcesListPage(record: Record<string, unknown>): { sources: EventSourceSummary[]; nextAfter: string | null } | null {
+  if (!Array.isArray(record.sources)) return null;
+  const sources = record.sources.flatMap(parseEventSource);
+  return {
+    sources,
+    nextAfter: typeof record.nextAfter === "string" ? record.nextAfter : typeof record.next_after === "string" ? record.next_after : null,
+  };
+}
+
 /** The host's current revision, as its revisions list it; one the list doesn't reach has only its number. */
 function currentOf(detail: Detail): TriggerRevision | null {
   const revision = detail.currentRevision;
@@ -246,12 +289,17 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
   let local = new Map<string, LocalGraphTrigger>();
   let condition: HostCondition = { state: "notCheckedYet" };
   const readings = new Map<string, Reading>();
+  type EventSourcesReading =
+    | { at: number; failed: string }
+    | { at: number; sources: Map<string, EventSourceSummary> };
+  let eventSourcesReading: EventSourcesReading | null = null;
   const digests = new Map<string, LocalDigests>();
   // Bumped whenever readings are dropped, so an answer to a call asked before is ignored.
   let generation = 0;
   let shown = false;
   // One call in flight per read: a second ask for the same read joins it.
   let listInFlight: Promise<Set<string> | null> | null = null;
+  let eventSourcesInFlight: Promise<Map<string, EventSourceSummary> | null> | null = null;
   const showsInFlight = new Map<string, Promise<void>>();
   const limit = createLimiter(MAX_SHOWS_IN_FLIGHT);
   // The latest digest asked for each name and revision, by `digestKey`, so an older answer never
@@ -264,7 +312,10 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
   const session = createHostReadSession({
     projectPath,
     call,
-    stamps: () => [...readings.values()].map((r) => r.at),
+    stamps: () => [
+      ...[...readings.values()].map((r) => r.at),
+      ...(eventSourcesReading ? [eventSourcesReading.at] : []),
+    ],
     onChange: () => schedulePoll(),
   });
   const { praxis, changed } = session;
@@ -392,11 +443,51 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
     return tracked;
   }
 
+  /** Reads every `event-sources list` page, up to `MAX_LIST_PAGES`; the sources map, or null when a page failed. */
+  async function listSources(asked: number): Promise<Map<string, EventSourceSummary> | null> {
+    const sources = new Map<string, EventSourceSummary>();
+    let after: string | null = null;
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const outcome = await praxis("praxis_host_event_sources_list", { limit: LIST_PAGE_LIMIT, after });
+      if (session.disposed || asked !== generation || outcome.kind !== "record") return null;
+      const parsed = parseEventSourcesListPage(outcome.record);
+      if (!parsed) return null;
+      for (const s of parsed.sources) sources.set(s.name, s);
+      if (parsed.nextAfter === null) return sources;
+      after = parsed.nextAfter;
+    }
+    return sources;
+  }
+
+  /** Reads event sources, joining one in flight. */
+  function readEventSources(): Promise<Map<string, EventSourceSummary> | null> {
+    if (eventSourcesInFlight) return eventSourcesInFlight;
+    const asked = generation;
+    const read = listSources(asked).then((sources) => {
+      if (session.disposed || asked !== generation) return null;
+      const at = Date.now();
+      if (sources) {
+        eventSourcesReading = { at, sources };
+      } else if (!online(condition)) {
+        eventSourcesReading = null;
+      } else {
+        eventSourcesReading = { at, failed: "praxis gave event sources Quay can't read." };
+      }
+      return sources;
+    });
+    eventSourcesInFlight = read.finally(() => {
+      eventSourcesInFlight = null;
+      changed();
+    });
+    changed();
+    return eventSourcesInFlight;
+  }
+
   /** The local graph triggers whose names `praxis` accepts. */
   const sendable = () => [...local.values()].filter((t) => t.nameProblem === null).map((t) => t.name);
 
   async function readAll(): Promise<void> {
-    const names = await readList();
+    const [names] = await Promise.all([readList(), readEventSources()]);
     if (!names || session.disposed) return;
     await Promise.all(sendable().filter((n) => names.has(n)).map(readShow));
   }
@@ -431,6 +522,7 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
       if (hostConditionView(next).failing) {
         generation += 1;
         readings.clear();
+        eventSourcesReading = null;
       }
       changed();
     },
@@ -440,9 +532,10 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
       return readAll();
     },
     checkHost: () => (session.disposed ? Promise.resolve() : readAll()),
-    checkAgain(name) {
-      if (session.disposed || !local.has(name) || local.get(name)?.nameProblem) return Promise.resolve();
-      return readShow(name);
+    checkAgain(name?: string) {
+      if (session.disposed) return Promise.resolve();
+      const show = name && local.has(name) && !local.get(name)?.nameProblem ? readShow(name) : Promise.resolve();
+      return Promise.all([show, readEventSources()]).then(() => undefined);
     },
     reread(name) {
       if (session.disposed || !local.has(name) || local.get(name)?.nameProblem) return Promise.resolve();
@@ -474,6 +567,30 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
         savedEnabled: local.get(name)?.enabled ?? null,
         revisions: (detail?.revisions ?? []).map((r) => ({ ...r, current: r.revision === detail?.currentRevision })),
         olderRevisions: detail?.olderRevisions ?? false,
+        eventSources:
+          !online(condition) || !eventSourcesReading || !("sources" in eventSourcesReading)
+            ? new Map()
+            : eventSourcesReading.sources,
+      };
+    },
+    eventSources() {
+      if (!online(condition) || !eventSourcesReading || !("sources" in eventSourcesReading)) {
+        return new Map();
+      }
+      return eventSourcesReading.sources;
+    },
+    eventSourcesView() {
+      const isOnline = online(condition);
+      const checkedAt = isOnline && eventSourcesReading ? eventSourcesReading.at : null;
+      const sources = isOnline && eventSourcesReading && "sources" in eventSourcesReading ? eventSourcesReading.sources : new Map();
+      const failed = isOnline && eventSourcesReading && "failed" in eventSourcesReading ? eventSourcesReading.failed : undefined;
+      return {
+        sources,
+        checkedAt,
+        muted: checkedAt !== null && Date.now() - checkedAt >= MUTED_AFTER_MS,
+        checking: eventSourcesInFlight !== null,
+        online: isOnline,
+        ...(failed ? { failed } : {}),
       };
     },
     subscribe: session.subscribe,
@@ -481,6 +598,7 @@ export function createTriggerHost({ projectPath, call = invoke }: TriggerHostOpt
       session.dispose();
       generation += 1;
       readings.clear();
+      eventSourcesReading = null;
       digests.clear();
       if (pollTimer !== null) clearTimeout(pollTimer);
       pollTimer = null;

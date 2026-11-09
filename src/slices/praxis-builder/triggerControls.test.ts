@@ -76,6 +76,9 @@ function fakeHost() {
   const invoker = (command: string, args: Record<string, unknown>) => {
     if (command === "praxis_host_cancel") return Promise.resolve(undefined);
     if (command === "praxis_trigger_digest") return Promise.resolve(ON_PUSH_DIGEST);
+    if (command === "praxis_host_event_sources_list") {
+      return Promise.resolve({ kind: "record", record: { format: "aiws-event-sources/1", sources: [], nextAfter: null } });
+    }
     return new Promise<unknown>((resolve) => calls.push({ command, args, answer: resolve }));
   };
   const label = (c: Call) => LABELS[c.command] ?? c.command;
