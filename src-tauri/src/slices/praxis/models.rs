@@ -141,6 +141,10 @@ pub struct DefinitionEntry {
     /// [`template_digest`](super::template_digest::template_digest), when it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_digest: Option<String>,
+    /// A graph workflow's bundle digest as the Praxis host computes it, over the saved files it
+    /// names, see [`bundle_digest`](super::host::bundle_digest), when Quay can compute it (#461).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_digest: Option<String>,
     /// A graph workflow's `contractId`, when it is a string, so a trigger that picks it as its
     /// target can take its contract (#472).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1,0 +1,26 @@
+{
+  "provenance": "bundleDigest from engine/src/graph-workflows.ts of seanrobertwright/AI-WS-SDK at 9e9f8329234fd829a163cf4d20d078661a885c5f, run by bundle_digest.fixture.mjs on Node 24.20.0.",
+  "graph": {
+    "id": "release-review",
+    "file": "{\n  \"nodes\": [\n    {\n      \"id\": \"build\",\n      \"kind\": \"TASK\",\n      \"dependsOn\": [],\n      \"config\": {\n        \"executionKind\": \"AGENT\"\n      }\n    },\n    {\n      \"id\": \"end\",\n      \"kind\": \"END\",\n      \"dependsOn\": [\n        \"build\"\n      ],\n      \"config\": {}\n    }\n  ],\n  \"revision\": \"1\",\n  \"id\": \"release-review\"\n}\n"
+  },
+  "binding": {
+    "id": "release-review.binding",
+    "file": "{\n  \"nodes\": {\n    \"build\": {\n      \"executionKind\": \"AGENT\",\n      \"role\": \"WORK\",\n      \"agentId\": \"engine:local-coding\",\n      \"commands\": [\n        [\n          \"node\",\n          \"--version\"\n        ]\n      ],\n      \"outputPaths\": [\n        \"out.txt\"\n      ],\n      \"exposure\": {\n        \"kind\": \"BOUNDED\",\n        \"allowance\": \"100\",\n        \"stopThreshold\": \"90\"\n      },\n      \"maxTaskMs\": 10000,\n      \"requirements\": []\n    }\n  },\n  \"maxTotalActiveMs\": 60000,\n  \"costUnit\": \"micro-USD\",\n  \"graphDigest\": \"sha256:266e7ba076496cb10c857a8f2720b31ca8711b8215a639d758cf4a8c8a8ce189\",\n  \"graphRevision\": \"1\",\n  \"graphId\": \"release-review\",\n  \"graphBindingRevision\": 1,\n  \"graphBindingId\": \"release-review.binding\",\n  \"format\": \"aiws-graph-binding/1\"\n}\n"
+  },
+  "contract": {
+    "id": "release",
+    "file": "{\n  \"features\": [\n    \"graphs\"\n  ],\n  \"maxAuthorizationAgeMs\": \"60000\",\n  \"maxAttempts\": \"2\",\n  \"requiresApproval\": false,\n  \"resources\": [\n    \"doc\"\n  ],\n  \"actions\": [\n    \"write\"\n  ],\n  \"criteria\": [\n    \"review: café, naïve, 日本語 and 🚀\"\n  ],\n  \"deadline\": \"4102444800000\",\n  \"budget\": \"100\",\n  \"profile\": \"finite-v1\",\n  \"aiwsEdition\": \"0.4\",\n  \"missionId\": \"release-mission\",\n  \"id\": \"release\"\n}\n"
+  },
+  "grants": [
+    {
+      "id": "grant-one",
+      "file": "{\n  \"depth\": \"0\",\n  \"canDelegate\": false,\n  \"limit\": \"100\",\n  \"expiresAt\": \"4102444800000\",\n  \"notBefore\": \"0\",\n  \"resources\": [\n    \"doc\"\n  ],\n  \"actions\": [\n    \"write\"\n  ],\n  \"profile\": \"finite-v1\",\n  \"subject\": \"agent\",\n  \"id\": \"grant-one\"\n}\n"
+    },
+    {
+      "id": "a-grant-sorted-first",
+      "file": "{\n  \"depth\": \"0\",\n  \"canDelegate\": false,\n  \"limit\": \"100\",\n  \"expiresAt\": \"4102444800000\",\n  \"notBefore\": \"0\",\n  \"resources\": [\n    \"doc\"\n  ],\n  \"actions\": [\n    \"write\"\n  ],\n  \"profile\": \"finite-v1\",\n  \"subject\": \"agent\",\n  \"id\": \"a-grant-sorted-first\"\n}\n"
+    }
+  ],
+  "bundleDigest": "sha256:970db103b6138a6b6009297f660231997d55bc2315c260c0bd9391bdfcd45a3c"
+}
