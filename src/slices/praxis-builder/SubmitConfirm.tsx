@@ -1,43 +1,21 @@
 // The Submit confirm dialog of a graph workflow (#444, #462) or a graph trigger (#476). It opens
 // only after the host's check passed. Its body, which the caller gives, says what is sent and that
-// the submission becomes a candidate the owner must admit in the browser: a graph workflow's lists
-// each bundle file with its digest and an Uncommitted badge, read when it opened (`BundleFiles`).
-// Once the host stores it, the dialog names the new revision and offers Open in
-// browser for its admission page, through the loopback-only opener, when the host gave one. An
-// unknown outcome offers Submit again, which resends the same submission by its request id.
+// the submission becomes a candidate the owner must admit in the browser, marking each file with
+// changes that aren't committed with `UncommittedBadge`: a graph workflow's is `BundleFiles` in
+// `GraphSubmit.tsx`, a trigger's `TriggerFiles` in `TriggerSubmit.tsx`. Once the host stores
+// it, the dialog names the new revision and offers Open in browser for its admission page,
+// through the loopback-only opener, when the host gave one. An unknown outcome offers Submit
+// again, which resends the same submission by its request id.
 // Focus stays inside it while it is shown (the shared `useDialogFocus` trap) and goes back to the
 // form's Submit when it closes. Escape closes it.
 import { useEffect, useId, useRef, useState, type FC, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ExternalLink, Send, X } from "lucide-react";
-import type { Submission } from "./graphSubmit.ts";
+import type { Submission } from "./hostSubmit.ts";
 import { openRunPage } from "./runPage.ts";
-import type { GraphWorkflowBundle } from "./types.ts";
 import { useDialogFocus } from "../overlay/useOverlay.ts";
 
 const plainButton =
   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white";
-
-/** A graph workflow confirm's body: what the submission becomes, and the bundle files it sends. */
-export const BundleFiles: FC<{
-  /** The saved bundle, read when the confirm opened. */
-  bundle: GraphWorkflowBundle;
-}> = ({ bundle }) => (
-  <>
-    <p className="text-xs">The submission becomes a candidate. Nothing runs until the owner admits it in the browser.</p>
-    <section aria-label="Bundle files" className="text-xs space-y-1">
-      <p className="text-[#8b949e]">Quay sends these saved files, as they are on disk:</p>
-      <ul className="space-y-1">
-        {bundle.files.map((f) => (
-          <li key={f.file} className="space-y-0.5">
-            <span className="font-mono text-[#c9d1d9] break-all">{f.path}</span>
-            {f.change !== undefined && <UncommittedBadge />}
-            <span className="block font-mono text-[10px] text-[#8b949e] break-all">{f.digest ?? "No digest: Quay can't read this file."}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  </>
-);
 
 /** The badge on a file the confirm lists that has changes that aren't committed. */
 export const UncommittedBadge: FC = () => <span className="ml-2 px-1 rounded border border-[#9e6a03] text-[10px] text-[#e3b341]">Uncommitted</span>;

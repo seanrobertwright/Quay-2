@@ -1,20 +1,20 @@
-// Check on host and Submit on the trigger form (#469, #476), drawn with the graph workflow form's
-// controls. Submit is disabled, with each reason shown and described, while a gate in
-// `triggerSubmit.ts` holds. The bar reads the target graph workflow on the host with
-// `praxis_host_graph_show` when it is shown with a saved target and a usable host, and the git
-// status of the trigger's saved files with `praxis_trigger_changes` when it is shown saved, each
-// again whenever the builder saves, renames or deletes a record.
+// Check on host and Submit on the trigger form (#469, #476), drawn with the controls it shares
+// with the graph workflow form (`SubmitControls.tsx`, `SubmitConfirm.tsx`). Submit is disabled,
+// with each reason shown and described, while a gate in `triggerSubmit.ts` holds. The bar reads
+// the target graph workflow on the host with `praxis_host_graph_show` when it is shown with a
+// saved target and a usable host, and the git status of the trigger's saved files with
+// `praxis_trigger_changes` when it is shown saved, each again whenever the builder saves,
+// renames or deletes a record.
 import { useCallback, useEffect, useRef, useState, type FC } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { SubmitControls } from "./GraphSubmit.tsx";
-import { SubmitConfirm, UncommittedBadge } from "./GraphSubmitConfirm.tsx";
 import type { BundleChangesRead } from "./graphRunStart.ts";
-import type { HostCheck, LocalChecks, Submission } from "./graphSubmit.ts";
 import { hostConditionView } from "./hostCondition.ts";
+import type { LocalChecks, Submission } from "./hostSubmit.ts";
 import { praxisCall, type HostCondition } from "./praxisHost.ts";
 import type { GraphTriggerHostView } from "./triggerHost.ts";
 import { definitionPath, targetPath } from "./session.ts";
-import type { BundleChanges } from "./types.ts";
+import { HostFindings, SubmitControls } from "./SubmitControls.tsx";
+import { SubmitConfirm, UncommittedBadge } from "./SubmitConfirm.tsx";
+import { readChanges, useRecordChanges } from "./useRecordChanges.ts";
 import {
   startsEnabled,
   targetNotAdmitted,
@@ -25,6 +25,7 @@ import {
   triggerSubmitBlockers,
   triggerWarnings,
   type TargetOnHost,
+  type TriggerCheck,
   type TriggerFinding,
 } from "./triggerSubmit.ts";
 
@@ -60,28 +61,6 @@ function useTargetOnHost(projectPath: string, target: string | null, key: string
   return { targetOnHost: read?.key === key ? read.read : null, reread };
 }
 
-/** Trigger `name`'s saved files with changes since the last commit, or why git status can't be read. Never rejects. */
-function readChanges(projectPath: string, name: string): Promise<BundleChangesRead> {
-  return invoke<BundleChanges>("praxis_trigger_changes", { projectPath, name }).then(
-    (changes) => changes,
-    (e) => ({ error: String(e) }),
-  );
-}
-
-/** Reads trigger `name`'s git changes when `key` changes while `read` holds; an older answer is dropped. */
-function useTriggerChanges(projectPath: string, name: string, read: boolean, key: string): BundleChangesRead | null {
-  const [changes, setChanges] = useState<{ key: string; changes: BundleChangesRead } | null>(null);
-  useEffect(() => {
-    if (!read) return;
-    let stale = false;
-    void readChanges(projectPath, name).then((answer) => !stale && setChanges({ key, changes: answer }));
-    return () => {
-      stale = true;
-    };
-  }, [projectPath, name, read, key]);
-  return read && changes?.key === key ? changes.changes : null;
-}
-
 export const TriggerSubmitBar: FC<{
   projectPath: string;
   name: string;
@@ -98,7 +77,7 @@ export const TriggerSubmitBar: FC<{
 }> = ({ projectPath, name, target, unsaved, local, enabled, refresh, submit }) => {
   const submitRef = useRef<HTMLButtonElement | null>(null);
   const [checking, setChecking] = useState(false);
-  const [check, setCheck] = useState<HostCheck<TriggerFinding> | null>(null);
+  const [check, setCheck] = useState<TriggerCheck | null>(null);
   /** True while Submit reads the target, checks and rereads, before the confirm opens. */
   const [preparing, setPreparing] = useState(false);
   /** Why the last Submit stopped short of the confirm, other than a gate or the check's findings. */
@@ -116,13 +95,11 @@ export const TriggerSubmitBar: FC<{
   const saved = !unsaved && usable ? target : null;
   const { targetOnHost, reread: rereadTarget } = useTargetOnHost(projectPath, saved, `${projectPath}\n${saved}\n${refresh}`);
   const reasons = triggerSubmitBlockers({ name, target, unsaved, local, condition: submit.condition, targetOnHost });
-  const changes = useTriggerChanges(projectPath, name, !unsaved, `${projectPath}
-${name}
-${refresh}`);
+  const changes = useRecordChanges("praxis_trigger_changes", projectPath, unsaved ? null : name, refresh);
   const warnings = triggerWarnings({ target, targetOnHost, changes });
 
   /** Runs the host's trigger check, which writes nothing, and shows what it found; null when the form went before it answered. */
-  const runCheck = async (): Promise<HostCheck<TriggerFinding> | null> => {
+  const runCheck = async (): Promise<TriggerCheck | null> => {
     const controller = new AbortController();
     abort.current = controller;
     setChecking(true);
@@ -155,7 +132,7 @@ ${refresh}`);
       if (onHost.state === "failed") return setStopped(`Quay couldn't read graph workflow ${saved} on the host: ${onHost.message}`);
       const answer = await runCheck();
       if (answer?.kind !== "passed") return;
-      const [view, files] = await Promise.all([submit.reread(), readChanges(projectPath, name)]);
+      const [view, files] = await Promise.all([submit.reread(), readChanges("praxis_trigger_changes", projectPath, name)]);
       setConfirming({ baseRevision: view?.current?.revision ?? null, changes: files, admitted: onHost.admitted });
     } finally {
       setPreparing(false);
@@ -189,7 +166,14 @@ ${refresh}`);
       onSubmit={() => void startSubmit()}
       submitRef={submitRef}
     >
-      {check && <CheckResult check={check} />}
+      {check && (
+        <HostFindings
+          check={check}
+          subject="trigger"
+          keyOf={(f) => `${f.path}|${f.code}`}
+          renderFinding={(finding) => <span className="font-mono">{triggerFindingText(finding)}</span>}
+        />
+      )}
       {confirming && saved !== null && (
         <SubmitConfirm name={name} onSend={send} onClose={() => setConfirming(null)} returnFocus={submitRef}>
           <TriggerFiles name={name} target={saved} enabled={enabled} admitted={confirming.admitted} changes={confirming.changes} />
@@ -229,43 +213,5 @@ const TriggerFiles: FC<{
         </ul>
       </section>
     </>
-  );
-};
-
-/** Keys for findings, which may repeat: each one's fields, then its count among equal ones. */
-function findingKeys(findings: readonly TriggerFinding[]): string[] {
-  const seen = new Map<string, number>();
-  return findings.map((f) => {
-    const base = `${f.path}|${f.code}`;
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
-    return `${base}|${n}`;
-  });
-}
-
-/** What the last check came to: no faults, the host's findings, or why it didn't answer. */
-const CheckResult: FC<{ check: HostCheck<TriggerFinding> }> = ({ check }) => {
-  let body;
-  if (check.kind === "passed") body = <p className="text-[#3fb950]">The host found no faults in the saved trigger.</p>;
-  else if (check.kind === "failed") body = <p className="text-[#ff7b72] break-words">The host&apos;s check didn&apos;t finish: {check.message}</p>;
-  else {
-    const keys = findingKeys(check.findings);
-    body = (
-      <>
-        <p className="text-[#ff7b72]">The host found faults in the saved trigger.</p>
-        <ul className="space-y-0.5">
-          {check.findings.map((finding, i) => (
-            <li key={keys[i]} className="font-mono break-words">
-              {triggerFindingText(finding)}
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  }
-  return (
-    <section aria-label="Host findings" className="text-[11px] text-[#c9d1d9] space-y-0.5">
-      {body}
-    </section>
   );
 };

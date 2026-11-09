@@ -10,7 +10,7 @@ import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { graphConfirmRefusedBy, graphRunWarnings } from "./graphRunStart.ts";
 import { RunConfirmFrame } from "./RunConfirmFrame.tsx";
 import type { DefinitionRef } from "./types.ts";
-import { useGraphWorkflowChanges } from "./useGraphWorkflowChanges.ts";
+import { useRecordChanges } from "./useRecordChanges.ts";
 
 export const GraphRunConfirm: FC<{
   projectPath: string;
@@ -29,7 +29,7 @@ export const GraphRunConfirm: FC<{
   useEffect(() => {
     checkAgainRef.current?.();
   }, [projectPath, name]);
-  const changes = useGraphWorkflowChanges(projectPath, name);
+  const changes = useRecordChanges("praxis_graph_workflow_changes", projectPath, name);
 
   const view = host?.view ?? null;
   const checking = (view?.checking ?? false) || changes === null;

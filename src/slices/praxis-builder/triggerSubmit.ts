@@ -1,6 +1,6 @@
 // Check on host and Submit for a graph trigger (#469, #476): what stops a submission, and what
 // the host's answers mean. This module has no UI: the trigger form's Submit bar and its confirm
-// draw it. It shares the graph workflow's gate sentences and outcome readers (`graphSubmit.ts`).
+// draw it. It shares the graph workflow's gate sentences and outcome readers (`hostSubmit.ts`).
 //
 // A submission sends the saved trigger file and names the graph workflow its saved target file
 // names, so a trigger with no target, unsaved edits or local faults stops it.
@@ -14,7 +14,7 @@ import {
   type HostCheck,
   type LocalChecks,
   type Submission,
-} from "./graphSubmit.ts";
+} from "./hostSubmit.ts";
 import { isObject } from "./hostReadSession.ts";
 import { hostNameProblem } from "./lifecycle.ts";
 import type { BundleChangesRead } from "./graphRunStart.ts";
@@ -37,8 +37,11 @@ const TRIGGER_FINDINGS: FindingsReader<TriggerFinding> = {
       : [],
 };
 
+/** What one `praxis triggers check` came to: a passed one gives nothing besides. */
+export type TriggerCheck = HostCheck<TriggerFinding>;
+
 /** The answer of `praxis_host_trigger_check`; null for a cancelled check. */
-export const triggerCheckOf = (outcome: CallOutcome): HostCheck<TriggerFinding> | null => checkOutcome(outcome, TRIGGER_FINDINGS);
+export const triggerCheckOf = (outcome: CallOutcome): TriggerCheck | null => checkOutcome(outcome, TRIGGER_FINDINGS, () => ({}));
 
 /** What a `praxis_host_trigger_submit` outcome means for the person who confirmed it. */
 export const triggerSubmissionOf = (outcome: CallOutcome): Submission<TriggerFinding> => submissionOutcome(outcome, TRIGGER_FINDINGS);

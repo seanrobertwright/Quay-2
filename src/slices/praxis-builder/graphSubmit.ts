@@ -1,27 +1,28 @@
-// Check on host and Submit for a graph workflow (#444, #462): what stops a submission, what the
-// host's check and submission answers mean, and the identical-bundle refusal. This module has no
-// UI: the graph workflow form's Submit bar and its confirm dialog draw it.
+// Check on host and Submit for a graph workflow (#444, #462): what stops a submission, how the
+// host's findings in a bundle read, and the identical-bundle refusal. The gate sentences and
+// answer readers it shares with a graph trigger's are in `hostSubmit.ts`. This module has no UI:
+// the graph workflow form's Submit bar and its confirm dialog draw it.
 //
 // A submission sends the saved files only, so a bundle file with unsaved edits or local faults
 // stops it. Quay doesn't copy the host's refusal list (child graphs, FUNCTION, HUMAN and
 // COMPENSATION nodes, which will shrink): those come back as the host's findings from the check
 // verb, which writes nothing and always runs before a submission.
 import type { GraphWorkflowHostView } from "./graphHost.ts";
-import { hostConditionView } from "./hostCondition.ts";
-import { outcomeMessage, type CallOutcome, type HostCondition } from "./praxisHost.ts";
-import type { DefinitionRef, GraphWorkflowBundle, PraxisKind } from "./types.ts";
-
-const NOUNS: Partial<Record<PraxisKind, string>> = {
-  "graph-workflows": "graph workflow",
-  graphs: "graph",
-  "graph-bindings": "graph binding",
-  contracts: "contract",
-  grants: "grant",
-  triggers: "trigger",
-};
-
-/** A record's noun and id, as reasons name it: `grant grant-one`. */
-export const recordLabel = (ref: DefinitionRef): string => `${NOUNS[ref.kind] ?? ref.kind} ${ref.id}`;
+import {
+  checkOutcome,
+  hostBlocker,
+  nameBlocker,
+  recordLabel,
+  submissionOutcome,
+  unsavedBlocker,
+  type FindingsReader,
+  type HostCheck,
+  type LocalChecks,
+  type Submission,
+} from "./hostSubmit.ts";
+import { isObject } from "./hostReadSession.ts";
+import type { CallOutcome, HostCondition } from "./praxisHost.ts";
+import type { DefinitionRef, GraphWorkflowBundle } from "./types.ts";
 
 /**
  * The records a submission of graph workflow `name` rests on: the graph workflow, then its graph,
@@ -37,33 +38,17 @@ export function bundleRecords(name: string, content: { contractId: string; graph
   return refs;
 }
 
-/** Where the graph workflow's local checks stand: its shape and the saved records it names. */
-export type LocalChecks = "checking" | "passes" | "fails";
-
 /** What Submit's gates read. */
 export interface SubmitGateInput {
   /** The bundle records, the graph workflow's included, whose drafts have edits their saved files lack. */
   unsaved: readonly DefinitionRef[];
+  /** Where the graph workflow's local checks stand: its shape and the saved records it names. */
   local: LocalChecks;
   /** Why the backend won't build the saved bundle, in its words, when it won't. */
   bundleRefusal: string | null;
   /** The host's name rule, when the graph workflow's name breaks it. */
   nameRule: string | null;
   condition: HostCondition;
-}
-
-/** The unsaved-edits gate's reason, naming each record: only saved files are submitted. */
-export const unsavedBlocker = (unsaved: readonly DefinitionRef[]): string =>
-  `Unsaved edits: ${unsaved.map(recordLabel).join(", ")}. Only saved files are submitted, so save them first.`;
-
-/** The name gate's reason: the host's rule, which the name breaks. */
-export const nameBlocker = (rule: string): string => `${rule} Rename it from the list.`;
-
-/** The host gate's reason, when the host condition is neither "signed in" nor "simulated host"; else null. */
-export function hostBlocker(condition: HostCondition): string | null {
-  const host = hostConditionView(condition);
-  // `usable` is exactly "signed in" or "simulated host".
-  return host.usable ? null : `Submit needs a host that is signed in or simulated, and this one is: ${host.label}.`;
 }
 
 /** Why Submit is disabled, one sentence per gate that holds; empty when nothing stops it. */
@@ -105,17 +90,10 @@ export interface HostFinding {
 }
 
 /**
- * What one host check came to: `praxis graphs check`, or `praxis triggers check` with `F` its
- * findings.
+ * What one `praxis graphs check` came to. A passed check gives `bundleDigest`, the host's digest
+ * of the bundle, when it gave one.
  */
-export type HostCheck<F = HostFinding> =
-  /** The host found no faults. `bundleDigest` is the host's digest of the bundle, when it gave one; a trigger check gives none. */
-  | { kind: "passed"; bundleDigest: string | null }
-  | { kind: "faults"; findings: F[] }
-  /** The check didn't run to an answer, in words for the bar. */
-  | { kind: "failed"; message: string };
-
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+export type BundleCheck = HostCheck<HostFinding, { bundleDigest: string | null }>;
 
 /** The findings a check result or a submission's refusal lists; one Quay can't read is left out. */
 function findingsOf(record: Record<string, unknown>): HostFinding[] {
@@ -127,37 +105,12 @@ function findingsOf(record: Record<string, unknown>): HostFinding[] {
   );
 }
 
-/**
- * How a check or submit verb's findings are read: the outcome its exit 9 gives, and the findings
- * its record lists.
- */
-export interface FindingsReader<F> {
-  invalid: "bundleInvalid" | "triggerInvalid";
-  read: (record: Record<string, unknown>) => F[];
-}
-
 /** A graph workflow's: each finding names its bundle file. */
 const BUNDLE_FINDINGS: FindingsReader<HostFinding> = { invalid: "bundleInvalid", read: findingsOf };
 
-/** The answer of a check verb whose findings `reader` reads; null for a cancelled check. */
-export function checkOutcome<F>(outcome: CallOutcome, reader: FindingsReader<F>): HostCheck<F> | null {
-  if (outcome.kind === reader.invalid && "record" in outcome) return { kind: "faults", findings: reader.read(outcome.record) };
-  switch (outcome.kind) {
-    case "record": {
-      const { valid } = outcome.record;
-      if (valid === true) return { kind: "passed", bundleDigest: typeof outcome.record.bundleDigest === "string" ? outcome.record.bundleDigest : null };
-      if (valid === false) return { kind: "faults", findings: reader.read(outcome.record) };
-      return { kind: "failed", message: outcomeMessage({ kind: "needsUpdate", detail: "its check result says neither valid nor not." }) };
-    }
-    case "cancelled":
-      return null;
-    default:
-      return { kind: "failed", message: outcomeMessage(outcome) };
-  }
-}
-
 /** The answer of the check verb, `praxis_host_graph_check`; null for a cancelled check. */
-export const hostCheckOf = (outcome: CallOutcome): HostCheck | null => checkOutcome(outcome, BUNDLE_FINDINGS);
+export const hostCheckOf = (outcome: CallOutcome): BundleCheck | null =>
+  checkOutcome(outcome, BUNDLE_FINDINGS, (record) => ({ bundleDigest: typeof record.bundleDigest === "string" ? record.bundleDigest : null }));
 
 /** The bundle file a finding names, from the saved bundle; null for a name Quay doesn't know. */
 export function findingFile(finding: HostFinding, bundle: GraphWorkflowBundle | null): DefinitionRef | null {
@@ -184,45 +137,5 @@ export function identicalRevision(view: GraphWorkflowHostView, digest: string | 
 /** Why a submission identical to revision `revision` is refused. */
 export const nothingChanged = (revision: number): string => `Nothing has changed since revision ${revision}. Change a bundle file before submitting again.`;
 
-/**
- * What one submission came to, in the words the confirm shows: `praxis graphs submit`, or
- * `praxis triggers submit` with `F` its findings.
- */
-export type Submission<F = HostFinding> =
-  /** A new candidate: `admissionPageAddress` is where the owner admits it, when praxis gave one. */
-  | { kind: "submitted"; revision: number; admissionPageAddress: string | null }
-  /** The host found faults after all: nothing was stored. */
-  | { kind: "faults"; findings: F[] }
-  /** Quay can't tell whether the candidate was stored; `requestId` resends the same submission. */
-  | { kind: "unknown"; message: string; requestId: string | null }
-  /** Nothing was stored, in praxis's words or Quay's. */
-  | { kind: "refused"; message: string };
-
-/** The words of every outcome that can't say whether the candidate was stored. */
-const RESEND_ADVICE = "Submit again resends the same submission, so it can't store a second candidate.";
-
-/** What the outcome of a submit verb whose findings `reader` reads means for the person who confirmed it. */
-export function submissionOutcome<F>(outcome: CallOutcome, reader: FindingsReader<F>): Submission<F> {
-  if (outcome.kind === reader.invalid && "record" in outcome) return { kind: "faults", findings: reader.read(outcome.record) };
-  switch (outcome.kind) {
-    case "record": {
-      const { revision, admissionPageAddress } = outcome.record;
-      if (!Number.isSafeInteger(revision) || (revision as number) < 1) {
-        // It was stored, so this must not offer a resend as if it might not have been.
-        return { kind: "refused", message: outcomeMessage({ kind: "needsUpdate", detail: "praxis stored a candidate, but its result names no revision." }) };
-      }
-      return { kind: "submitted", revision: revision as number, admissionPageAddress: typeof admissionPageAddress === "string" ? admissionPageAddress : null };
-    }
-    case "unknown":
-      return { kind: "unknown", message: `Quay can't tell whether the host stored the candidate: ${outcome.detail}${outcome.requestId ? ` ${RESEND_ADVICE}` : ""}`, requestId: outcome.requestId ?? null };
-    case "timedOut":
-      return { kind: "unknown", message: "praxis didn't finish the submission in time, so Quay stopped it, and can't tell whether the host stored the candidate.", requestId: null };
-    case "cancelled":
-      return { kind: "unknown", message: "praxis was stopped before it said whether the host stored the candidate.", requestId: null };
-    default:
-      return { kind: "refused", message: outcomeMessage(outcome) };
-  }
-}
-
 /** What a `praxis_host_graph_submit` outcome means for the person who confirmed it. */
-export const submissionOf = (outcome: CallOutcome): Submission => submissionOutcome(outcome, BUNDLE_FINDINGS);
+export const submissionOf = (outcome: CallOutcome): Submission<HostFinding> => submissionOutcome(outcome, BUNDLE_FINDINGS);
