@@ -5,11 +5,13 @@
 // its local checks against the saved records it names: each exists and is valid, the contract's
 // bindings file lists the graph, and the binding binds that graph. Each issue shows on the field
 // that names the record at fault. A Triggers section lists the triggers that start the graph
-// workflow, read from their saved target files (#479). Nothing here calls a Praxis host.
+// workflow, read from their saved target files (#479). Given its state on the Praxis host (#461),
+// the form shows it in a status line and a Revisions panel; nothing here calls the host itself.
 import { useEffect, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
+import { GraphHostStatusLine, RevisionsPanel, type GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { asString, hintClass, IdPicker, issuesByPath, Section, Summary } from "./RecordFields.tsx";
 import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
@@ -26,6 +28,8 @@ interface GraphWorkflowFormProps {
   graphBindings: readonly { id: string; graphId?: string }[];
   /** Counts up when the builder saves, renames or deletes a record, so the local checks run again. */
   refresh: number;
+  /** Its state on the Praxis host, from the builder's graph host model; absent without one. */
+  host?: GraphWorkflowHost | null;
   onEdit: (edit: GraphWorkflowEdit) => void;
   onOpen: (ref: DefinitionRef) => void;
   onValidated: (verdict: string | null) => void;
@@ -56,6 +60,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   graphs,
   graphBindings,
   refresh,
+  host,
   onEdit,
   onOpen,
   onValidated,
@@ -144,6 +149,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
               contract&apos;s grants. Its name is its file name; rename it from the list.
             </span>
           </p>
+          {host && <GraphHostStatusLine name={draft.ref.id} host={host} />}
         </header>
         <Summary
           noun="graph workflow"
@@ -153,6 +159,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
           refuses="The graph workflow fails its local checks"
         />
         {fields}
+        {host && <RevisionsPanel view={host.view} />}
       </form>
     </div>
   );

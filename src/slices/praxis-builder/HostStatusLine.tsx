@@ -19,7 +19,7 @@ export interface TemplateHost {
 }
 
 /** Draws again each minute while mounted, so "checked N min ago" stays true. */
-function useMinuteTick(): void {
+export function useMinuteTick(): void {
   const [, setTicks] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTicks((n) => n + 1), 60_000);
