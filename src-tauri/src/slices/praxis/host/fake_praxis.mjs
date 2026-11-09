@@ -1,5 +1,6 @@
 // A stand-in for the `praxis` CLI in Quay's tests (#446). A test lays it out as a checkout's
-// `engine/src/praxis.mjs`, next to a `scenario.json` that says what to replay:
+// `engine/src/praxis.mjs`, next to a `scenario.json` that says what to replay, such as one of the
+// graph commands' recorded outputs in graph_outputs.fixture.json (#460):
 //
 //   { "stdout": <record or text>, "stderr": "praxis: …", "exit": 1,
 //     "delayMs": 500, "stdoutBytes": 9437184, "child": true, "profile": true }

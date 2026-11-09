@@ -26,7 +26,7 @@ export type RunStart =
   /** Exit 2, or a format Quay doesn't read. */
   | { kind: "needsUpdate"; message: string };
 
-/** How long the runner lets a creation take before it kills it: `CallBounds::create` in the backend. */
+/** How long the runner lets a creation take before it kills it: `CallBounds::write` in the backend. */
 export const RUN_CREATE_TIMEOUT_S = 75;
 
 /** The words of every outcome that can't say whether the run was created. */
@@ -86,9 +86,13 @@ export function runStartOf(outcome: CallOutcome, name: string): RunStart {
     case "cancelled":
       return { kind: "unknown", message: `praxis was stopped before it said whether the run was created. ${UNKNOWN_OUTCOME_ADVICE}` };
     case "refused":
+    case "hostRefused":
       return { kind: "refused", message: outcome.message };
     case "needsUpdate":
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} ${outcome.detail}` };
+    case "bundleInvalid":
+      // `praxis run` never checks a bundle, so this answer is one Quay can't read.
+      return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis answered the run with a bundle's faults.` };
   }
 }
 

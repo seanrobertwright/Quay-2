@@ -413,6 +413,18 @@ test("every other refusal is shown verbatim with Copy, which copies it and says 
   assert.match(text(shown), /Copied praxis's words/);
 });
 
+test("a refusal praxis-error/1 gives the host's code for is shown verbatim, as any other", async () => {
+  const backend = fakeBackend();
+  const root = await renderRuns();
+  const call = await startRun(backend, root);
+  const words = "The host refused to create the run (READINESS_BLOCKED).";
+  const record = { format: "praxis-error/1", exitCode: 1, code: "ENGINE", message: words, hostCode: "READINESS_BLOCKED" };
+  await act(async () => call.answer({ kind: "hostRefused", message: words, hostCode: "READINESS_BLOCKED", record }));
+  const shown = notice(root, "Run not started") as HTMLElement;
+  assert.ok(text(shown).includes(words));
+  assert.ok(button(shown, /^Copy$/));
+});
+
 test("exit 2 or an unknown format says Quay needs an update for this praxis", async () => {
   const backend = fakeBackend();
   const root = await renderRuns();

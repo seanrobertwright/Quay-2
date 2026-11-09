@@ -60,6 +60,22 @@ pub fn check_template_name(name: &str) -> Result<(), String> {
     if is_template_name(name) { Ok(()) } else { Err(TEMPLATE_NAME_RULE.to_string()) }
 }
 
+/// The refusal of the graph workflow name `check`, which the host refuses beside its rule,
+/// because its check route holds that path segment (AI-WS-SDK `GRAPH-WORKFLOWS.md`, "Names").
+pub const GRAPH_WORKFLOW_NAME_CHECK: &str =
+    "The Praxis host refuses the graph workflow name check, because its check route holds that name.";
+
+/// Refuses a graph workflow name the host refuses: one its rule doesn't admit, or `check`.
+pub fn check_graph_workflow_name(name: &str) -> Result<(), String> {
+    if !is_template_name(name) {
+        Err(GRAPH_WORKFLOW_NAME_RULE.to_string())
+    } else if name == "check" {
+        Err(GRAPH_WORKFLOW_NAME_CHECK.to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Refuses a graph trigger name the host's rule doesn't admit, with a message stating the rule.
 /// Only a trigger with a Starts target has to pass it.
 pub fn check_trigger_name(name: &str) -> Result<(), String> {

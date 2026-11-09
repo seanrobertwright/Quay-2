@@ -16,14 +16,16 @@ use super::launch::{self, Launch, LookupEnv};
 use super::outcome::{condition_after, interpret, CallOutcome, HostCondition, Verb};
 use super::process::{self, Bounds, Ended};
 use super::settings::{PraxisCliSettings, SettingsStore};
-use crate::slices::praxis::template_name::check_template_name;
+use crate::slices::praxis::template_name::{check_graph_workflow_name, check_template_name};
 
 /// How long each kind of call may take and how much output it may print.
 #[derive(Debug, Clone, Copy)]
 pub struct CallBounds {
     pub read: Duration,
-    /// Run creation: `run`'s own resends can take about 64 s (#362).
-    pub create: Duration,
+    /// A write ([`Verb::writes`]): a run creation, a graph workflow submission or a withdrawal.
+    /// `praxis` resends each while its outcome is unknown, and `run`'s own resends can take
+    /// about 64 s (#362).
+    pub write: Duration,
     pub stdout_cap: usize,
     pub stderr_cap: usize,
     /// How long `node --version` may take.
@@ -34,7 +36,7 @@ impl Default for CallBounds {
     fn default() -> Self {
         Self {
             read: Duration::from_secs(15),
-            create: Duration::from_secs(75),
+            write: Duration::from_secs(75),
             stdout_cap: 8 * 1024 * 1024,
             stderr_cap: 64 * 1024,
             node_check: Duration::from_secs(10),
@@ -184,12 +186,16 @@ impl PraxisCli {
     /// Runs `praxis <args> --json`, with `--state` when an installation is set, for `project`,
     /// and updates `project`'s host condition from the outcome. Blocks until it ends.
     ///
-    /// A command that names a workflow template whose name breaks the host's rule, or that
-    /// lacks the name, is refused before anything runs, and the condition is left alone.
+    /// A command that names a workflow template or graph workflow whose name the host refuses,
+    /// or that lacks the name, is refused before anything runs, and the condition is left alone.
     pub fn call(&self, project: &Path, verb: Verb, args: &[String], call_id: Uuid) -> CallOutcome {
-        if let Some(at) = verb.template_arg()
-            && let Err(message) = check_template_name(args.get(at).map_or("", String::as_str))
-        {
+        let name = |at: usize| args.get(at).map_or("", String::as_str);
+        let refused = match (verb.template_arg(), verb.graph_workflow_arg()) {
+            (Some(at), _) => check_template_name(name(at)).err(),
+            (_, Some(at)) => check_graph_workflow_name(name(at)).err(),
+            (None, None) => None,
+        };
+        if let Some(message) = refused {
             return CallOutcome::Refused { message };
         }
         let cancel = Arc::new(AtomicBool::new(false));
@@ -275,7 +281,7 @@ impl PraxisCli {
             // projects can share one process.
             cmd.current_dir(&project).arg(&launch.script).args(&argv);
             let bounds = Bounds {
-                timeout: if verb.creates() { inner.bounds.create } else { inner.bounds.read },
+                timeout: if verb.writes() { inner.bounds.write } else { inner.bounds.read },
                 stdout_cap: inner.bounds.stdout_cap,
                 stderr_cap: inner.bounds.stderr_cap,
             };

@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkHost, isHostLevelFailure, openPraxisTerminal, praxisCall, type CallOutcome, type InteractiveCommand } from "./praxisHost.ts";
+import { checkHost, isHostLevelFailure, openPraxisTerminal, outcomeMessage, praxisCall, type CallOutcome, type InteractiveCommand } from "./praxisHost.ts";
 
 test("an interactive praxis command opens in a terminal in the project, as the backend spells it", async () => {
   const asked: InteractiveCommand[] = [];
@@ -85,6 +85,9 @@ test("only the outcomes that say the host itself can't be used are host-level fa
     { kind: "notSignedIn", message: "m" },
     { kind: "expired", message: "m" },
     { kind: "refused", message: "m" },
+    { kind: "hostRefused", message: "m", hostCode: "NOT_FOUND", record: {} },
+    { kind: "bundleInvalid", record: {} },
+    { kind: "unknown", detail: "d", requestId: "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d" },
     { kind: "cliNotFound", reason: "r" },
     { kind: "timedOut" },
     { kind: "cancelled" },
@@ -129,4 +132,16 @@ test("a praxis call the backend refuses comes back as a refusal in its words", a
     throw "The run limit must be from 1 to 100, not 0.";
   });
   assert.deepEqual(outcome, { kind: "refused", message: "The run limit must be from 1 to 100, not 0." });
+});
+
+test("a host's refusal reads in praxis's words, and a faulty bundle says the host found faults", () => {
+  const notFound: CallOutcome = {
+    kind: "hostRefused",
+    message: "The host refused the request (NOT_FOUND).",
+    hostCode: "NOT_FOUND",
+    record: { format: "praxis-error/1", code: "ENGINE", hostCode: "NOT_FOUND" },
+  };
+  assert.equal(outcomeMessage(notFound), "The host refused the request (NOT_FOUND).");
+  const faults: CallOutcome = { kind: "bundleInvalid", record: { format: "aiws-graph-workflow-error/1", findings: [{ file: "contract", path: "/deadline", code: "TIME_PASSED" }] } };
+  assert.equal(outcomeMessage(faults), "The host found faults in the bundle.");
 });

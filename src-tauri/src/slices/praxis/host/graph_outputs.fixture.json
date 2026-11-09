@@ -1,0 +1,715 @@
+{
+  "provenance": "Recorded by graph_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 8f0a016fd2704b415cc77791b5aade5aeee5cc0b, run against its simulated host on Node 24.20.0.",
+  "cases": [
+    {
+      "name": "graphs check: valid",
+      "args": [
+        "graphs",
+        "check",
+        "release-review",
+        "--graph",
+        "graph.json",
+        "--binding",
+        "binding.json",
+        "--contract",
+        "contract.json",
+        "--grant",
+        "grant-0.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow-check-result/1",
+        "name": "release-review",
+        "valid": true,
+        "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+        "findings": [],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs check: faults, exit 9",
+      "args": [
+        "graphs",
+        "check",
+        "release-review",
+        "--graph",
+        "graph.json",
+        "--binding",
+        "binding.json",
+        "--contract",
+        "contract.json",
+        "--grant",
+        "grant-0.json"
+      ],
+      "exit": 9,
+      "stdout": {
+        "format": "aiws-graph-workflow-check-result/1",
+        "name": "release-review",
+        "valid": false,
+        "bundleDigest": "sha256:a4924e000f71a6a479d547e604ab803c2aea6cda6751d7e1275f5d9589ad05e2",
+        "findings": [
+          {
+            "file": "contract",
+            "path": "/deadline",
+            "code": "TIME_PASSED"
+          }
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs submit: a candidate",
+      "args": [
+        "graphs",
+        "submit",
+        "release-review",
+        "--graph",
+        "graph.json",
+        "--binding",
+        "binding.json",
+        "--contract",
+        "contract.json",
+        "--grant",
+        "grant-0.json"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow-submit-result/1",
+        "requestId": "f76290d6-5568-40ab-b5b2-1892b3609735",
+        "disposition": "COMMITTED",
+        "name": "release-review",
+        "revision": 1,
+        "status": "CANDIDATE",
+        "baseRevision": null,
+        "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=1",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs submit: faults, exit 9",
+      "args": [
+        "graphs",
+        "submit",
+        "release-review",
+        "--graph",
+        "graph.json",
+        "--binding",
+        "binding.json",
+        "--contract",
+        "contract.json",
+        "--grant",
+        "grant-0.json"
+      ],
+      "exit": 9,
+      "stdout": {
+        "format": "aiws-graph-workflow-error/1",
+        "requestId": "b4814fe6-1f83-4c80-b8a7-f495d87d0f72",
+        "code": "BUNDLE_INVALID",
+        "commitStatus": "NOT_COMMITTED",
+        "findings": [
+          {
+            "file": "contract",
+            "path": "/deadline",
+            "code": "TIME_PASSED"
+          }
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs submit: a second candidate",
+      "args": [
+        "graphs",
+        "submit",
+        "release-review",
+        "--graph",
+        "graph.json",
+        "--binding",
+        "binding.json",
+        "--contract",
+        "contract.json",
+        "--grant",
+        "grant-0.json",
+        "--base",
+        "1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow-submit-result/1",
+        "requestId": "bf37595d-a03f-429f-ac0c-2cf16c796161",
+        "disposition": "COMMITTED",
+        "name": "release-review",
+        "revision": 2,
+        "status": "CANDIDATE",
+        "baseRevision": 1,
+        "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs list",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflows/1",
+        "workflows": [
+          {
+            "name": "release-review",
+            "state": "ACTIVE",
+            "currentRevision": null,
+            "latestRevision": 2,
+            "pendingCount": 2
+          }
+        ],
+        "nextAfter": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs show",
+      "args": [
+        "graphs",
+        "show",
+        "release-review",
+        "--format",
+        "aiws-graph-workflow/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow/1",
+        "name": "release-review",
+        "state": "ACTIVE",
+        "currentRevision": null,
+        "runnable": false,
+        "latestRevision": 2,
+        "pendingCount": 2,
+        "revisions": [
+          {
+            "revision": 2,
+            "status": "CANDIDATE",
+            "baseRevision": 1,
+            "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+            "submittedAt": "2026-11-08T23:30:17.762Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
+            }
+          },
+          {
+            "revision": 1,
+            "status": "CANDIDATE",
+            "baseRevision": null,
+            "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+            "submittedAt": "2026-11-08T23:30:15.433Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "review": null,
+        "retireDigest": null,
+        "admissionPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs show: older revisions",
+      "args": [
+        "graphs",
+        "show",
+        "release-review",
+        "--before",
+        "2",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-workflow-revisions/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow-revisions/1",
+        "name": "release-review",
+        "revisions": [
+          {
+            "revision": 1,
+            "status": "CANDIDATE",
+            "baseRevision": null,
+            "bundleDigest": "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f",
+            "submittedAt": "2026-11-08T23:30:15.433Z",
+            "submittedBy": {
+              "kind": "AGENT",
+              "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+              "sessionId": "a9d86bad-e3f7-49d3-b5b8-4f2ad3567c4c"
+            }
+          }
+        ],
+        "nextBefore": null,
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs show: not submitted",
+      "args": [
+        "graphs",
+        "show",
+        "nothing-here",
+        "--format",
+        "aiws-graph-workflow/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "graphs show: older revisions, not submitted",
+      "args": [
+        "graphs",
+        "show",
+        "nothing-here",
+        "--before",
+        "2",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-workflow-revisions/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "graphs withdraw: a pending candidate",
+      "args": [
+        "graphs",
+        "withdraw",
+        "release-review",
+        "1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-workflow-withdraw-result/1",
+        "requestId": "e2da2e4a-9b6d-4124-9055-f61b23f41f4f",
+        "disposition": "COMMITTED",
+        "name": "release-review",
+        "revision": 1,
+        "status": "WITHDRAWN",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "graphs withdraw: not pending",
+      "args": [
+        "graphs",
+        "withdraw",
+        "release-review",
+        "1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (REVISION_NOT_PENDING).",
+        "hostCode": "REVISION_NOT_PENDING",
+        "requestId": "667b2611-bf17-484a-af28-d05c1738b56e",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (REVISION_NOT_PENDING).\n"
+    },
+    {
+      "name": "run: no admitted revision",
+      "args": [
+        "run",
+        "release-review"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "Graph workflow release-review has no admitted revision and cannot run."
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: Graph workflow release-review has no admitted revision and cannot run.\n"
+    },
+    {
+      "name": "run: created",
+      "args": [
+        "run",
+        "nightly-build"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-run-result/1",
+        "requestId": "6a571888-4d3c-47d1-adbb-5a6a8a221668",
+        "disposition": "COMMITTED",
+        "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
+        "revision": 1,
+        "status": "AWAITING_APPROVAL",
+        "workflow": {
+          "name": "nightly-build",
+          "revision": 1
+        },
+        "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "run: blocked by a run awaiting approval, exit 7",
+      "args": [
+        "run",
+        "nightly-build"
+      ],
+      "exit": 7,
+      "stdout": {
+        "format": "aiws-graph-run-error/1",
+        "requestId": "328780ff-218d-41cc-a3ad-4426d303994a",
+        "code": "WORKFLOW_RUN_PENDING_APPROVAL",
+        "commitStatus": "NOT_COMMITTED",
+        "blockingWorkOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "blockingRunAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "runs",
+      "args": [
+        "runs",
+        "nightly-build",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-runs/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-runs/1",
+        "workflow": "nightly-build",
+        "runs": [
+          {
+            "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+            "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
+            "workflowRevision": 1,
+            "createdAt": "2026-11-08T23:30:27.751Z",
+            "updatedAt": "2026-11-08T23:30:27.751Z",
+            "status": "AWAITING_APPROVAL",
+            "outcome": null,
+            "control": "RUNNING",
+            "held": false,
+            "awaitingApproval": true,
+            "trigger": null,
+            "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b"
+          }
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "runs: not submitted",
+      "args": [
+        "runs",
+        "nothing-here",
+        "--limit",
+        "20",
+        "--format",
+        "aiws-graph-runs/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "The host refused the request (NOT_FOUND).",
+        "hostCode": "NOT_FOUND",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: The host refused the request (NOT_FOUND).\n"
+    },
+    {
+      "name": "status: awaiting approval",
+      "args": [
+        "status",
+        "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "--format",
+        "aiws-graph-operator-view/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-operator-view/1",
+        "workOrderId": "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "runId": "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e",
+        "graphId": "release-review",
+        "graphDigest": "sha256:266e7ba076496cb10c857a8f2720b31ca8711b8215a639d758cf4a8c8a8ce189",
+        "bindingRevision": "1",
+        "status": "READY",
+        "outcome": null,
+        "control": {
+          "status": "RUNNING",
+          "reason": null
+        },
+        "revision": 0,
+        "changeToken": "ae68cdcd1bef5aa054e3f9848a14c477a81bf29452b0add350eac3aa3884431a",
+        "scopes": {
+          "run": {
+            "spent": "0",
+            "reserved": "0",
+            "costUnit": "micro-USD",
+            "attempts": 0
+          },
+          "workOrder": {
+            "spent": "0",
+            "reserved": "0",
+            "costUnit": "micro-USD",
+            "attempts": 0
+          }
+        },
+        "pending": [
+          {
+            "key": "RUN_APPROVAL",
+            "kind": "RUN_APPROVAL"
+          }
+        ],
+        "holds": [],
+        "viewer": {
+          "mayDecide": []
+        },
+        "nodes": [
+          {
+            "nodeId": "build",
+            "kind": "TASK",
+            "status": "PENDING",
+            "iterations": 0,
+            "ready": false,
+            "phase": "NOT_READY",
+            "holdId": null,
+            "attempt": null,
+            "scope": null,
+            "loop": null,
+            "wait": null,
+            "humanTask": null
+          },
+          {
+            "nodeId": "end",
+            "kind": "END",
+            "status": "PENDING",
+            "iterations": 0,
+            "ready": false,
+            "phase": "NOT_READY",
+            "holdId": null,
+            "attempt": null,
+            "scope": null,
+            "loop": null,
+            "wait": null,
+            "humanTask": null
+          }
+        ],
+        "triggerRefusals": null,
+        "runPageAddress": "https://praxis-nmdro7k3gf.localhost:49889/#work-order=wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\nYour browser does not trust this host's certificate yet: run praxis trust --state C:\\Temp\\praxis-example-cql0g4\\installation first.\n"
+    },
+    {
+      "name": "status: no such run",
+      "args": [
+        "status",
+        "wo-nothing-here",
+        "--format",
+        "aiws-graph-operator-view/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "This host has no run with work order wo-nothing-here.",
+        "hostCode": "NOT_FOUND",
+        "requestId": "da067eb3-1ad4-40f4-a4e8-bee8bf2620b8",
+        "commitStatus": "NOT_COMMITTED",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: This host has no run with work order wo-nothing-here.\n"
+    },
+    {
+      "name": "usage: unknown graphs command, exit 2",
+      "args": [
+        "graphs",
+        "lsit"
+      ],
+      "exit": 2,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 2,
+        "code": "USAGE",
+        "message": "unknown graphs command: lsit"
+      },
+      "stderr": "praxis: unknown graphs command: lsit\nUsage:\n  praxis workflows list [--state DIR] [--json] [--format NAME/N]\n  praxis workflows show NAME [--state DIR] [--json] [--format NAME/N]\n  praxis graphs check NAME --graph FILE --binding FILE --contract FILE --grant FILE... [--state DIR] [--json]\n  praxis graphs submit NAME --graph FILE --binding FILE --contract FILE --grant FILE... [--base REVISION] [--request-id UUID] [--state DIR] [--json]\n  praxis graphs list [--limit N] [--after NAME] [--state DIR] [--json] [--format NAME/N]\n  praxis graphs show NAME [--revision N | --before N [--limit N]] [--state DIR] [--json] [--format NAME/N]\n  praxis graphs withdraw NAME REVISION [--request-id UUID] [--state DIR] [--json]\n  praxis run NAME [--follow [--timeout DURATION]] [--state DIR] [--json] [--format NAME/N]\n  praxis runs NAME [--limit N] [--state DIR] [--json] [--format NAME/N]\n  praxis follow RUN [--timeout DURATION] [--state DIR] [--json] [--format NAME/N]\n  praxis status RUN [--state DIR] [--json] [--format NAME/N]\n  praxis hold RUN [--state DIR] [--json] [--format NAME/N]\n  praxis open RUN [--state DIR]\n  praxis trust [--remove] [--state DIR]\n  praxis setup [--state DIR]\n  praxis login [--state DIR]\n  praxis logout [--state DIR]\n  praxis serve <config> [--port <N>] [--move-origin] [--new-certificate]\n  --format NAME/N, given with --json, pins the format of the record these commands print:\n    workflows list, workflows show: aiws-workflow-catalog/1\n    runs: aiws-workflow-runs/1, aiws-graph-runs/1\n    status, follow, run --follow: coding-operator-view/1, aiws-graph-operator-view/1\n    hold: aiws-hold-card/1\n    graphs list: aiws-graph-workflows/1\n    graphs show: aiws-graph-workflow/1\n    graphs show --revision: aiws-graph-workflow-revision/1\n    graphs show --before: aiws-graph-workflow-revisions/1\n"
+    },
+    {
+      "name": "no host set up",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "ENGINE",
+        "message": "There is no Praxis host connection descriptor at C:\\Temp\\praxis-graph-record\\no-host\\identity\\connection.json. Start the host, or pass --state DIR for its installation."
+      },
+      "stderr": "praxis: There is no Praxis host connection descriptor at C:\\Temp\\praxis-graph-record\\no-host\\identity\\connection.json. Start the host, or pass --state DIR for its installation.\n"
+    },
+    {
+      "name": "host down",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "CONNECTION",
+        "message": "Could not connect to the host at https://127.0.0.1:49889; is it running?",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: Could not connect to the host at https://127.0.0.1:49889; is it running?\n"
+    },
+    {
+      "name": "graphs submit: outcome unknown (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "OUTCOME_UNKNOWN",
+        "message": "The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.",
+        "requestId": "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d",
+        "simulatedIdentity": true
+      },
+      "stderr": "praxis: The host did not confirm the request, so its outcome is unknown. Run the same command with --request-id 3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d to resend it.\n"
+    },
+    {
+      "name": "format not served (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 8,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 8,
+        "code": "FORMAT_NOT_SERVED",
+        "message": "The host does not serve aiws-graph-workflows/1: it serves aiws-graph-workflows/2. Upgrade the host or this client.",
+        "requestedFormat": "aiws-graph-workflows/1",
+        "servedFormats": [
+          "aiws-graph-workflows/2"
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "praxis: The host does not serve aiws-graph-workflows/1: it serves aiws-graph-workflows/2. Upgrade the host or this client.\n"
+    },
+    {
+      "name": "not signed in (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "AUTHENTICATION",
+        "message": "There is no CLI session for this host in C:\\Users\\me\\AppData\\Local\\Praxis\\cli. Run praxis login --state C:\\Users\\me\\AppData\\Local\\Praxis\\installation."
+      },
+      "stderr": "praxis: There is no CLI session for this host in C:\\Users\\me\\AppData\\Local\\Praxis\\cli. Run praxis login --state C:\\Users\\me\\AppData\\Local\\Praxis\\installation.\n"
+    },
+    {
+      "name": "session refused (made)",
+      "args": [
+        "graphs",
+        "list",
+        "--limit",
+        "100",
+        "--format",
+        "aiws-graph-workflows/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "praxis-error/1",
+        "exitCode": 1,
+        "code": "AUTHENTICATION",
+        "message": "The host did not accept the CLI session (UNAUTHENTICATED). Run praxis login --state C:\\Users\\me\\AppData\\Local\\Praxis\\installation.",
+        "hostCode": "UNAUTHENTICATED"
+      },
+      "stderr": "praxis: The host did not accept the CLI session (UNAUTHENTICATED). Run praxis login --state C:\\Users\\me\\AppData\\Local\\Praxis\\installation.\n"
+    }
+  ]
+}
