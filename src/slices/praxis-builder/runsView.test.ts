@@ -287,6 +287,7 @@ test("a run waiting for a decision has a Needs you marker whose Open in browser 
   await act(async () => backend.reads()[0].answer(runs([entry(2, { status: "AWAITING_APPROVAL" }), entry(1)])));
   const rows = [...root.querySelectorAll('[aria-label="Runs"] li')] as HTMLElement[];
   assert.match(text(rows[0]), /Needs you/);
+  assert.doesNotMatch(text(rows[0]), /Awaiting approval/, "a template entry doesn't say so itself, so it gets no chip");
   assert.doesNotMatch(text(rows[1]), /Needs you/);
   assert.equal(button(rows[1], /Open .* in browser/), undefined);
   await click(button(rows[0], /^Open run-2 in browser$/));

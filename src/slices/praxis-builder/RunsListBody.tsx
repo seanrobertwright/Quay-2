@@ -1,6 +1,7 @@
 // What every Runs view draws from its Runs list (#452, #464): the read status, the runs newest
 // first with their markers, Show more, and the note at the host's cap. A workflow template's Runs
-// view and a graph workflow's both draw it, so their lists look and read the same.
+// view and a graph workflow's both draw it, so their lists look and read the same. The Awaiting
+// approval chip shows only when the entry says so, which a template run's entry never does.
 import type { FC } from "react";
 import { ExternalLink, FlaskConical, Hourglass, Pause, UserCheck } from "lucide-react";
 import { formatClock, formatDateTime } from "../../lib/dates.ts";
@@ -79,7 +80,7 @@ export const RunsListBody: FC<RunsListBodyProps> = ({ name, view, notice, onShow
                   Held
                 </span>
               )}
-              {run.awaitingApproval && (
+              {run.awaitingApproval === true && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full border border-[#79c0ff]/60 text-[#79c0ff] text-[10px]">
                   <Hourglass className="w-3 h-3" aria-hidden="true" />
                   Awaiting approval

@@ -45,8 +45,11 @@ export interface RunRow {
   stage: string | null;
   control: string;
   held: boolean;
-  /** True when the run waits for a person's approval. */
-  awaitingApproval: boolean;
+  /**
+   * Whether the run waits for a person's approval, as its entry says; null when the entry doesn't
+   * say, as a template run's doesn't (its status still makes it need you).
+   */
+  awaitingApproval: boolean | null;
   /** True when the run waits for a person: awaiting approval, or held. Both are decided in the browser. */
   needsYou: boolean;
   /** The run's page on the host when the list gives it; null when it must be looked up with `status`. */
@@ -122,7 +125,10 @@ function commonFields(v: Record<string, unknown>): CommonFields | null {
   return { workOrderId, runId, createdAt: parseUtcTimestamp(createdAt), createdAtText: createdAt, status, control, held };
 }
 
-/** A workflow template's runs: `aiws-workflow-runs/1`, whose entries name a stage and give no page address. */
+/**
+ * A workflow template's runs: `aiws-workflow-runs/1`, whose entries name a stage, give no page
+ * address and don't say whether they await approval.
+ */
 export const TEMPLATE_RUNS: RunsSource = {
   runsCommand: "praxis_host_runs",
   statusCommand: "praxis_host_status",
@@ -131,8 +137,8 @@ export const TEMPLATE_RUNS: RunsSource = {
     const common = commonFields(v);
     const { revision, stage } = v;
     if (common === null || typeof revision !== "number" || typeof stage !== "string") return null;
-    const awaitingApproval = common.status === AWAITING_APPROVAL;
-    return { ...common, revision, stage, awaitingApproval, needsYou: common.held || awaitingApproval, runPageAddress: null };
+    const needsYou = common.held || common.status === AWAITING_APPROVAL;
+    return { ...common, revision, stage, awaitingApproval: null, needsYou, runPageAddress: null };
   },
 };
 
