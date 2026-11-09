@@ -288,6 +288,20 @@ const PAST: Record<"Paste" | "Duplicate" | "Delete" | "Cut", string> = {
 
 const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex="0"]';
 
+/** A graph trigger fire's run to show in its graph workflow's Runs view once that workflow's form opens (#478). */
+interface RunToShow {
+  projectKey: string;
+  workflow: string;
+  workOrderId: string;
+}
+
+/**
+ * The `workOrderId` of `run` when the open record is the graph workflow it belongs to, in its
+ * project; undefined for any other record.
+ */
+const runShownIn = (run: RunToShow | null, projectKey: string, openKind: string | undefined, openId: string | undefined): string | undefined =>
+  run && run.projectKey === projectKey && openKind === "graph-workflows" && openId === run.workflow ? run.workOrderId : undefined;
+
 /** The tab stops inside `root` that are shown, in document order. */
 const tabStops = (root: HTMLElement) =>
   Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
@@ -462,9 +476,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
   // The run a graph trigger's fire created, to show in its graph workflow's Runs view once that
   // workflow's form opens (#478). It is dropped as soon as another record is open.
-  const [runToShow, setRunToShow] = useState<{ projectKey: string; workflow: string; workOrderId: string } | null>(null);
+  const [runToShow, setRunToShow] = useState<RunToShow | null>(null);
   useEffect(() => {
-    setRunToShow((r) => (r && r.projectKey === projectKey && openKind === "graph-workflows" && openId === r.workflow ? r : null));
+    setRunToShow((r) => (runShownIn(r, projectKey, openKind, openId) === undefined ? null : r));
   }, [projectKey, openKind, openId]);
   /** What trigger `name`'s Fires panel needs: its saved target, and how a fire's run is shown there. */
   const triggerFires = (name: string): TriggerFires => ({
@@ -2536,7 +2550,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     runsShown={isOpen}
                     runInTerminal={onRunInTerminal}
                     unsavedKeys={unsavedKeys}
-                    showRun={runToShow?.projectKey === projectKey && runToShow.workflow === open.id ? runToShow.workOrderId : undefined}
+                    showRun={runShownIn(runToShow, projectKey, openKind, openId)}
                   />
                 </>
               ) : openDraft ? (
