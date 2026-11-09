@@ -102,7 +102,9 @@ const label = (c: Call) =>
     ? `list${c.args.after ? ` after ${String(c.args.after)}` : ""}`
     : c.command === "praxis_host_graph_show"
       ? `show ${String(c.args.name)}`
-      : c.command;
+      : c.command === "praxis_host_graph_withdraw"
+        ? `withdraw ${String(c.args.name)} ${String(c.args.revision)}`
+        : c.command;
 
 /** Lets settled calls' follow-ups run; setImmediate isn't mocked. */
 const settle = async () => {
@@ -434,4 +436,75 @@ test("disposing cancels every praxis call in flight and keeps nothing", async ()
   host.answer("show a", admitted("a"));
   await settle();
   assert.deepEqual(graphs.workflow("a").state, { kind: "unknown", why: "notChecked" });
+});
+
+/** The recorded withdrawal result, for `name`'s revision `revision`. */
+function withdrawnRecord(name: string, revision: number): CallOutcome {
+  return { kind: "record", record: { ...stdout("graphs withdraw: a pending candidate"), name, revision } };
+}
+
+/** The recorded refusal of a withdrawal whose candidate is no longer pending. */
+function notPending(): CallOutcome {
+  const record = stdout("graphs withdraw: not pending");
+  return { kind: "hostRefused", message: String(record.message), hostCode: String(record.hostCode), record };
+}
+
+test("withdrawing a pending candidate sends its revision, then rereads: the record falls back to its admitted revision and the candidate shows withdrawn", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  assert.deepEqual(graphs.workflow("ship").state, { kind: "candidate", revision: 2 });
+  const done = graphs.withdraw("ship", 2);
+  await settle();
+  assert.deepEqual(host.open(), ["withdraw ship 2"]);
+  assert.equal(host.calls[host.calls.length - 1].args.requestId, null, "a first withdrawal resends nothing");
+  host.answer("withdraw ship 2", withdrawnRecord("ship", 2));
+  await settle();
+  // The withdrawal is done once the reread after it is in.
+  assert.deepEqual(host.open(), ["show ship"]);
+  host.answer("show ship", admitted("ship", { revisions: admittedOne("WITHDRAWN") }));
+  assert.deepEqual(await done, { kind: "withdrawn" });
+  const view = graphs.workflow("ship");
+  assert.deepEqual(view.state, { kind: "admitted", revision: 1 });
+  assert.deepEqual(view.revisions.map((r) => [r.revision, r.status, r.current]), [[2, "WITHDRAWN", false], [1, "CURRENT", true]]);
+});
+
+test("a withdrawal the host refuses because the candidate is already decided says so, and rereads what the owner decided", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  const done = graphs.withdraw("ship", 2);
+  await settle();
+  host.answer("withdraw ship 2", notPending());
+  await settle();
+  // The owner admitted revision 2 in the browser before the withdrawal reached the host.
+  host.answer("show ship", admitted("ship", { revisions: (rs: Revision[]) => [{ ...rs[0], status: "CURRENT" }, { ...rs[1], status: "ADMITTED" }], currentRevision: 2 }));
+  assert.deepEqual(await done, {
+    kind: "refused",
+    message: "The host refused: revision 2 of ship is no longer pending. The owner has admitted or rejected it, or it was withdrawn already.",
+  });
+  assert.deepEqual(graphs.workflow("ship").state, { kind: "admitted", revision: 2 });
+});
+
+test("a withdrawal praxis couldn't confirm is unknown, and the next one resends its request id", async () => {
+  const { host, graphs } = setup([local("ship")]);
+  await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  const requestId = "3f2c8a1e-5b7d-4e9a-8c6f-0d1e2a3b4c5d";
+  const first = graphs.withdraw("ship", 2);
+  // A second press while the first is in flight joins it.
+  assert.equal(graphs.withdraw("ship", 2), first);
+  await settle();
+  host.answer("withdraw ship 2", { kind: "unknown", detail: "The host didn't confirm the request.", requestId });
+  await settle();
+  host.answer("show ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
+  assert.deepEqual(await first, {
+    kind: "unknown",
+    message: "Quay can't tell whether the host withdrew revision 2 of ship: The host didn't confirm the request. Withdraw again resends the same request.",
+  });
+  assert.equal(host.calls.filter((c) => c.command === "praxis_host_graph_withdraw").length, 1);
+  const again = graphs.withdraw("ship", 2);
+  await settle();
+  assert.equal(host.calls[host.calls.length - 1].args.requestId, requestId);
+  host.answer("withdraw ship 2", withdrawnRecord("ship", 2));
+  await settle();
+  host.answer("show ship", admitted("ship"));
+  assert.deepEqual(await again, { kind: "withdrawn" });
 });
