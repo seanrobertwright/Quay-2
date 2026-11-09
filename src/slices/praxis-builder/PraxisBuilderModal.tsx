@@ -80,6 +80,7 @@ import { graphWorkflowStepFor, type GraphWorkflowEdit } from "./graphWorkflow.ts
 import { TemplateForm } from "./TemplateForm.tsx";
 import { templateStepFor, type TemplateEdit } from "./template.ts";
 import { TriggerForm } from "./TriggerForm.tsx";
+import type { GraphTriggerSubmit } from "./TriggerSubmit.tsx";
 import { CrossRecordSection, RunContextPanel, RunsUnder, SubmittedAs } from "./RunContextPanel.tsx";
 import { graphRunContext, issuesOn, recordsWithErrors, type GraphRunContext } from "./runContext.ts";
 import { useBindingAttach } from "./useBindingAttach.ts";
@@ -468,6 +469,19 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           onCheckAgain: () => void shownTriggers.checkAgain(name),
         }
       : null;
+  /** What trigger `name`'s Check on host and Submit need from the builder (#476): the host condition and a reread of its host state. */
+  const graphTriggerSubmit = (name: string): GraphTriggerSubmit | undefined => {
+    const model = shownTriggers;
+    if (!model) return undefined;
+    return {
+      condition: host.condition,
+      reread: async () => {
+        if (!model.has(name)) return null;
+        await model.checkAgain(name);
+        return model.trigger(name);
+      },
+    };
+  };
   /**
    * What graph workflow `name`'s Check on host and Submit need from the builder (#462): which
    * records have drafts with edits their saved files lack, and a reread of its host state.
@@ -2474,6 +2488,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onOpen={openDefinition}
                     onValidated={recordValidity}
                     host={graphTriggerHost(open.id)}
+                    submit={graphTriggerSubmit(open.id)}
                   />
                 </>
               ) : openDraft && open.kind === "templates" ? (
