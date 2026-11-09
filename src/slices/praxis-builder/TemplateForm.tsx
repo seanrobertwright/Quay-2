@@ -51,6 +51,7 @@ import {
   type TemplateEdit,
 } from "./template.ts";
 import { useValidation } from "./useValidation.ts";
+import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
 import type { GitChange, Diagnostic } from "./types.ts";
 
 interface TemplateFormProps {
@@ -90,11 +91,8 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-/** What the template's work area shows. */
-type WorkAreaView = "template" | "runs";
-
 export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, runs }) => {
-  const [shownView, setShownView] = useState<WorkAreaView>("template");
+  const [shownView, setShownView] = useState<WorkAreaView>("record");
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
   useEffect(() => {
@@ -301,21 +299,7 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
   );
   const rest = untaken.filter((d) => !removable.includes(d));
 
-  const viewSwitch = runs && (
-    <div role="group" aria-label="Show" className="max-w-3xl mx-auto px-6 pt-4 flex gap-1">
-      {(["template", "runs"] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          aria-pressed={shownView === v}
-          onClick={() => setShownView(v)}
-          className="px-2.5 py-1 rounded-md border border-[#30363d] text-xs text-[#c9d1d9] hover:bg-[#21262d] aria-pressed:bg-[#30363d] aria-pressed:text-white"
-        >
-          {v === "template" ? "Template" : "Runs"}
-        </button>
-      ))}
-    </div>
-  );
+  const viewSwitch = runs && <WorkAreaSwitch recordLabel="Template" shown={shownView} onShow={setShownView} />;
 
   if (runs && shownView === "runs") {
     return (

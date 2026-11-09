@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { createRunsList, type RunsList } from "./runsList.ts";
+import { createRunsList, GRAPH_RUNS, type RunsList } from "./runsList.ts";
 import type { CallOutcome } from "./praxisHost.ts";
-import { runEntry as entry, runsRecord } from "./fixtures/runs.ts";
+import { graphRunEntry, graphRunsRecord, runEntry as entry, runsRecord } from "./fixtures/runs.ts";
 
 const PROJECT = "E:/work/app";
 const NAME = "review-code";
@@ -319,4 +319,42 @@ test("a run page lookup that fails says why", async () => {
   list.dispose();
   list = createRunsList({ projectPath: PROJECT, name: NAME, call: async () => ({ kind: "record", record: { format: "coding-operator-view/1" } }) });
   assert.deepEqual(await list.runPage("wo-1"), { problem: "praxis gave no address for this run's page." });
+});
+
+test("a graph workflow's list reads aiws-graph-runs/1 through the graph commands, leaving out entries it can't read", async () => {
+  const backend = fakeBackend();
+  list = createRunsList({ projectPath: PROJECT, name: "nightly-build", source: GRAPH_RUNS, call: backend.call });
+  list.set(true);
+  await settle();
+  assert.equal(backend.calls[0].command, "praxis_host_graph_runs");
+  assert.equal(backend.reads().length, 0, "never the template command");
+  backend.calls[0].answer(
+    graphRunsRecord("nightly-build", [
+      graphRunEntry(4, { workflowRevision: 2, awaitingApproval: true, status: "AWAITING_APPROVAL" }),
+      graphRunEntry(3, { workflowRevision: "2" }),
+      graphRunEntry(2, { runPageAddress: 7 }),
+      graphRunEntry(1, { held: true, runPageAddress: null }),
+      entry(0),
+    ]),
+  );
+  await settle();
+  assert.deepEqual(list.view().runs?.map((r) => [r.runId, r.revision, r.stage, r.awaitingApproval, r.held, r.needsYou, r.runPageAddress]), [
+    ["run-4", 2, null, true, false, true, "https://praxis-abcdefghij.localhost:7443/#work-order=wo-4"],
+    ["run-1", 1, null, false, true, true, null],
+  ]);
+});
+
+test("a graph run's page address, when the list gave none, comes from the graph run's status", async () => {
+  const sent: string[] = [];
+  list = createRunsList({
+    projectPath: PROJECT,
+    name: "nightly-build",
+    source: GRAPH_RUNS,
+    call: async (command) => {
+      sent.push(command);
+      return { kind: "record", record: { format: "aiws-graph-operator-view/1", runPageAddress: "https://127.0.0.1:7443/#work-order=wo-1" } };
+    },
+  });
+  assert.deepEqual(await list.runPage("wo-1"), { address: "https://127.0.0.1:7443/#work-order=wo-1" });
+  assert.deepEqual(sent, ["praxis_host_graph_status"]);
 });
