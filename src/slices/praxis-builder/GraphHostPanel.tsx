@@ -6,11 +6,11 @@
 // in the browser.
 import { useState, type FC, type ReactNode } from "react";
 import { ExternalLink, RefreshCw, Undo2 } from "lucide-react";
-import type { GraphWorkflowHostView, WithdrawOutcome } from "./graphHost.ts";
+import type { GraphWorkflowHostView } from "./graphHost.ts";
 import { graphStatusLine, revisionRows, type GraphStatusLine } from "./graphHostStatus.ts";
 import { hostStateLook } from "./HostList.tsx";
 import { useMinuteTick } from "./HostStatusLine.tsx";
-import type { HostCondition } from "./praxisHost.ts";
+import type { HostCondition, WriteOutcome } from "./praxisHost.ts";
 import { hintClass, Section } from "./RecordFields.tsx";
 import { openRunPage } from "./runPage.ts";
 
@@ -21,7 +21,7 @@ export interface GraphWorkflowHost {
   /** Rereads this graph workflow only. */
   onCheckAgain: () => void;
   /** Withdraws pending candidate `revision`, and resolves once the host has been read again. */
-  onWithdraw: (revision: number) => Promise<WithdrawOutcome>;
+  onWithdraw: (revision: number) => Promise<WriteOutcome>;
 }
 
 /** How many revisions the panel draws at first, and adds with each Show more. */

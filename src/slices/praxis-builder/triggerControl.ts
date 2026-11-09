@@ -11,30 +11,22 @@
 // Writes aren't cancelled when the builder closes: a write killed half way would only leave its
 // outcome unknown. So the model holds no calls to dispose.
 import { invoke } from "@tauri-apps/api/core";
-import { outcomeMessage, type CallOutcome, type Invoker } from "./praxisHost.ts";
+import { outcomeMessage, writeOutcomeOf, type CallOutcome, type Invoker, type WriteOutcome, type WriteWords } from "./praxisHost.ts";
 import type { TriggerHost } from "./triggerHost.ts";
 
 /** Where a trigger's review page is, or why Quay couldn't find it. */
 export type ReviewPage = { kind: "address"; address: string } | { kind: "problem"; message: string };
 
-/** What one control came to, in the words its confirm shows. */
-export type ControlOutcome =
-  | { kind: "done" }
-  /** Nothing changed: the host refused it, or couldn't be asked. */
-  | { kind: "refused"; message: string }
-  /** Quay can't tell whether the host did it. */
-  | { kind: "unknown"; message: string };
-
 export interface TriggerControl {
   /** Withdraws pending candidate `revision` of `name` (`praxis triggers withdraw`), then rereads it. */
-  withdraw(name: string, revision: number): Promise<ControlOutcome>;
+  withdraw(name: string, revision: number): Promise<WriteOutcome>;
   /**
    * Disables `name` (`praxis triggers disable`), then rereads it. praxis sends no revision, so the
    * host disables the trigger as it stands when the request lands.
    */
-  disable(name: string): Promise<ControlOutcome>;
+  disable(name: string): Promise<WriteOutcome>;
   /** Retires `name` (`praxis triggers retire`), then rereads it. Like disabling, it acts on the trigger as it stands. */
-  retire(name: string): Promise<ControlOutcome>;
+  retire(name: string): Promise<WriteOutcome>;
   /**
    * The address praxis gives for revision `revision`'s review page (`praxis triggers show
    * --revision`), where the owner enables a disabled trigger. It writes nothing.
@@ -49,47 +41,16 @@ export interface TriggerControlOptions {
   call?: Invoker;
 }
 
-/** One kind of write and what it says, in the in-flight and unconfirmed key and in its outcome's words. */
-interface Write {
+/** One kind of write: its command, its in-flight and unconfirmed key, and how its outcome names it. */
+interface Write extends WriteWords {
   command: string;
   args: Record<string, unknown>;
   /** The write's key: its kind, the trigger and, for a withdrawal, the revision. */
   key: string;
-  /** "withdraw revision 2 of nightly", as the outcome's words name it. */
-  doing: string;
-  /** "withdrew revision 2 of nightly". */
-  done: string;
-}
-
-/** What a write's outcome means for the person who confirmed it. */
-function outcomeOf(outcome: CallOutcome, write: Write): ControlOutcome {
-  switch (outcome.kind) {
-    case "record":
-      return { kind: "done" };
-    case "hostRefused":
-      if (outcome.hostCode === "REVISION_NOT_PENDING") {
-        return {
-          kind: "refused",
-          message: `The host refused to ${write.doing}: it is no longer pending. The owner has admitted or rejected it, or it was withdrawn already. ${outcome.message}`,
-        };
-      }
-      return { kind: "refused", message: `The host refused to ${write.doing}: ${outcome.message}` };
-    case "unknown":
-      return {
-        kind: "unknown",
-        message: `Quay can't tell whether the host ${write.done}: ${outcome.detail}${outcome.requestId ? " Pressing it again resends the same request." : ""}`,
-      };
-    case "timedOut":
-      return { kind: "unknown", message: `praxis didn't answer in time, so Quay can't tell whether the host ${write.done}.` };
-    case "cancelled":
-      return { kind: "unknown", message: `praxis was stopped before it said whether the host ${write.done}.` };
-    default:
-      return { kind: "refused", message: `Quay didn't ${write.doing}: ${outcomeMessage(outcome)}` };
-  }
 }
 
 export function createTriggerControl({ projectPath, triggers, call = invoke }: TriggerControlOptions): TriggerControl {
-  const inFlight = new Map<string, Promise<ControlOutcome>>();
+  const inFlight = new Map<string, Promise<WriteOutcome>>();
   // The request id of each write praxis couldn't confirm, by its key, to resend.
   const unconfirmed = new Map<string, string>();
 
@@ -101,15 +62,15 @@ export function createTriggerControl({ projectPath, triggers, call = invoke }: T
     }
   }
 
-  async function sendWrite(name: string, write: Write): Promise<ControlOutcome> {
+  async function sendWrite(name: string, write: Write): Promise<WriteOutcome> {
     const outcome = await praxis(write.command, { ...write.args, requestId: unconfirmed.get(write.key) ?? null });
     if (outcome.kind === "unknown" && outcome.requestId) unconfirmed.set(write.key, outcome.requestId);
     else if (outcome.kind === "record" || outcome.kind === "hostRefused") unconfirmed.delete(write.key);
     await triggers.reread(name);
-    return outcomeOf(outcome, write);
+    return writeOutcomeOf(outcome, write);
   }
 
-  function send(name: string, write: Write): Promise<ControlOutcome> {
+  function send(name: string, write: Write): Promise<WriteOutcome> {
     const joined = inFlight.get(write.key);
     if (joined) return joined;
     const sent = sendWrite(name, write).finally(() => inFlight.delete(write.key));
@@ -129,12 +90,10 @@ export function createTriggerControl({ projectPath, triggers, call = invoke }: T
       });
     },
     disable(name) {
-      return send(name, { command: "praxis_host_trigger_disable", args: { name }, key: `disable
-${name}`, doing: `disable ${name}`, done: `disabled ${name}` });
+      return send(name, { command: "praxis_host_trigger_disable", args: { name }, key: `disable\n${name}`, doing: `disable ${name}`, done: `disabled ${name}` });
     },
     retire(name) {
-      return send(name, { command: "praxis_host_trigger_retire", args: { name }, key: `retire
-${name}`, doing: `retire ${name}`, done: `retired ${name}` });
+      return send(name, { command: "praxis_host_trigger_retire", args: { name }, key: `retire\n${name}`, doing: `retire ${name}`, done: `retired ${name}` });
     },
     async reviewPage(name, revision) {
       const outcome = await praxis("praxis_host_trigger_revision", { name, revision });
@@ -147,9 +106,9 @@ ${name}`, doing: `retire ${name}`, done: `retired ${name}` });
 
 /** The controls the trigger form offers for graph trigger `name`. */
 export interface TriggerControlActions {
-  withdraw(revision: number): Promise<ControlOutcome>;
-  disable(): Promise<ControlOutcome>;
-  retire(): Promise<ControlOutcome>;
+  withdraw(revision: number): Promise<WriteOutcome>;
+  disable(): Promise<WriteOutcome>;
+  retire(): Promise<WriteOutcome>;
   reviewPage(revision: number): Promise<ReviewPage>;
 }
 

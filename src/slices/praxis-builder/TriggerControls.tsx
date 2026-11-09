@@ -5,12 +5,14 @@
 // control model, and closes once the host has been read again. There is no enable, admit or
 // reject: the owner decides in the browser, and Enable in browser opens the current revision's
 // review page there through the loopback-only opener.
-import { useEffect, useId, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
-import { Archive, CirclePause, ExternalLink, TriangleAlert, Undo2, type LucideIcon } from "lucide-react";
-import { ConfirmDialog } from "./ConfirmDialog.tsx";
-import type { ControlOutcome, TriggerControlActions } from "./triggerControl.ts";
+import { useEffect, useId, useRef, useState, type FC, type RefObject } from "react";
+import { Archive, CirclePause, ExternalLink, TriangleAlert, Undo2 } from "lucide-react";
+import type { WriteOutcome } from "./praxisHost.ts";
+import type { TriggerControlActions } from "./triggerControl.ts";
 import type { GraphTriggerHostView } from "./triggerHost.ts";
 import { openRunPage } from "./runPage.ts";
+import { WithdrawConfirm } from "./WithdrawConfirm.tsx";
+import { WriteConfirm } from "./WriteConfirm.tsx";
 
 const buttonClass =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50 shrink-0";
@@ -70,7 +72,7 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
         </button>
       )}
       {shown?.kind === "disable" && (
-        <ControlConfirm
+        <WriteConfirm
           title={
             <>
               Disable <span className="font-mono">{name}</span>?
@@ -89,7 +91,7 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
             started already go on. Only the owner can enable it again, in the browser. Disabling it on the host doesn&apos;t change its
             saved file.
           </p>
-        </ControlConfirm>
+        </WriteConfirm>
       )}
       {enabled === false && view.current !== null && (
         <button type="button" onClick={() => view.current && void openReviewPage(view.current.revision)} className={buttonClass}>
@@ -107,26 +109,7 @@ export const TriggerControlBar: FC<{ name: string; view: GraphTriggerHostView; a
         <RetireConfirm name={name} revision={shown.revision} onRetire={() => actions.retire()} onClose={() => setShown(null)} returnFocus={returnFocus} />
       )}
       {shown?.kind === "withdraw" && (
-        <ControlConfirm
-          title={
-            <>
-              Withdraw revision {shown.revision} of <span className="font-mono">{name}</span>?
-            </>
-          }
-          closeLabel="Close withdraw"
-          label="Withdraw"
-          icon={Undo2}
-          sending={`Withdrawing revision ${shown.revision}…`}
-          onSend={() => actions.withdraw(shown.revision)}
-          onClose={() => setShown(null)}
-          returnFocus={returnFocus}
-        >
-          <p className="text-xs">
-            Revision {shown.revision} is waiting for the owner to admit it. The owner can no longer admit revision {shown.revision}. The host
-            keeps it in the history as withdrawn, and <span className="font-mono">{name}</span> falls back to its admitted revision&apos;s
-            state, or to Not submitted when it has none.
-          </p>
-        </ControlConfirm>
+        <WithdrawConfirm name={name} revision={shown.revision} onWithdraw={actions.withdraw} onClose={() => setShown(null)} returnFocus={returnFocus} />
       )}
       {notice && (
         <p role="alert" className="basis-full text-[11px] text-[#ff7b72] break-words">
@@ -146,14 +129,14 @@ const RetireConfirm: FC<{
   name: string;
   /** The current revision the form shows. */
   revision: number;
-  onRetire: () => Promise<ControlOutcome>;
+  onRetire: () => Promise<WriteOutcome>;
   onClose: () => void;
   returnFocus: RefObject<HTMLElement | null>;
 }> = ({ name, revision, onRetire, onClose, returnFocus }) => {
   const [understood, setUnderstood] = useState(false);
   const whyId = useId();
   return (
-    <ControlConfirm
+    <WriteConfirm
       title={
         <>
           Retire <span className="font-mono">{name}</span>? This can&apos;t be undone.
@@ -188,81 +171,6 @@ const RetireConfirm: FC<{
           Tick the box above to retire {name}.
         </p>
       )}
-    </ControlConfirm>
-  );
-};
-
-/**
- * One control's confirm. Its primary button sends the control, and the confirm closes once the
- * host has been read again. A refusal stays in it in the host's words with the button withheld,
- * since the host said no; an outcome praxis couldn't confirm stays too and may be sent again.
- * `withheld` gives a reason of the confirm's own to withhold the button, with the id of the text
- * that says why.
- */
-const ControlConfirm: FC<{
-  title: ReactNode;
-  closeLabel: string;
-  label: string;
-  icon: LucideIcon;
-  /** What the confirm says while the control is sent. */
-  sending: string;
-  onSend: () => Promise<ControlOutcome>;
-  onClose: () => void;
-  returnFocus: RefObject<HTMLElement | null>;
-  withheld?: { why: string } | null;
-  children: ReactNode;
-}> = ({ title, closeLabel, label, icon, sending: sendingText, onSend, onClose, returnFocus, withheld, children }) => {
-  const outcomeId = useId();
-  const [sending, setSending] = useState(false);
-  const [outcome, setOutcome] = useState<Exclude<ControlOutcome, { kind: "done" }> | null>(null);
-  // Set on unmount, so an answer that lands after the confirm closed changes nothing.
-  const closed = useRef(false);
-  useEffect(
-    () => () => {
-      closed.current = true;
-    },
-    [],
-  );
-
-  const send = async () => {
-    setSending(true);
-    setOutcome(null);
-    const result = await onSend();
-    if (closed.current) return;
-    if (result.kind === "done") {
-      onClose();
-      return;
-    }
-    setSending(false);
-    setOutcome(result);
-  };
-
-  return (
-    <ConfirmDialog
-      title={title}
-      closeLabel={closeLabel}
-      action={{
-        label,
-        icon,
-        tone: "danger",
-        withheld: sending || outcome?.kind === "refused" || Boolean(withheld),
-        describedBy: outcome ? outcomeId : withheld ? withheld.why : undefined,
-        onConfirm: () => void send(),
-      }}
-      onClose={onClose}
-      returnFocus={returnFocus}
-    >
-      {children}
-      {sending && (
-        <p role="status" className="text-xs">
-          {sendingText}
-        </p>
-      )}
-      {outcome && (
-        <p id={outcomeId} role="alert" className={`text-xs break-words ${outcome.kind === "refused" ? "text-[#ff7b72]" : "text-[#e3b341]"}`}>
-          {outcome.message}
-        </p>
-      )}
-    </ConfirmDialog>
+    </WriteConfirm>
   );
 };
