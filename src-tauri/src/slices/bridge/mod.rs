@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod models;
 pub mod opencode;
+pub mod pending;
 pub mod port;
 pub mod routes;
 pub mod server;

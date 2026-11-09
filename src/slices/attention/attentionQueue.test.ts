@@ -11,6 +11,7 @@ import {
   pendingPermissionIds,
   type AttentionEvent,
   type AttentionQueue,
+  undeliveredAnswer,
   waitedLabel,
 } from "./attentionQueue.ts";
 
@@ -379,4 +380,36 @@ test("a terminal ending forgets how many of its requests were dropped, and leave
   );
   assert.equal(droppedPermissionCount(queue, "term-a"), 0);
   assert.equal(droppedPermissionCount(queue, "term-b"), 1);
+});
+
+const NOBODY_WAITING =
+  "The agent is no longer waiting for permission request req-1, so the answer was not delivered";
+
+test("an answer that reaches nobody clears its request and tells the user which request it was", () => {
+  const queue = run(
+    requested("req-1", "term-a", 100, "Write"),
+    requested("req-2", "term-b", 200),
+    { type: "permissionAnswerUndelivered", requestId: "req-1", error: NOBODY_WAITING }
+  );
+
+  assert.deepEqual(keys(queue), ["permission:req-2"]);
+  assert.deepEqual(modalPermissions(queue).map((item) => item.requestId), ["req-2"]);
+  assert.deepEqual(undeliveredAnswer(queue), {
+    requestId: "req-1",
+    terminalId: "term-a",
+    tool: "Write",
+    error: NOBODY_WAITING,
+  });
+});
+
+test("closing the notice about an undelivered answer leaves the queue's requests waiting", () => {
+  const queue = run(
+    requested("req-1", "term-a", 100),
+    requested("req-2", "term-a", 200),
+    { type: "permissionAnswerUndelivered", requestId: "req-1", error: NOBODY_WAITING },
+    { type: "undeliveredAnswerDismissed" }
+  );
+
+  assert.equal(undeliveredAnswer(queue), null);
+  assert.deepEqual(keys(queue), ["permission:req-2"]);
 });

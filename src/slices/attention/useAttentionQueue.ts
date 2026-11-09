@@ -17,6 +17,8 @@ import {
   type AttentionItem,
   type PendingPermission,
   type PermissionItem,
+  type UndeliveredAnswer,
+  undeliveredAnswer,
 } from "./attentionQueue";
 import { onUserInput } from "../terminal/userInput";
 import { onTerminalRelaunched } from "../terminal/terminalRelaunched";
@@ -58,11 +60,15 @@ export interface AttentionQueueView {
   /** Shows deferred `requestIds` in the permission modal again. */
   reopenPermissions: (requestIds: readonly string[]) => void;
   /**
-   * Sends the user's answer to the backend and clears the request once the backend takes it.
-   * The request also clears on the backend's `permission-resolved`, but that is not sent when the
-   * agent has stopped waiting, so the answer clears it here too.
+   * Sends the user's answer to the backend and clears the request once the backend takes it. When
+   * the backend refuses it because no agent is waiting for that answer any more, the request
+   * clears too, and `undeliveredAnswer` tells the user.
    */
   answerPermission: AnswerPermission;
+  /** The latest answer that reached no agent, for the app to tell the user; null when none. */
+  undeliveredAnswer: UndeliveredAnswer | null;
+  /** Closes the notice about the answer that reached no agent. */
+  dismissUndeliveredAnswer: () => void;
   /** Clears the terminal's finished turn without acting on it. Its permission requests stay. */
   dismissFinishedTurn: (terminalId: string) => void;
 }
@@ -83,7 +89,8 @@ export interface AttentionQueueView {
  * terminal list (closed), or the user relaunches it.
  *
  * Returns the waiting items, the requests the permission modal shows, the ids of every pending
- * request, and the user's actions on them, including dismissing a terminal's finished turn.
+ * request, the latest answer that reached no agent, and the user's actions on them, including
+ * dismissing a terminal's finished turn.
  */
 export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView {
   const [queue, dispatch] = useReducer(applyAttentionEvent, emptyAttentionQueue);
@@ -187,9 +194,15 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
         });
         dispatch({ type: "permissionResolved", requestId });
       } catch (err) {
-        console.error("Failed to resolve permission:", err);
+        // The backend refuses an answer only when no agent waits for it, so the request is gone
+        dispatch({ type: "permissionAnswerUndelivered", requestId, error: String(err) });
       }
     },
+    []
+  );
+
+  const dismissUndeliveredAnswer = useCallback(
+    () => dispatch({ type: "undeliveredAnswerDismissed" }),
     []
   );
 
@@ -208,6 +221,8 @@ export function useAttentionQueue(terminals: TerminalInfo[]): AttentionQueueView
     deferPermissions,
     reopenPermissions,
     answerPermission,
+    undeliveredAnswer: undeliveredAnswer(queue),
+    dismissUndeliveredAnswer,
     dismissFinishedTurn,
   };
 }
