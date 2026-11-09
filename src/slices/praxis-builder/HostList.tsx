@@ -3,16 +3,20 @@
 // `hostList.ts`'s view of the host catalog (#449) and never call `praxis` themselves: Check host
 // asks the catalog, whose reads go through the Praxis CLI runner (#446).
 import { useEffect, useId, useRef, useState, type FC } from "react";
-import { Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleHelp, CircleX, CloudOff, FileDiff, RefreshCw } from "lucide-react";
+import { Archive, Ban, Check, ChevronDown, ChevronRight, CircleAlert, CircleDashed, CircleHelp, CircleX, CloudOff, FileDiff, Hourglass, RefreshCw } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HostActionButton } from "./HostChip.tsx";
 import type { HostTone } from "./hostCondition.ts";
-import { hostOnlyDetails, type HostBadge, type HostBadgeTone, type HostGroupHeader, type HostOnlySection, type ShownHostState } from "./hostList.ts";
+import { hostOnlyDetails, type HostBadge, type HostBadgeTone, type HostGroupHeader, type HostLook, type HostOnlySection } from "./hostList.ts";
 import type { InteractiveCommand } from "./praxisHost.ts";
 
-const BADGE_ICONS: Record<ShownHostState, LucideIcon> = {
+const BADGE_ICONS: Record<HostLook, LucideIcon> = {
   nameRefused: Ban,
   notInstalled: CloudOff,
+  notSubmitted: CloudOff,
+  retired: Archive,
+  candidate: Hourglass,
+  admitted: Check,
   invalidOnHost: CircleX,
   differs: FileDiff,
   notReady: CircleAlert,
@@ -32,7 +36,7 @@ const BADGE_TONES: Record<HostBadgeTone, string> = {
  * A host state's icon and colour class. A muted reading loses its colour as well as its weight,
  * so an old warning doesn't shout; the text beside the icon still says the state.
  */
-export function hostStateLook(state: ShownHostState, tone: HostBadgeTone, muted: boolean): { Icon: LucideIcon; toneClass: string } {
+export function hostStateLook(state: HostLook, tone: HostBadgeTone, muted: boolean): { Icon: LucideIcon; toneClass: string } {
   return { Icon: BADGE_ICONS[state], toneClass: muted ? `${BADGE_TONES.muted} opacity-60` : BADGE_TONES[tone] };
 }
 

@@ -10,7 +10,8 @@
 // at once. When the host goes offline, every per-template reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
-import { isHostLevelFailure, outcomeMessage, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { isHostLevelFailure, outcomeMessage, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { createHostReadSession, createLimiter, isObject, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS, online } from "./hostReadSession.ts";
 
 /** A local workflow template as the builder's list has it. */
 export interface LocalTemplate {
@@ -50,12 +51,6 @@ export const HOST_STATE_ORDER: readonly KnownHostState[] = [
   "notReady",
   "installed",
 ];
-
-/** How long a reading is current; after it, the state is shown muted ("may be out of date"). */
-export const MUTED_AFTER_MS = 10 * 60_000;
-
-/** The most `workflows show` calls the reader runs at once. */
-export const MAX_SHOWS_IN_FLIGHT = 2;
 
 /** One template's host state, and what it rests on. */
 export interface TemplateHostView {
@@ -139,8 +134,6 @@ type ShowReading =
   | { at: number; comparedDigest: string | null; detail: Detail }
   | { at: number; comparedDigest: string | null; failed: string };
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-
 function messages(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.flatMap((d) => (isObject(d) && typeof d.message === "string" ? [d.message] : []));
@@ -187,36 +180,6 @@ function notReadyReason(detail: Detail): string {
   return "The host says this template can't run, and gave no reason.";
 }
 
-const online = (condition: HostCondition) => hostConditionView(condition).usable;
-
-/**
- * Runs at most `limit` tasks at once, in the order they were queued. The limit is this queue's,
- * so no caller can run past it.
- */
-function createLimiter(limit: number) {
-  let running = 0;
-  const queue: (() => void)[] = [];
-  const next = () => {
-    if (running >= limit) return;
-    const start = queue.shift();
-    if (start) start();
-  };
-  return function run<T>(task: () => Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      queue.push(() => {
-        running += 1;
-        task()
-          .then(resolve, reject)
-          .finally(() => {
-            running -= 1;
-            next();
-          });
-      });
-      next();
-    });
-  };
-}
-
 export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOptions): HostCatalog {
   let local = new Map<string, LocalTemplate>();
   let condition: HostCondition = { state: "notCheckedYet" };
@@ -224,53 +187,24 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
   const shows = new Map<string, ShowReading>();
   // Bumped whenever readings are dropped, so an answer to a call asked before is ignored.
   let generation = 0;
-  let disposed = false;
   let shown = false;
   // One call in flight per read: a second ask for the same read joins it.
   let listInFlight: Promise<boolean> | null = null;
   const showsInFlight = new Map<string, Promise<void>>();
-  const callIds = new Set<string>();
-  const listeners = new Set<() => void>();
   const limit = createLimiter(MAX_SHOWS_IN_FLIGHT);
-  let muteTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const changed = () => {
-    if (disposed) return;
-    scheduleMute();
-    for (const listener of listeners) listener();
-  };
-
-  /** Wakes listeners when the next current reading turns muted. */
-  function scheduleMute() {
-    if (muteTimer !== null) clearTimeout(muteTimer);
-    muteTimer = null;
-    const now = Date.now();
-    const stamps = [list?.at, ...[...shows.values()].map((s) => s.at)].filter(
-      (at): at is number => at !== undefined && now - at < MUTED_AFTER_MS,
-    );
-    if (stamps.length === 0) return;
-    muteTimer = setTimeout(changed, Math.min(...stamps) + MUTED_AFTER_MS - now);
-  }
-
-  /** One `praxis` call through the runner, cancelled by `dispose`. */
-  async function praxis(command: string, args: Record<string, unknown>): Promise<CallOutcome> {
-    const callId = crypto.randomUUID();
-    callIds.add(callId);
-    try {
-      return (await call(command, { projectPath, callId, ...args })) as CallOutcome;
-    } catch (e) {
-      return { kind: "refused", message: String(e) };
-    } finally {
-      callIds.delete(callId);
-    }
-  }
+  const session = createHostReadSession({
+    projectPath,
+    call,
+    stamps: () => [...(list ? [list.at] : []), ...[...shows.values()].map((s) => s.at)],
+  });
+  const { praxis, changed } = session;
 
   /** Reads `list`, joining one in flight; true when a reading was kept. */
   function readList(): Promise<boolean> {
     if (listInFlight) return listInFlight;
     const asked = generation;
     const read = praxis("praxis_host_workflows_list", {}).then((outcome) => {
-      if (disposed || asked !== generation || outcome.kind !== "record") return false;
+      if (session.disposed || asked !== generation || outcome.kind !== "record") return false;
       const entries = parseList(outcome.record);
       if (!entries) return false;
       list = { at: Date.now(), entries: new Map(entries.map((e) => [e.name, e])) };
@@ -291,7 +225,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
     if (joined) return joined;
     const asked = generation;
     const read = limit(() => praxis("praxis_host_workflow_show", { name })).then((outcome) => {
-      if (disposed || asked !== generation || outcome.kind === "cancelled") return;
+      if (session.disposed || asked !== generation || outcome.kind === "cancelled") return;
       const at = Date.now();
       // The verdict compares the host's copy with the saved file as it is when the answer comes.
       const comparedDigest = local.get(name)?.digest ?? null;
@@ -319,7 +253,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
     [...local.values()].filter((t) => t.nameProblem === null && list?.entries.has(t.name)).map((t) => t.name);
 
   async function readAll(): Promise<void> {
-    if (!(await readList()) || disposed) return;
+    if (!(await readList()) || session.disposed) return;
     await Promise.all(installedLocals().map(readShow));
   }
 
@@ -327,7 +261,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
     const template = local.get(name);
     if (template?.nameProblem) return;
     if (!list?.entries.has(name)) {
-      if (!(await readList()) || disposed) return;
+      if (!(await readList()) || session.disposed) return;
       if (!list?.entries.has(name)) return;
     }
     await readShow(name);
@@ -372,7 +306,7 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       changed();
     },
     groupShown() {
-      if (shown || disposed) return Promise.resolve();
+      if (shown || session.disposed) return Promise.resolve();
       shown = true;
       return readAll();
     },
@@ -381,11 +315,11 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       local.set(name, { name, nameProblem: template?.nameProblem ?? null, digest });
       changed();
       // A template the host doesn't have stays not installed until the host restarts.
-      if (disposed || !list?.entries.has(name)) return Promise.resolve();
+      if (session.disposed || !list?.entries.has(name)) return Promise.resolve();
       return readOne(name);
     },
-    checkHost: () => (disposed ? Promise.resolve() : readAll()),
-    checkAgain: (name) => (disposed ? Promise.resolve() : readOne(name)),
+    checkHost: () => (session.disposed ? Promise.resolve() : readAll()),
+    checkAgain: (name) => (session.disposed ? Promise.resolve() : readOne(name)),
     template(name) {
       const { state, checkedAt } = stateOf(name);
       const checking = showsInFlight.has(name) || listInFlight !== null;
@@ -400,19 +334,10 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
       if (!online(condition) || !list) return [];
       return [...list.entries.values()].filter((e) => !local.has(e.name)).map((e) => ({ ...e }));
     },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: session.subscribe,
     dispose() {
-      disposed = true;
+      session.dispose();
       drop();
-      if (muteTimer !== null) clearTimeout(muteTimer);
-      muteTimer = null;
-      listeners.clear();
-      for (const callId of callIds) void call("praxis_host_cancel", { callId }).catch(() => {});
     },
   };
 }

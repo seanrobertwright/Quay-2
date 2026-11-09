@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use serde_json::{json, Map, Value};
 
 use super::canonical::{canonical_record, content_hash, to_canonical_text};
+use super::host::bundle_digest;
 use super::template_digest::template_digest;
 use super::models::{
     BindingsInput, ConflictReason, ContractTriggers, DefinitionEntry, DefinitionFile, DefinitionList, FileProblem,
@@ -268,7 +269,8 @@ pub(super) fn json_ids(dir: &Path, folder: &str) -> Result<Vec<String>, String> 
 /// files directly in the kind's folder are listed. A missing folder is an empty list. Each
 /// file is parsed, so one that can't be opened, or whose `id` isn't its name, is flagged.
 /// A workflow template or graph workflow whose name breaks the host's rule is flagged too. A
-/// graph binding lists with its graph and cost unit, and a graph workflow with its contract.
+/// graph binding lists with its graph and cost unit, and a graph workflow with its contract and the
+/// bundle digest of the saved files it names.
 pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList, String> {
     let Some(dir) = confined_dir(repo, kind.folder())? else {
         return Ok(DefinitionList { entries: Vec::new(), truncated: false });
@@ -296,6 +298,7 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                 graph_id: None,
                 cost_unit: None,
                 template_digest: None,
+                bundle_digest: None,
                 contract_id: None,
                 graph_binding_id: None,
                 target: None,
@@ -310,8 +313,10 @@ pub fn list_definitions(repo: &Path, kind: PraxisKind) -> Result<DefinitionList,
                                 .then(|| record.get(key).and_then(Value::as_str).map(str::to_string))
                                 .flatten()
                         };
+                        let bundle_digest = (kind == PraxisKind::GraphWorkflows).then(|| bundle_digest(repo, &id)).flatten();
                         return DefinitionEntry {
                             template_digest,
+                            bundle_digest,
                             contract_id: workflow_field("contractId"),
                             graph_id: workflow_field("graphId"),
                             graph_binding_id: workflow_field("graphBindingId"),
@@ -1103,6 +1108,55 @@ mod tests {
         assert_eq!(by_id("Ship_It").problem, None, "it still opens");
         let read = read_definition(&repo, PraxisKind::GraphWorkflows, "ship-it").unwrap();
         assert_eq!(read.content.unwrap()["graphBindingId"], "g-1");
+    }
+
+    /// Saves the bundle of `host/bundle_digest.fixture.json` as graph workflow `ship`, and gives
+    /// the `bundleDigest` the AI-WS-SDK engine computes for its files. The fixture says how it was made.
+    fn engine_bundle(repo: &Path) -> String {
+        let fixture: Value = serde_json::from_str(include_str!("host/bundle_digest.fixture.json")).unwrap();
+        let id = |part: &Value| part["id"].as_str().unwrap().to_string();
+        let file = |part: &Value| part["file"].as_str().unwrap().to_string();
+        let (graph, binding, contract) = (&fixture["graph"], &fixture["binding"], &fixture["contract"]);
+        write(repo, &format!(".praxis/graphs/{}.json", id(graph)), &file(graph));
+        write(repo, &format!(".praxis/graph-bindings/{}.json", id(binding)), &file(binding));
+        write(repo, &format!(".praxis/contracts/{}.json", id(contract)), &file(contract));
+        let grants = fixture["grants"].as_array().unwrap();
+        for grant in grants {
+            write(repo, &format!(".praxis/grants/{}.json", id(grant)), &file(grant));
+        }
+        let listed: Vec<String> = grants.iter().map(id).collect();
+        let bindings = json!({ "version": 1, "graphs": [id(graph)], "grants": listed });
+        write(repo, &format!(".praxis/bindings/{}.json", id(contract)), &bindings.to_string());
+        let workflow = json!({ "version": 1, "contractId": id(contract), "graphId": id(graph), "graphBindingId": id(binding) });
+        write(repo, ".praxis/graph-workflows/ship.json", &workflow.to_string());
+        fixture["bundleDigest"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn a_graph_workflow_lists_with_the_bundle_digest_the_engine_gives_its_saved_files() {
+        let repo = temp_repo();
+        let digest = engine_bundle(&repo);
+        let list = list_definitions(&repo, PraxisKind::GraphWorkflows).unwrap();
+        assert_eq!(list.entries[0].bundle_digest.as_deref(), Some(digest.as_str()));
+        // Only graph workflows have one.
+        assert!(list_definitions(&repo, PraxisKind::Graphs).unwrap().entries.iter().all(|e| e.bundle_digest.is_none()));
+    }
+
+    #[test]
+    fn a_graph_workflow_whose_bundle_isnt_whole_or_strict_json_has_no_bundle_digest() {
+        let digest_after = |change: &dyn Fn(&Path)| {
+            let repo = temp_repo();
+            engine_bundle(&repo);
+            change(&repo);
+            list_definitions(&repo, PraxisKind::GraphWorkflows).unwrap().entries[0].bundle_digest.clone()
+        };
+        let fixture: Value = serde_json::from_str(include_str!("host/bundle_digest.fixture.json")).unwrap();
+        let grant = format!(".praxis/grants/{}.json", fixture["grants"][0]["id"].as_str().unwrap());
+        let contract = format!(".praxis/contracts/{}.json", fixture["contract"]["id"].as_str().unwrap());
+        assert_eq!(digest_after(&|repo| std::fs::remove_file(repo.join(&grant)).unwrap()), None, "a grant is missing");
+        // praxis refuses a file that isn't strict JSON, so the host can have no digest for it.
+        assert_eq!(digest_after(&|repo| write(repo, &contract, r#"{"id": "release", "id": "release"}"#)), None, "a duplicate key");
+        assert_eq!(digest_after(&|repo| write(repo, ".praxis/graph-workflows/ship.json", r#"{"version": 1}"#)), None, "nothing picked");
     }
 
     #[test]

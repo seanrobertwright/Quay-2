@@ -23,6 +23,8 @@ export interface DefinitionEntry {
   costUnit?: string;
   /** A workflow template file's digest as the Praxis host computes it (#449), when it has one. */
   templateDigest?: string;
+  /** A graph workflow's bundle digest over the saved files it names, as the Praxis host computes it (#461), when Quay can compute it. */
+  bundleDigest?: string;
   /** A graph workflow's `contractId`, when it is a string, which a trigger that starts it takes (#472). */
   contractId?: string;
   /** A graph workflow's `graphBindingId`, when it is a string, so a graph's canvas says which binding it uses (#467). */
