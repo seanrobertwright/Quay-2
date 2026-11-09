@@ -11,7 +11,7 @@ use serde_json::Value;
 use super::graph_bindings::validate_graph_binding;
 use super::models::PraxisKind;
 use super::store::{read_record, validate_id, BINDINGS_DIR};
-use super::validate::{check_size, field_issue, validate_contract, validate_graph, Diagnostic, Found, Severity, Validation};
+use super::validate::{check_size, field_issue, validate_contract, validate_grant, validate_graph, Diagnostic, Found, Severity, Validation};
 
 /// A graph workflow's local checks (#459), against the records it names as saved on disk,
 /// since a submission sends the saved files only (#444).
@@ -23,7 +23,8 @@ pub struct GraphWorkflowCheck {
     pub grants: Vec<String>,
     /// Each check that fails, on the field that names the record at fault: a record that doesn't
     /// exist, can't be read or isn't valid, a graph the contract's bindings file doesn't list,
-    /// and a graph binding of another graph.
+    /// and a graph binding of another graph. A grant at fault is on the contract, whose bindings
+    /// file lists it (#462).
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -57,9 +58,9 @@ fn strings(v: Option<&Value>) -> Vec<String> {
 }
 
 /// Checks a graph workflow against the saved records it names: each must exist and be valid,
-/// the contract's bindings file must list the graph, and the graph binding must bind the graph.
-/// Every issue is an error on the field naming the record at fault. Content over the size
-/// limit is refused.
+/// as must each grant its contract's bindings file lists, the bindings file must list the graph,
+/// and the graph binding must bind the graph. Every issue is an error on the field naming the
+/// record at fault, a grant's on the contract's. Content over the size limit is refused.
 pub fn check_graph_workflow(repo: &Path, workflow: &Value) -> Result<GraphWorkflowCheck, String> {
     check_size(workflow)?;
     let mut found = Found::default();
@@ -91,6 +92,16 @@ pub fn check_graph_workflow(repo: &Path, workflow: &Value) -> Result<GraphWorkfl
                 Ok(Some(bindings)) => {
                     grants = strings(bindings.get("grants"));
                     bound_graphs = Some(Some(strings(bindings.get("graphs"))));
+                    for grant in grants.iter().filter(|g| validate_id(g).is_ok()) {
+                        match read_record(repo, PraxisKind::Grants.folder(), grant) {
+                            Ok(Some(record)) => invalid(&mut found, "/contractId", "Grant", grant, validate_grant(&record)),
+                            Ok(None) => {
+                                let message = format!("Contract {}'s bindings file lists grant {}, and no saved grant has that id.", cid, grant);
+                                push(&mut found, "/contractId", "GRANT_NOT_FOUND", message);
+                            }
+                            Err(why) => push(&mut found, "/contractId", "UNREADABLE", format!("Grant {} can't be read: {}", grant, why)),
+                        }
+                    }
                 }
                 Err(why) => {
                     let message = format!("Contract {}'s bindings file can't be read: {}", cid, why);
@@ -230,12 +241,22 @@ mod tests {
         })
     }
 
+    fn grant(id: &str) -> Value {
+        json!({
+            "id": id, "subject": "agent", "profile": "finite-v1", "actions": [], "resources": [],
+            "notBefore": "0", "expiresAt": "4102444800000", "limit": "0", "canDelegate": false, "depth": "0"
+        })
+    }
+
     /// Contract `c` binding graph `g` and grants `root` and `child`, graph `g` and its binding
     /// `g-1`, graph `other` and its binding `other-1`, each saved and valid.
     fn project() -> TempDir {
         let repo = TempDir::canonical("praxis-gw");
         let bound = BindingsInput { graphs: vec!["g".into()], grants: vec!["root".into(), "child".into()] };
         save(&repo, PraxisKind::Contracts, "c", contract("c"), Some(bound));
+        for g in ["root", "child"] {
+            save(&repo, PraxisKind::Grants, g, grant(g), None);
+        }
         for g in ["g", "other"] {
             save(&repo, PraxisKind::Graphs, g, graph(g), None);
             let b = format!("{g}-1");
@@ -258,6 +279,7 @@ mod tests {
         let read = |kind: PraxisKind, id: &str| read_definition(&repo, kind, id).unwrap().content.unwrap();
         assert_eq!(validate_definition(PraxisKind::Contracts, &read(PraxisKind::Contracts, "c")).unwrap().verdict, None);
         assert_eq!(validate_definition(PraxisKind::Graphs, &read(PraxisKind::Graphs, "g")).unwrap().verdict, None);
+        assert_eq!(validate_definition(PraxisKind::Grants, &read(PraxisKind::Grants, "root")).unwrap().verdict, None);
         let b = read(PraxisKind::GraphBindings, "g-1");
         let v = super::super::graph_bindings::validate_graph_binding(&b, Some(&read(PraxisKind::Graphs, "g")));
         assert_eq!(v.verdict, None, "{v:?}");
@@ -320,6 +342,26 @@ mod tests {
         let on_binding: Vec<&str> =
             check.diagnostics.iter().filter(|d| d.path == "/graphBindingId").map(|d| d.code.as_str()).collect();
         assert_eq!(on_binding, vec!["INVALID_REFERENCE"], "{:?}", check.diagnostics);
+    }
+
+    #[test]
+    fn a_grant_the_bundle_carries_that_isn_t_saved_valid_or_readable_is_flagged_on_the_contract() {
+        let repo = project();
+        std::fs::remove_file(repo.join(".praxis/grants/root.json")).unwrap();
+        let mut broken = grant("child");
+        broken["limit"] = json!(5);
+        write(&repo, ".praxis/grants/child.json", &broken.to_string());
+        let check = check_graph_workflow(&repo, &workflow("c", "g", "g-1")).unwrap();
+        assert_eq!(found(&check), vec![("GRANT_NOT_FOUND", "/contractId"), ("INVALID_REFERENCE", "/contractId")]);
+        assert_eq!(check.diagnostics[0].message, "Contract c's bindings file lists grant root, and no saved grant has that id.");
+        assert!(check.diagnostics[1].message.starts_with("Grant child isn't valid"), "{}", check.diagnostics[1].message);
+        write(&repo, ".praxis/grants/child.json", "{nope");
+        save(&repo, PraxisKind::Grants, "root", grant("root"), None);
+        let check = check_graph_workflow(&repo, &workflow("c", "g", "g-1")).unwrap();
+        assert_eq!(found(&check), vec![("UNREADABLE", "/contractId")]);
+        assert!(check.diagnostics[0].message.starts_with("Grant child can't be read"), "{}", check.diagnostics[0].message);
+        // The grant set is still the bindings file's.
+        assert_eq!(check.grants, vec!["root", "child"]);
     }
 
     #[test]

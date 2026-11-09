@@ -1,11 +1,12 @@
 // A graph workflow's state on the Praxis host, on its form (#444, #461): a status line with Check
 // again, and Open in browser for a pending candidate's admission page, then the Revisions panel.
-// They draw `graphHostStatus.ts`'s view of the graph host model and never call `praxis`
-// themselves: Check again asks the model. There is no admit, reject or retire: the owner decides
+// A pending candidate has Withdraw (#463) in both, which asks the form to show its confirm. They
+// draw `graphHostStatus.ts`'s view of the graph host model and never call `praxis` themselves:
+// Check again and Withdraw ask the model. There is no admit, reject or retire: the owner decides
 // in the browser.
 import { useState, type FC } from "react";
-import { ExternalLink, RefreshCw } from "lucide-react";
-import type { GraphWorkflowHostView } from "./graphHost.ts";
+import { ExternalLink, RefreshCw, Undo2 } from "lucide-react";
+import type { GraphWorkflowHostView, WithdrawOutcome } from "./graphHost.ts";
 import { graphStatusLine, revisionRows } from "./graphHostStatus.ts";
 import { hostStateLook } from "./HostList.tsx";
 import { useMinuteTick } from "./HostStatusLine.tsx";
@@ -13,12 +14,14 @@ import type { HostCondition } from "./praxisHost.ts";
 import { hintClass, Section } from "./RecordFields.tsx";
 import { openRunPage } from "./runPage.ts";
 
-/** What the form needs to show a graph workflow's host state and check it again. */
+/** What the form needs to show a graph workflow's host state, check it again and withdraw a pending candidate. */
 export interface GraphWorkflowHost {
   view: GraphWorkflowHostView;
   condition: HostCondition;
   /** Rereads this graph workflow only. */
   onCheckAgain: () => void;
+  /** Withdraws pending candidate `revision`, and resolves once the host has been read again. */
+  onWithdraw: (revision: number) => Promise<WithdrawOutcome>;
 }
 
 /** How many revisions the panel draws at first, and adds with each Show more. */
@@ -27,8 +30,12 @@ export const REVISIONS_SHOWN = 20;
 const buttonClass =
   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50 shrink-0";
 
-/** The status line under the form's header. */
-export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost }> = ({ name, host }) => {
+/** The status line under the form's header. `onWithdraw` shows the confirm for a revision. */
+export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost; onWithdraw: (revision: number) => void }> = ({
+  name,
+  host,
+  onWithdraw,
+}) => {
   useMinuteTick();
   const [notice, setNotice] = useState<string | null>(null);
   const line = graphStatusLine(host.view, host.condition, Date.now());
@@ -72,6 +79,7 @@ export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost }> 
             Open in browser
           </button>
         )}
+        {line.withdrawRevision !== null && <WithdrawButton revision={line.withdrawRevision} onWithdraw={onWithdraw} />}
       </div>
       {notice && (
         <p role="alert" className="text-[11px] text-[#ff7b72] break-words">
@@ -82,8 +90,19 @@ export const GraphHostStatusLine: FC<{ name: string; host: GraphWorkflowHost }> 
   );
 };
 
-/** The Revisions panel: the host's revisions newest first, `REVISIONS_SHOWN` at a time. */
-export const RevisionsPanel: FC<{ view: GraphWorkflowHostView }> = ({ view }) => {
+/** Withdraw for pending candidate `revision`, which shows its confirm. */
+const WithdrawButton: FC<{ revision: number; onWithdraw: (revision: number) => void }> = ({ revision, onWithdraw }) => (
+  <button type="button" aria-label={`Withdraw revision ${revision}`} onClick={() => onWithdraw(revision)} className={buttonClass}>
+    <Undo2 className="w-3 h-3" aria-hidden="true" />
+    Withdraw
+  </button>
+);
+
+/**
+ * The Revisions panel: the host's revisions newest first, `REVISIONS_SHOWN` at a time, with
+ * Withdraw on each pending candidate. `onWithdraw` shows the confirm for a revision.
+ */
+export const RevisionsPanel: FC<{ view: GraphWorkflowHostView; onWithdraw: (revision: number) => void }> = ({ view, onWithdraw }) => {
   const [shown, setShown] = useState(REVISIONS_SHOWN);
   const rows = revisionRows(view);
   const more = Math.min(REVISIONS_SHOWN, rows.length - shown);
@@ -106,7 +125,10 @@ export const RevisionsPanel: FC<{ view: GraphWorkflowHostView }> = ({ view }) =>
               <th scope="col" className="py-1 pr-3 font-semibold">Status</th>
               <th scope="col" className="py-1 pr-3 font-semibold">Submitted</th>
               <th scope="col" className="py-1 pr-3 font-semibold">Decided</th>
-              <th scope="col" className="py-1 font-semibold">Current</th>
+              <th scope="col" className="py-1 pr-3 font-semibold">Current</th>
+              <th scope="col" className="py-1 font-semibold">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -116,7 +138,8 @@ export const RevisionsPanel: FC<{ view: GraphWorkflowHostView }> = ({ view }) =>
                 <td className="py-1 pr-3">{row.status}</td>
                 <td className="py-1 pr-3">{row.submitted}</td>
                 <td className="py-1 pr-3">{row.decided}</td>
-                <td className="py-1">{row.current ? "Current" : ""}</td>
+                <td className="py-1 pr-3">{row.current ? "Current" : ""}</td>
+                <td className="py-1">{row.withdrawable && <WithdrawButton revision={row.revision} onWithdraw={onWithdraw} />}</td>
               </tr>
             ))}
           </tbody>

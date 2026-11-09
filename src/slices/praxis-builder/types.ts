@@ -367,6 +367,30 @@ export interface GraphWorkflowCheck {
   diagnostics: Diagnostic[];
 }
 
+/** One saved file of a graph workflow's bundle (#462), as `praxis graphs submit` is given it. */
+export interface BundleFile {
+  /** The name a host finding gives the file: `graph`, `binding`, `contract` or `grants/<index>`. */
+  file: string;
+  kind: PraxisKind;
+  id: string;
+  /** `.praxis/<folder>/<id>.json`. */
+  path: string;
+  /** The SDK digest of the record it holds, which the host stores it by; absent when it can't be read. */
+  digest?: string;
+  /** How it differs from the last commit; absent when it doesn't, or outside git. */
+  change?: ChangeStatus;
+}
+
+/** `praxis_graph_workflow_bundle`: the saved files a graph workflow submits (#462). */
+export interface GraphWorkflowBundle {
+  /** In the order `praxis` is given them. */
+  files: BundleFile[];
+  /** The bundle digest, as the host computes it, when Quay can compute it. */
+  bundleDigest?: string;
+  /** Why git status couldn't be read, so no file's change is known. */
+  changesError?: string;
+}
+
 /** The triggers that start a graph workflow (#479): those whose saved target file names it. */
 export interface GraphWorkflowTriggers {
   /** The trigger ids, in id order. */

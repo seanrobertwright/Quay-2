@@ -1,13 +1,13 @@
 //! Which definitions have changed since the last commit, and how (#223): the badge and the
 //! diff that show an agent's edits before anyone submits them. The badge and the diff ask only
 //! about the kinds in `SHOWS_CHANGES`; `path_changes` asks about the files it is given, such as a
-//! graph workflow's bundle (#466). Git is only asked about the repository whose root is the
+//! graph workflow's bundle (#462, #466). Git is only asked about the repository whose root is the
 //! project, never one around it, so a project that isn't a repository shows no changes.
 
 use std::path::Path;
 
 use super::models::{ChangeStatus, ChangedFile, ChangedFiles, FileDiff, PraxisKind};
-use super::store::{confined_dir, confined_file, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
+use super::store::{confined_dir, confined_file, shown_path, validate_id, MAX_FILE_BYTES, MAX_LISTED, PRAXIS_DIR};
 use crate::slices::machina::git;
 
 /// The kinds whose files show changes since the last commit. A kind enables the badge and
@@ -68,9 +68,21 @@ pub fn changed_files(repo: &Path) -> Result<ChangedFiles, String> {
     Ok(ChangedFiles { files })
 }
 
+/// `git status` of the files under `pathspecs`, as changed definitions of the kinds that show
+/// changes. Other files are left out.
+fn status(repo: &Path, pathspecs: &[String]) -> Result<Vec<ChangedFile>, String> {
+    Ok(changed_paths(repo, pathspecs)?
+        .into_iter()
+        .filter_map(|(path, status)| {
+            let (kind, id) = definition_at(&path)?;
+            Some(ChangedFile { kind, id, status })
+        })
+        .collect())
+}
+
 /// `git status` of the files under `pathspecs`: each changed file's path, relative to `repo`
-/// with `/` between its parts, and how it changed.
-fn porcelain(repo: &Path, pathspecs: &[String]) -> Result<Vec<(String, ChangeStatus)>, String> {
+/// with forward slashes, and how it differs from the last commit.
+fn changed_paths(repo: &Path, pathspecs: &[String]) -> Result<Vec<(String, ChangeStatus)>, String> {
     let mut args = vec!["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--"];
     args.extend(pathspecs.iter().map(String::as_str));
     Ok(git::run_ok(repo, &args)?
@@ -83,26 +95,16 @@ fn porcelain(repo: &Path, pathspecs: &[String]) -> Result<Vec<(String, ChangeSta
         .collect())
 }
 
-/// `git status` of the files under `pathspecs`, as changed definitions of the kinds that show
-/// changes. Other files are left out.
-fn status(repo: &Path, pathspecs: &[String]) -> Result<Vec<ChangedFile>, String> {
-    Ok(porcelain(repo, pathspecs)?
-        .into_iter()
-        .filter_map(|(path, status)| {
-            let (kind, id) = definition_at(&path)?;
-            Some(ChangedFile { kind, id, status })
-        })
-        .collect())
-}
-
-/// Which of `paths`, relative to `repo` with `/` between their parts, differ from the last
-/// commit, staged or not, or are new since it, with how, in path order. Empty when `repo` isn't
-/// the root of a git repository.
+/// How each of the files at `paths` (relative to `repo`, with forward slashes) differs from the
+/// last commit, staged or not, or whether it is new since it, whatever its kind, in path order:
+/// for the bundle a graph workflow submits (#462) and the files a graph run's confirm warns
+/// about (#466). A file that doesn't differ isn't returned. Empty when the project isn't a git
+/// repository.
 pub fn path_changes(repo: &Path, paths: &[String]) -> Result<Vec<(String, ChangeStatus)>, String> {
     if paths.is_empty() || !is_repository(repo)? {
         return Ok(Vec::new());
     }
-    let mut changed = porcelain(repo, paths)?;
+    let mut changed = changed_paths(repo, paths)?;
     changed.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(changed)
 }
@@ -123,7 +125,7 @@ pub fn file_diff(repo: &Path, kind: PraxisKind, id: &str) -> Result<FileDiff, St
     if let Some(dir) = confined_dir(repo, kind.folder())? {
         confined_file(repo, &dir, id)?;
     }
-    let path = format!("{}/{}/{}.json", PRAXIS_DIR, kind.folder(), id);
+    let path = shown_path(kind.folder(), id);
     if !is_repository(repo)? {
         return Err(format!("The project isn't a git repository, so {} has no last commit to compare with.", path));
     }

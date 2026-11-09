@@ -102,8 +102,8 @@ test("the Revisions panel lists each revision's number, status, submitted and de
     ),
   );
   assert.deepEqual(rows, [
-    { revision: 2, status: "Rejected", submitted: formatDateTime(Date.UTC(2026, 10, 8, 23, 31)), decided: "Not given by the host", current: false },
-    { revision: 1, status: "Current", submitted: formatDateTime(SUBMITTED_MS), decided: "not a time", current: true },
+    { revision: 2, status: "Rejected", submitted: formatDateTime(Date.UTC(2026, 10, 8, 23, 31)), decided: "Not given by the host", current: false, withdrawable: false },
+    { revision: 1, status: "Current", submitted: formatDateTime(SUBMITTED_MS), decided: "not a time", current: true, withdrawable: false },
   ]);
   const statuses = ["CANDIDATE", "ADMITTED", "WITHDRAWN", "RETIRED", "SOMETHING_NEW"].map(
     (status) => revisionRows(view({ kind: "admitted", revision: 1 }, { revisions: [{ revision: 1, status, bundleDigest: null, submittedAt: null, decidedAt: null, current: false }] }))[0].status,

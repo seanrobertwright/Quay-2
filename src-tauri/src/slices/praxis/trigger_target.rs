@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::models::PraxisKind;
-use super::store::{capped_ids, read_record, validate_id, MAX_TRIGGERS_SCANNED, PRAXIS_DIR, TRIGGER_TARGETS_DIR};
+use super::store::{capped_ids, read_record, shown_path, validate_id, MAX_TRIGGERS_SCANNED, TRIGGER_TARGETS_DIR};
 use super::validate::{check_size, field_issue, Diagnostic};
 
 /// What breaks one graph trigger rule.
@@ -215,7 +215,7 @@ pub struct GraphWorkflowTriggers {
 pub fn graph_workflow_triggers(repo: &Path, graph_workflow: &str) -> Result<GraphWorkflowTriggers, String> {
     validate_id(graph_workflow)?;
     let mut out = GraphWorkflowTriggers::default();
-    let shown = |id: &str| format!("{}/{}/{}.json", PRAXIS_DIR, TRIGGER_TARGETS_DIR, id);
+    let shown = |id: &str| shown_path(TRIGGER_TARGETS_DIR, id);
     for id in capped_ids(repo, TRIGGER_TARGETS_DIR, MAX_TRIGGERS_SCANNED, &mut out.unchecked)? {
         let target = match read_record(repo, TRIGGER_TARGETS_DIR, &id) {
             Ok(Some(target)) => target,
