@@ -2,7 +2,7 @@
 
 **Praxis** is the workflow engine in the AI-WS-SDK. It runs finite-v1 graphs under contracts, grants and triggers, and it runs coding plans from workflow templates.
 
-The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reads a Praxis host only through the `praxis` CLI, to show the host's state, each workflow template's state on it and a template's runs. It never submits a definition.
+The **Praxis Builder** lets you author those definitions in Quay 2 as files in your project: graphs on a canvas, and everything else as forms. It works offline. It reaches a Praxis host only through the `praxis` CLI, to show the host's state, the state on it of each workflow template and graph workflow, and their runs. It changes the host only by submitting a graph workflow as a candidate, withdrawing a pending candidate, and starting a run. Admitting a candidate and every decision on a run [happen in the host's browser page](#decisions-happen-in-the-browser), never in Quay.
 
 ---
 
@@ -178,15 +178,15 @@ A graph workflow (`.praxis/graph-workflows/<name>.json`) ties a contract, a grap
 - **Grants** lists the grant set the graph workflow carries, read-only, with a link to the contract, where it is changed.
 - **Triggers** lists the triggers whose saved target file names the graph workflow, each a link that opens the trigger's form. With none, it says no saved trigger starts the graph workflow. The list follows renames, because renaming a trigger moves its target file and renaming the graph workflow rewrites the target files that name it. A target file that can't be read, or whose trigger doesn't exist, is named as skipped. A trigger's target is set from its own **Starts** picker. Quay doesn't read graph trigger state from a host yet, so each trigger shows only its id.
 - **Local checks** read the records it names as saved on disk, and show as issues on the field naming the record at fault: each record exists and is valid, as is each grant the contract's bindings file lists, the contract's bindings file lists the graph, and the graph binding binds that graph.
-- **Check on host** runs `praxis graphs check`, which writes nothing, and lists the host's findings against the bundle file each names, each a link that opens it. Quay doesn't copy the host's refusal list, so a node kind the host refuses shows as its finding.
-- **Submit** sends only the saved graph, graph binding, contract and grants. It is disabled, with the reason shown, while any of them or the graph workflow has unsaved edits, fails its local checks, while the name breaks the host's rule, and unless the host is signed in or simulated. Changes that aren't committed only warn. Submit runs the check first and goes on only if it passes. When the host's bundle digest matches the current revision's or a pending candidate's, it stops with "Nothing has changed since revision N". The confirm lists each file with its digest and an **Uncommitted** badge, and says the submission becomes a candidate the owner must admit in the browser. Once the host stores it, the confirm offers **Open in browser** for its admission page, and the graph workflow's host state is read again.
+- **On the host.** Under the form's header, a status line shows the graph workflow's [state on the host](#graph-workflow-host-states), with **Check on host** and **Submit** under it ([Check on host and Submit](#check-on-host-and-submit)). A **Revisions** panel ends the form, and a pending candidate has **Withdraw** ([Candidates and admission](#candidates-and-admission)).
+- **Workflow | Runs** above the form switches the work area between the form and the graph workflow's [runs on the host](#graph-runs).
 - **Submitted as** on a graph's canvas, beside **Runs under:**, has one chip per graph workflow that names the graph, saved or drafted, each a link that opens its form. A chip whose graph binding isn't the one the **Binding** picker shows says which binding it uses. The row is left out when no graph workflow names the graph, and it shows no run state.
 
 ---
 
 ## The Praxis host
 
-The builder reaches a Praxis host only by running the `praxis` CLI. Reads and Run are headless `praxis <command> --json` calls: `workflows list`, `workflows show`, `runs`, `status` and `run`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, and it has no control for any decision on a run: [decisions happen in the browser](#decisions-happen-in-the-browser).
+The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, and admission, retirement and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
 
 ### Linking the `praxis` CLI
 
@@ -194,7 +194,7 @@ Quay runs `praxis` from an AI-WS-SDK checkout, with Node 24 or later. To link it
 
 - **How Quay finds it.** Quay never starts `praxis` through npm's `praxis.cmd` shim or `cmd.exe`. It follows npm's global link for `@aiws/engine` into the checkout, looking beside each `praxis` shim on `PATH`, under `NPM_CONFIG_PREFIX` and under npm's default prefix. It reads `bin.praxis` from that package's `package.json` and runs `node <script>` with the first `node` on `PATH`, once `node --version` says 24 or later. The [`checkout` setting](#per-user-settings) replaces the link.
 - **A found `praxis` is kept for 60 seconds** before Quay looks it up again. A failed lookup is never kept, so linking the CLI takes effect on the next call.
-- **Every call is bounded.** A read may take 15 seconds and a run creation 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
+- **Every call is bounded.** A read, `graphs check` included, may take 15 seconds, and a write (a run creation, a submission or a withdrawal) 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
 - **A `praxis` Quay can't read**, one that refuses Quay's arguments or prints a record in a format this Quay doesn't read, gets "Quay needs an update for this praxis".
 
 ### Per-user settings
@@ -230,7 +230,7 @@ The chip in the builder's header shows the project's host condition as the lates
 
 - **Press the chip** to open a panel that says what the condition means and what to do about it. `Escape` closes it.
 - **Set up host, Start host and Sign in** each open a new terminal in the project, running that command for you to answer, and hide the builder so the terminal shows. The terminal runs the same `node <script>` as the headless calls, with `--state` when an installation is set, and never a flag that skips a confirmation. Leave the `praxis serve` terminal open.
-- **The chip never calls `praxis` itself**, except to recheck: while a failing condition holds, a workflow template is open and Quay's window is shown, Quay checks the host again every 60 seconds, each check starting 60 seconds after the last one ended. The recheck stops, and stops its call, when that view leaves the screen.
+- **The chip never calls `praxis` itself**, except to recheck: while a failing condition holds, a workflow template or graph workflow is open and Quay's window is shown, Quay checks the host again every 60 seconds, each check starting 60 seconds after the last one ended. The recheck stops, and stops its call, when that view leaves the screen.
 - **A simulated host** gets an amber chip and a standing banner across the builder: "This is a simulated Praxis host: its approvals aren't made by a person. Don't treat its runs as reviewed."
 
 #### Signing in lasts about 5 minutes on a real host
@@ -297,6 +297,74 @@ When the file has uncommitted changes, the dialog leads with their diff and a wa
 - **Every other outcome gets a notice of its own.** A held run, or one awaiting approval, blocks new runs: the notice says which, with **Open in browser** for the run that blocks it, and **Show run** when `praxis` names its work order. A host that isn't set up, is down, isn't signed in or whose sign-in expired says no run was started, and so does a `praxis` Quay couldn't run. A refusal gives `praxis`'s own words with **Copy**.
 - **Quay never stops a creation** before its 75-second bound, and leaving the view doesn't stop it: the Runs view shows its outcome when it ends. When Quay can't tell whether the run was created, after its timeout or an outcome `praxis` didn't report, the notice says so. `praxis` keeps that creation pending, so **Run** again finishes it and can't create a second run. Quay never runs a creation again on its own.
 
+### Graph workflow host states
+
+Each graph workflow has a state on the host, from `praxis graphs list`, read page by page, then `praxis graphs show <name>` for each local graph workflow the host has, at most two at a time. A graph workflow shows one of these states, listed worst first:
+
+| State | When |
+| --- | --- |
+| **Name the host refuses** | The file name breaks the host's name rule. Quay never asks the host about it. |
+| **Not submitted** | The host has no graph workflow of that name, or an active one with no admitted revision and no pending candidate, such as when every candidate was rejected or withdrawn. |
+| **Retired** | The owner retired it. A new revision the owner admits makes it active again. |
+| **Candidate waiting for admission (revision N)** | The host holds a pending candidate, and N is the newest. The owner admits or rejects it in the browser. |
+| **Differs from host** | The saved files' bundle digest isn't the admitted revision's. |
+| **Admitted, not ready** | The host has an admitted revision but says it can't run, and gives each reason by node. |
+| **Admitted** | The host has an admitted revision of the saved files and can run it. |
+
+A pending candidate outranks the admitted revision's state, but the admitted revision is still the one a run uses. A read that failed shows **Couldn't check**, with what it said, and a graph workflow not read yet shows **Not checked yet**. When Quay can't compare the saved files' bundle digest with the admitted revision's, because it can't compute one or the host gave none, it can't tell **Differs from host**, so **Admitted** and **Admitted, not ready** also give "Revision N, submitted T".
+
+- **When Quay reads.** The first time the builder is shown for a project, Quay reads every graph workflow. **Check host** in the Graph workflows group header rereads everything, and **Check again** on the form rereads one graph workflow. A submission, a withdrawal and opening Run's confirm each read that graph workflow again.
+- **A pending candidate is polled.** While a graph workflow's form is on screen, shows a pending candidate and Quay's window is shown, Quay reads it again 15 seconds after each read ends, so the owner's decision in the browser shows up. Nothing else polls.
+- **Readings live in memory** for as long as Quay runs, never on disk. Each is stamped with the time it was read. After 10 minutes it is shown muted and marked "may be out of date", never dropped. While the host can't be used, every reading is dropped and the state is unknown.
+- **In the list**, each graph workflow's row shows its host state as an icon. The icon's tooltip gives the state and the host's reason, and screen readers hear the state as text. A graph workflow whose state is unknown shows no host icon.
+- **The Graph workflows group header** shows the host condition, as the chip does, with **Check host**. When the condition is **Not signed in**, it offers **Sign in** too, and when the CLI can't be run, it says how to link it.
+- **On the form**, the status line under the header shows the state in words, the host's reason, when it was checked, and **Check again**. For a pending candidate it adds **Open in browser** for the candidate's admission page, and **Withdraw**. While the host can't be used, it reads "Host state unknown:" and the chip's label, and **Check host** in the group header is what rereads.
+- **The Revisions panel** at the end of the form lists what the latest `graphs show` gave, newest first: each revision's number and status (**Candidate, waiting for admission**, **Admitted**, **Rejected**, **Withdrawn**, **Current** or **Retired**), when it was submitted and decided, which one is current, and **Withdraw** on a pending candidate. It shows 20 rows, and **Show N more** adds up to 20 at a time. When the host holds older revisions than it listed, the panel says so. Quay doesn't read them.
+
+### Check on host and Submit
+
+**Check on host** and **Submit** sit under the graph workflow form's status line.
+
+- **Check on host** runs `praxis graphs check`, which writes nothing, and lists the host's findings against the bundle file each names, each a link that opens it. Quay doesn't copy the host's refusal list, so a node kind the host refuses shows as its finding.
+- **Submit** sends only the saved graph, graph binding, contract and grants the saved graph workflow names, as they are on disk. It is disabled, with each reason shown, while the graph workflow or any of them has unsaved edits, while the graph workflow fails its local checks or its saved bundle can't be built, while the name breaks the host's rule, and unless the host is signed in or simulated. Changes that aren't committed only warn.
+- **Submit checks first.** It runs the check and goes on only if it passes. When the host's bundle digest matches the current revision's or a pending candidate's, it stops with "Nothing has changed since revision N".
+- **The confirm** lists each file with its digest and an **Uncommitted** badge, and says the submission becomes a candidate and nothing runs until the owner admits it in the browser. Once the host stores it, the confirm names the new revision and offers **Open in browser** for its admission page, and the graph workflow's host state is read again.
+- **When Quay can't tell** whether the host stored the candidate, the confirm says so and offers **Submit again**, which resends the same submission, so it can't store a second candidate.
+
+### Candidates and admission
+
+A submission is stored on the host as a candidate revision. Nothing runs until the owner admits it, and **the owner admits or rejects it only in the host's browser page.** Quay has no control for it: [decisions happen in the browser](#decisions-happen-in-the-browser). **Open in browser**, on the status line or in the Submit confirm, opens the candidate's admission page when the host gives one. While the form is on screen, Quay polls the candidate, so the new state shows once the owner decides.
+
+**Withdraw**, on the status line or on a candidate's row in **Revisions**, withdraws a pending candidate with `praxis graphs withdraw <name> <revision>`. It asks first: the confirm names the revision and says the owner can no longer admit it. The host keeps it in the history as **Withdrawn**, and the graph workflow falls back to its admitted revision's state, or to **Not submitted** when it has none.
+
+- **The confirm closes** once the host has answered and the graph workflow has been read again.
+- **A refusal stays in the confirm** in the host's words, and Withdraw is then withheld. A candidate that is no longer pending, because the owner admitted or rejected it or it was withdrawn already, is refused that way.
+- **When Quay can't tell** whether the host withdrew it, the confirm says so, and **Withdraw** again resends the same request. Pressing Withdraw while one is in flight joins it.
+
+### Graph runs
+
+**Runs** shows the graph workflow's runs on the host, of every revision, from `praxis runs <name> --format aiws-graph-runs/1 --json`, newest first. Each run shows its status, control (as a chip), whether it is held or awaiting approval, the admitted revision it ran and when it was created. The list shows the newest 20 runs, **Show more** lists the newest 100, and it reads and stops reading on the same rules as a [template's runs](#runs).
+
+- A run that is held or awaiting approval is marked **Needs you** with **Open in browser**.
+- A simulated host's runs are marked **Simulated**, in amber, because its approvals aren't made by a person.
+
+#### A graph run's detail
+
+**Show** on a run opens its detail above the list. **It shows run-level facts only:** the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. **Node-level run progress isn't shown yet.** Quay doesn't show which nodes a run has reached or finished, or each node's state, until the AI-WS-SDK has a read model for a graph run's nodes.
+
+- **The detail follows the run** with `praxis status <work-order> --format aiws-graph-operator-view/1 --json`, on the same delays and stop rules as a template run's detail (see [Runs](#runs)).
+- **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
+- **A held run** gets a hold panel for each open hold, with **Resolve in browser**.
+- **A certificate hint** shows as it does for a template run, with **Trust certificate** when `praxis` asks for `praxis trust`.
+
+#### Start a graph run
+
+**Run** in the Runs view's header starts a run of the host's current admitted revision with `praxis run <name> --json`, never of the project's files. It is unavailable, with the reason shown, while the name breaks the host's rule, while the host has no admitted revision (not submitted, retired, or only a candidate waiting for admission), while it says the admitted revision isn't ready, and while a run of the graph workflow is starting.
+
+- **Run asks first.** Its confirm reads the graph workflow on the host again and reads which of its files have uncommitted changes. It names the admitted revision and its review digest, and says the host runs that revision, not the files in the project, and that the run waits for approval in the browser before it does anything. It warns when the saved files differ from the admitted revision, even while a candidate is pending, when the bundle's records have unsaved edits, and when its files have uncommitted changes. **Start run** is withheld until both reads end, and while Quay can't read an admitted revision that can run.
+- **Its outcomes are a template run's.** A started run is selected and followed. A run that blocks new ones is named with **Open in browser**, and with **Show run** when `praxis` names its work order. After a timeout or an outcome `praxis` didn't report, the notice says **Run** again finishes the pending creation and can't create a second run. See [Run](#run) for the rest.
+- **A template of the same name runs instead.** `praxis run` tries a workflow template of the name first, so when the host has a template and a graph workflow of one name, it starts the template, and Quay can't read what `praxis` prints.
+
 ### Decisions happen in the browser
 
-Approving a run, pausing it, cancelling it and resolving a hold are decided only in the host's browser page. Quay has no control for any of them, not even a disabled one, and never runs `praxis hold` or `praxis open`. **Open in browser** and **Resolve in browser** open the run's page in your browser, and only when it is on this machine's Praxis host: an `https` address at the host's browser origin, `https://praxis-<label>.localhost:<port>/`, or at `https://127.0.0.1:<port>/`. Quay refuses any other address and says what `praxis` gave.
+Admitting or rejecting a graph workflow candidate, retiring a graph workflow, approving a run, pausing it, cancelling it and resolving a hold are decided only in the host's browser page. Quay has no control for any of them, not even a disabled one, and never runs `praxis hold` or `praxis open`. **Open in browser** and **Resolve in browser** open the admission page or the run's page in your browser, and only when it is on this machine's Praxis host: an `https` address at the host's browser origin, `https://praxis-<label>.localhost:<port>/`, or at `https://127.0.0.1:<port>/`. Quay refuses any other address and says what `praxis` gave.
