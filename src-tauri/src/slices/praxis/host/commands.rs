@@ -2,9 +2,10 @@
 //! none is reachable through the MCP bridge or A2A (#228). Each one that calls `praxis` takes a
 //! registered project, whose host condition it updates, and a `callId` that
 //! [`praxis_host_cancel`] cancels. A template or graph workflow name that the host refuses comes
-//! back as a refusal from [`PraxisCli::call`], which never runs `praxis` with it. The graph
-//! commands (#460) go through the same runner, so they share its bounds, its sharing of
-//! identical calls in flight and its host condition.
+//! back as a refusal from [`PraxisCli::call`], which never runs `praxis` with it, and so does a
+//! graph trigger name. The graph commands (#460) and the graph trigger commands (#474) go through
+//! the same runner, so they share its bounds, its sharing of identical calls in flight and its
+//! host condition.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +17,8 @@ use super::bundle::bundle_operands;
 use super::outcome::{CallOutcome, HostCondition, Verb};
 use super::runner::PraxisCli;
 use super::settings::PraxisCliSettings;
-use crate::slices::praxis::template_name::check_graph_workflow_name;
+use super::trigger::trigger_operands;
+use crate::slices::praxis::template_name::{check_graph_workflow_name, check_trigger_name};
 use crate::slices::workspace::WorkspaceManager;
 
 /// The most runs `praxis runs --limit` lists.
@@ -49,6 +51,15 @@ pub fn check_page_limit(limit: u32) -> Result<(), String> {
 /// Refuses a graph workflow revision `praxis` wouldn't take: revisions count from 1.
 pub fn check_revision(revision: u32) -> Result<(), String> {
     if revision >= 1 { Ok(()) } else { Err(format!("A revision is a whole number from 1, not {revision}.")) }
+}
+
+/// The largest fire id `praxis triggers fires --before` takes: it takes whole numbers of at most
+/// 15 digits (`revisionPattern` at the SDK pin).
+pub const MAX_FIRE_ID: u64 = 999_999_999_999_999;
+
+/// Refuses a fire id `praxis` wouldn't take as `--before`: a whole number from 1 to [`MAX_FIRE_ID`].
+pub fn check_fire_id(fire_id: u64) -> Result<(), String> {
+    if (1..=MAX_FIRE_ID).contains(&fire_id) { Ok(()) } else { Err(format!("A fire id is a whole number from 1 to {MAX_FIRE_ID}, not {fire_id}.")) }
 }
 
 /// `--request-id <id>`, when a caller resends a write whose outcome was unknown.
@@ -310,6 +321,177 @@ pub async fn praxis_host_graph_status(
 ) -> Result<CallOutcome, String> {
     check_run_arg(&work_order_id)?;
     call(&cli, &workspace, &project_path, Verb::GraphStatus, vec![work_order_id], call_id).await
+}
+
+/// `praxis triggers check <name> --workflow <target> --trigger <file> --json`: the host's checks
+/// of the saved graph trigger against the target its target file names, which write nothing.
+/// See [`trigger_operands`] for what is refused before `praxis` runs.
+#[tauri::command]
+pub async fn praxis_host_trigger_check(
+    project_path: String,
+    name: String,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    call_with(&cli, &workspace, &project_path, Verb::TriggersCheck, call_id, move |root| trigger_operands(root, &name)).await
+}
+
+/// `praxis triggers submit <name> --workflow <target> --trigger <file> --json`: submits the saved
+/// graph trigger as a candidate, based on `base_revision` when given. `request_id` resends a
+/// submission whose outcome was unknown; without it `praxis` makes one.
+#[tauri::command]
+pub async fn praxis_host_trigger_submit(
+    project_path: String,
+    name: String,
+    base_revision: Option<u32>,
+    request_id: Option<Uuid>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    if let Some(base) = base_revision {
+        check_revision(base)?;
+    }
+    call_with(&cli, &workspace, &project_path, Verb::TriggersSubmit, call_id, move |root| trigger_submit_operands(root, &name, base_revision, request_id))
+        .await
+}
+
+/// The operands of `praxis triggers submit` for the graph trigger `name` saved under `root`: those
+/// of [`trigger_operands`], then `--base <revision>` when given, then `--request-id <id>` when given.
+pub fn trigger_submit_operands(root: &Path, name: &str, base_revision: Option<u32>, request_id: Option<Uuid>) -> Result<Vec<String>, String> {
+    let mut operands = trigger_operands(root, name)?;
+    if let Some(base) = base_revision {
+        operands.extend(["--base".to_string(), base.to_string()]);
+    }
+    operands.extend(request_id_operands(request_id));
+    Ok(operands)
+}
+
+/// `praxis triggers list --limit <limit> [--after <name>] --json`: the host's graph triggers in
+/// name order, the page after `after` when given.
+#[tauri::command]
+pub async fn praxis_host_triggers_list(
+    project_path: String,
+    limit: u32,
+    after: Option<String>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_page_limit(limit)?;
+    let mut operands = vec!["--limit".to_string(), limit.to_string()];
+    if let Some(after) = after {
+        check_trigger_name(&after)?;
+        operands.extend(["--after".to_string(), after]);
+    }
+    call(&cli, &workspace, &project_path, Verb::TriggersList, operands, call_id).await
+}
+
+/// `praxis triggers show <name> --json`: one graph trigger, its newest revisions, its fire counts
+/// and what blocks it from firing.
+#[tauri::command]
+pub async fn praxis_host_trigger_show(
+    project_path: String,
+    name: String,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    call(&cli, &workspace, &project_path, Verb::TriggersShow, vec![name], call_id).await
+}
+
+/// `praxis triggers show <name> --before <before> --limit <limit> --json`: the revisions older
+/// than `before`, newest first.
+#[tauri::command]
+pub async fn praxis_host_trigger_revisions(
+    project_path: String,
+    name: String,
+    before: u32,
+    limit: u32,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_revision(before)?;
+    check_page_limit(limit)?;
+    let operands = vec![name, "--before".into(), before.to_string(), "--limit".into(), limit.to_string()];
+    call(&cli, &workspace, &project_path, Verb::TriggersRevisions, operands, call_id).await
+}
+
+/// `praxis triggers fires <name> --limit <limit> [--before <fireId>] --json`: the trigger's fires,
+/// newest first, those older than the fire `before` when given, which is the `nextBefore` of the
+/// page before.
+#[tauri::command]
+pub async fn praxis_host_trigger_fires(
+    project_path: String,
+    name: String,
+    limit: u32,
+    before: Option<u64>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_page_limit(limit)?;
+    let mut operands = vec![name, "--limit".into(), limit.to_string()];
+    if let Some(before) = before {
+        check_fire_id(before)?;
+        operands.extend(["--before".to_string(), before.to_string()]);
+    }
+    call(&cli, &workspace, &project_path, Verb::TriggersFires, operands, call_id).await
+}
+
+/// `praxis triggers withdraw <name> <revision> --json`: withdraws a pending trigger candidate.
+/// `request_id` resends a withdrawal whose outcome was unknown.
+#[tauri::command]
+pub async fn praxis_host_trigger_withdraw(
+    project_path: String,
+    name: String,
+    revision: u32,
+    request_id: Option<Uuid>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    check_revision(revision)?;
+    let mut operands = vec![name, revision.to_string()];
+    operands.extend(request_id_operands(request_id));
+    call(&cli, &workspace, &project_path, Verb::TriggersWithdraw, operands, call_id).await
+}
+
+/// `praxis triggers disable <name> --json`: stops the graph trigger firing until the owner enables
+/// it again in the browser. The host disables the trigger as it stands when the request lands:
+/// `praxis` takes no revision to check it against. `request_id` resends a disabling whose outcome
+/// was unknown.
+#[tauri::command]
+pub async fn praxis_host_trigger_disable(
+    project_path: String,
+    name: String,
+    request_id: Option<Uuid>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    let mut operands = vec![name];
+    operands.extend(request_id_operands(request_id));
+    call(&cli, &workspace, &project_path, Verb::TriggersDisable, operands, call_id).await
+}
+
+/// `praxis triggers retire <name> --json`: stops the graph trigger firing until a later revision is
+/// admitted. Like disabling, it acts on the trigger as it stands when the request lands.
+/// `request_id` resends a retirement whose outcome was unknown.
+#[tauri::command]
+pub async fn praxis_host_trigger_retire(
+    project_path: String,
+    name: String,
+    request_id: Option<Uuid>,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    let mut operands = vec![name];
+    operands.extend(request_id_operands(request_id));
+    call(&cli, &workspace, &project_path, Verb::TriggersRetire, operands, call_id).await
 }
 
 /// Cancels a call. See [`PraxisCli::cancel`].

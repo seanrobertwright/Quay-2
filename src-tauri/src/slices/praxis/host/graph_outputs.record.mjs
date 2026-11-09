@@ -1,7 +1,7 @@
 // Records graph_outputs.fixture.json: what the real `praxis` CLI prints for each graph command
 // Quay runs (#460), run as a subprocess against the simulated host its own tests start, so the
 // fake `praxis` replays records, refusals and exit codes the CLI itself wrote. Run with Node 24
-// or later against an AI-WS-SDK checkout with its dependencies installed:
+// or later against an AI-WS-SDK checkout:
 //
 //   node graph_outputs.record.mjs <checkout> <commit> graph_outputs.fixture.json
 //
@@ -9,16 +9,14 @@
 // adds), the exit code, the stdout record and the stderr. Temporary and home folders in the output
 // are replaced by neutral stand-ins, and the bundle files keep only their names.
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { caseRecorder, recorderArgs, writeFixture } from './record_support.mjs';
 
 // The record is written to a file, since node:test, which the host fixtures load, prints its
 // summary on stdout as the process exits.
-const [checkout, commit, outFile] = process.argv.slice(2);
-if (!checkout || !commit || !outFile) throw new Error('Usage: node graph_outputs.record.mjs <checkout> <commit> <out-file>');
-const from = (path) => import(pathToFileURL(join(checkout, path)).href);
+const { commit, outFile, from } = recorderArgs('graph_outputs.record.mjs');
 const { simulatedHost } = await from('engine/test/fixtures/praxis-host.ts');
 const { bundle, bundleArguments, bundleDigestOf } = await from('engine/examples/graph-bundle.ts');
 const { canonicalDigest } = await from('engine/src/canonical-json.ts');
@@ -70,14 +68,7 @@ const files = (b) => {
 };
 
 const cases = [];
-/** Runs `praxis <args> --json --state <state>` through `run` and records it under `name`. */
-async function record(name, args, run = praxis, stateDir = state) {
-  const r = await run(...args, '--json', '--state', stateDir);
-  let stdout = null;
-  if (r.stdout.trim()) stdout = JSON.parse(r.stdout);
-  cases.push({ name, args, exit: r.code, stdout, stderr: r.stderr });
-  return stdout;
-}
+const record = caseRecorder(cases, praxis, state);
 
 const name = 'release-review';
 const valid = bundle();
@@ -130,16 +121,4 @@ for (const [name, message, detail, exit = 1] of [
   cases.push({ name, args: ['graphs', 'list', '--limit', '100', '--format', 'aiws-graph-workflows/1'], exit: failure.exitCode, stdout: errorRecord(failure), stderr: `praxis: ${message}\n` });
 }
 
-// The bundle files' folders, then every temporary and home folder, out of every string kept.
-const stands = [[scratch, 'C:\\Temp\\praxis-graph-record'], [tmpdir(), 'C:\\Temp'], [homedir(), 'C:\\Users\\me']];
-const neutral = (value) => {
-  if (typeof value === 'string') return stands.reduce((text, [path, stand]) => text.split(path).join(stand), value);
-  if (Array.isArray(value)) return value.map(neutral);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, neutral(v)]));
-  return value;
-};
-const kept = cases.map((c) => ({ ...c, args: c.args.map((a) => (a.startsWith(scratch) ? a.slice(scratch.length + 1).split(/[\\/]/).slice(1).join('/') : a)) }));
-writeFileSync(outFile, JSON.stringify(neutral({
-  provenance: `Recorded by graph_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at ${commit}, run against its simulated host on Node ${process.versions.node}.`,
-  cases: kept,
-}), null, 2) + '\n');
+writeFixture(outFile, { script: 'graph_outputs.record.mjs', commit, scratch, stand: 'praxis-graph-record', cases });

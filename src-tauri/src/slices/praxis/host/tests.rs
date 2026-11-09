@@ -2,7 +2,8 @@
 //! `engine` package, replays recorded `--json` records, the stderr phrases `praxis` prints at
 //! the SDK pin, and exit codes. The template commands' records are the vendored read-model
 //! fixtures. The graph commands' (#460) are `graph_outputs.fixture.json`, what the real `praxis`
-//! printed for each, refusals and `praxis-error/1` records included.
+//! printed for each, refusals and `praxis-error/1` records included. The graph trigger commands'
+//! (#474) are in [`triggers`], against `trigger_outputs.fixture.json`.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -19,6 +20,9 @@ use super::{interactive_argv, InteractiveCommand};
 use crate::test_support::TempDir;
 
 const FAKE: &str = include_str!("fake_praxis.mjs");
+
+#[path = "trigger_tests.rs"]
+mod triggers;
 
 fn fixtures() -> Value {
     serde_json::from_str(include_str!("../../../../vendor/aiws/spec/engine-v1/read-models.fixtures.json")).unwrap()

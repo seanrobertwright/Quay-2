@@ -4,9 +4,10 @@
 use serde::Serialize;
 use serde_json::Value;
 
-/// The `praxis` commands Quay runs headless: the template commands (#446) and the graph
-/// commands (#460), whose names, records and exits are those of `praxis` in AI-WS-SDK
-/// `GRAPH-WORKFLOWS.md`, "The praxis commands".
+/// The `praxis` commands Quay runs headless: the template commands (#446), the graph commands
+/// (#460), whose names, records and exits are those of `praxis` in AI-WS-SDK `GRAPH-WORKFLOWS.md`,
+/// "The praxis commands", and the graph trigger commands (#474), in `GRAPH-TRIGGERS.md`, "The
+/// praxis commands".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     WorkflowsList,
@@ -34,6 +35,27 @@ pub enum Verb {
     GraphRuns,
     /// `praxis status <workOrderId> --format aiws-graph-operator-view/1`: one graph run.
     GraphStatus,
+    /// `praxis triggers check <name> --workflow <target> --trigger <file>`: the host's checks of a
+    /// graph trigger against its target, which write nothing.
+    TriggersCheck,
+    /// `praxis triggers submit <name> --workflow <target> --trigger <file>`: submits a graph
+    /// trigger as a candidate revision.
+    TriggersSubmit,
+    /// `praxis triggers list`: the host's graph triggers, in name order.
+    TriggersList,
+    /// `praxis triggers show <name>`: one graph trigger with its newest revisions, its fire
+    /// counts and what blocks it.
+    TriggersShow,
+    /// `praxis triggers show <name> --before <revision>`: a page of older revisions.
+    TriggersRevisions,
+    /// `praxis triggers fires <name>`: a page of the trigger's fires, newest first.
+    TriggersFires,
+    /// `praxis triggers withdraw <name> <revision>`: withdraws a pending candidate.
+    TriggersWithdraw,
+    /// `praxis triggers disable <name>`: stops the trigger firing until the owner enables it.
+    TriggersDisable,
+    /// `praxis triggers retire <name>`: stops it firing until a later revision is admitted.
+    TriggersRetire,
 }
 
 impl Verb {
@@ -55,6 +77,14 @@ impl Verb {
             Verb::GraphRun => "aiws-graph-run-result/1",
             Verb::GraphRuns => "aiws-graph-runs/1",
             Verb::GraphStatus => "aiws-graph-operator-view/1",
+            Verb::TriggersCheck => "aiws-graph-trigger-check-result/1",
+            Verb::TriggersSubmit => "aiws-graph-trigger-submit-result/1",
+            Verb::TriggersList => "aiws-graph-triggers/1",
+            Verb::TriggersShow => "aiws-graph-trigger/1",
+            Verb::TriggersRevisions => "aiws-graph-trigger-revisions/1",
+            Verb::TriggersFires => "aiws-graph-trigger-fires/1",
+            Verb::TriggersWithdraw => "aiws-graph-trigger-withdraw-result/1",
+            Verb::TriggersDisable | Verb::TriggersRetire => "aiws-graph-trigger-control-result/1",
         }
     }
 
@@ -62,7 +92,17 @@ impl Verb {
     /// can't read leaves its outcome unknown rather than refused. `praxis` resends each of them
     /// while their outcome is unknown.
     pub fn writes(self) -> bool {
-        matches!(self, Verb::Run | Verb::GraphsSubmit | Verb::GraphsWithdraw | Verb::GraphRun)
+        matches!(
+            self,
+            Verb::Run
+                | Verb::GraphsSubmit
+                | Verb::GraphsWithdraw
+                | Verb::GraphRun
+                | Verb::TriggersSubmit
+                | Verb::TriggersWithdraw
+                | Verb::TriggersDisable
+                | Verb::TriggersRetire
+        )
     }
 
     /// The record format of the refusal `praxis run` prints with exit 7, when an earlier run that
@@ -75,13 +115,24 @@ impl Verb {
         }
     }
 
-    /// The record format `praxis` prints with exit 9, when the host found faults in a bundle:
-    /// `check` prints its result, and `submit` the host's refusal, each with the findings.
-    fn bundle_invalid_format(self) -> Option<&'static str> {
+    /// The record format `praxis` prints with exit 9, when the host found faults in a bundle or a
+    /// graph trigger: `check` prints its result, and `submit` the host's refusal, each with the
+    /// findings.
+    fn invalid_format(self) -> Option<&'static str> {
         match self {
-            Verb::GraphsCheck => Some(self.format()),
+            Verb::GraphsCheck | Verb::TriggersCheck => Some(self.format()),
             Verb::GraphsSubmit => Some("aiws-graph-workflow-error/1"),
+            Verb::TriggersSubmit => Some("aiws-graph-trigger-error/1"),
             _ => None,
+        }
+    }
+
+    /// What this command's exit-9 `record` means: faults in a graph trigger for the trigger
+    /// commands, and in a graph workflow's bundle for the others.
+    fn invalid(self, record: Value) -> CallOutcome {
+        match self {
+            Verb::TriggersCheck | Verb::TriggersSubmit => CallOutcome::TriggerInvalid { record },
+            _ => CallOutcome::BundleInvalid { record },
         }
     }
 
@@ -103,16 +154,35 @@ impl Verb {
             Verb::GraphsList => &["graphs", "list"],
             Verb::GraphsShow | Verb::GraphsRevisions => &["graphs", "show"],
             Verb::GraphsWithdraw => &["graphs", "withdraw"],
+            Verb::TriggersCheck => &["triggers", "check"],
+            Verb::TriggersSubmit => &["triggers", "submit"],
+            Verb::TriggersList => &["triggers", "list"],
+            Verb::TriggersShow | Verb::TriggersRevisions => &["triggers", "show"],
+            Verb::TriggersFires => &["triggers", "fires"],
+            Verb::TriggersWithdraw => &["triggers", "withdraw"],
+            Verb::TriggersDisable => &["triggers", "disable"],
+            Verb::TriggersRetire => &["triggers", "retire"],
         }
     }
 
     /// Whether `praxis` is asked for this command's [`format`](Self::format) by name, with
     /// `--format`, so a host that doesn't serve it is refused with exit 8 rather than answered
-    /// in another format. The graph reads, which take `--format`, pin it; `runs` and `status`
-    /// need it to read a graph workflow's record rather than a template's. The template
-    /// commands keep the CLI's default.
+    /// in another format. The graph and graph trigger reads, which take `--format`, pin it;
+    /// `runs` and `status` need it to read a graph workflow's record rather than a template's.
+    /// The template commands keep the CLI's default.
     fn pins_format(self) -> bool {
-        matches!(self, Verb::GraphsList | Verb::GraphsShow | Verb::GraphsRevisions | Verb::GraphRuns | Verb::GraphStatus)
+        matches!(
+            self,
+            Verb::GraphsList
+                | Verb::GraphsShow
+                | Verb::GraphsRevisions
+                | Verb::GraphRuns
+                | Verb::GraphStatus
+                | Verb::TriggersList
+                | Verb::TriggersShow
+                | Verb::TriggersRevisions
+                | Verb::TriggersFires
+        )
     }
 
     /// This command's arguments: its [`words`](Self::words), then `operands`, then `--format`
@@ -142,6 +212,22 @@ impl Verb {
             _ => None,
         }
     }
+
+    /// Where in [`args`](Self::args) the graph trigger name is, for the commands that take one:
+    /// right after the command's words. Every trigger command but `list` takes one.
+    pub fn trigger_arg(self) -> Option<usize> {
+        match self {
+            Verb::TriggersCheck
+            | Verb::TriggersSubmit
+            | Verb::TriggersShow
+            | Verb::TriggersRevisions
+            | Verb::TriggersFires
+            | Verb::TriggersWithdraw
+            | Verb::TriggersDisable
+            | Verb::TriggersRetire => Some(self.words().len()),
+            _ => None,
+        }
+    }
 }
 
 /// The record format `praxis run` prints with exit 7.
@@ -165,6 +251,10 @@ pub enum CallOutcome {
     /// `praxis graphs check` or `submit` exit 9: the host found faults in the bundle, and
     /// `record` lists them as `findings`, each naming the bundle file it is about.
     BundleInvalid { record: Value },
+    /// `praxis triggers check` or `submit` exit 9: the host found faults in the graph trigger,
+    /// and `record` lists them as `findings`, each with the JSON Pointer `path` in the trigger it
+    /// is about and the host's `code`.
+    TriggerInvalid { record: Value },
     /// `praxis run` exit 7: a held run, or one awaiting approval, blocks new runs.
     Blocked { record: Value, blocking_run_address: String },
     /// Exit 2, or a record Quay doesn't read: "Quay needs an update for this praxis".
@@ -187,9 +277,10 @@ pub enum CallOutcome {
     /// A write ([`Verb::writes`]) ended in a way that doesn't say whether it took effect:
     /// `praxis` stopped without an exit code, exited with a code the command doesn't document,
     /// or said the outcome is unknown. A run creation's pending creation stays in the profile,
-    /// so the next `run` of the name resumes it (#361), and it carries no `request_id`. A graph
-    /// workflow submission or withdrawal whose outcome `praxis` couldn't confirm carries the
-    /// `request_id` it sent, which `--request-id` resends; the host answers that from what it
+    /// so the next `run` of the name resumes it (#361), and it carries no `request_id`. Any other
+    /// write whose outcome `praxis` couldn't confirm (a graph workflow's submission or
+    /// withdrawal, or a graph trigger's submission, withdrawal, disabling or retirement) carries
+    /// the `request_id` it sent, which `--request-id` resends; the host answers that from what it
     /// stored.
     Unknown {
         detail: String,
@@ -341,7 +432,7 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
             },
             Err(outcome) => outcome,
         },
-        9 if let Some(format) = verb.bundle_invalid_format() => record(stdout, format).map_or_else(|o| o, |record| CallOutcome::BundleInvalid { record }),
+        9 if let Some(format) = verb.invalid_format() => record(stdout, format).map_or_else(|o| o, |record| verb.invalid(record)),
         _ => match praxis_error(stdout).and_then(|(record, kind, message)| from_error_record(verb, &record, &kind, message)) {
             Some(outcome) => outcome,
             None => by_exit(verb, code, stderr),
@@ -377,6 +468,7 @@ pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
         CallOutcome::Record { record, .. }
         | CallOutcome::Blocked { record, .. }
         | CallOutcome::BundleInvalid { record }
+        | CallOutcome::TriggerInvalid { record }
         | CallOutcome::HostRefused { record, .. } => {
             Some(if simulated(record) { HostCondition::SimulatedHost } else { HostCondition::SignedIn })
         }
