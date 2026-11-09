@@ -7,10 +7,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::slices::praxis::grants::read_record;
 use crate::slices::praxis::graph_workflow::validate_graph_workflow;
 use crate::slices::praxis::models::PraxisKind;
-use crate::slices::praxis::store::{definition_path, display_path, BINDINGS_DIR, PRAXIS_DIR};
+use crate::slices::praxis::store::{definition_path, display_path, read_record, BINDINGS_DIR, PRAXIS_DIR};
 use crate::slices::praxis::template_name::check_graph_workflow_name;
 use crate::slices::praxis::validate::Severity;
 
