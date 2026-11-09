@@ -1,11 +1,13 @@
 // Each graph workflow's state on the Praxis host (#444, #461): the one model behind the list
 // badge, the graph workflow form's status line and its Revisions panel. It has no UI of its own.
 //
-// It reads the host only through the Praxis CLI runner's graph commands (#460): `graphs list`,
-// page by page, then `graphs show` for each local graph workflow the host has, at most two at a
-// time. Readings live in memory for the project's builder session, never on disk. Each is
-// stamped with the time it was read and turns muted, not dropped, after `MUTED_AFTER_MS`, ten
-// minutes, as a template's do. When the host goes offline, every reading is dropped.
+// It reaches the host only through the Praxis CLI runner's graph commands (#460). It reads with
+// `graphs list`, page by page, then `graphs show` for each local graph workflow the host has, at
+// most two at a time. Its one write is `graphs withdraw` for a pending candidate (#463), after
+// which it reads that graph workflow again. Readings live in memory for the project's builder
+// session, never on disk. Each is stamped with the time it was read and turns muted, not dropped,
+// after `MUTED_AFTER_MS`, ten minutes, as a template's do. When the host goes offline, every
+// reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
 import { createHostReadSession, createLimiter, isObject, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS, online } from "./hostReadSession.ts";

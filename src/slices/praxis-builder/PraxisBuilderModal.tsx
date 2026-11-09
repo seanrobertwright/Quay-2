@@ -434,7 +434,14 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   );
   /** Graph workflow `name`'s host state for its form, read from the model on each render. */
   const graphWorkflowHost = (name: string): GraphWorkflowHost | null =>
-    shownGraphs ? { view: shownGraphs.workflow(name), condition: host.condition, onCheckAgain: () => void shownGraphs.checkAgain(name) } : null;
+    shownGraphs
+      ? {
+          view: shownGraphs.workflow(name),
+          condition: host.condition,
+          onCheckAgain: () => void shownGraphs.checkAgain(name),
+          onWithdraw: (revision: number) => shownGraphs.withdraw(name, revision),
+        }
+      : null;
   /**
    * The host part of a list group that shows host state, picked once per group: what its
    * header's Check host rereads, and each row's badges, git state first and host state second.

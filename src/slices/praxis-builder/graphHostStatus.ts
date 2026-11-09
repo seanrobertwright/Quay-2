@@ -1,8 +1,8 @@
 // What the Graph workflows list and the graph workflow form show of a graph workflow's state on
 // the Praxis host (#444, #461): each row's badge after its git badge, the form's status line
-// with Check again and Open in browser, and the Revisions panel's rows. It renders the graph host
-// model (`graphHost.ts`) and adds no state of its own. There is no admit, reject or retire: the
-// owner decides in the browser.
+// with Check again, Open in browser and Withdraw (#463), and the Revisions panel's rows. It
+// renders the graph host model (`graphHost.ts`) and adds no state of its own. There is no admit,
+// reject or retire: the owner decides in the browser.
 import { formatDateTime, parseUtcTimestamp } from "../../lib/dates.ts";
 import type { GraphHostState, GraphWorkflowHostView } from "./graphHost.ts";
 import { hostConditionView } from "./hostCondition.ts";
@@ -98,6 +98,8 @@ export interface GraphStatusLine {
   muted: boolean;
   /** The pending candidate's admission page, for Open in browser; null when there is none to open. */
   admissionPage: string | null;
+  /** The pending candidate's revision, for Withdraw; null when nothing is pending. */
+  withdraw: number | null;
 }
 
 /** Graph workflow `view`'s status line, under the project's host `condition`, at `now`. */
@@ -116,6 +118,7 @@ export function graphStatusLine(view: GraphWorkflowHostView, condition: HostCond
       checking: false,
       muted: false,
       admissionPage: null,
+      withdraw: null,
     };
   }
   const shown = shownOf(state);
@@ -135,6 +138,7 @@ export function graphStatusLine(view: GraphWorkflowHostView, condition: HostCond
     checking: view.checking,
     muted: view.muted,
     admissionPage: state.kind === "candidate" ? view.admissionPageAddress : null,
+    withdraw: state.kind === "candidate" ? state.revision : null,
   };
 }
 
@@ -167,6 +171,8 @@ export interface RevisionRow {
   decided: string;
   /** True for the host's current revision. */
   current: boolean;
+  /** True for a pending candidate, which may be withdrawn. */
+  withdrawable: boolean;
 }
 
 /** The Revisions panel's rows, newest first, as the latest `graphs show` listed them. */
@@ -178,5 +184,6 @@ export function revisionRows(view: GraphWorkflowHostView): RevisionRow[] {
     submitted: r.submittedAt === null ? "Not given by the host" : timeText(r.submittedAt),
     decided: r.decidedAt === null ? "Not given by the host" : timeText(r.decidedAt),
     current: r.current,
+    withdrawable: r.status === "CANDIDATE",
   }));
 }
