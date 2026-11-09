@@ -457,3 +457,68 @@ test("the detail has no approve, pause, cancel or hold control, not even a disab
     assert.ok(["praxis_validate", "praxis_check_graph_workflow", "praxis_graph_workflow_triggers", "praxis_host_graph_runs", "praxis_host_graph_status"].includes(s.command), s.command);
   }
 });
+
+const TRUST_HINT = "Your browser does not trust this host's certificate yet: run praxis trust --state C:/praxis first.";
+
+test("when status gives the certificate hint, the banner adds Trust certificate, which opens a visible terminal running praxis trust", async () => {
+  terminals.length = 0;
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting(), TRUST_HINT));
+  assert.ok(text(banner(root)).includes(TRUST_HINT));
+  await click(button(banner(root) as HTMLElement, /^Trust certificate$/));
+  await flush();
+  const argv = backend.sent.filter((s) => s.command === "praxis_host_terminal_argv");
+  assert.deepEqual(argv.map((s) => s.args.command), ["trust"]);
+  assert.deepEqual(terminals, [{ cwd: PROJECT, argv: ["node", "C:/sdk/engine/src/praxis.mjs", "trust"] }]);
+  assert.ok(!backend.commands().some((c) => /trust/.test(c) && c !== "praxis_host_terminal_argv"), "praxis trust never runs headless");
+});
+
+test("a held run's certificate hint shows in its hold panel with Trust certificate", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [holdDecision("hold-1", "build")], holds: [holdCard("hold-1", "The attempt failed")] }), TRUST_HINT));
+  assert.ok(button(panels(root)[0], /^Trust certificate$/));
+});
+
+test("without the hint, or with one praxis trust can't help, there is no Trust certificate", async () => {
+  for (const hint of [undefined, "Your browser does not trust this host's certificate; its trust is the host operator's."]) {
+    const backend = fakeBackend();
+    const root = await showRun(backend);
+    await answer(backend.statuses()[0], statusRecord(awaiting(), hint));
+    assert.equal(button(detail(root) as HTMLElement, /^Trust certificate$/), undefined, String(hint));
+    if (hint) assert.ok(text(banner(root)).includes(hint), "the hint itself is still shown");
+    unmount();
+  }
+});
+
+test("unknown fields are ignored, and a drawn field that is missing or mistyped falls back to the run's row", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { status: "RUNNING", control: "PAUSED", workflowRevision: 7 })]);
+  assert.match(text(header(root)), /RUNNING/, "before the first status read, the row is drawn");
+  await answer(
+    backend.statuses()[0],
+    statusRecord({ format: "aiws-graph-operator-view/1", workOrderId: "wo-1", status: 3, control: "x", pending: {}, holds: "none", somethingNew: [1], nodes: [{ phase: "NEW" }] }),
+  );
+  assert.equal(text(detail(root)).includes("praxis gave"), false, "the record was read");
+  assert.match(text(header(root)), /RUNNING/);
+  assert.equal(text(header(root).querySelector('[data-chip="control"]')), "PAUSED");
+  assert.match(text(header(root)), /revision 7/);
+  assert.doesNotMatch(text(header(root)), /Held|Awaiting approval/);
+});
+
+test("a status record in another format isn't read: the last run stays, with the problem, and is read again after 60 s", async () => {
+  for (const format of ["aiws-graph-operator-view/2", "coding-operator-view/1", undefined]) {
+    const backend = fakeBackend();
+    const root = await showRun(backend);
+    await answer(backend.statuses()[0], statusRecord(awaiting()));
+    const other = { ...awaiting({ status: "COMPLETED", outcome: "SUCCEEDED", pending: [] }), format };
+    await nextReadAfter(backend, 15_000, statusRecord(other));
+    assert.match(text(detail(root)), /praxis gave a run status Quay can't read\./, String(format));
+    assert.match(text(header(root)), /Awaiting approval/, "the last run read stays");
+    assert.doesNotMatch(text(header(root)), /COMPLETED/);
+    await nextReadAfter(backend, 60_000, statusRecord(awaiting()));
+    assert.doesNotMatch(text(detail(root)), /can't read/);
+    unmount();
+  }
+});

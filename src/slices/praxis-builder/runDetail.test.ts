@@ -472,3 +472,12 @@ test("a succeeded run checks every stage it passed and lights none", async () =>
   assert.doesNotMatch(text(stage(root, "Correction")), /Finished|Current/);
   assert.equal(strip(root)?.querySelector('[aria-current="step"]'), null);
 });
+
+test("a status record in another format isn't read: the last run stays, with the problem", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting()));
+  await nextReadAfter(backend, 15_000, statusRecord({ ...operatorView(1, { status: "SUCCEEDED" }), format: "aiws-graph-operator-view/1" }));
+  assert.match(text(detail(root)), /praxis gave a run status Quay can't read\./);
+  assert.match(text(header(root)), /AWAITING_APPROVAL/, "the last run read stays");
+});
