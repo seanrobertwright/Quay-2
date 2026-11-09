@@ -2,11 +2,13 @@
 // kept in memory while the builder is mounted and disposed, with its calls and timer, on unmount.
 // It feeds the catalog the project's listed templates and host condition, and tells it when the
 // Workflow templates group is shown. The views that draw host states read them from here.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { normalizePath } from "../../utils/paths.ts";
+import { useCallback, useEffect, useState } from "react";
 import { createHostCatalog, type HostCatalog, type LocalTemplate } from "./hostCatalog.ts";
 import type { HostCondition } from "./praxisHost.ts";
 import type { DefinitionEntry } from "./types.ts";
+import { useProjectModels } from "./useProjectModels.ts";
+
+const newCatalog = (projectPath: string) => createHostCatalog({ projectPath });
 
 export interface HostCatalogState {
   /** The shown project's catalog; null without a project. */
@@ -27,35 +29,8 @@ export function useHostCatalog(
   condition: HostCondition,
   groupShown: boolean,
 ): HostCatalogState {
-  const catalogs = useRef(new Map<string, HostCatalog>());
+  const { model: catalog, existing } = useProjectModels(projectPath, newCatalog);
   const [version, setVersion] = useState(0);
-
-  const catalogFor = useCallback((path: string) => {
-    const key = normalizePath(path);
-    let catalog = catalogs.current.get(key);
-    if (!catalog) {
-      catalog = createHostCatalog({ projectPath: path });
-      catalogs.current.set(key, catalog);
-    }
-    return catalog;
-  }, []);
-
-  // Counts mounts, so a remount (as StrictMode does) makes fresh catalogs after the cleanup
-  // disposed the old ones. No catalog exists before the first mount.
-  const [mounts, setMounts] = useState(0);
-  useEffect(() => {
-    setMounts((n) => n + 1);
-    const all = catalogs.current;
-    return () => {
-      for (const c of all.values()) c.dispose();
-      all.clear();
-    };
-  }, []);
-
-  const catalog = useMemo(
-    () => (mounts > 0 && projectPath ? catalogFor(projectPath) : null),
-    [mounts, projectPath, catalogFor],
-  );
 
   useEffect(() => catalog?.subscribe(() => setVersion((v) => v + 1)), [catalog]);
 
@@ -81,8 +56,8 @@ export function useHostCatalog(
 
   const saved = useCallback(
     // A project with no catalog yet has no reading for the save to invalidate.
-    (path: string, name: string, digest: string | null) => void catalogs.current.get(normalizePath(path))?.saved(name, digest),
-    [],
+    (path: string, name: string, digest: string | null) => void existing(path)?.saved(name, digest),
+    [existing],
   );
 
   return { catalog, version, saved };

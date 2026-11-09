@@ -120,9 +120,12 @@ import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
+import { useGraphHost } from "./useGraphHost.ts";
+import { graphRowBadges } from "./graphHostStatus.ts";
+import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import { HostBadgeView, HostGroupHeaderBar, HostOnlySubsection } from "./HostList.tsx";
-import { hostGroupHeader, hostOnlySection, rowBadges } from "./hostList.ts";
+import { hostGroupHeader, hostOnlySection, rowBadges, type RowBadge } from "./hostList.ts";
 import { openPraxisTerminal, type InteractiveCommand, type RunInTerminal } from "./praxisHost.ts";
 import { deletedSinceCommit } from "./changes.ts";
 import { isTextField } from "../workspace/ctrlBPrefix.ts";
@@ -399,9 +402,9 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // The cross-record checks (#269): a full check when the builder is shown and on a reload, rename
   // or delete; opening or saving a record re-checks the contracts it affects.
   const runChecks = useRunContexts(isOpen, projectPath, openKind, openId);
-  // The host chip (#448). A workflow template's work area is the view that needs the host, so
-  // the 60 s recheck runs only while one is shown and its host condition is failing.
-  const host = useHostCondition(projectPath, isOpen && openKind === "templates");
+  // The host chip (#448). A workflow template's or graph workflow's work area is the view that
+  // needs the host, so the 60 s recheck runs only while one is shown and its host condition is failing.
+  const host = useHostCondition(projectPath, isOpen && (openKind === "templates" || openKind === "graph-workflows"));
   // Each workflow template's host state (#449), for the views that draw it. The Workflow
   // templates group is shown whenever the builder is open with the project listed.
   const listedTemplates = listing?.projectKey === projectKey ? listing.byKind.templates.list?.entries : undefined;
@@ -419,6 +422,38 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           onCheckAgain: () => void shownCatalog.checkAgain(name),
         }
       : null;
+  // Each graph workflow's host state (#461). The Graph workflows group is shown whenever the
+  // builder is open with the project listed; the open graph workflow's form is on screen.
+  const listedGraphWorkflows = listing?.projectKey === projectKey ? listing.byKind["graph-workflows"].list?.entries : undefined;
+  const { graphs: shownGraphs } = useGraphHost(
+    projectPath,
+    listedGraphWorkflows,
+    host.condition,
+    isOpen,
+    isOpen && openKind === "graph-workflows" && openId !== undefined ? openId : null,
+  );
+  /** Graph workflow `name`'s host state for its form, read from the model on each render. */
+  const graphWorkflowHost = (name: string): GraphWorkflowHost | null =>
+    shownGraphs ? { view: shownGraphs.workflow(name), condition: host.condition, onCheckAgain: () => void shownGraphs.checkAgain(name) } : null;
+  /**
+   * The host part of a list group that shows host state, picked once per group: what its
+   * header's Check host rereads, and each row's badges, git state first and host state second.
+   * Null for a kind with no host state, or before its model exists.
+   */
+  const groupHostOf = (
+    kind: PraxisKind,
+    now: number,
+  ): { checkHost: () => Promise<void>; badges: (id: string, changed: ChangeStatus | undefined) => RowBadge[] } | null => {
+    const catalog = shownCatalog;
+    if (kind === "templates" && catalog) {
+      return { checkHost: () => catalog.checkHost(), badges: (id, changed) => rowBadges(id, changed, catalog.template(id), now) };
+    }
+    const graphs = shownGraphs;
+    if (kind === "graph-workflows" && graphs) {
+      return { checkHost: () => graphs.checkHost(), badges: (id, changed) => graphRowBadges(id, changed, graphs.workflow(id), now) };
+    }
+    return null;
+  };
   const hostOnlyShown = useMemo(
     () => (shownCatalog ? hostOnlySection(shownCatalog.hostOnly()) : null),
     // `catalogVersion` is bumped on every catalog change, which `hostOnly()` reads.
@@ -2083,21 +2118,18 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     : [];
                   const namingNew = naming?.mode === "new" && naming.kind === kind;
                   // The Workflow templates group carries the host's state (#363): the condition
-                  // in its header, a host badge on each row and the On host only subsection.
-                  const catalog = kind === "templates" ? hostCatalog.catalog : null;
-                  const onHostOnly = catalog ? hostOnlyShown : null;
-                  const now = Date.now();
+                  // in its header, a host badge on each row and the On host only subsection. The
+                  // Graph workflows group carries the condition and a badge on each row (#461).
+                  const groupHost = groupHostOf(kind, Date.now());
+                  const onHostOnly = kind === "templates" ? hostOnlyShown : null;
+                  const badgesOf = groupHost?.badges ?? null;
                   return (
                     <section key={kind} aria-label={label} className="mb-3">
                       <h3 className="px-3 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6e7681]">
                         <Icon className="w-3 h-3" aria-hidden="true" /> {label}
                       </h3>
-                      {catalog && (
-                        <HostGroupHeaderBar
-                          header={hostGroupHeader(host.condition)}
-                          onCheckHost={() => catalog.checkHost()}
-                          onRun={runHostCommand}
-                        />
+                      {groupHost && (
+                        <HostGroupHeaderBar header={hostGroupHeader(host.condition)} onCheckHost={groupHost.checkHost} onRun={runHostCommand} />
                       )}
                       {entry.error !== undefined && (
                         <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
@@ -2185,9 +2217,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                     current={isOpenDef}
                                     onOpen={() => openDefinition(ref)}
                                   />
-                                  {catalog ? (
-                                    // Git state first, host state second.
-                                    rowBadges(def.id, changed, catalog.template(def.id), now).map((badge) =>
+                                  {badgesOf ? (
+                                    badgesOf(def.id, changed).map((badge) =>
                                       badge.kind === "git" ? (
                                         <ChangedBadge key="git" id={def.id} status={badge.status} onClick={() => setDiffShown(ref)} />
                                       ) : (
@@ -2415,6 +2446,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     graphs={[...new Set(takenIds("graphs"))]}
                     graphBindings={graphBindingChoices()}
                     refresh={refreshCount}
+                    host={graphWorkflowHost(open.id)}
                     onEdit={editOpenGraphWorkflow}
                     onOpen={openDefinition}
                     onValidated={recordValidity}

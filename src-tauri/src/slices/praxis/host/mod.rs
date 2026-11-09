@@ -14,6 +14,7 @@ mod settings;
 #[cfg(test)]
 mod tests;
 
+pub use bundle::bundle_digest;
 pub use commands::*;
 pub use outcome::{CallOutcome, HostCondition};
 pub use runner::{ConditionChange, PraxisCli};
