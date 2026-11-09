@@ -76,36 +76,57 @@ export function minutesSince(checkedAt: number, now: number): number {
   return Math.max(0, Math.floor((now - checkedAt) / 60_000));
 }
 
+/** What a host badge shows of one state, whichever kind of record it belongs to. */
+export interface HostBadgeParts {
+  state: HostBadge["state"];
+  /** The state's text label. */
+  label: string;
+  /** What the host or the read said about the state, or null when it said nothing. */
+  reason: string | null;
+  tone: HostBadgeTone;
+}
+
+/** Record `id`'s host badge for `parts`, muted with how long ago it was checked once `reading` is muted. */
+export function hostBadgeOf(
+  id: string,
+  { state, label, reason, tone }: HostBadgeParts,
+  reading: { muted: boolean; checkedAt: number | null },
+  now: number,
+): HostBadge {
+  const title = reason ? `${label}. ${reason}` : label;
+  if (!reading.muted) return { state, text: `${id} on the host: ${label}`, title, tone, muted: false };
+  const stale = reading.checkedAt === null ? "May be out of date." : `May be out of date: checked ${minutesSince(reading.checkedAt, now)} min ago.`;
+  return {
+    state,
+    text: `${id} on the host: ${label}, may be out of date`,
+    title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`,
+    tone,
+    muted: true,
+  };
+}
+
 /** One template's host badge, or null when its host state is unknown and not shown. */
 export function hostBadge(id: string, view: TemplateHostView, now: number): HostBadge | null {
   const { state } = view;
   if (state.kind === "unknown" && state.why !== "failed") return null;
   const kind = state.kind === "unknown" ? "failed" : state.kind;
-  const label = HOST_STATE_LABELS[kind];
-  const reason = hostStateReason(state);
-  const title = reason ? `${label}. ${reason}` : label;
-  if (!view.muted) return { state: kind, text: `${id} on the host: ${label}`, title, tone: HOST_STATE_TONES[kind], muted: false };
-  const minutes = view.checkedAt === null ? null : minutesSince(view.checkedAt, now);
-  const stale = minutes === null ? "May be out of date." : `May be out of date: checked ${minutes} min ago.`;
-  return {
-    state: kind,
-    text: `${id} on the host: ${label}, may be out of date`,
-    title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`,
-    tone: HOST_STATE_TONES[kind],
-    muted: true,
-  };
+  return hostBadgeOf(id, { state: kind, label: HOST_STATE_LABELS[kind], reason: hostStateReason(state), tone: HOST_STATE_TONES[kind] }, view, now);
 }
 
 /** A row's badges, in the order they are drawn: git state first, host state second. */
 export type RowBadge = { kind: "git"; status: ChangeStatus } | { kind: "host"; badge: HostBadge };
 
-/** The badges of template `id`'s row: its change since the last commit, then its host state. */
-export function rowBadges(id: string, changed: ChangeStatus | undefined, host: TemplateHostView, now: number): RowBadge[] {
+/** A row's badges: its change since the last commit, when it has one, then its host badge, when it has one. */
+export function withHostBadge(changed: ChangeStatus | undefined, badge: HostBadge | null): RowBadge[] {
   const badges: RowBadge[] = [];
   if (changed) badges.push({ kind: "git", status: changed });
-  const badge = hostBadge(id, host, now);
   if (badge) badges.push({ kind: "host", badge });
   return badges;
+}
+
+/** The badges of template `id`'s row: its change since the last commit, then its host state. */
+export function rowBadges(id: string, changed: ChangeStatus | undefined, host: TemplateHostView, now: number): RowBadge[] {
+  return withHostBadge(changed, hostBadge(id, host, now));
 }
 
 /** The Workflow templates group header's host part. */

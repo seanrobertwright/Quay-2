@@ -6,22 +6,23 @@
 import { formatDateTime, parseUtcTimestamp } from "../../lib/dates.ts";
 import type { GraphHostState, GraphWorkflowHostView } from "./graphHost.ts";
 import { hostConditionView } from "./hostCondition.ts";
-import { minutesSince, type HostBadge, type HostBadgeTone, type HostLook, type RowBadge } from "./hostList.ts";
+import { HOST_STATE_LABELS, hostBadgeOf, minutesSince, withHostBadge, type HostBadge, type HostBadgeTone, type HostLook, type RowBadge } from "./hostList.ts";
 import type { HostCondition } from "./praxisHost.ts";
 import type { ChangeStatus } from "./types.ts";
 
 /** A graph workflow state as a badge or the status line shows it. */
 type ShownGraphState = Exclude<GraphHostState["kind"], "unknown"> | "failed" | "unknown";
 
+/** Each state's label; the states a template has too keep a template's words. */
 const LABELS: Record<Exclude<ShownGraphState, "candidate">, string> = {
-  nameRefused: "Name the host refuses",
+  nameRefused: HOST_STATE_LABELS.nameRefused,
   notSubmitted: "Not submitted",
   retired: "Retired",
-  differs: "Differs from host",
+  differs: HOST_STATE_LABELS.differs,
   notReady: "Admitted, not ready",
   admitted: "Admitted",
-  failed: "Couldn't check",
-  unknown: "Not checked yet",
+  failed: HOST_STATE_LABELS.failed,
+  unknown: HOST_STATE_LABELS.unknown,
 };
 
 /** Each state's colour, which never carries the state alone: the label does. Admitted is muted. */
@@ -139,25 +140,14 @@ export function graphStatusLine(view: GraphWorkflowHostView, condition: HostCond
 
 /** Graph workflow `id`'s host badge, or null while its state is unknown and not shown. */
 function graphBadge(id: string, view: GraphWorkflowHostView, now: number): HostBadge | null {
-  const { state } = view;
-  const shown = shownOf(state);
+  const shown = shownOf(view.state);
   if (shown === "unknown") return null;
-  const label = labelOf(state);
-  const reason = reasonOf(state);
-  const title = reason ? `${label}. ${reason}` : label;
-  const badge = { state: shown, tone: TONES[shown] };
-  if (!view.muted) return { ...badge, text: `${id} on the host: ${label}`, title, muted: false };
-  const stale = view.checkedAt === null ? "May be out of date." : `May be out of date: checked ${minutesSince(view.checkedAt, now)} min ago.`;
-  return { ...badge, text: `${id} on the host: ${label}, may be out of date`, title: `${title}${title.endsWith(".") ? "" : "."} ${stale}`, muted: true };
+  return hostBadgeOf(id, { state: shown, label: labelOf(view.state), reason: reasonOf(view.state), tone: TONES[shown] }, view, now);
 }
 
 /** The badges of graph workflow `id`'s row: its change since the last commit, then its host state. */
 export function graphRowBadges(id: string, changed: ChangeStatus | undefined, view: GraphWorkflowHostView, now: number): RowBadge[] {
-  const badges: RowBadge[] = [];
-  if (changed) badges.push({ kind: "git", status: changed });
-  const badge = graphBadge(id, view, now);
-  if (badge) badges.push({ kind: "host", badge });
-  return badges;
+  return withHostBadge(changed, graphBadge(id, view, now));
 }
 
 const STATUS_LABELS = new Map([
