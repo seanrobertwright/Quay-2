@@ -7,7 +7,8 @@
 // that names the record at fault. A Triggers section lists the triggers that start the graph
 // workflow, read from their saved target files (#479). Given its state on the Praxis host (#461),
 // the form shows it in a status line and a Revisions panel; nothing on the form calls the host
-// itself. A Workflow | Runs switch turns the work area to the graph workflow's runs on the host (#464).
+// itself. A Workflow | Runs switch turns the work area to the graph workflow's runs on the host (#464),
+// where Run starts one (#466).
 import { useEffect, useState, type FC, type ReactNode } from "react";
 import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
@@ -20,6 +21,7 @@ import { useGraphWorkflowCheck } from "./useGraphWorkflowCheck.ts";
 import { useGraphWorkflowTriggers, type GraphWorkflowTriggersStatus } from "./useGraphWorkflowTriggers.ts";
 import { useValidation } from "./useValidation.ts";
 import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
+import { definitionKey } from "./session.ts";
 import type { DefinitionRef, ValidationStatus } from "./types.ts";
 
 interface GraphWorkflowFormProps {
@@ -44,6 +46,8 @@ interface GraphWorkflowFormProps {
   runsShown?: boolean;
   /** How a graph run's detail opens a visible terminal for `praxis trust`. */
   runInTerminal?: RunInTerminal;
+  /** The `definitionKey`s of the project's records whose drafts have unsaved edits, for Run's confirm. */
+  unsavedKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -77,6 +81,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   onValidated,
   runsShown,
   runInTerminal,
+  unsavedKeys,
 }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
   const shape = useValidation("graph-workflows", draft.content);
@@ -146,6 +151,15 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <StartedBy triggers={triggers} onOpen={onOpen} />
     </>
   );
+  // The graph workflow and the records its bundle is made of, as far as the form knows them.
+  const graphBindingId = asString(w.graphBindingId);
+  const bundleRecords: DefinitionRef[] = [
+    draft.ref,
+    ...(graphId ? [{ kind: "graphs" as const, id: graphId }] : []),
+    ...(graphBindingId ? [{ kind: "graph-bindings" as const, id: graphBindingId }] : []),
+    ...(contractId ? [{ kind: "contracts" as const, id: contractId }] : []),
+    ...(grants ?? []).map((id) => ({ kind: "grants" as const, id })),
+  ];
   const rest = [...byPath].filter(([path]) => !taken.has(path)).flatMap(([, issues]) => issues);
 
   const viewSwitch = runsShown !== undefined && (
@@ -157,7 +171,14 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {viewSwitch}
         <div className="max-w-3xl mx-auto px-6 py-5 space-y-4">
-          <GraphRunsView projectPath={projectPath} name={draft.ref.id} shown={runsShown} runInTerminal={runInTerminal} />
+          <GraphRunsView
+            projectPath={projectPath}
+            name={draft.ref.id}
+            shown={runsShown}
+            runInTerminal={runInTerminal}
+            host={host}
+            unsaved={bundleRecords.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
+          />
         </div>
       </div>
     );

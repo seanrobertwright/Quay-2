@@ -76,6 +76,13 @@ export interface GraphWorkflowHostView {
    * when either is missing, so Differs can't be told: the status line then gives `current`.
    */
   compared: boolean;
+  /**
+   * True when Quay compared the bundle digests and the saved files aren't the current revision's,
+   * whatever the state: a pending candidate outranks Differs, but the current revision still runs.
+   */
+  differsFromCurrent: boolean;
+  /** The review digest of the host's review of the current revision, for Run's confirm; null when the host gave none. */
+  reviewDigest: string | null;
   /** The revisions the latest `graphs show` listed, newest first; empty without one. */
   revisions: (HostRevision & { current: boolean })[];
   /** True when the host holds revisions older than those listed. */
@@ -134,6 +141,8 @@ interface Detail {
   admissionPageAddress: string | null;
   /** Why the host says the current revision can't run: each not-ready agent's reasons, by node. */
   notReadyReasons: string[];
+  /** The `reviewDigest` of the host's review of the current revision, when it gave one. */
+  reviewDigest: string | null;
 }
 
 /** What one graph workflow's latest read found. */
@@ -172,6 +181,7 @@ function parseDetail(record: Record<string, unknown>): Detail | null {
     olderRevisions: record.nextBefore !== null && record.nextBefore !== undefined,
     admissionPageAddress: stringOrNull(record.admissionPageAddress),
     notReadyReasons: notReadyReasons(record.review),
+    reviewDigest: isObject(record.review) ? stringOrNull(record.review.reviewDigest) : null,
   };
 }
 
@@ -381,6 +391,8 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
       const { state, checkedAt } = stateOf(name);
       const detail = shownDetail(name);
       const current = detail ? currentOf(detail) : null;
+      const localDigest = local.get(name)?.bundleDigest ?? null;
+      const compared = current !== null && current.bundleDigest !== null && localDigest !== null;
       return {
         state,
         checkedAt,
@@ -388,7 +400,9 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
         checking: showsInFlight.has(name) || listInFlight !== null,
         admissionPageAddress: detail?.admissionPageAddress ?? null,
         current: current && { revision: current.revision, submittedAt: current.submittedAt },
-        compared: current !== null && current.bundleDigest !== null && (local.get(name)?.bundleDigest ?? null) !== null,
+        compared,
+        differsFromCurrent: compared && current?.bundleDigest !== localDigest,
+        reviewDigest: current === null ? null : (detail?.reviewDigest ?? null),
         revisions: (detail?.revisions ?? []).map((r) => ({ ...r, current: r.revision === detail?.currentRevision })),
         olderRevisions: detail?.olderRevisions ?? false,
       };
