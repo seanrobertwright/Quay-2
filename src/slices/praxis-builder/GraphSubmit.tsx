@@ -4,12 +4,12 @@
 // writes nothing, and lists the host's findings against the bundle file each names, each a link
 // that opens it. The bar reads the saved bundle with `praxis_graph_workflow_bundle` when it is
 // shown, whenever the builder saves, renames or deletes a record, and after each check.
-import { useEffect, useId, useRef, useState, type FC } from "react";
+import { useEffect, useId, useRef, useState, type FC, type ReactNode, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SearchCheck, Send, TriangleAlert } from "lucide-react";
 import type { GraphWorkflowHostView } from "./graphHost.ts";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
-import { SubmitConfirm } from "./GraphSubmitConfirm.tsx";
+import { BundleFiles, SubmitConfirm } from "./GraphSubmitConfirm.tsx";
 import {
   bundleWarnings,
   findingFile,
@@ -77,7 +77,6 @@ export const GraphSubmitBar: FC<{
   onOpen: (ref: DefinitionRef) => void;
 }> = ({ projectPath, name, records, local, refresh, host, submit, onOpen }) => {
   const { state } = host.view;
-  const reasonsId = useId();
   // Bumped after each check, so the findings name the files the check read.
   const [reads, setReads] = useState(0);
   const bundle = useBundle(projectPath, name, `${refresh}|${reads}`);
@@ -153,13 +152,52 @@ export const GraphSubmitBar: FC<{
   };
 
   return (
+    <SubmitControls
+      checking={checking}
+      reasons={reasons}
+      warnings={warnings}
+      stopped={stopped}
+      onCheck={checkOnHost}
+      onSubmit={() => void startSubmit()}
+      submitRef={submitRef}
+    >
+      {check && <CheckResult check={check} bundle={bundle.state === "done" ? bundle.bundle : null} onOpen={onOpen} />}
+      {confirming && (
+        <SubmitConfirm name={name} onSend={send} onClose={() => setConfirming(null)} returnFocus={submitRef}>
+          <BundleFiles bundle={confirming.bundle} />
+        </SubmitConfirm>
+      )}
+    </SubmitControls>
+  );
+};
+
+/**
+ * Check on host and Submit…, the reasons Submit is disabled, each described by it, the warnings
+ * that don't disable it, and why the last Submit stopped; `children` follow them. Shared by the
+ * graph workflow and trigger forms.
+ */
+export const SubmitControls: FC<{
+  /** True while a check, or Submit's reads before the confirm, run: neither button acts then. */
+  checking: boolean;
+  /** Why Submit is disabled; empty when nothing stops it. */
+  reasons: readonly string[];
+  warnings: readonly string[];
+  stopped: string | null;
+  onCheck: () => void;
+  onSubmit: () => void;
+  submitRef: RefObject<HTMLButtonElement | null>;
+  children?: ReactNode;
+}> = ({ checking, reasons, warnings, stopped, onCheck, onSubmit, submitRef, children }) => {
+  const reasonsId = useId();
+  const withheld = reasons.length > 0;
+  return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <button
           type="button"
           // Not `disabled`, which would drop focus while the check runs.
           aria-disabled={checking}
-          onClick={checkOnHost}
+          onClick={onCheck}
           className={buttonClass}
         >
           <SearchCheck className="w-3.5 h-3.5" aria-hidden="true" />
@@ -171,7 +209,7 @@ export const GraphSubmitBar: FC<{
           // Not `disabled`, which would drop focus; the reasons are shown and described.
           aria-disabled={withheld || checking}
           aria-describedby={withheld ? reasonsId : undefined}
-          onClick={() => void startSubmit()}
+          onClick={onSubmit}
           className={buttonClass}
         >
           <Send className="w-3.5 h-3.5" aria-hidden="true" />
@@ -203,10 +241,7 @@ export const GraphSubmitBar: FC<{
           {stopped}
         </p>
       )}
-      {check && <CheckResult check={check} bundle={bundle.state === "done" ? bundle.bundle : null} onOpen={onOpen} />}
-      {confirming && (
-        <SubmitConfirm name={name} bundle={confirming.bundle} onSend={send} onClose={() => setConfirming(null)} returnFocus={submitRef} />
-      )}
+      {children}
     </div>
   );
 };
