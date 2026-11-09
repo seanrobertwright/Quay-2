@@ -11,7 +11,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
 import { createHostReadSession, createLimiter, isObject, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS, online } from "./hostReadSession.ts";
-import { isHostLevelFailure, outcomeMessage, type CallOutcome, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { isHostLevelFailure, outcomeMessage, writeOutcomeOf, type HostCondition, type Invoker, type WriteOutcome } from "./praxisHost.ts";
 
 /** A local graph workflow as the builder's list has it. */
 export interface LocalGraphWorkflow {
@@ -45,14 +45,6 @@ export type GraphHostState =
       why: "host" | "notChecked" | "failed";
       message?: string;
     };
-
-/** What one Withdraw came to, in the words the confirm shows. */
-export type WithdrawOutcome =
-  | { kind: "withdrawn" }
-  /** No withdrawal: the host refused it, such as for a candidate already decided, or couldn't be asked. */
-  | { kind: "refused"; message: string }
-  /** Quay can't tell whether the host withdrew it. */
-  | { kind: "unknown"; message: string };
 
 export type KnownGraphState = "nameRefused" | "notSubmitted" | "retired" | "candidate" | "differs" | "notReady" | "admitted";
 
@@ -115,7 +107,7 @@ export interface GraphHost {
    * and resolves once that read is in. A repeat while one is in flight joins it. After an outcome
    * praxis couldn't confirm, the next withdrawal of the same revision resends its request id.
    */
-  withdraw(name: string, revision: number): Promise<WithdrawOutcome>;
+  withdraw(name: string, revision: number): Promise<WriteOutcome>;
   /**
    * The graph workflow whose form is on screen, or null when none is. While it shows a pending
    * candidate it is read again `CANDIDATE_POLL_MS` after each read ends; nothing else polls.
@@ -211,31 +203,6 @@ function notReadyReasons(review: unknown): string[] {
   });
 }
 
-/** What a `praxis_host_graph_withdraw` outcome means for the person who pressed Withdraw. */
-function withdrawOutcomeOf(outcome: CallOutcome, name: string, revision: number): WithdrawOutcome {
-  const which = `revision ${revision} of ${name}`;
-  switch (outcome.kind) {
-    case "record":
-      return { kind: "withdrawn" };
-    case "hostRefused":
-      if (outcome.hostCode === "REVISION_NOT_PENDING") {
-        return { kind: "refused", message: `The host refused: ${which} is no longer pending. The owner has admitted or rejected it, or it was withdrawn already.` };
-      }
-      return { kind: "refused", message: `The host refused to withdraw ${which}: ${outcome.message}` };
-    case "unknown":
-      return {
-        kind: "unknown",
-        message: `Quay can't tell whether the host withdrew ${which}: ${outcome.detail}${outcome.requestId ? " Withdraw again resends the same request." : ""}`,
-      };
-    case "timedOut":
-      return { kind: "unknown", message: `praxis didn't answer in time, so Quay can't tell whether the host withdrew ${which}.` };
-    case "cancelled":
-      return { kind: "unknown", message: `praxis was stopped before it said whether the host withdrew ${which}.` };
-    default:
-      return { kind: "refused", message: `Quay didn't withdraw ${which}: ${outcomeMessage(outcome)}` };
-  }
-}
-
 const NO_REASON = "The host says this graph workflow can't run, and gave no reason.";
 
 /** The names on a `graphs list` page and its cursor, or null when it holds none Quay can read. */
@@ -289,7 +256,7 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
   let listInFlight: Promise<Set<string> | null> | null = null;
   const showsInFlight = new Map<string, Promise<void>>();
   const limit = createLimiter(MAX_SHOWS_IN_FLIGHT);
-  const withdrawalsInFlight = new Map<string, Promise<WithdrawOutcome>>();
+  const withdrawalsInFlight = new Map<string, Promise<WriteOutcome>>();
   // The request id of each withdrawal praxis couldn't confirm, by `withdrawalKey`, to resend.
   const unconfirmed = new Map<string, string>();
   let watched: string | null = null;
@@ -386,14 +353,15 @@ export function createGraphHost({ projectPath, call = invoke }: GraphHostOptions
     return joined ? joined.then(() => readShow(name)) : readShow(name);
   }
 
-  async function sendWithdrawal(name: string, revision: number, key: string): Promise<WithdrawOutcome> {
+  async function sendWithdrawal(name: string, revision: number, key: string): Promise<WriteOutcome> {
     const nameProblem = local.get(name)?.nameProblem;
     if (nameProblem) return { kind: "refused", message: nameProblem };
     const outcome = await praxis("praxis_host_graph_withdraw", { name, revision, requestId: unconfirmed.get(key) ?? null });
     if (outcome.kind === "unknown" && outcome.requestId) unconfirmed.set(key, outcome.requestId);
     else if (outcome.kind === "record" || outcome.kind === "hostRefused") unconfirmed.delete(key);
     if (!session.disposed) await rereadShow(name);
-    return withdrawOutcomeOf(outcome, name, revision);
+    const which = `revision ${revision} of ${name}`;
+    return writeOutcomeOf(outcome, { doing: `withdraw ${which}`, done: `withdrew ${which}` });
   }
 
   /** The local graph workflows whose names `praxis` accepts. */

@@ -109,6 +109,8 @@ await record('triggers fires: none', firesOf('later'));
 // Disabled, then retired.
 await record('triggers disable', ['triggers', 'disable', 'on-push']);
 await record('triggers show: admitted but disabled', show('on-push'));
+// The review page of the admitted revision, where the owner enables a disabled trigger.
+await record('triggers show: a revision', ['triggers', 'show', 'on-push', '--revision', '1', '--format', 'aiws-graph-trigger-revision/1']);
 await record('triggers retire', ['triggers', 'retire', 'on-push']);
 await record('triggers show: retired', show('on-push'));
 await record('triggers disable: retired', ['triggers', 'disable', 'on-push']);

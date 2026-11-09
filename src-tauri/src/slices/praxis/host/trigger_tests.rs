@@ -125,6 +125,7 @@ fn each_trigger_read_is_read_with_the_arguments_praxis_took() {
         (Verb::TriggersShow, vec!["on-push"], "triggers show: admitted but disabled"),
         (Verb::TriggersShow, vec!["on-push"], "triggers show: retired"),
         (Verb::TriggersRevisions, vec!["on-push", "--before", "2", "--limit", "20"], "triggers show: older revisions"),
+        (Verb::TriggersRevision, vec!["on-push", "--revision", "1"], "triggers show: a revision"),
         (Verb::TriggersFires, vec!["on-push", "--limit", "20"], "triggers fires"),
         (Verb::TriggersFires, vec!["on-push", "--limit", "20", "--before", &before], "triggers fires: older"),
         (Verb::TriggersFires, vec!["later", "--limit", "20"], "triggers fires: none"),
@@ -212,6 +213,7 @@ fn every_trigger_write_has_the_write_timeout_and_every_read_pins_its_format() {
         (Verb::TriggersList, "aiws-graph-triggers/1"),
         (Verb::TriggersShow, "aiws-graph-trigger/1"),
         (Verb::TriggersRevisions, "aiws-graph-trigger-revisions/1"),
+        (Verb::TriggersRevision, "aiws-graph-trigger-revision/1"),
         (Verb::TriggersFires, "aiws-graph-trigger-fires/1"),
     ] {
         assert!(!verb.writes(), "{verb:?}");
@@ -238,6 +240,7 @@ fn a_trigger_name_the_host_refuses_never_reaches_praxis() {
     for (verb, operands) in [
         (Verb::TriggersShow, vec!["Nightly"]),
         (Verb::TriggersRevisions, vec!["con", "--before", "2", "--limit", "20"]),
+        (Verb::TriggersRevision, vec!["Con", "--revision", "1"]),
         (Verb::TriggersFires, vec!["check", "--limit", "20"]),
         (Verb::TriggersWithdraw, vec!["", "1"]),
         (Verb::TriggersDisable, vec!["night_ly"]),

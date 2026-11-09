@@ -88,6 +88,53 @@ export function outcomeMessage(outcome: CallOutcome): string {
   }
 }
 
+/**
+ * What one write to the host that a person confirmed came to, in the words its confirm shows: a
+ * withdrawal of a graph workflow or graph trigger candidate, or a graph trigger's disabling or
+ * retirement.
+ */
+export type WriteOutcome =
+  | { kind: "done" }
+  /** Nothing changed: the host refused it, such as for a candidate already decided, or couldn't be asked. */
+  | { kind: "refused"; message: string }
+  /** Quay can't tell whether the host did it. */
+  | { kind: "unknown"; message: string };
+
+/** How a write's outcome names it. */
+export interface WriteWords {
+  /** "withdraw revision 2 of nightly". */
+  doing: string;
+  /** "withdrew revision 2 of nightly". */
+  done: string;
+}
+
+/** What a write's call outcome means for the person who confirmed it. */
+export function writeOutcomeOf(outcome: CallOutcome, words: WriteWords): WriteOutcome {
+  switch (outcome.kind) {
+    case "record":
+      return { kind: "done" };
+    case "hostRefused":
+      if (outcome.hostCode === "REVISION_NOT_PENDING") {
+        return {
+          kind: "refused",
+          message: `The host refused to ${words.doing}: it is no longer pending. The owner has admitted or rejected it, or it was withdrawn already. ${outcome.message}`,
+        };
+      }
+      return { kind: "refused", message: `The host refused to ${words.doing}: ${outcome.message}` };
+    case "unknown":
+      return {
+        kind: "unknown",
+        message: `Quay can't tell whether the host ${words.done}: ${outcome.detail}${outcome.requestId ? " Pressing it again resends the same request." : ""}`,
+      };
+    case "timedOut":
+      return { kind: "unknown", message: `praxis didn't answer in time, so Quay can't tell whether the host ${words.done}.` };
+    case "cancelled":
+      return { kind: "unknown", message: `praxis was stopped before it said whether the host ${words.done}.` };
+    default:
+      return { kind: "refused", message: `Quay didn't ${words.doing}: ${outcomeMessage(outcome)}` };
+  }
+}
+
 /** The payload of the `praxis-host-condition` event. */
 export interface HostConditionChange {
   projectPath: string;

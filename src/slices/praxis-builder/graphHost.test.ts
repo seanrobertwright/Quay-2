@@ -443,7 +443,7 @@ test("withdrawing a pending candidate sends its revision, then rereads: the reco
   // The withdrawal is done once the reread after it is in.
   assert.deepEqual(host.open(), ["show ship"]);
   host.answer("show ship", admitted("ship", { revisions: admittedOne("WITHDRAWN") }));
-  assert.deepEqual(await done, { kind: "withdrawn" });
+  assert.deepEqual(await done, { kind: "done" });
   const view = graphs.workflow("ship");
   assert.deepEqual(view.state, { kind: "admitted", revision: 1 });
   assert.deepEqual(view.revisions.map((r) => [r.revision, r.status, r.current]), [[2, "WITHDRAWN", false], [1, "CURRENT", true]]);
@@ -460,7 +460,7 @@ test("a withdrawal the host refuses because the candidate is already decided say
   host.answer("show ship", admitted("ship", { revisions: (rs: Revision[]) => [{ ...rs[0], status: "CURRENT" }, { ...rs[1], status: "ADMITTED" }], currentRevision: 2 }));
   assert.deepEqual(await done, {
     kind: "refused",
-    message: "The host refused: revision 2 of ship is no longer pending. The owner has admitted or rejected it, or it was withdrawn already.",
+    message: "The host refused to withdraw revision 2 of ship: it is no longer pending. The owner has admitted or rejected it, or it was withdrawn already. The host refused the request (REVISION_NOT_PENDING).",
   });
   assert.deepEqual(graphs.workflow("ship").state, { kind: "admitted", revision: 2 });
 });
@@ -478,7 +478,7 @@ test("a withdrawal praxis couldn't confirm is unknown, and the next one resends 
   host.answer("show ship", admitted("ship", { revisions: admittedOne("CANDIDATE"), pendingCount: 1 }));
   assert.deepEqual(await first, {
     kind: "unknown",
-    message: "Quay can't tell whether the host withdrew revision 2 of ship: The host didn't confirm the request. Withdraw again resends the same request.",
+    message: "Quay can't tell whether the host withdrew revision 2 of ship: The host didn't confirm the request. Pressing it again resends the same request.",
   });
   assert.equal(host.calls.filter((c) => c.command === "praxis_host_graph_withdraw").length, 1);
   const again = graphs.withdraw("ship", 2);
@@ -487,5 +487,5 @@ test("a withdrawal praxis couldn't confirm is unknown, and the next one resends 
   host.answer("withdraw ship 2", withdrawnRecord("ship", 2));
   await settle();
   host.answer("show ship", admitted("ship"));
-  assert.deepEqual(await again, { kind: "withdrawn" });
+  assert.deepEqual(await again, { kind: "done" });
 });

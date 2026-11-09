@@ -48,6 +48,9 @@ pub enum Verb {
     TriggersShow,
     /// `praxis triggers show <name> --before <revision>`: a page of older revisions.
     TriggersRevisions,
+    /// `praxis triggers show <name> --revision <revision>`: one revision, with the address of its
+    /// review page in the browser, where the owner admits, rejects or enables the trigger.
+    TriggersRevision,
     /// `praxis triggers fires <name>`: a page of the trigger's fires, newest first.
     TriggersFires,
     /// `praxis triggers withdraw <name> <revision>`: withdraws a pending candidate.
@@ -82,6 +85,7 @@ impl Verb {
             Verb::TriggersList => "aiws-graph-triggers/1",
             Verb::TriggersShow => "aiws-graph-trigger/1",
             Verb::TriggersRevisions => "aiws-graph-trigger-revisions/1",
+            Verb::TriggersRevision => "aiws-graph-trigger-revision/1",
             Verb::TriggersFires => "aiws-graph-trigger-fires/1",
             Verb::TriggersWithdraw => "aiws-graph-trigger-withdraw-result/1",
             Verb::TriggersDisable | Verb::TriggersRetire => "aiws-graph-trigger-control-result/1",
@@ -157,7 +161,7 @@ impl Verb {
             Verb::TriggersCheck => &["triggers", "check"],
             Verb::TriggersSubmit => &["triggers", "submit"],
             Verb::TriggersList => &["triggers", "list"],
-            Verb::TriggersShow | Verb::TriggersRevisions => &["triggers", "show"],
+            Verb::TriggersShow | Verb::TriggersRevisions | Verb::TriggersRevision => &["triggers", "show"],
             Verb::TriggersFires => &["triggers", "fires"],
             Verb::TriggersWithdraw => &["triggers", "withdraw"],
             Verb::TriggersDisable => &["triggers", "disable"],
@@ -181,6 +185,7 @@ impl Verb {
                 | Verb::TriggersList
                 | Verb::TriggersShow
                 | Verb::TriggersRevisions
+                | Verb::TriggersRevision
                 | Verb::TriggersFires
         )
     }
@@ -221,6 +226,7 @@ impl Verb {
             | Verb::TriggersSubmit
             | Verb::TriggersShow
             | Verb::TriggersRevisions
+            | Verb::TriggersRevision
             | Verb::TriggersFires
             | Verb::TriggersWithdraw
             | Verb::TriggersDisable

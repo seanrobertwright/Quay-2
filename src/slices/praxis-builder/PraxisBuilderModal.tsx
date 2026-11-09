@@ -124,6 +124,8 @@ import { useHostCatalog } from "./useHostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
 import { useTriggerHost } from "./useTriggerHost.ts";
+import { useTriggerControl } from "./useTriggerControl.ts";
+import { bindTriggerControl } from "./triggerControl.ts";
 import { triggerRowBadges } from "./triggerHostStatus.ts";
 import type { GraphTriggerHost } from "./TriggerHostPanel.tsx";
 import type { TriggerFires } from "./FiresPanel.tsx";
@@ -474,6 +476,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     isOpen && listsGraphTrigger,
     isOpen && openKind === "triggers" && openId !== undefined ? openId : null,
   );
+  // Withdraw, Disable, Retire and the review page for Enable in browser on a graph trigger (#477).
+  const triggerControl = useTriggerControl(projectPath, shownTriggers);
   // The run a graph trigger's fire created, to show in its graph workflow's Runs view once that
   // workflow's form opens (#478). It is dropped as soon as another record is open.
   const [runToShow, setRunToShow] = useState<RunToShow | null>(null);
@@ -496,6 +500,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
           view: shownTriggers.trigger(name),
           condition: host.condition,
           onCheckAgain: () => void shownTriggers.checkAgain(name),
+          control: triggerControl ? bindTriggerControl(triggerControl, name) : undefined,
         }
       : null;
   /**

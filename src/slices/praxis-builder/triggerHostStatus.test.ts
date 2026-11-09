@@ -36,7 +36,7 @@ test("each of the eight states has its own label on the status line, and the hos
   };
   assert.deepEqual(line({ kind: "nameRefused", rule: "the rule" }), ["Name the host refuses", "the rule"]);
   assert.deepEqual(line({ kind: "notSubmitted" }), ["Not submitted", null]);
-  assert.deepEqual(line({ kind: "retired", revision: 1 }), ["Retired", "The owner retired it. It fires again only once the owner admits a new revision."]);
+  assert.deepEqual(line({ kind: "retired", revision: 1 }), ["Retired", "It was retired on the host. It fires again only once the owner admits a new revision."]);
   assert.deepEqual(line({ kind: "candidate", revision: 3 }), ["Candidate waiting for admission (revision 3)", "The owner admits or rejects it in the browser."]);
   assert.deepEqual(line({ kind: "differs", revision: 1 }), ["Differs from host", "The saved files aren't admitted revision 1's."]);
   assert.deepEqual(line({ kind: "disabled", revision: 1 }), ["Admitted, disabled", "It doesn't fire until the owner enables it in the browser."]);

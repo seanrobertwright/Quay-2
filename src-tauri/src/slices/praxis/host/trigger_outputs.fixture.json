@@ -1,5 +1,5 @@
 {
-  "provenance": "Recorded by trigger_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 173bcd3c, run against its simulated host on Node 24.20.0.",
+  "provenance": "Recorded by trigger_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 173bcd3c, run against its simulated host on Node 24.20.0. The case \"triggers show: a revision\" was recorded later by the same script, from praxis at aba5764e on Node 24.20.0, in a run of its own, so its browser origin, times and session differ from the other cases'.",
   "cases": [
     {
       "name": "triggers check: valid",
@@ -805,6 +805,55 @@
           "TRIGGER_DISABLED"
         ],
         "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "triggers show: a revision",
+      "args": [
+        "triggers",
+        "show",
+        "on-push",
+        "--revision",
+        "1",
+        "--format",
+        "aiws-graph-trigger-revision/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-graph-trigger-revision/1",
+        "name": "on-push",
+        "revision": 1,
+        "status": "ADMITTED",
+        "baseRevision": null,
+        "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
+        "submittedAt": "2026-11-09T19:33:21.777Z",
+        "submittedBy": {
+          "kind": "AGENT",
+          "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
+          "sessionId": "7d7a9a16-fe74-4ec5-9d9a-f17ac4960dcb"
+        },
+        "workflow": "release-review",
+        "trigger": {
+          "action": "START_RUN",
+          "contractId": "release",
+          "enabled": true,
+          "eventType": "push",
+          "expiresAt": "4102444800000",
+          "id": "on-push",
+          "kind": "EVENT",
+          "maxAgeMs": "3600000",
+          "maxConcurrent": "5",
+          "maxDepth": "0",
+          "notBefore": "0",
+          "rateLimit": "100",
+          "rateWindowMs": "3600000",
+          "revision": "1",
+          "source": "github"
+        },
+        "review": null,
+        "admissionPageAddress": "https://praxis-vgjndfj5xd.localhost:51826/#graph-trigger=on-push&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
