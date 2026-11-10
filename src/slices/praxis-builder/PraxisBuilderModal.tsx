@@ -122,6 +122,7 @@ import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
+import { importHostTemplate, type ImportHostTemplateOutcome } from "./hostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
 import { useTriggerHost } from "./useTriggerHost.ts";
@@ -960,6 +961,24 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (!project) return;
     setNotice(null);
     changeSessions((s) => updateSession(s, project.path, (cur) => ({ ...cur, name: project.name, open: ref })));
+  };
+
+  const importHostTemplateToProject = async (name: string): Promise<ImportHostTemplateOutcome> => {
+    if (!projectPath) {
+      return { ok: false, kind: "refused", message: "No project is open." };
+    }
+    const outcome = await importHostTemplate(projectPath, name, {
+      catalog: shownCatalog ?? undefined,
+    });
+    if (!outcome.ok) {
+      return outcome;
+    }
+    setRefreshCount((c) => c + 1);
+    openDefinition({ kind: "templates", id: name });
+    const toastText = `Imported ${name} into .praxis/templates/${name}.json`;
+    setNotice({ tone: "info", text: toastText });
+    announce(toastText);
+    return outcome;
   };
 
   /** Adds a graph to a contract's Graphs in the contract's draft, as one step of its history. */
@@ -2370,7 +2389,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                           Showing the first {entry.list.entries.length}. The folder holds more.
                         </p>
                       )}
-                      {onHostOnly && <HostOnlySubsection section={onHostOnly} />}
+                      {onHostOnly && <HostOnlySubsection section={onHostOnly} onImport={importHostTemplateToProject} />}
                     </section>
                   );
                 })}

@@ -1,8 +1,21 @@
 /// <reference types="node" />
-import { test } from "node:test";
+import "../../test-support/dom.ts";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { HOST_ONLY_LIMIT, hostBadge, hostGroupHeader, hostOnlyDetails, hostOnlySection, rowBadges } from "./hostList.ts";
-import type { HostOnlyTemplate, TemplateHostView } from "./hostCatalog.ts";
+import { act, createElement, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  HOST_ONLY_LIMIT,
+  hostBadge,
+  hostGroupHeader,
+  hostImportAvailability,
+  hostOnlyDetails,
+  hostOnlySection,
+  rowBadges,
+} from "./hostList.ts";
+import type { HostOnlyTemplate, ImportHostTemplateOutcome, TemplateHostView } from "./hostCatalog.ts";
+
+const { HostOnlySubsection } = await import("./HostList.tsx");
 
 const NOW = 1_800_000_000_000;
 const view = (state: TemplateHostView["state"], checkedAt: number | null = NOW, muted = false): TemplateHostView => ({
@@ -172,3 +185,164 @@ test("a host-only template's read-only panel has its description, revision and v
     { label: "Validity", value: "Valid" },
   ]);
 });
+
+test("valid host-only templates allow import", () => {
+  const availability = hostImportAvailability(hostOnly("deploy", true));
+  assert.equal(availability.allowed, true);
+  assert.equal(availability.diagnostic, null);
+});
+
+test("invalid host-only templates flag import as disabled with diagnostics", () => {
+  const availability = hostImportAvailability(hostOnly("deploy", false, { diagnostics: ["Unknown step kind.", "Missing runner."] }));
+  assert.equal(availability.allowed, false);
+  assert.equal(availability.diagnostic, "Unknown step kind. Missing runner.");
+});
+
+test("invalid host-only templates without diagnostics give a fallback diagnostic", () => {
+  const availability = hostImportAvailability(hostOnly("deploy", false, { diagnostics: [] }));
+  assert.equal(availability.allowed, false);
+  assert.equal(availability.diagnostic, "The template is invalid on the host.");
+});
+
+let mounted: { root: Root; container: HTMLElement } | null = null;
+
+afterEach(() => {
+  if (mounted) {
+    const { root, container } = mounted;
+    act(() => root.unmount());
+    container.remove();
+    mounted = null;
+  }
+});
+
+async function renderComponent(element: ReactElement): Promise<HTMLElement> {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+  await act(async () => root.render(element));
+  return container;
+}
+
+const click = (el: HTMLElement | null | undefined) => act(async () => el?.click());
+
+test("expanded panel renders 'Import to project' button enabled for valid templates", async () => {
+  const section = hostOnlySection([hostOnly("deploy", true)])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section }));
+
+  // Expand subsection
+  const expandBtn = root.querySelector("button[aria-expanded='false']") as HTMLButtonElement;
+  await click(expandBtn);
+
+  // Expand row
+  const rowBtn = Array.from(root.querySelectorAll("li button")).find((b) => b.textContent?.trim() === "deploy") as HTMLButtonElement;
+  await click(rowBtn);
+
+  // Check Import to project button
+  const buttons = Array.from(root.querySelectorAll("button"));
+  const importBtn = buttons.find((b) => b.textContent?.includes("Import to project")) as HTMLButtonElement;
+  assert.ok(importBtn, "Import to project button should be rendered");
+  assert.equal(importBtn.disabled, false);
+});
+
+test("expanded panel renders disabled 'Import to project' button with diagnostic message when template is invalid", async () => {
+  const section = hostOnlySection([hostOnly("broken", false, { diagnostics: ["Invalid step syntax."] })])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section }));
+
+  // Expand subsection
+  const expandBtn = root.querySelector("button[aria-expanded='false']") as HTMLButtonElement;
+  await click(expandBtn);
+
+  // Expand row
+  const rowBtn = Array.from(root.querySelectorAll("li button")).find((b) => b.textContent?.trim() === "broken") as HTMLButtonElement;
+  await click(rowBtn);
+
+  // Check Import to project button is disabled
+  const buttons = Array.from(root.querySelectorAll("button"));
+  const importBtn = buttons.find((b) => b.textContent?.includes("Import to project")) as HTMLButtonElement;
+  assert.ok(importBtn, "Import to project button should be rendered");
+  assert.equal(importBtn.disabled, true);
+  assert.equal(importBtn.title, "Invalid step syntax.");
+
+  // Check explanatory diagnostic message
+  assert.match(root.textContent ?? "", /Invalid step syntax\./);
+});
+
+test("clicking 'Import to project' enters in-progress loading state, triggers callback, and disables duplicate clicks", async () => {
+  let resolveImport!: (outcome: ImportHostTemplateOutcome) => void;
+  const pendingPromise = new Promise<ImportHostTemplateOutcome>((resolve) => {
+    resolveImport = resolve;
+  });
+  const calls: string[] = [];
+  const onImport = (name: string) => {
+    calls.push(name);
+    return pendingPromise;
+  };
+
+  const section = hostOnlySection([hostOnly("deploy", true)])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section, onImport }));
+
+  // Expand subsection and row
+  await click(root.querySelector("button[aria-expanded='false']") as HTMLButtonElement);
+  const rowBtn = Array.from(root.querySelectorAll("li button")).find((b) => b.textContent?.trim() === "deploy") as HTMLButtonElement;
+  await click(rowBtn);
+
+  const importBtn = Array.from(root.querySelectorAll("button")).find((b) => b.textContent?.includes("Import to project")) as HTMLButtonElement;
+  assert.ok(importBtn);
+
+  // Click import
+  await click(importBtn);
+
+  // Verify callback was called
+  assert.deepEqual(calls, ["deploy"]);
+
+  // Verify loading state
+  assert.match(importBtn.textContent ?? "", /Importing…/);
+  assert.equal(importBtn.disabled, true);
+  const spinner = importBtn.querySelector(".animate-spin");
+  assert.ok(spinner, "Spinner with animate-spin should be present during import");
+
+  // Attempt duplicate click while in progress
+  await click(importBtn);
+  assert.deepEqual(calls, ["deploy"], "Duplicate click must not trigger additional onImport calls");
+
+  // Resolve import
+  await act(async () => {
+    resolveImport({
+      ok: true,
+      kind: "imported",
+      name: "deploy",
+      filePath: ".praxis/templates/deploy.json",
+      templateDigest: "abc",
+      hostDigest: "abc",
+      digestMatches: true,
+    });
+  });
+});
+
+test("displays inline error banner inside the panel when import fails", async () => {
+  const onImport = async (name: string): Promise<ImportHostTemplateOutcome> => {
+    return {
+      ok: false,
+      kind: "refused",
+      message: `The template "${name}" already exists or could not be saved.`,
+    };
+  };
+
+  const section = hostOnlySection([hostOnly("deploy", true)])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section, onImport }));
+
+  // Expand subsection and row
+  await click(root.querySelector("button[aria-expanded='false']") as HTMLButtonElement);
+  const rowBtn = Array.from(root.querySelectorAll("li button")).find((b) => b.textContent?.trim() === "deploy") as HTMLButtonElement;
+  await click(rowBtn);
+
+  const importBtn = Array.from(root.querySelectorAll("button")).find((b) => b.textContent?.includes("Import to project")) as HTMLButtonElement;
+  await click(importBtn);
+
+  // Check inline error banner
+  const alert = root.querySelector("[role='alert']");
+  assert.ok(alert, "An alert role element should be displayed on import failure");
+  assert.match(alert.textContent ?? "", /The template "deploy" already exists or could not be saved\./);
+});
+
