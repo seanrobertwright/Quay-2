@@ -10,8 +10,9 @@
 // at once. When the host goes offline, every per-template reading is dropped.
 import { invoke } from "@tauri-apps/api/core";
 import { hostConditionView } from "./hostCondition.ts";
-import { isHostLevelFailure, outcomeMessage, type HostCondition, type Invoker } from "./praxisHost.ts";
+import { isHostLevelFailure, outcomeMessage, praxisCall, type HostCondition, type Invoker } from "./praxisHost.ts";
 import { createHostReadSession, createLimiter, isObject, MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS, online } from "./hostReadSession.ts";
+import type { SaveOutcome } from "./types.ts";
 
 /** A local workflow template as the builder's list has it. */
 export interface LocalTemplate {
@@ -341,3 +342,104 @@ export function createHostCatalog({ projectPath, call = invoke }: HostCatalogOpt
     },
   };
 }
+
+export type ImportHostTemplateOutcome =
+  | {
+      ok: true;
+      kind: "imported";
+      name: string;
+      filePath: string;
+      templateDigest: string;
+      hostDigest: string | null;
+      digestMatches: boolean;
+    }
+  | {
+      ok: false;
+      kind: "refused";
+      message: string;
+    };
+
+export interface ImportHostTemplateOptions {
+  catalog?: HostCatalog;
+  call?: Invoker;
+  signal?: AbortSignal;
+}
+
+export async function importHostTemplate(
+  projectPath: string,
+  name: string,
+  options: ImportHostTemplateOptions = {},
+): Promise<ImportHostTemplateOutcome> {
+  const call = options.call ?? invoke;
+  const signal = options.signal ?? new AbortController().signal;
+
+  const outcome = await praxisCall("praxis_host_workflow_show", { projectPath, name }, signal, call);
+  if (outcome.kind !== "record" || !isObject(outcome.record)) {
+    return {
+      ok: false,
+      kind: "refused",
+      message: outcome.kind !== "record" ? outcomeMessage(outcome) : "praxis gave a template detail Quay can't read.",
+    };
+  }
+
+  const { record } = outcome;
+  if (record.validity !== "VALID") {
+    const msgs = messages(record.diagnostics);
+    const reason = msgs.length > 0 ? `: ${msgs.join(" ")}` : ".";
+    return {
+      ok: false,
+      kind: "refused",
+      message: `Template "${name}" is not valid on the host${reason}`,
+    };
+  }
+
+  if (!isObject(record.plan)) {
+    return {
+      ok: false,
+      kind: "refused",
+      message: `Template "${name}" has no plan on the host.`,
+    };
+  }
+
+  let saveOutcome: SaveOutcome;
+  try {
+    saveOutcome = (await call("praxis_save", {
+      projectPath,
+      kind: "templates",
+      id: name,
+      content: record.plan,
+      expectedHash: null,
+      force: false,
+    })) as SaveOutcome;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : typeof err === "string" ? err : String(err);
+    return { ok: false, kind: "refused", message };
+  }
+
+  if (saveOutcome.status !== "saved") {
+    return {
+      ok: false,
+      kind: "refused",
+      message: `The template "${name}" already exists or could not be saved.`,
+    };
+  }
+
+  const templateDigest = typeof saveOutcome.templateDigest === "string" ? saveOutcome.templateDigest : "";
+  const hostDigest = typeof record.templateDigest === "string" ? record.templateDigest : null;
+  const digestMatches = templateDigest !== "" && hostDigest !== null && templateDigest === hostDigest;
+
+  if (options.catalog) {
+    void options.catalog.saved(name, templateDigest || null);
+  }
+
+  return {
+    ok: true,
+    kind: "imported",
+    name,
+    filePath: `.praxis/templates/${name}.json`,
+    templateDigest,
+    hostDigest,
+    digestMatches,
+  };
+}
+
