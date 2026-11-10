@@ -218,3 +218,23 @@ export function hostOnlyDetails(template: HostOnlyTemplate): { label: string; va
     { label: "Validity", value: validity },
   ];
 }
+
+/** Whether a host-only template can be imported into the project, and why when it can't. */
+export interface HostImportAvailability {
+  allowed: boolean;
+  /** The host diagnostic reason why import is disabled, or null when valid. */
+  diagnostic: string | null;
+}
+
+/**
+ * Computes whether a host-only template may be imported into the local project.
+ * If the template is invalid on the host, import is disallowed with its host diagnostics.
+ */
+export function hostImportAvailability(template: HostOnlyTemplate): HostImportAvailability {
+  if (template.valid) return { allowed: true, diagnostic: null };
+  const diagnostic = template.diagnostics.length > 0
+    ? template.diagnostics.join(" ")
+    : "The template is invalid on the host.";
+  return { allowed: false, diagnostic };
+}
+
