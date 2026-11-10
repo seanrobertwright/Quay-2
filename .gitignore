@@ -33,3 +33,9 @@ docs/public/starters/
 src-tauri/.omo/
 .claude/*
 !.claude/skills/
+
+# Local idea notes (untracked drafts)
+.ideas/
+
+# pi-matt-implement-flow runtime state
+.pi/matt-implement/
