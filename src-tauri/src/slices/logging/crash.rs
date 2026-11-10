@@ -11,14 +11,44 @@ pub const CRASH_LOG_CAP_BYTES: u64 = 1_000_000;
 /// The file name of the crash log inside the logs folder.
 pub const CRASH_LOG_NAME: &str = "crash.log";
 
-/// One crash-log entry: when, on which thread, where, what the panic said, and the backtrace.
-pub fn format_entry(timestamp_ms: i64, thread: &str, location: &str, message: &str, backtrace: &str) -> String {
+/// The base address of the main executable in memory, if available.
+/// On Windows, this is the handle returned by `GetModuleHandleW(NULL)`.
+#[cfg(windows)]
+pub fn current_module_base() -> Option<usize> {
+    unsafe {
+        let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleW(std::ptr::null());
+        if handle == 0 {
+            None
+        } else {
+            Some(handle as usize)
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn current_module_base() -> Option<usize> {
+    None
+}
+
+/// One crash-log entry: when, on which thread, where, what the panic said, the module base, and the backtrace.
+pub fn format_entry(
+    timestamp_ms: i64,
+    thread: &str,
+    location: &str,
+    message: &str,
+    module_base: Option<usize>,
+    backtrace: &str,
+) -> String {
+    let module_base_line = match module_base {
+        Some(base) => format!("  module_base: 0x{base:x}\n"),
+        None => String::new(),
+    };
     format!(
         "[{}] Quay {} panicked
-  thread:   {}
-  location: {}
-  message:  {}
-  backtrace:
+  thread:      {}
+  location:    {}
+  message:     {}
+{}  backtrace:
 {}
 
 ",
@@ -27,6 +57,7 @@ pub fn format_entry(timestamp_ms: i64, thread: &str, location: &str, message: &s
         thread,
         location,
         message,
+        module_base_line,
         backtrace.trim_end(),
     )
 }
@@ -77,7 +108,15 @@ pub fn install_panic_hook(dir: PathBuf) {
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "(non-text panic payload)".to_string());
         let backtrace = std::backtrace::Backtrace::force_capture().to_string();
-        let entry = format_entry(dates::now_ms(), thread.name().unwrap_or("<unnamed>"), &location, &message, &backtrace);
+        let module_base = current_module_base();
+        let entry = format_entry(
+            dates::now_ms(),
+            thread.name().unwrap_or("<unnamed>"),
+            &location,
+            &message,
+            module_base,
+            &backtrace,
+        );
         // A failure here has nowhere better to go than stderr; the hook must not panic again.
         if let Err(error) = append_entry(&dir, &entry) {
             eprintln!("Quay could not write {}: {error}", dir.join(CRASH_LOG_NAME).display());
@@ -116,13 +155,39 @@ mod tests {
 
     #[test]
     fn an_entry_carries_time_thread_location_message_and_backtrace() {
-        let entry = format_entry(1_700_000_000_000, "worker-3", "src/a.rs:10:5", "boom", "frame 0\nframe 1");
-        assert!(entry.contains("2023-11-14T22:13:20Z"), "{}", entry);
-        assert!(entry.contains("worker-3"), "{}", entry);
-        assert!(entry.contains("src/a.rs:10:5"), "{}", entry);
-        assert!(entry.contains("boom"), "{}", entry);
-        assert!(entry.contains("frame 0\nframe 1"), "{}", entry);
-        assert!(entry.ends_with('\n'));
+        let entry_with_base = format_entry(
+            1_700_000_000_000,
+            "worker-3",
+            "src/a.rs:10:5",
+            "boom",
+            Some(0x7ff7_1234_0000),
+            "frame 0\nframe 1",
+        );
+        assert!(entry_with_base.contains("2023-11-14T22:13:20Z"), "{}", entry_with_base);
+        assert!(entry_with_base.contains("worker-3"), "{}", entry_with_base);
+        assert!(entry_with_base.contains("src/a.rs:10:5"), "{}", entry_with_base);
+        assert!(entry_with_base.contains("boom"), "{}", entry_with_base);
+        assert!(entry_with_base.contains("module_base: 0x7ff712340000"), "{}", entry_with_base);
+        assert!(entry_with_base.contains("frame 0\nframe 1"), "{}", entry_with_base);
+        assert!(entry_with_base.ends_with('\n'));
+
+        let entry_without_base = format_entry(
+            1_700_000_000_000,
+            "worker-3",
+            "src/a.rs:10:5",
+            "boom",
+            None,
+            "frame 0\nframe 1",
+        );
+        assert!(!entry_without_base.contains("module_base:"), "{}", entry_without_base);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn current_module_base_returns_a_non_null_address_on_windows() {
+        let base = current_module_base();
+        assert!(base.is_some(), "module base should be found on Windows");
+        assert!(base.unwrap() > 0, "module base address should be non-zero");
     }
 
     #[test]
@@ -171,6 +236,8 @@ mod tests {
         assert!(text.contains("kaboom 42"), "{}", text);
         assert!(text.contains("crash-test-thread"), "{}", text);
         assert!(text.contains("crash.rs"), "the location is missing: {}", text);
+        #[cfg(windows)]
+        assert!(text.contains("module_base: 0x"), "module base should be recorded: {}", text);
     }
 
     #[test]
