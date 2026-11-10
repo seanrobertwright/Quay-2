@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createHostCatalog, HOST_STATE_ORDER, type HostCatalog, type LocalTemplate } from "./hostCatalog.ts";
+import { createHostCatalog, HOST_STATE_ORDER, importHostTemplate, type HostCatalog, type LocalTemplate } from "./hostCatalog.ts";
 import { MAX_SHOWS_IN_FLIGHT, MUTED_AFTER_MS } from "./hostReadSession.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
 
@@ -44,7 +44,8 @@ function showRecord(name: string, opts: { digest?: string; ready?: boolean } = {
 interface Call {
   command: string;
   args: Record<string, unknown>;
-  answer(outcome: CallOutcome): void;
+  answer(outcome: unknown): void;
+  reject?(reason: unknown): void;
   answered?: boolean;
 }
 
@@ -57,7 +58,7 @@ function fakeHost() {
       cancelled.push(args.callId);
       return Promise.resolve(undefined);
     }
-    return new Promise<unknown>((resolve) => calls.push({ command, args, answer: resolve }));
+    return new Promise<unknown>((resolve, reject) => calls.push({ command, args, answer: resolve, reject }));
   };
   const pending = () => calls.filter((c) => !c.answered);
   return {
@@ -67,15 +68,26 @@ function fakeHost() {
     /** The calls not answered yet, as `list` or `show <name>`. */
     open: () => pending().map(label),
     /** Answers the oldest open call labelled `what`. */
-    answer(what: string, outcome: CallOutcome) {
+    answer(what: string, outcome: unknown) {
       const call = pending().find((c) => label(c) === what);
       assert.ok(call, `no open ${what} call; open: ${pending().map(label).join(", ")}`);
       call.answered = true;
       call.answer(outcome);
     },
+    /** Rejects the oldest open call labelled `what`. */
+    reject(what: string, reason: unknown) {
+      const call = pending().find((c) => label(c) === what);
+      assert.ok(call, `no open ${what} call; open: ${pending().map(label).join(", ")}`);
+      call.answered = true;
+      call.reject?.(reason);
+    },
   };
 }
-const label = (c: Call) => (c.command === "praxis_host_workflows_list" ? "list" : `show ${String(c.args.name)}`);
+const label = (c: Call) => {
+  if (c.command === "praxis_host_workflows_list") return "list";
+  if (c.command === "praxis_save") return `save ${String(c.args.id)}`;
+  return `show ${String(c.args.name)}`;
+};
 
 /** Lets settled calls' follow-ups run; setImmediate isn't mocked. */
 const settle = async () => {
@@ -393,4 +405,166 @@ test("the host's installed copy is named by the revision and digest of its lates
   assert.deepEqual(catalog.hostCopy("review-code"), { revision: 7, digest: HOST_DIGEST });
   catalog.setCondition({ state: "hostUnreachable" });
   assert.equal(catalog.hostCopy("review-code"), null, "a host that went offline drops it");
+});
+
+test("importHostTemplate fetches template detail, saves it, compares digest, and transitions out of hostOnly", async () => {
+  const { host, catalog } = setup([]);
+  await readListed(host, catalog, ["review-code"]);
+  assert.equal(catalog.hostOnly().length, 1);
+  assert.equal(catalog.hostOnly()[0].name, "review-code");
+
+  const importPromise = importHostTemplate("C:/p", "review-code", { catalog, call: host.invoker });
+  await settle();
+
+  assert.deepEqual(host.open(), ["show review-code"]);
+  const detail = showRecord("review-code", { digest: HOST_DIGEST });
+  host.answer("show review-code", detail);
+  await settle();
+
+  assert.deepEqual(host.open(), ["save review-code"]);
+  const saveCall = host.calls.find((c) => c.command === "praxis_save");
+  assert.ok(saveCall);
+  assert.equal(saveCall.args.projectPath, "C:/p");
+  assert.equal(saveCall.args.kind, "templates");
+  assert.equal(saveCall.args.id, "review-code");
+  assert.equal(saveCall.args.expectedHash, null);
+  assert.equal(detail.kind, "record");
+  assert.deepEqual(saveCall.args.content, detail.record.plan);
+
+  host.answer("save review-code", {
+    status: "saved",
+    content: detail.record.plan,
+    contentHash: "hash-123",
+    templateDigest: HOST_DIGEST,
+  });
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: true,
+    kind: "imported",
+    name: "review-code",
+    filePath: ".praxis/templates/review-code.json",
+    templateDigest: HOST_DIGEST,
+    hostDigest: HOST_DIGEST,
+    digestMatches: true,
+  });
+
+  assert.deepEqual(catalog.hostOnly(), [], "template transitions out of hostOnly");
+});
+
+test("importHostTemplate compares digest and flags digestMatches false when saved digest differs from host digest", async () => {
+  const { host, catalog } = setup([]);
+  await readListed(host, catalog, ["review-code"]);
+
+  const importPromise = importHostTemplate("C:/p", "review-code", { catalog, call: host.invoker });
+  await settle();
+
+  host.answer("show review-code", showRecord("review-code", { digest: HOST_DIGEST }));
+  await settle();
+
+  host.answer("save review-code", {
+    status: "saved",
+    content: {},
+    contentHash: "hash-123",
+    templateDigest: OTHER_DIGEST,
+  });
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: true,
+    kind: "imported",
+    name: "review-code",
+    filePath: ".praxis/templates/review-code.json",
+    templateDigest: OTHER_DIGEST,
+    hostDigest: HOST_DIGEST,
+    digestMatches: false,
+  });
+});
+
+test("importHostTemplate refuses to import when validity is not VALID", async () => {
+  const { host } = setup([]);
+  const importPromise = importHostTemplate("C:/p", "broken", { call: host.invoker });
+  await settle();
+
+  const brokenShow: CallOutcome = {
+    kind: "record",
+    record: {
+      format: "aiws-workflow-catalog/1",
+      name: "broken",
+      validity: "INVALID",
+      diagnostics: [{ field: "maxAttempts", code: "INVALID_FIELD", severity: "ERROR", message: "Give maxAttempts from 2." }],
+      plan: { description: "Broken" },
+    },
+  };
+  host.answer("show broken", brokenShow);
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: false,
+    kind: "refused",
+    message: 'Template "broken" is not valid on the host: Give maxAttempts from 2.',
+  });
+  assert.equal(host.calls.filter((c) => c.command === "praxis_save").length, 0);
+});
+
+test("importHostTemplate refuses to import when plan is missing", async () => {
+  const { host } = setup([]);
+  const importPromise = importHostTemplate("C:/p", "review-code", { call: host.invoker });
+  await settle();
+
+  const noPlanShow: CallOutcome = {
+    kind: "record",
+    record: {
+      format: "aiws-workflow-catalog/1",
+      name: "review-code",
+      validity: "VALID",
+      diagnostics: [],
+      templateDigest: HOST_DIGEST,
+    },
+  };
+  host.answer("show review-code", noPlanShow);
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: false,
+    kind: "refused",
+    message: 'Template "review-code" has no plan on the host.',
+  });
+  assert.equal(host.calls.filter((c) => c.command === "praxis_save").length, 0);
+});
+
+test("importHostTemplate returns clear error on name collision", async () => {
+  const { host } = setup([]);
+  const importPromise = importHostTemplate("C:/p", "review-code", { call: host.invoker });
+  await settle();
+
+  host.answer("show review-code", showRecord("review-code"));
+  await settle();
+
+  host.reject("save review-code", new Error("The id 'review-code' is already taken by another templates file."));
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: false,
+    kind: "refused",
+    message: "The id 'review-code' is already taken by another templates file.",
+  });
+});
+
+test("importHostTemplate propagates host CLI errors when show fails", async () => {
+  const { host } = setup([]);
+  const importPromise = importHostTemplate("C:/p", "review-code", { call: host.invoker });
+  await settle();
+
+  host.answer("show review-code", {
+    kind: "hostDown",
+    message: "Nothing answered at https://127.0.0.1:7443; is it running?",
+  });
+
+  const outcome = await importPromise;
+  assert.deepEqual(outcome, {
+    ok: false,
+    kind: "refused",
+    message: "Nothing answered at https://127.0.0.1:7443; is it running?",
+  });
 });
