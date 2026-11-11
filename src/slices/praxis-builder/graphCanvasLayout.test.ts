@@ -3,7 +3,7 @@
 // `.praxis/layout/<id>.json` `praxis_read` reports it can't use opens with a line above the canvas
 // that says why, in the words the run canvas uses too (runCanvas.test.ts).
 // They render the real builder into happy-dom and fake only Tauri's `invoke`, the out-of-process
-// boundary.
+// boundary, and the window label Tauri gives the builder.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -31,9 +31,9 @@ afterEach(() => {
 
 /**
  * The backend: the project lists one graph, GRAPH, which `praxis_read` gives with `layoutProblem`
- * as why its layout file was ignored, or with no layout file; it has no other records and no host
- * set up. Every command it answers only reads. Returns each command it doesn't answer, as a write
- * would be.
+ * as why its layout was ignored, or with no layout file and no problem; it has no other records
+ * and no host set up. Every command it answers only reads. Returns each command it doesn't answer,
+ * as a write would be.
  */
 function fakeBackend(layoutProblem: FileProblem | undefined): string[] {
   const unanswered: string[] = [];
@@ -99,7 +99,7 @@ test("the graph canvas says why it ignored a graph's saved layout, in the run ca
   assert.deepEqual(unanswered, [], "only reads were sent, so no layout file was written");
 });
 
-test("a graph with no layout file opens with no line about its layout", async () => {
+test("a graph with no layout file, and nothing wrong with .praxis/layout, opens with no line about its layout", async () => {
   const unanswered = fakeBackend(undefined);
   const root = await openGraph();
   assert.deepEqual(

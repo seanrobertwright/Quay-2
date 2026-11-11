@@ -18,7 +18,8 @@
 // hold's panel when it has one: the host gives a hold card, and so a panel, only for a hold on a
 // node's own scope, so a hold on a grant, a branch or the run gets no link. The node panel's close
 // button, or Escape on the run canvas, in the node table or in the node panel, clears the selection
-// (#577), and the builder stays open; focus in the panel goes to the node's card, or else its row.
+// (#577), and the builder stays open; focus in the panel goes to the node's card, or else its row,
+// or else the Nodes toggle.
 //
 // It shares the template run detail's waiting banner, hold panel, certificate hint and page
 // actions, with one hold panel per `aiws-graph-hold-card/1`, and keeps focus as it does (#578): a

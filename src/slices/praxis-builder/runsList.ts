@@ -71,7 +71,10 @@ export interface RunsListView {
   canShowMore: boolean;
   /** True when the list holds `RUNS_MAX_LIMIT` runs, so older ones can't be shown. */
   atCap: boolean;
-  /** True when the last list read gave fewer runs than it asked for, so the host has no older run to list. */
+  /**
+   * True when the last list read gave fewer runs Quay can read than it asked for. The host then has
+   * no older run to list, or it gave an entry Quay can't read, which isn't counted.
+   */
   complete: boolean;
   /** True when the host that answered is simulated, so its approvals aren't a person's. */
   simulated: boolean;
@@ -79,8 +82,9 @@ export interface RunsListView {
 
 /**
  * Why the Runs list names no row of a run (#579): it may name it yet (`reading`); it holds the
- * newest `RUNS_MAX_LIMIT` runs, the most praxis lists, without it (`atCap`); or it holds every run
- * the host has without it (`complete`).
+ * newest `RUNS_MAX_LIMIT` runs, the most praxis lists, without it (`atCap`); or its last read gave
+ * fewer runs Quay can read than it asked for, without it (`complete`): it then holds every run the
+ * host has, unless the host gave an entry Quay can't read.
  */
 export type Unlisted = "reading" | "atCap" | "complete";
 

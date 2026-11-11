@@ -47,8 +47,8 @@ export interface Sent {
 
 /**
  * What `praxis_read` gives for a graph: the project's saved graph file with its layout file, if any,
- * or with why its layout file was ignored; null for a graph the project hasn't got; or, as
- * `readFails`, the error it rejects with.
+ * or with why its layout was ignored, when that file or `.praxis/layout` itself can't be used; null
+ * for a graph the project hasn't got; or, as `readFails`, the error it rejects with.
  */
 export type SavedGraph =
   | { content?: Record<string, unknown>; layout?: Record<string, unknown>; layoutProblem?: FileProblem }

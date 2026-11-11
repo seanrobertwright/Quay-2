@@ -5,7 +5,7 @@
 // the same delays and stop rules, except that a graph run waiting for a person stays on the
 // backoff while one of its nodes is active (#570).
 //
-// `coding-operator-view/1` isn't a contracted read model (#361), so only the fields drawn are
+// `coding-operator-view/1` is `STABLE` at the SDK pin (READ-MODELS.md). Only the fields drawn are
 // read, each leniently: a field that is missing or of another type falls back to the run's row
 // in the Runs list, or to nothing.
 import { invoke } from "@tauri-apps/api/core";
@@ -129,7 +129,10 @@ export const INITIAL_FOLLOW_VIEW: RunFollowView<never> = { run: null, readAt: nu
 export interface RunFollow<Run = RunDetail> {
   /** The run detail is on screen, or has left it. Leaving stops the poller and kills its call. */
   set(onScreen: boolean): void;
-  /** The run's row from the Runs list's last read, the fallback for every field the view lacks. */
+  /**
+   * The run's row from the Runs list's last read, the fallback for every field the view lacks; for a
+   * graph run, the last row that named it once newer runs push it off the list.
+   */
   setRow(row: RunRow | null): void;
   view(): RunFollowView<Run>;
   subscribe(listener: () => void): () => void;
