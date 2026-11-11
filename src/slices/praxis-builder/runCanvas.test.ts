@@ -614,3 +614,20 @@ test("the builder's zoom keys zoom the run canvas in and out and back to 100%, f
   });
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
+
+test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, since a run's revision never changes", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  const viewport = () => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
+  await withReducedMotion(async () => void (await press(cards(root)[0], "=", { [MOD]: true })));
+  assert.match(viewport(), /scale\(1\.2\)$/);
+  // The Runs list's next read no longer lists run 1, so the detail has no row for it.
+  await tick(15_000);
+  assert.equal(backend.lists().length, 2);
+  await answer(backend.lists()[1], graphRunsRecord(NAME, [entry(3), entry(2)]));
+  assert.deepEqual(cardIds(root), RECORDED_IDS, "still drawn");
+  assert.match(viewport(), /scale\(1\.2\)$/, "at the same zoom, so it wasn't drawn again");
+  assert.match(text(runCanvas(root)?.querySelector("h4")), /, revision 1$/);
+  assert.match(text(header(root)), /revision 1/, "the detail still names the revision");
+  assert.equal(backend.revisionReads().length, 1, "and didn't read it again");
+});

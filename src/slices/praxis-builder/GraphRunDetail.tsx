@@ -3,9 +3,11 @@
 // (#571), which draws the revision the run runs with each node in its node phase, and its node
 // table (#569), followed while it is on screen with the template run detail's delays and stop
 // rules. Its one `praxis status` read per poll feeds them all, and the node panel; the run canvas
-// reads its revision and the saved layout besides. While the host can't be used, the facts, the
-// run canvas, the node panel and the table dim. When the revision can't be read, the node table
-// opens by itself.
+// reads its revision and the saved layout besides. The revision is the one the run's row in the
+// Runs list names, kept from the first row that named it, since a run's revision never changes:
+// the run canvas stays drawn once newer runs push the row off the list. While the host can't be
+// used, the facts, the run canvas, the node panel and the table dim. When the revision can't be
+// read, the node table opens by itself.
 //
 // It holds the one selected node (#572), which the run canvas and the node table share: choosing
 // a card or a row selects that node in both and opens its node panel beside the run canvas, or
@@ -33,7 +35,10 @@ interface GraphRunDetailProps {
   /** The graph workflow the run is a run of. */
   workflow: string;
   workOrderId: string;
-  /** The run's row from the Runs list's last read: the revision and times, and the fallback for what `status` doesn't give. */
+  /**
+   * The run's row from the Runs list's last read, null while the list doesn't list the run: the
+   * revision, kept once a row named it, the times, and the fallback for what `status` doesn't give.
+   */
   row: RunRow | null;
   /** True while the Runs view is on screen. */
   shown: boolean;
@@ -47,6 +52,17 @@ interface GraphRunDetailProps {
 
 /** A time as the host wrote it, in local words when it can be read. */
 const timeText = (ms: number | null, text: string | null) => (ms !== null ? formatDateTime(ms) : (text ?? "Not given"));
+
+/**
+ * The revision the run runs: `revision`, its row's, kept from the first row that named it. A run's
+ * revision never changes, and its row leaves the Runs list once newer runs push it off, which would
+ * otherwise take the run canvas away mid-view.
+ */
+function useKeptRevision(revision: number | null): number | null {
+  const [kept, setKept] = useState(revision);
+  if (kept === null && revision !== null) setKept(revision);
+  return kept ?? revision;
+}
 
 /**
  * What the node panel of node `nodeId` draws: its row of the run's `nodes`, or null when the host
@@ -77,6 +93,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
 }) => {
   const view = useRunDetail(projectPath, workOrderId, row, shown, "graph");
   const run = view.run;
+  const revision = useKeptRevision(run?.revision ?? null);
   const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
   const [nodesOpen, setNodesOpen] = useState(false);
   const openNodes = useCallback(() => setNodesOpen(true), []);
@@ -100,7 +117,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
             Awaiting approval
           </span>
         )}
-        {run?.revision !== null && run?.revision !== undefined && <span className="text-[#8b949e]">revision {run.revision}</span>}
+        {revision !== null && <span className="text-[#8b949e]">revision {revision}</span>}
         {run?.simulated && <span className={`px-1.5 py-px rounded-full border text-[10px] ${AMBER}`}>Simulated</span>}
         <span className="ml-auto inline-flex items-center gap-2">
           {openButton("Open in browser")}
@@ -126,7 +143,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
             <RunCanvas
               projectPath={projectPath}
               workflow={workflow}
-              revision={run.revision}
+              revision={revision}
               runName={name}
               nodes={run.nodes.rows}
               revisions={revisions}
