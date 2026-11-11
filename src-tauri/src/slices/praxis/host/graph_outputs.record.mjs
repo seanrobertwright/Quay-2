@@ -133,6 +133,44 @@ await graphRunner.approve(heldRun);
 await until(heldRun, 'held', async () => (await graphRunner.holdCards(heldRun)).length > 0);
 await record('status: held', ['status', heldRun, '--format', 'aiws-graph-operator-view/1']);
 
+// A run whose nodes are in several phases (#569): `build` COMPLETED, and the APPROVAL `signoff`
+// after it AWAITING_HUMAN, which leaves `deploy` NOT_READY; `test`'s AGENT command exits 1, so it
+// is HELD and `package` and the END, after it, are BLOCKED_BY_HOLD; and the TIMER WAIT `cooldown`,
+// due in an hour, is WAITING.
+const phased = 'release-train';
+const several = runnable();
+const work = (outputPath, commands = several.binding.nodes.build.commands) => ({ ...several.binding.nodes.build, commands, outputPaths: [outputPath] });
+const task = (id, dependsOn) => ({ id, kind: 'TASK', dependsOn, config: { executionKind: 'AGENT' } });
+several.graph.nodes = [
+  task('build', []),
+  task('test', []),
+  { id: 'cooldown', kind: 'WAIT', dependsOn: [], config: {} },
+  { id: 'signoff', kind: 'APPROVAL', dependsOn: ['build'], config: {} },
+  task('package', ['test']),
+  task('deploy', ['signoff']),
+  { id: 'end', kind: 'END', dependsOn: ['package', 'deploy', 'cooldown'], config: {} },
+];
+several.binding.nodes = {
+  build: work('build.txt'),
+  test: work('test.txt', [[process.execPath, '-e', 'process.exit(1)']]),
+  package: work('package.txt'),
+  deploy: work('deploy.txt'),
+  cooldown: { waitKind: 'TIMER', durationMs: 3_600_000, timeoutMs: 7_200_000 },
+};
+several.binding.graphDigest = `sha256:${canonicalDigest(several.graph)}`;
+await admit(phased, several);
+const startedPhased = await praxis('run', phased, '--json', '--state', state);
+if (startedPhased.code !== 0) throw new Error(`praxis run ${phased} exited ${startedPhased.code}: ${startedPhased.stderr}`);
+const phasedRun = JSON.parse(startedPhased.stdout).workOrderId;
+await graphRunner.approve(phasedRun);
+const phases = { build: 'COMPLETED', test: 'HELD', cooldown: 'WAITING', signoff: 'AWAITING_HUMAN', package: 'BLOCKED_BY_HOLD', deploy: 'NOT_READY', end: 'BLOCKED_BY_HOLD' };
+await until(phasedRun, 'in its several phases', async () => {
+  const r = await praxis('status', phasedRun, '--format', 'aiws-graph-operator-view/1', '--json', '--state', state);
+  const nodes = r.code === 0 ? JSON.parse(r.stdout).nodes : [];
+  return nodes.length === Object.keys(phases).length && nodes.every((n) => phases[n.nodeId] === n.phase);
+});
+await record('status: nodes in several phases', ['status', phasedRun, '--format', 'aiws-graph-operator-view/1']);
+
 await record('usage: unknown graphs command, exit 2', ['graphs', 'lsit']);
 const noHost = join(scratch, 'no-host');
 mkdirSync(noHost);
