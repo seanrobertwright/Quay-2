@@ -342,7 +342,10 @@ interface RunCanvasProps {
   /** The run's nodes, from the view's `nodes[]`. */
   nodes: readonly GraphRunNode[];
   revisions: RevisionCache;
-  /** Called each time the revision can't be read, or is read but can't be drawn, so the node table can open in the run canvas's place. */
+  /**
+   * Called each time a read of the revision ends with no drawing, as it can't be read, or is read
+   * but can't be drawn, so the node table can open in the run canvas's place.
+   */
   onUnreadable: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;

@@ -506,8 +506,11 @@ test("once Try again's read finds the revision can't be drawn, focus goes to the
 
 test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table opens by itself", async () => {
   const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the table stays collapsed while the revision is read");
   const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));
-  const root = await drawRun(backend, revisionRecord(many));
+  await answer(backend.revisionReads()[0], revisionRecord(many));
   assert.match(
     text(runCanvas(root)),
     /Revision 1 of release-train isn't drawn\. Its graph has 1001 nodes, more than the 1000 the builder draws\. The node table lists the run's nodes\./,
@@ -549,6 +552,13 @@ test("once the node table opened by itself for a revision that isn't drawn and t
   assert.equal(backend.revisionReads().length, 1, "the revision wasn't read again");
   await click(nodesToggle(root));
   assert.deepEqual(nodeRows(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"], "the read came while the table was closed");
+});
+
+test("a revision that is drawn leaves the node table collapsed", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  assert.deepEqual(cardIds(root), RECORDED_IDS);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false");
 });
 
 test("when the view has no nodes[], there is no run canvas and no revision is read", async () => {
