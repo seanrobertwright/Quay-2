@@ -9,8 +9,12 @@
 //
 // Positions come from the project's saved layout for the graph's id, when it has one, through the
 // graph canvas's rule for a partial layout (`placeNodes`, flow/layout.ts): saved positions kept and
-// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. The run canvas
-// never writes a layout.
+// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. A layout file
+// that is there but can't be used, as `praxis_read` reports it, is ignored, and a note above the
+// drawing says so and why, in the graph canvas's words (`layoutIgnoredText`, model.ts). The note is
+// information, not a problem line: the revision is still drawn. Nothing is said when the project has
+// no graph of that id or no layout file for it, or when `praxis_read` fails. The run canvas never
+// writes a layout.
 //
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
 // Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
@@ -45,19 +49,19 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RotateCw, TriangleAlert } from "lucide-react";
+import { Info, RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
 import { configSummary } from "./kinds.ts";
 import { commandFor } from "./keymap.ts";
-import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
+import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
 import { prefersReducedMotion } from "./motion.ts";
 import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
-import type { DefinitionFile } from "./types.ts";
+import type { DefinitionFile, FileProblem } from "./types.ts";
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
 
@@ -144,9 +148,16 @@ const RUN_FIT = { maxZoom: 1 } as const;
 /** How long a pan or zoom the keys start takes, unless the system asks for reduced motion. */
 const VIEW_MOVE_MS = 200;
 
-interface DrawnProps {
-  graph: PraxisGraph;
+/** The project's saved layout for a graph, as the run canvas draws with it. */
+interface SavedLayout {
+  /** The saved position of each node the layout places. */
   saved: ReadonlyMap<string, XYPosition>;
+  /** Why the project's layout file for the graph was ignored, when it is there but can't be used; else null. */
+  layoutProblem: FileProblem | null;
+}
+
+interface DrawnProps extends SavedLayout {
+  graph: PraxisGraph;
   nodes: readonly GraphRunNode[];
   revision: number;
   /** The id of the heading that names the run canvas. */
@@ -159,9 +170,13 @@ interface DrawnProps {
   drawingRef: RefObject<HTMLDivElement | null>;
 }
 
-/** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
-const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy, selected, onSelect, drawingRef }) => {
+/**
+ * The drawn revision, its cards in their node phases, and its problem lines, under a note that says
+ * why the project's saved layout wasn't used, when it was ignored. Inside a ReactFlowProvider.
+ */
+const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revision, labelledBy, selected, onSelect, drawingRef }) => {
   const view = useReactFlow();
+  const noteId = useId();
   const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
   const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
   // React Flow measures each card and reports its size as a change. A card keeps its size from one
@@ -220,6 +235,13 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
   };
   return (
     <>
+      {layoutProblem !== null && (
+        // Information, not one of the problem lines: the revision is drawn, laid out automatically.
+        <p id={noteId} role="note" className="flex items-start gap-1.5 text-[#8b949e]">
+          <Info className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+          <span className="break-words min-w-0">{layoutIgnoredText(graph.id, layoutProblem.message)}</span>
+        </p>
+      )}
       <div className="h-80 rounded-md border border-[#30363d] overflow-hidden">
         <ReactFlow
           ref={drawingRef}
@@ -246,6 +268,8 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
           // Focusable, so a click on the run canvas puts focus in it for its keys.
           tabIndex={-1}
           aria-labelledby={labelledBy}
+          // The note is also the drawing's description, which a screen reader gives as focus enters it.
+          aria-describedby={layoutProblem === null ? undefined : noteId}
         >
           <Background gap={20} color="#21262d" />
           <Controls position="bottom-right" showInteractive={false} />
@@ -265,27 +289,32 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
   );
 };
 
+/** No saved layout: dagre places every node, and nothing says why. */
+const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
+
 /**
- * The node positions of the project's saved layout for graph `graphId`, which `praxis_read` gives
- * with the project's own graph of that id. None when the project has no such graph, or no layout
- * for it, or they can't be read, so dagre places every node.
+ * The project's saved layout for graph `graphId`, which `praxis_read` gives with the project's own
+ * graph of that id: the node positions of its layout file, and why that file was ignored when it is
+ * there but can't be used, as `praxis_read` reports it. No positions when the project has no such
+ * graph, no layout file for it or one that can't be used, so dagre places every node. When
+ * `praxis_read` fails there are no positions and no problem, so the run canvas says nothing of it.
  */
-async function savedPositions(projectPath: string, graphId: string): Promise<Map<string, XYPosition>> {
-  if (graphId === "") return new Map();
+async function savedLayout(projectPath: string, graphId: string): Promise<SavedLayout> {
+  if (graphId === "") return NO_LAYOUT;
   try {
     const file = await invoke<DefinitionFile>("praxis_read", { projectPath, kind: "graphs", id: graphId });
-    return parseLayoutPositions(file.layout);
+    return { saved: parseLayoutPositions(file.layout), layoutProblem: file.layoutProblem ?? null };
   } catch {
-    return new Map();
+    return NO_LAYOUT;
   }
 }
 
-/** Where the run canvas's revision is: being read, not read, read but not drawn, or drawn with its saved positions. */
+/** Where the run canvas's revision is: being read, not read, read but not drawn, or drawn with its saved layout. */
 type CanvasState =
   | { state: "reading" }
   | { state: "failed"; problem: string }
   | { state: "undrawn"; reason: string }
-  | { state: "drawn"; graph: PraxisGraph; saved: ReadonlyMap<string, XYPosition> };
+  | ({ state: "drawn"; graph: PraxisGraph } & SavedLayout);
 
 const READING: CanvasState = { state: "reading" };
 
@@ -320,8 +349,8 @@ function useRevision(
         setShown({ key, state: { state: "undrawn", reason: read.reason } });
         unreadable.current();
       } else {
-        const saved = await savedPositions(projectPath, read.graph.id);
-        if (live) setShown({ key, state: { state: "drawn", graph: read.graph, saved } });
+        const layout = await savedLayout(projectPath, read.graph.id);
+        if (live) setShown({ key, state: { state: "drawn", graph: read.graph, ...layout } });
       }
     });
     return () => {
@@ -477,6 +506,7 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName" | "unlisted
           <DrawnCanvas
             graph={state.graph}
             saved={state.saved}
+            layoutProblem={state.layoutProblem}
             nodes={nodes}
             revision={revision}
             labelledBy={labelledBy}

@@ -19,6 +19,7 @@ import type { CallOutcome } from "./praxisHost.ts";
 import { graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
+import type { FileProblem } from "./types.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
 
@@ -55,13 +56,19 @@ interface Sent {
   answer: (value: unknown) => void;
 }
 
-/** What `praxis_read` gives for a graph: the project's saved graph file and its layout file, if any. */
-type SavedGraph = { content?: Record<string, unknown>; layout?: Record<string, unknown> } | null;
+/**
+ * What `praxis_read` gives for a graph: the project's saved graph file with its layout file, if any,
+ * or with why its layout file was ignored; null for a graph the project hasn't got; or, as
+ * `readFails`, the error it rejects with.
+ */
+type SavedGraph =
+  | { content?: Record<string, unknown>; layout?: Record<string, unknown>; layoutProblem?: FileProblem }
+  | { readFails: string }
+  | null;
 
 /**
- * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, with
- * `saved`, or as a graph the project hasn't got; the runs list, graph status and revision reads
- * wait for the test.
+ * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, as
+ * `saved` says; the runs list, graph status and revision reads wait for the test.
  */
 function fakeBackend(saved: SavedGraph = null) {
   const sent: Sent[] = [];
@@ -78,10 +85,11 @@ function fakeBackend(saved: SavedGraph = null) {
             return resolve({ ids: [], unchecked: [] });
           case "praxis_read":
             if (args.kind !== "graphs") return reject(new Error(`unexpected read of ${String(args.kind)}`));
+            if (saved !== null && "readFails" in saved) return reject(saved.readFails);
             return resolve(
               saved === null
                 ? { id: args.id, kind: "graphs", missing: true }
-                : { id: args.id, kind: "graphs", missing: false, contentHash: "h", content: saved.content ?? { id: args.id, nodes: [] }, layout: saved.layout },
+                : { id: args.id, kind: "graphs", missing: false, contentHash: "h", content: saved.content ?? { id: args.id, nodes: [] }, layout: saved.layout, layoutProblem: saved.layoutProblem },
             );
           case "praxis_host_graph_runs":
           case "praxis_host_graph_status":
@@ -190,6 +198,8 @@ const cardStates = (root: HTMLElement) =>
     return [card.getAttribute("data-id"), text(chip), chip?.getAttribute("data-tone") ?? null, text(card.querySelector("[data-counter]"))];
   });
 const problems = (root: HTMLElement) => [...(runCanvas(root)?.querySelectorAll('[aria-label="Run canvas problems"] li') ?? [])].map((li) => text(li));
+/** The run canvas's note on why the project's saved layout wasn't used, or null when it has none. */
+const layoutNote = (root: HTMLElement) => runCanvas(root)?.querySelector<HTMLElement>('[role="note"]') ?? null;
 const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLElement, /^Nodes/) as HTMLButtonElement;
 const nodeTable = (root: HTMLElement) => detail(root)?.querySelector("table") ?? null;
 /** The node table's rows, each as its id, its phase chip's text and tone, and its counter line. */
@@ -294,23 +304,55 @@ test("with the project's saved layout for the revision's graph id, the cards tak
   onlyReads(backend);
 });
 
-test("without a saved layout for the graph id, dagre lays the revision out", async () => {
-  for (const saved of [null, { content: { id: "release-review", nodes: [] } }]) {
+/** Where dagre places the recorded revision's nodes, when no saved position places any. */
+const DAGRE_POSITIONS = {
+  build: "translate(540px,0px)",
+  test: "translate(270px,172px)",
+  cooldown: "translate(0px,344px)",
+  signoff: "translate(540px,172px)",
+  package: "translate(270px,344px)",
+  deploy: "translate(540px,344px)",
+  end: "translate(270px,516px)",
+};
+
+test("without a saved layout for the graph id, or when `praxis_read` fails, dagre lays the revision out and no note says why", async () => {
+  // No graph of that id, one with no layout file, and a `praxis_read` that fails, as it does when
+  // `.praxis/graphs` can't be opened. A layout file that can't be read or parsed fails no read:
+  // `praxis_read` gives why as its `layoutProblem` (the next test).
+  const cases: SavedGraph[] = [
+    null,
+    { content: { id: "release-review", nodes: [] } },
+    { readFails: ".praxis/graphs can't be opened: Access is denied. (os error 5)" },
+  ];
+  for (const saved of cases) {
     revisions = createRevisionCache();
     const backend = fakeBackend(saved);
     const root = await drawRun(backend);
-    assert.deepEqual(cardPositions(root), {
-      build: "translate(540px,0px)",
-      test: "translate(270px,172px)",
-      cooldown: "translate(0px,344px)",
-      signoff: "translate(540px,172px)",
-      package: "translate(270px,344px)",
-      deploy: "translate(540px,344px)",
-      end: "translate(270px,516px)",
-    });
+    assert.deepEqual(cardPositions(root), DAGRE_POSITIONS);
+    assert.equal(layoutNote(root), null, JSON.stringify(saved));
+    assert.equal(runCanvas(root)?.querySelector(".react-flow")?.hasAttribute("aria-describedby"), false, JSON.stringify(saved));
     onlyReads(backend);
     unmount();
   }
+});
+
+test("a saved layout for the graph id that can't be used is ignored: dagre lays the revision out, and a note says why in the graph canvas's words", async () => {
+  // As `praxis_read` reports `.praxis/layout/release-review.json` holding `{nope`.
+  const layoutProblem = { message: "Not valid JSON: key must be a string at line 1 column 2", line: 1, column: 2 };
+  const backend = fakeBackend({ layoutProblem });
+  const root = await drawRun(backend);
+  assert.deepEqual(cardPositions(root), DAGRE_POSITIONS, "the revision is still drawn, laid out by dagre");
+  const note = layoutNote(root);
+  assert.equal(
+    text(note),
+    ".praxis/layout/release-review.json was ignored, so the graph is laid out automatically: Not valid JSON: key must be a string at line 1 column 2",
+  );
+  // Information, not one of the run canvas's problem lines, and the drawing's description, so a
+  // screen reader reaches it from the drawing too.
+  assert.deepEqual(problems(root), []);
+  assert.ok(note?.id, "the note has an id");
+  assert.equal(runCanvas(root)?.querySelector(".react-flow")?.getAttribute("aria-describedby"), note?.id);
+  onlyReads(backend);
 });
 
 test("each card shows the same node phase, in the same tone, and the same counter line as its row in the node table", async () => {

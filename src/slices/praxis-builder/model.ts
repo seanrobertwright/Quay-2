@@ -152,6 +152,15 @@ export function parseLayoutViewport(layout: unknown): { x: number; y: number; zo
   return finite(x) && finite(y) && finite(zoom) && zoom > 0 ? { x, y, zoom } : undefined;
 }
 
+/**
+ * What the graph canvas and the run canvas say when graph `graphId`'s layout file is there but
+ * can't be used, for `message`, the reason `praxis_read` gave. Both say it in these words, so the
+ * two can't drift apart.
+ */
+export function layoutIgnoredText(graphId: string, message: string): string {
+  return `.praxis/layout/${graphId}.json was ignored, so the graph is laid out automatically: ${message}`;
+}
+
 /** The DECISION branch, if any, that `target` is for `source`. */
 export function branchOf(source: PraxisNode, target: string): "then" | "else" | null {
   if (source.kind !== "DECISION") return null;
