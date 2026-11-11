@@ -125,8 +125,11 @@ function attemptsOf(used: number, allowed: unknown): string {
   return `${used}${bound}`;
 }
 
-/** The attempts a node used of those it has, as a line of words, as a hold panel's note gives them. */
-const attemptsText = (used: number, allowed: unknown) => `Attempts: ${attemptsOf(used, allowed)}`;
+/** The attempts a node used of those it has, as its node panel's fact, and as a line (`factLine`) its counter line and a hold panel's note give. */
+const attemptsFact = (used: number, allowed: unknown): NodeFact => ({ term: "Attempts", value: attemptsOf(used, allowed) });
+
+/** Fact `fact` as a line of words, "`<term>`: `<value>`", as a node's counter line and a hold panel's note give it. */
+const factLine = (fact: NodeFact) => `${fact.term}: ${fact.value}`;
 
 /**
  * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
@@ -144,7 +147,7 @@ function graphHoldOf(card: Obj): HoldPanel {
   const notes: string[] = [];
   const effect = str(card.effect);
   if (effect !== null) notes.push(`Effect: ${effect}`);
-  if (typeof card.attempts === "number") notes.push(attemptsText(card.attempts, card.maxAttempts));
+  if (typeof card.attempts === "number") notes.push(factLine(attemptsFact(card.attempts, card.maxAttempts)));
   const exits = strings(card.exits).map((exit) => {
     const words = hasOwn(GRAPH_HOLD_EXITS, exit) ? GRAPH_HOLD_EXITS[exit] : { label: exit, does: "" };
     return { id: exit, ...words, available: true };
@@ -201,7 +204,7 @@ function runNodeOf(entry: Obj, nodeId: string, phase: string): GraphRunNode {
   const scope = objectOf(entry.scope);
   const loop = objectOf(entry.loop);
   const wait = objectOf(entry.wait);
-  const attempts = typeof scope.attempts === "number" ? factOf("Attempts", attemptsOf(scope.attempts, scope.maxAttempts ?? null)) : null;
+  const attempts = typeof scope.attempts === "number" ? attemptsFact(scope.attempts, scope.maxAttempts ?? null) : null;
   const iterations =
     typeof loop.iteration === "number" && typeof loop.maxIterations === "number" ? factOf("Iterations", `${loop.iteration} of ${loop.maxIterations}`) : null;
   const counter = iterations ?? attempts;
@@ -217,7 +220,7 @@ function runNodeOf(entry: Obj, nodeId: string, phase: string): GraphRunNode {
     factOf("Wait status", str(wait.status)),
     factOf("Human task", isObject(entry.humanTask) ? "Open" : null),
   ].filter((fact): fact is NodeFact => fact !== null);
-  return { nodeId, kind: str(entry.kind) ?? "", phase, counter: counter && `${counter.term}: ${counter.value}`, holdId: str(entry.holdId) || null, facts };
+  return { nodeId, kind: str(entry.kind) ?? "", phase, counter: counter && factLine(counter), holdId: str(entry.holdId) || null, facts };
 }
 
 /** The problem line of node entry `n`, counted from 1, which lacks its `nodeId` or its `phase`. */
