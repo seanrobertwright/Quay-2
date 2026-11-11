@@ -50,6 +50,11 @@ describe("parseGraph", () => {
       assert.equal(parsed.ok, false, JSON.stringify(content).slice(0, 60));
     }
   });
+
+  test("refuses a graph with more nodes than the SDK allows with its node count, which the run canvas words its own way", () => {
+    const parsed = parseGraph({ nodes: Array.from({ length: MAX_NODES + 1 }, (_, i) => ({ id: `n${i}` })) });
+    assert.deepEqual(parsed, { ok: false, message: "The graph has 1001 nodes, more than the 1000 a graph may hold.", nodeCount: 1001 });
+  });
 });
 
 describe("parseLayoutPositions", () => {

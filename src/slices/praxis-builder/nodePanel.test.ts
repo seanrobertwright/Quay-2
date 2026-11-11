@@ -5,193 +5,57 @@
 // or Escape, clears the selection (#577).
 // They render the real graph workflow form into happy-dom, inside a stand-in for the builder's
 // root that counts the Escapes reaching it, and fake only Tauri's `invoke`, the out-of-process
-// boundary. The recorded run of several phases and the recorded revision it runs
-// (graph_outputs.fixture.json) are drawn, and hand-made views in the recorded one's shape.
-import { fakeInvoke } from "../../test-support/dom.ts";
+// boundary, with the scaffold they share with the run canvas's tests (fixtures/graphRunHarness.ts).
+// The recorded run of several phases and the recorded revision it runs (graph_outputs.fixture.json)
+// are drawn, and hand-made views in the recorded one's shape.
+import {
+  answer,
+  builderEscapes,
+  button,
+  click,
+  detail,
+  drawRun,
+  fakeBackend,
+  MOD,
+  nodesToggle,
+  NOW,
+  press,
+  READS,
+  recordedRevision,
+  refused,
+  runCanvas,
+  severalPhases,
+  showRun,
+  text,
+  tick,
+  unmount,
+  type Backend,
+} from "./fixtures/graphRunHarness.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { createDraft } from "./drafts.ts";
-import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
-import { IS_MAC } from "./keymap.ts";
+import { act } from "react";
 import type { CallOutcome } from "./praxisHost.ts";
-import { graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
+import { graphNodeView as node, graphOperatorView, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
 
-const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
 const { NODE_FOCUS_CLASS } = await import("./NodeCard.tsx");
-
-const NOW = Date.UTC(2026, 10, 8, 12, 0, 0);
-const PROJECT = "C:/project";
-/** The graph workflow the recorded run of several phases runs. */
-const NAME = "release-train";
-
-let mounted: { root: Root; container: HTMLElement } | null = null;
-/** Each test's own revision cache, so no test reads a revision another kept. */
-let revisions: RevisionCache;
-/**
- * How many Escapes reached the builder. It runs its keys on its root, in the bubble phase, and skips
- * a key whose default a control inside it prevented (PraxisBuilderModal.tsx). An Escape it runs with
- * nothing smaller to close, such as the graph canvas's selection, hides the builder.
- */
-let builderEscapes = 0;
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW });
-  revisions = createRevisionCache();
-  builderEscapes = 0;
 });
-
-const unmount = () => {
-  if (!mounted) return;
-  const { root, container } = mounted;
-  act(() => root.unmount());
-  container.remove();
-  mounted = null;
-};
 
 afterEach(() => {
   unmount();
   mock.timers.reset();
 });
 
-interface Sent {
-  command: string;
-  args: Record<string, unknown>;
-  answer: (value: unknown) => void;
-}
-
-/**
- * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, as a
- * graph the project hasn't got; the runs list, graph status and revision reads wait for the test.
- */
-function fakeBackend() {
-  const sent: Sent[] = [];
-  fakeInvoke(
-    (command, args) =>
-      new Promise((resolve, reject) => {
-        sent.push({ command, args, answer: resolve });
-        switch (command) {
-          case "praxis_validate":
-            return resolve({ verdict: null, diagnostics: [], omitted: { errors: 0, warnings: 0, info: 0 } });
-          case "praxis_check_graph_workflow":
-            return resolve({ grants: [], diagnostics: [] });
-          case "praxis_graph_workflow_triggers":
-            return resolve({ ids: [], unchecked: [] });
-          case "praxis_read":
-            if (args.kind !== "graphs") return reject(new Error(`unexpected read of ${String(args.kind)}`));
-            return resolve({ id: args.id, kind: "graphs", missing: true });
-          case "praxis_host_graph_runs":
-          case "praxis_host_graph_status":
-          case "praxis_host_graph_revision":
-            return;
-          case "praxis_host_cancel":
-            return resolve(undefined);
-          default:
-            return reject(new Error(`unexpected invoke ${command}`));
-        }
-      }),
-  );
-  const of = (command: string) => sent.filter((s) => s.command === command);
-  return {
-    sent,
-    lists: () => of("praxis_host_graph_runs"),
-    statuses: () => of("praxis_host_graph_status"),
-    revisionReads: () => of("praxis_host_graph_revision"),
-  };
-}
-type Backend = ReturnType<typeof fakeBackend>;
-
-/** Everything the form and its Runs view may send: each reads, and none writes a file or the host. */
-const READS = new Set([
-  "praxis_validate",
-  "praxis_check_graph_workflow",
-  "praxis_graph_workflow_triggers",
-  "praxis_read",
-  "praxis_host_graph_runs",
-  "praxis_host_graph_status",
-  "praxis_host_graph_revision",
-  "praxis_host_cancel",
-]);
-
-interface FormSpies {
-  onEdit?: (edit: unknown) => void;
-  onOpen?: (ref: unknown) => void;
-}
-
-/** The stand-in for the builder's root: it counts each Escape that reaches it and that nothing inside handled. */
-const builderKeys = (e: ReactKeyboardEvent) => {
-  if (e.key === "Escape" && !e.defaultPrevented) builderEscapes += 1;
-};
-
-/** The graph workflow form, in the stand-in for the builder's root. */
-function form(spies: FormSpies = {}) {
-  const ref = { kind: "graph-workflows" as const, id: NAME };
-  const content = { version: 1, contractId: "c", graphId: "g", graphBindingId: "g-1" };
-  const draft = createDraft(ref, { id: NAME, kind: "graph-workflows", missing: false, content, contentHash: "h" });
-  assert.ok(draft.ok);
-  const shown = createElement(GraphWorkflowForm, {
-    projectPath: PROJECT,
-    draft: draft.value,
-    contracts: ["c"],
-    graphs: ["g"],
-    graphBindings: [{ id: "g-1", graphId: "g" }],
-    refresh: 0,
-    onEdit: spies.onEdit ?? (() => {}),
-    onOpen: spies.onOpen ?? (() => {}),
-    onValidated: () => {},
-    runsShown: true,
-    revisions,
-  });
-  return createElement("div", { onKeyDown: builderKeys }, shown);
-}
-
-async function render(element: ReturnType<typeof form>): Promise<HTMLElement> {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  await act(async () => root.render(element));
-  return container;
-}
-
-const text = (el: Element | null | undefined) => el?.textContent ?? "";
-const buttons = (root: Element) => [...root.querySelectorAll("button")];
-const button = (root: Element, name: RegExp) =>
-  buttons(root).find((b) => name.test(b.getAttribute("aria-label") ?? text(b))) as HTMLButtonElement | undefined;
-const click = (el: HTMLElement | undefined) => act(async () => el?.click());
-const tick = (ms: number) => act(async () => mock.timers.tick(ms));
-const answer = (s: Sent, outcome: CallOutcome) => act(async () => s.answer(outcome));
-
-/** Sends a keydown of `key` to `target`, as the browser does, and returns it. */
-async function press(target: Element, key: string, init: KeyboardEventInit = {}): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
-  await act(async () => void target.dispatchEvent(event));
-  return event;
-}
-
-/** Opens Runs, lists run 1, and shows its detail. */
-async function showRun(backend: Backend, spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await render(form(spies));
-  await click(button(root, /^Runs$/));
-  await answer(backend.lists()[0], graphRunsRecord(NAME, [entry(1)]));
-  await click(button(root, /^Show run-1$/));
-  return root;
-}
-
-const detail = (root: HTMLElement) => root.querySelector('[aria-label^="Run run-"]') as HTMLElement | null;
-/** The run canvas, found by its heading. */
-const runCanvas = (root: HTMLElement) =>
-  ([...(detail(root)?.querySelectorAll("section") ?? [])].find((s) => /^Run canvas/.test(text(s.querySelector("h4")))) as HTMLElement | undefined) ?? null;
 /** The run canvas's card for node `nodeId`. */
 const card = (root: HTMLElement, nodeId: string) => runCanvas(root)?.querySelector<HTMLElement>(`.react-flow__node[data-id="${nodeId}"]`) ?? null;
 /** The node panel, found by its heading. */
 const nodePanel = (root: HTMLElement) =>
   ([...(detail(root)?.querySelectorAll("section") ?? [])].find((s) => /^Node panel/.test(text(s.querySelector("h4")))) as HTMLElement | undefined) ?? null;
 
-const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLElement, /^Nodes/) as HTMLButtonElement;
 /** The node table's row for node `nodeId`, found by its row header. */
 const row = (root: HTMLElement, nodeId: string) =>
   ([...(detail(root)?.querySelectorAll("table tbody tr") ?? [])].find((tr) => text(tr.querySelector("th")) === nodeId) as HTMLElement | undefined) ?? null;
@@ -206,18 +70,6 @@ const selectedRows = (root: HTMLElement) =>
 
 /** The node panel's facts, each as its term and its value's text. */
 const panelFacts = (root: HTMLElement) => [...(nodePanel(root)?.querySelectorAll("dt") ?? [])].map((dt) => [text(dt), text(dt.nextElementSibling)]);
-
-/** The recorded revision the recorded run of several phases runs. */
-const recordedRevision = (): CallOutcome => ({ kind: "record", record: recordedStdout("graphs show: a revision") });
-const severalPhases = () => statusRecord(recordedStdout("status: nodes in several phases"));
-
-/** Shows run 1, whose view is the recorded run of several phases, and draws the recorded revision it runs. */
-async function drawRun(backend: Backend, spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await showRun(backend, spies);
-  await answer(backend.statuses()[0], severalPhases());
-  await answer(backend.revisionReads()[0], recordedRevision());
-  return root;
-}
 
 test("choosing a card opens the node panel, headed with the node's id, and never called an inspector", async () => {
   const backend = fakeBackend();
@@ -537,8 +389,7 @@ async function choosingARowOpensItsPanel(root: HTMLElement): Promise<void> {
 test("when the revision can't be read, the node table opens by itself, and choosing a row opens the node panel beside the run canvas's place", async () => {
   const backend = fakeBackend();
   const root = await showUndrawn(backend);
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  await answer(backend.revisionReads()[0], { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal });
+  await answer(backend.revisionReads()[0], refused());
   assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
   await choosingARowOpensItsPanel(root);
 });
@@ -564,7 +415,7 @@ test("selecting nodes and following the panel's link change nothing: the panel h
   const edits: unknown[] = [];
   const opened: unknown[] = [];
   const backend = fakeBackend();
-  const root = await drawRun(backend, { onEdit: (edit) => edits.push(edit), onOpen: (ref) => opened.push(ref) });
+  const root = await drawRun(backend, recordedRevision(), { onEdit: (edit) => edits.push(edit), onOpen: (ref) => opened.push(ref) });
   await click(nodesToggle(root));
   await click(card(root, "build") as HTMLElement);
   await press(card(root, "signoff") as HTMLElement, "Enter");
@@ -646,9 +497,6 @@ test("the node panel follows its node from one read of the run to the next, keep
   assert.deepEqual(panelFacts(root)[1], ["Phase", "RUNNING"], "the last read's facts stay");
 });
 
-/** The modifier a builder chord's Mod is here: Cmd on macOS, else Ctrl. */
-const MOD = IS_MAC ? "metaKey" : "ctrlKey";
-
 test("with a node selected, the graph canvas's edit keys still change nothing on the run canvas", async () => {
   const backend = fakeBackend();
   const root = await drawRun(backend);
@@ -708,8 +556,7 @@ async function escapeFrom(target: HTMLElement): Promise<KeyboardEvent> {
 /** Shows run 1, whose view is the recorded run of several phases, with its revision refused, so the run canvas isn't drawn and the node table opened by itself. */
 async function showUnreadable(backend: Backend): Promise<HTMLElement> {
   const root = await showUndrawn(backend);
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  await answer(backend.revisionReads()[0], { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal });
+  await answer(backend.revisionReads()[0], refused());
   assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no drawing");
   assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
   return root;

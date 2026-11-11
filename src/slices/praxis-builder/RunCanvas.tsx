@@ -55,18 +55,17 @@ import { Info, RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
-import { configSummary } from "./kinds.ts";
+import { nodeName } from "./keyboard.ts";
 import { commandFor } from "./keymap.ts";
 import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
-import { prefersReducedMotion } from "./motion.ts";
-import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
+import { moveView } from "./motion.ts";
+import { cardNodeId, NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
+import { BUTTON } from "./RunDetail.tsx";
 import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import type { DefinitionFile, FileProblem } from "./types.ts";
 import { focusLost } from "./useKeptFocus.ts";
-
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
 
 /** A run canvas card's data: the graph node, and its row from the view's nodes, or null when the view has none for it. */
 interface RunNodeData extends PraxisNodeData {
@@ -112,9 +111,8 @@ const RUN_NODE_TYPES = { [PRAXIS_NODE_TYPE]: RunCard };
 
 /** How a card is named to a screen reader: its kind, id and settings, then its node phase and counter line. */
 function runCardLabel(node: PraxisNode, run: GraphRunNode | null): string {
-  const summary = configSummary(node) || "no settings";
   const state = run === null ? "no state reported" : [run.phase, run.counter].filter((s) => s !== null).join(", ");
-  return `${node.kind || "No kind"} ${node.id}, ${summary}, ${state}`;
+  return `${nodeName(node)}, ${state}`;
 }
 
 /**
@@ -131,13 +129,9 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   return { runs, problems };
 }
 
-/** The node id of `target` when it is a card, which React Flow draws with its node's id as `data-id`; else null. */
-const cardId = (target: unknown): string | null =>
-  target instanceof HTMLElement && target.classList.contains("react-flow__node") ? (target.dataset.id ?? null) : null;
-
-/** The card of node `nodeId` in `root`, the reverse of `cardId`; null when no run canvas there draws one for it. */
+/** The card of node `nodeId` in `root`, the reverse of `cardNodeId`; null when no run canvas there draws one for it. */
 export const cardOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
-  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardId(card) === nodeId) ?? null;
+  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardNodeId(card) === nodeId) ?? null;
 
 /** Each card's size as React Flow measured it, by node id. */
 type Sizes = ReadonlyMap<string, Dimensions>;
@@ -157,9 +151,6 @@ function withMeasures(sizes: Sizes, changes: NodeChange<RunFlowNode>[]): Sizes {
 
 /** The first fit shows the whole graph, no larger than its cards' own size. One identity, as GraphCanvas.tsx's `FIRST_FIT` explains. */
 const RUN_FIT = { maxZoom: 1 } as const;
-
-/** How long a pan or zoom the keys start takes, unless the system asks for reduced motion. */
-const VIEW_MOVE_MS = 200;
 
 /** The project's saved layout for a graph, as the run canvas draws with it. */
 interface SavedLayout {
@@ -223,23 +214,17 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revis
   // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
   // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const duration = prefersReducedMotion() ? 0 : VIEW_MOVE_MS;
-    const focused = cardId(e.target);
-    switch (commandFor(e.nativeEvent, focused === null ? "canvas" : "node")) {
+    const focused = cardNodeId(e.target);
+    const command = commandFor(e.nativeEvent, focused === null ? "canvas" : "node");
+    switch (command) {
       case "select":
         if (focused !== null) onSelect(focused);
         break;
       case "fit-view":
-        void view.fitView({ duration });
-        break;
       case "zoom-in":
-        void view.zoomIn({ duration });
-        break;
       case "zoom-out":
-        void view.zoomOut({ duration });
-        break;
       case "zoom-reset":
-        void view.zoomTo(1, { duration });
+        moveView(view, command);
         break;
       default:
         return;
