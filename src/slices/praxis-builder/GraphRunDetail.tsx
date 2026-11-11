@@ -21,9 +21,12 @@
 // (#577), and the builder stays open; focus in the panel goes to the node's card, or else its row.
 //
 // It shares the template run detail's waiting banner, hold panel, certificate hint and page
-// actions, with one hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause,
-// cancel, resolving a hold) are made only in the host's browser page, so it has no control for
-// any of them, not even a disabled one.
+// actions, with one hold panel per `aiws-graph-hold-card/1`, and keeps focus as it does (#578): a
+// read that removes what had focus, such as a hold panel or a control in one once the hold closes,
+// puts focus on the detail's heading, which names the run, and not on the page. Focus on the node
+// panel's hold link goes to the node panel's heading instead (NodePanel.tsx). Decisions on a run
+// (approve, pause, cancel, resolving a hold) are made only in the host's browser page, so it has
+// no control for any of them, not even a disabled one.
 import { useCallback, useId, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
@@ -36,6 +39,7 @@ import { NodeTable, nodesToggleOf, rowOf } from "./NodeTable.tsx";
 import { cardOf, RunCanvas } from "./RunCanvas.tsx";
 import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, holdPanelName, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
 import type { RunPageLookup, RunRow, Unlisted } from "./runsList.ts";
+import { useKeptFocus } from "./useKeptFocus.ts";
 import { useRunDetail } from "./useRunDetail.ts";
 
 interface GraphRunDetailProps {
@@ -102,6 +106,8 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   const [selected, setSelected] = useState<string | null>(null);
   const detail = useRef<HTMLElement>(null);
   const panel = useRef<HTMLElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const keptFocus = useKeptFocus(heading);
   /**
    * Closes the node panel, clearing the selection, and moves focus, which would fall to the page with
    * the panel, to the node's card, or else its row, or else the Nodes toggle that shows its row.
@@ -135,9 +141,9 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   const holdPanelId = (n: number) => `${holdsId}hold-${n}`;
 
   return (
-    <section ref={detail} aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
+    <section ref={detail} aria-label={`Run ${name}`} {...keptFocus} className="space-y-3 rounded-md border border-[#30363d] p-3">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#c9d1d9]">
-        <h3 className="font-mono font-semibold">{name}</h3>
+        <h3 ref={heading} tabIndex={-1} className="font-mono font-semibold">{name}</h3>
         {run && <span>{run.status}</span>}
         {run?.outcome && <span className="text-[#8b949e]">{run.outcome}</span>}
         {run && <ControlChip control={run.control} />}

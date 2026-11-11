@@ -881,3 +881,67 @@ test("choosing the selected card or row again keeps its node selected, with its 
     assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: build", `${how}: the node panel stays open`);
   }
 });
+
+// Keeping focus when a hold closes (#578): the read of the run that shows the hold closed removes
+// the node panel's link to its hold panel, and the hold panel, and focus on either goes to a
+// heading, never to the page.
+
+/** The recorded run of several phases once its hold on node test is released: test runs again, and nothing is blocked by the hold. */
+function released(): CallOutcome {
+  const view = recordedStdout("status: nodes in several phases");
+  const [build, held, cooldown, signoff, blocked, deploy, end] = view.nodes as Record<string, unknown>[];
+  const [signoffApproval] = view.pending as unknown[];
+  return statusRecord({
+    ...view,
+    changeToken: "1".repeat(64),
+    pending: [signoffApproval],
+    holds: [],
+    nodes: [
+      build,
+      { ...held, phase: "RUNNING", holdId: null },
+      cooldown,
+      signoff,
+      { ...blocked, phase: "NOT_READY", holdId: null },
+      deploy,
+      { ...end, phase: "NOT_READY", holdId: null },
+    ],
+  });
+}
+
+/** Lets the detail's delay run out, so it reads the run again, and answers that read with `outcome`. */
+async function readAgain(backend: Backend, outcome: CallOutcome): Promise<void> {
+  const before = backend.statuses().length;
+  await tick(15_000);
+  assert.equal(backend.statuses().length, before + 1, "the run is read again");
+  await answer(backend.statuses()[before], outcome);
+}
+
+test("when a read of the run shows the hold closed while the node panel's hold link has focus, focus goes to the node panel's heading, which isn't a tab stop, and the panel stays open", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(card(root, "package") as HTMLElement);
+  await act(async () => holdLink(root).focus());
+  await readAgain(backend, released());
+  assert.equal(holdPanels(root).length, 0, "the hold closed");
+  assert.equal(nodePanel(root)?.querySelector("a"), null, "the hold link went with it");
+  const heading = nodePanel(root)?.querySelector("h4") as HTMLElement;
+  assert.equal(text(heading), "Node panel: package", "package is still selected, so its node panel is still open");
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === heading, "focus is on the node panel's heading, not the page");
+  assert.equal(heading.getAttribute("tabindex"), "-1", "the heading takes focus from code only, and isn't a tab stop");
+});
+
+test("when a read of the run shows the hold closed while its hold panel has focus from the node panel's link, focus goes to the run detail's heading, which names the run and isn't a tab stop", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(card(root, "package") as HTMLElement);
+  await clickWithFocus(holdLink(root));
+  assert.ok(document.activeElement === holdPanels(root)[0], "the link moved focus to the hold panel");
+  await readAgain(backend, released());
+  assert.equal(holdPanels(root).length, 0, "the hold panel went with the hold");
+  const heading = detail(root)?.querySelector("header h3") as HTMLElement;
+  assert.equal(text(heading), String(recordedStdout("status: nodes in several phases").runId), "the heading names the run");
+  assert.ok(document.activeElement === heading, "focus is on the run detail's heading, not the page or the node panel");
+  assert.equal(heading.getAttribute("tabindex"), "-1", "the heading takes focus from code only, and isn't a tab stop");
+  assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: package", "the node panel stays open");
+});

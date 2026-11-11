@@ -995,3 +995,104 @@ test("the recorded run with nodes in several phases draws a row for each, with i
   assert.doesNotMatch(text(table), /PENDING/, "the nodes' SDK status isn't shown");
   assert.deepEqual(nodeProblems(root), []);
 });
+
+// Keeping focus when a read removes what had it (#578): a hold panel, a control in one, or the
+// waiting banner's button goes once the hold closes or the run stops waiting, and focus on it goes
+// to the run detail's heading, never to the page. Focus the reader moved elsewhere stays there.
+// Focus on a hold panel itself, which only the node panel's link gives it, is in nodePanel.test.ts.
+
+/** The run detail's heading, which names the run. */
+const heading = (root: HTMLElement) => header(root).querySelector("h3") as HTMLElement;
+/** The run held by one hold, on node build, which its one hold panel draws. */
+const heldOnce = () => statusRecord(graphOperatorView(1, { pending: [holdDecision("hold-1", "build")], holds: [holdCard("hold-1", "build", "EXECUTION_FAILED")] }));
+
+/** Moves focus to `control`, then presses it, as a click does. happy-dom's `click` moves no focus. */
+async function pressWithFocus(control: HTMLElement): Promise<void> {
+  await act(async () => control.focus());
+  await click(control);
+  await flush();
+}
+
+/**
+ * What a browser does to the control with focus when Quay's window loses focus, as to the browser
+ * Open in browser opens: the control gets blur and focusout with no element to go to, and stays the
+ * page's active element.
+ */
+async function windowLosesFocus(): Promise<void> {
+  const focused = document.activeElement as HTMLElement;
+  await act(async () => {
+    focused.dispatchEvent(new window.FocusEvent("blur", { relatedTarget: null }));
+    focused.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  });
+  assert.ok(document.activeElement === focused, "the control is still the page's active element");
+}
+
+/** Lets the detail's delay run out, so it reads the run again, and answers that read with `outcome`. */
+async function readAgain(backend: Backend, outcome: CallOutcome): Promise<void> {
+  const before = backend.statuses().length;
+  await tick(15_000);
+  assert.equal(backend.statuses().length, before + 1, "the run is read again");
+  await answer(backend.statuses()[before], outcome);
+}
+
+test("when the read after Resolve in browser shows the hold closed, focus on Resolve in browser goes to the run detail's heading, which names the run and isn't a tab stop", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(backend.statuses()[0], heldOnce());
+  await pressWithFocus(button(panels(root)[0], /^Resolve in browser for run-1$/) as HTMLButtonElement);
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  await windowLosesFocus();
+  await readAgain(backend, working(1));
+  assert.deepEqual(panels(root), [], "the hold was resolved in the browser");
+  assert.equal(text(heading(root)), "run-1");
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === heading(root), "focus is on the run detail's heading, not the page");
+  assert.equal(heading(root).getAttribute("tabindex"), "-1", "the heading takes focus from code only, and isn't a tab stop");
+});
+
+test("when the read after the waiting banner's Open in browser shows the run waits no more, focus on Open in browser goes to the run detail's heading", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting()));
+  await pressWithFocus(button(banner(root) as HTMLElement, /^Open in browser for run-1$/) as HTMLButtonElement);
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  await windowLosesFocus();
+  await readAgain(backend, working(1));
+  assert.equal(banner(root), null, "the run was approved in the browser");
+  assert.ok(document.activeElement === heading(root), "focus is on the run detail's heading, not the page");
+});
+
+test("a read that removes nothing moves no focus: Resolve in browser keeps it while the hold stays open", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(backend.statuses()[0], heldOnce());
+  const resolve = button(panels(root)[0], /^Resolve in browser for run-1$/) as HTMLButtonElement;
+  await act(async () => resolve.focus());
+  await readAgain(backend, heldOnce());
+  assert.ok(resolve.isConnected && document.activeElement === resolve, "focus stays on Resolve in browser");
+});
+
+test("a read that closes the hold leaves focus the reader moved from its panel to elsewhere in the detail where it is", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(backend.statuses()[0], heldOnce());
+  await act(async () => (button(panels(root)[0], /^Resolve in browser for run-1$/) as HTMLButtonElement).focus());
+  const close = button(header(root), /^Close run-1$/) as HTMLButtonElement;
+  await act(async () => close.focus());
+  await readAgain(backend, working(1));
+  assert.deepEqual(panels(root), []);
+  assert.ok(document.activeElement === close, "focus stays on the detail's Close");
+});
+
+test("a read that ends the run's wait leaves focus the reader moved from the banner out of the detail where it is", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting()));
+  await act(async () => (button(banner(root) as HTMLElement, /^Open in browser for run-1$/) as HTMLButtonElement).focus());
+  const show = button(root, /^Show run-1$/) as HTMLButtonElement;
+  assert.equal(detail(root)?.contains(show), false, "the Runs list's Show is out of the detail");
+  await act(async () => show.focus());
+  await readAgain(backend, working(1));
+  assert.equal(banner(root), null);
+  assert.ok(document.activeElement === show, "focus stays on Show in the Runs list");
+});

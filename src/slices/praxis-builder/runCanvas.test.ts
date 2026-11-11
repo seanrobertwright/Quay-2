@@ -547,6 +547,46 @@ test("once Try again's read finds the revision can't be drawn, focus goes to the
   assert.ok(document.activeElement === status, "focus is on the status line, not the page");
 });
 
+// Only Try again's own read hands focus on, and only focus that fell to the page with it (#578).
+
+test("opening a run's detail with focus on the page, as when the control that opened it has gone, leaves focus there once the first read draws the revision, not on the run canvas", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  assert.ok(document.activeElement === document.body, "focus is on the page");
+  await answer(backend.revisionReads()[0], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS, "the revision is drawn");
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === document.body, "focus stays where it was: only a read Try again started hands it on");
+});
+
+test("focus the reader moves to another control while Try again's read runs stays there once the read draws the revision", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await triedAgain(backend, root);
+  const toggle = nodesToggle(root);
+  await act(async () => toggle.focus());
+  await answer(backend.revisionReads()[1], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS, "the revision is drawn, and Try again has gone");
+  assert.ok(document.activeElement === toggle, "focus stays on the Nodes toggle, where the reader put it");
+});
+
+test("when Try again's read finds the revision can't be drawn and opens the node table the reader closed, Try again's focus goes to the status line, and the detail, drawn again with it, moves none", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.revisionReads()[0], refused());
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the reader closed the node table that opened by itself");
+  const tryAgain = button(runCanvas(root) as HTMLElement, /^Try again$/) as HTMLButtonElement;
+  await act(async () => tryAgain.focus());
+  await click(tryAgain);
+  await answer(backend.revisionReads()[1], revisionRecord(Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"))));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened again, so the detail was drawn again too");
+  const status = runCanvas(root)?.querySelector('[role="status"]');
+  assert.ok(document.activeElement === status, "focus is on the status line, as Try again hands it on, not on the detail's heading");
+});
+
 test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table opens by itself", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
