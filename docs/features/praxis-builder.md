@@ -298,6 +298,7 @@ When the file has uncommitted changes, the dialog leads with their diff and a wa
 - **A run that waits for a decision** gets a banner naming what it waits for, such as approval or acceptance of the deliverable, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
 - **A held run** gets a hold panel with **Resolve in browser**: why it is held, its cause and notes, and the ways out of the hold, each marked when it isn't available now, all taken in the browser.
 - **A certificate hint.** When `praxis` says the browser may not trust the host's certificate, the banner or hold panel shows its words, with **Trust certificate** when they ask for `praxis trust`. That opens a terminal running `praxis trust` for you to answer.
+- **Focus stays in the detail.** When a read of the run removes the banner or the hold panel while a control in it has focus, such as once you decided in the browser, focus moves to the detail's heading, which names the run, so it isn't lost. Focus you moved elsewhere stays where it is.
 
 #### Run
 
@@ -368,6 +369,7 @@ A submission is stored on the host as a candidate revision. Nothing runs until t
 - **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, a human task, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
 - **A held run** gets a hold panel for each open hold, with **Resolve in browser**. Each panel draws the hold's card (`aiws-graph-hold-card/1`): the held node and the host's reason, with its cause when it has one, the effect of the node's attempt, the attempts the node used of those it has, and the ways out of the hold, all taken in the browser. A hold that offers no way out says so, and that the run's page in the browser says what can be done.
 - **A certificate hint** shows as it does for a template run, with **Trust certificate** when `praxis` asks for `praxis trust`.
+- **Focus stays in the detail**, as it does for a template run: when a read removes a hold panel, a control in one, or the banner's **Open in browser** while it has focus, focus moves to the detail's heading.
 
 #### A run the Runs list doesn't name
 
@@ -413,7 +415,7 @@ The node panel is headed with the node's id. It shows only what the host reports
 - for a wait node, the wait's kind and status;
 - whether a human task is open for it.
 
-A fact the host doesn't report for the node is left out, not shown empty. A node that is held, or blocked by a hold, links to that hold's panel in the detail, and the link moves focus there. Only a hold on a node has a hold card, and so a panel: a node held or blocked by a hold on a grant, a branch or the whole run shows the hold's id, with no link.
+A fact the host doesn't report for the node is left out, not shown empty. A node that is held, or blocked by a hold, links to that hold's panel in the detail, and the link moves focus there. When a later read shows the hold closed, the link goes, and focus on it moves to the node panel's heading. Only a hold on a node has a hold card, and so a panel: a node held or blocked by a hold on a grant, a branch or the whole run shows the hold's id, with no link.
 
 The node panel is read-only. Its only control is its close button, and it changes nothing on the run, the graph or a file: approvals, acceptances, hold decisions and human tasks are made in the host's browser page. It doesn't show a loop's history of iterations, or a human task's own record, such as its role, instructions and due time, which would need another read of the host. It isn't the graph canvas's inspector.
 

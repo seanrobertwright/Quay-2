@@ -4,16 +4,18 @@
 // what the view's `nodes[]` gives of the node (graphRunDetail.ts): its kind and node phase, then
 // each fact of its attempt, scope, loop, wait and human task that it has, and leaves out each it
 // hasn't. A node held, or blocked by a hold, links to that hold's panel in the detail, and the
-// link moves focus there. The host gives a hold card, and so a panel, only for a hold on a node's
-// own scope: a hold on a grant, a branch or the run is named by its `holdId`, with no link. It
-// edits nothing and offers no decision or control but its close button: approvals, acceptances,
-// hold decisions and human tasks are taken in the host's browser page. It isn't the graph
-// canvas's inspector. It doesn't draw a loop's history of iterations, or a human task's own
-// record, which would need a second read of the host.
-import { Fragment, useId, type FC, type MouseEvent, type Ref } from "react";
+// link moves focus there. A read of the run that shows the hold closed removes the link, and focus
+// on it goes to the panel's heading, not to the page (#578, useKeptFocus.ts). The host gives a
+// hold card, and so a panel, only for a hold on a node's own scope: a hold on a grant, a branch or
+// the run is named by its `holdId`, with no link. It edits nothing and offers no decision or
+// control but its close button: approvals, acceptances, hold decisions and human tasks are taken
+// in the host's browser page. It isn't the graph canvas's inspector. It doesn't draw a loop's
+// history of iterations, or a human task's own record, which would need a second read of the host.
+import { Fragment, useId, useRef, type FC, type MouseEvent, type Ref } from "react";
 import { X } from "lucide-react";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import { NodePhaseChip } from "./NodePhaseChip.tsx";
+import { useKeptFocus } from "./useKeptFocus.ts";
 
 /** A hold panel in the run's detail, which the node panel links to: its element's id, and its name. */
 export interface HoldPanelLink {
@@ -45,10 +47,12 @@ function goToHold(e: MouseEvent<HTMLAnchorElement>, link: HoldPanelLink): void {
 /** The node panel of the selected node, with a heading that names it and its close button beside it. */
 export const NodePanel: FC<NodePanelProps> = ({ nodeId, node, hold, onClose, rootRef }) => {
   const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const keptFocus = useKeptFocus(heading);
   return (
-    <section ref={rootRef} aria-labelledby={headingId} className="w-64 shrink-0 space-y-1.5 rounded-md border border-[#30363d] p-2 text-[11px] text-[#c9d1d9]">
+    <section ref={rootRef} aria-labelledby={headingId} {...keptFocus} className="w-64 shrink-0 space-y-1.5 rounded-md border border-[#30363d] p-2 text-[11px] text-[#c9d1d9]">
       <div className="flex items-start gap-2">
-        <h4 id={headingId} className="min-w-0 break-words font-semibold">
+        <h4 ref={heading} id={headingId} tabIndex={-1} className="min-w-0 break-words font-semibold">
           Node panel: <span className="font-mono">{nodeId}</span>
         </h4>
         <button

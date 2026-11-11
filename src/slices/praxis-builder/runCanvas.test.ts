@@ -571,6 +571,22 @@ test("focus the reader moves to another control while Try again's read runs stay
   assert.ok(document.activeElement === toggle, "focus stays on the Nodes toggle, where the reader put it");
 });
 
+test("when Try again's read finds the revision can't be drawn and opens the node table the reader closed, Try again's focus goes to the status line, and the detail, drawn again with it, moves none", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.revisionReads()[0], refused());
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the reader closed the node table that opened by itself");
+  const tryAgain = button(runCanvas(root) as HTMLElement, /^Try again$/) as HTMLButtonElement;
+  await act(async () => tryAgain.focus());
+  await click(tryAgain);
+  await answer(backend.revisionReads()[1], revisionRecord(Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"))));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened again, so the detail was drawn again too");
+  const status = runCanvas(root)?.querySelector('[role="status"]');
+  assert.ok(document.activeElement === status, "focus is on the status line, as Try again hands it on, not on the detail's heading");
+});
+
 test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table opens by itself", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);

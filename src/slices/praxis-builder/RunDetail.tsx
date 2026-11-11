@@ -2,10 +2,12 @@
 // strip, followed while it is on screen. Decisions on a run (approve, pause, cancel, resolving a
 // hold) are made only in the host's browser page, so the detail has no control for any of them,
 // not even a disabled one: it shows where the run is and opens its page. Quay never runs
-// `praxis hold` or `praxis open`, and runs `praxis trust` only in a visible terminal. A graph
-// run's detail (GraphRunDetail.tsx) shares its header chips, Close button, waiting banner, hold
-// panel, certificate hint and page actions.
-import { useId, useState, type FC, type ReactNode } from "react";
+// `praxis hold` or `praxis open`, and runs `praxis trust` only in a visible terminal. A read of the
+// run that removes what had focus in the detail, such as the hold panel's Resolve in browser once
+// the hold closes, puts focus on the detail's heading, which names the run, and not on the page
+// (#578, useKeptFocus.ts). A graph run's detail (GraphRunDetail.tsx) shares its header chips,
+// Close button, waiting banner, hold panel, certificate hint, page actions and kept focus.
+import { useId, useRef, useState, type FC, type ReactNode } from "react";
 import { ExternalLink, FlaskConical, Pause, ShieldCheck, UserCheck, X } from "lucide-react";
 import { formatClock } from "../../lib/dates.ts";
 import type { JsonObject } from "./model.ts";
@@ -14,6 +16,7 @@ import type { FollowedRun, HoldPanel as Hold, RunFollowView } from "./runDetail.
 import { openRunPageOf } from "./runPage.ts";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
 import { StageStrip } from "./StageStrip.tsx";
+import { useKeptFocus } from "./useKeptFocus.ts";
 import { useRunDetail } from "./useRunDetail.ts";
 
 interface RunDetailProps {
@@ -118,11 +121,13 @@ export const RunDetail: FC<RunDetailProps> = ({ projectPath, workOrderId, row, c
   const view = useRunDetail(projectPath, workOrderId, row, shown);
   const run = view.run;
   const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
+  const heading = useRef<HTMLHeadingElement>(null);
+  const keptFocus = useKeptFocus(heading);
 
   return (
-    <section aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
+    <section aria-label={`Run ${name}`} {...keptFocus} className="space-y-3 rounded-md border border-[#30363d] p-3">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#c9d1d9]">
-        <h3 className="font-mono font-semibold">
+        <h3 ref={heading} tabIndex={-1} className="font-mono font-semibold">
           {name}
         </h3>
         {run && <span>{run.status}</span>}

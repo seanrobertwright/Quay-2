@@ -64,6 +64,7 @@ import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import type { DefinitionFile, FileProblem } from "./types.ts";
+import { focusLost } from "./useKeptFocus.ts";
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
 
@@ -374,9 +375,6 @@ function useRevision(
   const retrying = state.state === "reading" && shown?.state.state === "failed";
   return { state, retrying, retry: () => setAttempt((n) => n + 1) };
 }
-
-/** True when focus is on no element of the page, as when the element that had it was removed. */
-const focusLost = (focused: Element | null) => focused === null || focused === document.body || !focused.isConnected;
 
 /** What the status line says of the revision, or nothing once it is drawn. */
 function statusLine(state: CanvasState, workflow: string, revision: number): string {

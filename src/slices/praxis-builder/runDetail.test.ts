@@ -472,3 +472,66 @@ test("a succeeded run checks every stage it passed and lights none", async () =>
   assert.doesNotMatch(text(stage(root, "Correction")), /Finished|Current/);
   assert.equal(strip(root)?.querySelector('[aria-current="step"]'), null);
 });
+
+// Keeping focus when a read removes what had it (#578): the hold panel or the waiting banner goes
+// once the hold closes or the run stops waiting, and focus on a control in it goes to the run
+// detail's heading, never to the page, as in a graph run's detail (graphRunDetail.test.ts).
+
+/** The run detail's heading, which names the run. */
+const heading = (root: HTMLElement) => header(root).querySelector("h3") as HTMLElement;
+
+/** Moves focus to `control`, then presses it, as a click does. happy-dom's `click` moves no focus. */
+async function pressWithFocus(control: HTMLElement): Promise<void> {
+  await act(async () => control.focus());
+  await click(control);
+  await flush();
+}
+
+/**
+ * What a browser does to the control with focus when Quay's window loses focus, as to the browser
+ * Open in browser opens: the control gets blur and focusout with no element to go to, and stays the
+ * page's active element.
+ */
+async function windowLosesFocus(): Promise<void> {
+  const focused = document.activeElement as HTMLElement;
+  await act(async () => {
+    focused.dispatchEvent(new window.FocusEvent("blur", { relatedTarget: null }));
+    focused.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  });
+  assert.ok(document.activeElement === focused, "the control is still the page's active element");
+}
+
+/** Lets the detail's delay run out, so it reads the run again, and answers that read with `outcome`. */
+async function readAgain(backend: Backend, outcome: CallOutcome): Promise<void> {
+  const before = backend.statuses().length;
+  await tick(15_000);
+  assert.equal(backend.statuses().length, before + 1, "the run is read again");
+  await answer(backend.statuses()[before], outcome);
+}
+
+test("when the read after the hold panel's Resolve in browser shows the run held no more, focus on Resolve in browser goes to the run detail's heading, which names the run and isn't a tab stop", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true, status: "HELD" })]);
+  await answer(backend.statuses()[0], statusRecord(operatorView(1, { status: "HELD", stage: "CORRECTION", pending: ["HOLD_DECISION"], holdCard })));
+  await pressWithFocus(button(panel(root) as HTMLElement, /^Resolve in browser for run-1$/) as HTMLButtonElement);
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  await windowLosesFocus();
+  await readAgain(backend, working(1));
+  assert.equal(panel(root), undefined, "the hold was resolved in the browser");
+  assert.equal(text(heading(root)), "run-1");
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === heading(root), "focus is on the run detail's heading, not the page");
+  assert.equal(heading(root).getAttribute("tabindex"), "-1", "the heading takes focus from code only, and isn't a tab stop");
+});
+
+test("when the read after the waiting banner's Open in browser shows the run waits no more, focus on Open in browser goes to the run detail's heading", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(awaiting()));
+  await pressWithFocus(button(banner(root) as HTMLElement, /^Open in browser for run-1$/) as HTMLButtonElement);
+  assert.deepEqual(backend.opened(), [`${BROWSER_ORIGIN}/#work-order=wo-1`]);
+  await windowLosesFocus();
+  await readAgain(backend, working(1));
+  assert.equal(banner(root), null, "the run was approved in the browser");
+  assert.ok(document.activeElement === heading(root), "focus is on the run detail's heading, not the page");
+});
