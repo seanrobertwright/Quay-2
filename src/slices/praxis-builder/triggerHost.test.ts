@@ -20,6 +20,9 @@ const SIGNED_IN: HostCondition = { state: "signedIn" };
 
 type Revision = Record<string, unknown>;
 
+/** When the recorded host took `on-push`'s revisions 2 and 1, as its recorded disabled show lists them, newest first. */
+const [SUBMITTED_2, SUBMITTED_1] = (recordedTrigger("triggers show: admitted but disabled").revisions as Revision[]).map((r) => r.submittedAt);
+
 /** The recorded `triggers list`, holding `names`. */
 function listRecord(names: string[], nextAfter: string | null = null): CallOutcome {
   const record = recordedTrigger("triggers list");
@@ -188,7 +191,8 @@ test("a pending candidate is waiting for admission, as the newest candidate's re
   const { host, model } = setup([local("nightly")]);
   const view = await checked(host, model, "nightly", triggerShow("triggers show: a candidate", "nightly"));
   assert.deepEqual(view.state, { kind: "candidate", revision: 1 });
-  assert.equal(view.admissionPageAddress, "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1");
+  assert.equal(view.admissionPageAddress, recordedTrigger("triggers show: a candidate").admissionPageAddress);
+  assert.match(String(view.admissionPageAddress), /#graph-trigger=nightly&revision=1$/);
   assert.equal(view.current, null);
   assert.equal(view.hostEnabled, null, "a trigger the owner hasn't admitted has no enabled state to compare");
 });
@@ -214,7 +218,9 @@ test("an admitted revision the owner disabled is admitted, disabled", async () =
 
 test("an admitted and enabled revision the host says can't fire is blocked, with the host's codes but not its own state's", async () => {
   const { host, model } = setup([local("later")]);
-  host.digestOf = () => "sha256:e026827a30b2ca16ece998b7848f5e4114195ca4972cbfec3d0c6488aa124f3f";
+  // The saved files' digest is the recorded host's own for `later`'s revision 1.
+  const [revision] = recordedTrigger("triggers show: admitted but blocked").revisions as Revision[];
+  host.digestOf = () => String(revision.digest);
   const view = await checked(host, model, "later", triggerShow("triggers show: admitted but blocked", "later"));
   assert.deepEqual(view.state, { kind: "blocked", revision: 1, blockers: ["TRIGGER_NOT_YET_VALID"] });
   const source = await checked(host, model, "later", triggerShow("triggers show: admitted but blocked", "later", { blockedBy: ["EVENT_SOURCE_DISABLED", "WORKFLOW_NO_ADMITTED_REVISION"] }));
@@ -281,7 +287,7 @@ test("without either digest there is no Differs, and the view gives the current 
   const hostless = await checked(host, model, "on-push", enabled("on-push", { revisions: noDigest }));
   assert.deepEqual(hostless.state, { kind: "admitted", revision: 1 });
   assert.equal(hostless.compared, false);
-  assert.deepEqual(hostless.current, { revision: 1, submittedAt: "2026-11-09T15:37:09.755Z" });
+  assert.deepEqual(hostless.current, { revision: 1, submittedAt: SUBMITTED_1 });
   // Quay can't compute the saved files' digest.
   host.digestOf = () => null;
   const localless = await checked(host, model, "on-push", enabled("on-push"));
@@ -358,8 +364,8 @@ test("the view lists the host's revisions newest first, each with its status, ba
   assert.deepEqual(
     view.revisions.map((r) => [r.revision, r.status, r.baseRevision, r.submittedAt, r.current]),
     [
-      [2, "REJECTED", 1, "2026-11-09T15:37:11.112Z", false],
-      [1, "ADMITTED", null, "2026-11-09T15:37:09.755Z", true],
+      [2, "REJECTED", 1, SUBMITTED_2, false],
+      [1, "ADMITTED", null, SUBMITTED_1, true],
     ],
   );
   assert.equal(view.olderRevisions, true);

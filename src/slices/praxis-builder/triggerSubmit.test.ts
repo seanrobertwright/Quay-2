@@ -21,7 +21,8 @@ const { TriggerForm } = await import("./TriggerForm.tsx");
 
 const NAME = "nightly";
 const TARGET = "release-review";
-const ADMISSION_PAGE = "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1";
+/** The admission page of the recorded first candidate. */
+const ADMISSION_PAGE = String(recordedTrigger("triggers submit: a candidate").admissionPageAddress);
 
 /** The runner's outcome for each recorded case. */
 const triggerRecord = (name: string): CallOutcome => ({ kind: "record", record: recordedTrigger(name) });
