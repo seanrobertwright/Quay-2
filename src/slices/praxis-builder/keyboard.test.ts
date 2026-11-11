@@ -5,6 +5,7 @@ import {
   GO_TO_LIMIT,
   matchNodes,
   nodeAriaLabel,
+  nodeName,
   nudgeOffset,
   nudgeStep,
   positionBelow,
@@ -16,6 +17,12 @@ import type { PraxisNode } from "./model.ts";
 
 const node = (id: string, kind: string, dependsOn: string[] = [], config: Record<string, unknown> = {}): PraxisNode =>
   ({ id, kind, dependsOn, config }) as PraxisNode;
+
+test("a node's name, which a card's label starts with on either canvas, gives its kind, id and summary", () => {
+  assert.equal(nodeName(node("build", "TASK", ["lint"], { executionKind: "AGENT" })), "TASK build, AGENT");
+  assert.equal(nodeName(node("end", "OTHER")), "OTHER end, no settings");
+  assert.equal(nodeName(node("x", "")), "No kind x, no settings");
+});
 
 test("a node's label names its kind, id, summary, dependencies and problems", () => {
   const n = node("review", "APPROVAL", ["build", "test"]);

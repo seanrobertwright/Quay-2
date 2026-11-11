@@ -55,7 +55,7 @@ import { Info, RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
-import { configSummary } from "./kinds.ts";
+import { nodeName } from "./keyboard.ts";
 import { commandFor } from "./keymap.ts";
 import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
 import { moveView } from "./motion.ts";
@@ -111,9 +111,8 @@ const RUN_NODE_TYPES = { [PRAXIS_NODE_TYPE]: RunCard };
 
 /** How a card is named to a screen reader: its kind, id and settings, then its node phase and counter line. */
 function runCardLabel(node: PraxisNode, run: GraphRunNode | null): string {
-  const summary = configSummary(node) || "no settings";
   const state = run === null ? "no state reported" : [run.phase, run.counter].filter((s) => s !== null).join(", ");
-  return `${node.kind || "No kind"} ${node.id}, ${summary}, ${state}`;
+  return `${nodeName(node)}, ${state}`;
 }
 
 /**
