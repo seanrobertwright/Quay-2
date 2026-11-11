@@ -302,10 +302,13 @@ test("the selected card has a mark no other card has, at least 3:1 against its b
     const now = shown.get(id) as Set<string>;
     assert.ok([...was].every((c) => now.has(c)), `${id} keeps its border in its tone`);
     const mark = [...now].filter((c) => !was.has(c));
-    const background = colourOf(was, "bg") as Rgb;
-    const border = colourOf(was, "border", background) as Rgb;
+    const background = colourOf(was, "bg");
+    assert.ok(background, `${id}'s card has a background: ${[...was].join(" ")}`);
+    const border = colourOf(was, "border", background);
+    assert.ok(border, `${id}'s card has a border: ${[...was].join(" ")}`);
     const colour = colourOf(mark, "ring") ?? colourOf(mark, "outline");
     assert.ok(colour, `${id}'s mark has a colour: ${mark.join(" ")}`);
+    // A mark 3:1 from a card is lighter than it, and so further still from the run canvas, which is darker.
     assert.ok(contrast(colour, background) >= 3, `${id}'s mark is at least 3:1 against its background`);
     assert.ok(contrast(colour, border) >= 3, `${id}'s mark is at least 3:1 against its border, so it doesn't read as part of it`);
   }
@@ -319,7 +322,7 @@ test("a selected card with focus shows both the ring a card with focus has and t
   await act(async () => cooldown.focus());
   await press(cooldown, "Enter");
   assert.deepEqual(selectedCards(root), ["cooldown"]);
-  assert.ok(document.activeElement === card(root, "cooldown"), "it keeps focus");
+  assert.equal(document.activeElement, card(root, "cooldown"), "it keeps focus");
   assert.deepEqual(
     NODE_FOCUS_CLASS.split(" ").filter((c) => !card(root, "cooldown")?.classList.contains(c)),
     [],
