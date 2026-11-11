@@ -92,6 +92,29 @@ export const statusRecord = (view: Record<string, unknown>, trustHint?: string):
   trustHint === undefined ? { kind: "record", record: view } : { kind: "record", record: view, trustHint };
 
 /**
+ * Node `nodeId` of kind `kind` in node phase `phase`, as an entry of a graph run's
+ * `aiws-graph-operator-view/1` `nodes[]` (graph_outputs.fixture.json), with `extra` replacing its
+ * fields. It has no attempt, scope, loop, wait or human task.
+ */
+export function graphNodeView(nodeId: string, kind: string, phase: string, extra: Record<string, unknown> = {}) {
+  return {
+    nodeId,
+    kind,
+    status: "PENDING",
+    iterations: 0,
+    ready: false,
+    phase,
+    holdId: null,
+    attempt: null,
+    scope: null,
+    loop: null,
+    wait: null,
+    humanTask: null,
+    ...extra,
+  };
+}
+
+/**
  * Graph run `n`'s `aiws-graph-operator-view/1`, as `praxis status wo-<n> --format
  * aiws-graph-operator-view/1 --json` printed it against the SDK's simulated host
  * (graph_outputs.fixture.json), with its nodes left out and `extra` replacing its fields. It is
