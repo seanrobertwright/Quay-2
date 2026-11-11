@@ -79,8 +79,9 @@ export const isObject = (v: unknown): v is JsonObject =>
  * Reads a graph file's JSON for display. It is lenient where the canvas can still draw
  * something (a missing `dependsOn` or `config` reads as empty), and refuses only what it
  * can't draw: no `nodes` list, a node without a string id, a repeated id, or more nodes
- * than the SDK allows. Its check of the node cap is the builder's one check of it: the run
- * canvas words the same refusal its own way, from the node count it gives (graphRevision.ts).
+ * than the SDK allows. The run canvas reads a revision's graph through it too, and words that
+ * last refusal its own way from the node count it gives, rather than check the cap again
+ * (graphRevision.ts).
  */
 export function parseGraph(content: unknown): GraphParseResult {
   if (!isObject(content)) return { ok: false, message: "The file isn't a JSON object." };

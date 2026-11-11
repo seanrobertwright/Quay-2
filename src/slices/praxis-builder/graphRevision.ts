@@ -45,8 +45,8 @@ function revisionGraphOf(record: Record<string, unknown>): Exclude<RevisionRead,
   if (!isObject(graph)) return { kind: "undrawn", reason: "praxis gave it without a graph." };
   const parsed = parseGraph(graph);
   if (parsed.ok) return { kind: "graph", graph: parsed.value };
-  // parseGraph's check of the node cap decides, in the graph canvas's words, of what a graph may
-  // hold. The run canvas speaks of what the builder draws, so it words the same refusal itself.
+  // parseGraph's check of the node cap decides. Its words, the graph canvas's, say what a graph may
+  // hold; the run canvas says what the builder draws, so it words the same refusal itself.
   if ("nodeCount" in parsed) {
     return { kind: "undrawn", reason: `Its graph has ${parsed.nodeCount} nodes, more than the ${MAX_NODES} the builder draws.` };
   }

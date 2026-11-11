@@ -9,9 +9,9 @@ import { hostConditionView, type HostAction, type HostTone } from "./hostConditi
 import type { HostCondition, InteractiveCommand } from "./praxisHost.ts";
 
 /**
- * Each tone's classes: a chip's border, text and fill, and its dot. Other chips are drawn in these
- * tones too: a node phase's, in each tone it shares with the host chip (NodePhaseChip.tsx), and a
- * run's caution in amber (`AMBER`, RunDetail.tsx).
+ * Each tone's classes: a chip's border, text and fill, and its dot. Others draw in these tones too:
+ * a node phase's chip, in each tone it shares with the host chip (NodePhaseChip.tsx), and a run's
+ * cautions, in amber (`AMBER`, RunDetail.tsx).
  */
 export const TONE_CLASSES: Readonly<Record<HostTone, { chip: string; dot: string }>> = {
   neutral: { chip: "border-[#30363d] text-[#8b949e]", dot: "bg-[#8b949e]" },
