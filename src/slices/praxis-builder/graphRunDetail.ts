@@ -1,15 +1,18 @@
-// A graph run's detail (#444, #465): run-level facts only, read from `praxis status <wo> --format
-// aiws-graph-operator-view/1 --json` through the same follow as a template run's detail
-// (runDetail.ts), so it has the same delays and stop rules. Node states wait on the SDK's
-// graph-run read model and aren't read. It has no UI of its own; GraphRunDetail.tsx draws it.
+// A graph run's detail (#444, #465, #568): run-level facts only, read from `praxis status <wo>
+// --format aiws-graph-operator-view/1 --json` through the same follow as a template run's detail
+// (runDetail.ts), so it has the same delays and stop rules. The view's `nodes[]` isn't read. It has
+// no UI of its own; GraphRunDetail.tsx draws it.
 //
-// `aiws-graph-operator-view/1` is `PROVISIONAL` (GRAPH-WORKFLOWS.md, "Graph operator view", at
-// the SDK pin), so only the fields drawn are read, each leniently: a field that is missing or of
-// another type falls back to the run's row in the Runs list, or to nothing, and any field Quay
-// doesn't draw is ignored. The view gives no creation or update time and its `revision` is the
-// snapshot's, so those come from the row, whose `workflowRevision` is the admitted revision that runs.
+// `aiws-graph-operator-view/1` is `STABLE` (GRAPH-WORKFLOWS.md, "Graph operator view", promoted in
+// AI-WS-SDK #659): a field or a value of its closed enums changes only in a new format, which the
+// follow refuses. Each open hold is one `aiws-graph-hold-card/1` in its `holds[]`. Only the fields
+// drawn are read, and any field Quay doesn't draw is ignored. A drawn field that is missing or of
+// another type, from a host that breaks the format, falls back to the run's row in the Runs list,
+// or to nothing, so the run is still drawn. The view gives no creation or update time and its
+// `revision` is the snapshot's, so those come from the row, whose `workflowRevision` is the
+// admitted revision that runs.
 import { hasOwn, isObject } from "./model.ts";
-import { holdOf, str, type FollowedRun, type FollowSource, type HoldPanel, type Obj } from "./runDetail.ts";
+import { holdOf, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
 import type { RunRow } from "./runsList.ts";
 
 /** The view's record format. */
@@ -57,6 +60,46 @@ export interface GraphRunDetail extends FollowedRun {
   simulated: boolean;
 }
 
+/** Each way out of a graph node's hold, in words (GRAPH-WORKFLOWS.md, "Graph runs", "Hold exits"). */
+const GRAPH_HOLD_EXITS: Readonly<Record<string, Omit<HoldExit, "id" | "available">>> = {
+  RETRY: { label: "Retry", does: "Runs the same operation again, since it took no effect." },
+  RECONCILE: { label: "Reconcile", does: "Records whether the attempt's action took effect." },
+  RELEASE_AND_REATTEMPT: { label: "Release and re-attempt", does: "Runs the node again as a new operation, once the host proves its workspace is safe." },
+  REVALIDATE: { label: "Revalidate", does: "Runs the loop's validation again, once the host proves that is safe." },
+};
+
+/**
+ * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
+ * reason, with the cause of an EXECUTION_FAILED hold, the effect of the node's attempt, the
+ * attempts the node used of those it has, and each exit the card offers, all taken in the
+ * browser. Codes are shown as the host gave them; an exit Quay doesn't know is named by its code.
+ */
+function graphHoldOf(card: Obj): HoldPanel {
+  const reason = str(card.reason) ?? "praxis gave no reason";
+  const node = str(card.nodeId);
+  const cause = str(card.cause);
+  const notes: string[] = [];
+  const effect = str(card.effect);
+  if (effect !== null) notes.push(`Effect: ${effect}`);
+  if (typeof card.attempts === "number") {
+    const bound = typeof card.maxAttempts === "number" ? ` of ${card.maxAttempts}` : card.maxAttempts === null ? ", with no bound" : "";
+    notes.push(`Attempts: ${card.attempts}${bound}`);
+  }
+  const exits = strings(card.exits).map((exit) => {
+    const words = hasOwn(GRAPH_HOLD_EXITS, exit) ? GRAPH_HOLD_EXITS[exit] : { label: exit, does: "" };
+    return { id: exit, ...words, available: true };
+  });
+  if (exits.length === 0) notes.push("No way out of the hold is offered: a person may cancel the run in the browser.");
+  return {
+    reason: node === null ? reason : `${reason} on node ${node}`,
+    cause: cause === null ? null : `Cause: ${cause}`,
+    phase: null,
+    evidence: null,
+    notes,
+    exits,
+  };
+}
+
 /** One `pending[]` entry in words: what a person decides for it in the browser. */
 function decisionOf(p: Obj): string | null {
   const node = str(p.nodeId);
@@ -96,7 +139,7 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
   // A card without its `holdId` can't be told from another, so only the first of its reason is kept.
   const holds: GraphHold[] = [];
   for (const card of cards) {
-    const panel = holdOf(card, null);
+    const panel = graphHoldOf(card);
     const holdId = str(card.holdId);
     const key = holdId !== null ? `hold:${holdId}` : `unnamed:${panel.reason}`;
     if (!holds.some((h) => h.key === key)) holds.push({ holdId, key, ...panel });

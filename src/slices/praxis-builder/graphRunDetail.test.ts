@@ -1,9 +1,10 @@
 /// <reference types="node" />
-// Component tests for a graph run's detail (#444, #465): run-level facts only, followed by polled
-// `praxis status <wo> --format aiws-graph-operator-view/1`, with the template run detail's
-// backoff, waiting banner, hold panel and Trust certificate. They render the real graph workflow
-// form into happy-dom and fake only Tauri's `invoke`, the out-of-process boundary, and the
-// terminal the window opens.
+// Component tests for a graph run's detail (#444, #465, #568): run-level facts only, followed by
+// polled `praxis status <wo> --format aiws-graph-operator-view/1`, with the template run detail's
+// backoff, waiting banner and Trust certificate, and a hold panel per `aiws-graph-hold-card/1`.
+// They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
+// out-of-process boundary, and the terminal the window opens. Views are hand-made in the recorded
+// view's shape, and the recorded views themselves (graph_outputs.fixture.json) are drawn too.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
 import type { CallOutcome } from "./praxisHost.ts";
 import { BROWSER_ORIGIN, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
+import { recordedStdout } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
@@ -148,6 +150,86 @@ const fact = (root: HTMLElement, term: string) => {
   const dt = [...(detail(root)?.querySelectorAll("dt") ?? [])].find((d) => text(d) === term);
   return text(dt?.nextElementSibling);
 };
+const banner = (root: HTMLElement) => detail(root)?.querySelector('[aria-label="Waiting for a decision"]') as HTMLElement | null;
+const panels = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[role="region"]') ?? [])].filter((r) => /^Held:/.test(text(r))) as HTMLElement[];
+/** The ways out of the hold `panel` lists, in its words. */
+const exitsOf = (panel: HTMLElement) => [...panel.querySelectorAll('[aria-label="Ways out of the hold"] li')].map((li) => text(li));
+
+/**
+ * A hold card as `aiws-graph-hold-card/1` gives it, shaped like the recorded held run's: node
+ * `nodeId` held for `reason` after an attempt that took effect, with `extra` replacing its fields.
+ */
+const holdCard = (holdId: string, nodeId: string, reason: string, extra: Record<string, unknown> = {}) => ({
+  format: "aiws-graph-hold-card/1",
+  holdId,
+  scopeId: `node:wo-1/${nodeId}`,
+  runId: "run-1",
+  nodeId,
+  reason,
+  cause: null,
+  operationId: `op:att-${holdId}`,
+  attemptId: `att-${holdId}`,
+  effect: "CONFIRMED_APPLIED",
+  attempts: 1,
+  maxAttempts: 3,
+  exits: ["RELEASE_AND_REATTEMPT"],
+  subjectDigest: "d".repeat(64),
+  ...extra,
+});
+const holdDecision = (holdId: string, nodeId: string) => ({ key: `HOLD_DECISION:${holdId}`, kind: "HOLD_DECISION", holdId, nodeId });
+/** The pending reconciliation of hold `holdId`'s UNKNOWN attempt. */
+const reconciliation = (holdId: string) => ({ key: `RECONCILIATION:${holdId}`, kind: "RECONCILIATION", attemptId: `att-${holdId}`, holdId });
+
+const RELEASE = "Release and re-attempt: Runs the node again as a new operation, once the host proves its workspace is safe.";
+
+test("the recorded run awaiting approval is READY, with its control and Awaiting approval, and the banner names the run's approval", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  const view = recordedStdout("status: awaiting approval");
+  await answer(backend.statuses()[0], statusRecord(view));
+  assert.equal(text(header(root).querySelector("h3")), view.runId, "the run as praxis named it");
+  assert.match(text(header(root)), /READY/);
+  assert.equal(text(header(root).querySelector('[data-chip="control"]')), "RUNNING");
+  assert.match(text(header(root)), /Awaiting approval/);
+  assert.doesNotMatch(text(header(root)), /Held|SUCCEEDED/, "neither held nor ended");
+  assert.match(text(header(root)), /Simulated/, "the recorded host is simulated");
+  assert.match(text(banner(root)), /This run waits for the run's approval, decided in the browser\./);
+  assert.equal(panels(root).length, 0);
+});
+
+test("the recorded completed run shows its status with its outcome and is no longer read", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(recordedStdout("status: completed, not succeeded")));
+  assert.match(text(header(root)), /COMPLETED\s*NOT_SUCCEEDED/);
+  assert.equal(text(header(root).querySelector('[data-chip="control"]')), "RUNNING");
+  assert.doesNotMatch(text(header(root)), /Held|Awaiting approval/);
+  assert.equal(banner(root), null, "it waits for no decision");
+  await tick(10 * 60_000);
+  assert.equal(backend.statuses().length, 1);
+  assert.match(text(detail(root)), /The run has ended, so it is no longer read/);
+});
+
+test("the recorded held run is RUNNING and Held, with a hold panel drawn from its aiws-graph-hold-card/1 in place of the banner", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  const view = recordedStdout("status: held");
+  assert.deepEqual((view.holds as Record<string, unknown>[]).map((card) => card.format), ["aiws-graph-hold-card/1"]);
+  await answer(backend.statuses()[0], statusRecord(view));
+  assert.match(text(header(root)), /RUNNING/);
+  assert.equal(text(header(root).querySelector('[data-chip="control"]')), "RUNNING");
+  assert.match(text(header(root)), /Held/);
+  assert.doesNotMatch(text(header(root)), /Awaiting approval|SUCCEEDED/);
+  const [panel] = panels(root);
+  assert.equal(panels(root).length, 1);
+  assert.match(text(panel), /^Held: EXECUTION_FAILED on node build/);
+  assert.doesNotMatch(text(panel), /Cause:/, "the card has no cause");
+  assert.match(text(panel), /Effect: CONFIRMED_APPLIED/);
+  assert.match(text(panel), /Attempts: 1 of 2/);
+  assert.deepEqual(exitsOf(panel), [RELEASE]);
+  assert.equal(banner(root), null, "the hold panel stands in for the waiting banner");
+  assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"], "the exits are words, never controls");
+});
 
 test("showing a run reads the graph run status verb for its work order and shows its run-level facts", async () => {
   const backend = fakeBackend();
@@ -163,7 +245,7 @@ test("showing a run reads the graph run status verb for its work order and shows
   assert.doesNotMatch(text(header(root)), /Held|Awaiting approval/);
   assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)));
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 45)));
-  assert.equal(root.querySelector("canvas, .react-flow, [data-graph-canvas]"), null, "no node states: run-level facts only");
+  assert.equal(root.querySelector("canvas, .react-flow, [data-graph-canvas]"), null, "no node phases: run-level facts only");
 });
 
 /** Asserts no status read follows within `ms - 1`, and one does at `ms`; answers it with `outcome`. */
@@ -201,11 +283,11 @@ test("a run is read every 3 s while its change token moves, doubling to 15 s whi
 });
 
 test("a held or awaiting run is read every 15 s straight away", async () => {
-  const hold = { format: "aiws-hold-card/1", holdId: "hold-1", reasonText: "The attempt failed" };
   for (const extra of [
     { status: "READY", pending: [{ key: "RUN_APPROVAL", kind: "RUN_APPROVAL" }] },
-    { pending: [{ key: "HOLD_DECISION:hold-1", kind: "HOLD_DECISION", holdId: "hold-1", nodeId: "build" }], holds: [hold] },
-    { pending: [{ key: "RECONCILIATION:att-1", kind: "RECONCILIATION", attemptId: "att-1", holdId: "hold-2" }] },
+    { pending: [holdDecision("hold-1", "build")], holds: [holdCard("hold-1", "build", "EXECUTION_FAILED")] },
+    { pending: [reconciliation("hold-2")] },
+    { pending: [{ key: "HUMAN_TASK:task-1", kind: "HUMAN_TASK", taskId: "task-1", nodeId: "review" }] },
     { control: { status: "PAUSED", reason: null }, pending: [{ key: "RESUME_CONTROL", kind: "RESUME_CONTROL" }] },
   ]) {
     const backend = fakeBackend();
@@ -290,7 +372,6 @@ test("unmounting the form stops the followed run, kills its call and leaves no t
 /** A run awaiting its approval, as the recorded `status: awaiting approval` case reads. */
 const awaiting = (extra: Record<string, unknown> = {}) =>
   graphOperatorView(1, { status: "READY", pending: [{ key: "RUN_APPROVAL", kind: "RUN_APPROVAL" }], ...extra });
-const banner = (root: HTMLElement) => detail(root)?.querySelector('[aria-label="Waiting for a decision"]') as HTMLElement | null;
 
 test("a run awaiting approval gets the Awaiting approval chip and the waiting banner, whose Open in browser opens the run page", async () => {
   const backend = fakeBackend();
@@ -318,13 +399,17 @@ test("the banner names each decision the run waits for, oldest first", async () 
         pending: [
           { key: "NODE_APPROVAL:deploy", kind: "NODE_APPROVAL", nodeId: "deploy" },
           { key: "NODE_ACCEPTANCE:review", kind: "NODE_ACCEPTANCE", nodeId: "review" },
+          { key: "HUMAN_TASK:task-1", kind: "HUMAN_TASK", taskId: "task-1", nodeId: "check" },
           { key: "RESUME_CONTROL", kind: "RESUME_CONTROL" },
           { key: "SOMETHING_NEW", kind: "SOMETHING_NEW" },
         ],
       }),
     ),
   );
-  assert.match(text(banner(root)), /waits for approval of node deploy, acceptance of node review, resuming: the run is paused, decided in the browser/);
+  assert.match(
+    text(banner(root)),
+    /waits for approval of node deploy, acceptance of node review, a human task of node check, resuming: the run is paused, decided in the browser/,
+  );
   assert.doesNotMatch(text(header(root)), /Awaiting approval/, "only the run's own approval is Awaiting approval");
 });
 
@@ -371,48 +456,34 @@ test("a simulated host's run says its decisions aren't a person's", async () => 
   assert.match(text(banner(root)), /This host is simulated: its decisions aren't made by a person\./);
 });
 
-/** A hold card as `aiws-hold-card/1` gives it at the SDK pin, with the fields the panel draws. */
-const holdCard = (holdId: string, reasonText: string, extra: Record<string, unknown> = {}) => ({
-  format: "aiws-hold-card/1",
-  holdId,
-  nodeId: "build",
-  reasonText,
-  cause: "The tool exited with 1.",
-  evidence: "3 tests failed.",
-  notes: ["The node used 2 of its 3 attempts."],
-  phaseText: "Raised after the attempt committed.",
-  exits: [
-    { exit: "RETRY", label: "Retry the node", does: "Starts another attempt.", available: true, unavailable: null, command: null },
-    { exit: "RECONCILE", label: "Reconcile", does: "Records what the attempt did.", available: false, unavailable: "Not available yet.", command: null },
-  ],
-  ...extra,
-});
-const panels = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[role="region"]') ?? [])].filter((r) => /^Held:/.test(text(r))) as HTMLElement[];
-const holdDecision = (holdId: string, nodeId: string) => ({ key: `HOLD_DECISION:${holdId}`, kind: "HOLD_DECISION", holdId, nodeId });
-
-test("a held run gets a Held badge and a hold panel per open hold, each with Resolve in browser, in place of the banner", async () => {
+test("a held run gets a Held badge and a hold panel per graph hold card, each with Resolve in browser, in place of the banner", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend, 1, [entry(1, { held: true })]);
   await answer(
     backend.statuses()[0],
     statusRecord(
       graphOperatorView(1, {
-        pending: [holdDecision("hold-1", "build"), holdDecision("hold-2", "test")],
-        holds: [holdCard("hold-1", "The attempt failed"), holdCard("hold-2", "The node scope is spent", { nodeId: "test", exits: [] })],
+        pending: [holdDecision("hold-1", "build"), reconciliation("hold-2")],
+        holds: [
+          holdCard("hold-1", "build", "EXECUTION_FAILED", { cause: "OUTPUT_SCHEMA_VIOLATION" }),
+          holdCard("hold-2", "test", "UNCERTAIN_EFFECT", { effect: "UNKNOWN", maxAttempts: null, exits: ["RECONCILE"] }),
+        ],
       }),
     ),
   );
   assert.match(text(header(root)), /Held/);
   const [first, second] = panels(root);
   assert.equal(panels(root).length, 2);
-  assert.match(text(first), /^Held: The attempt failed/);
-  assert.match(text(first), /The tool exited with 1\./);
-  assert.match(text(first), /3 tests failed\./);
-  assert.match(text(first), /The node used 2 of its 3 attempts\./);
-  assert.match(text(first), /Raised after the attempt committed\./);
-  assert.match(text(first), /Retry the node: Starts another attempt\./);
-  assert.match(text(first), /Reconcile: Records what the attempt did\. \(not available now\)/);
-  assert.match(text(second), /^Held: The node scope is spent/);
+  assert.match(text(first), /^Held: EXECUTION_FAILED on node build/);
+  assert.match(text(first), /Cause: OUTPUT_SCHEMA_VIOLATION/);
+  assert.match(text(first), /Effect: CONFIRMED_APPLIED/);
+  assert.match(text(first), /Attempts: 1 of 3/);
+  assert.deepEqual(exitsOf(first), [RELEASE]);
+  assert.match(text(second), /^Held: UNCERTAIN_EFFECT on node test/);
+  assert.doesNotMatch(text(second), /Cause:/);
+  assert.match(text(second), /Effect: UNKNOWN/);
+  assert.match(text(second), /Attempts: 1, with no bound/);
+  assert.deepEqual(exitsOf(second), ["Reconcile: Records whether the attempt's action took effect."]);
   assert.equal(banner(root), null, "the hold panels stand in for the waiting banner");
   await click(button(second, /^Resolve in browser for run-1$/));
   await flush();
@@ -421,25 +492,48 @@ test("a held run gets a Held badge and a hold panel per open hold, each with Res
   for (const panel of panels(root)) assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"]);
 });
 
+test("each exit a hold card offers is named in words, one Quay doesn't know as the host gave it, and a card offering none says the run can be cancelled", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(
+      graphOperatorView(1, {
+        holds: [
+          holdCard("hold-1", "build", "EXECUTION_FAILED", { effect: "CONFIRMED_NOT_APPLIED", exits: ["RETRY"] }),
+          holdCard("hold-2", "loop", "UNKNOWN_REQUIRES_RECONCILIATION", { effect: "UNKNOWN", exits: ["REVALIDATE", "SOMETHING_NEW"] }),
+          holdCard("hold-3", "deploy", "EXPOSURE_EXCEEDED", { exits: [] }),
+        ],
+      }),
+    ),
+  );
+  const [retry, revalidate, none] = panels(root);
+  assert.deepEqual(exitsOf(retry), ["Retry: Runs the same operation again, since it took no effect."]);
+  assert.deepEqual(exitsOf(revalidate), ["Revalidate: Runs the loop's validation again, once the host proves that is safe.", "SOMETHING_NEW"]);
+  assert.deepEqual(exitsOf(none), []);
+  assert.match(text(none), /No way out of the hold is offered: a person may cancel the run in the browser\./);
+  for (const panel of [retry, revalidate]) assert.doesNotMatch(text(panel), /No way out/);
+});
+
 test("a card whose holdId reads like a card without one still gets its own panel", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend, 1, [entry(1, { held: true })]);
-  const { holdId: _, ...unnamed } = holdCard("", "The attempt failed");
+  const { holdId: _, ...unnamed } = holdCard("", "build", "EXECUTION_FAILED");
   await answer(
     backend.statuses()[0],
-    statusRecord(graphOperatorView(1, { holds: [holdCard("unnamed: The attempt failed", "The node scope is spent"), unnamed, unnamed] })),
+    statusRecord(graphOperatorView(1, { holds: [holdCard("unnamed:EXECUTION_FAILED on node build", "test", "UNCERTAIN_EFFECT"), unnamed, unnamed] })),
   );
   // A card without a holdId is kept once, beside the card whose holdId looks like its fallback.
   const [first, second] = panels(root);
   assert.equal(panels(root).length, 2);
-  assert.match(text(first), /^Held: The node scope is spent/);
-  assert.match(text(second), /^Held: The attempt failed/);
+  assert.match(text(first), /^Held: UNCERTAIN_EFFECT on node test/);
+  assert.match(text(second), /^Held: EXECUTION_FAILED on node build/);
 });
 
 test("a run with reconciliation pending and no hold card is held too, with a panel saying why", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
-  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [{ key: "RECONCILIATION:att-1", kind: "RECONCILIATION", attemptId: "att-1" }] })));
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [reconciliation("hold-2")] })));
   assert.match(text(header(root)), /Held/);
   assert.equal(panels(root).length, 1);
   assert.match(text(panels(root)[0]), /^Held: An attempt's outcome is unknown, so it needs reconciliation\./);
@@ -461,7 +555,7 @@ test("the detail has no approve, pause, cancel or hold control, not even a disab
       awaiting({
         control: { status: "PAUSED", reason: null },
         pending: [{ key: "RUN_APPROVAL", kind: "RUN_APPROVAL" }, holdDecision("hold-1", "build"), { key: "RESUME_CONTROL", kind: "RESUME_CONTROL" }],
-        holds: [holdCard("hold-1", "The attempt failed")],
+        holds: [holdCard("hold-1", "build", "EXECUTION_FAILED")],
       }),
     ),
   );
@@ -492,7 +586,7 @@ test("when status gives the certificate hint, the banner adds Trust certificate,
 test("a held run's certificate hint shows in its hold panel with Trust certificate", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
-  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [holdDecision("hold-1", "build")], holds: [holdCard("hold-1", "The attempt failed")] }), TRUST_HINT));
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [holdDecision("hold-1", "build")], holds: [holdCard("hold-1", "build", "EXECUTION_FAILED")] }), TRUST_HINT));
   assert.ok(button(panels(root)[0], /^Trust certificate$/));
 });
 

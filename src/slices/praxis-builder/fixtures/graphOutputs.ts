@@ -1,6 +1,7 @@
 /// <reference types="node" />
 // Test fixtures from graph_outputs.fixture.json: what the real `praxis --json` printed for each
-// graph command against the SDK's simulated host, as the graph host model and form tests answer it.
+// graph command against the SDK's simulated host, as the graph host model, form and run detail
+// tests answer it.
 import { readFileSync } from "node:fs";
 import type { CallOutcome } from "../praxisHost.ts";
 

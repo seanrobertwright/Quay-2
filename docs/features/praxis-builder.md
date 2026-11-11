@@ -361,11 +361,11 @@ A submission is stored on the host as a candidate revision. Nothing runs until t
 
 #### A graph run's detail
 
-**Show** on a run opens its detail above the list. **It shows run-level facts only:** the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. **Node-level run progress isn't shown yet.** Quay doesn't show which nodes a run has reached or finished, or each node's state, until the AI-WS-SDK has a read model for a graph run's nodes.
+**Show** on a run opens its detail above the list. **It shows run-level facts only:** the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. **Node-level run progress isn't shown yet.** Quay doesn't show which nodes a run has reached or finished, or each node's phase.
 
-- **The detail follows the run** with `praxis status <work-order> --format aiws-graph-operator-view/1 --json`, on the same delays and stop rules as a template run's detail (see [Runs](#runs)).
-- **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
-- **A held run** gets a hold panel for each open hold, with **Resolve in browser**.
+- **The detail follows the run** with `praxis status <work-order> --format aiws-graph-operator-view/1 --json`, on the same delays and stop rules as a template run's detail (see [Runs](#runs)). The view is `STABLE` in the AI-WS-SDK, so its fields change only in a new format, which the detail says it can't read.
+- **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, a human task, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
+- **A held run** gets a hold panel for each open hold, with **Resolve in browser**. Each panel draws the hold's card (`aiws-graph-hold-card/1`): the held node and the host's reason, with its cause when it has one, the effect of the node's attempt, the attempts the node used of those it has, and the ways out of the hold, all taken in the browser. A hold that offers no way out says a person may cancel the run in the browser.
 - **A certificate hint** shows as it does for a template run, with **Trust certificate** when `praxis` asks for `praxis trust`.
 
 #### Start a graph run

@@ -1,9 +1,10 @@
-// A graph run's detail (#444, #465): run-level facts only (status, control chip, held, awaiting
-// approval, revision, and created and updated times), followed while it is on screen with the
-// template run detail's delays and stop rules. Node states wait on the SDK's graph-run read model.
-// It shares the template run detail's waiting banner, hold panel, certificate hint and page
-// actions. Decisions on a run (approve, pause, cancel, resolving a hold) are made only in the
-// host's browser page, so it has no control for any of them, not even a disabled one.
+// A graph run's detail (#444, #465, #568): run-level facts only (status, control chip, held,
+// awaiting approval, revision, and created and updated times), followed while it is on screen with
+// the template run detail's delays and stop rules. It doesn't draw the run's nodes. It shares the
+// template run detail's waiting banner, hold panel, certificate hint and page actions, with one
+// hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause, cancel, resolving
+// a hold) are made only in the host's browser page, so it has no control for any of them, not
+// even a disabled one.
 import type { FC } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
