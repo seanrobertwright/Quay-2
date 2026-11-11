@@ -58,7 +58,7 @@ import type { RevisionCache } from "./graphRevision.ts";
 import { configSummary } from "./kinds.ts";
 import { commandFor } from "./keymap.ts";
 import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
-import { prefersReducedMotion } from "./motion.ts";
+import { moveView } from "./motion.ts";
 import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
@@ -158,9 +158,6 @@ function withMeasures(sizes: Sizes, changes: NodeChange<RunFlowNode>[]): Sizes {
 /** The first fit shows the whole graph, no larger than its cards' own size. One identity, as GraphCanvas.tsx's `FIRST_FIT` explains. */
 const RUN_FIT = { maxZoom: 1 } as const;
 
-/** How long a pan or zoom the keys start takes, unless the system asks for reduced motion. */
-const VIEW_MOVE_MS = 200;
-
 /** The project's saved layout for a graph, as the run canvas draws with it. */
 interface SavedLayout {
   /** The saved position of each node the layout places. */
@@ -223,23 +220,17 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revis
   // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
   // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const duration = prefersReducedMotion() ? 0 : VIEW_MOVE_MS;
     const focused = cardId(e.target);
-    switch (commandFor(e.nativeEvent, focused === null ? "canvas" : "node")) {
+    const command = commandFor(e.nativeEvent, focused === null ? "canvas" : "node");
+    switch (command) {
       case "select":
         if (focused !== null) onSelect(focused);
         break;
       case "fit-view":
-        void view.fitView({ duration });
-        break;
       case "zoom-in":
-        void view.zoomIn({ duration });
-        break;
       case "zoom-out":
-        void view.zoomOut({ duration });
-        break;
       case "zoom-reset":
-        void view.zoomTo(1, { duration });
+        moveView(view, command);
         break;
       default:
         return;

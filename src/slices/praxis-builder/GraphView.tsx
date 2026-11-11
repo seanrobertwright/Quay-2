@@ -28,7 +28,7 @@ import { bindingMarks } from "./graphBinding.ts";
 import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
-import { prefersReducedMotion } from "./motion.ts";
+import { moveView, prefersReducedMotion } from "./motion.ts";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
@@ -228,7 +228,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   useEffect(() => {
     if (!fitPending.current) return;
     fitPending.current = false;
-    void flow.fitView({ duration: prefersReducedMotion() ? 0 : 200 });
+    moveView(flow, "fit-view");
   }, [positions, flow]);
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : NO_DIAGNOSTICS;
@@ -240,7 +240,6 @@ const GraphViewInner: FC<GraphViewProps> = ({
 
   const canvasReady = useCallback(
     (controls: CanvasControls) => {
-      const duration = () => (prefersReducedMotion() ? 0 : 200);
       onReady?.({
         ...controls,
         contains: (target) => canvasBox.current?.contains(target) ?? false,
@@ -256,13 +255,13 @@ const GraphViewInner: FC<GraphViewProps> = ({
           return { lastNode: cards[cards.length - 1] ?? null, edges };
         },
         focus: () => canvasBox.current?.focus(),
-        fitView: () => void flow.fitView({ duration: duration() }),
+        fitView: () => moveView(flow, "fit-view"),
         fitViewWhenMoved: () => {
           fitPending.current = true;
         },
-        zoomIn: () => void flow.zoomIn({ duration: duration() }),
-        zoomOut: () => void flow.zoomOut({ duration: duration() }),
-        zoomReset: () => void flow.zoomTo(1, { duration: duration() }),
+        zoomIn: () => moveView(flow, "zoom-in"),
+        zoomOut: () => moveView(flow, "zoom-out"),
+        zoomReset: () => moveView(flow, "zoom-reset"),
         getCanvasRect: () => {
           const r = canvasBox.current?.getBoundingClientRect();
           return r ? { width: r.width, height: r.height } : null;
