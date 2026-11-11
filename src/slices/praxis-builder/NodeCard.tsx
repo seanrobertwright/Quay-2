@@ -4,7 +4,8 @@
 // (GraphCanvas.tsx) draws it with its problem count and binding mark, and the run canvas
 // (RunCanvas.tsx) with its node phase and counter line. Both draw it at the same size, the layout's
 // width (flow/layout.ts) and one height, so a saved layout places the cards of either: what each
-// adds is drawn over the card's edges, or as its footer, in the place of its bottom padding.
+// adds is drawn over the card's edges, or as its footer, in the place of its bottom padding. Each
+// canvas reads the node a card is for, such as one a key was pressed on, with `cardNodeId`.
 import type { FC, ReactNode } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { EDGE_COLOR } from "./flow/to-flow.ts";
@@ -16,6 +17,10 @@ const HANDLE = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117]";
 
 /** The ring a card shows while it has keyboard focus. */
 export const NODE_FOCUS_CLASS = "rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#f0f6fc]";
+
+/** The node id of `target` when it is a card, which React Flow draws with its node's id as `data-id`; else null. */
+export const cardNodeId = (target: unknown): string | null =>
+  target instanceof Element && target.classList.contains("react-flow__node") ? target.getAttribute("data-id") : null;
 
 interface NodeCardProps {
   node: PraxisNode;

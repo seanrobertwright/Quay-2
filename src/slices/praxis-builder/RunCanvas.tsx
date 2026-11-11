@@ -59,7 +59,7 @@ import { nodeName } from "./keyboard.ts";
 import { commandFor } from "./keymap.ts";
 import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
 import { moveView } from "./motion.ts";
-import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
+import { cardNodeId, NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { BUTTON } from "./RunDetail.tsx";
@@ -129,13 +129,9 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   return { runs, problems };
 }
 
-/** The node id of `target` when it is a card, which React Flow draws with its node's id as `data-id`; else null. */
-const cardId = (target: unknown): string | null =>
-  target instanceof HTMLElement && target.classList.contains("react-flow__node") ? (target.dataset.id ?? null) : null;
-
-/** The card of node `nodeId` in `root`, the reverse of `cardId`; null when no run canvas there draws one for it. */
+/** The card of node `nodeId` in `root`, the reverse of `cardNodeId`; null when no run canvas there draws one for it. */
 export const cardOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
-  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardId(card) === nodeId) ?? null;
+  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardNodeId(card) === nodeId) ?? null;
 
 /** Each card's size as React Flow measured it, by node id. */
 type Sizes = ReadonlyMap<string, Dimensions>;
@@ -218,7 +214,7 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revis
   // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
   // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const focused = cardId(e.target);
+    const focused = cardNodeId(e.target);
     const command = commandFor(e.nativeEvent, focused === null ? "canvas" : "node");
     switch (command) {
       case "select":

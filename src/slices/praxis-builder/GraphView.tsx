@@ -29,6 +29,7 @@ import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
 import { moveView, prefersReducedMotion } from "./motion.ts";
+import { cardNodeId } from "./NodeCard.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
@@ -150,9 +151,10 @@ const findCard = (box: HTMLElement | null, id: string) => box?.querySelector<HTM
 /** The canvas item an element is, or is inside. */
 function itemOf(el: Element | null): CanvasItem | null {
   const item = el?.closest(".react-flow__node, .react-flow__edge");
+  const nodeId = cardNodeId(item);
+  if (nodeId !== null) return { type: "node", id: nodeId };
   const id = item?.getAttribute("data-id");
-  if (!item || id == null) return null;
-  if (item.classList.contains("react-flow__node")) return { type: "node", id };
+  if (id == null) return null;
   // Edge ids are JSON `[source, target, tag]` (see `edgeId`).
   try {
     const [source, target] = JSON.parse(id) as unknown[];
@@ -243,8 +245,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
       onReady?.({
         ...controls,
         contains: (target) => canvasBox.current?.contains(target) ?? false,
-        isNode: (target) =>
-          target instanceof Element && target.classList.contains("react-flow__node") && (canvasBox.current?.contains(target) ?? false),
+        isNode: (target) => cardNodeId(target) !== null && (canvasBox.current?.contains(target) ?? false),
         itemAt: (target) => (target instanceof Element && canvasBox.current?.contains(target) ? itemOf(target) : null),
         goToNode: (nodeId) => latest.current.goToNode(nodeId),
         openNodeMenu: (nodeId) => latest.current.openNodeMenu(nodeId),
