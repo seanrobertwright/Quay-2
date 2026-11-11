@@ -396,7 +396,7 @@ The run canvas draws the graph of the revision the run runs, with each node in i
 
 #### The node panel
 
-Choosing a card on the run canvas, or a node's id in the node table, selects that node and opens its node panel beside the run canvas. One node is selected at a time: its card has a ring around it and its row is filled, with its id in bold and underlined, and choosing another node moves the selection. A screen reader hears the selected card and row as the current one.
+Choosing a card on the run canvas, or a node's id in the node table, selects that node and opens its node panel beside the run canvas. One node is selected at a time, and choosing another node moves the selection. The selected node's card has a white ring close around its border, a colour no node phase has, and its row is filled, with its id in bold and underlined. A card with keyboard focus has a ring further out, so a card both selected and focused shows both rings. A screen reader hears the selected card and row as the current one.
 
 - **With the keyboard**, `Tab` moves through the run canvas's cards, or the node ids in the node table, and `Enter` or `Space` selects the one with focus.
 - **When the run canvas isn't drawn**, such as while its revision is read, or when it can't be read or has too many nodes, choosing a row still opens the node panel, beside the run canvas's place.

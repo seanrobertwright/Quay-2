@@ -25,8 +25,10 @@
 // One node is selected at a time (#572), shared with the node table: the run's detail holds it.
 // A click on a card, or the builder's select key (Enter or Space) on the card with focus, selects
 // its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
-// selected card has a ring around it and is the current one to a screen reader. Every other key
-// of the graph canvas, adding to the selection included, does nothing on it.
+// selected card has a near-white ring close around its border, in no node phase's tone, and is the
+// current one to a screen reader. The ring a card with focus has stands further out, so a card
+// both selected and focused shows both. Every other key of the graph canvas, adding to the
+// selection included, does nothing on it.
 //
 // A card that takes keyboard focus while not wholly in view is panned into view (#575), as on the
 // graph canvas, and so is the selected card, when the selection changes and when the run canvas
@@ -74,8 +76,14 @@ type RunFlowNode = Node<RunNodeData>;
 /** The border of a card for a node the view has no entry for. */
 const NO_STATE_FRAME = "border-dashed border-[#30363d]";
 
-/** The ring around the selected card, outside its border in its node phase's tone: a shape as well as a colour. */
-const SELECTED_RING = "ring-2 ring-[#58a6ff]";
+/**
+ * The ring around the selected card, a shape as well as a colour: near-white, at least 3:1 against
+ * the card, the run canvas and the border of every node phase's tone, and close against the card's
+ * border, so the ring a card with focus has (NODE_FOCUS_CLASS), further out, stays apart from it.
+ * An outline rather than Tailwind's `ring`, which is a box shadow: a Windows contrast theme drops
+ * box shadows but keeps outlines.
+ */
+const SELECTED_RING = "outline-2 outline-[#f0f6fc]";
 
 const RunCard: FC<NodeProps<RunFlowNode>> = ({ data, selected }) => {
   const { node, run } = data;
