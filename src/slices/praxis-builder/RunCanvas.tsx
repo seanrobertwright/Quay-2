@@ -62,11 +62,10 @@ import { moveView } from "./motion.ts";
 import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
 import { cardRect, reveal, revealFocused } from "./reveal.ts";
+import { BUTTON } from "./RunDetail.tsx";
 import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import type { DefinitionFile, FileProblem } from "./types.ts";
 import { focusLost } from "./useKeptFocus.ts";
-
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
 
 /** A run canvas card's data: the graph node, and its row from the view's nodes, or null when the view has none for it. */
 interface RunNodeData extends PraxisNodeData {

@@ -4,14 +4,15 @@
 // is never the only sign of it. A dimmed phase's chip, SKIPPED's, is dimmed by a dashed outline,
 // never by its text, which keeps its tone's full contrast (WCAG 1.4.3).
 import type { FC } from "react";
+import { TONE_CLASSES } from "./HostChip.tsx";
 import { nodePhaseLook, type NodePhaseTone } from "./nodePhase.ts";
 
-/** Each tone's colours: a chip's border, text and fill, and a card's border. */
+/** Each tone's colours: a chip's border, text and fill, the host chip's in each tone they share, and a card's border. */
 const TONES: Readonly<Record<NodePhaseTone, { chip: string; frame: string }>> = {
-  neutral: { chip: "border-[#30363d] text-[#8b949e]", frame: "border-[#30363d]" },
-  ok: { chip: "border-[#238636]/60 text-[#3fb950]", frame: "border-[#238636]" },
-  error: { chip: "border-[#f85149]/60 text-[#ff7b72]", frame: "border-[#f85149]/70" },
-  amber: { chip: "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10", frame: "border-[#d29922]/80" },
+  neutral: { chip: TONE_CLASSES.neutral.chip, frame: "border-[#30363d]" },
+  ok: { chip: TONE_CLASSES.ok.chip, frame: "border-[#238636]" },
+  error: { chip: TONE_CLASSES.error.chip, frame: "border-[#f85149]/70" },
+  amber: { chip: TONE_CLASSES.amber.chip, frame: "border-[#d29922]/80" },
   active: { chip: "border-[#58a6ff]/60 text-[#58a6ff] bg-[#58a6ff]/10", frame: "border-[#58a6ff]/70" },
 };
 

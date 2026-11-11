@@ -10,6 +10,7 @@
 import { useId, useRef, useState, type FC, type ReactNode } from "react";
 import { ExternalLink, FlaskConical, Pause, ShieldCheck, UserCheck, X } from "lucide-react";
 import { formatClock } from "../../lib/dates.ts";
+import { TONE_CLASSES } from "./HostChip.tsx";
 import type { JsonObject } from "./model.ts";
 import { openPraxisTerminal, type RunInTerminal } from "./praxisHost.ts";
 import type { FollowedRun, HoldPanel as Hold, RunFollowView } from "./runDetail.ts";
@@ -34,9 +35,10 @@ interface RunDetailProps {
   onClose: () => void;
 }
 
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
-/** The amber of a caution: a simulated run, or one waiting for a person. */
-export const AMBER = "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10";
+/** A run detail's buttons: its page actions and Close, and a graph run's node table toggle and run canvas's Try again. */
+export const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
+/** The amber of a caution: a simulated run, or one waiting for a person, in the host chip's amber tone. */
+export const AMBER = TONE_CLASSES.amber.chip;
 
 /** What the page actions need: the run, its row and how to look its page up when neither gave it. */
 interface RunPageActionsOptions {

@@ -15,8 +15,7 @@ import { useId, type FC } from "react";
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import type { GraphRunNodes } from "./graphRunDetail.ts";
 import { NodePhaseChip } from "./NodePhaseChip.tsx";
-
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
+import { BUTTON } from "./RunDetail.tsx";
 
 interface NodeTableProps {
   nodes: GraphRunNodes;

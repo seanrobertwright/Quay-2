@@ -8,7 +8,12 @@ import { SquareTerminal, TriangleAlert } from "lucide-react";
 import { hostConditionView, type HostAction, type HostTone } from "./hostCondition.ts";
 import type { HostCondition, InteractiveCommand } from "./praxisHost.ts";
 
-const TONE_CLASSES: Record<HostTone, { chip: string; dot: string }> = {
+/**
+ * Each tone's classes: a chip's border, text and fill, and its dot. Other chips are drawn in these
+ * tones too: a node phase's, in each tone it shares with the host chip (NodePhaseChip.tsx), and a
+ * run's caution in amber (`AMBER`, RunDetail.tsx).
+ */
+export const TONE_CLASSES: Readonly<Record<HostTone, { chip: string; dot: string }>> = {
   neutral: { chip: "border-[#30363d] text-[#8b949e]", dot: "bg-[#8b949e]" },
   ok: { chip: "border-[#238636]/60 text-[#3fb950]", dot: "bg-[#3fb950]" },
   error: { chip: "border-[#f85149]/60 text-[#ff7b72]", dot: "bg-[#f85149]" },
