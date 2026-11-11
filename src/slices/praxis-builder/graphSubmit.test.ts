@@ -29,7 +29,8 @@ const stdout = (name: string) => structuredClone(recorded.cases.find((c) => c.na
 /** The digest of the recorded bundle, which every revision the recorded host holds has. */
 const RECORDED_DIGEST = "sha256:f29d05656810f1a352c2fa594710e4f01333ea7e1f8833708bdb6a915870474f";
 const OTHER_DIGEST = `sha256:${"e".repeat(64)}`;
-const ADMISSION_PAGE = "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=1";
+/** The admission page of the recorded first candidate. */
+const ADMISSION_PAGE = String(stdout("graphs submit: a candidate").admissionPageAddress);
 
 /** The runner's outcome for each recorded case. */
 const recordOf = (name: string): CallOutcome => ({ kind: "record", record: stdout(name) });
@@ -436,7 +437,8 @@ function candidateOverOne(): CallOutcome {
   Object.assign(record, { currentRevision: 1, runnable: true, pendingCount: 1, admissionPageAddress: SECOND_PAGE });
   return { kind: "record", record };
 }
-const SECOND_PAGE = "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2";
+/** The admission page of the recorded second candidate. */
+const SECOND_PAGE = String(stdout("graphs submit: a second candidate").admissionPageAddress);
 
 test("a confirmed submission is sent on the current revision, offers the admission page, and rereads the host state", async () => {
   const backend = fakeBackend({ show: admittedOne(OTHER_DIGEST), submit: recordOf("graphs submit: a second candidate") });

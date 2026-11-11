@@ -378,9 +378,10 @@ const notice = (root: HTMLElement, label: string) => root.querySelector(`[aria-l
 
 /** The recorded `praxis run` of a graph workflow that created a run awaiting approval. */
 const created = (): CallOutcome => ({ kind: "record", record: stdout("run: created") });
-const CREATED_ID = "wo-5f263bc1-d259-48e1-bb3e-e6113225bb1b";
-const CREATED_RUN = "run-93ccd6e7-27b6-48e6-8def-e5f45e725f3e";
-const CREATED_PAGE = `https://praxis-nmdro7k3gf.localhost:49889/#work-order=${CREATED_ID}`;
+/** The recorded new run's work order, run id and page. */
+const CREATED_ID = String(stdout("run: created").workOrderId);
+const CREATED_RUN = String(stdout("run: created").runId);
+const CREATED_PAGE = String(stdout("run: created").runPageAddress);
 
 test("Run is a headless praxis run of the graph workflow's name through the runner, and Run is disabled while it is in flight", async () => {
   const backend = fakeBackend();

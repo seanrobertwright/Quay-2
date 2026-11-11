@@ -689,13 +689,16 @@ fn a_host_refusal_carries_the_host_s_code_and_says_the_host_answered() {
 /// the case. The arguments the runner builds must be the ones the real CLI took.
 #[test]
 fn each_graph_read_is_read_with_the_arguments_praxis_took() {
-    let status = recorded("status: awaiting approval");
-    let work_order = status["stdout"]["workOrderId"].as_str().unwrap().to_string();
-    let cases: [(Verb, Vec<&str>, &str); 4] = [
+    let work_order = |name: &str| recorded(name)["stdout"]["workOrderId"].as_str().unwrap().to_string();
+    let (awaiting, ended, held) =
+        (work_order("status: awaiting approval"), work_order("status: completed, not succeeded"), work_order("status: held"));
+    let cases: [(Verb, Vec<&str>, &str); 6] = [
         (Verb::GraphsRevisions, vec!["release-review", "--before", "2", "--limit", "20"], "graphs show: older revisions"),
         (Verb::GraphsWithdraw, vec!["release-review", "1"], "graphs withdraw: a pending candidate"),
         (Verb::GraphRuns, vec!["nightly-build", "--limit", "20"], "runs"),
-        (Verb::GraphStatus, vec![&work_order], "status: awaiting approval"),
+        (Verb::GraphStatus, vec![&awaiting], "status: awaiting approval"),
+        (Verb::GraphStatus, vec![&ended], "status: completed, not succeeded"),
+        (Verb::GraphStatus, vec![&held], "status: held"),
     ];
     for (verb, operands, name) in cases {
         let h = Harness::new();

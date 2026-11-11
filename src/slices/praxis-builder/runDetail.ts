@@ -48,9 +48,12 @@ export interface HoldExit {
   available: boolean;
 }
 
-/** What the hold panel draws, from the operator view's `holdCard` (`aiws-hold-card/1`, not contracted). */
+/**
+ * What a hold panel draws: from a template run's `holdCard` (`aiws-hold-card/1`, not contracted),
+ * or from one of a graph run's `aiws-graph-hold-card/1` cards (graphRunDetail.ts).
+ */
 export interface HoldPanel {
-  /** The card's reason in words, or the run's reason when it has no card, as for pending reconciliation. */
+  /** Why the run is held, as its card gives it, or the run's reason when it has no card, as for pending reconciliation. */
   reason: string;
   cause: string | null;
   phase: string | null;
@@ -148,7 +151,7 @@ export interface RunFollowOptions<Run extends FollowedRun> {
 
 export type Obj = Record<string, unknown>;
 export const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
-const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
+export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 
 const STAGE_OF: Readonly<Record<string, StageKey>> = {
   IMPLEMENTATION: "implementation",
