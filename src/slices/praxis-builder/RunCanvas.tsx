@@ -18,7 +18,18 @@
 // on it. It has no palette, no auto-arrange and no menu. Selecting a node comes with the node panel.
 import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
+import {
+  Background,
+  Controls,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  type Dimensions,
+  type Node,
+  type NodeChange,
+  type NodeDimensionChange,
+  type NodeProps,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
@@ -87,6 +98,21 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   return { runs, problems };
 }
 
+/** Each card's size as React Flow measured it, by node id. */
+type Sizes = ReadonlyMap<string, Dimensions>;
+
+/**
+ * `sizes` with each size React Flow measured in `changes`, or `sizes` itself when they hold none.
+ * Every other change is dropped: the run canvas moves, selects and removes nothing.
+ */
+function withMeasures(sizes: Sizes, changes: NodeChange<RunFlowNode>[]): Sizes {
+  const measured = changes.filter((c): c is NodeDimensionChange & { dimensions: Dimensions } => c.type === "dimensions" && c.dimensions !== undefined);
+  if (measured.length === 0) return sizes;
+  const next = new Map(sizes);
+  for (const change of measured) next.set(change.id, change.dimensions);
+  return next;
+}
+
 /** The first fit shows the whole graph, no larger than its cards' own size. One identity, as GraphCanvas.tsx's `FIRST_FIT` explains. */
 const RUN_FIT = { maxZoom: 1 } as const;
 
@@ -107,13 +133,18 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
   const view = useReactFlow();
   const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
   const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
+  // React Flow measures each card and reports its size as a change. A card keeps its size from one
+  // read of the run to the next: without it React Flow would measure the card again, and drop its
+  // edges until it had.
+  const [sizes, setSizes] = useState<Sizes>(() => new Map());
   const cards: RunFlowNode[] = useMemo(
     () =>
       flow.nodes.map((n) => {
         const run = runs.get(n.id) ?? null;
-        return { ...n, ariaLabel: runCardLabel(n.data.node, run), className: NODE_FOCUS_CLASS, data: { ...n.data, run } };
+        const measured = sizes.get(n.id);
+        return { ...n, ...(measured && { measured }), ariaLabel: runCardLabel(n.data.node, run), className: NODE_FOCUS_CLASS, data: { ...n.data, run } };
       }),
-    [flow.nodes, runs]
+    [flow.nodes, runs, sizes]
   );
   // The builder's view keys, which the builder itself runs only on the graph canvas.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -143,6 +174,7 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
           nodes={cards}
           edges={flow.edges}
           nodeTypes={RUN_NODE_TYPES}
+          onNodesChange={(changes) => setSizes((now) => withMeasures(now, changes))}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}

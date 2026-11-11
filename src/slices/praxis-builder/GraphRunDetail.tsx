@@ -2,11 +2,11 @@
 // held, awaiting approval, revision, and created and updated times), then its run canvas (#571),
 // which draws the revision the run runs with each node in its node phase, and its node table (#569),
 // followed while it is on screen with the template run detail's delays and stop rules. The one read
-// feeds them all, and after a failed read both dim. When the revision can't be read, the node table
-// opens in the run canvas's place. It shares the template run detail's waiting banner, hold panel,
-// certificate hint and page actions, with one hold panel per `aiws-graph-hold-card/1`. Decisions on
-// a run (approve, pause, cancel, resolving a hold) are made only in the host's browser page, so it
-// has no control for any of them, not even a disabled one.
+// feeds them all, and while the host can't be used, the facts, the canvas and the table dim. When
+// the revision can't be read, the node table opens by itself. It shares the template run detail's
+// waiting banner, hold panel, certificate hint and page actions, with one hold panel per
+// `aiws-graph-hold-card/1`. Decisions on a run (approve, pause, cancel, resolving a hold) are made
+// only in the host's browser page, so it has no control for any of them, not even a disabled one.
 import { useCallback, useState, type FC } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
