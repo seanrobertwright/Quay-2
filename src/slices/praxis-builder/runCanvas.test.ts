@@ -18,6 +18,7 @@ import { IS_MAC } from "./keymap.ts";
 import type { CallOutcome } from "./praxisHost.ts";
 import { graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
+import { formatDateTime } from "../../lib/dates.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
 
@@ -582,13 +583,103 @@ test("after a failed read of the run the run canvas dims with the detail, and dr
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
 
-test("a run whose revision the Runs list doesn't name yet says so in place of the run canvas", async () => {
+// A run the Runs list doesn't name (#579), such as one a fire's Show run opens: the list reads the
+// newest 100 once to find it, and the canvas area says why when Quay still can't tell its revision.
+
+/** Graph runs `newest` down to `oldest`, newest first, as the Runs list lists them. */
+const runsFrom = (newest: number, oldest: number) => Array.from({ length: newest - oldest + 1 }, (_, i) => entry(newest - i));
+/** The limit each read of the Runs list asked for, in order. */
+const limits = (backend: Backend) => backend.lists().map((s) => s.args.limit);
+/** The value of the detail's fact named `term`. */
+const fact = (root: HTMLElement, term: string) => text([...(detail(root)?.querySelectorAll("dt") ?? [])].find((dt) => text(dt) === term)?.nextElementSibling);
+
+test("a run a fire's Show run opens that is among runs 21 to 100 is found by one read of the newest 100, with no step by the reader, and its run canvas and times are drawn", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-70" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.deepEqual(limits(backend), [20, 100], "the newest 100 are read at once, as Show more reads them");
+  const row = entry(70, { createdAt: "2026-11-07T08:00:00.000Z", updatedAt: "2026-11-07T08:20:00.000Z" });
+  await answer(backend.lists()[1], graphRunsRecord(NAME, [...runsFrom(150, 71), row, ...runsFrom(69, 51)]));
+  assert.deepEqual(backend.revisionReads().map((s) => s.args.revision), [1], "the revision its row names is read");
+  await answer(backend.revisionReads()[0], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS);
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 7, 8, 0)));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 7, 8, 20)));
+  assert.equal(root.querySelectorAll('[aria-label="Runs"] li').length, 100, "the list shows the newest 100, as after Show more");
+  assert.match(text(root), /Showing the newest 100 runs, the most praxis lists/);
+  assert.deepEqual(limits(backend), [20, 100], "one read of the newest 100");
+});
+
+/** What the run canvas's place says while no row of the Runs list has named the run's revision. */
+const unlistedLine = (root: HTMLElement) => text(runCanvas(root)?.querySelector('[role="status"]'));
+const LOOKING = "Looking in the Runs list for the revision this run runs…";
+
+test("while the Runs list's first read, and its read of the newest 100, run, the canvas area says the revision is being looked up, and promises nothing", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-70" }));
+  await answer(backend.statuses()[0], severalPhases());
+  assert.equal(unlistedLine(root), LOOKING);
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.equal(limits(backend).length, 2, "the newest 100 are being read");
+  assert.equal(unlistedLine(root), LOOKING);
+  assert.equal(text(runCanvas(root)?.querySelector("h4")), `Run canvas: ${String(recordedStdout("status: nodes in several phases").runId)}`);
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null);
+  assert.deepEqual(backend.revisionReads(), []);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the node table is left as it is");
+  assert.equal(fact(root, "Created"), "Not given");
+});
+
+test("a run not among the newest 100 says Quay can't tell its revision because praxis lists only the newest 100, draws no run canvas, and opens the node table", async () => {
   const backend = fakeBackend();
   const root = await render(form({ showRun: "wo-9" }));
-  await answer(backend.lists()[0], graphRunsRecord(NAME, [entry(1)]));
   await answer(backend.statuses()[0], severalPhases());
-  assert.match(text(runCanvas(root)), /The run canvas is drawn once the Runs list names the revision this run runs\./);
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "not while the newest 100 are read");
+  await answer(backend.lists()[1], graphRunsRecord(NAME, runsFrom(150, 51)));
+  assert.equal(
+    unlistedLine(root),
+    "Quay can't tell which revision this run runs, because praxis lists only the newest 100 runs of a graph workflow, and this run isn't among them. The run canvas isn't drawn: the node table shows the run's node phases.",
+  );
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no run canvas");
+  assert.deepEqual(backend.revisionReads(), [], "no revision is guessed");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+  assert.equal(nodeRows(root).length, 7);
+  assert.match(text(header(root)), /RUNNING/, "the run-level facts still show");
+  assert.equal(fact(root, "Created"), "Not given");
+  assert.equal(fact(root, "Updated"), "Not given");
+  await click(nodesToggle(root));
+  await tick(15_000);
+  await answer(backend.lists()[2], graphRunsRecord(NAME, runsFrom(151, 52)));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "a read that says the same doesn't open the table the reader closed");
+  assert.deepEqual(limits(backend), [20, 100, 100], "one read of the newest 100, and the poll that follows at that limit");
+});
+
+/** Asserts the canvas area says the Runs list, holding every run, doesn't name the run, and that the node table opened. */
+function saysNotListed(backend: Backend, root: HTMLElement): void {
+  assert.equal(unlistedLine(root), "The Runs list doesn't name this run, so Quay can't tell which revision it runs. The run canvas isn't drawn: the node table shows the run's node phases.");
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null);
   assert.deepEqual(backend.revisionReads(), []);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+}
+
+test("a run the Runs list doesn't name when its first read gives every run says so, without the cap, and reads no more", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-999" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, [entry(2), entry(1)]));
+  saysNotListed(backend, root);
+  assert.deepEqual(limits(backend), [20], "no read of the newest 100");
+});
+
+test("a run the newest 100 don't name when they are every run says the Runs list doesn't name it, without the cap", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-999" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  await answer(backend.lists()[1], graphRunsRecord(NAME, runsFrom(150, 81)));
+  saysNotListed(backend, root);
+  assert.deepEqual(limits(backend), [20, 100]);
 });
 
 // Read-only: the run canvas is given no edit handlers and no draft, and React Flow edits nothing on it.
@@ -708,7 +799,7 @@ test("the builder's zoom keys zoom the run canvas in and out and back to 100%, f
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
 
-test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, since a run's revision never changes", async () => {
+test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, and its times, as its last row gave them", async () => {
   const backend = fakeBackend();
   const root = await drawRun(backend);
   const viewport = () => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
@@ -723,6 +814,8 @@ test("a run that newer runs push off the Runs list keeps its run canvas drawn, a
   assert.match(text(runCanvas(root)?.querySelector("h4")), /, revision 1$/);
   assert.match(text(header(root)), /revision 1/, "the detail still names the revision");
   assert.equal(backend.revisionReads().length, 1, "and didn't read it again");
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)), "the times stay as the last row gave them");
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 31)));
 });
 
 // Bringing a card into view (#575): a card that takes keyboard focus, and the selected card, are
