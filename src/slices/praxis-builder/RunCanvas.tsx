@@ -272,8 +272,8 @@ const READING: CanvasState = { state: "reading" };
 /**
  * Revision `revision` of `workflow`, through `revisions`, with the saved layout of its graph, and a
  * way to read it again after a failed read, and whether that read is running. `onUnreadable` is
- * called each time it can't be read. A result for another revision or an earlier try is never
- * shown as this one's.
+ * called each time a read of it ends with no drawing: it can't be read, or it is read but can't be
+ * drawn. A result for another revision or an earlier try is never shown as this one's.
  */
 function useRevision(
   projectPath: string,
@@ -298,6 +298,7 @@ function useRevision(
         unreadable.current();
       } else if (read.kind === "undrawn") {
         setShown({ key, state: { state: "undrawn", reason: read.reason } });
+        unreadable.current();
       } else {
         const saved = await savedPositions(projectPath, read.graph.id);
         if (live) setShown({ key, state: { state: "drawn", graph: read.graph, saved } });
@@ -341,7 +342,7 @@ interface RunCanvasProps {
   /** The run's nodes, from the view's `nodes[]`. */
   nodes: readonly GraphRunNode[];
   revisions: RevisionCache;
-  /** Called each time the revision can't be read, so the node table can open in the run canvas's place. */
+  /** Called each time the revision can't be read, or is read but can't be drawn, so the node table can open in the run canvas's place. */
   onUnreadable: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;

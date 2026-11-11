@@ -9,7 +9,7 @@
 // names, kept from the first row that named it, since a run's revision never changes: the run
 // canvas stays drawn once newer runs push the row off the list. While the host can't be used,
 // the facts, the run canvas, the node panel and the table dim. When the revision can't be read,
-// the node table opens by itself.
+// or is read but can't be drawn, the node table opens by itself.
 //
 // It holds the one selected node (#572), which the run canvas and the node table share: choosing
 // a card or a row selects that node in both and opens its node panel beside the run canvas, or

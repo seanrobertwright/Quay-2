@@ -504,7 +504,7 @@ test("once Try again's read finds the revision can't be drawn, focus goes to the
   assert.ok(document.activeElement === status, "focus is on the status line, not the page");
 });
 
-test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table still shows", async () => {
+test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table opens by itself", async () => {
   const backend = fakeBackend();
   const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));
   const root = await drawRun(backend, revisionRecord(many));
@@ -515,6 +515,40 @@ test("a revision with more nodes than the builder draws isn't drawn: the canvas 
   assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no canvas");
   assert.equal(button(runCanvas(root) as HTMLElement, /^Try again$/), undefined, "rereading it would give the same");
   assert.equal(text(nodesToggle(root)), "Nodes (7)");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+  assert.equal(nodeRows(root).length, 7);
+});
+
+test("a revision praxis gives without a graph, or with a graph the builder can't read, isn't drawn either, and the node table opens by itself", async () => {
+  for (const [revision, reason] of [
+    [revisionRecord([], { graph: "none" }), "praxis gave it without a graph."],
+    [revisionRecord([graphNode("a", "TASK"), graphNode("a", "END")]), 'Its graph can\'t be drawn: More than one node has the id "a".'],
+  ] as const) {
+    revisions = createRevisionCache();
+    const backend = fakeBackend();
+    const root = await drawRun(backend, revision);
+    assert.equal(text(runCanvas(root)?.querySelector('[role="status"]')), `Revision 1 of release-train isn't drawn. ${reason} The node table lists the run's nodes.`);
+    assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, `${reason}: no canvas`);
+    assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", `${reason}: the node table opened by itself`);
+    unmount();
+  }
+});
+
+test("once the node table opened by itself for a revision that isn't drawn and the reader closed it, the next read of the run leaves it closed", async () => {
+  const backend = fakeBackend();
+  const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));
+  const root = await drawRun(backend, revisionRecord(many));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the reader closed it");
+  const view = recordedStdout("status: nodes in several phases");
+  const nodes = view.nodes as Record<string, unknown>[];
+  await tick(15_000);
+  await answer(backend.statuses()[1], statusRecord({ ...view, changeToken: "1".repeat(64), nodes: [{ ...nodes[0], phase: "FAILED" }, ...nodes.slice(1)] }));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the read didn't open it again");
+  assert.equal(backend.revisionReads().length, 1, "the revision wasn't read again");
+  await click(nodesToggle(root));
+  assert.deepEqual(nodeRows(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"], "the read came while the table was closed");
 });
 
 test("when the view has no nodes[], there is no run canvas and no revision is read", async () => {

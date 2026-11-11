@@ -446,12 +446,11 @@ test("when the revision can't be read, the node table opens by itself, and choos
   await choosingARowOpensItsPanel(root);
 });
 
-test("when the revision has too many nodes to draw, the node table stays collapsed, and once opened, choosing a row opens the node panel beside the run canvas's place", async () => {
+test("when the revision has too many nodes to draw, the node table opens by itself, and choosing a row opens the node panel beside the run canvas's place", async () => {
   const backend = fakeBackend();
   const root = await showUndrawn(backend);
   await answer(backend.revisionReads()[0], revisionRecord(Array.from({ length: 1001 }, (_, n) => ({ id: `node-${n}`, kind: "TASK", dependsOn: [], config: {} }))));
-  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false");
-  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
   await choosingARowOpensItsPanel(root);
 });
 
