@@ -279,7 +279,7 @@ const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
  * graph, no layout file for it or one that can't be used, so dagre places every node. When
  * `praxis_read` fails there are no positions and no problem, so the run canvas says nothing of it.
  */
-async function savedPositions(projectPath: string, graphId: string): Promise<SavedLayout> {
+async function savedLayout(projectPath: string, graphId: string): Promise<SavedLayout> {
   if (graphId === "") return NO_LAYOUT;
   try {
     const file = await invoke<DefinitionFile>("praxis_read", { projectPath, kind: "graphs", id: graphId });
@@ -328,7 +328,7 @@ function useRevision(
       } else if (read.kind === "undrawn") {
         setShown({ key, state: { state: "undrawn", reason: read.reason } });
       } else {
-        const layout = await savedPositions(projectPath, read.graph.id);
+        const layout = await savedLayout(projectPath, read.graph.id);
         if (live) setShown({ key, state: { state: "drawn", graph: read.graph, ...layout } });
       }
     });
