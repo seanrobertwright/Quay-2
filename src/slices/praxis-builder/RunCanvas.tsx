@@ -13,7 +13,7 @@
 // that is there but can't be used, as `praxis_read` reports it, is ignored, and a note above the
 // drawing says so and why, in the graph canvas's words (`layoutIgnoredText`, model.ts). The note is
 // information, not a problem line: the revision is still drawn. Nothing is said when the project has
-// no graph of that id or no layout file for it, or when they can't be read. The run canvas never
+// no graph of that id or no layout file for it, or when `praxis_read` fails. The run canvas never
 // writes a layout.
 //
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
@@ -276,8 +276,8 @@ const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
  * The project's saved layout for graph `graphId`, which `praxis_read` gives with the project's own
  * graph of that id: the node positions of its layout file, and why that file was ignored when it is
  * there but can't be used, as `praxis_read` reports it. No positions when the project has no such
- * graph, no layout file for it or one that can't be used, so dagre places every node. A failed read
- * gives no positions and no problem, so the run canvas says nothing of it.
+ * graph, no layout file for it or one that can't be used, so dagre places every node. When
+ * `praxis_read` fails there are no positions and no problem, so the run canvas says nothing of it.
  */
 async function savedPositions(projectPath: string, graphId: string): Promise<SavedLayout> {
   if (graphId === "") return NO_LAYOUT;

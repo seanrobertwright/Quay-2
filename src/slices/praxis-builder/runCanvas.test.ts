@@ -57,10 +57,13 @@ interface Sent {
 
 /**
  * What `praxis_read` gives for a graph: the project's saved graph file with its layout file, if any,
- * or with why its layout file was ignored; null for a graph the project hasn't got; or, as a
- * string, why the read failed.
+ * or with why its layout file was ignored; null for a graph the project hasn't got; or, as
+ * `readFails`, the error it rejects with.
  */
-type SavedGraph = { content?: Record<string, unknown>; layout?: Record<string, unknown>; layoutProblem?: FileProblem } | null | string;
+type SavedGraph =
+  | { content?: Record<string, unknown>; layout?: Record<string, unknown>; layoutProblem?: FileProblem }
+  | { readFails: string }
+  | null;
 
 /**
  * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, as
@@ -81,7 +84,7 @@ function fakeBackend(saved: SavedGraph = null) {
             return resolve({ ids: [], unchecked: [] });
           case "praxis_read":
             if (args.kind !== "graphs") return reject(new Error(`unexpected read of ${String(args.kind)}`));
-            if (typeof saved === "string") return reject(saved);
+            if (saved !== null && "readFails" in saved) return reject(saved.readFails);
             return resolve(
               saved === null
                 ? { id: args.id, kind: "graphs", missing: true }
@@ -311,9 +314,16 @@ const DAGRE_POSITIONS = {
   end: "translate(270px,516px)",
 };
 
-test("without a saved layout for the graph id, or when the project's graph can't be read, dagre lays the revision out and no note says why", async () => {
-  // No graph of that id, one with no layout file, and a read that fails.
-  for (const saved of [null, { content: { id: "release-review", nodes: [] } }, "Can't read the file: Access is denied. (os error 5)"]) {
+test("without a saved layout for the graph id, or when `praxis_read` fails, dagre lays the revision out and no note says why", async () => {
+  // No graph of that id, one with no layout file, and a `praxis_read` that fails, as it does when
+  // `.praxis/graphs` can't be opened. A layout file that can't be read or parsed fails no read:
+  // `praxis_read` gives why as its `layoutProblem` (the next test).
+  const cases: SavedGraph[] = [
+    null,
+    { content: { id: "release-review", nodes: [] } },
+    { readFails: ".praxis/graphs can't be opened: Access is denied. (os error 5)" },
+  ];
+  for (const saved of cases) {
     revisions = createRevisionCache();
     const backend = fakeBackend(saved);
     const root = await drawRun(backend);
