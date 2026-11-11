@@ -208,15 +208,18 @@ function finishedOf(status: string, current: StageKey | null, corrections: numbe
   return ORDER.filter((s) => before.includes(s));
 }
 
+/** What a hold panel gives as the reason for a hold praxis gave none for, a template run's or a graph run's. */
+export const NO_HOLD_REASON = "praxis gave no reason";
+
 /** The hold panel of a held run: its card, or the run's reason for a hold without one. */
 export function holdOf(card: unknown, reason: string | null): HoldPanel {
-  if (!isObject(card)) return { reason: reason ?? "praxis gave no reason.", cause: null, phase: null, evidence: null, notes: [], exits: [] };
+  if (!isObject(card)) return { reason: reason ?? NO_HOLD_REASON, cause: null, phase: null, evidence: null, notes: [], exits: [] };
   const exits = (Array.isArray(card.exits) ? card.exits : []).filter(isObject).flatMap((e) => {
     const label = str(e.label);
     return label === null ? [] : [{ id: str(e.exit) ?? label, label, does: str(e.does) ?? "", available: e.available !== false }];
   });
   return {
-    reason: str(card.reasonText) ?? reason ?? "praxis gave no reason.",
+    reason: str(card.reasonText) ?? reason ?? NO_HOLD_REASON,
     cause: str(card.cause),
     phase: str(card.phaseText),
     evidence: str(card.evidence),

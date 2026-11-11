@@ -18,7 +18,7 @@
 import { formatDateTime } from "../../lib/dates.ts";
 import { hasOwn, isObject } from "./model.ts";
 import { isActiveNodePhase } from "./nodePhase.ts";
-import { holdOf, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
+import { holdOf, NO_HOLD_REASON, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
 import type { RunRow } from "./runsList.ts";
 
 /** The view's record format. */
@@ -141,7 +141,7 @@ const factLine = (fact: NodeFact) => `${fact.term}: ${fact.value}`;
  * is named by its code.
  */
 function graphHoldOf(card: Obj): HoldPanel {
-  const reason = str(card.reason) ?? "praxis gave no reason";
+  const reason = str(card.reason) ?? NO_HOLD_REASON;
   const node = str(card.nodeId);
   const cause = str(card.cause);
   const notes: string[] = [];
