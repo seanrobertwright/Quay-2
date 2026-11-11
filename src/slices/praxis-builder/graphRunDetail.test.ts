@@ -557,7 +557,7 @@ test("a held run gets a Held badge and a hold panel per graph hold card, each wi
   for (const panel of panels(root)) assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"]);
 });
 
-test("each exit a hold card offers is named in words, one Quay doesn't know as the host gave it, and a card offering none says the run can be cancelled", async () => {
+test("each exit a hold card offers is named in words, one Quay doesn't know as the host gave it, and a card offering none says so and points to the browser", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend, 1, [entry(1, { held: true })]);
   await answer(
@@ -576,7 +576,8 @@ test("each exit a hold card offers is named in words, one Quay doesn't know as t
   assert.deepEqual(exitsOf(retry), ["Retry: Runs the same operation again, since it took no effect."]);
   assert.deepEqual(exitsOf(revalidate), ["Revalidate: Runs the loop's validation again, once the host proves that is safe.", "SOMETHING_NEW"]);
   assert.deepEqual(exitsOf(none), []);
-  assert.match(text(none), /No way out of the hold is offered: a person may cancel the run in the browser\./);
+  assert.match(text(none), /No way out of the hold is offered here: the run's page in the browser says what can be done\./);
+  assert.doesNotMatch(text(none), /cancel/i, "an EXPOSURE_EXCEEDED hold is left by a change of the limit, and an ended run can't be cancelled");
   for (const panel of [retry, revalidate]) assert.doesNotMatch(text(panel), /No way out/);
 });
 

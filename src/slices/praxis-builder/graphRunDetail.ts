@@ -132,7 +132,10 @@ const attemptsText = (used: number, allowed: unknown) => `Attempts: ${attemptsOf
  * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
  * reason, with the cause of an EXECUTION_FAILED hold, the effect of the node's attempt, the
  * attempts the node used of those it has, and each exit the card offers, all taken in the
- * browser. Codes are shown as the host gave them; an exit Quay doesn't know is named by its code.
+ * browser. A card that offers none says so and points to the run's page in the browser, which
+ * says what can be done: an EXPOSURE_EXCEEDED hold is left by a change of the limit, and a run
+ * that ended can't be cancelled. Codes are shown as the host gave them; an exit Quay doesn't know
+ * is named by its code.
  */
 function graphHoldOf(card: Obj): HoldPanel {
   const reason = str(card.reason) ?? "praxis gave no reason";
@@ -146,7 +149,7 @@ function graphHoldOf(card: Obj): HoldPanel {
     const words = hasOwn(GRAPH_HOLD_EXITS, exit) ? GRAPH_HOLD_EXITS[exit] : { label: exit, does: "" };
     return { id: exit, ...words, available: true };
   });
-  if (exits.length === 0) notes.push("No way out of the hold is offered: a person may cancel the run in the browser.");
+  if (exits.length === 0) notes.push("No way out of the hold is offered here: the run's page in the browser says what can be done.");
   return {
     reason: node === null ? reason : `${reason} on node ${node}`,
     cause: cause === null ? null : `Cause: ${cause}`,
