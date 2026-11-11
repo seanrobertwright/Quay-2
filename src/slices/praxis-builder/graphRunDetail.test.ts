@@ -1,9 +1,11 @@
 /// <reference types="node" />
-// Component tests for a graph run's detail (#444, #465, #568, #569): its run-level facts and its
-// node table, followed by polled `praxis status <wo> --format aiws-graph-operator-view/1`, with the
-// template run detail's backoff, waiting banner and Trust certificate, and a hold panel per
-// `aiws-graph-hold-card/1`. Its run canvas (#571) is in runCanvas.test.ts: here its revision read
-// is left unanswered.
+// Component tests for a graph run's detail (#444, #465, #568, #569, #570): its run-level facts and
+// its node table, followed by polled `praxis status <wo> --format aiws-graph-operator-view/1` on
+// the template run detail's backoff, with a narrower person-wait (#570): a run waiting for a
+// person is read every 15 s only while none of its nodes is RUNNING, PARKED or WAITING. It shares
+// the template run detail's waiting banner and Trust certificate, with a hold panel per
+// `aiws-graph-hold-card/1`. Its run canvas (#571) is in runCanvas.test.ts and its node panel
+// (#572) in nodePanel.test.ts: here its revision read is left unanswered.
 // They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
 // out-of-process boundary, and the terminal the window opens. Views are hand-made in the recorded
 // view's shape, and the recorded views themselves (graph_outputs.fixture.json) are drawn too.

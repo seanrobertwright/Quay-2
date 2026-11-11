@@ -23,7 +23,10 @@ export const FOLLOW_FIRST_MS = 3_000;
 /** The longest wait while the run doesn't change; each unchanged read doubles the wait up to it. */
 export const FOLLOW_MAX_MS = 15_000;
 
-/** The wait while the run waits only for a person, held or awaiting a decision: nothing else of it changes until they decide. */
+/**
+ * The wait while the run waits only for a person, as `FollowedRun.waitsOnlyForPerson` says: held
+ * or awaiting a decision, with nothing else its source checks still moving.
+ */
 export const FOLLOW_WAITING_MS = FOLLOW_MAX_MS;
 
 /** The wait after a failed read: the host recheck's interval, as every failing state polls. */
@@ -50,8 +53,8 @@ export interface HoldExit {
 }
 
 /**
- * What a hold panel draws: from a template run's `holdCard` (`aiws-hold-card/1`, not contracted),
- * or from one of a graph run's `aiws-graph-hold-card/1` cards (graphRunDetail.ts).
+ * What a hold panel draws: from a template run's `holdCard` (`aiws-hold-card/1`), or from one of a
+ * graph run's `aiws-graph-hold-card/1` cards (graphRunDetail.ts).
  */
 export interface HoldPanel {
   /** Why the run is held, as its card gives it, or the run's reason when it has no card, as for pending reconciliation. */
@@ -67,7 +70,11 @@ export interface HoldPanel {
 export interface FollowedRun {
   /** True when the run ended: it is no longer read. */
   ended: boolean;
-  /** True when the run waits for a person in the browser and nothing else of it changes until they decide. */
+  /**
+   * True when the run waits for a person in the browser, and its source sees nothing else of it
+   * moving. A template run's source checks nothing else; a graph run's checks that none of its
+   * nodes is RUNNING, PARKED or WAITING (graphRunDetail.ts).
+   */
   waitsOnlyForPerson: boolean;
 }
 
@@ -90,7 +97,7 @@ export interface RunDetail extends FollowedRun {
   decisions: string[];
   /** True when the run waits for a person in the browser. */
   waiting: boolean;
-  /** True whenever the run waits for a person: its stages run one at a time, so nothing else of it changes until they decide. */
+  /** True whenever the run waits for a person, as `waiting`: nothing else is checked, since its stages run one at a time. */
   waitsOnlyForPerson: boolean;
   /** The hold panel, for a held run; null for any other. */
   hold: HoldPanel | null;

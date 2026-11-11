@@ -1,9 +1,10 @@
 // A graph run's node table (#569): a row for each node of the run's view, with its id, kind, node
 // phase and counter line, behind a Nodes toggle that states the node count, and a problem line for
-// each node entry the table can't show. A view without nodes gets one line saying so instead. It is
-// fed by the detail's own read of the run, so it updates on the detail's poll and never reads the
-// host itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The
-// detail holds whether it is open, so it can open it when the run canvas's revision can't be read
+// each node entry the table can't show. A view with no `nodes[]` list gets one line saying the
+// host doesn't report node phases instead; an empty list gets an empty table. It is fed by the
+// detail's own read of the run, so it updates on the detail's poll and never reads the host
+// itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The detail
+// holds whether it is open, so it can open it when the run canvas's revision can't be read
 // (#571).
 //
 // Each row's node id is a button that selects the node (#572), which the detail shares with the

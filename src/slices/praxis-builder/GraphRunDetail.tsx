@@ -1,17 +1,21 @@
-// A graph run's detail (#444, #465, #568, #569, #571, #572): its run-level facts (status, control
-// chip, held, awaiting approval, revision, and created and updated times), then its run canvas
-// (#571), which draws the revision the run runs with each node in its node phase, and its node
-// table (#569), followed while it is on screen with the template run detail's delays and stop
-// rules. Its one `praxis status` read per poll feeds them all, and the node panel; the run canvas
-// reads its revision and the saved layout besides. The revision is the one the run's row in the
-// Runs list names, kept from the first row that named it, since a run's revision never changes:
-// the run canvas stays drawn once newer runs push the row off the list. While the host can't be
-// used, the facts, the run canvas, the node panel and the table dim. When the revision can't be
-// read, the node table opens by itself.
+// A graph run's detail (#444, #465, #568, #569, #570, #571, #572): its run-level facts (status,
+// control chip, held, awaiting approval, revision, and created and updated times), then its run
+// canvas (#571), which draws the revision the run runs with each node in its node phase, and its
+// node table (#569), followed while it is on screen on the template run detail's delays and stop
+// rules but with a narrower person-wait (#570): a run waiting for a person is read every 15 s only
+// while none of its nodes is active (graphRunDetail.ts), and on the backoff otherwise. Its one
+// `praxis status` read per poll feeds them all, and the node panel; the run canvas reads its
+// revision and the saved layout besides. The revision is the one the run's row in the Runs list
+// names, kept from the first row that named it, since a run's revision never changes: the run
+// canvas stays drawn once newer runs push the row off the list. While the host can't be used,
+// the facts, the run canvas, the node panel and the table dim. When the revision can't be read,
+// the node table opens by itself.
 //
 // It holds the one selected node (#572), which the run canvas and the node table share: choosing
 // a card or a row selects that node in both and opens its node panel beside the run canvas, or
-// beside its place when no revision is drawn. A node with a hold links to that hold's panel.
+// beside its place when no revision is drawn. A node held, or blocked, by a hold links to that
+// hold's panel when it has one: the host gives a hold card, and so a panel, only for a hold on a
+// node's own scope, so a hold on a grant, a branch or the run gets no link.
 //
 // It shares the template run detail's waiting banner, hold panel, certificate hint and page
 // actions, with one hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause,

@@ -21,8 +21,8 @@
 // One node is selected at a time (#572), shared with the node table: the run's detail holds it.
 // A click on a card, or the builder's select key (Enter or Space) on the card with focus, selects
 // its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
-// selected card has a ring around it and is the current one to a screen reader. Every other
-// canvas key, adding to the selection included, does nothing on it.
+// selected card has a ring around it and is the current one to a screen reader. Every other key
+// of the graph canvas, adding to the selection included, does nothing on it.
 import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -118,7 +118,8 @@ type Sizes = ReadonlyMap<string, Dimensions>;
 
 /**
  * `sizes` with each size React Flow measured in `changes`, or `sizes` itself when they hold none.
- * Every other change is dropped: the run canvas moves, selects and removes nothing.
+ * Every other change is dropped, React Flow's select changes included: the run canvas moves and
+ * removes nothing, and its one selected node is the detail's (`selected`), not React Flow's.
  */
 function withMeasures(sizes: Sizes, changes: NodeChange<RunFlowNode>[]): Sizes {
   const measured = changes.filter((c): c is NodeDimensionChange & { dimensions: Dimensions } => c.type === "dimensions" && c.dimensions !== undefined);
@@ -139,7 +140,7 @@ interface DrawnProps {
   saved: ReadonlyMap<string, XYPosition>;
   nodes: readonly GraphRunNode[];
   revision: number;
-  /** The id of the heading that names the canvas. */
+  /** The id of the heading that names the run canvas. */
   labelledBy: string;
   /** The id of the selected node, or null when none is. */
   selected: string | null;
@@ -222,7 +223,7 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
           fitViewOptions={RUN_FIT}
           minZoom={0.2}
           onKeyDown={onKeyDown}
-          // Focusable, so a click on the canvas puts focus in it for its keys.
+          // Focusable, so a click on the run canvas puts focus in it for its keys.
           tabIndex={-1}
           aria-labelledby={labelledBy}
         >
@@ -340,7 +341,7 @@ interface RunCanvasProps {
   /** The run's nodes, from the view's `nodes[]`. */
   nodes: readonly GraphRunNode[];
   revisions: RevisionCache;
-  /** Called each time the revision can't be read, so the node table can open in the canvas's place. */
+  /** Called each time the revision can't be read, so the node table can open in the run canvas's place. */
   onUnreadable: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;

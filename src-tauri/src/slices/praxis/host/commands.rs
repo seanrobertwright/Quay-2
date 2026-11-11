@@ -272,7 +272,8 @@ pub fn revision_operands(name: String, revision: u32) -> Result<Vec<String>, Str
 
 /// `praxis graphs show <name> --revision <revision> --json`: one revision of the graph workflow
 /// with its bundle, whose main graph a graph run's run canvas draws (#571). A revision never
-/// changes, so the builder reads each one once.
+/// changes, so the builder keeps the last few it read and reads none of those again; a read that
+/// failed isn't kept.
 #[tauri::command]
 pub async fn praxis_host_graph_revision(
     project_path: String,

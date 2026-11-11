@@ -3,10 +3,12 @@
 // `nodes[]` gives of the node (graphRunDetail.ts): its kind and node phase, then each fact of its
 // attempt, scope, loop, wait and human task that it has, and leaves out each it hasn't. A node
 // held, or blocked by a hold, links to that hold's panel in the detail, and the link moves focus
-// there. It edits nothing and offers no decision or control: approvals, acceptances, hold
-// decisions and human tasks are taken in the host's browser page. It isn't the graph canvas's
-// inspector. It doesn't draw a loop's history of iterations, or a human task's own record, which
-// would need a second read of the host.
+// there. The host gives a hold card, and so a panel, only for a hold on a node's own scope: a
+// hold on a grant, a branch or the run is named by its `holdId`, with no link. It edits nothing
+// and offers no decision or control: approvals, acceptances, hold decisions and human tasks are
+// taken in the host's browser page. It isn't the graph canvas's inspector. It doesn't draw a
+// loop's history of iterations, or a human task's own record, which would need a second read of
+// the host.
 import { Fragment, useId, type FC, type MouseEvent } from "react";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import { NodePhaseChip } from "./NodePhaseChip.tsx";

@@ -14,8 +14,8 @@ The builder's editing canvas, called so when text needs to tell it apart from th
 _Avoid_: plain "the canvas" in text that mentions both
 
 **Node phase**:
-The host's derived state of a node in a run, the node's `phase` in `aiws-graph-operator-view/1`,
-shown verbatim. Quay never shows the node's SDK `status` in its place.
+The host's own word for where a node stands in a run, the node's `phase` in
+`aiws-graph-operator-view/1`, shown verbatim. Quay never shows the node's SDK `status` in its place.
 _Avoid_: node state, node status
 
 **Node panel**:
