@@ -1,7 +1,8 @@
 // Records graph_outputs.fixture.json: what the real `praxis` CLI prints for each graph command
 // Quay runs (#460), run as a subprocess against the simulated host its own tests start, so the
 // fake `praxis` replays records, refusals and exit codes the CLI itself wrote. Run with Node 24
-// or later against an AI-WS-SDK checkout:
+// or later against an AI-WS-SDK checkout whose TypeScript SDK is built (`npm ci`, then
+// `npm run build:sdk`), which the simulated host loads to serve graph workflows:
 //
 //   node graph_outputs.record.mjs <checkout> <commit> graph_outputs.fixture.json
 //
@@ -96,6 +97,41 @@ await record('runs', ['runs', admitted, '--limit', '20', '--format', 'aiws-graph
 await record('runs: not submitted', ['runs', 'nothing-here', '--limit', '20', '--format', 'aiws-graph-runs/1']);
 await record('status: awaiting approval', ['status', created.workOrderId, '--format', 'aiws-graph-operator-view/1']);
 await record('status: no such run', ['status', 'wo-nothing-here', '--format', 'aiws-graph-operator-view/1']);
+
+// Approved runs. A run's approval, which no `praxis` command gives, is given through the host's
+// graph runner, as the SDK's own tests give it, and the host then runs the run's nodes itself.
+const graphRunner = example.host.graphRunner;
+/** Waits until `reached()` answers true, a minute at most, or fails saying run `workOrderId` wasn't `what`. */
+async function until(workOrderId, what, reached) {
+  for (const due = Date.now() + 60_000; !(await reached()); ) {
+    if (Date.now() > due) throw new Error(`run ${workOrderId} wasn't ${what} within a minute`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+/** The `status` field of run `workOrderId`'s operator view, read with `praxis status`. */
+async function runStatus(workOrderId) {
+  const r = await praxis('status', workOrderId, '--json', '--state', state);
+  return r.code === 0 ? JSON.parse(r.stdout).status : null;
+}
+
+// The run awaiting approval, approved: it runs its AGENT command and ends COMPLETED. Its graph has
+// no VERIFICATION node, so Praxis verifies nothing and its outcome is NOT_SUCCEEDED.
+await graphRunner.approve(created.workOrderId);
+await until(created.workOrderId, 'ended', async () => ['COMPLETED', 'FAILED', 'CANCELED'].includes(await runStatus(created.workOrderId)));
+await record('status: completed, not succeeded', ['status', created.workOrderId, '--format', 'aiws-graph-operator-view/1']);
+
+// A run held on a node: its AGENT command exits 1, so the host holds the node EXECUTION_FAILED with
+// an `aiws-graph-hold-card/1`.
+const failing = 'failing-build';
+const fails = runnable();
+fails.binding.nodes.build.commands = [[process.execPath, '-e', 'process.exit(1)']];
+await admit(failing, fails);
+const started = await praxis('run', failing, '--json', '--state', state);
+if (started.code !== 0) throw new Error(`praxis run ${failing} exited ${started.code}: ${started.stderr}`);
+const heldRun = JSON.parse(started.stdout).workOrderId;
+await graphRunner.approve(heldRun);
+await until(heldRun, 'held', async () => (await graphRunner.holdCards(heldRun)).length > 0);
+await record('status: held', ['status', heldRun, '--format', 'aiws-graph-operator-view/1']);
 
 await record('usage: unknown graphs command, exit 2', ['graphs', 'lsit']);
 const noHost = join(scratch, 'no-host');

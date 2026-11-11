@@ -18,6 +18,9 @@ const SIGNED_IN: HostCondition = { state: "signedIn" };
 
 type Revision = Record<string, unknown>;
 
+/** When the recorded host took revisions 2 and 1, as the recorded `graphs show` lists them, newest first. */
+const [SUBMITTED_2, SUBMITTED_1] = (stdout("graphs show").revisions as Revision[]).map((r) => r.submittedAt);
+
 /** The recorded `graphs list`, holding `names`. */
 function listRecord(names: string[], nextAfter: string | null = null): CallOutcome {
   const record = stdout("graphs list");
@@ -178,7 +181,8 @@ test("a pending candidate is waiting for admission, as the newest candidate's re
   // The recorded show: revisions 1 and 2 are both candidates, and nothing is admitted.
   const view = await checked(host, graphs, "release-review", showRecord("release-review"));
   assert.deepEqual(view.state, { kind: "candidate", revision: 2 });
-  assert.equal(view.admissionPageAddress, "https://praxis-nmdro7k3gf.localhost:49889/#graph-workflow=release-review&revision=2");
+  assert.equal(view.admissionPageAddress, stdout("graphs show").admissionPageAddress);
+  assert.match(String(view.admissionPageAddress), /#graph-workflow=release-review&revision=2$/);
 });
 
 test("a candidate outranks an admitted revision that differs from the saved files", async () => {
@@ -266,7 +270,7 @@ test("without either bundle digest there is no Differs, and the view gives the c
   const hostless = await checked(host, graphs, "ship", admitted("ship", { revisions: noDigest }));
   assert.deepEqual(hostless.state, { kind: "admitted", revision: 1 });
   assert.equal(hostless.compared, false);
-  assert.deepEqual(hostless.current, { revision: 1, submittedAt: "2026-11-08T23:30:15.433Z" });
+  assert.deepEqual(hostless.current, { revision: 1, submittedAt: SUBMITTED_1 });
   // Quay can't compute the saved files' digest.
   graphs.setLocal([local("ship", null)]);
   const localless = await checked(host, graphs, "ship", admitted("ship", { runnable: false }));
@@ -281,8 +285,8 @@ test("the view lists the host's revisions newest first, each with its status and
   const { host, graphs } = setup([local("ship")]);
   const view = await checked(host, graphs, "ship", admitted("ship", { revisions: admittedOne("REJECTED"), nextBefore: 1 }));
   assert.deepEqual(view.revisions, [
-    { revision: 2, status: "REJECTED", bundleDigest: RECORDED_DIGEST, submittedAt: "2026-11-08T23:30:17.762Z", decidedAt: null, current: false },
-    { revision: 1, status: "CURRENT", bundleDigest: RECORDED_DIGEST, submittedAt: "2026-11-08T23:30:15.433Z", decidedAt: null, current: true },
+    { revision: 2, status: "REJECTED", bundleDigest: RECORDED_DIGEST, submittedAt: SUBMITTED_2, decidedAt: null, current: false },
+    { revision: 1, status: "CURRENT", bundleDigest: RECORDED_DIGEST, submittedAt: SUBMITTED_1, decidedAt: null, current: true },
   ]);
   assert.equal(view.olderRevisions, true);
   // Before any show, and for a name the host refuses, there are none.
