@@ -1,5 +1,5 @@
 {
-  "provenance": "Recorded by trigger_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 173bcd3c, run against its simulated host on Node 24.20.0. The case \"triggers show: a revision\" was recorded later by the same script, from praxis at aba5764e on Node 24.20.0, in a run of its own, so its browser origin, times and session differ from the other cases'.",
+  "provenance": "Recorded by trigger_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 7194304b0ede5655f02bcfacaa5ab36f3d08116e, run against its simulated host on Node 26.13.0.",
   "cases": [
     {
       "name": "triggers check: valid",
@@ -83,13 +83,13 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-submit-result/1",
-        "requestId": "59be1001-ac45-4cb8-a24b-52efaf0c4ec3",
+        "requestId": "46ccaba3-2d22-4e14-a529-bd9f5948e217",
         "disposition": "COMMITTED",
         "name": "nightly",
         "revision": 1,
         "status": "CANDIDATE",
-        "triggerDigest": "sha256:cd98a57b0fd44042fdf09c1d621e64649e37cf236adceb451cbab820f6df6d21",
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1",
+        "triggerDigest": "sha256:926a64d6b617049ca5c8d90a343507259821efcb4102c93c7d48264eb08f654d",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=nightly&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -108,7 +108,7 @@
       "exit": 9,
       "stdout": {
         "format": "aiws-graph-trigger-error/1",
-        "requestId": "73830baa-961f-4c5c-b7c0-4b4a600a0f1f",
+        "requestId": "0cef0820-dbe0-4423-bcd7-dd885ab7e465",
         "code": "TRIGGER_INVALID",
         "commitStatus": "NOT_COMMITTED",
         "findings": [
@@ -139,7 +139,7 @@
         "code": "ENGINE",
         "message": "The host refused the request (NOT_FOUND).",
         "hostCode": "NOT_FOUND",
-        "requestId": "1e61bf2e-3210-4bb6-bc8a-f8493453ffc6",
+        "requestId": "9b0728be-264f-45d3-936c-a080d9f10c9e",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
@@ -183,12 +183,12 @@
             "revision": 1,
             "status": "CANDIDATE",
             "baseRevision": null,
-            "digest": "sha256:cd98a57b0fd44042fdf09c1d621e64649e37cf236adceb451cbab820f6df6d21",
-            "submittedAt": "2026-11-09T15:37:05.912Z",
+            "digest": "sha256:926a64d6b617049ca5c8d90a343507259821efcb4102c93c7d48264eb08f654d",
+            "submittedAt": "2026-11-11T11:13:28.484Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -197,7 +197,7 @@
         "blockedBy": [
           "TRIGGER_NOT_ADMITTED"
         ],
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=nightly&revision=1",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=nightly&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -264,7 +264,7 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-withdraw-result/1",
-        "requestId": "128d1412-62da-4e79-ad2e-e42176f23947",
+        "requestId": "79c7c6a7-292f-4924-82af-e9537b0ac07a",
         "disposition": "COMMITTED",
         "name": "nightly",
         "revision": 1,
@@ -288,7 +288,7 @@
         "code": "ENGINE",
         "message": "The host refused the request (REVISION_NOT_PENDING).",
         "hostCode": "REVISION_NOT_PENDING",
-        "requestId": "bc96da72-7b8e-4d8e-964a-32489d7b6045",
+        "requestId": "8bedfa4c-076f-4312-b224-4aff966bf8c9",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
@@ -308,13 +308,13 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-submit-result/1",
-        "requestId": "de14c5a5-2c37-4c86-bb06-c3e8764ede3f",
+        "requestId": "b3a514de-26ce-4a2b-b3a9-39f7d4776fb2",
         "disposition": "COMMITTED",
         "name": "on-push",
         "revision": 1,
         "status": "CANDIDATE",
         "triggerDigest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=1",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=on-push&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -361,11 +361,11 @@
             "status": "ADMITTED",
             "baseRevision": null,
             "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedAt": "2026-11-11T11:13:31.255Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -393,13 +393,13 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-submit-result/1",
-        "requestId": "97e0f2af-1ec6-4c25-97bf-eb321836b842",
+        "requestId": "04601f90-1989-4a7c-bd0e-30236f0ecea3",
         "disposition": "COMMITTED",
         "name": "on-push",
         "revision": 2,
         "status": "CANDIDATE",
         "triggerDigest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=on-push&revision=2",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -427,11 +427,11 @@
             "status": "ADMITTED",
             "baseRevision": null,
             "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedAt": "2026-11-11T11:13:31.255Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -462,9 +462,9 @@
             "revision": 1,
             "source": "github",
             "eventId": "evt-3",
-            "occurredAt": "2026-11-09T15:37:10.868Z",
-            "receivedAt": "2026-11-09T15:37:11.875Z",
-            "materialDigest": "sha256:db62ad86d303b193c1891cbd53e282d9e5bc66081a9ebbfdf411cb7240440ce8",
+            "occurredAt": "2026-11-11T11:13:31.127Z",
+            "receivedAt": "2026-11-11T11:13:32.136Z",
+            "materialDigest": "sha256:6dca0769333f202a79a8a68ce98dc91b6a3e2fa6024733e4ea16fa07791d2c8a",
             "disposition": "REFUSED",
             "reason": "RUN_HELD",
             "workOrderId": null,
@@ -482,9 +482,9 @@
             "revision": 1,
             "source": "github",
             "eventId": "evt-2",
-            "occurredAt": "2026-11-09T15:37:10.854Z",
-            "receivedAt": "2026-11-09T15:37:11.863Z",
-            "materialDigest": "sha256:90c2a86106e1471445391c990ade7755c59178b0fc86ce647e6ead835eca1fda",
+            "occurredAt": "2026-11-11T11:13:31.117Z",
+            "receivedAt": "2026-11-11T11:13:32.123Z",
+            "materialDigest": "sha256:4dfcfbeeac1b53314b0ff4075705ac46a8fe46c0716b074db7a137772f06c9d7",
             "disposition": "REFUSED",
             "reason": "RUN_HELD",
             "workOrderId": null,
@@ -502,9 +502,9 @@
             "revision": 1,
             "source": "github",
             "eventId": "evt-1",
-            "occurredAt": "2026-11-09T15:37:10.826Z",
-            "receivedAt": "2026-11-09T15:37:11.846Z",
-            "materialDigest": "sha256:1a6d527f159e4a224d86d186d0ff65facbfcf9eeed02312d24fd087d06b5c32b",
+            "occurredAt": "2026-11-11T11:13:31.099Z",
+            "receivedAt": "2026-11-11T11:13:32.112Z",
+            "materialDigest": "sha256:bbb9aa977d27012ff937abe2e620e0a170ad482cc2e132ad9bcc2f3114295cca",
             "disposition": "ADMITTED",
             "reason": null,
             "workOrderId": "wo-trigger-05f653bd88d7fc66065c75ab16ff6eb20ff522d00c5032439f9974ab4318a551",
@@ -546,9 +546,9 @@
             "revision": 1,
             "source": "github",
             "eventId": "evt-2",
-            "occurredAt": "2026-11-09T15:37:10.854Z",
-            "receivedAt": "2026-11-09T15:37:11.863Z",
-            "materialDigest": "sha256:90c2a86106e1471445391c990ade7755c59178b0fc86ce647e6ead835eca1fda",
+            "occurredAt": "2026-11-11T11:13:31.117Z",
+            "receivedAt": "2026-11-11T11:13:32.123Z",
+            "materialDigest": "sha256:4dfcfbeeac1b53314b0ff4075705ac46a8fe46c0716b074db7a137772f06c9d7",
             "disposition": "REFUSED",
             "reason": "RUN_HELD",
             "workOrderId": null,
@@ -566,9 +566,9 @@
             "revision": 1,
             "source": "github",
             "eventId": "evt-1",
-            "occurredAt": "2026-11-09T15:37:10.826Z",
-            "receivedAt": "2026-11-09T15:37:11.846Z",
-            "materialDigest": "sha256:1a6d527f159e4a224d86d186d0ff65facbfcf9eeed02312d24fd087d06b5c32b",
+            "occurredAt": "2026-11-11T11:13:31.099Z",
+            "receivedAt": "2026-11-11T11:13:32.112Z",
+            "materialDigest": "sha256:bbb9aa977d27012ff937abe2e620e0a170ad482cc2e132ad9bcc2f3114295cca",
             "disposition": "ADMITTED",
             "reason": null,
             "workOrderId": "wo-trigger-05f653bd88d7fc66065c75ab16ff6eb20ff522d00c5032439f9974ab4318a551",
@@ -623,13 +623,13 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-submit-result/1",
-        "requestId": "8c521178-0581-43de-a790-3015eb17d4e0",
+        "requestId": "7de2ea3a-8c3d-49fc-8f4f-c20a8e2168b8",
         "disposition": "COMMITTED",
         "name": "later",
         "revision": 1,
         "status": "CANDIDATE",
-        "triggerDigest": "sha256:e026827a30b2ca16ece998b7848f5e4114195ca4972cbfec3d0c6488aa124f3f",
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=later&revision=1",
+        "triggerDigest": "sha256:27aa95c0f3050c2fc529b4d9acbd73b3139c94d0e065168aff05fbeee6d19308",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=later&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -672,12 +672,12 @@
             "revision": 1,
             "status": "ADMITTED",
             "baseRevision": null,
-            "digest": "sha256:e026827a30b2ca16ece998b7848f5e4114195ca4972cbfec3d0c6488aa124f3f",
-            "submittedAt": "2026-11-09T15:37:14.450Z",
+            "digest": "sha256:27aa95c0f3050c2fc529b4d9acbd73b3139c94d0e065168aff05fbeee6d19308",
+            "submittedAt": "2026-11-11T11:13:33.469Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -722,7 +722,7 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-control-result/1",
-        "requestId": "ff1193a9-9ec3-4454-8882-8c4fc7af27f9",
+        "requestId": "7a252ed6-8274-4bc5-bbd7-1bc151803acc",
         "disposition": "COMMITTED",
         "name": "on-push",
         "state": "ACTIVE",
@@ -762,15 +762,15 @@
           "skipped": 0,
           "lastAdmittedFire": {
             "fireId": 1,
-            "at": "2026-11-09T15:37:11.846Z"
+            "at": "2026-11-11T11:13:32.112Z"
           },
-          "lastFireAt": "2026-11-09T15:37:11.875Z",
+          "lastFireAt": "2026-11-11T11:13:32.136Z",
           "lastRefusal": {
             "reason": "RUN_HELD",
-            "at": "2026-11-09T15:37:11.875Z"
+            "at": "2026-11-11T11:13:32.136Z"
           },
           "rateWindowCount": 1,
-          "heldSince": "2026-11-09T15:37:11.863Z",
+          "heldSince": "2026-11-11T11:13:32.123Z",
           "condition": null
         },
         "revisions": [
@@ -779,11 +779,11 @@
             "status": "CANDIDATE",
             "baseRevision": 1,
             "digest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
-            "submittedAt": "2026-11-09T15:37:11.112Z",
+            "submittedAt": "2026-11-11T11:13:31.812Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           },
           {
@@ -791,11 +791,11 @@
             "status": "ADMITTED",
             "baseRevision": null,
             "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedAt": "2026-11-11T11:13:31.255Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -804,7 +804,7 @@
         "blockedBy": [
           "TRIGGER_DISABLED"
         ],
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=on-push&revision=2",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -828,11 +828,11 @@
         "status": "ADMITTED",
         "baseRevision": null,
         "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-        "submittedAt": "2026-11-09T19:33:21.777Z",
+        "submittedAt": "2026-11-11T11:13:31.255Z",
         "submittedBy": {
           "kind": "AGENT",
           "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-          "sessionId": "7d7a9a16-fe74-4ec5-9d9a-f17ac4960dcb"
+          "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
         },
         "workflow": "release-review",
         "trigger": {
@@ -853,7 +853,7 @@
           "source": "github"
         },
         "review": null,
-        "admissionPageAddress": "https://praxis-vgjndfj5xd.localhost:51826/#graph-trigger=on-push&revision=1",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=on-push&revision=1",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -868,7 +868,7 @@
       "exit": 0,
       "stdout": {
         "format": "aiws-graph-trigger-control-result/1",
-        "requestId": "7c0d055b-8774-4912-a729-2de4a36a4f3d",
+        "requestId": "247f605d-07d1-46f6-9037-46e6f83b727e",
         "disposition": "COMMITTED",
         "name": "on-push",
         "state": "RETIRED",
@@ -908,15 +908,15 @@
           "skipped": 0,
           "lastAdmittedFire": {
             "fireId": 1,
-            "at": "2026-11-09T15:37:11.846Z"
+            "at": "2026-11-11T11:13:32.112Z"
           },
-          "lastFireAt": "2026-11-09T15:37:11.875Z",
+          "lastFireAt": "2026-11-11T11:13:32.136Z",
           "lastRefusal": {
             "reason": "RUN_HELD",
-            "at": "2026-11-09T15:37:11.875Z"
+            "at": "2026-11-11T11:13:32.136Z"
           },
           "rateWindowCount": 1,
-          "heldSince": "2026-11-09T15:37:11.863Z",
+          "heldSince": "2026-11-11T11:13:32.123Z",
           "condition": null
         },
         "revisions": [
@@ -925,11 +925,11 @@
             "status": "CANDIDATE",
             "baseRevision": 1,
             "digest": "sha256:f8f11d551de1916ca71b45977ce86b12437d5db007a32ab252e659a192711d22",
-            "submittedAt": "2026-11-09T15:37:11.112Z",
+            "submittedAt": "2026-11-11T11:13:31.812Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           },
           {
@@ -937,11 +937,11 @@
             "status": "ADMITTED",
             "baseRevision": null,
             "digest": "sha256:a638cc42a510ae48eb3a3a8d3d7c9b294900d4dd22e94f0d853d48782130c43e",
-            "submittedAt": "2026-11-09T15:37:09.755Z",
+            "submittedAt": "2026-11-11T11:13:31.255Z",
             "submittedBy": {
               "kind": "AGENT",
               "principalId": "cfb569da5193d802e02735c147a900fe1f884fdee88e942e2d727ded3bcd3e2b",
-              "sessionId": "6cc7b28c-5b67-478e-b42b-6a549f2ca95a"
+              "sessionId": "d33581da-2f97-431c-98ff-8576cc1bd157"
             }
           }
         ],
@@ -950,7 +950,7 @@
         "blockedBy": [
           "TRIGGER_RETIRED"
         ],
-        "admissionPageAddress": "https://praxis-rqse44l43d.localhost:51120/#graph-trigger=on-push&revision=2",
+        "admissionPageAddress": "https://praxis-q3gufcypn6.localhost:65237/#graph-trigger=on-push&revision=2",
         "simulatedIdentity": true
       },
       "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
@@ -969,7 +969,7 @@
         "code": "ENGINE",
         "message": "The host refused the request (TRIGGER_STATE_CONFLICT).",
         "hostCode": "TRIGGER_STATE_CONFLICT",
-        "requestId": "46ae5f34-bee7-4adb-90c3-de89d26507a2",
+        "requestId": "941a334b-a07b-4b69-a3e2-65bb0add17e6",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
@@ -989,7 +989,7 @@
         "code": "ENGINE",
         "message": "The host refused the request (TRIGGER_STATE_CONFLICT).",
         "hostCode": "TRIGGER_STATE_CONFLICT",
-        "requestId": "7e431de1-e384-461f-b5fc-3d8085193181",
+        "requestId": "d7bdb6d7-16f8-4923-bdd1-bc1bf1e32214",
         "commitStatus": "NOT_COMMITTED",
         "simulatedIdentity": true
       },
