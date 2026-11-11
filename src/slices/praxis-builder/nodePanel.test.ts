@@ -19,6 +19,7 @@ import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
+const { NODE_FOCUS_CLASS } = await import("./NodeCard.tsx");
 
 const NOW = Date.UTC(2026, 10, 8, 12, 0, 0);
 const PROJECT = "C:/project";
@@ -249,6 +250,83 @@ test("choosing a row of the node table marks the same node's card and opens the 
   assert.deepEqual(selectedRows(root), ["deploy"], "one node is selected at a time");
   assert.deepEqual(selectedCards(root), ["deploy"]);
   assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: deploy");
+});
+
+/** The classes of each card's frame, the element its border and the selected card's mark are drawn on, by node id. */
+const frames = (root: HTMLElement) =>
+  new Map([...(runCanvas(root)?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])].map((c) => [c.dataset.id ?? "", new Set(c.firstElementChild?.classList)]));
+
+/** A colour as its red, green and blue, each 0 to 255. */
+type Rgb = readonly number[];
+
+/**
+ * The colour of the first of `classes` that is `utility` with a `#rrggbb` value, such as
+ * `border-[#58a6ff]/70`, laid at its opacity over `under`; null when none is.
+ */
+function colourOf(classes: Iterable<string>, utility: string, under: Rgb = [0, 0, 0]): Rgb | null {
+  const pattern = new RegExp(`^${utility}-\\[#([0-9a-f]{6})\\](?:/(\\d+))?$`);
+  for (const name of classes) {
+    const match = pattern.exec(name);
+    if (match === null) continue;
+    const alpha = match[2] === undefined ? 1 : Number(match[2]) / 100;
+    return under.map((behind, n) => alpha * parseInt(match[1].slice(2 * n, 2 * n + 2), 16) + (1 - alpha) * behind);
+  }
+  return null;
+}
+
+/** The contrast ratio of two colours, as WCAG 2 measures it. */
+function contrast(a: Rgb, b: Rgb): number {
+  const luminance = (rgb: Rgb) => {
+    const [r, g, bl] = rgb.map((c) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+test("the selected card has a mark no other card has, at least 3:1 against its background and its border, in each node phase tone and with no state reported", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  // A node in each tone, and one the view has no entry for.
+  const phases = { done: "COMPLETED", failed: "FAILED", held: "HELD", running: "RUNNING", ready: "READY" };
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { nodes: Object.entries(phases).map(([id, phase]) => node(id, "TASK", phase)) })));
+  const ids = [...Object.keys(phases), "unreported"];
+  await answer(backend.revisionReads()[0], revisionRecord(ids.map((id) => ({ id, kind: "TASK", dependsOn: [], config: {} }))));
+  const unselected = frames(root);
+  assert.deepEqual([...unselected.keys()], ids);
+  for (const id of ids) {
+    await click(card(root, id) as HTMLElement);
+    const shown = frames(root);
+    for (const other of ids.filter((o) => o !== id)) assert.deepEqual(shown.get(other), unselected.get(other), `selecting ${id} marks no other card`);
+    const was = unselected.get(id) as Set<string>;
+    const now = shown.get(id) as Set<string>;
+    assert.ok([...was].every((c) => now.has(c)), `${id} keeps its border in its tone`);
+    const mark = [...now].filter((c) => !was.has(c));
+    const background = colourOf(was, "bg") as Rgb;
+    const border = colourOf(was, "border", background) as Rgb;
+    const colour = colourOf(mark, "ring") ?? colourOf(mark, "outline");
+    assert.ok(colour, `${id}'s mark has a colour: ${mark.join(" ")}`);
+    assert.ok(contrast(colour, background) >= 3, `${id}'s mark is at least 3:1 against its background`);
+    assert.ok(contrast(colour, border) >= 3, `${id}'s mark is at least 3:1 against its border, so it doesn't read as part of it`);
+  }
+});
+
+test("a selected card with focus shows both the ring a card with focus has and the selection mark", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  const unselected = frames(root).get("cooldown") as Set<string>;
+  const cooldown = card(root, "cooldown") as HTMLElement;
+  await act(async () => cooldown.focus());
+  await press(cooldown, "Enter");
+  assert.deepEqual(selectedCards(root), ["cooldown"]);
+  assert.ok(document.activeElement === card(root, "cooldown"), "it keeps focus");
+  assert.deepEqual(
+    NODE_FOCUS_CLASS.split(" ").filter((c) => !card(root, "cooldown")?.classList.contains(c)),
+    [],
+    "the card shows the ring a card with focus has",
+  );
+  const mark = [...(frames(root).get("cooldown") ?? [])].filter((c) => !unselected.has(c));
+  assert.notDeepEqual(mark, [], "and its frame, inside that ring, the selection mark");
 });
 
 test("on the run canvas, Enter or Space selects the focused card, so Tab and one of them move the selection, and Shift+Space adds nothing", async () => {
