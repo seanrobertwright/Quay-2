@@ -925,6 +925,29 @@ test("without a change token, a change of a node's phase, attempts or loop itera
   await nextReadAfter(backend, 6_000, at("RUNNING", 1, 1));
 });
 
+test("without a change token, a change of a node's hold, attempt status or wait status alone is a change of the run, as the node panel shows each", async () => {
+  const backend = fakeBackend();
+  await showRun(backend);
+  const { changeToken: _, ...tokenless } = graphOperatorView(1);
+  /** The run with `package` blocked by `holdId`, `build`'s attempt in `attempt` and `cooldown`'s wait in `wait`, with no change token. */
+  const at = (holdId: string, attempt: string, wait: string) =>
+    statusRecord({
+      ...tokenless,
+      nodes: [
+        node("build", "TASK", "RUNNING", { attempt: { attemptId: "att-1", status: attempt, outcome: "PENDING" } }),
+        node("cooldown", "WAIT", "WAITING", { wait: { waitId: "wait:1", kind: "TIMER", status: wait, deadlineMs: null } }),
+        node("package", "TASK", "BLOCKED_BY_HOLD", { holdId }),
+      ],
+    });
+  await answer(backend.statuses()[0], at("hold-1", "DISPATCH_AUTHORIZED", "PENDING"));
+  await nextReadAfter(backend, 3_000, at("hold-1", "DISPATCH_AUTHORIZED", "PENDING"));
+  await nextReadAfter(backend, 6_000, at("hold-2", "DISPATCH_AUTHORIZED", "PENDING"));
+  await nextReadAfter(backend, 3_000, at("hold-2", "DISPATCHED", "PENDING"));
+  await nextReadAfter(backend, 3_000, at("hold-2", "DISPATCHED", "SATISFIED"));
+  await nextReadAfter(backend, 3_000, at("hold-2", "DISPATCHED", "SATISFIED"));
+  await nextReadAfter(backend, 6_000, at("hold-2", "DISPATCHED", "SATISFIED"));
+});
+
 test("the recorded run with nodes in several phases draws a row for each, with its node phase in its tone and never its SDK status", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend, 1, [entry(1, { held: true })]);

@@ -292,12 +292,24 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
   };
 }
 
-/** The view's `changeToken`, which a client compares and never parses; without one, the fields the token covers that Quay reads. */
+/**
+ * The fields of node entry `n` that the change token covers and Quay reads: its phase, hold,
+ * attempt status, attempts, iteration and wait status. Null for an entry that isn't an object.
+ */
+function nodeFingerprint(n: unknown): unknown[] | null {
+  if (!isObject(n)) return null;
+  const field = (value: unknown, name: string) => (isObject(value) ? value[name] : null);
+  return [n.phase, n.holdId, field(n.attempt, "status"), field(n.scope, "attempts"), field(n.loop, "iteration"), field(n.wait, "status")];
+}
+
+/**
+ * The view's `changeToken`, which a client compares and never parses. Without one, the fields the
+ * token covers that Quay reads: the run's status, outcome, control and pending decisions, and each
+ * node's (`nodeFingerprint`); and the run's hold cards besides, which Quay reads too.
+ */
 function fingerprint(view: Obj): string {
   if (hasOwn(view, "changeToken") && typeof view.changeToken === "string") return view.changeToken;
-  const nodes = Array.isArray(view.nodes)
-    ? view.nodes.map((n: unknown) => (isObject(n) ? [n.phase, isObject(n.scope) ? n.scope.attempts : null, isObject(n.loop) ? n.loop.iteration : null] : null))
-    : null;
+  const nodes = Array.isArray(view.nodes) ? view.nodes.map(nodeFingerprint) : null;
   return JSON.stringify([view.status, view.outcome, view.control, view.pending, view.holds, nodes]);
 }
 
