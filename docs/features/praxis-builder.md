@@ -361,12 +361,37 @@ A submission is stored on the host as a candidate revision. Nothing runs until t
 
 #### A graph run's detail
 
-**Show** on a run opens its detail above the list. **It shows run-level facts only:** the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. **Node-level run progress isn't shown yet.** Quay doesn't show which nodes a run has reached or finished, or each node's phase.
+**Show** on a run opens its detail above the list. It shows the run-level facts: the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. Under them is the run's [node table](#the-node-table).
 
 - **The detail follows the run** with `praxis status <work-order> --format aiws-graph-operator-view/1 --json`, on the same delays and stop rules as a template run's detail (see [Runs](#runs)). The view is `STABLE` in the AI-WS-SDK, so its fields change only in a new format, which the detail says it can't read.
 - **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, a human task, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
 - **A held run** gets a hold panel for each open hold, with **Resolve in browser**. Each panel draws the hold's card (`aiws-graph-hold-card/1`): the held node and the host's reason, with its cause when it has one, the effect of the node's attempt, the attempts the node used of those it has, and the ways out of the hold, all taken in the browser. A hold that offers no way out says a person may cancel the run in the browser.
 - **A certificate hint** shows as it does for a template run, with **Trust certificate** when `praxis` asks for `praxis trust`.
+
+#### The node table
+
+**Nodes**, under the run-level facts, opens the run's node table and states how many nodes it lists. The table has a row for each node the host reports for the run, in the host's order, with the node's id, its kind, its node phase and a counter line. It comes from the same `praxis status` read as the rest of the detail, so a node's row changes when the detail is next read, and Quay makes no other call for it. While the host can't be used, the table keeps the last read's rows, dimmed with the run-level facts.
+
+- **The node phase** is the host's own word for where the node stands in the run, shown as the host gives it, in a chip coloured by what it means: green when the node finished, red when it failed, amber when it waits on a hold or a person, blue while the host works on it or waits out a timer or an event, and grey otherwise. The word always shows, so the colour is never its only sign. A phase Quay doesn't know shows as its own word in grey. Quay shows the node phase only, never the node's SDK `status`.
+- **The counter line** gives the attempts the node used of those it is allowed, or, for a loop, the iterations it completed of the most it may run. A node with neither has none.
+- **A node the host reports without its id or its phase** has no row. A problem line under **Nodes** says so instead.
+- **A host that doesn't report node phases** gets one line saying so, and no table.
+
+Each node has one phase. Where more than one fits, the first in this table wins, as the AI-WS-SDK's GRAPH-WORKFLOWS.md sets it out:
+
+| Phase | Colour | When |
+| --- | --- | --- |
+| `COMPLETED` | Green | The node finished. |
+| `SKIPPED` | Grey, dimmed | The run skipped the node, such as a branch it didn't take. |
+| `FAILED` | Red | The node failed, as a loop does when it runs out of iterations. |
+| `HELD` | Amber | An open hold names the node. A person resolves the hold in the browser. |
+| `BLOCKED_BY_HOLD` | Amber | The node comes after another node's hold, so it waits for that hold. |
+| `RUNNING` | Blue | An attempt at the node is in flight, a loop's included, with no human task open. |
+| `PARKED` | Blue | A polling loop waits out its interval before its next iteration. |
+| `WAITING` | Blue | A wait node waits for its timer, its input or its event. |
+| `AWAITING_HUMAN` | Amber | The node waits for a person: its approval or acceptance, or a human task. |
+| `READY` | Grey | The node can start, and the host hasn't started it yet. |
+| `NOT_READY` | Grey | A node it depends on hasn't finished. |
 
 #### Start a graph run
 

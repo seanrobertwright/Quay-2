@@ -1,14 +1,15 @@
-// A graph run's detail (#444, #465, #568): run-level facts only, read from `praxis status <wo>
-// --format aiws-graph-operator-view/1 --json` through the same follow as a template run's detail
-// (runDetail.ts), so it has the same delays and stop rules. The view's `nodes[]` isn't read. It has
-// no UI of its own; GraphRunDetail.tsx draws it.
+// A graph run's detail (#444, #465, #568, #569): its run-level facts and its nodes, read from
+// `praxis status <wo> --format aiws-graph-operator-view/1 --json` through the same follow as a
+// template run's detail (runDetail.ts), so it has the same delays and stop rules. It has no UI of
+// its own; GraphRunDetail.tsx draws it, and NodeTable.tsx its nodes.
 //
 // `aiws-graph-operator-view/1` is `STABLE` (GRAPH-WORKFLOWS.md, "Graph operator view", promoted in
 // AI-WS-SDK #659): a field or a value of its closed enums changes only in a new format, which the
 // follow refuses. Each open hold is one `aiws-graph-hold-card/1` in its `holds[]`. Only the fields
 // drawn are read, and any field Quay doesn't draw is ignored. A drawn field that is missing or of
 // another type, from a host that breaks the format, falls back to the run's row in the Runs list,
-// or to nothing, so the run is still drawn. The view gives no creation or update time and its
+// or to nothing, so the run is still drawn; a node entry without its `nodeId` or `phase` gets a
+// problem line in place of its row. The view gives no creation or update time and its
 // `revision` is the snapshot's, so those come from the row, whose `workflowRevision` is the
 // admitted revision that runs.
 import { hasOwn, isObject } from "./model.ts";
@@ -28,6 +29,24 @@ export interface GraphHold extends HoldPanel {
   /** Tells the run's panels apart: from the `holdId` when the card has one, else from the reason, else `reconciliation`. */
   key: string;
 }
+
+/** One node of a graph run as its node table draws it, from an entry of the view's `nodes[]`. */
+export interface GraphRunNode {
+  nodeId: string;
+  /** The node's kind as the host gave it; empty when it gave none. */
+  kind: string;
+  /** The node phase, verbatim: the entry's `phase`, never its SDK `status`. */
+  phase: string;
+  /** The node's counter line: its loop's iterations, or its scope's attempts; null when it has neither. */
+  counter: string | null;
+}
+
+/**
+ * What the view says of the run's nodes: nothing, from a host that doesn't report node phases, or
+ * a row for each entry of its `nodes[]`, in the view's order, and a problem line in place of the
+ * row of each entry without its `nodeId` or its `phase`.
+ */
+export type GraphRunNodes = { reported: false } | { reported: true; rows: GraphRunNode[]; problems: string[] };
 
 /** A graph run as its detail draws it. */
 export interface GraphRunDetail extends FollowedRun {
@@ -51,6 +70,8 @@ export interface GraphRunDetail extends FollowedRun {
   decisions: string[];
   /** One hold panel per open hold; a reconciliation with no hold card gets one of its own. Empty unless held. */
   holds: GraphHold[];
+  /** The run's nodes, from the view's `nodes[]`; null before the first read. */
+  nodes: GraphRunNodes | null;
   /** The run page's address, from the view or the row; null when neither gave one. */
   runPageAddress: string | null;
   /** praxis's certificate hint, when its last `status` gave one. */
@@ -68,6 +89,12 @@ const GRAPH_HOLD_EXITS: Readonly<Record<string, Omit<HoldExit, "id" | "available
   REVALIDATE: { label: "Revalidate", does: "Runs the loop's validation again, once the host proves that is safe." },
 };
 
+/** The attempts a node used of those it has, in words: `allowed` is null for no bound, and isn't drawn when of another type. */
+function attemptsText(used: number, allowed: unknown): string {
+  const bound = typeof allowed === "number" ? ` of ${allowed}` : allowed === null ? ", with no bound" : "";
+  return `Attempts: ${used}${bound}`;
+}
+
 /**
  * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
  * reason, with the cause of an EXECUTION_FAILED hold, the effect of the node's attempt, the
@@ -81,10 +108,7 @@ function graphHoldOf(card: Obj): HoldPanel {
   const notes: string[] = [];
   const effect = str(card.effect);
   if (effect !== null) notes.push(`Effect: ${effect}`);
-  if (typeof card.attempts === "number") {
-    const bound = typeof card.maxAttempts === "number" ? ` of ${card.maxAttempts}` : card.maxAttempts === null ? ", with no bound" : "";
-    notes.push(`Attempts: ${card.attempts}${bound}`);
-  }
+  if (typeof card.attempts === "number") notes.push(attemptsText(card.attempts, card.maxAttempts));
   const exits = strings(card.exits).map((exit) => {
     const words = hasOwn(GRAPH_HOLD_EXITS, exit) ? GRAPH_HOLD_EXITS[exit] : { label: exit, does: "" };
     return { id: exit, ...words, available: true };
@@ -121,6 +145,42 @@ function decisionOf(p: Obj): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * A node's counter line: the iterations its `loop` completed of the most it may run, or else the
+ * attempts it used of those its `scope` allows, with no bound when the scope gives no
+ * `maxAttempts`; null for a node with neither. A LOOP has a scope too, but its attempts count each
+ * iteration's work and validations, so its iterations are the count a person follows.
+ */
+function counterOf(entry: Obj): string | null {
+  const { loop, scope } = entry;
+  if (isObject(loop) && typeof loop.iteration === "number" && typeof loop.maxIterations === "number") {
+    return `Iterations: ${loop.iteration} of ${loop.maxIterations}`;
+  }
+  if (isObject(scope) && typeof scope.attempts === "number") return attemptsText(scope.attempts, scope.maxAttempts ?? null);
+  return null;
+}
+
+/** The problem line of node entry `n`, counted from 1, which lacks its `nodeId` or its `phase`. */
+function nodeProblem(n: number, nodeId: string | null, phase: string | null): string {
+  if (nodeId === null) return `Node entry ${n} has no nodeId${phase === null ? " or phase" : ""}, so it isn't in the table.`;
+  return `Node ${nodeId} has no phase, so it isn't in the table.`;
+}
+
+/** The run's nodes, from the view's `nodes[]`; an empty `nodeId` or `phase` is none. */
+function nodesOf(view: Obj): GraphRunNodes {
+  if (!Array.isArray(view.nodes)) return { reported: false };
+  const rows: GraphRunNode[] = [];
+  const problems: string[] = [];
+  view.nodes.forEach((value: unknown, n) => {
+    const entry = isObject(value) ? value : {};
+    const nodeId = str(entry.nodeId) || null;
+    const phase = str(entry.phase) || null;
+    if (nodeId === null || phase === null) problems.push(nodeProblem(n + 1, nodeId, phase));
+    else rows.push({ nodeId, kind: str(entry.kind) ?? "", phase, counter: counterOf(entry) });
+  });
+  return { reported: true, rows, problems };
 }
 
 /** The run as its detail draws it, from the view where it has a field and the row where it doesn't. */
@@ -163,6 +223,7 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
     updatedAtText: row?.updatedAtText ?? null,
     decisions,
     holds,
+    nodes: view === null ? null : nodesOf(view),
     waiting: view === null ? (row?.needsYou ?? false) : held || decisions.length > 0,
     runPageAddress: str(v.runPageAddress) ?? row?.runPageAddress ?? null,
     trustHint,
@@ -175,10 +236,13 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
 /** The view's `changeToken`, which a client compares and never parses; without one, the fields the token covers that Quay reads. */
 function fingerprint(view: Obj): string {
   if (hasOwn(view, "changeToken") && typeof view.changeToken === "string") return view.changeToken;
-  return JSON.stringify([view.status, view.outcome, view.control, view.pending, view.holds]);
+  const nodes = Array.isArray(view.nodes)
+    ? view.nodes.map((n: unknown) => (isObject(n) ? [n.phase, isObject(n.scope) ? n.scope.attempts : null, isObject(n.loop) ? n.loop.iteration : null] : null))
+    : null;
+  return JSON.stringify([view.status, view.outcome, view.control, view.pending, view.holds, nodes]);
 }
 
-/** A graph run: `praxis status --format aiws-graph-operator-view/1`, run-level facts only. */
+/** A graph run: `praxis status --format aiws-graph-operator-view/1`, its run-level facts and its nodes. */
 export const GRAPH_RUN: FollowSource<GraphRunDetail> = {
   statusCommand: "praxis_host_graph_status",
   format: GRAPH_RUN_FORMAT,

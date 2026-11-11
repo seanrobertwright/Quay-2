@@ -1,14 +1,15 @@
-// A graph run's detail (#444, #465, #568): run-level facts only (status, control chip, held,
-// awaiting approval, revision, and created and updated times), followed while it is on screen with
-// the template run detail's delays and stop rules. It doesn't draw the run's nodes. It shares the
-// template run detail's waiting banner, hold panel, certificate hint and page actions, with one
-// hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause, cancel, resolving
-// a hold) are made only in the host's browser page, so it has no control for any of them, not
-// even a disabled one.
+// A graph run's detail (#444, #465, #568, #569): its run-level facts (status, control chip, held,
+// awaiting approval, revision, and created and updated times), then its node table (#569), followed
+// while it is on screen with the template run detail's delays and stop rules. The one read feeds
+// both, and after a failed read both dim. It shares the template run detail's waiting banner, hold
+// panel, certificate hint and page actions, with one hold panel per `aiws-graph-hold-card/1`.
+// Decisions on a run (approve, pause, cancel, resolving a hold) are made only in the host's
+// browser page, so it has no control for any of them, not even a disabled one.
 import type { FC } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
+import { NodeTable } from "./NodeTable.tsx";
 import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
 import { useRunDetail } from "./useRunDetail.ts";
@@ -68,6 +69,11 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({ projectPath, workOrder
         <HoldPanel key={hold.key} hold={hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />
       ))}
       {run && run.waiting && run.holds.length === 0 && <WaitingBanner run={run} openButton={openButton("Open in browser")} onTrust={trust} />}
+      {run?.nodes && (
+        <div className={view.dimmed ? "opacity-50" : ""}>
+          <NodeTable nodes={run.nodes} />
+        </div>
+      )}
     </section>
   );
 };

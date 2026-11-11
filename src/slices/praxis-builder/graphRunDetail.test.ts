@@ -1,7 +1,8 @@
 /// <reference types="node" />
-// Component tests for a graph run's detail (#444, #465, #568): run-level facts only, followed by
-// polled `praxis status <wo> --format aiws-graph-operator-view/1`, with the template run detail's
-// backoff, waiting banner and Trust certificate, and a hold panel per `aiws-graph-hold-card/1`.
+// Component tests for a graph run's detail (#444, #465, #568, #569): its run-level facts and its
+// node table, followed by polled `praxis status <wo> --format aiws-graph-operator-view/1`, with the
+// template run detail's backoff, waiting banner and Trust certificate, and a hold panel per
+// `aiws-graph-hold-card/1`.
 // They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
 // out-of-process boundary, and the terminal the window opens. Views are hand-made in the recorded
 // view's shape, and the recorded views themselves (graph_outputs.fixture.json) are drawn too.
@@ -12,7 +13,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
 import type { CallOutcome } from "./praxisHost.ts";
-import { BROWSER_ORIGIN, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
+import { BROWSER_ORIGIN, graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
 
@@ -245,7 +246,7 @@ test("showing a run reads the graph run status verb for its work order and shows
   assert.doesNotMatch(text(header(root)), /Held|Awaiting approval/);
   assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)));
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 45)));
-  assert.equal(root.querySelector("canvas, .react-flow, [data-graph-canvas]"), null, "no node phases: run-level facts only");
+  assert.equal(root.querySelector("canvas, .react-flow, [data-graph-canvas]"), null, "the detail draws no graph");
 });
 
 /** Asserts no status read follows within `ms - 1`, and one does at `ms`; answers it with `outcome`. */
@@ -630,4 +631,248 @@ test("a status record in another format isn't read: the last run stays, with the
     assert.doesNotMatch(text(detail(root)), /can't read/);
     unmount();
   }
+});
+
+// The node table (#569): one row per entry of the view's `nodes[]`, from the detail's own read.
+
+/** The detail's Nodes toggle. */
+const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLElement, /^Nodes/) as HTMLButtonElement;
+/** The node table, when it is open. */
+const nodeTable = (root: HTMLElement) => detail(root)?.querySelector("table") ?? null;
+/** The node table's rows, each as the text of its cells. */
+const nodeRows = (root: HTMLElement) => [...(nodeTable(root)?.querySelectorAll("tbody tr") ?? [])].map((tr) => [...tr.children].map((cell) => text(cell)));
+
+test("the detail lists each of the run's nodes behind a Nodes toggle that states their count: its id, kind and node phase", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(graphOperatorView(1, { nodes: [node("build", "TASK", "COMPLETED"), node("review", "APPROVAL", "AWAITING_HUMAN"), node("end", "END", "NOT_READY")] })),
+  );
+  const toggle = nodesToggle(root);
+  assert.equal(text(toggle), "Nodes (3)");
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(nodeTable(root), null, "the table is collapsed at first");
+  await click(toggle);
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.deepEqual(nodeRows(root), [
+    ["build", "TASK", "COMPLETED", ""],
+    ["review", "APPROVAL", "AWAITING_HUMAN", ""],
+    ["end", "END", "NOT_READY", ""],
+  ]);
+  await click(toggle);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.equal(nodeTable(root), null, "the toggle collapses it again");
+});
+
+/** A node's `scope` with `attempts` used of `maxAttempts`, which it leaves out when the scope has no bound. */
+const scope = (attempts: number, maxAttempts?: number) => ({ spent: "0", reserved: "0", costUnit: "micro-USD", attempts, ...(maxAttempts === undefined ? {} : { maxAttempts }) });
+/** A LOOP node's `loop`, with `iteration` of its `maxIterations` completed. */
+const loop = (iteration: number, maxIterations: number) => ({ iteration, maxIterations, intervalMs: null, nextDueMs: null, truncated: false, iterations: [] });
+
+test("a node's counter line gives its loop's iterations of their most, else the attempts it used of those its scope allows, and is empty with neither", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(
+    backend.statuses()[0],
+    statusRecord(
+      graphOperatorView(1, {
+        nodes: [
+          node("build", "TASK", "HELD", { scope: scope(1, 2) }),
+          node("decide", "DECISION", "READY", { scope: scope(0) }),
+          node("improve", "LOOP", "RUNNING", { scope: scope(3, 10), loop: loop(1, 5) }),
+          node("poll", "LOOP", "NOT_READY", { loop: loop(0, 3) }),
+          node("end", "END", "NOT_READY"),
+        ],
+      }),
+    ),
+  );
+  await click(nodesToggle(root));
+  assert.deepEqual(
+    nodeRows(root).map(([id, , , counter]) => [id, counter]),
+    [
+      ["build", "Attempts: 1 of 2"],
+      ["decide", "Attempts: 0, with no bound"],
+      ["improve", "Iterations: 1 of 5"],
+      ["poll", "Iterations: 0 of 3"],
+      ["end", ""],
+    ],
+  );
+});
+
+/** Each node phase in the order of GRAPH-WORKFLOWS.md's "Node phase" table, and the tone its chip draws in. */
+const PHASE_TONES = [
+  ["COMPLETED", "ok"],
+  ["SKIPPED", "neutral"],
+  ["FAILED", "error"],
+  ["HELD", "amber"],
+  ["BLOCKED_BY_HOLD", "amber"],
+  ["RUNNING", "active"],
+  ["PARKED", "active"],
+  ["WAITING", "active"],
+  ["AWAITING_HUMAN", "amber"],
+  ["READY", "neutral"],
+  ["NOT_READY", "neutral"],
+] as const;
+
+test("each of the eleven node phases draws its text in its tone, SKIPPED dimmed, and a phase Quay doesn't know draws its text in neutral", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  const phases = [...PHASE_TONES.map(([phase]) => phase), "SOMETHING_NEW"];
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { nodes: phases.map((phase, n) => node(`node-${n}`, "TASK", phase)) })));
+  await click(nodesToggle(root));
+  const chips = [...(nodeTable(root)?.querySelectorAll('[data-chip="phase"]') ?? [])];
+  assert.deepEqual(
+    chips.map((chip) => [text(chip), chip.getAttribute("data-tone")]),
+    [...PHASE_TONES, ["SOMETHING_NEW", "neutral"]],
+  );
+  assert.deepEqual(
+    chips.filter((chip) => /\bopacity-/.test(chip.className)).map((chip) => text(chip)),
+    ["SKIPPED"],
+    "only SKIPPED is dimmed",
+  );
+});
+
+/** The detail's node problem lines. */
+const nodeProblems = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[aria-label="Node problems"] li') ?? [])].map((li) => text(li));
+
+test("a node entry without its nodeId or phase is a problem line in place of a row, shown whether or not the table is open", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  const { nodeId: _id, ...unnamed } = node("lost", "TASK", "RUNNING");
+  const { phase: _phase, ...phaseless } = node("build", "TASK", "RUNNING");
+  await answer(
+    backend.statuses()[0],
+    statusRecord(graphOperatorView(1, { nodes: [node("start", "TASK", "COMPLETED"), unnamed, phaseless, { kind: "END" }, "end", node("", "TASK", "READY"), node("test", "TASK", "", { phase: 7 })] })),
+  );
+  const problems = [
+    "Node entry 2 has no nodeId, so it isn't in the table.",
+    "Node build has no phase, so it isn't in the table.",
+    "Node entry 4 has no nodeId or phase, so it isn't in the table.",
+    "Node entry 5 has no nodeId or phase, so it isn't in the table.",
+    "Node entry 6 has no nodeId, so it isn't in the table.",
+    "Node test has no phase, so it isn't in the table.",
+  ];
+  assert.deepEqual(nodeProblems(root), problems, "shown while the table is collapsed");
+  assert.equal(text(nodesToggle(root)), "Nodes (1)", "the toggle counts the table's rows");
+  await click(nodesToggle(root));
+  assert.deepEqual(nodeRows(root), [["start", "TASK", "COMPLETED", ""]]);
+  assert.deepEqual(nodeProblems(root), problems, "and while it is open");
+});
+
+test("a view without nodes[] gets one line saying the host doesn't report node phases, and no table, which a run not read yet doesn't", async () => {
+  for (const nodes of [undefined, { build: "COMPLETED" }, "none"]) {
+    const backend = fakeBackend();
+    const root = await showRun(backend);
+    assert.doesNotMatch(text(detail(root)), /node phases/, "not before the first read");
+    assert.equal(nodesToggle(root), undefined);
+    const { nodes: _, ...view } = graphOperatorView(1);
+    await answer(backend.statuses()[0], statusRecord(nodes === undefined ? view : { ...view, nodes }));
+    assert.equal(text(detail(root)).match(/This host doesn't report node phases\./g)?.length, 1, JSON.stringify(nodes));
+    assert.equal(nodesToggle(root), undefined, "no Nodes toggle");
+    assert.equal(nodeTable(root), null, "no table");
+    unmount();
+  }
+});
+
+test("the node table has a header for each column and a row header for each node, and its toggle controls it while it is open", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { nodes: [node("build", "TASK", "RUNNING", { scope: scope(1, 2) })] })));
+  const toggle = nodesToggle(root);
+  assert.equal(toggle.getAttribute("aria-controls"), null, "it controls nothing while the table is collapsed");
+  await click(toggle);
+  const table = nodeTable(root) as HTMLTableElement;
+  assert.ok(table.id);
+  assert.equal(toggle.getAttribute("aria-controls"), table.id);
+  assert.deepEqual(
+    [...table.querySelectorAll("thead th")].map((th) => [text(th), th.getAttribute("scope")]),
+    [
+      ["Node", "col"],
+      ["Kind", "col"],
+      ["Phase", "col"],
+      ["Counter", "col"],
+    ],
+  );
+  assert.deepEqual([...table.querySelectorAll("tbody th")].map((th) => [text(th), th.getAttribute("scope")]), [["build", "row"]]);
+});
+
+test("a node that changes phase on the host changes its row on the next read, which is the detail's one praxis status call", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  /** The run with `build` in `phase`, having used `attempts`, under change token `n`. */
+  const at = (n: number, phase: string, attempts: number) => working(n, { nodes: [node("build", "TASK", phase, { scope: scope(attempts, 2) }), node("end", "END", "NOT_READY")] });
+  await answer(backend.statuses()[0], at(0, "READY", 0));
+  await click(nodesToggle(root));
+  assert.deepEqual(nodeRows(root)[0], ["build", "TASK", "READY", "Attempts: 0 of 2"]);
+  const before = backend.sent.length;
+  await nextReadAfter(backend, 3_000, at(1, "RUNNING", 1));
+  assert.deepEqual(nodeRows(root)[0], ["build", "TASK", "RUNNING", "Attempts: 1 of 2"]);
+  await nextReadAfter(backend, 3_000, at(2, "COMPLETED", 1));
+  assert.deepEqual(nodeRows(root), [
+    ["build", "TASK", "COMPLETED", "Attempts: 1 of 2"],
+    ["end", "END", "NOT_READY", ""],
+  ]);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the table stays open from one read to the next");
+  assert.deepEqual(
+    backend.sent.slice(before).map((s) => s.command),
+    ["praxis_host_graph_status", "praxis_host_graph_status"],
+    "each read is one praxis status call, and nothing else reads the host",
+  );
+});
+
+test("while the host can't be used, the node table keeps the last read's rows, dimmed with the run-level facts, until a read succeeds", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], working(0, { nodes: [node("build", "TASK", "RUNNING")] }));
+  await click(nodesToggle(root));
+  const dimmed = () => Boolean(nodesToggle(root).closest(".opacity-50"));
+  assert.equal(dimmed(), false);
+  await nextReadAfter(backend, 3_000, HOST_DOWN);
+  assert.equal(dimmed(), true);
+  assert.match(detail(root)?.querySelector("dl")?.className ?? "", /opacity-50/, "as the run-level facts are");
+  assert.deepEqual(nodeRows(root), [["build", "TASK", "RUNNING", ""]], "the last read's rows stay");
+  await nextReadAfter(backend, 60_000, working(1, { nodes: [node("build", "TASK", "COMPLETED")] }));
+  assert.equal(dimmed(), false);
+  assert.deepEqual(nodeRows(root), [["build", "TASK", "COMPLETED", ""]]);
+});
+
+test("without a change token, a change of a node's phase, attempts or loop iteration alone is a change of the run", async () => {
+  const backend = fakeBackend();
+  await showRun(backend);
+  const { changeToken: _, ...tokenless } = graphOperatorView(1);
+  /** The run with `build` in `phase` having used `attempts`, and its loop `improve` at `iteration`, with no change token. */
+  const at = (phase: string, attempts: number, iteration: number) =>
+    statusRecord({ ...tokenless, nodes: [node("build", "TASK", phase, { scope: scope(attempts, 2) }), node("improve", "LOOP", "NOT_READY", { loop: loop(iteration, 3) })] });
+  await answer(backend.statuses()[0], at("READY", 0, 0));
+  await nextReadAfter(backend, 3_000, at("READY", 0, 0));
+  await nextReadAfter(backend, 6_000, at("RUNNING", 0, 0));
+  await nextReadAfter(backend, 3_000, at("RUNNING", 1, 0));
+  await nextReadAfter(backend, 3_000, at("RUNNING", 1, 1));
+  await nextReadAfter(backend, 3_000, at("RUNNING", 1, 1));
+  await nextReadAfter(backend, 6_000, at("RUNNING", 1, 1));
+});
+
+test("the recorded run with nodes in several phases draws a row for each, with its node phase in its tone and never its SDK status", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  await answer(backend.statuses()[0], statusRecord(recordedStdout("status: nodes in several phases")));
+  assert.equal(text(nodesToggle(root)), "Nodes (7)");
+  await click(nodesToggle(root));
+  assert.deepEqual(nodeRows(root), [
+    ["build", "TASK", "COMPLETED", "Attempts: 1 of 2"],
+    ["test", "TASK", "HELD", "Attempts: 1 of 2"],
+    ["cooldown", "WAIT", "WAITING", "Attempts: 0 of 2"],
+    ["signoff", "APPROVAL", "AWAITING_HUMAN", ""],
+    ["package", "TASK", "BLOCKED_BY_HOLD", "Attempts: 0 of 2"],
+    ["deploy", "TASK", "NOT_READY", "Attempts: 0 of 2"],
+    ["end", "END", "BLOCKED_BY_HOLD", ""],
+  ]);
+  const table = nodeTable(root) as HTMLElement;
+  assert.deepEqual(
+    [...table.querySelectorAll('[data-chip="phase"]')].map((chip) => chip.getAttribute("data-tone")),
+    ["ok", "amber", "active", "amber", "amber", "neutral", "amber"],
+  );
+  assert.doesNotMatch(text(table), /PENDING/, "the nodes' SDK status isn't shown");
+  assert.deepEqual(nodeProblems(root), []);
 });
