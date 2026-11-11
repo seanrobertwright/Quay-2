@@ -516,7 +516,11 @@ async function mouse(target: Element, type: string, at: { x: number; y: number }
   await act(async () => void target.dispatchEvent(event));
 }
 
-/** Every key the graph canvas edits with (keymap.ts): delete, cut, copy, paste, duplicate, select all, auto-arrange, nudge, select, add to the selection and the menu. */
+/**
+ * Every key the graph canvas edits with (keymap.ts): delete, cut, copy, paste, duplicate, select all,
+ * auto-arrange, nudge, add to the selection and the menu. Selecting the focused node, with Enter or
+ * Space, is the run canvas's too, and edits nothing (nodePanel.test.ts).
+ */
 const EDIT_KEYS: [string, KeyboardEventInit][] = [
   ["Delete", {}],
   ["Backspace", {}],
@@ -530,8 +534,6 @@ const EDIT_KEYS: [string, KeyboardEventInit][] = [
   ["ArrowRight", { shiftKey: true }],
   ["ArrowUp", {}],
   ["ArrowDown", { shiftKey: true }],
-  ["Enter", {}],
-  [" ", {}],
   [" ", { shiftKey: true }],
   ["F10", { shiftKey: true }],
   ["ContextMenu", {}],
@@ -563,11 +565,11 @@ test("no edit key or pointer action changes anything on the run canvas, and noth
   await tick(0);
   assert.equal(viewport(), "translate(190px,290px) scale(1)");
   assert.equal(shown(), drawn, "a drag moved a card");
-  // A drag from a card's handle to another card's, a click on a card, and a right-click on a card and on the empty canvas.
+  // A drag from a card's handle to another card's, and a right-click on a card and on the empty
+  // canvas. A click on a card selects its node, which edits nothing (nodePanel.test.ts).
   await mouse(build.querySelector(".react-flow__handle.source") as HTMLElement, "mousedown", { x: 10, y: 10 });
   await mouse(test, "mousemove", { x: 300, y: 10 });
   await mouse(test.querySelector(".react-flow__handle.target") as HTMLElement, "mouseup", { x: 300, y: 10 });
-  await mouse(build, "click", { x: 10, y: 10 });
   await mouse(build, "contextmenu", { x: 10, y: 10 }, { button: 2 });
   await mouse(canvas.querySelector(".react-flow__pane") as HTMLElement, "contextmenu", { x: 400, y: 400 }, { button: 2 });
   assert.equal(shown(), drawn, "a pointer action changed the run canvas");

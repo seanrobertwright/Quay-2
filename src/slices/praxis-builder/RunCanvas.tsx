@@ -15,8 +15,14 @@
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
 // Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
 // Flow is the size React Flow measured a card at. Pan, zoom and fit view work, by pointer, by its
-// controls and by the builder's view keys (keymap.ts); every other canvas key does nothing on it.
-// It has no palette, no auto-arrange and no menu. Selecting a node comes with the node panel.
+// controls and by the builder's view keys (keymap.ts). It has no palette, no auto-arrange and no
+// menu.
+//
+// One node is selected at a time (#572), shared with the node table: the run's detail holds it.
+// A click on a card, or the builder's select key (Enter or Space) on the card with focus, selects
+// its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
+// selected card has a ring around it and is the current one to a screen reader. Every other
+// canvas key, adding to the selection included, does nothing on it.
 import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -55,8 +61,12 @@ type RunFlowNode = Node<RunNodeData>;
 /** The border of a card for a node the view has no entry for. */
 const NO_STATE_FRAME = "border-dashed border-[#30363d]";
 
-const RunCard: FC<NodeProps<RunFlowNode>> = ({ data }) => {
+/** The ring around the selected card, outside its border in its node phase's tone: a shape as well as a colour. */
+const SELECTED_RING = "ring-2 ring-[#58a6ff]";
+
+const RunCard: FC<NodeProps<RunFlowNode>> = ({ data, selected }) => {
   const { node, run } = data;
+  const frame = run === null ? NO_STATE_FRAME : phaseFrame(run.phase);
   const footer =
     run === null ? (
       <span className="italic text-[#8b949e]">no state reported</span>
@@ -66,7 +76,7 @@ const RunCard: FC<NodeProps<RunFlowNode>> = ({ data }) => {
       </span>
     );
   return (
-    <NodeCard node={node} frame={run === null ? NO_STATE_FRAME : phaseFrame(run.phase)} connectable={false} footer={footer}>
+    <NodeCard node={node} frame={selected ? `${frame} ${SELECTED_RING}` : frame} connectable={false} footer={footer}>
       {run !== null && (
         <span className="absolute -top-3 right-2 rounded-full bg-[#161b22]">
           <NodePhaseChip phase={run.phase} />
@@ -99,6 +109,10 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   return { runs, problems };
 }
 
+/** The node id of `target` when it is a card, which React Flow draws with its node's id as `data-id`; else null. */
+const cardId = (target: unknown): string | null =>
+  target instanceof HTMLElement && target.classList.contains("react-flow__node") ? (target.dataset.id ?? null) : null;
+
 /** Each card's size as React Flow measured it, by node id. */
 type Sizes = ReadonlyMap<string, Dimensions>;
 
@@ -127,10 +141,14 @@ interface DrawnProps {
   revision: number;
   /** The id of the heading that names the canvas. */
   labelledBy: string;
+  /** The id of the selected node, or null when none is. */
+  selected: string | null;
+  /** Selects node `nodeId`, when its card is chosen. */
+  onSelect: (nodeId: string) => void;
 }
 
 /** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
-const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy }) => {
+const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy, selected, onSelect }) => {
   const view = useReactFlow();
   const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
   const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
@@ -147,10 +165,21 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
       }),
     [flow.nodes, runs, sizes]
   );
-  // The builder's view keys, which the builder itself runs only on the graph canvas.
+  // Only the selected card gets a new object, so a change of selection re-renders the cards it
+  // touches rather than every card. It is marked for a screen reader as the current one.
+  const shown = useMemo(
+    () => cards.map((c) => (c.id === selected ? { ...c, selected: true, domAttributes: { "aria-current": "true" as const } } : c)),
+    [cards, selected]
+  );
+  // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
+  // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const duration = prefersReducedMotion() ? 0 : VIEW_MOVE_MS;
-    switch (commandFor(e.nativeEvent, "canvas")) {
+    const focused = cardId(e.target);
+    switch (commandFor(e.nativeEvent, focused === null ? "canvas" : "node")) {
+      case "select":
+        if (focused !== null) onSelect(focused);
+        break;
       case "fit-view":
         void view.fitView({ duration });
         break;
@@ -172,10 +201,11 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
     <>
       <div className="h-80 rounded-md border border-[#30363d] overflow-hidden">
         <ReactFlow
-          nodes={cards}
+          nodes={shown}
           edges={flow.edges}
           nodeTypes={RUN_NODE_TYPES}
           onNodesChange={(changes) => setSizes((now) => withMeasures(now, changes))}
+          onNodeClick={(_, node) => onSelect(node.id)}
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
@@ -302,6 +332,10 @@ interface RunCanvasProps {
   revisions: RevisionCache;
   /** Called each time the revision can't be read, so the node table can open in the canvas's place. */
   onUnreadable: () => void;
+  /** The id of the selected node, or null when none is. */
+  selected: string | null;
+  /** Selects node `nodeId`, when its card is chosen. */
+  onSelect: (nodeId: string) => void;
 }
 
 /** The run canvas of a graph run, with a heading that names the run and its revision. */
@@ -329,6 +363,8 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revisi
   nodes,
   revisions,
   onUnreadable,
+  selected,
+  onSelect,
   labelledBy,
 }) => {
   const { state, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
@@ -345,7 +381,7 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revisi
       )}
       {state.state === "drawn" && (
         <ReactFlowProvider>
-          <DrawnCanvas graph={state.graph} saved={state.saved} nodes={nodes} revision={revision} labelledBy={labelledBy} />
+          <DrawnCanvas graph={state.graph} saved={state.saved} nodes={nodes} revision={revision} labelledBy={labelledBy} selected={selected} onSelect={onSelect} />
         </ReactFlowProvider>
       )}
     </>

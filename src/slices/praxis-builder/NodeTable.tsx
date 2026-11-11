@@ -3,7 +3,13 @@
 // each node entry the table can't show. A view without nodes gets one line saying so instead. It is
 // fed by the detail's own read of the run, so it updates on the detail's poll and never reads the
 // host itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The
-// detail holds whether it is open, so it can open it when the run canvas can't be drawn (#571).
+// detail holds whether it is open, so it can open it when the run canvas's revision can't be read
+// (#571).
+//
+// Each row's node id is a button that selects the node (#572), which the detail shares with the
+// run canvas and shows in the node panel, so Tab and Enter or Space select a node from the
+// keyboard. The selected row is marked by its fill and its id's weight and underline, and its
+// button is the current one to a screen reader.
 import { useId, type FC } from "react";
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import type { GraphRunNodes } from "./graphRunDetail.ts";
@@ -16,10 +22,14 @@ interface NodeTableProps {
   /** Whether the table is open: it is collapsed behind its toggle until the toggle or the detail opens it. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The id of the selected node, or null when none is. */
+  selected: string | null;
+  /** Selects node `nodeId`, when its row is chosen. */
+  onSelect: (nodeId: string) => void;
 }
 
 /** The node table of a graph run. */
-export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange }) => {
+export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selected, onSelect }) => {
   const tableId = useId();
   if (!nodes.reported) return <p className="text-[11px] text-[#8b949e]">This host doesn&apos;t report node phases.</p>;
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -58,18 +68,28 @@ export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange }) => 
             </tr>
           </thead>
           <tbody>
-            {nodes.rows.map((node, n) => (
-              <tr key={`${n}:${node.nodeId}`} className="border-t border-[#21262d]">
-                <th scope="row" className="py-1 pr-3 font-mono font-normal">
-                  {node.nodeId}
-                </th>
-                <td className="py-1 pr-3">{node.kind}</td>
-                <td className="py-1 pr-3">
-                  <NodePhaseChip phase={node.phase} />
-                </td>
-                <td className="py-1 text-[#8b949e]">{node.counter}</td>
-              </tr>
-            ))}
+            {nodes.rows.map((node, n) => {
+              const isSelected = node.nodeId === selected;
+              return (
+                <tr key={`${n}:${node.nodeId}`} className={`border-t border-[#21262d] ${isSelected ? "bg-[#58a6ff]/10" : ""}`}>
+                  <th scope="row" className="py-1 pr-3 font-mono font-normal">
+                    <button
+                      type="button"
+                      aria-current={isSelected ? "true" : undefined}
+                      onClick={() => onSelect(node.nodeId)}
+                      className={`underline-offset-2 hover:underline ${isSelected ? "font-semibold text-white underline" : ""}`}
+                    >
+                      {node.nodeId}
+                    </button>
+                  </th>
+                  <td className="py-1 pr-3">{node.kind}</td>
+                  <td className="py-1 pr-3">
+                    <NodePhaseChip phase={node.phase} />
+                  </td>
+                  <td className="py-1 text-[#8b949e]">{node.counter}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

@@ -217,15 +217,27 @@ export const WaitingBanner: FC<{ run: WaitingFacts; openButton: ReactNode; onTru
   </div>
 );
 
-/** A held run's hold card: why it is held and the exits it offers, all taken in the browser. */
-export const HoldPanel: FC<{ hold: Hold; run: TrustFacts; openButton: ReactNode; onTrust: () => void }> = ({ hold, run, openButton, onTrust }) => {
+/** What a hold panel is named by: its heading's words. */
+export const holdPanelName = (hold: Hold) => `Held: ${hold.reason}`;
+
+/**
+ * A held run's hold card: why it is held and the exits it offers, all taken in the browser. With
+ * an `id`, a link can go to it: it then takes focus from the link, though it isn't a tab stop.
+ */
+export const HoldPanel: FC<{ hold: Hold; run: TrustFacts; openButton: ReactNode; onTrust: () => void; id?: string }> = ({ hold, run, openButton, onTrust, id }) => {
   const headingId = useId();
   return (
-    <div role="region" aria-labelledby={headingId} className="space-y-1.5 px-3 py-2 rounded-md border border-[#f0883e]/60 bg-[#f0883e]/10 text-xs text-[#c9d1d9]">
+    <div
+      id={id}
+      tabIndex={id === undefined ? undefined : -1}
+      role="region"
+      aria-labelledby={headingId}
+      className="space-y-1.5 px-3 py-2 rounded-md border border-[#f0883e]/60 bg-[#f0883e]/10 text-xs text-[#c9d1d9] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f0f6fc]"
+    >
       <p className="flex flex-wrap items-center gap-2">
         <Pause className="w-3.5 h-3.5 text-[#f0883e]" aria-hidden="true" />
         <span id={headingId} className="font-semibold">
-          Held: {hold.reason}
+          {holdPanelName(hold)}
         </span>
         {openButton}
       </p>
