@@ -1,7 +1,9 @@
 // Records trigger_outputs.fixture.json: what the real `praxis` CLI prints for each graph trigger
 // command Quay runs (#474), run as a subprocess against the simulated host its own tests start,
 // so the fake `praxis` replays records, refusals and exit codes the CLI itself wrote. Run with
-// Node 24 or later against an AI-WS-SDK checkout that has `praxis triggers` (#662 or later):
+// Node 24 or later against an AI-WS-SDK checkout that has `praxis triggers` (#662 or later) and
+// whose TypeScript SDK is built (`npm ci`, then `npm run build:sdk`), which the simulated host
+// loads to serve the graph workflow the triggers start:
 //
 //   node trigger_outputs.record.mjs <checkout> <commit> trigger_outputs.fixture.json
 //
