@@ -361,21 +361,34 @@ A submission is stored on the host as a candidate revision. Nothing runs until t
 
 #### A graph run's detail
 
-**Show** on a run opens its detail above the list. It shows the run-level facts: the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. Under them is the run's [node table](#the-node-table).
+**Show** on a run opens its detail above the list. It shows the run-level facts: the run's status, its outcome once it has ended, its control, whether it is held or awaiting approval, the revision it runs, and when it was created and last updated. Under them are the run's [run canvas](#the-run-canvas) and its [node table](#the-node-table).
 
 - **The detail follows the run** with `praxis status <work-order> --format aiws-graph-operator-view/1 --json`, on the same delays and stop rules as a template run's detail (see [Runs](#runs)), with one difference: a run waiting for a person is read every 15 seconds only while none of its nodes is `RUNNING`, `PARKED` or `WAITING`. A node in one of those phases changes without anyone deciding, as the host works on it or it waits out a timer or an event, so while one is, the run is read 3 seconds after a change, doubling the wait up to 15 seconds while nothing changes. The view is `STABLE` in the AI-WS-SDK, so its fields change only in a new format, which the detail says it can't read.
 - **A run that waits for a decision** gets a banner naming what it waits for, such as the run's approval, a node's approval or acceptance, a decision on a hold, a human task, or reconciliation, decided in the browser, with **Open in browser**. On a simulated host, the banner says its decisions aren't made by a person.
 - **A held run** gets a hold panel for each open hold, with **Resolve in browser**. Each panel draws the hold's card (`aiws-graph-hold-card/1`): the held node and the host's reason, with its cause when it has one, the effect of the node's attempt, the attempts the node used of those it has, and the ways out of the hold, all taken in the browser. A hold that offers no way out says a person may cancel the run in the browser.
 - **A certificate hint** shows as it does for a template run, with **Trust certificate** when `praxis` asks for `praxis trust`.
 
+#### The run canvas
+
+The run canvas draws the graph of the revision the run runs, with each node in its [node phase](#the-node-table). Its heading names the run and the revision, so it can't be taken for the graph canvas.
+
+- **It draws the revision as the host holds it**, read with `praxis graphs show <name> --revision <n> --json`, never the project's saved graph file, which may have changed since. A run of an older revision draws that revision. A revision never changes, so Quay reads each one once and keeps the last eight it read in memory.
+- **Each card is the graph canvas's card**, at the same size, with the node's kind, id and config summary, and without a problem count. It adds the node phase's chip over its top edge, a border in the phase's colour and the counter line, the same as the node's row in the node table. A `SUBWORKFLOW` node is one card: its child graph isn't drawn.
+- **The layout comes from the project's** `.praxis/layout/<graph-id>.json` when the project has a graph of the revision's graph id with a saved layout: saved positions are kept, and a node the layout lacks is placed near the nodes it connects to, as on the graph canvas. Otherwise dagre lays the graph out. The run canvas never writes a layout.
+- **It can't be edited.** You can pan, zoom and fit the view, with the pointer, the controls in its corner, or the zoom keys (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`) and fit view (`Shift+1`). There is no palette and no right-click menu, cards can't be dragged, connected or selected, and the keys for delete, cut, copy, paste, duplicate, select all, auto-arrange and moving a node do nothing on it. It is no draft, so nothing on it is saved.
+- **When the revision can't be read**, the canvas's place gives the host's problem and **Try again**, the node table opens by itself, and the run-level facts are unaffected.
+- **A revision with more than 1000 nodes**, the most a graph may hold, isn't drawn. The canvas's place says so, and the node table still lists the run's nodes.
+- **A node the host reports no node phase for** draws no chip and says "no state reported". A node the host reports that isn't in the revision's graph is in the node table only. A problem line under the canvas names each one.
+- **The canvas follows the run**: each card changes with its node's phase when the detail is next read, and the revision isn't read again. While the host can't be used, the canvas dims with the run-level facts.
+
 #### The node table
 
-**Nodes**, under the run-level facts, opens the run's node table and states how many nodes it lists. The table has a row for each node the host reports for the run, in the host's order, with the node's id, its kind, its node phase and a counter line. It comes from the same `praxis status` read as the rest of the detail, so a node's row changes when the detail is next read, and Quay makes no other call for it. While the host can't be used, the table keeps the last read's rows, dimmed with the run-level facts.
+**Nodes**, under the run canvas, opens the run's node table and states how many nodes it lists. The table has a row for each node the host reports for the run, in the host's order, with the node's id, its kind, its node phase and a counter line. It comes from the same `praxis status` read as the rest of the detail, so a node's row changes when the detail is next read, and Quay makes no other call for it. While the host can't be used, the table keeps the last read's rows, dimmed with the run-level facts.
 
 - **The node phase** is the host's own word for where the node stands in the run, shown as the host gives it, in a chip coloured by what it means: green when the node finished, red when it failed, amber when it waits on a hold or a person, blue while the host works on it or waits out a timer or an event, and grey otherwise. The word always shows, so the colour is never its only sign. A phase Quay doesn't know shows as its own word in grey. Quay shows the node phase only, never the node's SDK `status`.
 - **The counter line** gives the attempts the node used of those it is allowed, or, for a loop, the iterations it completed of the most it may run. A node with neither has none.
 - **A node the host reports without its id or its phase** has no row. A problem line under **Nodes** says so instead.
-- **A host that doesn't report node phases** gets one line saying so, and no table.
+- **A host that doesn't report node phases** gets one line saying so, and no run canvas or table.
 
 Each node has one phase. Where more than one fits, the first in this table wins, as the AI-WS-SDK's GRAPH-WORKFLOWS.md sets it out:
 

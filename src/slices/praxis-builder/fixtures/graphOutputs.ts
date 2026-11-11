@@ -21,6 +21,17 @@ export const withdrawnRecord = (name: string, revision: number): CallOutcome => 
   record: { ...recordedStdout("graphs withdraw: a pending candidate"), name, revision },
 });
 
+/**
+ * The recorded revision (`graphs show: a revision`) as a `record` outcome, with its bundle's main
+ * graph holding `nodes` instead, and `bundle` fields replaced by `bundleFields`.
+ */
+export function revisionRecord(nodes: unknown[], bundleFields: Record<string, unknown> = {}): CallOutcome {
+  const record = recordedStdout("graphs show: a revision");
+  const bundle = record.bundle as Record<string, unknown>;
+  record.bundle = { ...bundle, graph: { ...(bundle.graph as Record<string, unknown>), nodes }, ...bundleFields };
+  return { kind: "record", record };
+}
+
 /** The recorded refusal of a withdrawal whose candidate is no longer pending. */
 export function notPending(): CallOutcome {
   const record = recordedStdout("graphs withdraw: not pending");

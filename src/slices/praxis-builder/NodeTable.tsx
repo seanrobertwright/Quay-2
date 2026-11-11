@@ -2,42 +2,30 @@
 // phase and counter line, behind a Nodes toggle that states the node count, and a problem line for
 // each node entry the table can't show. A view without nodes gets one line saying so instead. It is
 // fed by the detail's own read of the run, so it updates on the detail's poll and never reads the
-// host itself. Each phase chip takes its tone from nodePhase.ts, and always shows the phase's text.
-import { useId, useState, type FC } from "react";
+// host itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The
+// detail holds whether it is open, so it can open it when the run canvas can't be drawn (#571).
+import { useId, type FC } from "react";
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import type { GraphRunNodes } from "./graphRunDetail.ts";
-import { nodePhaseLook, type NodePhaseTone } from "./nodePhase.ts";
+import { NodePhaseChip } from "./NodePhaseChip.tsx";
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
 
-/** A node phase chip's colours in each tone. */
-const TONE_CLASSES: Record<NodePhaseTone, string> = {
-  neutral: "border-[#30363d] text-[#8b949e]",
-  ok: "border-[#238636]/60 text-[#3fb950]",
-  error: "border-[#f85149]/60 text-[#ff7b72]",
-  amber: "border-[#d29922]/70 text-[#e3b341] bg-[#d29922]/10",
-  active: "border-[#58a6ff]/60 text-[#58a6ff] bg-[#58a6ff]/10",
-};
+interface NodeTableProps {
+  nodes: GraphRunNodes;
+  /** Whether the table is open: it is collapsed behind its toggle until the toggle or the detail opens it. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
 
-/** A node's phase, verbatim, in its tone. */
-export const NodePhaseChip: FC<{ phase: string }> = ({ phase }) => {
-  const { tone, dimmed } = nodePhaseLook(phase);
-  return (
-    <span data-chip="phase" data-tone={tone} className={`px-1.5 py-px rounded-full border text-[10px] ${TONE_CLASSES[tone]} ${dimmed ? "opacity-60" : ""}`}>
-      {phase}
-    </span>
-  );
-};
-
-/** The node table of a graph run, collapsed until its toggle opens it. */
-export const NodeTable: FC<{ nodes: GraphRunNodes }> = ({ nodes }) => {
+/** The node table of a graph run. */
+export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange }) => {
   const tableId = useId();
-  const [open, setOpen] = useState(false);
   if (!nodes.reported) return <p className="text-[11px] text-[#8b949e]">This host doesn&apos;t report node phases.</p>;
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="space-y-1.5 text-[11px] text-[#c9d1d9]">
-      <button type="button" aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => setOpen((o) => !o)} className={BUTTON}>
+      <button type="button" aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => onOpenChange(!open)} className={BUTTON}>
         <Chevron className="w-3.5 h-3.5" aria-hidden="true" />
         Nodes ({nodes.rows.length})
       </button>

@@ -14,8 +14,6 @@ import {
   applyNodeChanges,
   Background,
   Controls,
-  Handle,
-  Position,
   ReactFlow,
   type Connection,
   type NodeChange,
@@ -26,23 +24,19 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { PraxisGraph, XYPosition } from "./model.ts";
-import { configSummary, nodeKindMeta, UNKNOWN_KIND_META } from "./kinds.ts";
 import type { GraphEdit } from "./editor.ts";
-import { EDGE_COLOR, graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
+import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisFlowNode } from "./flow/to-flow.ts";
 import { NODE_HEIGHT, NODE_WIDTH } from "./flow/layout.ts";
+import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import type { NodeIssues } from "./issues.ts";
 import type { BindingMark } from "./graphBinding.ts";
 import { nodeAriaLabel } from "./keyboard.ts";
 import { computeGuides, type Rect } from "./smart-guides.ts";
 import { SmartGuides } from "./SmartGuides.tsx";
 
-const handleClass = "!w-2.5 !h-2.5 !border-2 !border-[#0d1117]";
-
 /** What a focused edge tells a screen reader it can do: React Flow's default offers selecting, which the builder doesn't. */
 const ARIA_LABELS: Partial<AriaLabelConfig> = { "edge.a11yDescription.default": "Press Delete to remove this dependency." };
 
-/** The ring a card shows while it has keyboard focus. */
-const NODE_FOCUS_CLASS = "rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#f0f6fc]";
 /** A focused edge is drawn thicker and light, over the colour its own style sets. */
 const EDGE_FOCUS_CLASS = "[&:focus-visible_.react-flow__edge-path]:stroke-[#f0f6fc]! [&:focus-visible_.react-flow__edge-path]:[stroke-width:3]!";
 
@@ -70,66 +64,12 @@ const BindingBadge: FC<{ mark: BindingMark }> = ({ mark }) => (
   </span>
 );
 
-const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => {
-  const { node, issues, binding } = data;
-  const meta = nodeKindMeta(node.kind);
-  const summary = configSummary(node);
-  const label = meta === UNKNOWN_KIND_META ? node.kind || "No kind" : meta.label;
-  return (
-    <div
-      className={`relative rounded-lg border bg-[#161b22] shadow-md ${
-        selected ? "border-[#58a6ff] ring-2 ring-[#58a6ff]/60" : "border-[#30363d]"
-      }`}
-      style={{ width: NODE_WIDTH, borderTop: `3px solid ${meta.color}` }}
-    >
-      {issues && <IssueBadge issues={issues} />}
-      {binding && <BindingBadge mark={binding} />}
-      <Handle type="target" position={Position.Top} className={handleClass} style={{ background: EDGE_COLOR.plain }} />
-      <div
-        className="flex items-center gap-1.5 px-2.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider"
-        style={{ color: meta.color }}
-      >
-        <meta.icon className="w-3.5 h-3.5" aria-hidden="true" />
-        <span className="truncate">{label}</span>
-        <span className="ml-auto flex gap-1 normal-case tracking-normal font-normal">
-          {node.inputSchema && (
-            <span className="px-1 rounded bg-[#21262d] text-[#8b949e]" title="Has an input schema">
-              in
-            </span>
-          )}
-          {node.outputSchema && (
-            <span className="px-1 rounded bg-[#21262d] text-[#8b949e]" title="Has an output schema">
-              out
-            </span>
-          )}
-        </span>
-      </div>
-      <div className="px-2.5 pb-3 pt-0.5">
-        <div className="font-mono text-sm text-white truncate" title={node.id}>
-          {node.id}
-        </div>
-        <div className={`text-[11px] truncate ${summary ? "text-[#8b949e]" : "text-[#484f58] italic"}`}>
-          {summary || "no settings"}
-        </div>
-      </div>
-      {node.kind === "DECISION" ? (
-        <>
-          <Handle id="then" type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ left: "30%", background: EDGE_COLOR.then }} />
-          <Handle id="else" type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ left: "70%", background: EDGE_COLOR.else }} />
-          <Handle id="dep" type="source" position={Position.Right} className={`${handleClass} !cursor-crosshair`} style={{ background: EDGE_COLOR.plain }} />
-          <span className="absolute -bottom-4 text-[9px] font-semibold text-[#3fb950]" style={{ left: "30%", transform: "translateX(-50%)" }}>
-            then
-          </span>
-          <span className="absolute -bottom-4 text-[9px] font-semibold text-[#ff7b72]" style={{ left: "70%", transform: "translateX(-50%)" }}>
-            else
-          </span>
-        </>
-      ) : (
-        <Handle type="source" position={Position.Bottom} className={`${handleClass} !cursor-crosshair`} style={{ background: EDGE_COLOR.plain }} />
-      )}
-    </div>
-  );
-};
+const PraxisCard: FC<NodeProps<PraxisFlowNode>> = ({ data, selected }) => (
+  <NodeCard node={data.node} frame={selected ? "border-[#58a6ff] ring-2 ring-[#58a6ff]/60" : "border-[#30363d]"} connectable>
+    {data.issues && <IssueBadge issues={data.issues} />}
+    {data.binding && <BindingBadge mark={data.binding} />}
+  </NodeCard>
+);
 
 const nodeTypes = { [PRAXIS_NODE_TYPE]: PraxisCard };
 

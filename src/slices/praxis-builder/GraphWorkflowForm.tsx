@@ -17,6 +17,7 @@ import { Info } from "lucide-react";
 import type { Draft } from "./drafts.ts";
 import type { GraphWorkflowEdit } from "./graphWorkflow.ts";
 import { GraphHostStatusLine, RevisionsPanel, type GraphWorkflowHost } from "./GraphHostPanel.tsx";
+import type { RevisionCache } from "./graphRevision.ts";
 import { GraphRunsView } from "./GraphRunsView.tsx";
 import { GraphSubmitBar, type GraphWorkflowSubmit } from "./GraphSubmit.tsx";
 import { bundleRecords } from "./graphSubmit.ts";
@@ -58,6 +59,8 @@ interface GraphWorkflowFormProps {
   unsavedKeys?: ReadonlySet<string>;
   /** The `workOrderId` of a run to show when the form opens: it opens on Runs with that run's detail. */
   showRun?: string;
+  /** Where a graph run's run canvas reads its revision; the builder's own cache when absent. */
+  revisions?: RevisionCache;
 }
 
 /**
@@ -94,6 +97,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
   runInTerminal,
   unsavedKeys,
   showRun,
+  revisions,
 }) => {
   const [shownView, setShownView] = useState<WorkAreaView>(runsShown !== undefined && showRun !== undefined ? "runs" : "record");
   // The revision whose Withdraw confirm is shown, or null.
@@ -187,6 +191,7 @@ export const GraphWorkflowForm: FC<GraphWorkflowFormProps> = ({
             host={host}
             unsaved={bundle.filter((ref) => unsavedKeys?.has(definitionKey(ref)))}
             initialRun={showRun}
+            revisions={revisions}
           />
         </div>
       </div>
