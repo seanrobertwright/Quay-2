@@ -455,6 +455,56 @@ test("when the revision can't be read, the canvas area gives the host's problem 
   assert.equal(button(runCanvas(root) as HTMLElement, /^Try again$/), undefined);
 });
 
+/** The recorded refusal of a revision the host doesn't hold. */
+function refused(): CallOutcome {
+  const refusal = recordedStdout("graphs show: a revision, not submitted");
+  return { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal };
+}
+
+/** Shows run 1, refuses its revision read, and presses Try again with focus on it. Returns Try again. */
+async function triedAgain(backend: Backend, root: HTMLElement): Promise<HTMLButtonElement> {
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.revisionReads()[0], refused());
+  const tryAgain = button(runCanvas(root) as HTMLElement, /^Try again$/) as HTMLButtonElement;
+  await act(async () => tryAgain.focus());
+  await click(tryAgain);
+  return tryAgain;
+}
+
+test("Try again stays, with focus, while the revision is read again, takes no second press meanwhile, and stays for a read that fails again", async () => {
+  const backend = fakeBackend();
+  const tryAgain = await triedAgain(backend, await showRun(backend));
+  assert.equal(backend.revisionReads().length, 2);
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(tryAgain.isConnected && document.activeElement === tryAgain, "Try again stays, with focus, so focus doesn't fall to the page");
+  assert.equal(tryAgain.getAttribute("aria-disabled"), "true");
+  assert.equal(tryAgain.disabled, false, "not disabled, which would drop focus");
+  await click(tryAgain);
+  assert.equal(backend.revisionReads().length, 2, "a press while it reads reads nothing more");
+  await answer(backend.revisionReads()[1], refused());
+  assert.ok(tryAgain.isConnected && document.activeElement === tryAgain, "Try again keeps focus");
+  assert.equal(tryAgain.getAttribute("aria-disabled"), "false", "it can be pressed again");
+});
+
+test("once Try again's read draws the revision, focus goes to the drawing that took its place", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await triedAgain(backend, root);
+  await answer(backend.revisionReads()[1], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS);
+  assert.ok(document.activeElement === runCanvas(root)?.querySelector(".react-flow"), "focus is on the drawing, not the page");
+});
+
+test("once Try again's read finds the revision can't be drawn, focus goes to the status line that says why", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await triedAgain(backend, root);
+  await answer(backend.revisionReads()[1], revisionRecord(Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"))));
+  const status = runCanvas(root)?.querySelector('[role="status"]');
+  assert.match(text(status), /Revision 1 of release-train isn't drawn\./);
+  assert.ok(document.activeElement === status, "focus is on the status line, not the page");
+});
+
 test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table still shows", async () => {
   const backend = fakeBackend();
   const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));

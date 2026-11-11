@@ -23,7 +23,7 @@
 // its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
 // selected card has a ring around it and is the current one to a screen reader. Every other
 // canvas key, adding to the selection included, does nothing on it.
-import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Background,
@@ -145,10 +145,12 @@ interface DrawnProps {
   selected: string | null;
   /** Selects node `nodeId`, when its card is chosen. */
   onSelect: (nodeId: string) => void;
+  /** The drawing's element, which takes focus. */
+  drawingRef: Ref<HTMLDivElement>;
 }
 
 /** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
-const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy, selected, onSelect }) => {
+const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy, selected, onSelect, drawingRef }) => {
   const view = useReactFlow();
   const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
   const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
@@ -201,6 +203,7 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
     <>
       <div className="h-80 rounded-md border border-[#30363d] overflow-hidden">
         <ReactFlow
+          ref={drawingRef}
           nodes={shown}
           edges={flow.edges}
           nodeTypes={RUN_NODE_TYPES}
@@ -267,8 +270,9 @@ const READING: CanvasState = { state: "reading" };
 
 /**
  * Revision `revision` of `workflow`, through `revisions`, with the saved layout of its graph, and a
- * way to read it again. `onUnreadable` is called each time it can't be read. A result for another
- * revision or an earlier try is never shown as this one's.
+ * way to read it again after a failed read, and whether that read is running. `onUnreadable` is
+ * called each time it can't be read. A result for another revision or an earlier try is never
+ * shown as this one's.
  */
 function useRevision(
   projectPath: string,
@@ -276,7 +280,7 @@ function useRevision(
   revision: number,
   revisions: RevisionCache,
   onUnreadable: () => void
-): { state: CanvasState; retry: () => void } {
+): { state: CanvasState; retrying: boolean; retry: () => void } {
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([projectPath, workflow, revision, attempt]);
   const [shown, setShown] = useState<{ key: string; state: CanvasState } | null>(null);
@@ -302,8 +306,14 @@ function useRevision(
       live = false;
     };
   }, [revisions, projectPath, workflow, revision, key]);
-  return { state: shown?.key === key ? shown.state : READING, retry: () => setAttempt((n) => n + 1) };
+  const state = shown?.key === key ? shown.state : READING;
+  // A read is a retry while the last one shown, an earlier try's, failed.
+  const retrying = state.state === "reading" && shown?.state.state === "failed";
+  return { state, retrying, retry: () => setAttempt((n) => n + 1) };
 }
+
+/** True when focus is on no element of the page, as when the element that had it was removed. */
+const focusLost = (focused: Element | null) => focused === null || focused === document.body || !focused.isConnected;
 
 /** What the status line says of the revision, or nothing once it is drawn. */
 function statusLine(state: CanvasState, workflow: string, revision: number): string {
@@ -367,21 +377,48 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revisi
   onSelect,
   labelledBy,
 }) => {
-  const { state, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
+  const { state, retrying, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
+  const status = useRef<HTMLParagraphElement>(null);
+  const drawing = useRef<HTMLDivElement>(null);
+  // Try again stays, with focus, while its read runs, and leaves once the read ends other than in
+  // a failure. Focus that fell to the page with it goes to what took its place: the drawing, or
+  // the status line that says why the revision isn't drawn.
+  const wasRetrying = useRef(false);
+  useEffect(() => {
+    const ended = wasRetrying.current && !retrying;
+    wasRetrying.current = retrying;
+    if (!ended || state.state === "failed" || !focusLost(document.activeElement)) return;
+    (state.state === "drawn" ? drawing.current : status.current)?.focus();
+  }, [retrying, state.state]);
   return (
     <>
-      <p role="status" className={state.state === "failed" ? "text-[#f85149] break-words" : "text-[#8b949e] break-words"}>
+      <p ref={status} tabIndex={-1} role="status" className={state.state === "failed" ? "text-[#f85149] break-words" : "text-[#8b949e] break-words"}>
         {statusLine(state, workflow, revision)}
       </p>
-      {state.state === "failed" && (
-        <button type="button" onClick={retry} className={BUTTON}>
+      {(state.state === "failed" || retrying) && (
+        <button
+          type="button"
+          // Not `disabled`, which would drop focus while the revision is read again.
+          aria-disabled={retrying}
+          onClick={() => !retrying && retry()}
+          className={`${BUTTON} aria-disabled:opacity-50`}
+        >
           <RotateCw className="w-3 h-3" aria-hidden="true" />
           Try again
         </button>
       )}
       {state.state === "drawn" && (
         <ReactFlowProvider>
-          <DrawnCanvas graph={state.graph} saved={state.saved} nodes={nodes} revision={revision} labelledBy={labelledBy} selected={selected} onSelect={onSelect} />
+          <DrawnCanvas
+            graph={state.graph}
+            saved={state.saved}
+            nodes={nodes}
+            revision={revision}
+            labelledBy={labelledBy}
+            selected={selected}
+            onSelect={onSelect}
+            drawingRef={drawing}
+          />
         </ReactFlowProvider>
       )}
     </>
