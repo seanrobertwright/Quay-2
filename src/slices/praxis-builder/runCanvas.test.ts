@@ -347,6 +347,58 @@ test("a node's card follows its phase from one read of the run to the next, and 
   assert.equal(backend.revisionReads().length, 1);
 });
 
+/**
+ * Runs `body` with each card measured at 230 by 76 and React Flow's resize observer reporting each
+ * element once, when it starts to observe it, as a browser's does before anything resizes. happy-dom
+ * lays nothing out, so without this React Flow measures no card, and draws no edge.
+ */
+async function withMeasuredCards(body: () => Promise<void>): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  const observer = g.ResizeObserver;
+  const proto = HTMLElement.prototype;
+  const width = Object.getOwnPropertyDescriptor(proto, "offsetWidth");
+  const height = Object.getOwnPropertyDescriptor(proto, "offsetHeight");
+  const seen = new WeakSet<Element>();
+  g.ResizeObserver = class {
+    report: (entries: { target: Element }[]) => void;
+    constructor(report: (entries: { target: Element }[]) => void) {
+      this.report = report;
+    }
+    observe(target: Element) {
+      if (seen.has(target)) return;
+      seen.add(target);
+      queueMicrotask(() => this.report([{ target }]));
+    }
+    unobserve() {}
+    disconnect() {}
+  };
+  const card = (el: HTMLElement) => el.classList.contains("react-flow__node");
+  Object.defineProperty(proto, "offsetWidth", { configurable: true, get(this: HTMLElement) { return card(this) ? 230 : 0; } });
+  Object.defineProperty(proto, "offsetHeight", { configurable: true, get(this: HTMLElement) { return card(this) ? 76 : 0; } });
+  try {
+    await body();
+  } finally {
+    g.ResizeObserver = observer;
+    if (width) Object.defineProperty(proto, "offsetWidth", width);
+    if (height) Object.defineProperty(proto, "offsetHeight", height);
+  }
+}
+
+test("a read that changes a card's node phase keeps the card's measured size, so its edges stay drawn", async () => {
+  await withMeasuredCards(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    const edges = () => runCanvas(root)?.querySelectorAll(".react-flow__edge").length;
+    assert.equal(edges(), 6, "each dependsOn of the recorded graph");
+    const view = recordedStdout("status: nodes in several phases");
+    const nodes = view.nodes as Record<string, unknown>[];
+    await tick(15_000);
+    await answer(backend.statuses()[1], statusRecord({ ...view, changeToken: "1".repeat(64), nodes: [{ ...nodes[0], phase: "FAILED" }, ...nodes.slice(1)] }));
+    assert.deepEqual(cardStates(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"]);
+    assert.equal(edges(), 6, "no card had to be measured again");
+  });
+});
+
 test("a SUBWORKFLOW node is one card in its phase, and its child graph isn't drawn", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
@@ -539,7 +591,7 @@ async function withReducedMotion(body: () => Promise<void>): Promise<void> {
   }
 }
 
-test("the builder's zoom keys zoom the run canvas in and out and back to 100%, and the page itself doesn't zoom", async () => {
+test("the builder's zoom keys zoom the run canvas in and out and back to 100%, fit view is its own, and the page itself doesn't zoom", async () => {
   const backend = fakeBackend();
   const root = await drawRun(backend);
   const viewport = () => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
@@ -554,6 +606,9 @@ test("the builder's zoom keys zoom the run canvas in and out and back to 100%, a
     assert.match(viewport(), /scale\(1\.2\)$/);
     await press(cards(root)[0], "0", { [MOD]: true });
     assert.match(viewport(), /scale\(1\)$/);
+    // Fit view is the run canvas's key too, though happy-dom lays out no cards for React Flow to fit.
+    const fit = await press(cards(root)[0], "!", { code: "Digit1", shiftKey: true });
+    assert.equal(fit.defaultPrevented, true);
   });
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });

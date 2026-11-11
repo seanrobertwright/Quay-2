@@ -12,10 +12,11 @@
 // the rest placed near their placed neighbours. Otherwise dagre lays the graph out. The run canvas
 // never writes a layout.
 //
-// It is read-only by construction: it is given no edit handlers and no draft to write to, and React
-// Flow drags, connects, selects and deletes nothing on it. Pan, zoom and fit view work, by pointer,
-// by its controls and by the builder's view keys (keymap.ts); every other canvas key does nothing
-// on it. It has no palette, no auto-arrange and no menu. Selecting a node comes with the node panel.
+// It is read-only by construction: it is given no edit handlers and no draft to write to, React
+// Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
+// Flow is the size React Flow measured a card at. Pan, zoom and fit view work, by pointer, by its
+// controls and by the builder's view keys (keymap.ts); every other canvas key does nothing on it.
+// It has no palette, no auto-arrange and no menu. Selecting a node comes with the node panel.
 import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -198,8 +199,8 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
       </div>
       {problems.length > 0 && (
         <ul aria-label="Run canvas problems" className="space-y-0.5 text-[#f85149]">
-          {problems.map((problem) => (
-            <li key={problem} className="flex items-start gap-1.5">
+          {problems.map((problem, n) => (
+            <li key={n} className="flex items-start gap-1.5">
               <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
               {problem}
             </li>
