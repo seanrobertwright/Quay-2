@@ -42,6 +42,7 @@ import { RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
+import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import { configSummary } from "./kinds.ts";
 import { commandFor } from "./keymap.ts";
 import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
@@ -336,6 +337,8 @@ interface RunCanvasProps {
   workflow: string;
   /** The revision the run runs, from its row in the Runs list; null before the list named it. */
   revision: number | null;
+  /** Why no row of the Runs list has named the run, while `revision` is null. */
+  unlisted: Unlisted;
   /** The run's name, for the heading. */
   runName: string;
   /** The run's nodes, from the view's `nodes[]`. */
@@ -350,7 +353,7 @@ interface RunCanvasProps {
 }
 
 /** The run canvas of a graph run, with a heading that names the run and its revision. */
-export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) => {
+export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...rest }) => {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="space-y-1.5 text-[11px] text-[#c9d1d9]">
@@ -359,7 +362,7 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) =>
         {revision !== null && `, revision ${revision}`}
       </h4>
       {revision === null ? (
-        <p className="text-[#8b949e]">The run canvas is drawn once the Runs list names the revision this run runs.</p>
+        <UnlistedRevision unlisted={unlisted} onUnreadable={rest.onUnreadable} />
       ) : (
         <RevisionCanvas revision={revision} labelledBy={headingId} {...rest} />
       )}
@@ -367,7 +370,38 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) =>
   );
 };
 
-const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revision: number; labelledBy: string }> = ({
+/** What the run canvas's place says while no row of the Runs list has named the run's revision. */
+function unlistedLine(unlisted: Unlisted): string {
+  switch (unlisted) {
+    case "reading":
+      return "Looking in the Runs list for the revision this run runs…";
+    case "atCap":
+      return `Quay can't tell which revision this run runs, because praxis lists only the newest ${RUNS_MAX_LIMIT} runs of a graph workflow, and this run isn't among them. The run canvas isn't drawn: the node table shows the run's node phases.`;
+    case "complete":
+      return "The Runs list doesn't name this run, so Quay can't tell which revision it runs. The run canvas isn't drawn: the node table shows the run's node phases.";
+  }
+}
+
+/**
+ * The run canvas's place while no row of the Runs list has named the run's revision: why, on a
+ * status line. Once Quay can't tell the revision, `onUnreadable` is called, so the node table opens.
+ */
+const UnlistedRevision: FC<{ unlisted: Unlisted; onUnreadable: () => void }> = ({ unlisted, onUnreadable }) => {
+  const unreadable = useRef(onUnreadable);
+  useEffect(() => {
+    unreadable.current = onUnreadable;
+  });
+  useEffect(() => {
+    if (unlisted !== "reading") unreadable.current();
+  }, [unlisted]);
+  return (
+    <p role="status" className="text-[#8b949e] break-words">
+      {unlistedLine(unlisted)}
+    </p>
+  );
+};
+
+const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName" | "unlisted"> & { revision: number; labelledBy: string }> = ({
   projectPath,
   workflow,
   revision,

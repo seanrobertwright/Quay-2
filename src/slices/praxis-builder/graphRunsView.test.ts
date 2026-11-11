@@ -430,6 +430,50 @@ test("a form asked to show a run, as a trigger's fire asks, opens on Runs with t
   assert.equal(button(root, /^Show run-3$/)?.getAttribute("aria-pressed"), "false");
 });
 
+// A run the Runs list doesn't name (#579): the list reads the newest 100 once to look for it, and
+// only when that could find it.
+
+/** Graph runs `newest` down to `oldest`, newest first, as the list lists them. */
+const runsFrom = (newest: number, oldest: number) => Array.from({ length: newest - oldest + 1 }, (_, i) => entry(newest - i));
+/** The limit each read of the list asked for, in order. */
+const limits = (backend: ReturnType<typeof fakeBackend>) => backend.reads().map((r) => r.args.limit);
+
+test("showing a run the first 20 name makes no read of the newest 100, whether a fire's Show run or the run's own Show opens it", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-35" }));
+  await act(async () => backend.reads()[0].answer(runs(runsFrom(40, 21))));
+  assert.equal(button(root, /^Show run-35$/)?.getAttribute("aria-pressed"), "true");
+  await click(button(root, /^Show run-22$/));
+  assert.equal(button(root, /^Show run-22$/)?.getAttribute("aria-pressed"), "true");
+  await tick(15_000);
+  assert.deepEqual(limits(backend), [20, 20], "only the poll that follows, at 20");
+  assert.ok(button(root, /^Show more$/), "Show more is still offered");
+});
+
+test("a run the first read doesn't name makes no read of the newest 100 when that read gave fewer runs than it asked for", async () => {
+  const backend = fakeBackend();
+  await render(form({ showRun: "wo-99" }));
+  await act(async () => backend.reads()[0].answer(runs(runsFrom(19, 1))));
+  assert.deepEqual(limits(backend), [20]);
+  await tick(15_000);
+  assert.deepEqual(limits(backend), [20, 20], "the list goes on at 20");
+});
+
+test("a run the list doesn't name makes no read of the newest 100 while the host can't be used, and makes it once a read gives 20 runs without it", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-99" }));
+  await act(async () => backend.reads()[0].answer({ kind: "hostDown", message: "Nothing answered at https://127.0.0.1:7443; is it running?" }));
+  assert.deepEqual(limits(backend), [20]);
+  await tick(60_000);
+  assert.deepEqual(limits(backend), [20, 20], "the failed read is made again at 20");
+  await act(async () => backend.reads()[1].answer(runs(runsFrom(140, 121))));
+  assert.deepEqual(limits(backend), [20, 20, 100], "the newest 100 are read once the host answers");
+  await act(async () => backend.reads()[2].answer(runs(runsFrom(140, 41))));
+  assert.equal(rows(root).length, 100);
+  await tick(15_000);
+  assert.deepEqual(limits(backend), [20, 20, 100, 100], "no other read of them: the polls that follow keep the raised limit, as after Show more");
+});
+
 test("a form not asked to show a run opens on the workflow, with no run detail", async () => {
   const backend = fakeBackend();
   const root = await render(form());

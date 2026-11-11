@@ -31,7 +31,7 @@ import { NodePanel, type HoldPanelLink } from "./NodePanel.tsx";
 import { NodeTable } from "./NodeTable.tsx";
 import { RunCanvas } from "./RunCanvas.tsx";
 import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, holdPanelName, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
-import type { RunPageLookup, RunRow } from "./runsList.ts";
+import type { RunPageLookup, RunRow, Unlisted } from "./runsList.ts";
 import { useRunDetail } from "./useRunDetail.ts";
 
 interface GraphRunDetailProps {
@@ -44,6 +44,8 @@ interface GraphRunDetailProps {
    * revision, kept once a row named it, the times, and the fallback for what `status` doesn't give.
    */
   row: RunRow | null;
+  /** Why no row of the Runs list has named the run; read only while `row` is null. */
+  unlisted: Unlisted;
   /** True while the Runs view is on screen. */
   shown: boolean;
   /** Looks up the run's page when neither `status` nor the row gave it. */
@@ -89,6 +91,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   workflow,
   workOrderId,
   row,
+  unlisted,
   shown,
   runPage,
   runInTerminal,
@@ -148,6 +151,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
               projectPath={projectPath}
               workflow={workflow}
               revision={revision}
+              unlisted={unlisted}
               runName={name}
               nodes={run.nodes.rows}
               revisions={revisions}

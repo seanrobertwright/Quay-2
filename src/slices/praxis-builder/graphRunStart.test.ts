@@ -14,7 +14,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createDraft, type Draft } from "./drafts.ts";
 import { createGraphHost, type GraphHost } from "./graphHost.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
-import { graphRunEntry, graphRunsRecord } from "./fixtures/runs.ts";
+import { graphOperatorView, graphRunEntry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { createRunStarts, GRAPH_RUN } from "./runStart.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
@@ -417,6 +417,33 @@ test("exit 0 selects and follows the new run, and a toast offers Open in browser
   await click(button(toast, /^Open in browser$/));
   await flush();
   assert.deepEqual(backend.opened(), [CREATED_PAGE]);
+});
+
+test("a run Run creates is named by the read its creation asks for, so a list full at 20 makes no read of the newest 100 (#579)", async () => {
+  const backend = fakeBackend();
+  const root = await renderRuns();
+  const older = Array.from({ length: 20 }, (_, i) => graphRunEntry(40 - i));
+  await act(async () => backend.reads()[0].answer(graphRunsRecord(NAME, older)));
+  const call = await startRun(backend, root);
+  await act(async () => call.answer(created()));
+  assert.deepEqual(backend.reads().map((r) => r.args.limit), [20, 20], "only the read its creation asks for");
+  const newRun = graphRunEntry(41, { workOrderId: CREATED_ID, runId: CREATED_RUN });
+  await act(async () => backend.reads()[1].answer(graphRunsRecord(NAME, [newRun, ...older.slice(0, 19)])));
+  assert.equal(button(root, new RegExp(`^Show ${CREATED_RUN}$`))?.getAttribute("aria-pressed"), "true", "the new run is selected");
+  assert.deepEqual(backend.reads().map((r) => r.args.limit), [20, 20]);
+});
+
+test("a run Run creates is looked up until the read its creation asks for ends, even when the list held every run before it (#579)", async () => {
+  const backend = fakeBackend();
+  const root = await renderRuns();
+  await act(async () => backend.reads()[0].answer(graphRunsRecord(NAME, [graphRunEntry(1)])));
+  const call = await startRun(backend, root);
+  await act(async () => call.answer(created()));
+  const status = backend.statuses().find((s) => s.args.workOrderId === CREATED_ID) as Sent;
+  await act(async () => status.answer(statusRecord(graphOperatorView(1, { workOrderId: CREATED_ID, runId: CREATED_RUN }))));
+  const detail = root.querySelector(`[aria-label="Run ${CREATED_RUN}"]`) as HTMLElement;
+  assert.equal(text(detail.querySelector('section [role="status"]')), "Looking in the Runs list for the revision this run runs…", "the list read before the run can't name it");
+  assert.equal(button(detail, /^Nodes/)?.getAttribute("aria-expanded"), "false", "so the node table doesn't open");
 });
 
 test("exit 7 says a run awaiting approval blocks new runs, with Show run and Open in browser at blockingRunAddress", async () => {

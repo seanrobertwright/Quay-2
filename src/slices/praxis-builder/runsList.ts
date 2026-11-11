@@ -71,9 +71,18 @@ export interface RunsListView {
   canShowMore: boolean;
   /** True when the list holds `RUNS_MAX_LIMIT` runs, so older ones can't be shown. */
   atCap: boolean;
+  /** True when the last list read gave fewer runs than it asked for, so the host has no older run to list. */
+  complete: boolean;
   /** True when the host that answered is simulated, so its approvals aren't a person's. */
   simulated: boolean;
 }
+
+/**
+ * Why the Runs list names no row of a run (#579): it may name it yet (`reading`); it holds the
+ * newest `RUNS_MAX_LIMIT` runs, the most praxis lists, without it (`atCap`); or it holds every run
+ * the host has without it (`complete`).
+ */
+export type Unlisted = "reading" | "atCap" | "complete";
 
 /** Where a run's page on the host is, or why Quay couldn't find out. */
 export type RunPageLookup = { address: string } | { problem: string };
@@ -160,14 +169,14 @@ export const GRAPH_RUNS: RunsSource = {
   },
 };
 
-type Shown = Pick<RunsListView, "runs" | "readAt" | "dimmed" | "problem" | "simulated">;
+type Shown = Pick<RunsListView, "runs" | "readAt" | "dimmed" | "problem" | "complete" | "simulated">;
 
 function viewOf(shown: Shown, limit: number): RunsListView {
   const count = shown.runs?.length ?? 0;
   return { ...shown, limit, canShowMore: limit < RUNS_MAX_LIMIT && count >= limit, atCap: count >= RUNS_MAX_LIMIT };
 }
 
-const NOTHING_SHOWN: Shown = { runs: null, readAt: null, dimmed: false, problem: null, simulated: false };
+const NOTHING_SHOWN: Shown = { runs: null, readAt: null, dimmed: false, problem: null, complete: false, simulated: false };
 
 /** A list's view before its first read. */
 export const INITIAL_RUNS_VIEW: RunsListView = viewOf(NOTHING_SHOWN, RUNS_FIRST_LIMIT);
@@ -190,20 +199,23 @@ export function createRunsList({ projectPath, name, source = TEMPLATE_RUNS, call
 
   const poller = createPoller(async (signal) => {
     const id = requests.begin();
-    const outcome = await praxisCall(source.runsCommand, { projectPath, name, limit }, signal, call);
+    const asked = limit;
+    const outcome = await praxisCall(source.runsCommand, { projectPath, name, limit: asked }, signal, call);
     if (!requests.isNewest(id) || disposed) return null;
-    return recordAndNextDelay(outcome);
+    return recordAndNextDelay(outcome, asked);
   });
 
   /**
-   * Keeps the newest read's outcome and returns the wait before the next read: 15 s after a list,
-   * 60 s after any failure. The last list stays; only a host-level failure dims it.
+   * Keeps the newest read's outcome, of a read that asked for `asked` runs, and returns the wait
+   * before the next read: 15 s after a list, 60 s after any failure. The last list stays; only a
+   * host-level failure dims it.
    */
-  function recordAndNextDelay(outcome: CallOutcome): number {
+  function recordAndNextDelay(outcome: CallOutcome, asked: number): number {
     if (outcome.kind === "cancelled") return LIST_POLL_MS;
     if (outcome.kind === "record" && Array.isArray(outcome.record.runs)) {
       const rows = outcome.record.runs.map(source.parseRun).filter((r): r is RunRow => r !== null);
-      shown = { runs: rows, readAt: Date.now(), dimmed: false, problem: null, simulated: outcome.record.simulatedIdentity === true };
+      const simulated = outcome.record.simulatedIdentity === true;
+      shown = { runs: rows, readAt: Date.now(), dimmed: false, problem: null, complete: rows.length < asked, simulated };
       changed();
       return LIST_POLL_MS;
     }

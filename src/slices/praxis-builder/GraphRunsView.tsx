@@ -6,7 +6,7 @@
 // starts a run of the host's admitted revision after a confirm (#466): a created run is selected
 // and followed, and every other outcome gets a notice of its own, as for a template run. A run
 // to show when the view opens, such as one a graph trigger's fire created (#478), starts selected.
-import { useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunConfirm } from "./GraphRunConfirm.tsx";
 import { GraphRunDetail } from "./GraphRunDetail.tsx";
@@ -15,7 +15,7 @@ import { graphRunRefusedBy } from "./graphRunStart.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { RunControl } from "./RunControl.tsx";
 import { RunsListBody, SimulatedRunsNotice } from "./RunsListBody.tsx";
-import { GRAPH_RUNS } from "./runsList.ts";
+import { GRAPH_RUNS, type RunsList, type RunsListView, type Unlisted } from "./runsList.ts";
 import { graphRunStarts } from "./runStart.ts";
 import type { DefinitionRef } from "./types.ts";
 import { useRunPages } from "./useRunPages.ts";
@@ -39,14 +39,41 @@ interface GraphRunsViewProps {
   revisions?: RevisionCache;
 }
 
+/** A run whose detail is shown, and the runs the Runs list held when it was shown. */
+interface Showing {
+  workOrderId: string;
+  runsThen: RunsListView["runs"];
+}
+
+/**
+ * The run whose detail is shown (#465, #579): `initialRun` at first, then the one `show` picks, or
+ * none; its row in the Runs list; and while the list names no row of it, why. Only a read that
+ * ends after the run was shown can tell, since the one before may be older than the run, as it is
+ * for a run just created. When that read is full at the first limit without the run, the list
+ * reads the newest 100 once, as Show more does.
+ */
+function useShownRun(list: RunsList | null, view: RunsListView, initialRun: string | undefined) {
+  const [showing, setShowing] = useState<Showing | null>(initialRun === undefined ? null : { workOrderId: initialRun, runsThen: null });
+  const selected = showing?.workOrderId ?? null;
+  const row = view.runs?.find((r) => r.workOrderId === selected) ?? null;
+  // The list as the last read since the run was shown left it; null before such a read.
+  const since = showing !== null && view.runs !== null && view.runs !== showing.runsThen ? view : null;
+  const unlisted: Unlisted = since?.atCap ? "atCap" : since?.complete ? "complete" : "reading";
+  const widen = row === null && since !== null && since.canShowMore && !since.dimmed;
+  useEffect(() => {
+    if (widen) list?.showMore();
+  }, [list, widen]);
+  const show = (workOrderId: string | null) =>
+    setShowing((now) => (workOrderId === null ? null : now?.workOrderId === workOrderId ? now : { workOrderId, runsThen: view.runs }));
+  return { selected, row, unlisted, show };
+}
+
 export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [], initialRun, revisions }) => {
   const { list, view } = useRunsList(projectPath, name, shown, GRAPH_RUNS);
   const pages = useRunPages(list);
-  // The `workOrderId` of the run whose detail is shown, if any.
-  const [selected, setSelected] = useState<string | null>(initialRun ?? null);
-  const selectedRow = view.runs?.find((r) => r.workOrderId === selected) ?? null;
+  const { selected, row, unlisted, show } = useShownRun(list, view, initialRun);
   const run = useRunStart(graphRunStarts, projectPath, name, (workOrderId) => {
-    setSelected(workOrderId);
+    show(workOrderId);
     list?.refresh();
   });
 
@@ -58,7 +85,7 @@ export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown
         refusedBy={host ? graphRunRefusedBy(name, host.view) : null}
         confirm={(dialog) => <GraphRunConfirm projectPath={projectPath} name={name} host={host} unsaved={unsaved} {...dialog} />}
         onStart={pages.clearNotice}
-        onShowRun={setSelected}
+        onShowRun={show}
         onOpen={pages.openPage}
       />
       {view.simulated && <SimulatedRunsNotice />}
@@ -68,12 +95,13 @@ export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown
           projectPath={projectPath}
           workflow={name}
           workOrderId={selected}
-          row={selectedRow}
+          row={row}
+          unlisted={unlisted}
           shown={shown}
           runPage={list.runPage}
           runInTerminal={runInTerminal}
           revisions={revisions}
-          onClose={() => setSelected(null)}
+          onClose={() => show(null)}
         />
       )}
       <RunsListBody
@@ -82,7 +110,7 @@ export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown
         notice={pages.notice}
         onShowMore={() => list?.showMore()}
         onOpenInBrowser={pages.openInBrowser}
-        selection={{ selected, onSelect: setSelected }}
+        selection={{ selected, onSelect: show }}
       />
     </section>
   );
