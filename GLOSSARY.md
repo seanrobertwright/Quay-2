@@ -19,7 +19,7 @@ shown verbatim. Quay never shows the node's SDK `status` in its place.
 _Avoid_: node state, node status
 
 **Node panel**:
-The read-only panel for the selected node of a run canvas.
+The read-only panel beside a graph run's run canvas for the node selected on it or in the node table.
 _Avoid_: inspector, which stays the graph canvas's editing panel
 
 **Node table**:
