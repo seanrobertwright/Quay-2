@@ -9,8 +9,12 @@
 //
 // Positions come from the project's saved layout for the graph's id, when it has one, through the
 // graph canvas's rule for a partial layout (`placeNodes`, flow/layout.ts): saved positions kept and
-// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. The run canvas
-// never writes a layout.
+// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. A layout file
+// that is there but can't be used, as `praxis_read` reports it, is ignored, and a note above the
+// drawing says so and why, in the graph canvas's words (`layoutIgnoredText`, model.ts). The note is
+// information, not a problem line: the revision is still drawn. Nothing is said when the project has
+// no graph of that id or no layout file for it, or when they can't be read. The run canvas never
+// writes a layout.
 //
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
 // Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
@@ -244,7 +248,7 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revis
           // Focusable, so a click on the run canvas puts focus in it for its keys.
           tabIndex={-1}
           aria-labelledby={labelledBy}
-          // A screen reader working the drawing hears the note too.
+          // The note is also the drawing's description, which a screen reader gives as focus enters it.
           aria-describedby={layoutProblem === null ? undefined : noteId}
         >
           <Background gap={20} color="#21262d" />
@@ -270,10 +274,10 @@ const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
 
 /**
  * The project's saved layout for graph `graphId`, which `praxis_read` gives with the project's own
- * graph of that id: the node positions of its layout file, and, when that file is there but can't
- * be used, why it was ignored, as `praxis_read` reports it. No positions when the project has no
- * such graph, or no layout file for it, or one that can't be used, or they can't be read, so dagre
- * places every node; and no problem but for a layout file that can't be used.
+ * graph of that id: the node positions of its layout file, and why that file was ignored when it is
+ * there but can't be used, as `praxis_read` reports it. No positions when the project has no such
+ * graph, no layout file for it or one that can't be used, so dagre places every node. A failed read
+ * gives no positions and no problem, so the run canvas says nothing of it.
  */
 async function savedPositions(projectPath: string, graphId: string): Promise<SavedLayout> {
   if (graphId === "") return NO_LAYOUT;
