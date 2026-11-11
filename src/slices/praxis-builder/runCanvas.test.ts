@@ -434,13 +434,18 @@ test("a graph node with no view entry draws no chip and says no state is reporte
   );
 });
 
+/** The recorded refusal of a revision the host doesn't hold. */
+function refused(): CallOutcome {
+  const refusal = recordedStdout("graphs show: a revision, not submitted");
+  return { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal };
+}
+
 test("when the revision can't be read, the canvas area gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
   await answer(backend.statuses()[0], severalPhases());
   assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the table starts collapsed");
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  await answer(backend.revisionReads()[0], { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal });
+  await answer(backend.revisionReads()[0], refused());
   assert.match(text(runCanvas(root)), /Revision 1 of release-train couldn't be read: The host refused the request \(NOT_FOUND\)\./);
   assert.deepEqual(cardIds(root), []);
   assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
@@ -455,13 +460,7 @@ test("when the revision can't be read, the canvas area gives the host's problem 
   assert.equal(button(runCanvas(root) as HTMLElement, /^Try again$/), undefined);
 });
 
-/** The recorded refusal of a revision the host doesn't hold. */
-function refused(): CallOutcome {
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  return { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal };
-}
-
-/** Shows run 1, refuses its revision read, and presses Try again with focus on it. Returns Try again. */
+/** Answers shown run 1's first read, refuses its revision read, and presses Try again with focus on it. Returns Try again. */
 async function triedAgain(backend: Backend, root: HTMLElement): Promise<HTMLButtonElement> {
   await answer(backend.statuses()[0], severalPhases());
   await answer(backend.revisionReads()[0], refused());
