@@ -23,7 +23,13 @@
 // its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
 // selected card has a ring around it and is the current one to a screen reader. Every other key
 // of the graph canvas, adding to the selection included, does nothing on it.
-import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
+//
+// A card that takes keyboard focus while not wholly in view is panned into view (#575), as on the
+// graph canvas, and so is the selected card, when the selection changes and when the run canvas
+// changes size, as when the node panel opens beside it and narrows it. Each is the graph canvas's
+// reveal (reveal.ts): a pan at the same zoom, without animation. A read of the run that keeps the
+// selection moves nothing, so a person who panned away from the selected card stays there.
+import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Background,
@@ -31,6 +37,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   type Dimensions,
   type Node,
   type NodeChange,
@@ -48,6 +55,7 @@ import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPositio
 import { prefersReducedMotion } from "./motion.ts";
 import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
+import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import type { DefinitionFile } from "./types.ts";
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
@@ -146,8 +154,8 @@ interface DrawnProps {
   selected: string | null;
   /** Selects node `nodeId`, when its card is chosen. */
   onSelect: (nodeId: string) => void;
-  /** The drawing's element, which takes focus. */
-  drawingRef: Ref<HTMLDivElement>;
+  /** The drawing's element, which takes focus, and whose box a card is brought into view in. */
+  drawingRef: RefObject<HTMLDivElement | null>;
 }
 
 /** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
@@ -174,6 +182,15 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
     () => cards.map((c) => (c.id === selected ? { ...c, selected: true, domAttributes: { "aria-current": "true" as const } } : c)),
     [cards, selected]
   );
+  // The selected card is brought into view when the selection changes, checked against the
+  // drawing's size once the change is drawn, so the node panel opening beside it can't hide it,
+  // and again when the drawing changes size, which React Flow measures. Nothing else moves it.
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
+  useEffect(() => {
+    const node = selected === null ? undefined : view.getInternalNode(selected);
+    if (node) reveal(drawingRef.current, view, cardRect(view, node.internals.positionAbsolute, node.measured));
+  }, [view, drawingRef, selected, width, height]);
   // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
   // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -223,6 +240,8 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
           fitViewOptions={RUN_FIT}
           minZoom={0.2}
           onKeyDown={onKeyDown}
+          // A card that takes keyboard focus while not wholly in view is panned into view.
+          onFocus={(e) => revealFocused(drawingRef.current, view, e.target)}
           // Focusable, so a click on the run canvas puts focus in it for its keys.
           tabIndex={-1}
           aria-labelledby={labelledBy}
