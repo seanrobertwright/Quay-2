@@ -2,7 +2,8 @@
 // Component tests for a graph run's detail (#444, #465, #568, #569): its run-level facts and its
 // node table, followed by polled `praxis status <wo> --format aiws-graph-operator-view/1`, with the
 // template run detail's backoff, waiting banner and Trust certificate, and a hold panel per
-// `aiws-graph-hold-card/1`.
+// `aiws-graph-hold-card/1`. Its run canvas (#571) is in runCanvas.test.ts: here its revision read
+// is left unanswered.
 // They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
 // out-of-process boundary, and the terminal the window opens. Views are hand-made in the recorded
 // view's shape, and the recorded views themselves (graph_outputs.fixture.json) are drawn too.
@@ -12,6 +13,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
+import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
 import type { CallOutcome } from "./praxisHost.ts";
 import { BROWSER_ORIGIN, graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout } from "./fixtures/graphOutputs.ts";
@@ -24,8 +26,13 @@ const PROJECT = "C:/project";
 const NAME = "nightly-build";
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
+/** Each test's own revision cache, so no test reads a revision another kept. */
+let revisions: RevisionCache;
 
-beforeEach(() => mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW }));
+beforeEach(() => {
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW });
+  revisions = createRevisionCache();
+});
 /** Unmounts the mounted form, if any, and removes its container. */
 const unmount = () => {
   if (!mounted) return;
@@ -68,6 +75,7 @@ function fakeBackend() {
             return resolve({ ids: [], unchecked: [] });
           case "praxis_host_graph_runs":
           case "praxis_host_graph_status":
+          case "praxis_host_graph_revision":
             return;
           case "praxis_host_terminal_argv":
             return resolve(["node", "C:/sdk/engine/src/praxis.mjs", String(args.command)]);
@@ -109,6 +117,7 @@ function form(props: { shown?: boolean } = {}) {
     onOpen: () => {},
     onValidated: () => {},
     runsShown: props.shown ?? true,
+    revisions,
     runInTerminal: async (cwd: string, argv: string[]) => {
       terminals.push({ cwd, argv });
       return true;
@@ -246,7 +255,6 @@ test("showing a run reads the graph run status verb for its work order and shows
   assert.doesNotMatch(text(header(root)), /Held|Awaiting approval/);
   assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)));
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 45)));
-  assert.equal(root.querySelector("canvas, .react-flow, [data-graph-canvas]"), null, "the detail draws no graph");
 });
 
 /** Asserts no status read follows within `ms - 1`, and one does at `ms`; answers it with `outcome`. */
@@ -564,7 +572,10 @@ test("the detail has no approve, pause, cancel or hold control, not even a disab
   for (const name of names) assert.doesNotMatch(name, /approve|accept|pause|resume|cancel|abandon|hold|reconcile|retry/i, name);
   assert.equal(detail(root)?.querySelectorAll("[aria-disabled], button[disabled]").length, 0, "not even disabled ones");
   for (const s of backend.sent) {
-    assert.ok(["praxis_validate", "praxis_check_graph_workflow", "praxis_graph_workflow_triggers", "praxis_host_graph_runs", "praxis_host_graph_status"].includes(s.command), s.command);
+    assert.ok(
+      ["praxis_validate", "praxis_check_graph_workflow", "praxis_graph_workflow_triggers", "praxis_host_graph_runs", "praxis_host_graph_status", "praxis_host_graph_revision"].includes(s.command),
+      s.command,
+    );
   }
 });
 

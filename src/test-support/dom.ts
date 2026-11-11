@@ -1,7 +1,8 @@
 /// <reference types="node" />
 // Component tests under `node --test`. Importing this module installs a happy-dom window as the
 // globals React renders into, a fake Tauri `invoke` (the out-of-process boundary), stand-ins for
-// Tauri's event listening, and a load hook that compiles `.tsx` with TypeScript, which Node's own type stripping doesn't handle.
+// Tauri's event listening, and a load hook that compiles `.tsx` with TypeScript, which Node's own type stripping doesn't handle,
+// and loads a stylesheet a component imports as an empty module.
 // Static imports are all loaded before any module runs, so a test imports the components it
 // renders with `await import(...)` after this module.
 import { readFileSync } from "node:fs";
@@ -12,6 +13,8 @@ import { Window } from "happy-dom";
 
 registerHooks({
   load(url, context, nextLoad) {
+    // A stylesheet a component imports, such as React Flow's, styles nothing a test reads.
+    if (url.startsWith("file:") && url.endsWith(".css")) return { format: "module", source: "", shortCircuit: true };
     if (!url.startsWith("file:") || !url.endsWith(".tsx")) return nextLoad(url, context);
     const source = readFileSync(fileURLToPath(url), "utf8");
     const { outputText } = ts.transpileModule(source, {
@@ -40,7 +43,8 @@ Object.assign(window, {
 });
 
 const globals = globalThis as Record<string, unknown>;
-for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle"]) {
+// React Flow, which draws the run canvas, observes its pane's size with a bare `ResizeObserver`.
+for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle", "ResizeObserver"]) {
   // Node's own `navigator` is a getter, so each global is defined rather than assigned.
   Object.defineProperty(globalThis, key, { value: (window as unknown as Record<string, unknown>)[key], configurable: true, writable: true });
 }

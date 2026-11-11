@@ -1,0 +1,319 @@
+// A graph run's run canvas (#571): the main graph of the revision the run runs, as the host gives
+// it (graphRevision.ts), drawn read-only in the run's detail above its node table. It never draws
+// the project's saved graph file. Its cards are the graph canvas's (NodeCard.tsx), at the same size
+// and without the problem count, each with its node phase's chip over its top edge, its border in
+// the phase's tone and its counter line at its foot, as the node table draws them (NodePhaseChip.tsx).
+// A node the view has no entry for draws no chip and "no state reported"; an entry with no node in
+// the graph is in the node table only; each such mismatch is also a problem line. A SUBWORKFLOW
+// node is one card: child graphs are never drawn.
+//
+// Positions come from the project's saved layout for the graph's id, when it has one, through the
+// graph canvas's rule for a partial layout (`placeNodes`, flow/layout.ts): saved positions kept and
+// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. The run canvas
+// never writes a layout.
+//
+// It is read-only by construction: it is given no edit handlers and no draft to write to, and React
+// Flow drags, connects, selects and deletes nothing on it. Pan, zoom and fit view work, by pointer,
+// by its controls and by the builder's view keys (keymap.ts); every other canvas key does nothing
+// on it. It has no palette, no auto-arrange and no menu. Selecting a node comes with the node panel.
+import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { RotateCw, TriangleAlert } from "lucide-react";
+import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
+import type { GraphRunNode } from "./graphRunDetail.ts";
+import type { RevisionCache } from "./graphRevision.ts";
+import { configSummary } from "./kinds.ts";
+import { commandFor } from "./keymap.ts";
+import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
+import { prefersReducedMotion } from "./motion.ts";
+import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
+import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
+import type { DefinitionFile } from "./types.ts";
+
+const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
+
+/** A run canvas card's data: the graph node, and its row from the view's nodes, or null when the view has none for it. */
+interface RunNodeData extends PraxisNodeData {
+  run: GraphRunNode | null;
+}
+type RunFlowNode = Node<RunNodeData>;
+
+/** The border of a card for a node the view has no entry for. */
+const NO_STATE_FRAME = "border-dashed border-[#30363d]";
+
+const RunCard: FC<NodeProps<RunFlowNode>> = ({ data }) => {
+  const { node, run } = data;
+  const footer =
+    run === null ? (
+      <span className="italic text-[#8b949e]">no state reported</span>
+    ) : (
+      <span data-counter className="text-[#8b949e]">
+        {run.counter}
+      </span>
+    );
+  return (
+    <NodeCard node={node} frame={run === null ? NO_STATE_FRAME : phaseFrame(run.phase)} connectable={false} footer={footer}>
+      {run !== null && (
+        <span className="absolute -top-3 right-2 rounded-full bg-[#161b22]">
+          <NodePhaseChip phase={run.phase} />
+        </span>
+      )}
+    </NodeCard>
+  );
+};
+
+const RUN_NODE_TYPES = { [PRAXIS_NODE_TYPE]: RunCard };
+
+/** How a card is named to a screen reader: its kind, id and settings, then its node phase and counter line. */
+function runCardLabel(node: PraxisNode, run: GraphRunNode | null): string {
+  const summary = configSummary(node) || "no settings";
+  const state = run === null ? "no state reported" : [run.phase, run.counter].filter((s) => s !== null).join(", ");
+  return `${node.kind || "No kind"} ${node.id}, ${summary}, ${state}`;
+}
+
+/**
+ * The run's node of each graph node, by id, and a problem line for each mismatch between them: a
+ * graph node the view has no entry for, then an entry with no graph node.
+ */
+function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision: number): { runs: Map<string, GraphRunNode>; problems: string[] } {
+  const runs = new Map(nodes.map((n) => [n.nodeId, n]));
+  const drawn = new Set(graph.nodes.map((n) => n.id));
+  const problems = [
+    ...graph.nodes.filter((n) => !runs.has(n.id)).map((n) => `Node ${n.id} is in revision ${revision}'s graph, but the host reports no state for it.`),
+    ...nodes.filter((n) => !drawn.has(n.nodeId)).map((n) => `Node ${n.nodeId} has a node phase on the host, but isn't in revision ${revision}'s graph, so only the node table shows it.`),
+  ];
+  return { runs, problems };
+}
+
+/** The first fit shows the whole graph, no larger than its cards' own size. One identity, as GraphCanvas.tsx's `FIRST_FIT` explains. */
+const RUN_FIT = { maxZoom: 1 } as const;
+
+/** How long a pan or zoom the keys start takes, unless the system asks for reduced motion. */
+const VIEW_MOVE_MS = 200;
+
+interface DrawnProps {
+  graph: PraxisGraph;
+  saved: ReadonlyMap<string, XYPosition>;
+  nodes: readonly GraphRunNode[];
+  revision: number;
+  /** The id of the heading that names the canvas. */
+  labelledBy: string;
+}
+
+/** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
+const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy }) => {
+  const view = useReactFlow();
+  const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
+  const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
+  const cards: RunFlowNode[] = useMemo(
+    () =>
+      flow.nodes.map((n) => {
+        const run = runs.get(n.id) ?? null;
+        return { ...n, ariaLabel: runCardLabel(n.data.node, run), className: NODE_FOCUS_CLASS, data: { ...n.data, run } };
+      }),
+    [flow.nodes, runs]
+  );
+  // The builder's view keys, which the builder itself runs only on the graph canvas.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const duration = prefersReducedMotion() ? 0 : VIEW_MOVE_MS;
+    switch (commandFor(e.nativeEvent, "canvas")) {
+      case "fit-view":
+        void view.fitView({ duration });
+        break;
+      case "zoom-in":
+        void view.zoomIn({ duration });
+        break;
+      case "zoom-out":
+        void view.zoomOut({ duration });
+        break;
+      case "zoom-reset":
+        void view.zoomTo(1, { duration });
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+  return (
+    <>
+      <div className="h-80 rounded-md border border-[#30363d] overflow-hidden">
+        <ReactFlow
+          nodes={cards}
+          edges={flow.edges}
+          nodeTypes={RUN_NODE_TYPES}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          edgesFocusable={false}
+          deleteKeyCode={null}
+          selectionKeyCode={null}
+          multiSelectionKeyCode={null}
+          disableKeyboardA11y
+          colorMode="dark"
+          fitView
+          fitViewOptions={RUN_FIT}
+          minZoom={0.2}
+          onKeyDown={onKeyDown}
+          // Focusable, so a click on the canvas puts focus in it for its keys.
+          tabIndex={-1}
+          aria-labelledby={labelledBy}
+        >
+          <Background gap={20} color="#21262d" />
+          <Controls position="bottom-right" showInteractive={false} />
+        </ReactFlow>
+      </div>
+      {problems.length > 0 && (
+        <ul aria-label="Run canvas problems" className="space-y-0.5 text-[#f85149]">
+          {problems.map((problem) => (
+            <li key={problem} className="flex items-start gap-1.5">
+              <TriangleAlert className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+              {problem}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+};
+
+/**
+ * The node positions of the project's saved layout for graph `graphId`. None when the project
+ * has no layout for it, or it can't be read, so dagre places every node.
+ */
+async function savedPositions(projectPath: string, graphId: string): Promise<Map<string, XYPosition>> {
+  if (graphId === "") return new Map();
+  try {
+    const file = await invoke<DefinitionFile>("praxis_read", { projectPath, kind: "graphs", id: graphId });
+    return parseLayoutPositions(file.layout);
+  } catch {
+    return new Map();
+  }
+}
+
+/** Where the run canvas's revision is: being read, not read, read but not drawn, or drawn with its saved positions. */
+type CanvasState =
+  | { state: "reading" }
+  | { state: "failed"; problem: string }
+  | { state: "undrawn"; reason: string }
+  | { state: "drawn"; graph: PraxisGraph; saved: ReadonlyMap<string, XYPosition> };
+
+const READING: CanvasState = { state: "reading" };
+
+/**
+ * Revision `revision` of `workflow`, through `revisions`, with the saved layout of its graph, and a
+ * way to read it again. `onUnreadable` is called each time it can't be read. A result for another
+ * revision or an earlier try is never shown as this one's.
+ */
+function useRevision(
+  projectPath: string,
+  workflow: string,
+  revision: number,
+  revisions: RevisionCache,
+  onUnreadable: () => void
+): { state: CanvasState; retry: () => void } {
+  const [attempt, setAttempt] = useState(0);
+  const key = JSON.stringify([projectPath, workflow, revision, attempt]);
+  const [shown, setShown] = useState<{ key: string; state: CanvasState } | null>(null);
+  const unreadable = useRef(onUnreadable);
+  useEffect(() => {
+    unreadable.current = onUnreadable;
+  });
+  useEffect(() => {
+    let live = true;
+    void revisions.read(projectPath, workflow, revision).then(async (read) => {
+      if (!live) return;
+      if (read.kind === "failed") {
+        setShown({ key, state: { state: "failed", problem: read.problem } });
+        unreadable.current();
+      } else if (read.kind === "undrawn") {
+        setShown({ key, state: { state: "undrawn", reason: read.reason } });
+      } else {
+        const saved = await savedPositions(projectPath, read.graph.id);
+        if (live) setShown({ key, state: { state: "drawn", graph: read.graph, saved } });
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [revisions, projectPath, workflow, revision, key]);
+  return { state: shown?.key === key ? shown.state : READING, retry: () => setAttempt((n) => n + 1) };
+}
+
+/** What the status line says of the revision, or nothing once it is drawn. */
+function statusLine(state: CanvasState, workflow: string, revision: number): string {
+  switch (state.state) {
+    case "reading":
+      return `Reading revision ${revision} of ${workflow}…`;
+    case "failed":
+      return `Revision ${revision} of ${workflow} couldn't be read: ${state.problem}`;
+    case "undrawn":
+      return `Revision ${revision} of ${workflow} isn't drawn. ${state.reason} The node table lists the run's nodes.`;
+    case "drawn":
+      return "";
+  }
+}
+
+interface RunCanvasProps {
+  projectPath: string;
+  /** The graph workflow the run is a run of. */
+  workflow: string;
+  /** The revision the run runs, from its row in the Runs list; null before the list named it. */
+  revision: number | null;
+  /** The run's name, for the heading. */
+  runName: string;
+  /** The run's nodes, from the view's `nodes[]`. */
+  nodes: readonly GraphRunNode[];
+  revisions: RevisionCache;
+  /** Called each time the revision can't be read, so the node table can open in the canvas's place. */
+  onUnreadable: () => void;
+}
+
+/** The run canvas of a graph run, with a heading that names the run and its revision. */
+export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) => {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId} className="space-y-1.5 text-[11px] text-[#c9d1d9]">
+      <h4 id={headingId} className="font-semibold">
+        Run canvas: {runName}
+        {revision !== null && `, revision ${revision}`}
+      </h4>
+      {revision === null ? (
+        <p className="text-[#8b949e]">The run canvas is drawn once the Runs list names the revision this run runs.</p>
+      ) : (
+        <RevisionCanvas revision={revision} labelledBy={headingId} {...rest} />
+      )}
+    </section>
+  );
+};
+
+const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revision: number; labelledBy: string }> = ({
+  projectPath,
+  workflow,
+  revision,
+  nodes,
+  revisions,
+  onUnreadable,
+  labelledBy,
+}) => {
+  const { state, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
+  return (
+    <>
+      <p role="status" className={state.state === "failed" ? "text-[#f85149] break-words" : "text-[#8b949e] break-words"}>
+        {statusLine(state, workflow, revision)}
+      </p>
+      {state.state === "failed" && (
+        <button type="button" onClick={retry} className={BUTTON}>
+          <RotateCw className="w-3 h-3" aria-hidden="true" />
+          Try again
+        </button>
+      )}
+      {state.state === "drawn" && (
+        <ReactFlowProvider>
+          <DrawnCanvas graph={state.graph} saved={state.saved} nodes={nodes} revision={revision} labelledBy={labelledBy} />
+        </ReactFlowProvider>
+      )}
+    </>
+  );
+};
