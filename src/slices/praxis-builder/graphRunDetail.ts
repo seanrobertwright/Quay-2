@@ -1,7 +1,9 @@
 // A graph run's detail (#444, #465, #568, #569): its run-level facts and its nodes, read from
 // `praxis status <wo> --format aiws-graph-operator-view/1 --json` through the same follow as a
-// template run's detail (runDetail.ts), so it has the same delays and stop rules. It has no UI of
-// its own; GraphRunDetail.tsx draws it, and NodeTable.tsx its nodes.
+// template run's detail (runDetail.ts), with the same delays and stop rules but a narrower
+// person-wait (#570): a run waiting for a person is read every 15 s only while none of its nodes
+// is active, since an active node changes with no one deciding. It has no UI of its own;
+// GraphRunDetail.tsx draws it, and NodeTable.tsx its nodes.
 //
 // `aiws-graph-operator-view/1` is `STABLE` (GRAPH-WORKFLOWS.md, "Graph operator view", promoted in
 // AI-WS-SDK #659): a field or a value of its closed enums changes only in a new format, which the
@@ -13,6 +15,7 @@
 // `revision` is the snapshot's, so those come from the row, whose `workflowRevision` is the
 // admitted revision that runs.
 import { hasOwn, isObject } from "./model.ts";
+import { isActiveNodePhase } from "./nodePhase.ts";
 import { holdOf, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
 import type { RunRow } from "./runsList.ts";
 
@@ -72,6 +75,13 @@ export interface GraphRunDetail extends FollowedRun {
   holds: GraphHold[];
   /** The run's nodes, from the view's `nodes[]`; null before the first read. */
   nodes: GraphRunNodes | null;
+  /** True when the run waits for a person in the browser: held, or awaiting a decision. */
+  waiting: boolean;
+  /**
+   * True when the run waits for a person and none of its nodes is active (RUNNING, PARKED or
+   * WAITING), since an active node changes with no one deciding.
+   */
+  waitsOnlyForPerson: boolean;
   /** The run page's address, from the view or the row; null when neither gave one. */
   runPageAddress: string | null;
   /** praxis's certificate hint, when its last `status` gave one. */
@@ -208,6 +218,9 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
     holds.push({ holdId: null, key: "reconciliation", ...holdOf(null, "An attempt's outcome is unknown, so it needs reconciliation.") });
   }
   const outcome = str(v.outcome);
+  const nodes = view === null ? null : nodesOf(view);
+  const waiting = view === null ? (row?.needsYou ?? false) : held || decisions.length > 0;
+  const active = nodes?.reported === true && nodes.rows.some((n) => isActiveNodePhase(n.phase));
   return {
     workOrderId,
     runId: str(v.runId) ?? row?.runId ?? workOrderId,
@@ -223,8 +236,9 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
     updatedAtText: row?.updatedAtText ?? null,
     decisions,
     holds,
-    nodes: view === null ? null : nodesOf(view),
-    waiting: view === null ? (row?.needsYou ?? false) : held || decisions.length > 0,
+    nodes,
+    waiting,
+    waitsOnlyForPerson: waiting && !active,
     runPageAddress: str(v.runPageAddress) ?? row?.runPageAddress ?? null,
     trustHint,
     offersTrust: trustHint !== null && trustHint.includes("praxis trust"),

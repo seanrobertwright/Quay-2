@@ -301,6 +301,62 @@ test("a held or awaiting run is read every 15 s straight away", async () => {
   }
 });
 
+/** The pending approval of node `nodeId`. */
+const approval = (nodeId: string) => ({ key: `NODE_APPROVAL:${nodeId}`, kind: "NODE_APPROVAL", nodeId });
+
+/**
+ * Each node phase in which a node changes with no one deciding, on a node of a kind that has it:
+ * a task the host works on, a polling loop waiting out its interval, a wait node waiting for its timer.
+ */
+const ACTIVE = [
+  ["RUNNING", "TASK", "build"],
+  ["PARKED", "LOOP", "poll"],
+  ["WAITING", "WAIT", "cooldown"],
+] as const;
+
+for (const [phase, kind, nodeId] of ACTIVE) {
+  test(`a run waiting for a person while a node is ${phase} is read 3 s after a change, doubling to 15 s, and every 15 s once none is`, async () => {
+    const backend = fakeBackend();
+    await showRun(backend);
+    /** The run under change token `n`, awaiting signoff's approval while `nodeId`, on another branch, is in `now`. */
+    const at = (n: number, now: string = phase) =>
+      working(n, { pending: [approval("signoff")], nodes: [node("signoff", "APPROVAL", "AWAITING_HUMAN"), node(nodeId, kind, now)] });
+    await answer(backend.statuses()[0], at(0));
+    await nextReadAfter(backend, 3_000, at(1));
+    await nextReadAfter(backend, 3_000, at(1));
+    await nextReadAfter(backend, 6_000, at(1));
+    await nextReadAfter(backend, 12_000, at(1));
+    await nextReadAfter(backend, 15_000, at(2, "COMPLETED"));
+    await nextReadAfter(backend, 15_000, at(2, "COMPLETED"));
+  });
+}
+
+test("a run waiting for a person with no node RUNNING, PARKED or WAITING is read every 15 s, even after a change", async () => {
+  const backend = fakeBackend();
+  await showRun(backend);
+  // Every other phase, and one Quay doesn't know.
+  const phases = ["COMPLETED", "SKIPPED", "FAILED", "HELD", "BLOCKED_BY_HOLD", "READY", "NOT_READY", "SOMETHING_NEW"];
+  /** The run under change token `n`, awaiting signoff's approval. */
+  const at = (n: number) =>
+    working(n, { pending: [approval("signoff")], nodes: [node("signoff", "APPROVAL", "AWAITING_HUMAN"), ...phases.map((p, i) => node(`node-${i}`, "TASK", p))] });
+  await answer(backend.statuses()[0], at(0));
+  await nextReadAfter(backend, 15_000, at(1));
+  await nextReadAfter(backend, 15_000, at(2));
+  await nextReadAfter(backend, 15_000, at(2));
+});
+
+test("the recorded run, held and awaiting signoff while its cooldown node is WAITING, is read on the backoff", async () => {
+  const backend = fakeBackend();
+  await showRun(backend, 1, [entry(1, { held: true })]);
+  const recorded = () => statusRecord(recordedStdout("status: nodes in several phases"));
+  await answer(backend.statuses()[0], recorded());
+  await nextReadAfter(backend, 3_000, recorded());
+  await nextReadAfter(backend, 6_000, recorded());
+  await nextReadAfter(backend, 12_000, recorded());
+  await nextReadAfter(backend, 15_000, recorded());
+  await nextReadAfter(backend, 15_000, recorded());
+});
+
 test("an ended run is no longer read", async () => {
   for (const extra of [
     { status: "COMPLETED", outcome: "SUCCEEDED" },
