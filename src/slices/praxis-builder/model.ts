@@ -52,6 +52,9 @@ export interface XYPosition {
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
 
+/** What `parseGraph` makes of a graph's JSON: a graph refused for its node count gives that count too. */
+export type GraphParseResult = ParseResult<PraxisGraph> | { ok: false; message: string; nodeCount: number };
+
 /** Whether `o` has `k` as its own property, not one inherited from its prototype. */
 export const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -76,9 +79,10 @@ export const isObject = (v: unknown): v is JsonObject =>
  * Reads a graph file's JSON for display. It is lenient where the canvas can still draw
  * something (a missing `dependsOn` or `config` reads as empty), and refuses only what it
  * can't draw: no `nodes` list, a node without a string id, a repeated id, or more nodes
- * than the SDK allows.
+ * than the SDK allows. Its check of the node cap is the builder's one check of it: the run
+ * canvas words the same refusal its own way, from the node count it gives (graphRevision.ts).
  */
-export function parseGraph(content: unknown): ParseResult<PraxisGraph> {
+export function parseGraph(content: unknown): GraphParseResult {
   if (!isObject(content)) return { ok: false, message: "The file isn't a JSON object." };
   if (!Array.isArray(content.nodes)) {
     return { ok: false, message: 'The graph has no "nodes" list.' };
@@ -87,6 +91,7 @@ export function parseGraph(content: unknown): ParseResult<PraxisGraph> {
     return {
       ok: false,
       message: `The graph has ${content.nodes.length} nodes, more than the ${MAX_NODES} a graph may hold.`,
+      nodeCount: content.nodes.length,
     };
   }
   const seen = new Set<string>();

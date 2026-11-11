@@ -43,11 +43,14 @@ export interface RevisionCacheOptions {
 function revisionGraphOf(record: Record<string, unknown>): Exclude<RevisionRead, { kind: "failed" }> {
   const graph = isObject(record.bundle) ? record.bundle.graph : undefined;
   if (!isObject(graph)) return { kind: "undrawn", reason: "praxis gave it without a graph." };
-  if (Array.isArray(graph.nodes) && graph.nodes.length > MAX_NODES) {
-    return { kind: "undrawn", reason: `Its graph has ${graph.nodes.length} nodes, more than the ${MAX_NODES} the builder draws.` };
-  }
   const parsed = parseGraph(graph);
-  return parsed.ok ? { kind: "graph", graph: parsed.value } : { kind: "undrawn", reason: `Its graph can't be drawn: ${parsed.message}` };
+  if (parsed.ok) return { kind: "graph", graph: parsed.value };
+  // parseGraph's check of the node cap decides, in the graph canvas's words, of what a graph may
+  // hold. The run canvas speaks of what the builder draws, so it words the same refusal itself.
+  if ("nodeCount" in parsed) {
+    return { kind: "undrawn", reason: `Its graph has ${parsed.nodeCount} nodes, more than the ${MAX_NODES} the builder draws.` };
+  }
+  return { kind: "undrawn", reason: `Its graph can't be drawn: ${parsed.message}` };
 }
 
 /** A signal no one aborts: a revision read runs to its end, for whoever asks next. */
