@@ -1,20 +1,30 @@
-// A graph run's detail (#444, #465, #568, #569, #571): its run-level facts (status, control chip,
-// held, awaiting approval, revision, and created and updated times), then its run canvas (#571),
-// which draws the revision the run runs with each node in its node phase, and its node table (#569),
-// followed while it is on screen with the template run detail's delays and stop rules. The one read
-// feeds them all, and while the host can't be used, the facts, the canvas and the table dim. When
-// the revision can't be read, the node table opens by itself. It shares the template run detail's
-// waiting banner, hold panel, certificate hint and page actions, with one hold panel per
-// `aiws-graph-hold-card/1`. Decisions on a run (approve, pause, cancel, resolving a hold) are made
-// only in the host's browser page, so it has no control for any of them, not even a disabled one.
-import { useCallback, useState, type FC } from "react";
+// A graph run's detail (#444, #465, #568, #569, #571, #572): its run-level facts (status, control
+// chip, held, awaiting approval, revision, and created and updated times), then its run canvas
+// (#571), which draws the revision the run runs with each node in its node phase, and its node
+// table (#569), followed while it is on screen with the template run detail's delays and stop
+// rules. Its one `praxis status` read per poll feeds them all, and the node panel; the run canvas
+// reads its revision and the saved layout besides. While the host can't be used, the facts, the
+// run canvas, the node panel and the table dim. When the revision can't be read, the node table
+// opens by itself.
+//
+// It holds the one selected node (#572), which the run canvas and the node table share: choosing
+// a card or a row selects that node in both and opens its node panel beside the run canvas, or
+// beside its place when no revision is drawn. A node with a hold links to that hold's panel.
+//
+// It shares the template run detail's waiting banner, hold panel, certificate hint and page
+// actions, with one hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause,
+// cancel, resolving a hold) are made only in the host's browser page, so it has no control for
+// any of them, not even a disabled one.
+import { useCallback, useId, useState, type FC } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
 import { REVISION_CACHE, type RevisionCache } from "./graphRevision.ts";
+import type { GraphHold, GraphRunNode } from "./graphRunDetail.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
+import { NodePanel, type HoldPanelLink } from "./NodePanel.tsx";
 import { NodeTable } from "./NodeTable.tsx";
 import { RunCanvas } from "./RunCanvas.tsx";
-import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
+import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, holdPanelName, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
 import type { RunPageLookup, RunRow } from "./runsList.ts";
 import { useRunDetail } from "./useRunDetail.ts";
 
@@ -38,6 +48,22 @@ interface GraphRunDetailProps {
 /** A time as the host wrote it, in local words when it can be read. */
 const timeText = (ms: number | null, text: string | null) => (ms !== null ? formatDateTime(ms) : (text ?? "Not given"));
 
+/**
+ * What the node panel of node `nodeId` draws: its row of the run's `nodes`, or null when the host
+ * reports none for it, and a link to the panel of the hold it has among the run's `holds`, whose
+ * element id `holdPanelId` gives by its place there; null when it has no hold, or no panel does.
+ */
+function nodePanelOf(
+  nodes: readonly GraphRunNode[],
+  holds: readonly GraphHold[],
+  nodeId: string,
+  holdPanelId: (n: number) => string
+): { node: GraphRunNode | null; hold: HoldPanelLink | null } {
+  const node = nodes.find((n) => n.nodeId === nodeId) ?? null;
+  const at = node?.holdId ? holds.findIndex((h) => h.holdId === node.holdId) : -1;
+  return { node, hold: at < 0 ? null : { id: holdPanelId(at), name: holdPanelName(holds[at]) } };
+}
+
 export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   projectPath,
   workflow,
@@ -54,6 +80,11 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
   const [nodesOpen, setNodesOpen] = useState(false);
   const openNodes = useCallback(() => setNodesOpen(true), []);
+  // The id of the node selected on the run canvas or in the node table, whose node panel is open.
+  const [selected, setSelected] = useState<string | null>(null);
+  // Each hold panel's element id, by its place in the run's holds, so the node panel can link to it.
+  const holdsId = useId();
+  const holdPanelId = (n: number) => `${holdsId}hold-${n}`;
 
   return (
     <section aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
@@ -85,26 +116,31 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
           <dd>{timeText(run.updatedAt, run.updatedAtText)}</dd>
         </dl>
       )}
-      {run?.holds.map((hold) => (
-        <HoldPanel key={hold.key} hold={hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />
+      {run?.holds.map((hold, n) => (
+        <HoldPanel key={hold.key} id={holdPanelId(n)} hold={hold} run={run} openButton={openButton("Resolve in browser")} onTrust={trust} />
       ))}
       {run && run.waiting && run.holds.length === 0 && <WaitingBanner run={run} openButton={openButton("Open in browser")} onTrust={trust} />}
       {run?.nodes?.reported && (
-        <div className={view.dimmed ? "opacity-50" : ""}>
-          <RunCanvas
-            projectPath={projectPath}
-            workflow={workflow}
-            revision={run.revision}
-            runName={name}
-            nodes={run.nodes.rows}
-            revisions={revisions}
-            onUnreadable={openNodes}
-          />
+        <div className={`flex flex-wrap items-start gap-3 ${view.dimmed ? "opacity-50" : ""}`}>
+          <div className="min-w-0 flex-1 basis-80">
+            <RunCanvas
+              projectPath={projectPath}
+              workflow={workflow}
+              revision={run.revision}
+              runName={name}
+              nodes={run.nodes.rows}
+              revisions={revisions}
+              onUnreadable={openNodes}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </div>
+          {selected !== null && <NodePanel nodeId={selected} {...nodePanelOf(run.nodes.rows, run.holds, selected, holdPanelId)} />}
         </div>
       )}
       {run?.nodes && (
         <div className={view.dimmed ? "opacity-50" : ""}>
-          <NodeTable nodes={run.nodes} open={nodesOpen} onOpenChange={setNodesOpen} />
+          <NodeTable nodes={run.nodes} open={nodesOpen} onOpenChange={setNodesOpen} selected={selected} onSelect={setSelected} />
         </div>
       )}
     </section>

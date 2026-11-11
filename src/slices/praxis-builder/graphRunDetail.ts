@@ -1,9 +1,10 @@
-// A graph run's detail (#444, #465, #568, #569): its run-level facts and its nodes, read from
+// A graph run's detail (#444, #465, #568, #569, #572): its run-level facts and its nodes, read from
 // `praxis status <wo> --format aiws-graph-operator-view/1 --json` through the same follow as a
 // template run's detail (runDetail.ts), with the same delays and stop rules but a narrower
 // person-wait (#570): a run waiting for a person is read every 15 s only while none of its nodes
 // is active, since an active node changes with no one deciding. It has no UI of its own;
-// GraphRunDetail.tsx draws it, and NodeTable.tsx its nodes.
+// GraphRunDetail.tsx draws it, and its nodes are drawn by the run canvas (RunCanvas.tsx), the node
+// table (NodeTable.tsx) and the node panel (NodePanel.tsx).
 //
 // `aiws-graph-operator-view/1` is `STABLE` (GRAPH-WORKFLOWS.md, "Graph operator view", promoted in
 // AI-WS-SDK #659): a field or a value of its closed enums changes only in a new format, which the
@@ -14,6 +15,7 @@
 // problem line in place of its row. The view gives no creation or update time and its
 // `revision` is the snapshot's, so those come from the row, whose `workflowRevision` is the
 // admitted revision that runs.
+import { formatDateTime } from "../../lib/dates.ts";
 import { hasOwn, isObject } from "./model.ts";
 import { isActiveNodePhase } from "./nodePhase.ts";
 import { holdOf, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
@@ -33,7 +35,16 @@ export interface GraphHold extends HoldPanel {
   key: string;
 }
 
-/** One node of a graph run as its node table draws it, from an entry of the view's `nodes[]`. */
+/** One fact of a node in its node panel: what it is, and its value in words. */
+export interface NodeFact {
+  term: string;
+  value: string;
+}
+
+/**
+ * One node of a graph run as its node table row, its run canvas card and its node panel draw it,
+ * from an entry of the view's `nodes[]`.
+ */
 export interface GraphRunNode {
   nodeId: string;
   /** The node's kind as the host gave it; empty when it gave none. */
@@ -42,6 +53,15 @@ export interface GraphRunNode {
   phase: string;
   /** The node's counter line: its loop's iterations, or its scope's attempts; null when it has neither. */
   counter: string | null;
+  /** The `holdId` of the open hold the node is held by, or blocked by; null when none is. */
+  holdId: string | null;
+  /**
+   * The facts its node panel shows, only those the entry gives, in this order: its newest
+   * attempt's status and outcome; the attempts its scope used of those it allows, and its spend;
+   * its loop's iterations of their most, and when the next is due; its wait's kind and status;
+   * and an open human task. The host's codes are shown verbatim, and the due time in local words.
+   */
+  facts: NodeFact[];
 }
 
 /**
@@ -100,10 +120,13 @@ const GRAPH_HOLD_EXITS: Readonly<Record<string, Omit<HoldExit, "id" | "available
 };
 
 /** The attempts a node used of those it has, in words: `allowed` is null for no bound, and isn't drawn when of another type. */
-function attemptsText(used: number, allowed: unknown): string {
+function attemptsOf(used: number, allowed: unknown): string {
   const bound = typeof allowed === "number" ? ` of ${allowed}` : allowed === null ? ", with no bound" : "";
-  return `Attempts: ${used}${bound}`;
+  return `${used}${bound}`;
 }
+
+/** The attempts a node used of those it has, as a line of words, as a hold panel's note gives them. */
+const attemptsText = (used: number, allowed: unknown) => `Attempts: ${attemptsOf(used, allowed)}`;
 
 /**
  * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
@@ -157,19 +180,41 @@ function decisionOf(p: Obj): string | null {
   }
 }
 
+/** Fact `term` of value `value`, or null for a value the entry doesn't give: none, or empty. */
+const factOf = (term: string, value: string | null): NodeFact | null => (value ? { term, value } : null);
+
+/** The object of an entry's field `value`, or an empty one when it is null or of another type, so it gives no fact. */
+const objectOf = (value: unknown): Obj => (isObject(value) ? value : {});
+
 /**
- * A node's counter line: the iterations its `loop` completed of the most it may run, or else the
+ * Node entry `entry`, of node `nodeId` in `phase`, as its row, card and panel draw it. The
+ * counter line is the iterations its `loop` completed of the most it may run, or else the
  * attempts it used of those its `scope` allows, with no bound when the scope gives no
- * `maxAttempts`; null for a node with neither. A LOOP has a scope too, but its attempts count each
+ * `maxAttempts`; none for a node with neither. A LOOP has a scope too, but its attempts count each
  * iteration's work and validations, so its iterations are the count a person follows.
  */
-function counterOf(entry: Obj): string | null {
-  const { loop, scope } = entry;
-  if (isObject(loop) && typeof loop.iteration === "number" && typeof loop.maxIterations === "number") {
-    return `Iterations: ${loop.iteration} of ${loop.maxIterations}`;
-  }
-  if (isObject(scope) && typeof scope.attempts === "number") return attemptsText(scope.attempts, scope.maxAttempts ?? null);
-  return null;
+function runNodeOf(entry: Obj, nodeId: string, phase: string): GraphRunNode {
+  const attempt = objectOf(entry.attempt);
+  const scope = objectOf(entry.scope);
+  const loop = objectOf(entry.loop);
+  const wait = objectOf(entry.wait);
+  const attempts = typeof scope.attempts === "number" ? factOf("Attempts", attemptsOf(scope.attempts, scope.maxAttempts ?? null)) : null;
+  const iterations =
+    typeof loop.iteration === "number" && typeof loop.maxIterations === "number" ? factOf("Iterations", `${loop.iteration} of ${loop.maxIterations}`) : null;
+  const counter = iterations ?? attempts;
+  const spent = str(scope.spent);
+  const facts = [
+    factOf("Attempt status", str(attempt.status)),
+    factOf("Attempt outcome", str(attempt.outcome)),
+    attempts,
+    factOf("Spent", spent && [spent, str(scope.costUnit)].filter(Boolean).join(" ")),
+    iterations,
+    factOf("Next due", typeof loop.nextDueMs === "number" ? formatDateTime(loop.nextDueMs) : null),
+    factOf("Wait kind", str(wait.kind)),
+    factOf("Wait status", str(wait.status)),
+    factOf("Human task", isObject(entry.humanTask) ? "Open" : null),
+  ].filter((fact): fact is NodeFact => fact !== null);
+  return { nodeId, kind: str(entry.kind) ?? "", phase, counter: counter && `${counter.term}: ${counter.value}`, holdId: str(entry.holdId) || null, facts };
 }
 
 /** The problem line of node entry `n`, counted from 1, which lacks its `nodeId` or its `phase`. */
@@ -188,7 +233,7 @@ function nodesOf(view: Obj): GraphRunNodes {
     const nodeId = str(entry.nodeId) || null;
     const phase = str(entry.phase) || null;
     if (nodeId === null || phase === null) problems.push(nodeProblem(n + 1, nodeId, phase));
-    else rows.push({ nodeId, kind: str(entry.kind) ?? "", phase, counter: counterOf(entry) });
+    else rows.push(runNodeOf(entry, nodeId, phase));
   });
   return { reported: true, rows, problems };
 }
