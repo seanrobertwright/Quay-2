@@ -1,14 +1,16 @@
 /// <reference types="node" />
 // Component tests for a graph run's node panel and its shared selection (#572): choosing a card on
 // the run canvas, or a row of the node table, selects that node in both and opens its read-only
-// node panel beside the run canvas, with what the view's `nodes[]` gives of it.
-// They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
-// out-of-process boundary. The recorded run of several phases and the recorded revision it runs
+// node panel beside the run canvas, with what the view's `nodes[]` gives of it. Its close button,
+// or Escape, clears the selection (#577).
+// They render the real graph workflow form into happy-dom, inside a stand-in for the builder's
+// root that counts the Escapes reaching it, and fake only Tauri's `invoke`, the out-of-process
+// boundary. The recorded run of several phases and the recorded revision it runs
 // (graph_outputs.fixture.json) are drawn, and hand-made views in the recorded one's shape.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
+import { act, createElement, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
 import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
@@ -28,10 +30,17 @@ const NAME = "release-train";
 let mounted: { root: Root; container: HTMLElement } | null = null;
 /** Each test's own revision cache, so no test reads a revision another kept. */
 let revisions: RevisionCache;
+/**
+ * How many Escapes reached the builder. It runs its keys on its root, in the bubble phase, and skips
+ * a key whose default a control inside it prevented (PraxisBuilderModal.tsx). An Escape it runs with
+ * nothing smaller to close, such as the graph canvas's selection, hides the builder.
+ */
+let builderEscapes = 0;
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW });
   revisions = createRevisionCache();
+  builderEscapes = 0;
 });
 
 const unmount = () => {
@@ -111,12 +120,18 @@ interface FormSpies {
   onOpen?: (ref: unknown) => void;
 }
 
+/** The stand-in for the builder's root: it counts each Escape that reaches it and that nothing inside handled. */
+const builderKeys = (e: ReactKeyboardEvent) => {
+  if (e.key === "Escape" && !e.defaultPrevented) builderEscapes += 1;
+};
+
+/** The graph workflow form, in the stand-in for the builder's root. */
 function form(spies: FormSpies = {}) {
   const ref = { kind: "graph-workflows" as const, id: NAME };
   const content = { version: 1, contractId: "c", graphId: "g", graphBindingId: "g-1" };
   const draft = createDraft(ref, { id: NAME, kind: "graph-workflows", missing: false, content, contentHash: "h" });
   assert.ok(draft.ok);
-  return createElement(GraphWorkflowForm, {
+  const shown = createElement(GraphWorkflowForm, {
     projectPath: PROJECT,
     draft: draft.value,
     contracts: ["c"],
@@ -129,6 +144,7 @@ function form(spies: FormSpies = {}) {
     runsShown: true,
     revisions,
   });
+  return createElement("div", { onKeyDown: builderKeys }, shown);
 }
 
 async function render(element: ReturnType<typeof form>): Promise<HTMLElement> {
@@ -464,7 +480,7 @@ test("while the revision is still being read, the node table stays collapsed, an
   await choosingARowOpensItsPanel(root);
 });
 
-test("selecting nodes and following the panel's link change nothing: the panel has no control, and only reads are sent", async () => {
+test("selecting nodes and following the panel's link change nothing: the panel has no control but its close button, and only reads are sent", async () => {
   const edits: unknown[] = [];
   const opened: unknown[] = [];
   const backend = fakeBackend();
@@ -477,9 +493,9 @@ test("selecting nodes and following the panel's link change nothing: the panel h
   await click(rowButton(root, "test") as HTMLButtonElement);
   const panel = nodePanel(root) as HTMLElement;
   assert.deepEqual(
-    [...panel.querySelectorAll("button, input, select, textarea, [role='button'], [contenteditable]")].map((el) => el.outerHTML),
-    [],
-    "no control: no approval, acceptance, hold decision or human task is taken here",
+    [...panel.querySelectorAll("button, input, select, textarea, [role='button'], [contenteditable]")].map((el) => el.getAttribute("aria-label") ?? el.outerHTML),
+    ["Close node panel"],
+    "no control but its close button: no approval, acceptance, hold decision or human task is taken here",
   );
   assert.deepEqual(
     [...panel.querySelectorAll("a")].map((a) => text(a)),
@@ -586,4 +602,202 @@ test("a node whose hold has no hold panel in the detail names the hold, with no 
   await click(rowButton(root, "build") as HTMLButtonElement);
   assert.deepEqual(panelFacts(root).slice(-1), [["Hold", "hold-9"]]);
   assert.equal(nodePanel(root)?.querySelector("a"), null);
+});
+
+// Closing the node panel (#577): its close button, or Escape on the run canvas, in the node table or
+// in the node panel, clears the selection without hiding the builder, and focus never falls to the
+// page.
+
+/** The node panel's close button. */
+const closeButton = (root: HTMLElement) => button(nodePanel(root) as HTMLElement, /^Close node panel$/) as HTMLButtonElement;
+/** The node panel's link to its node's hold panel. */
+const holdLink = (root: HTMLElement) => nodePanel(root)?.querySelector("a") as HTMLAnchorElement;
+
+/** Presses `control` as a click does: focus moves to it, then it is pressed. happy-dom's `click` moves no focus. */
+async function clickWithFocus(control: HTMLElement): Promise<void> {
+  await act(async () => control.focus());
+  await click(control);
+}
+
+/** Moves focus to `target`, then presses Escape there, and returns the key's event. */
+async function escapeFrom(target: HTMLElement): Promise<KeyboardEvent> {
+  await act(async () => target.focus());
+  return press(target, "Escape");
+}
+
+/** Shows run 1, whose view is the recorded run of several phases, with its revision refused, so the run canvas isn't drawn and the node table opened by itself. */
+async function showUnreadable(backend: Backend): Promise<HTMLElement> {
+  const root = await showUndrawn(backend);
+  const refusal = recordedStdout("graphs show: a revision, not submitted");
+  await answer(backend.revisionReads()[0], { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal });
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no drawing");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
+  return root;
+}
+
+test("the node panel's close button, a native button named for what it closes, closes the panel and clears the selection on the run canvas and in the node table", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  await click(card(root, "build") as HTMLElement);
+  const close = closeButton(root);
+  assert.equal(close?.tagName, "BUTTON", "a native button");
+  assert.equal(close.type, "button");
+  assert.equal(close.getAttribute("aria-label"), "Close node panel");
+  await click(close);
+  assert.equal(nodePanel(root), null, "the node panel closed");
+  assert.deepEqual(selectedCards(root), [], "no card is selected");
+  assert.deepEqual(selectedRows(root), [], "no row is selected");
+});
+
+test("while the run canvas is drawn, the close button puts focus on the node's card, so it doesn't fall to the page", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  // Chosen from its row, so focus wasn't on the card before.
+  await click(rowButton(root, "cooldown") as HTMLButtonElement);
+  await clickWithFocus(closeButton(root));
+  assert.equal(nodePanel(root), null);
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === card(root, "cooldown"), "focus is on cooldown's card");
+});
+
+test("with a node selected, Escape inside the node panel clears the selection, puts focus on the node's card while the run canvas is drawn, and the builder stays open", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  // Each node is chosen from its row, so focus wasn't on its card before.
+  await click(rowButton(root, "package") as HTMLButtonElement);
+  const escape = await escapeFrom(holdLink(root));
+  assert.equal(escape.defaultPrevented, true, "the key is the detail's");
+  assert.equal(nodePanel(root), null, "the node panel closed");
+  assert.deepEqual(selectedCards(root), []);
+  assert.deepEqual(selectedRows(root), []);
+  assert.ok(document.activeElement === card(root, "package"), "from the hold link, focus is on package's card");
+  await click(rowButton(root, "deploy") as HTMLButtonElement);
+  await escapeFrom(closeButton(root));
+  assert.equal(nodePanel(root), null);
+  assert.ok(document.activeElement === card(root, "deploy"), "from the close button, focus is on deploy's card");
+  assert.equal(builderEscapes, 0, "the builder got no Escape, so it didn't hide");
+});
+
+test("while the run canvas isn't drawn, the close button, and Escape inside the node panel, put focus on the node's row", async () => {
+  const backend = fakeBackend();
+  const root = await showUnreadable(backend);
+  await click(rowButton(root, "cooldown") as HTMLButtonElement);
+  await clickWithFocus(closeButton(root));
+  assert.equal(nodePanel(root), null);
+  assert.deepEqual(selectedRows(root), []);
+  assert.ok(document.activeElement === rowButton(root, "cooldown"), "from the close button, focus is on cooldown's row");
+  await click(rowButton(root, "package") as HTMLButtonElement);
+  await escapeFrom(holdLink(root));
+  assert.equal(nodePanel(root), null);
+  assert.deepEqual(selectedRows(root), []);
+  assert.ok(document.activeElement === rowButton(root, "package"), "from Escape on the hold link, focus is on package's row");
+  assert.equal(builderEscapes, 0, "the builder got no Escape, so it didn't hide");
+});
+
+test("closing the node panel while neither the run canvas nor the collapsed node table shows the node puts focus on the Nodes toggle, so it never falls to the page", async () => {
+  const backend = fakeBackend();
+  const root = await showUnreadable(backend);
+  await click(rowButton(root, "cooldown") as HTMLButtonElement);
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the node table is collapsed");
+  assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: cooldown", "with cooldown's node panel still open");
+  await clickWithFocus(closeButton(root));
+  assert.equal(nodePanel(root), null);
+  assert.ok(document.activeElement === nodesToggle(root), "focus is on the Nodes toggle, which shows the node's row");
+});
+
+test("with a node selected, Escape on a card clears the selection on the run canvas and in the node table, leaves focus on that card, and the builder stays open", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  // On the selected card, then on another card.
+  for (const id of ["test", "build"]) {
+    await click(card(root, "test") as HTMLElement);
+    assert.deepEqual(selectedCards(root), ["test"]);
+    const focused = card(root, id) as HTMLElement;
+    const escape = await escapeFrom(focused);
+    assert.equal(escape.defaultPrevented, true, "the key is the detail's");
+    assert.equal(nodePanel(root), null, `${id}: the node panel closed`);
+    assert.deepEqual(selectedCards(root), []);
+    assert.deepEqual(selectedRows(root), []);
+    assert.ok(document.activeElement === focused, `focus stays on ${id}'s card`);
+  }
+  assert.equal(builderEscapes, 0, "the builder got no Escape, so it didn't hide");
+});
+
+test("with a node selected, Escape on a row of the node table clears the selection there and on the run canvas, leaves focus on that row, and the builder stays open", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  // On the selected row, then on another row.
+  for (const id of ["signoff", "deploy"]) {
+    await click(rowButton(root, "signoff") as HTMLButtonElement);
+    assert.deepEqual(selectedRows(root), ["signoff"]);
+    const focused = rowButton(root, id) as HTMLButtonElement;
+    const escape = await escapeFrom(focused);
+    assert.equal(escape.defaultPrevented, true, "the key is the detail's");
+    assert.equal(nodePanel(root), null, `${id}: the node panel closed`);
+    assert.deepEqual(selectedRows(root), []);
+    assert.deepEqual(selectedCards(root), []);
+    assert.ok(document.activeElement === focused, `focus stays on ${id}'s row`);
+  }
+  assert.equal(builderEscapes, 0, "the builder got no Escape, so it didn't hide");
+});
+
+test("with no node selected, Escape on the run canvas or in the node table isn't the detail's, and reaches the builder as before", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  const places: [string, HTMLElement][] = [
+    ["a card", card(root, "build") as HTMLElement],
+    ["the drawing", runCanvas(root)?.querySelector(".react-flow") as HTMLElement],
+    ["a row", rowButton(root, "build") as HTMLButtonElement],
+    ["the Nodes toggle", nodesToggle(root)],
+  ];
+  for (const [place, target] of places) {
+    const escape = await escapeFrom(target);
+    assert.equal(escape.defaultPrevented, false, `${place}: the detail left the key alone`);
+  }
+  assert.equal(builderEscapes, places.length, "each Escape reached the builder, whose cascade runs on it");
+});
+
+test("with a node selected, Escape elsewhere in the detail isn't the detail's: it reaches the builder, and the selection stays", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(card(root, "build") as HTMLElement);
+  const header = detail(root)?.querySelector("header") as HTMLElement;
+  const places: [string, HTMLElement][] = [
+    ["the detail's Close", button(header, /^Close run-/) as HTMLButtonElement],
+    ["Open in browser", button(header, /^Open in browser for run-/) as HTMLButtonElement],
+    ["a hold panel", holdPanels(root)[0]],
+  ];
+  for (const [place, target] of places) {
+    const escape = await escapeFrom(target);
+    assert.equal(escape.defaultPrevented, false, `${place}: the detail left the key alone`);
+    assert.deepEqual(selectedCards(root), ["build"], `${place}: the selection stays`);
+  }
+  assert.equal(builderEscapes, places.length, "each Escape reached the builder");
+});
+
+test("choosing the selected card or row again keeps its node selected, with its node panel open: only the close button and Escape clear the selection", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  await click(nodesToggle(root));
+  const build = card(root, "build") as HTMLElement;
+  const again: [string, () => Promise<unknown>][] = [
+    ["a click on its card", () => click(build)],
+    ["Enter on its card", () => press(build, "Enter")],
+    ["Space on its card", () => press(build, " ")],
+    ["its row", () => click(rowButton(root, "build") as HTMLButtonElement)],
+  ];
+  await click(build);
+  for (const [how, choose] of again) {
+    await choose();
+    assert.deepEqual(selectedCards(root), ["build"], `${how}: still selected`);
+    assert.deepEqual(selectedRows(root), ["build"]);
+    assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: build", `${how}: the node panel stays open`);
+  }
 });

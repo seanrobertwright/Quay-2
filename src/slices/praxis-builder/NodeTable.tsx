@@ -29,6 +29,13 @@ interface NodeTableProps {
   onSelect: (nodeId: string) => void;
 }
 
+/** The button in node `nodeId`'s row in `root`, which selects the node; null when no node table there shows a row for it. */
+export const rowOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
+  [...root.querySelectorAll<HTMLElement>("button[data-node-id]")].find((b) => b.dataset.nodeId === nodeId) ?? null;
+
+/** The node table's Nodes toggle in `root`, or null when there is none, as for a host that doesn't report node phases. */
+export const nodesToggleOf = (root: ParentNode): HTMLElement | null => root.querySelector<HTMLElement>("button[data-nodes-toggle]");
+
 /** The node table of a graph run. */
 export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selected, onSelect }) => {
   const tableId = useId();
@@ -36,7 +43,7 @@ export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selec
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="space-y-1.5 text-[11px] text-[#c9d1d9]">
-      <button type="button" aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => onOpenChange(!open)} className={BUTTON}>
+      <button type="button" data-nodes-toggle aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => onOpenChange(!open)} className={BUTTON}>
         <Chevron className="w-3.5 h-3.5" aria-hidden="true" />
         Nodes ({nodes.rows.length})
       </button>
@@ -76,6 +83,7 @@ export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selec
                   <th scope="row" className="py-1 pr-3 font-mono font-normal">
                     <button
                       type="button"
+                      data-node-id={node.nodeId}
                       aria-current={isSelected ? "true" : undefined}
                       onClick={() => onSelect(node.nodeId)}
                       className={`underline-offset-2 hover:underline ${isSelected ? "font-semibold text-white underline" : ""}`}
