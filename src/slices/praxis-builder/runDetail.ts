@@ -2,7 +2,8 @@
 // through the Praxis CLI runner (#446), never `praxis follow`, whose `--json` gives only a final
 // view. It has no UI of its own. A template run's detail is drawn on the template's stage strip;
 // a graph run's (graphRunDetail.ts) reads its own status record through the same follow, with
-// the same delays and stop rules.
+// the same delays and stop rules, except that a graph run waiting for a person stays on the
+// backoff while one of its nodes is active (#570).
 //
 // `coding-operator-view/1` isn't a contracted read model (#361), so only the fields drawn are
 // read, each leniently: a field that is missing or of another type falls back to the run's row
@@ -22,7 +23,10 @@ export const FOLLOW_FIRST_MS = 3_000;
 /** The longest wait while the run doesn't change; each unchanged read doubles the wait up to it. */
 export const FOLLOW_MAX_MS = 15_000;
 
-/** The wait while the run waits for a person, held or awaiting a decision: it changes only when they decide. */
+/**
+ * The wait while the run waits only for a person, as `FollowedRun.waitsOnlyForPerson` says: held
+ * or awaiting a decision, with nothing else its source checks still moving.
+ */
 export const FOLLOW_WAITING_MS = FOLLOW_MAX_MS;
 
 /** The wait after a failed read: the host recheck's interval, as every failing state polls. */
@@ -48,9 +52,12 @@ export interface HoldExit {
   available: boolean;
 }
 
-/** What the hold panel draws, from the operator view's `holdCard` (`aiws-hold-card/1`, not contracted). */
+/**
+ * What a hold panel draws: from a template run's `holdCard` (`aiws-hold-card/1`), or from one of a
+ * graph run's `aiws-graph-hold-card/1` cards (graphRunDetail.ts).
+ */
 export interface HoldPanel {
-  /** The card's reason in words, or the run's reason when it has no card, as for pending reconciliation. */
+  /** Why the run is held, as its card gives it, or the run's reason when it has no card, as for pending reconciliation. */
   reason: string;
   cause: string | null;
   phase: string | null;
@@ -63,8 +70,12 @@ export interface HoldPanel {
 export interface FollowedRun {
   /** True when the run ended: it is no longer read. */
   ended: boolean;
-  /** True when the run waits for a person in the browser, so it changes only when they decide. */
-  waiting: boolean;
+  /**
+   * True when the run waits for a person in the browser, and its source sees nothing else of it
+   * moving. A template run's source checks nothing else; a graph run's checks that none of its
+   * nodes is RUNNING, PARKED or WAITING (graphRunDetail.ts).
+   */
+  waitsOnlyForPerson: boolean;
 }
 
 /** A template run as its detail draws it. */
@@ -86,6 +97,8 @@ export interface RunDetail extends FollowedRun {
   decisions: string[];
   /** True when the run waits for a person in the browser. */
   waiting: boolean;
+  /** True whenever the run waits for a person, as `waiting`: nothing else is checked, since its stages run one at a time. */
+  waitsOnlyForPerson: boolean;
   /** The hold panel, for a held run; null for any other. */
   hold: HoldPanel | null;
   /** The run page's address, as praxis gave it; null before `status` gave one. */
@@ -148,7 +161,7 @@ export interface RunFollowOptions<Run extends FollowedRun> {
 
 export type Obj = Record<string, unknown>;
 export const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
-const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
+export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 
 const STAGE_OF: Readonly<Record<string, StageKey>> = {
   IMPLEMENTATION: "implementation",
@@ -231,6 +244,7 @@ export function runDetailOf(view: Obj | null, row: RunRow | null, trustHint: str
   // A held run stands where its hold card says it stopped, else where its stage places it.
   const current = (held ? holdStage : null) ?? placeOf(status, stage);
   const shownControl = control ?? row?.control ?? "";
+  const waiting = held || decisions.length > 0 || status.startsWith("AWAITING_");
   return {
     workOrderId,
     runId: str(v.runId) ?? row?.runId ?? workOrderId,
@@ -243,7 +257,8 @@ export function runDetailOf(view: Obj | null, row: RunRow | null, trustHint: str
     finished: finishedOf(status, current, corrections),
     corrections,
     decisions,
-    waiting: held || decisions.length > 0 || status.startsWith("AWAITING_"),
+    waiting,
+    waitsOnlyForPerson: waiting,
     hold: held ? holdOf(v.holdCard, str(v.reason)) : null,
     runPageAddress: str(v.runPageAddress),
     trustHint,
@@ -296,9 +311,9 @@ export function createRunFollow<Run extends FollowedRun>({ projectPath, workOrde
 
   /**
    * Keeps the newest read's outcome and returns the wait before the next read: none once the run
-   * ended, 15 s while it waits for a person, 3 s after a change, doubling to 15 s while nothing
-   * changes, and 60 s after any failure, including a record in a format the source refuses. The
-   * last run read stays; only a host-level failure dims it.
+   * ended, 15 s while it waits only for a person, 3 s after a change, doubling to 15 s while
+   * nothing changes, and 60 s after any failure, including a record in a format the source
+   * refuses. The last run read stays; only a host-level failure dims it.
    */
   function recordAndNextDelay(outcome: CallOutcome): number | null {
     if (outcome.kind === "cancelled") return interval;
@@ -312,7 +327,7 @@ export function createRunFollow<Run extends FollowedRun>({ projectPath, workOrde
       last = seen;
       const run = view.run;
       if (run?.ended) return null;
-      if (run?.waiting) return FOLLOW_WAITING_MS;
+      if (run?.waitsOnlyForPerson) return FOLLOW_WAITING_MS;
       return interval;
     }
     const problem = outcome.kind === "record" ? "praxis gave a run status Quay can't read." : outcomeMessage(outcome);

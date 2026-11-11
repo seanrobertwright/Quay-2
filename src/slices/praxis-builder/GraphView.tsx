@@ -28,6 +28,7 @@ import { bindingMarks } from "./graphBinding.ts";
 import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
+import { prefersReducedMotion } from "./motion.ts";
 import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
@@ -122,8 +123,6 @@ export interface BuilderCanvas extends CanvasControls {
   /** The canvas's size on screen, or null before it is drawn. */
   getCanvasRect: () => { width: number; height: number } | null;
 }
-
-const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const NO_DIAGNOSTICS: never[] = [];
 

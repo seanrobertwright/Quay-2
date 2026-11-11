@@ -10,6 +10,7 @@ import { useState, type FC } from "react";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunConfirm } from "./GraphRunConfirm.tsx";
 import { GraphRunDetail } from "./GraphRunDetail.tsx";
+import type { RevisionCache } from "./graphRevision.ts";
 import { graphRunRefusedBy } from "./graphRunStart.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { RunControl } from "./RunControl.tsx";
@@ -34,9 +35,11 @@ interface GraphRunsViewProps {
   unsaved?: readonly DefinitionRef[];
   /** The `workOrderId` of the run whose detail is shown when the view opens; none when absent. */
   initialRun?: string;
+  /** Where a run's run canvas reads its revision; the builder's own cache when absent. */
+  revisions?: RevisionCache;
 }
 
-export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [], initialRun }) => {
+export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [], initialRun, revisions }) => {
   const { list, view } = useRunsList(projectPath, name, shown, GRAPH_RUNS);
   const pages = useRunPages(list);
   // The `workOrderId` of the run whose detail is shown, if any.
@@ -63,11 +66,13 @@ export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown
         <GraphRunDetail
           key={selected}
           projectPath={projectPath}
+          workflow={name}
           workOrderId={selected}
           row={selectedRow}
           shown={shown}
           runPage={list.runPage}
           runInTerminal={runInTerminal}
+          revisions={revisions}
           onClose={() => setSelected(null)}
         />
       )}
