@@ -5,11 +5,12 @@
 // rules but with a narrower person-wait (#570): a run waiting for a person is read every 15 s only
 // while none of its nodes is active (graphRunDetail.ts), and on the backoff otherwise. Its one
 // `praxis status` read per poll feeds them all, and the node panel; the run canvas reads its
-// revision and the saved layout besides. The revision is the one the run's row in the Runs list
-// names, kept from the first row that named it, since a run's revision never changes: the run
-// canvas stays drawn once newer runs push the row off the list. While the host can't be used,
-// the facts, the run canvas, the node panel and the table dim. When the revision can't be read,
-// the node table opens by itself.
+// revision and the saved layout besides. The revision and the times are the run's row's in the
+// Runs list, which its Runs view keeps (#579): once newer runs push the row off the list, they
+// stay as its last row gave them, and the run canvas stays drawn. While no row has named the run,
+// the run canvas's place says why. While the host can't be used, the facts, the run canvas, the
+// node panel and the table dim. When the revision can't be read, or Quay can't tell which
+// revision the run runs, the node table opens by itself.
 //
 // It holds the one selected node (#572), which the run canvas and the node table share: choosing
 // a card or a row selects that node in both and opens its node panel beside the run canvas, or
@@ -40,8 +41,9 @@ interface GraphRunDetailProps {
   workflow: string;
   workOrderId: string;
   /**
-   * The run's row from the Runs list's last read, null while the list doesn't list the run: the
-   * revision, kept once a row named it, the times, and the fallback for what `status` doesn't give.
+   * The run's row in the Runs list, the last that named it once newer runs push it off the list;
+   * null before a row named it: the revision, the times, and the fallback for what `status`
+   * doesn't give.
    */
   row: RunRow | null;
   /** Why no row of the Runs list has named the run; read only while `row` is null. */
@@ -58,17 +60,6 @@ interface GraphRunDetailProps {
 
 /** A time as the host wrote it, in local words when it can be read. */
 const timeText = (ms: number | null, text: string | null) => (ms !== null ? formatDateTime(ms) : (text ?? "Not given"));
-
-/**
- * The revision the run runs: `revision`, its row's, kept from the first row that named it. A run's
- * revision never changes, and its row leaves the Runs list once newer runs push it off, which would
- * otherwise take the run canvas away mid-view.
- */
-function useKeptRevision(revision: number | null): number | null {
-  const [kept, setKept] = useState(revision);
-  if (kept === null && revision !== null) setKept(revision);
-  return kept ?? revision;
-}
 
 /**
  * What the node panel of node `nodeId` draws: its row of the run's `nodes`, or null when the host
@@ -100,7 +91,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
 }) => {
   const view = useRunDetail(projectPath, workOrderId, row, shown, "graph");
   const run = view.run;
-  const revision = useKeptRevision(run?.revision ?? null);
+  const revision = run?.revision ?? null;
   const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
   const [nodesOpen, setNodesOpen] = useState(false);
   const openNodes = useCallback(() => setNodesOpen(true), []);

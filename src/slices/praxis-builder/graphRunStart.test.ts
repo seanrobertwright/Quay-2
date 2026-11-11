@@ -433,17 +433,45 @@ test("a run Run creates is named by the read its creation asks for, so a list fu
   assert.deepEqual(backend.reads().map((r) => r.args.limit), [20, 20]);
 });
 
+/** Run `name`'s detail. */
+const runDetail = (root: HTMLElement, name: string) => root.querySelector(`[aria-label="Run ${name}"]`) as HTMLElement;
+/** The value of the fact named `term` in a run's `detail`. */
+const fact = (detail: HTMLElement, term: string) => text([...detail.querySelectorAll("dt")].find((dt) => text(dt) === term)?.nextElementSibling ?? null);
+/** What the place of the run canvas in a run's `detail` says while no revision is drawn there. */
+const canvasStatus = (detail: HTMLElement) =>
+  text([...detail.querySelectorAll("section")].find((s) => /^Run canvas/.test(text(s.querySelector("h4"))))?.querySelector('[role="status"]') ?? null);
+/** Answers the status read of the run Run created with a view of it that has no nodes. */
+async function answerCreatedStatus(backend: ReturnType<typeof fakeBackend>): Promise<void> {
+  const status = backend.statuses().find((s) => s.args.workOrderId === CREATED_ID) as Sent;
+  await act(async () => status.answer(statusRecord(graphOperatorView(1, { workOrderId: CREATED_ID, runId: CREATED_RUN }))));
+}
+
 test("a run Run creates is looked up until the read its creation asks for ends, even when the list held every run before it (#579)", async () => {
   const backend = fakeBackend();
   const root = await renderRuns();
   await act(async () => backend.reads()[0].answer(graphRunsRecord(NAME, [graphRunEntry(1)])));
   const call = await startRun(backend, root);
   await act(async () => call.answer(created()));
-  const status = backend.statuses().find((s) => s.args.workOrderId === CREATED_ID) as Sent;
-  await act(async () => status.answer(statusRecord(graphOperatorView(1, { workOrderId: CREATED_ID, runId: CREATED_RUN }))));
-  const detail = root.querySelector(`[aria-label="Run ${CREATED_RUN}"]`) as HTMLElement;
-  assert.equal(text(detail.querySelector('section [role="status"]')), "Looking in the Runs list for the revision this run runs…", "the list read before the run can't name it");
+  await answerCreatedStatus(backend);
+  const detail = runDetail(root, CREATED_RUN);
+  assert.equal(canvasStatus(detail), "Looking in the Runs list for the revision this run runs…", "the list read before the run can't name it");
   assert.equal(button(detail, /^Nodes/)?.getAttribute("aria-expanded"), "false", "so the node table doesn't open");
+});
+
+test("a run Run creates while another run's detail is shown starts with none of that run's facts (#579)", async () => {
+  const backend = fakeBackend();
+  const root = await renderRuns();
+  await act(async () => backend.reads()[0].answer(graphRunsRecord(NAME, [graphRunEntry(1, { workflowRevision: 4 })])));
+  await click(button(root, /^Show run-1$/));
+  assert.match(text(runDetail(root, "run-1").querySelector("header")), /revision 4/);
+  const call = await startRun(backend, root);
+  await act(async () => call.answer(created()));
+  await answerCreatedStatus(backend);
+  const detail = runDetail(root, CREATED_RUN);
+  assert.doesNotMatch(text(detail.querySelector("header")), /revision/, "not run-1's revision");
+  assert.equal(fact(detail, "Created"), "Not given");
+  assert.equal(fact(detail, "Updated"), "Not given");
+  assert.equal(canvasStatus(detail), "Looking in the Runs list for the revision this run runs…");
 });
 
 test("exit 7 says a run awaiting approval blocks new runs, with Show run and Open in browser at blockingRunAddress", async () => {

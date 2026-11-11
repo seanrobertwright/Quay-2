@@ -471,7 +471,7 @@ test("a run the list doesn't name makes no read of the newest 100 while the host
   await act(async () => backend.reads()[2].answer(runs(runsFrom(140, 41))));
   assert.equal(rows(root).length, 100);
   await tick(15_000);
-  assert.deepEqual(limits(backend), [20, 20, 100, 100], "no other read of them: the polls that follow keep the raised limit, as after Show more");
+  assert.deepEqual(limits(backend), [20, 20, 100, 100], "the poll that follows keeps the raised limit, as after Show more");
 });
 
 test("a form not asked to show a run opens on the workflow, with no run detail", async () => {

@@ -259,6 +259,27 @@ test("showing a run reads the graph run status verb for its work order and shows
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 45)));
 });
 
+test("while its row is listed a run's times follow the row, and once newer runs push the row off the Runs list they stay as its last row gave them (#579)", async () => {
+  const backend = fakeBackend();
+  const row = (updatedAt: string) => entry(1, { workflowRevision: 4, createdAt: "2026-11-08T09:30:00.000Z", updatedAt });
+  const root = await showRun(backend, 1, [row("2026-11-08T09:45:00.000Z")]);
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1)));
+  await tick(15_000);
+  await answer(backend.lists()[1], graphRunsRecord(NAME, [row("2026-11-08T09:50:00.000Z")]));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 50)), "the newest row's");
+  // Twenty newer runs push run 1 off the newest 20.
+  await tick(15_000);
+  await answer(backend.lists()[2], graphRunsRecord(NAME, Array.from({ length: 20 }, (_, i) => entry(30 - i))));
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 50)), "as the last row gave it");
+  assert.match(text(header(root)), /revision 4/);
+  assert.deepEqual(
+    backend.lists().map((s) => s.args.limit),
+    [20, 20, 20],
+    "a run a row named isn't looked for in the newest 100",
+  );
+});
+
 /** Asserts no status read follows within `ms - 1`, and one does at `ms`; answers it with `outcome`. */
 async function nextReadAfter(backend: Backend, ms: number, outcome: CallOutcome): Promise<void> {
   const before = backend.statuses().length;

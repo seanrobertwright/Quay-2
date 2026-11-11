@@ -755,7 +755,7 @@ test("the builder's zoom keys zoom the run canvas in and out and back to 100%, f
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
 
-test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, since a run's revision never changes", async () => {
+test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, and its times, as its last row gave them", async () => {
   const backend = fakeBackend();
   const root = await drawRun(backend);
   const viewport = () => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
@@ -770,4 +770,6 @@ test("a run that newer runs push off the Runs list keeps its run canvas drawn, a
   assert.match(text(runCanvas(root)?.querySelector("h4")), /, revision 1$/);
   assert.match(text(header(root)), /revision 1/, "the detail still names the revision");
   assert.equal(backend.revisionReads().length, 1, "and didn't read it again");
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)), "the times stay as the last row gave them");
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 31)));
 });

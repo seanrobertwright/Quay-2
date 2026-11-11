@@ -6,6 +6,8 @@
 // starts a run of the host's admitted revision after a confirm (#466): a created run is selected
 // and followed, and every other outcome gets a notice of its own, as for a template run. A run
 // to show when the view opens, such as one a graph trigger's fire created (#478), starts selected.
+// A shown run keeps the last row that named it, and one the list doesn't name is looked for once
+// among the newest 100 (#579).
 import { useEffect, useState, type FC } from "react";
 import type { GraphWorkflowHost } from "./GraphHostPanel.tsx";
 import { GraphRunConfirm } from "./GraphRunConfirm.tsx";
@@ -15,7 +17,7 @@ import { graphRunRefusedBy } from "./graphRunStart.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { RunControl } from "./RunControl.tsx";
 import { RunsListBody, SimulatedRunsNotice } from "./RunsListBody.tsx";
-import { GRAPH_RUNS, type RunsList, type RunsListView, type Unlisted } from "./runsList.ts";
+import { GRAPH_RUNS, type RunRow, type RunsList, type RunsListView, type Unlisted } from "./runsList.ts";
 import { graphRunStarts } from "./runStart.ts";
 import type { DefinitionRef } from "./types.ts";
 import { useRunPages } from "./useRunPages.ts";
@@ -39,33 +41,43 @@ interface GraphRunsViewProps {
   revisions?: RevisionCache;
 }
 
-/** A run whose detail is shown, and the runs the Runs list held when it was shown. */
+/** A run whose detail is shown, and what the Runs list has said of it since it was shown. */
 interface Showing {
   workOrderId: string;
-  runsThen: RunsListView["runs"];
+  /** The list's runs when the run was shown. */
+  runsThen: readonly RunRow[] | null;
+  /** The last row of the list that named the run; null before one did. */
+  row: RunRow | null;
 }
 
 /**
  * The run whose detail is shown (#465, #579): `initialRun` at first, then the one `show` picks, or
- * none; its row in the Runs list; and while the list names no row of it, why. Only a read that
- * ends after the run was shown can tell, since the one before may be older than the run, as it is
- * for a run just created. When that read is full at the first limit without the run, the list
- * reads the newest 100 once, as Show more does.
+ * none. Its row is its newest in the Runs list, or once newer runs push it off the list, the last
+ * row that named it. That row is this showing's: showing another run starts with none.
+ *
+ * While no row has named the run, `unlisted` says why. Only a read that ends after the run was
+ * shown can tell, since the one before may be older than the run, as it is for a run just created.
+ * When that read is full at the first limit without the run, the list reads the newest 100 once,
+ * as Show more does.
  */
 function useShownRun(list: RunsList | null, view: RunsListView, initialRun: string | undefined) {
-  const [showing, setShowing] = useState<Showing | null>(initialRun === undefined ? null : { workOrderId: initialRun, runsThen: null });
-  const selected = showing?.workOrderId ?? null;
-  const row = view.runs?.find((r) => r.workOrderId === selected) ?? null;
+  const [showing, setShowing] = useState<Showing | null>(initialRun === undefined ? null : { workOrderId: initialRun, runsThen: null, row: null });
+  const listed = showing === null ? null : (view.runs?.find((r) => r.workOrderId === showing.workOrderId) ?? null);
+  if (showing !== null && listed !== null && listed !== showing.row) setShowing({ ...showing, row: listed });
+  const row = listed ?? showing?.row ?? null;
   // The list as the last read since the run was shown left it; null before such a read.
   const since = showing !== null && view.runs !== null && view.runs !== showing.runsThen ? view : null;
   const unlisted: Unlisted = since?.atCap ? "atCap" : since?.complete ? "complete" : "reading";
   const widen = row === null && since !== null && since.canShowMore && !since.dimmed;
+  // The list model is outside React, so the read is asked of it once a render finds the need.
   useEffect(() => {
     if (widen) list?.showMore();
   }, [list, widen]);
   const show = (workOrderId: string | null) =>
-    setShowing((now) => (workOrderId === null ? null : now?.workOrderId === workOrderId ? now : { workOrderId, runsThen: view.runs }));
-  return { selected, row, unlisted, show };
+    setShowing((now) =>
+      workOrderId === null ? null : now?.workOrderId === workOrderId ? now : { workOrderId, runsThen: list?.view().runs ?? null, row: null },
+    );
+  return { selected: showing?.workOrderId ?? null, row, unlisted, show };
 }
 
 export const GraphRunsView: FC<GraphRunsViewProps> = ({ projectPath, name, shown, runInTerminal, host = null, unsaved = [], initialRun, revisions }) => {

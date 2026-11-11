@@ -42,13 +42,13 @@ import { RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
-import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import { configSummary } from "./kinds.ts";
 import { commandFor } from "./keymap.ts";
 import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
 import { prefersReducedMotion } from "./motion.ts";
 import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
+import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
 import type { DefinitionFile } from "./types.ts";
 
 const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
@@ -344,7 +344,10 @@ interface RunCanvasProps {
   /** The run's nodes, from the view's `nodes[]`. */
   nodes: readonly GraphRunNode[];
   revisions: RevisionCache;
-  /** Called each time the revision can't be read, so the node table can open in the run canvas's place. */
+  /**
+   * Called each time the revision can't be read, and once Quay can't tell which revision the run
+   * runs, so the node table can open in the run canvas's place.
+   */
   onUnreadable: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;
@@ -352,7 +355,11 @@ interface RunCanvasProps {
   onSelect: (nodeId: string) => void;
 }
 
-/** The run canvas of a graph run, with a heading that names the run and its revision. */
+/**
+ * The run canvas of a graph run, with a heading that names the run and its revision. Until a row of
+ * the Runs list names the revision, its place says the revision is being looked up, or why Quay
+ * can't tell it (#579).
+ */
 export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...rest }) => {
   const headingId = useId();
   return (
@@ -384,7 +391,9 @@ function unlistedLine(unlisted: Unlisted): string {
 
 /**
  * The run canvas's place while no row of the Runs list has named the run's revision: why, on a
- * status line. Once Quay can't tell the revision, `onUnreadable` is called, so the node table opens.
+ * status line. Once Quay can't tell the revision, `onUnreadable` is called, so the node table
+ * opens, and not again while the reason stays the same, so a reader who closes the table keeps it
+ * closed.
  */
 const UnlistedRevision: FC<{ unlisted: Unlisted; onUnreadable: () => void }> = ({ unlisted, onUnreadable }) => {
   const unreadable = useRef(onUnreadable);
