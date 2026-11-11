@@ -424,7 +424,7 @@ test("a graph node with no view entry draws no chip and says no state is reporte
   assert.match(text(end), /no state reported/);
   assert.match(end.getAttribute("aria-label") ?? "", /no state reported$/);
   assert.deepEqual(problems(root), [
-    "Node end is in revision 1's graph, but the host reports no state for it.",
+    "Node end is in revision 1's graph, but the host reports no node phase for it.",
     "Node extra has a node phase on the host, but isn't in revision 1's graph, so only the node table shows it.",
   ]);
   await click(nodesToggle(root));

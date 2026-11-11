@@ -93,7 +93,7 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   const runs = new Map(nodes.map((n) => [n.nodeId, n]));
   const drawn = new Set(graph.nodes.map((n) => n.id));
   const problems = [
-    ...graph.nodes.filter((n) => !runs.has(n.id)).map((n) => `Node ${n.id} is in revision ${revision}'s graph, but the host reports no state for it.`),
+    ...graph.nodes.filter((n) => !runs.has(n.id)).map((n) => `Node ${n.id} is in revision ${revision}'s graph, but the host reports no node phase for it.`),
     ...nodes.filter((n) => !drawn.has(n.nodeId)).map((n) => `Node ${n.nodeId} has a node phase on the host, but isn't in revision ${revision}'s graph, so only the node table shows it.`),
   ];
   return { runs, problems };
@@ -212,8 +212,9 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
 };
 
 /**
- * The node positions of the project's saved layout for graph `graphId`. None when the project
- * has no layout for it, or it can't be read, so dagre places every node.
+ * The node positions of the project's saved layout for graph `graphId`, which `praxis_read` gives
+ * with the project's own graph of that id. None when the project has no such graph, or no layout
+ * for it, or they can't be read, so dagre places every node.
  */
 async function savedPositions(projectPath: string, graphId: string): Promise<Map<string, XYPosition>> {
   if (graphId === "") return new Map();
