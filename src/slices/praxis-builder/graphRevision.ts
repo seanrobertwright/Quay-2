@@ -33,8 +33,6 @@ export interface RevisionCache {
 }
 
 export interface RevisionCacheOptions {
-  /** The most revisions it keeps; `REVISION_CACHE_SIZE` when absent. */
-  size?: number;
   call?: Invoker;
 }
 
@@ -42,7 +40,7 @@ export interface RevisionCacheOptions {
  * What a revision record's bundle holds to draw: its main graph, or why it isn't drawn: it has no
  * graph, more nodes than the builder draws, or a graph the builder can't read.
  */
-export function revisionGraphOf(record: Record<string, unknown>): Exclude<RevisionRead, { kind: "failed" }> {
+function revisionGraphOf(record: Record<string, unknown>): Exclude<RevisionRead, { kind: "failed" }> {
   const graph = isObject(record.bundle) ? record.bundle.graph : undefined;
   if (!isObject(graph)) return { kind: "undrawn", reason: "praxis gave it without a graph." };
   if (Array.isArray(graph.nodes) && graph.nodes.length > MAX_NODES) {
@@ -55,7 +53,7 @@ export function revisionGraphOf(record: Record<string, unknown>): Exclude<Revisi
 /** A signal no one aborts: a revision read runs to its end, for whoever asks next. */
 const NEVER_ABORTED = new AbortController().signal;
 
-export function createRevisionCache({ size = REVISION_CACHE_SIZE, call = invoke }: RevisionCacheOptions = {}): RevisionCache {
+export function createRevisionCache({ call = invoke }: RevisionCacheOptions = {}): RevisionCache {
   // A Map iterates in insertion order, so the first key is the oldest revision kept.
   const kept = new Map<string, RevisionRead>();
   const reading = new Map<string, Promise<RevisionRead>>();
@@ -68,7 +66,7 @@ export function createRevisionCache({ size = REVISION_CACHE_SIZE, call = invoke 
   function keep(key: string, read: RevisionRead): void {
     kept.set(key, read);
     for (const oldest of kept.keys()) {
-      if (kept.size <= size) break;
+      if (kept.size <= REVISION_CACHE_SIZE) break;
       kept.delete(oldest);
     }
   }
