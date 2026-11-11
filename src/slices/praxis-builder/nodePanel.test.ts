@@ -417,31 +417,51 @@ test("a node held, or blocked by a hold, links to that hold's panel in the detai
   assert.ok(!panelFacts(root).some(([term]) => term === "Hold"));
 });
 
-test("with the run canvas unavailable, choosing a row still opens the node panel beside its place", async () => {
+/** Shows run 1, whose view is the recorded run of several phases, with no drawing in the run canvas's place. */
+async function showUndrawn(backend: Backend): Promise<HTMLElement> {
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  return root;
+}
+
+/** Chooses cooldown's row in the open node table, and asserts its node panel opened beside the run canvas's place, which has no drawing. */
+async function choosingARowOpensItsPanel(root: HTMLElement): Promise<void> {
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no drawing");
+  await click(rowButton(root, "cooldown") as HTMLButtonElement);
+  assert.deepEqual(selectedRows(root), ["cooldown"]);
+  assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: cooldown");
+  assert.deepEqual(panelFacts(root).slice(0, 2), [
+    ["Kind", "WAIT"],
+    ["Phase", "WAITING"],
+  ]);
+  assert.equal(nodePanel(root)?.parentElement, runCanvas(root)?.parentElement?.parentElement, "beside the run canvas's place");
+}
+
+test("when the revision can't be read, the node table opens by itself, and choosing a row opens the node panel beside the run canvas's place", async () => {
+  const backend = fakeBackend();
+  const root = await showUndrawn(backend);
   const refusal = recordedStdout("graphs show: a revision, not submitted");
-  const unavailable: [string, CallOutcome | null][] = [
-    ["the revision can't be read", { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal }],
-    ["the revision has too many nodes to draw", revisionRecord(Array.from({ length: 1001 }, (_, n) => ({ id: `node-${n}`, kind: "TASK", dependsOn: [], config: {} })))],
-    ["the revision is still being read", null],
-  ];
-  for (const [why, outcome] of unavailable) {
-    revisions = createRevisionCache();
-    const backend = fakeBackend();
-    const root = await showRun(backend);
-    await answer(backend.statuses()[0], severalPhases());
-    if (outcome !== null) await answer(backend.revisionReads()[0], outcome);
-    assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, `${why}: no drawing`);
-    if (nodesToggle(root).getAttribute("aria-expanded") === "false") await click(nodesToggle(root));
-    await click(rowButton(root, "cooldown") as HTMLButtonElement);
-    assert.deepEqual(selectedRows(root), ["cooldown"], why);
-    assert.equal(text(nodePanel(root)?.querySelector("h4")), "Node panel: cooldown", why);
-    assert.deepEqual(panelFacts(root).slice(0, 2), [
-      ["Kind", "WAIT"],
-      ["Phase", "WAITING"],
-    ]);
-    assert.equal(nodePanel(root)?.parentElement, runCanvas(root)?.parentElement?.parentElement, `${why}: beside the run canvas's place`);
-    unmount();
-  }
+  await answer(backend.revisionReads()[0], { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal });
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
+  await choosingARowOpensItsPanel(root);
+});
+
+test("when the revision has too many nodes to draw, the node table stays collapsed, and once opened, choosing a row opens the node panel beside the run canvas's place", async () => {
+  const backend = fakeBackend();
+  const root = await showUndrawn(backend);
+  await answer(backend.revisionReads()[0], revisionRecord(Array.from({ length: 1001 }, (_, n) => ({ id: `node-${n}`, kind: "TASK", dependsOn: [], config: {} }))));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false");
+  await click(nodesToggle(root));
+  await choosingARowOpensItsPanel(root);
+});
+
+test("while the revision is still being read, the node table stays collapsed, and once opened, choosing a row opens the node panel beside the run canvas's place", async () => {
+  const backend = fakeBackend();
+  const root = await showUndrawn(backend);
+  assert.equal(backend.revisionReads().length, 1, "the read is left unanswered");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false");
+  await click(nodesToggle(root));
+  await choosingARowOpensItsPanel(root);
 });
 
 test("selecting nodes and following the panel's link change nothing: the panel has no control, and only reads are sent", async () => {
