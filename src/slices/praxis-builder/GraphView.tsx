@@ -29,6 +29,7 @@ import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
 import { prefersReducedMotion } from "./motion.ts";
+import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
@@ -183,21 +184,6 @@ const GraphViewInner: FC<GraphViewProps> = ({
 }) => {
   const flow = useReactFlow();
   const canvasBox = useRef<HTMLDivElement | null>(null);
-  /** Pans, at the same zoom, to centre a rectangle on screen that isn't wholly in the canvas. */
-  const reveal = useCallback(
-    (r: { left: number; top: number; width: number; height: number }) => {
-      const box = canvasBox.current?.getBoundingClientRect();
-      if (!box) return;
-      if (r.left >= box.left && r.top >= box.top && r.left + r.width <= box.right && r.top + r.height <= box.bottom) return;
-      const vp = flow.getViewport();
-      void flow.setViewport({
-        x: vp.x + box.left + box.width / 2 - (r.left + r.width / 2),
-        y: vp.y + box.top + box.height / 2 - (r.top + r.height / 2),
-        zoom: vp.zoom,
-      });
-    },
-    [flow]
-  );
   /**
    * Focuses a node's card once the canvas draws it: a node just added has no card until React
    * Flow renders it, which can be a frame or two after the edit. The focus doesn't scroll:
@@ -392,9 +378,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
     focusNode(id);
     // Below a node off screen, or after a click, which doesn't show focus, the new card may
     // be out of view.
-    const { zoom } = flow.getViewport();
-    const corner = flow.flowToScreenPosition(position);
-    reveal({ left: corner.x, top: corner.y, width: NODE_WIDTH * zoom, height: NODE_HEIGHT * zoom });
+    reveal(canvasBox.current, flow, cardRect(flow, position));
   };
 
   return (
@@ -406,11 +390,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
           ref={canvasBox}
           tabIndex={-1}
           className="flex-1 min-h-0 relative outline-none"
-          onFocus={(e) => {
-            if (e.target.matches(".react-flow__node:focus-visible, .react-flow__edge:focus-visible")) {
-              reveal(e.target.getBoundingClientRect());
-            }
-          }}
+          onFocus={(e) => revealFocused(canvasBox.current, flow, e.target)}
         >
           <GraphCanvas
             graph={graph}

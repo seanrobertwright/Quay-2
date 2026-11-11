@@ -680,3 +680,215 @@ test("a run that newer runs push off the Runs list keeps its run canvas drawn, a
   assert.match(text(header(root)), /revision 1/, "the detail still names the revision");
   assert.equal(backend.revisionReads().length, 1, "and didn't read it again");
 });
+
+// Bringing a card into view (#575): a card that takes keyboard focus, and the selected card, are
+// panned into view when they aren't wholly in it, at the same zoom and without animation.
+
+/** Where the run canvas's drawing is on screen while no node panel is open beside it. */
+const DRAWING = { left: 100, top: 50, width: 900, height: 320 };
+/** How much narrower the drawing is while the node panel is open beside it: the panel's w-64 and the gap-3 between them. */
+const PANEL_SPACE = 256 + 12;
+/** A card's size on screen at 100%: the layout's, which it keeps until React Flow measures it. */
+const CARD = { width: 230, height: 92 };
+
+/** A rectangle on screen, as `getBoundingClientRect` gives one. */
+const screenRect = (left: number, top: number, width: number, height: number) =>
+  ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+
+/** The offset of an element's `translate(...)` transform, and the scale after it, if any. */
+function transformOf(el: Element | null): { x: number; y: number; zoom: number } {
+  const m = /translate\((-?[\d.e-]+)px, ?(-?[\d.e-]+)px\)(?: scale\(([\d.e-]+)\))?/.exec((el as HTMLElement | null)?.style.transform ?? "");
+  return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3] ?? 1) } : { x: 0, y: 0, zoom: 1 };
+}
+
+/**
+ * Lays the run canvas out while `body` runs, as a browser would, since happy-dom lays nothing out.
+ * The drawing is at `DRAWING` on screen, `PANEL_SPACE` narrower while a node panel is open beside
+ * it, and each card is where the view's offset and zoom put it, at `CARD`'s size times the zoom.
+ * `resize` gives the drawing a new width, before any node panel takes its space, and reports the
+ * change to the resize observers watching it, as a browser does. Nothing else is reported: a node
+ * panel opening narrows the drawing unreported, so a test sees what the change of selection does.
+ */
+async function withLayout(body: (resize: (width: number) => Promise<void>) => Promise<void>): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  const observer = g.ResizeObserver;
+  const proto = HTMLElement.prototype;
+  const own = (key: string) => Object.getOwnPropertyDescriptor(proto, key);
+  const saved = { rect: own("getBoundingClientRect"), width: own("offsetWidth"), height: own("offsetHeight") };
+  let width = DRAWING.width;
+  const panelOpen = () => [...document.querySelectorAll("section h4")].some((h) => /^Node panel/.test(text(h)));
+  const drawing = () => screenRect(DRAWING.left, DRAWING.top, width - (panelOpen() ? PANEL_SPACE : 0), DRAWING.height);
+  // React Flow's element, and the pane in it that it takes its size from, which fills it.
+  const isDrawing = (el: Element) => el.classList.contains("react-flow") || el.classList.contains("react-flow__renderer");
+  type Report = (entries: { target: Element; contentRect: DOMRect }[]) => void;
+  const watching: { report: Report; targets: Set<Element> }[] = [];
+  g.ResizeObserver = class {
+    watch: (typeof watching)[number];
+    constructor(report: Report) {
+      this.watch = { report, targets: new Set() };
+      watching.push(this.watch);
+    }
+    observe(target: Element) {
+      this.watch.targets.add(target);
+    }
+    unobserve(target: Element) {
+      this.watch.targets.delete(target);
+    }
+    disconnect() {
+      this.watch.targets.clear();
+    }
+  };
+  Object.defineProperty(proto, "getBoundingClientRect", {
+    configurable: true,
+    writable: true,
+    value(this: HTMLElement) {
+      if (isDrawing(this)) return drawing();
+      if (!this.classList.contains("react-flow__node")) return screenRect(0, 0, 0, 0);
+      const at = transformOf(this);
+      const view = transformOf(this.closest(".react-flow__viewport"));
+      const box = drawing();
+      return screenRect(box.left + view.x + at.x * view.zoom, box.top + view.y + at.y * view.zoom, CARD.width * view.zoom, CARD.height * view.zoom);
+    },
+  });
+  Object.defineProperty(proto, "offsetWidth", { configurable: true, get(this: HTMLElement) { return isDrawing(this) ? drawing().width : 0; } });
+  Object.defineProperty(proto, "offsetHeight", { configurable: true, get(this: HTMLElement) { return isDrawing(this) ? drawing().height : 0; } });
+  const resize = async (next: number) => {
+    width = next;
+    await act(async () => {
+      for (const { report, targets } of watching) {
+        const resized = [...targets].filter(isDrawing);
+        const size = drawing();
+        if (resized.length > 0) report(resized.map((target) => ({ target, contentRect: screenRect(0, 0, size.width, size.height) })));
+      }
+    });
+  };
+  try {
+    await body(resize);
+  } finally {
+    g.ResizeObserver = observer;
+    for (const [key, descriptor] of [["getBoundingClientRect", saved.rect], ["offsetWidth", saved.width], ["offsetHeight", saved.height]] as const) {
+      if (descriptor) Object.defineProperty(proto, key, descriptor);
+      else delete (proto as unknown as Record<string, unknown>)[key];
+    }
+  }
+}
+
+/** The run canvas's view: its offset and zoom, as React Flow transforms its viewport. */
+const viewOf = (root: HTMLElement) => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
+/** The run canvas's card for node `nodeId`. */
+const cardOf = (root: HTMLElement, nodeId: string) => runCanvas(root)?.querySelector<HTMLElement>(`.react-flow__node[data-id="${nodeId}"]`) as HTMLElement;
+/**
+ * How far card `nodeId`'s centre is from the drawing's, in whole pixels across and down, as the
+ * test's layout puts them: [0, 0] for a card a reveal centred.
+ */
+function offCentre(root: HTMLElement, nodeId: string): [number, number] {
+  const card = cardOf(root, nodeId).getBoundingClientRect();
+  const drawing = (runCanvas(root)?.querySelector(".react-flow") as HTMLElement).getBoundingClientRect();
+  const off = (a: number, b: number) => Math.round(a - b) || 0;
+  return [off(card.left + card.width / 2, drawing.left + drawing.width / 2), off(card.top + card.height / 2, drawing.top + drawing.height / 2)];
+}
+/** Whether card `nodeId` is wholly in the drawing, as the test's layout puts them. */
+function whollyInView(root: HTMLElement, nodeId: string): boolean {
+  const card = cardOf(root, nodeId).getBoundingClientRect();
+  const drawing = (runCanvas(root)?.querySelector(".react-flow") as HTMLElement).getBoundingClientRect();
+  return card.left >= drawing.left && card.top >= drawing.top && card.right <= drawing.right && card.bottom <= drawing.bottom;
+}
+
+test("a card that takes keyboard focus outside the run canvas's view is panned into view at once, at the same zoom, and one wholly in view moves nothing", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await withReducedMotion(async () => void (await press(cards(root)[0], "=", { [MOD]: true })));
+    const zoomed = viewOf(root);
+    assert.match(zoomed, /scale\(1\.2\)$/);
+    // happy-dom matches :focus-visible for any focus, as a browser does for focus from the keyboard.
+    await act(async () => cardOf(root, "test").focus());
+    assert.ok(whollyInView(root, "test"));
+    assert.equal(viewOf(root), zoomed, "a card wholly in view doesn't move the run canvas");
+    assert.equal(whollyInView(root, "end"), false, "end starts out of view");
+    // Not async: an animated pan would have drawn none of its frames when this act ends.
+    act(() => cardOf(root, "end").focus());
+    assert.deepEqual(offCentre(root, "end"), [0, 0], "panned to centre the card, at once");
+    assert.match(viewOf(root), /scale\(1\.2\)$/, "at the same zoom");
+  });
+});
+
+/** The button in node `nodeId`'s row of the node table, which selects the node. */
+const rowButton = (root: HTMLElement, nodeId: string) =>
+  [...(nodeTable(root)?.querySelectorAll<HTMLButtonElement>("tbody th button") ?? [])].find((b) => text(b) === nodeId);
+
+test("choosing a node table row whose card is out of view pans the run canvas to the card, in the width the node panel leaves it", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(nodesToggle(root));
+    assert.equal(whollyInView(root, "cooldown"), false, "cooldown starts below the view");
+    await click(rowButton(root, "cooldown"));
+    assert.equal(viewOf(root), "translate(201px,-230px) scale(1)", "panned, at the same zoom");
+    assert.deepEqual(offCentre(root, "cooldown"), [0, 0], "to centre the card in the drawing beside the node panel");
+  });
+});
+
+test("choosing a node table row whose card is wholly in view doesn't move the run canvas", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(nodesToggle(root));
+    await click(rowButton(root, "test"));
+    assert.equal(cardOf(root, "test").getAttribute("aria-current"), "true", "test is selected");
+    assert.ok(whollyInView(root, "test"), "wholly in view beside the node panel");
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)");
+  });
+});
+
+test("selecting a card near the right edge, so the node panel opens and narrows the run canvas, leaves the card wholly in view", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    assert.ok(whollyInView(root, "build"), "build starts wholly in view, near the right edge");
+    await click(cardOf(root, "build"));
+    assert.equal(viewOf(root), "translate(-339px,114px) scale(1)", "panned, at the same zoom");
+    assert.ok(whollyInView(root, "build"), "wholly in the narrower drawing");
+    assert.deepEqual(offCentre(root, "build"), [0, 0]);
+  });
+});
+
+test("a read of the run that keeps the selection doesn't move the run canvas once the person has panned away from the selected card", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(cardOf(root, "test"));
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "a click on a card wholly in view moves nothing");
+    // A drag of the empty canvas pans the view away from the selected card.
+    const pane = runCanvas(root)?.querySelector(".react-flow__pane") as HTMLElement;
+    await mouse(pane, "mousedown", { x: 10, y: 10 });
+    await mouse(pane, "mousemove", { x: 710, y: 10 });
+    await mouse(pane, "mouseup", { x: 710, y: 10 });
+    const panned = viewOf(root);
+    assert.equal(panned, "translate(700px,0px) scale(1)");
+    assert.equal(whollyInView(root, "test"), false, "test is out of view");
+    // The next read changes a node's phase, so every card is drawn again, and test stays selected.
+    const view = recordedStdout("status: nodes in several phases");
+    const nodes = view.nodes as Record<string, unknown>[];
+    await tick(15_000);
+    await answer(backend.statuses()[1], statusRecord({ ...view, changeToken: "1".repeat(64), nodes: [{ ...nodes[0], phase: "FAILED" }, ...nodes.slice(1)] }));
+    assert.deepEqual(cardStates(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"], "the read was drawn");
+    assert.equal(cardOf(root, "test").getAttribute("aria-current"), "true", "test is still selected");
+    assert.equal(viewOf(root), panned, "the run canvas stays where it was panned");
+  });
+});
+
+test("when the run canvas changes size while a node is selected, the selected card is panned into view, and with none selected nothing moves", async () => {
+  await withLayout(async (resize) => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await resize(700);
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "no node is selected");
+    await resize(900);
+    await click(cardOf(root, "test"));
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "test is wholly in view beside the node panel");
+    await resize(600);
+    assert.equal(viewOf(root), "translate(-219px,-58px) scale(1)", "panned, at the same zoom");
+    assert.deepEqual(offCentre(root, "test"), [0, 0], "to centre the card in the drawing's new size");
+  });
+});
