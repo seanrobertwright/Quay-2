@@ -692,8 +692,9 @@ fn each_graph_read_is_read_with_the_arguments_praxis_took() {
     let work_order = |name: &str| recorded(name)["stdout"]["workOrderId"].as_str().unwrap().to_string();
     let (awaiting, ended, held) =
         (work_order("status: awaiting approval"), work_order("status: completed, not succeeded"), work_order("status: held"));
-    let cases: [(Verb, Vec<&str>, &str); 6] = [
+    let cases: [(Verb, Vec<&str>, &str); 7] = [
         (Verb::GraphsRevisions, vec!["release-review", "--before", "2", "--limit", "20"], "graphs show: older revisions"),
+        (Verb::GraphsRevision, vec!["release-train", "--revision", "1"], "graphs show: a revision"),
         (Verb::GraphsWithdraw, vec!["release-review", "1"], "graphs withdraw: a pending candidate"),
         (Verb::GraphRuns, vec!["nightly-build", "--limit", "20"], "runs"),
         (Verb::GraphStatus, vec![&awaiting], "status: awaiting approval"),
@@ -741,6 +742,7 @@ fn a_graph_status_passes_on_the_certificate_hint() {
 fn each_graph_command_s_recorded_refusal() {
     for (verb, operands, name, host_code) in [
         (Verb::GraphsRevisions, &["nothing-here", "--before", "2", "--limit", "20"][..], "graphs show: older revisions, not submitted", Some("NOT_FOUND")),
+        (Verb::GraphsRevision, &["nothing-here", "--revision", "1"][..], "graphs show: a revision, not submitted", Some("NOT_FOUND")),
         (Verb::GraphsWithdraw, &["release-review", "1"][..], "graphs withdraw: not pending", Some("REVISION_NOT_PENDING")),
         (Verb::GraphRuns, &["nothing-here", "--limit", "20"][..], "runs: not submitted", Some("NOT_FOUND")),
         (Verb::GraphStatus, &["wo-nothing-here"][..], "status: no such run", Some("NOT_FOUND")),
@@ -773,6 +775,7 @@ fn a_graph_workflow_name_the_host_refuses_never_reaches_praxis() {
     for (verb, operands, why) in [
         (Verb::GraphsShow, vec!["Release_Review".to_string()], rule.to_string()),
         (Verb::GraphsRevisions, vec!["con".into(), "--before".into(), "2".into(), "--limit".into(), "20".into()], rule.to_string()),
+        (Verb::GraphsRevision, vec!["Release_Train".into(), "--revision".into(), "1".into()], rule.to_string()),
         (Verb::GraphsWithdraw, vec!["".into(), "1".into()], rule.to_string()),
         (Verb::GraphRun, vec!["review.code".into()], rule.to_string()),
         (Verb::GraphRuns, vec!["check".into(), "--limit".into(), "20".into()], crate::slices::praxis::template_name::GRAPH_WORKFLOW_NAME_CHECK.to_string()),
@@ -955,6 +958,26 @@ fn a_graph_record_in_a_format_quay_does_not_read_or_one_the_host_does_not_serve_
     let outcome = graph_call(&h, Verb::GraphsList, &["--limit", "100"], &case);
     assert_eq!(outcome, CallOutcome::NeedsUpdate { detail: case["stdout"]["message"].as_str().unwrap().to_string() });
     assert_eq!(h.condition(), HostCondition::NotCheckedYet);
+}
+
+/// The revision a graph run runs, with its bundle (#571): a read, so it has the read timeout, of the
+/// format pinned by name, given the revision as `--revision` after the name.
+#[test]
+fn one_revision_is_read_with_its_bundle_and_a_revision_praxis_would_refuse_never_reaches_it() {
+    use super::commands::revision_operands;
+    assert!(!Verb::GraphsRevision.writes());
+    let operands = revision_operands("release-train".into(), 1).unwrap();
+    let h = Harness::new();
+    let case = recorded("graphs show: a revision");
+    let CallOutcome::Record { record, .. } = graph_call(&h, Verb::GraphsRevision, &operands, &case) else { panic!("not a record") };
+    assert_called_as(&h, &case);
+    assert_eq!(record["format"], "aiws-graph-workflow-revision/1");
+    assert_eq!((record["name"].as_str(), record["revision"].as_u64()), (Some("release-train"), Some(1)));
+    // The bundle's main graph is the one the recorded run of several phases runs.
+    let ids = |nodes: &Value, field: &str| -> Vec<String> { nodes.as_array().unwrap().iter().map(|n| n[field].as_str().unwrap().to_string()).collect() };
+    let run = recorded("status: nodes in several phases");
+    assert_eq!(ids(&record["bundle"]["graph"]["nodes"], "id"), ids(&run["stdout"]["nodes"], "nodeId"));
+    assert_eq!(revision_operands("release-train".into(), 0).unwrap_err(), "A revision is a whole number from 1, not 0.");
 }
 
 #[test]

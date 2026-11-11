@@ -170,6 +170,10 @@ await until(phasedRun, 'in its several phases', async () => {
   return nodes.length === Object.keys(phases).length && nodes.every((n) => phases[n.nodeId] === n.phase);
 });
 await record('status: nodes in several phases', ['status', phasedRun, '--format', 'aiws-graph-operator-view/1']);
+// The revision that run runs, with its bundle, whose main graph the run canvas draws (#571), and a
+// revision of a graph workflow the host doesn't have.
+await record('graphs show: a revision', ['graphs', 'show', phased, '--revision', '1', '--format', 'aiws-graph-workflow-revision/1']);
+await record('graphs show: a revision, not submitted', ['graphs', 'show', 'nothing-here', '--revision', '1', '--format', 'aiws-graph-workflow-revision/1']);
 
 await record('usage: unknown graphs command, exit 2', ['graphs', 'lsit']);
 const noHost = join(scratch, 'no-host');

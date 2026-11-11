@@ -25,6 +25,9 @@ pub enum Verb {
     GraphsShow,
     /// `praxis graphs show <name> --before <revision>`: a page of older revisions.
     GraphsRevisions,
+    /// `praxis graphs show <name> --revision <revision>`: one revision with its bundle, whose main
+    /// graph a graph run's run canvas draws (#571).
+    GraphsRevision,
     /// `praxis graphs withdraw <name> <revision>`: withdraws a pending candidate.
     GraphsWithdraw,
     /// `praxis run <name>`: creates a run of the graph workflow's current admitted revision.
@@ -78,6 +81,7 @@ impl Verb {
             Verb::GraphsList => "aiws-graph-workflows/1",
             Verb::GraphsShow => "aiws-graph-workflow/1",
             Verb::GraphsRevisions => "aiws-graph-workflow-revisions/1",
+            Verb::GraphsRevision => "aiws-graph-workflow-revision/1",
             Verb::GraphsWithdraw => "aiws-graph-workflow-withdraw-result/1",
             Verb::GraphRun => "aiws-graph-run-result/1",
             Verb::GraphRuns => "aiws-graph-runs/1",
@@ -159,7 +163,7 @@ impl Verb {
             Verb::GraphsCheck => &["graphs", "check"],
             Verb::GraphsSubmit => &["graphs", "submit"],
             Verb::GraphsList => &["graphs", "list"],
-            Verb::GraphsShow | Verb::GraphsRevisions => &["graphs", "show"],
+            Verb::GraphsShow | Verb::GraphsRevisions | Verb::GraphsRevision => &["graphs", "show"],
             Verb::GraphsWithdraw => &["graphs", "withdraw"],
             Verb::TriggersCheck => &["triggers", "check"],
             Verb::TriggersSubmit => &["triggers", "submit"],
@@ -184,6 +188,7 @@ impl Verb {
             Verb::GraphsList
                 | Verb::GraphsShow
                 | Verb::GraphsRevisions
+                | Verb::GraphsRevision
                 | Verb::GraphRuns
                 | Verb::GraphStatus
                 | Verb::TriggersList
@@ -216,9 +221,14 @@ impl Verb {
     /// right after the command's words.
     pub fn graph_workflow_arg(self) -> Option<usize> {
         match self {
-            Verb::GraphsCheck | Verb::GraphsSubmit | Verb::GraphsShow | Verb::GraphsRevisions | Verb::GraphsWithdraw | Verb::GraphRun | Verb::GraphRuns => {
-                Some(self.words().len())
-            }
+            Verb::GraphsCheck
+            | Verb::GraphsSubmit
+            | Verb::GraphsShow
+            | Verb::GraphsRevisions
+            | Verb::GraphsRevision
+            | Verb::GraphsWithdraw
+            | Verb::GraphRun
+            | Verb::GraphRuns => Some(self.words().len()),
             _ => None,
         }
     }

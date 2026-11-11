@@ -262,6 +262,30 @@ pub async fn praxis_host_graph_revisions(
     call(&cli, &workspace, &project_path, Verb::GraphsRevisions, operands, call_id).await
 }
 
+/// The operands of `praxis graphs show <name> --revision <revision>`, or a refusal of a revision
+/// `praxis` wouldn't take, before it runs. The name is checked where every graph workflow name is,
+/// in [`PraxisCli::call`].
+pub fn revision_operands(name: String, revision: u32) -> Result<Vec<String>, String> {
+    check_revision(revision)?;
+    Ok(vec![name, "--revision".into(), revision.to_string()])
+}
+
+/// `praxis graphs show <name> --revision <revision> --json`: one revision of the graph workflow
+/// with its bundle, whose main graph a graph run's run canvas draws (#571). A revision never
+/// changes, so the builder reads each one once.
+#[tauri::command]
+pub async fn praxis_host_graph_revision(
+    project_path: String,
+    name: String,
+    revision: u32,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    let operands = revision_operands(name, revision)?;
+    call(&cli, &workspace, &project_path, Verb::GraphsRevision, operands, call_id).await
+}
+
 /// `praxis graphs withdraw <name> <revision> --json`: withdraws a pending candidate.
 /// `request_id` resends a withdrawal whose outcome was unknown.
 #[tauri::command]
