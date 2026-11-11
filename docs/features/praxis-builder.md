@@ -396,9 +396,11 @@ The run canvas draws the graph of the revision the run runs, with each node in i
 
 #### The node panel
 
-Choosing a card on the run canvas, or a node's id in the node table, selects that node and opens its node panel beside the run canvas. One node is selected at a time, and choosing another node moves the selection. The selected node's card has a white ring close around its border, a colour no node phase has, and its row is filled, with its id in bold and underlined. A card with keyboard focus has a ring further out, so a card both selected and focused shows both rings. A screen reader hears the selected card and row as the current one.
+Choosing a card on the run canvas, or a node's id in the node table, selects that node and opens its node panel beside the run canvas. One node is selected at a time, and choosing another node moves the selection. Choosing the selected node again keeps it selected. The selected node's card has a white ring close around its border, a colour no node phase has, and its row is filled, with its id in bold and underlined. A card with keyboard focus has a ring further out, so a card both selected and focused shows both rings. A screen reader hears the selected card and row as the current one.
 
-- **With the keyboard**, `Tab` moves through the run canvas's cards, or the node ids in the node table, and `Enter` or `Space` selects the one with focus.
+To close the node panel, press its close button (**×**, named **Close node panel**) beside its heading, or press `Escape` with focus on the run canvas, in the node table or in the node panel. Either clears the selection, so no card or row is selected, and the builder stays open.
+
+- **With the keyboard**, `Tab` moves through the run canvas's cards, or the node ids in the node table, and `Enter` or `Space` selects the one with focus. `Escape` on a card or a row clears the selection and leaves focus where it is. From the node panel, `Escape` or the close button moves focus to the node's card, or to its row when the run canvas has no card for it, such as when it isn't drawn, or to **Nodes** when the node table is collapsed too. With no node selected, `Escape` on the run canvas or in the node table works as it does elsewhere in the builder.
 - **When the run canvas isn't drawn**, such as while its revision is read, or when it can't be read or has too many nodes, choosing a row still opens the node panel, beside the run canvas's place.
 - **A card the host reports no node phase for** opens a node panel that says so. A node in the node table only opens its node panel and marks no card.
 
@@ -413,7 +415,7 @@ The node panel is headed with the node's id. It shows only what the host reports
 
 A fact the host doesn't report for the node is left out, not shown empty. A node that is held, or blocked by a hold, links to that hold's panel in the detail, and the link moves focus there. Only a hold on a node has a hold card, and so a panel: a node held or blocked by a hold on a grant, a branch or the whole run shows the hold's id, with no link.
 
-The node panel is read-only. It has no control and changes nothing on the run, the graph or a file: approvals, acceptances, hold decisions and human tasks are made in the host's browser page. It doesn't show a loop's history of iterations, or a human task's own record, such as its role, instructions and due time, which would need another read of the host. It isn't the graph canvas's inspector.
+The node panel is read-only. Its only control is its close button, and it changes nothing on the run, the graph or a file: approvals, acceptances, hold decisions and human tasks are made in the host's browser page. It doesn't show a loop's history of iterations, or a human task's own record, such as its role, instructions and due time, which would need another read of the host. It isn't the graph canvas's inspector.
 
 #### The node table
 

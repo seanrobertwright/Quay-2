@@ -134,6 +134,10 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
 const cardId = (target: unknown): string | null =>
   target instanceof HTMLElement && target.classList.contains("react-flow__node") ? (target.dataset.id ?? null) : null;
 
+/** The card of node `nodeId` in `root`, the reverse of `cardId`; null when no run canvas there draws one for it. */
+export const cardOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
+  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardId(card) === nodeId) ?? null;
+
 /** Each card's size as React Flow measured it, by node id. */
 type Sizes = ReadonlyMap<string, Dimensions>;
 

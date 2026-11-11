@@ -16,21 +16,24 @@
 // a card or a row selects that node in both and opens its node panel beside the run canvas, or
 // beside its place when no revision is drawn. A node held, or blocked, by a hold links to that
 // hold's panel when it has one: the host gives a hold card, and so a panel, only for a hold on a
-// node's own scope, so a hold on a grant, a branch or the run gets no link.
+// node's own scope, so a hold on a grant, a branch or the run gets no link. The node panel's close
+// button, or Escape on the run canvas, in the node table or in the node panel, clears the selection
+// (#577), and the builder stays open; focus in the panel goes to the node's card, or else its row.
 //
 // It shares the template run detail's waiting banner, hold panel, certificate hint and page
 // actions, with one hold panel per `aiws-graph-hold-card/1`. Decisions on a run (approve, pause,
 // cancel, resolving a hold) are made only in the host's browser page, so it has no control for
 // any of them, not even a disabled one.
-import { useCallback, useId, useState, type FC } from "react";
+import { useCallback, useId, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
 import { REVISION_CACHE, type RevisionCache } from "./graphRevision.ts";
 import type { GraphHold, GraphRunNode } from "./graphRunDetail.ts";
+import { commandFor } from "./keymap.ts";
 import type { RunInTerminal } from "./praxisHost.ts";
 import { NodePanel, type HoldPanelLink } from "./NodePanel.tsx";
-import { NodeTable } from "./NodeTable.tsx";
-import { RunCanvas } from "./RunCanvas.tsx";
+import { NodeTable, nodesToggleOf, rowOf } from "./NodeTable.tsx";
+import { cardOf, RunCanvas } from "./RunCanvas.tsx";
 import { AMBER, CloseButton, ControlChip, FollowStatus, HeldBadge, HoldPanel, holdPanelName, useRunPageActions, WaitingBanner } from "./RunDetail.tsx";
 import type { RunPageLookup, RunRow, Unlisted } from "./runsList.ts";
 import { useRunDetail } from "./useRunDetail.ts";
@@ -97,12 +100,42 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   const openNodes = useCallback(() => setNodesOpen(true), []);
   // The id of the node selected on the run canvas or in the node table, whose node panel is open.
   const [selected, setSelected] = useState<string | null>(null);
+  const detail = useRef<HTMLElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  /**
+   * Closes the node panel, clearing the selection, and moves focus, which would fall to the page with
+   * the panel, to the node's card, or else its row, or else the Nodes toggle that shows its row.
+   */
+  const closePanel = () => {
+    const root = detail.current;
+    if (selected !== null && root !== null) {
+      const card = cardOf(root, selected);
+      // A card takes focus without a scroll, which would scroll React Flow's wrapper: the run canvas
+      // pans a card that takes focus from the keyboard into view itself.
+      if (card !== null) card.focus({ preventScroll: true });
+      else (rowOf(root, selected) ?? nodesToggleOf(root))?.focus();
+    }
+    setSelected(null);
+  };
+  /**
+   * Escape, as the builder's keys read it (keymap.ts), on the run canvas, in the node table or in the
+   * node panel, while a node is selected: it clears the selection, and only that. It is handled here,
+   * so the builder's own Escape doesn't hide the builder too. Focus in the panel moves as it closes;
+   * anywhere else it stays.
+   */
+  const escapeClears = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (selected === null || commandFor(e.nativeEvent, "other") !== "escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.target instanceof Node && panel.current?.contains(e.target)) closePanel();
+    else setSelected(null);
+  };
   // Each hold panel's element id, by its place in the run's holds, so the node panel can link to it.
   const holdsId = useId();
   const holdPanelId = (n: number) => `${holdsId}hold-${n}`;
 
   return (
-    <section aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
+    <section ref={detail} aria-label={`Run ${name}`} className="space-y-3 rounded-md border border-[#30363d] p-3">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#c9d1d9]">
         <h3 className="font-mono font-semibold">{name}</h3>
         {run && <span>{run.status}</span>}
@@ -136,7 +169,8 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
       ))}
       {run && run.waiting && run.holds.length === 0 && <WaitingBanner run={run} openButton={openButton("Open in browser")} onTrust={trust} />}
       {run?.nodes?.reported && (
-        <div className={`flex flex-wrap items-start gap-3 ${view.dimmed ? "opacity-50" : ""}`}>
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Escape clears the selected node; every control inside handles its own keys
+        <div className={`flex flex-wrap items-start gap-3 ${view.dimmed ? "opacity-50" : ""}`} onKeyDown={escapeClears}>
           <div className="min-w-0 flex-1 basis-80">
             <RunCanvas
               projectPath={projectPath}
@@ -151,11 +185,14 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
               onSelect={setSelected}
             />
           </div>
-          {selected !== null && <NodePanel nodeId={selected} {...nodePanelOf(run.nodes.rows, run.holds, selected, holdPanelId)} />}
+          {selected !== null && (
+            <NodePanel nodeId={selected} {...nodePanelOf(run.nodes.rows, run.holds, selected, holdPanelId)} onClose={closePanel} rootRef={panel} />
+          )}
         </div>
       )}
       {run?.nodes && (
-        <div className={view.dimmed ? "opacity-50" : ""}>
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Escape clears the selected node; every control inside handles its own keys
+        <div className={view.dimmed ? "opacity-50" : ""} onKeyDown={escapeClears}>
           <NodeTable nodes={run.nodes} open={nodesOpen} onOpenChange={setNodesOpen} selected={selected} onSelect={setSelected} />
         </div>
       )}
