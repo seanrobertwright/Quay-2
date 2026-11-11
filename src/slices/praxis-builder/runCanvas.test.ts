@@ -3,189 +3,59 @@
 // names, read from the host with `praxis graphs show <name> --revision <n>`, drawn read-only above
 // the node table with each card in its node phase.
 // They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
-// out-of-process boundary. The recorded run of several phases and the recorded revision it runs
-// (graph_outputs.fixture.json) are drawn, and hand-made revisions in the recorded one's shape.
+// out-of-process boundary, with the scaffold they share with the node panel's tests
+// (fixtures/graphRunHarness.ts). The recorded run of several phases and the recorded revision it
+// runs (graph_outputs.fixture.json) are drawn, and hand-made revisions in the recorded one's shape.
 // happy-dom lays nothing out, so React Flow never measures a card: the cards are in the document
 // at their positions, and the edges, which wait for the measures, aren't.
-import { fakeInvoke } from "../../test-support/dom.ts";
+import {
+  answer,
+  button,
+  buttons,
+  click,
+  detail,
+  drawRun,
+  fakeBackend,
+  form,
+  MOD,
+  NAME,
+  nodesToggle,
+  NOW,
+  press,
+  PROJECT,
+  READS,
+  recordedRevision,
+  refused,
+  render,
+  runCanvas,
+  severalPhases,
+  showRun,
+  text,
+  tick,
+  unmount,
+  type Backend,
+  type SavedGraph,
+} from "./fixtures/graphRunHarness.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { createDraft } from "./drafts.ts";
-import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
-import { IS_MAC } from "./keymap.ts";
-import type { CallOutcome } from "./praxisHost.ts";
+import { act } from "react";
 import { graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
 import { formatDateTime } from "../../lib/dates.ts";
-import type { FileProblem } from "./types.ts";
-
-const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
-
-const NOW = Date.UTC(2026, 10, 8, 12, 0, 0);
-const PROJECT = "C:/project";
-/** The graph workflow the recorded run of several phases runs. */
-const NAME = "release-train";
-
-let mounted: { root: Root; container: HTMLElement } | null = null;
-/** Each test's own revision cache, so no test reads a revision another kept. */
-let revisions: RevisionCache;
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW });
-  revisions = createRevisionCache();
 });
-
-const unmount = () => {
-  if (!mounted) return;
-  const { root, container } = mounted;
-  act(() => root.unmount());
-  container.remove();
-  mounted = null;
-};
 
 afterEach(() => {
   unmount();
   mock.timers.reset();
 });
 
-interface Sent {
-  command: string;
-  args: Record<string, unknown>;
-  answer: (value: unknown) => void;
-}
-
-/**
- * What `praxis_read` gives for a graph: the project's saved graph file with its layout file, if any,
- * or with why its layout file was ignored; null for a graph the project hasn't got; or, as
- * `readFails`, the error it rejects with.
- */
-type SavedGraph =
-  | { content?: Record<string, unknown>; layout?: Record<string, unknown>; layoutProblem?: FileProblem }
-  | { readFails: string }
-  | null;
-
-/**
- * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, as
- * `saved` says; the runs list, graph status and revision reads wait for the test.
- */
-function fakeBackend(saved: SavedGraph = null) {
-  const sent: Sent[] = [];
-  fakeInvoke(
-    (command, args) =>
-      new Promise((resolve, reject) => {
-        sent.push({ command, args, answer: resolve });
-        switch (command) {
-          case "praxis_validate":
-            return resolve({ verdict: null, diagnostics: [], omitted: { errors: 0, warnings: 0, info: 0 } });
-          case "praxis_check_graph_workflow":
-            return resolve({ grants: [], diagnostics: [] });
-          case "praxis_graph_workflow_triggers":
-            return resolve({ ids: [], unchecked: [] });
-          case "praxis_read":
-            if (args.kind !== "graphs") return reject(new Error(`unexpected read of ${String(args.kind)}`));
-            if (saved !== null && "readFails" in saved) return reject(saved.readFails);
-            return resolve(
-              saved === null
-                ? { id: args.id, kind: "graphs", missing: true }
-                : { id: args.id, kind: "graphs", missing: false, contentHash: "h", content: saved.content ?? { id: args.id, nodes: [] }, layout: saved.layout, layoutProblem: saved.layoutProblem },
-            );
-          case "praxis_host_graph_runs":
-          case "praxis_host_graph_status":
-          case "praxis_host_graph_revision":
-            return;
-          case "praxis_host_cancel":
-            return resolve(undefined);
-          default:
-            return reject(new Error(`unexpected invoke ${command}`));
-        }
-      }),
-  );
-  const of = (command: string) => sent.filter((s) => s.command === command);
-  return {
-    sent,
-    lists: () => of("praxis_host_graph_runs"),
-    statuses: () => of("praxis_host_graph_status"),
-    revisionReads: () => of("praxis_host_graph_revision"),
-    layoutReads: () => of("praxis_read"),
-  };
-}
-type Backend = ReturnType<typeof fakeBackend>;
-
-/** Everything the form and its Runs view may send: each reads, and none writes a file or the host. */
-const READS = new Set([
-  "praxis_validate",
-  "praxis_check_graph_workflow",
-  "praxis_graph_workflow_triggers",
-  "praxis_read",
-  "praxis_host_graph_runs",
-  "praxis_host_graph_status",
-  "praxis_host_graph_revision",
-  "praxis_host_cancel",
-]);
 /** Asserts the backend was sent only reads: no layout file, or any other, was written or changed. */
 const onlyReads = (backend: Backend) => assert.deepEqual(backend.sent.map((s) => s.command).filter((c) => !READS.has(c)), []);
 
-interface FormSpies {
-  onEdit?: (edit: unknown) => void;
-  onOpen?: (ref: unknown) => void;
-  /** The `workOrderId` of a run to show as the form opens. */
-  showRun?: string;
-}
-
-function form(spies: FormSpies = {}) {
-  const ref = { kind: "graph-workflows" as const, id: NAME };
-  const content = { version: 1, contractId: "c", graphId: "g", graphBindingId: "g-1" };
-  const draft = createDraft(ref, { id: NAME, kind: "graph-workflows", missing: false, content, contentHash: "h" });
-  assert.ok(draft.ok);
-  return createElement(GraphWorkflowForm, {
-    projectPath: PROJECT,
-    draft: draft.value,
-    contracts: ["c"],
-    graphs: ["g"],
-    graphBindings: [{ id: "g-1", graphId: "g" }],
-    refresh: 0,
-    onEdit: spies.onEdit ?? (() => {}),
-    onOpen: spies.onOpen ?? (() => {}),
-    onValidated: () => {},
-    runsShown: true,
-    showRun: spies.showRun,
-    revisions,
-  });
-}
-
-async function render(element: ReturnType<typeof form>): Promise<HTMLElement> {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  await act(async () => root.render(element));
-  return container;
-}
-
-const text = (el: Element | null | undefined) => el?.textContent ?? "";
-const buttons = (root: Element) => [...root.querySelectorAll("button")];
-const button = (root: Element, name: RegExp) =>
-  buttons(root).find((b) => name.test(b.getAttribute("aria-label") ?? text(b))) as HTMLButtonElement | undefined;
-const click = (el: HTMLElement | undefined) => act(async () => el?.click());
-const tick = (ms: number) => act(async () => mock.timers.tick(ms));
-const answer = (s: Sent, outcome: CallOutcome) => act(async () => s.answer(outcome));
-
-/** Opens Runs, lists `rows`, and shows run `n`'s detail. */
-async function showRun(backend: Backend, n = 1, rows: unknown[] = [entry(n)], spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await render(form(spies));
-  await click(button(root, /^Runs$/));
-  await answer(backend.lists()[0], graphRunsRecord(NAME, rows));
-  await click(button(root, new RegExp(`^Show run-${n}$`)));
-  return root;
-}
-
-const detail = (root: HTMLElement) => root.querySelector('[aria-label^="Run run-"]') as HTMLElement | null;
 const header = (root: HTMLElement) => detail(root)?.querySelector("header") as HTMLElement;
-/** The run canvas, found by its heading. */
-const runCanvas = (root: HTMLElement) =>
-  ([...(detail(root)?.querySelectorAll("section") ?? [])].find((s) => /^Run canvas/.test(text(s.querySelector("h4")))) as HTMLElement | undefined) ?? null;
 const cards = (root: HTMLElement) => [...(runCanvas(root)?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])];
 /** The ids of the run canvas's cards, in the order it draws them. */
 const cardIds = (root: HTMLElement) => cards(root).map((card) => card.getAttribute("data-id"));
@@ -200,7 +70,6 @@ const cardStates = (root: HTMLElement) =>
 const problems = (root: HTMLElement) => [...(runCanvas(root)?.querySelectorAll('[aria-label="Run canvas problems"] li') ?? [])].map((li) => text(li));
 /** The run canvas's note on why the project's saved layout wasn't used, or null when it has none. */
 const layoutNote = (root: HTMLElement) => runCanvas(root)?.querySelector<HTMLElement>('[role="note"]') ?? null;
-const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLElement, /^Nodes/) as HTMLButtonElement;
 const nodeTable = (root: HTMLElement) => detail(root)?.querySelector("table") ?? null;
 /** The node table's rows, each as its id, its phase chip's text and tone, and its counter line. */
 const nodeRows = (root: HTMLElement) =>
@@ -208,20 +77,8 @@ const nodeRows = (root: HTMLElement) =>
     const chip = tr.querySelector('[data-chip="phase"]');
     return [text(tr.querySelector("th")), text(chip), chip?.getAttribute("data-tone") ?? null, text(tr.lastElementChild)];
   });
-
-/** The recorded revision the recorded run of several phases runs. */
-const recordedRevision = (): CallOutcome => ({ kind: "record", record: recordedStdout("graphs show: a revision") });
-const severalPhases = () => statusRecord(recordedStdout("status: nodes in several phases"));
 /** The ids of the recorded revision's nodes, in its graph's order. */
 const RECORDED_IDS = ["build", "test", "cooldown", "signoff", "package", "deploy", "end"];
-
-/** Shows run 1, whose view is the recorded run of several phases, and answers its revision read with `revision`. */
-async function drawRun(backend: Backend, revision: CallOutcome = recordedRevision(), spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await showRun(backend, 1, [entry(1)], spies);
-  await answer(backend.statuses()[0], severalPhases());
-  await answer(backend.revisionReads()[0], revision);
-  return root;
-}
 
 /** A graph node with no settings. */
 const graphNode = (id: string, kind: string, dependsOn: string[] = []) => ({ id, kind, dependsOn, config: {} });
@@ -325,7 +182,6 @@ test("without a saved layout for the graph id, or when `praxis_read` fails, dagr
     { readFails: ".praxis/graphs can't be opened: Access is denied. (os error 5)" },
   ];
   for (const saved of cases) {
-    revisions = createRevisionCache();
     const backend = fakeBackend(saved);
     const root = await drawRun(backend);
     assert.deepEqual(cardPositions(root), DAGRE_POSITIONS);
@@ -477,12 +333,6 @@ test("a graph node with no view entry draws no chip and says no state is reporte
   );
 });
 
-/** The recorded refusal of a revision the host doesn't hold. */
-function refused(): CallOutcome {
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  return { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal };
-}
-
 test("when the revision can't be read, the canvas area gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
@@ -610,7 +460,6 @@ test("a revision praxis gives without a graph, or with a graph the builder can't
     [revisionRecord([], { graph: "none" }), "praxis gave it without a graph."],
     [revisionRecord([graphNode("a", "TASK"), graphNode("a", "END")]), 'Its graph can\'t be drawn: More than one node has the id "a".'],
   ] as const) {
-    revisions = createRevisionCache();
     const backend = fakeBackend();
     const root = await drawRun(backend, revision);
     assert.equal(text(runCanvas(root)?.querySelector('[role="status"]')), `Revision 1 of release-train isn't drawn. ${reason} The node table lists the run's nodes.`);
@@ -765,16 +614,6 @@ test("a run the newest 100 don't name when they are every run says the Runs list
 });
 
 // Read-only: the run canvas is given no edit handlers and no draft, and React Flow edits nothing on it.
-
-/** The modifier a builder chord's Mod is here: Cmd on macOS, else Ctrl. */
-const MOD = IS_MAC ? "metaKey" : "ctrlKey";
-
-/** Sends a keydown of `key` to `target`, as the browser does, and returns it. */
-async function press(target: Element, key: string, init: KeyboardEventInit = {}): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
-  await act(async () => void target.dispatchEvent(event));
-  return event;
-}
 
 /** Sends mouse event `type` to `target` at a point on screen, as the browser does. */
 async function mouse(target: Element, type: string, at: { x: number; y: number }, init: MouseEventInit = {}): Promise<void> {

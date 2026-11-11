@@ -19,6 +19,7 @@ import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
 import type { CallOutcome } from "./praxisHost.ts";
 import { BROWSER_ORIGIN, graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout } from "./fixtures/graphOutputs.ts";
+import { READS } from "./fixtures/graphRunHarness.ts";
 import { formatDateTime } from "../../lib/dates.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
@@ -652,10 +653,7 @@ test("the detail has no approve, pause, cancel or hold control, not even a disab
   for (const name of names) assert.doesNotMatch(name, /approve|accept|pause|resume|cancel|abandon|hold|reconcile|retry/i, name);
   assert.equal(detail(root)?.querySelectorAll("[aria-disabled], button[disabled]").length, 0, "not even disabled ones");
   for (const s of backend.sent) {
-    assert.ok(
-      ["praxis_validate", "praxis_check_graph_workflow", "praxis_graph_workflow_triggers", "praxis_host_graph_runs", "praxis_host_graph_status", "praxis_host_graph_revision"].includes(s.command),
-      s.command,
-    );
+    assert.ok(READS.has(s.command), s.command);
   }
 });
 
