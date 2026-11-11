@@ -1,7 +1,7 @@
 // How a node phase is drawn (#569): the one home of the mapping from a graph run's node phase,
-// the `phase` of a node in `aiws-graph-operator-view/1`, to its tone. The node table draws its
-// chips from it, and the run canvas its cards. The phase is always drawn as its own text, so its
-// tone is never the only sign of it.
+// the `phase` of a node in `aiws-graph-operator-view/1`, to its tone. The node table, the run
+// canvas and the node panel draw their chips from it, and the run canvas its cards' borders too.
+// The phase is always drawn as its own text, so its tone is never the only sign of it.
 // A graph run's follow also asks it which phases are active (#570).
 import { hasOwn } from "./model.ts";
 

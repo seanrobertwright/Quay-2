@@ -1,7 +1,8 @@
-// How a node phase is drawn (#569, #571), in the tone nodePhase.ts gives it: as a chip with the
-// phase's own text, which the node table's rows and the run canvas's cards both draw, and as the
-// border of a run canvas's card. The text always carries the phase, so its tone is never the only
-// sign of it.
+// How a node phase is drawn (#569, #571, #572), in the tone nodePhase.ts gives it: as a chip with
+// the phase's own text, which the node table's rows, the run canvas's cards and the node panel
+// draw, and as the border of a run canvas's card. The text always carries the phase, so its tone
+// is never the only sign of it. A dimmed phase's chip, SKIPPED's, is dimmed by a dashed outline,
+// never by its text, which keeps its tone's full contrast (WCAG 1.4.3).
 import type { FC } from "react";
 import { nodePhaseLook, type NodePhaseTone } from "./nodePhase.ts";
 
@@ -18,7 +19,7 @@ const TONES: Readonly<Record<NodePhaseTone, { chip: string; frame: string }>> = 
 export const NodePhaseChip: FC<{ phase: string }> = ({ phase }) => {
   const { tone, dimmed } = nodePhaseLook(phase);
   return (
-    <span data-chip="phase" data-tone={tone} className={`px-1.5 py-px rounded-full border text-[10px] ${TONES[tone].chip} ${dimmed ? "opacity-60" : ""}`}>
+    <span data-chip="phase" data-tone={tone} className={`px-1.5 py-px rounded-full border text-[10px] ${TONES[tone].chip} ${dimmed ? "border-dashed" : ""}`}>
       {phase}
     </span>
   );

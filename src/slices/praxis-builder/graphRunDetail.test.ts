@@ -782,7 +782,7 @@ const PHASE_TONES = [
   ["NOT_READY", "neutral"],
 ] as const;
 
-test("each of the eleven node phases draws its text in its tone, SKIPPED dimmed, and a phase Quay doesn't know draws its text in neutral", async () => {
+test("each of the eleven node phases draws its text in its tone, SKIPPED dimmed by its outline, never its text, and a phase Quay doesn't know draws its text in neutral", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
   const phases = [...PHASE_TONES.map(([phase]) => phase), "SOMETHING_NEW"];
@@ -794,9 +794,14 @@ test("each of the eleven node phases draws its text in its tone, SKIPPED dimmed,
     [...PHASE_TONES, ["SOMETHING_NEW", "neutral"]],
   );
   assert.deepEqual(
-    chips.filter((chip) => /\bopacity-/.test(chip.className)).map((chip) => text(chip)),
+    chips.filter((chip) => /\bborder-dashed\b/.test(chip.className)).map((chip) => text(chip)),
     ["SKIPPED"],
-    "only SKIPPED is dimmed",
+    "only SKIPPED is dimmed, by a dashed outline",
+  );
+  assert.deepEqual(
+    chips.filter((chip) => /\bopacity-/.test(chip.className)).map((chip) => text(chip)),
+    [],
+    "no chip's text is dimmed below its contrast",
   );
 });
 

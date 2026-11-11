@@ -417,7 +417,7 @@ Each node has one phase. Where more than one fits, the first in this table wins,
 | Phase | Colour | When |
 | --- | --- | --- |
 | `COMPLETED` | Green | The node finished. |
-| `SKIPPED` | Grey, dimmed | The run skipped the node, such as a branch it didn't take. |
+| `SKIPPED` | Grey, with a dashed outline | The run skipped the node, such as a branch it didn't take. |
 | `FAILED` | Red | The node failed, as a loop does when it runs out of iterations. |
 | `HELD` | Amber | An open hold names the node. A person resolves the hold in the browser. |
 | `BLOCKED_BY_HOLD` | Amber | The node comes after another node's hold, so it waits for that hold. |
