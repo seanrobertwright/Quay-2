@@ -15,7 +15,7 @@ import {
 } from "./hostList.ts";
 import type { HostOnlyTemplate, ImportHostTemplateOutcome, TemplateHostView } from "./hostCatalog.ts";
 
-const { HostOnlySubsection } = await import("./HostList.tsx");
+const { HostGroupHeaderBar, HostOnlySubsection } = await import("./HostList.tsx");
 
 const NOW = 1_800_000_000_000;
 const view = (state: TemplateHostView["state"], checkedAt: number | null = NOW, muted = false): TemplateHostView => ({
@@ -268,56 +268,140 @@ test("expanded panel renders disabled 'Import to project' button with diagnostic
   assert.match(root.textContent ?? "", /Invalid step syntax\./);
 });
 
-test("clicking 'Import to project' enters in-progress loading state, triggers callback, and disables duplicate clicks", async () => {
-  let resolveImport!: (outcome: ImportHostTemplateOutcome) => void;
-  const pendingPromise = new Promise<ImportHostTemplateOutcome>((resolve) => {
-    resolveImport = resolve;
-  });
+/** Opens the On host only subsection of `root`. */
+const openSubsection = (root: HTMLElement) => click(root.querySelector<HTMLButtonElement>("button[aria-expanded='false']"));
+
+/** Opens the panel of the host-only template `name`. */
+const openRow = (root: HTMLElement, name: string) =>
+  click(Array.from(root.querySelectorAll<HTMLButtonElement>("li button")).find((b) => b.textContent?.trim() === name));
+
+/** The Import button of the open panel, whatever it reads. */
+function importButton(root: HTMLElement): HTMLButtonElement {
+  const button = Array.from(root.querySelectorAll("button")).find((b) => /Import to project|Importing…/.test(b.textContent ?? ""));
+  assert.ok(button, "the open panel has an Import button");
+  return button;
+}
+
+/** An `onImport` whose imports stay running until `finish` ends the oldest; `calls` names each one started. */
+function heldImports() {
   const calls: string[] = [];
+  const running: ((outcome: ImportHostTemplateOutcome) => void)[] = [];
   const onImport = (name: string) => {
     calls.push(name);
-    return pendingPromise;
+    return new Promise<ImportHostTemplateOutcome>((resolve) => running.push(resolve));
   };
+  const finish = (outcome: ImportHostTemplateOutcome) => act(async () => running.shift()?.(outcome));
+  return { calls, onImport, finish };
+}
 
+test("Import to project keeps focus while its import runs: it is aria-disabled, not disabled, and ignores a second click", async () => {
+  const { calls, onImport, finish } = heldImports();
   const section = hostOnlySection([hostOnly("deploy", true)])!;
   const root = await renderComponent(createElement(HostOnlySubsection, { section, onImport }));
+  await openSubsection(root);
+  await openRow(root, "deploy");
 
-  // Expand subsection and row
-  await click(root.querySelector("button[aria-expanded='false']") as HTMLButtonElement);
-  const rowBtn = Array.from(root.querySelectorAll("li button")).find((b) => b.textContent?.trim() === "deploy") as HTMLButtonElement;
-  await click(rowBtn);
-
-  const importBtn = Array.from(root.querySelectorAll("button")).find((b) => b.textContent?.includes("Import to project")) as HTMLButtonElement;
-  assert.ok(importBtn);
-
-  // Click import
+  const importBtn = importButton(root);
+  importBtn.focus();
   await click(importBtn);
-
-  // Verify callback was called
   assert.deepEqual(calls, ["deploy"]);
 
-  // Verify loading state
   assert.match(importBtn.textContent ?? "", /Importing…/);
-  assert.equal(importBtn.disabled, true);
-  const spinner = importBtn.querySelector(".animate-spin");
-  assert.ok(spinner, "Spinner with animate-spin should be present during import");
+  assert.ok(importBtn.querySelector(".animate-spin"), "the button spins while the import runs");
+  // A `disabled` button can't hold focus in the webview. The test DOM would leave focus on it
+  // all the same, so the attributes are what prove it here.
+  assert.equal(importBtn.hasAttribute("disabled"), false);
+  assert.equal(importBtn.getAttribute("aria-disabled"), "true");
+  assert.equal(document.activeElement, importBtn);
 
-  // Attempt duplicate click while in progress
   await click(importBtn);
-  assert.deepEqual(calls, ["deploy"], "Duplicate click must not trigger additional onImport calls");
+  assert.deepEqual(calls, ["deploy"], "a second click starts no second import");
 
-  // Resolve import
-  await act(async () => {
-    resolveImport({
-      ok: true,
-      kind: "imported",
-      name: "deploy",
-      filePath: ".praxis/templates/deploy.json",
-      templateDigest: "abc",
-      hostDigest: "abc",
-      digestMatches: true,
+  await finish({ ok: false, kind: "refused", message: "The host is down." });
+});
+
+test("after a refused import, Import to project is still focused and works again", async () => {
+  const { calls, onImport, finish } = heldImports();
+  const section = hostOnlySection([hostOnly("deploy", true)])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section, onImport }));
+  await openSubsection(root);
+  await openRow(root, "deploy");
+  importButton(root).focus();
+  await click(importButton(root));
+  await finish({ ok: false, kind: "refused", message: "The host is down." });
+
+  const importBtn = importButton(root);
+  assert.match(importBtn.textContent ?? "", /Import to project/);
+  assert.equal(document.activeElement, importBtn);
+  assert.equal(importBtn.hasAttribute("disabled"), false);
+  assert.notEqual(importBtn.getAttribute("aria-disabled"), "true");
+
+  await click(importBtn);
+  assert.deepEqual(calls, ["deploy", "deploy"]);
+  await finish({ ok: false, kind: "refused", message: "The host is down." });
+});
+
+test("while one template's import runs, another template's Import to project is aria-disabled and starts nothing", async () => {
+  const { calls, onImport, finish } = heldImports();
+  const section = hostOnlySection([hostOnly("deploy", true), hostOnly("triage", true)])!;
+  const root = await renderComponent(createElement(HostOnlySubsection, { section, onImport }));
+  await openSubsection(root);
+  await openRow(root, "deploy");
+  await click(importButton(root));
+
+  await openRow(root, "triage");
+  const other = importButton(root);
+  assert.match(other.textContent ?? "", /Import to project/, "only the importing template's button says Importing");
+  assert.equal(other.hasAttribute("disabled"), false);
+  assert.equal(other.getAttribute("aria-disabled"), "true");
+  await click(other);
+  assert.deepEqual(calls, ["deploy"]);
+
+  await finish({ ok: false, kind: "refused", message: "The host is down." });
+});
+
+/** The Workflow templates group header on a signed-in host, with `onCheckHost` as its Check host. */
+const renderHeader = (onCheckHost: () => Promise<void>) =>
+  renderComponent(createElement(HostGroupHeaderBar, { header: hostGroupHeader({ state: "signedIn" }), onCheckHost, onRun: () => {} }));
+
+/** The header's Check host button, whatever it reads. */
+function checkHostButton(root: HTMLElement): HTMLButtonElement {
+  const button = Array.from(root.querySelectorAll("button")).find((b) => /Check host|Checking…/.test(b.textContent ?? ""));
+  assert.ok(button, "the header has a Check host button");
+  return button;
+}
+
+test("Check host keeps focus while its check runs: it is aria-disabled, not disabled, and ignores a second click", async () => {
+  let checks = 0;
+  let finishCheck!: () => void;
+  const onCheckHost = () => {
+    checks += 1;
+    return new Promise<void>((resolve) => {
+      finishCheck = resolve;
     });
-  });
+  };
+  const root = await renderHeader(onCheckHost);
+
+  const checkBtn = checkHostButton(root);
+  checkBtn.focus();
+  await click(checkBtn);
+  assert.equal(checks, 1);
+
+  assert.match(checkBtn.textContent ?? "", /Checking…/);
+  assert.equal(checkBtn.hasAttribute("disabled"), false);
+  assert.equal(checkBtn.getAttribute("aria-disabled"), "true");
+  assert.equal(document.activeElement, checkBtn);
+
+  await click(checkBtn);
+  assert.equal(checks, 1, "a second click starts no second check");
+
+  await act(async () => finishCheck());
+  assert.match(checkBtn.textContent ?? "", /Check host/);
+  assert.notEqual(checkBtn.getAttribute("aria-disabled"), "true");
+  assert.equal(document.activeElement, checkBtn);
+  await click(checkBtn);
+  assert.equal(checks, 2, "once the check ends, Check host works again");
+  await act(async () => finishCheck());
 });
 
 test("displays inline error banner inside the panel when import fails", async () => {
