@@ -146,7 +146,7 @@ Contracts, grants, graph bindings and workflow templates whose files have uncomm
 A graph binding (`aiws-graph-binding/1`) says what each `TASK`, `LOOP` and `COMPENSATION` node of a graph runs as. Bindings are listed under their graph, and bindings whose graph is missing are listed under **Unattached bindings**.
 
 - **Pick a binding** from the canvas toolbar's **Binding** picker: None, an existing binding, or **+ New binding…**. The choice is remembered per graph while Quay runs.
-- **Edit a node's entry** in the inspector's **Runs as** section: the execution kind, the agent id, commands as argument lists, output paths or a protocol binding, the exposure, and Work or Validation with its criteria. With no node selected, the **Binding** section edits the cost unit and the run's limits.
+- **Edit a node's entry** in the inspector's **Runs as** section: the execution kind, the agent id, commands as argument lists, output paths or a protocol binding, the exposure, and Work or Validation with its criteria. The agent id suggests the agents of the host's catalog and warns of one the host doesn't offer or can't bind, from the [agent picker](#the-agent-picker). With no node selected, the **Binding** section edits the cost unit and the run's limits.
 - **Checks** mark each node's card bound or unbound, and a missing entry is a `BINDING_INCOMPLETE` problem. Each contract whose bindings list the graph adds warnings: the binding's cost and attempt limits against the contract's, cost-unit agreement with the contract's other graphs, and criteria coverage, which a `VERIFICATION` node shows as a table.
 - **Worst case.** The **Runs as** and **Binding** sections show the worst-case cost under each of those contracts: each Bounded entry's allowance times its attempts, and times its iterations for a `LOOP`, as if every attempt spent its whole allowance.
 - **Save binding** saves a binding on its own. The first save pins it to the graph as saved on disk. When the graph changes on disk the binding shows **Stale**, and **Retarget to current graph** lists the entries it will drop before it re-pins.
@@ -161,6 +161,7 @@ A workflow template is a coding plan without a work order or run id, and its fil
 
 - **Names follow the host's rule.** New template and rename refuse a name the Praxis host would refuse, and say why as you type. A template file already named that way still opens, with a warning in the list, an issue above the form and a **Rename** button. Quay never passes such a name to `praxis`.
 - Commands are argument lists, one row per argument with the executable first. Quay never splits a command line and never runs a command.
+- **Agent** is a catalog agent id, and empty means the built-in `engine:local-coding`. It suggests the agents of the host's catalog and warns of one the host doesn't offer or can't bind, from the [agent picker](#the-agent-picker).
 - Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. Readiness and the host's other rules come from the host: beside **Install on host…**, a status line shows the template's [state on the host](#template-host-states).
 
 **Template | Runs** above the form switches the work area between the form and the template's [runs on the host](#runs).
@@ -197,7 +198,7 @@ A graph trigger is a trigger with a saved **Starts** target: the graph workflow 
 
 ## The Praxis host
 
-The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. For graph triggers they are `triggers list`, `triggers show`, `triggers check`, `triggers submit`, `triggers withdraw`, `triggers disable`, `triggers retire` and `triggers fires`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, never fires a trigger by hand, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
+The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. For graph triggers they are `triggers list`, `triggers show`, `triggers check`, `triggers submit`, `triggers withdraw`, `triggers disable`, `triggers retire` and `triggers fires`. For the [agent picker](#the-agent-picker) it is `agents`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, never fires a trigger by hand, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
 
 ### Linking the `praxis` CLI
 
@@ -247,6 +248,19 @@ The chip in the builder's header shows the project's host condition as the lates
 #### Signing in lasts about 5 minutes on a real host
 
 The `praxis` CLI never refreshes its 5-minute token on a real host: see [praxis CLI never refreshes its 5-minute token on a real host, and stores credentials in plain text](https://github.com/seanrobertwright/AI-WS-SDK/issues/328). About 5 minutes after `praxis login`, the next call says the session expired, and the chip reads **Not signed in** with **Sign in** again. Quay doesn't work around it, so until the CLI is fixed, sign in again whenever that happens.
+
+### The agent picker
+
+Two fields name a catalog agent: the **Agent id** of a node's **Runs as** entry in a [graph binding](#graph-bindings), and a [workflow template](#workflow-templates)'s **Agent**. Both are free text. While the builder is shown and the host can be used, Quay reads the host's agent picker with `praxis agents --format aiws-agent-picker/1 --json`, a read that selects, binds and grants nothing.
+
+- **Suggestions** are the agents of the host's catalog, in catalog order, then the agent ids the project's saved graph bindings and workflow templates and its open binding drafts use that the catalog doesn't have. No id is suggested twice, and a field suggests at most 500. An agent the host can't bind is still suggested, marked **can't be bound**.
+- **An agent id the catalog doesn't have** gets a warning under its field that names the id and says the host's agent catalog doesn't offer it.
+- **An agent the host can't bind** gets a warning for each of the host's reasons, in the host's own words.
+- **An empty agent id** gets no warning.
+- **They are warnings.** They show under the field, apart from the record's validation issues, and never block a save, a submit or a run. Praxis checks agents when a run is attached.
+- **A host with no agent catalog** gives no suggestions of its own and no warnings, and the field says "The host has no agent catalog."
+- **When the picker can't be read**, both fields suggest only the ids the project already uses and show no warnings, and no error shows on them. That is so when the host is down or signed out, the project has no host, the `praxis` linked doesn't know `agents`, the host refuses the read, or the record isn't `aiws-agent-picker/1`. That format is PROVISIONAL in the AI-WS-SDK, so a host that changes it gets this fallback until Quay is updated.
+- **The picker is read again** when the host's condition turns from failing to usable, when the builder is shown again, and when you press **Check host** in a list group's header. The catalog read before stays in use until the new answer arrives, and an answer for a project you have left is dropped.
 
 ### Template host states
 

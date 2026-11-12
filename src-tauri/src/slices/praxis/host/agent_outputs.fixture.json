@@ -1,0 +1,81 @@
+{
+  "provenance": "Recorded by agent_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at 3aa1c11ff26fb49cceda207c1656d3179703361b, run against its simulated host on Node 26.13.0.",
+  "cases": [
+    {
+      "name": "agents: a catalog",
+      "args": [
+        "agents",
+        "--format",
+        "aiws-agent-picker/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-agent-picker/1",
+        "plan": null,
+        "catalog": true,
+        "agents": [
+          {
+            "agentId": "ready-coder",
+            "adapterId": "adapter:ready-coder",
+            "capabilityDigest": "6c408e9783718c03a5d3f5e0af0ed9318922ca2a3c4eaf893d51487898b592cb",
+            "kind": "NO_MODEL",
+            "modelSet": [],
+            "namedGaps": 0,
+            "selectable": true,
+            "reasons": []
+          },
+          {
+            "agentId": "changed-coder",
+            "adapterId": "adapter:changed-coder",
+            "capabilityDigest": "397912f62e5a5797a42e0d072922515b2fbbbedcec5540155f361e9cd7833071",
+            "kind": "NO_MODEL",
+            "modelSet": [],
+            "namedGaps": 0,
+            "selectable": false,
+            "reasons": [
+              "The host observes agent changed-coder with capability digest 4a5c57b7543c, not the 397912f62e5a the catalog pins."
+            ]
+          },
+          {
+            "agentId": "unadapted-coder",
+            "adapterId": "adapter:unadapted-coder",
+            "capabilityDigest": "7f27d6fdbc45e7abc3980339a5e1c0df494df67d25ca0077d1f174b721e989b5",
+            "kind": "NO_MODEL",
+            "modelSet": [],
+            "namedGaps": 0,
+            "selectable": true,
+            "reasons": []
+          }
+        ],
+        "lines": [
+          "Agent picker. Listing an agent grants it nothing; only a binding a human approves does. Give a draft plan to check each agent's readiness for it.",
+          "  ready-coder (no model): uses no model; no named gaps. Selectable.",
+          "  changed-coder (no model): uses no model; no named gaps. Cannot be selected: The host observes agent changed-coder with capability digest 4a5c57b7543c, not the 397912f62e5a the catalog pins.",
+          "  unadapted-coder (no model): uses no model; no named gaps. Selectable."
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "agents: no catalog",
+      "args": [
+        "agents",
+        "--format",
+        "aiws-agent-picker/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-agent-picker/1",
+        "plan": null,
+        "catalog": false,
+        "agents": [],
+        "lines": [
+          "No agent catalog is configured on this host: only the built-in local agent can be bound, by leaving the agent field out."
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    }
+  ]
+}
