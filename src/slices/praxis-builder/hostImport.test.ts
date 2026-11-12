@@ -2,7 +2,9 @@
 // Component tests for what the builder shows after "Import to project" on a host-only workflow
 // template (#563): the template joins the Workflow templates list, as a file new since the last
 // commit, and leaves On host only, it opens in the editor, and the builder shows and announces
-// where it was written. A refused import does none of these. hostCatalog.test.ts covers the import itself, and hostList.test.ts the
+// where it was written. A refused import does none of these. Focus, which the Import to project
+// button takes with it when its panel goes, moves to the template's row once the project's list has
+// been read again (#591). hostCatalog.test.ts covers the import itself, and hostList.test.ts the
 // button and its panel.
 // They render the real builder into happy-dom and fake only Tauri's `invoke`, the out-of-process
 // boundary.
@@ -37,10 +39,14 @@ afterEach(() => {
  * The backend: a project with one workflow template, LOCAL, and a signed-in host that has LOCAL
  * and HOST_ONLY. `show` is what the host answers `workflows show` for HOST_ONLY with: its plan, or
  * a refusal. A save of a template writes its file, so from then on the project lists it and git
- * has it as added. Returns the names of the commands sent.
+ * has it as added. `listAfterImport` is how the project's lists answer once that file is written:
+ * at once, with an error, or held back until `releaseLists` is called. Returns the names of the
+ * commands sent.
  */
-function fakeBackend(show: "plan" | "refused"): string[] {
+function fakeBackend(show: "plan" | "refused", listAfterImport: "answers" | "fails" | "held" = "answers"): { sent: string[]; releaseLists: () => void } {
   const sent: string[] = [];
+  let releaseLists = () => {};
+  const listsReleased = new Promise<void>((resolve) => (releaseLists = resolve));
   const files = new Map<string, unknown>([[LOCAL, PLAN]]);
   const added: string[] = [];
   const hostTemplate = (name: string) => ({ name, revision: 2, description: `Runs ${name}`, validity: "VALID", diagnostics: [] });
@@ -48,6 +54,8 @@ function fakeBackend(show: "plan" | "refused"): string[] {
     sent.push(command);
     switch (command) {
       case "praxis_list":
+        if (added.length > 0 && listAfterImport === "fails") throw new Error("can't read .praxis");
+        if (added.length > 0 && listAfterImport === "held") await listsReleased;
         return { entries: args.kind === "templates" ? [...files.keys()].map((id) => ({ id, templateDigest: `digest-${id}` })) : [], truncated: false };
       case "praxis_changes":
         return { files: added.map((id) => ({ kind: "templates", id, status: "added" })) };
@@ -72,7 +80,7 @@ function fakeBackend(show: "plan" | "refused"): string[] {
         throw new Error(`unexpected invoke ${command}`);
     }
   });
-  return sent;
+  return { sent, releaseLists };
 }
 
 const buttons = (root: Element) => [...root.querySelectorAll("button")];
@@ -109,7 +117,31 @@ function announced(root: HTMLElement): string {
   return (region.textContent ?? "").replace(/\u00a0/g, "");
 }
 
-/** Shows the builder on the project, opens On host only and HOST_ONLY's panel, and presses Import to project. */
+/** The builder's dialog, where focus goes when the element that had it is gone. */
+function dialogOf(root: HTMLElement): HTMLElement {
+  const dialog = root.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+  assert.ok(dialog, "the builder is a dialog");
+  return dialog;
+}
+
+/** The button that opens a project's template, in its row of the Workflow templates group. */
+function rowOf(root: HTMLElement, name: string): HTMLElement {
+  const row = buttons(templatesGroup(root)).find((b) => b.title === name);
+  assert.ok(row, `${name} has a row under Workflow templates`);
+  return row;
+}
+
+/** Names an element in a failure, shortly: printing a whole element of the test DOM never ends. */
+const named = (el: Element | null) => (el === null ? "nothing" : `<${el.tagName.toLowerCase()}> ${JSON.stringify((el.textContent ?? "").slice(0, 40))}`);
+
+/** Asserts where focus is, by identity. */
+const assertFocusOn = (expected: Element) =>
+  assert.ok(document.activeElement === expected, `focus is on ${named(document.activeElement)}, not on ${named(expected)}`);
+
+/**
+ * Shows the builder on the project, opens On host only and HOST_ONLY's panel, and presses Import to
+ * project from the keyboard: the button has focus when it is pressed.
+ */
 async function importFromHost(): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -131,6 +163,8 @@ async function importFromHost(): Promise<HTMLElement> {
   await press(row);
   const importButton = buttons(templatesGroup(container)).find((b) => b.textContent === "Import to project");
   assert.ok(importButton, "the template's panel offers Import to project");
+  importButton.focus();
+  assertFocusOn(importButton);
   await press(importButton);
   return container;
 }
@@ -163,7 +197,7 @@ test("an import is confirmed with where the template was written, shown and anno
 });
 
 test("a refused import lists nothing new, opens nothing and confirms nothing", async () => {
-  const sent = fakeBackend("refused");
+  const { sent } = fakeBackend("refused");
   const root = await importFromHost();
   assert.ok(notices(root).includes(REFUSAL), "the panel says why the host refused");
   assert.deepEqual(listedNames(root), [LOCAL]);
@@ -173,4 +207,56 @@ test("a refused import lists nothing new, opens nothing and confirms nothing", a
   assert.equal(notices(root).some((text) => text.startsWith("Imported")), false, JSON.stringify(notices(root)));
   assert.equal(announced(root), "");
   assert.equal(sent.includes("praxis_save"), false, "no file was written");
+});
+
+test("after an import, focus is on the imported template's row under Workflow templates", async () => {
+  fakeBackend("plan");
+  const root = await importFromHost();
+  assertFocusOn(rowOf(root, HOST_ONLY));
+});
+
+test("focus moves to the imported template's row only once the project's list has been read again", async () => {
+  const { releaseLists } = fakeBackend("plan", "held");
+  const root = await importFromHost();
+  // The template is open in the editor, so it has a row already, but the list isn't read yet.
+  assert.equal(editorName(root), "Workflow template triage");
+  assert.ok(document.activeElement !== rowOf(root, HOST_ONLY), "focus waits for the list");
+  await act(async () => releaseLists());
+  assert.deepEqual(newSinceCommit(root), ["triage: new since last commit. Show the diff"]);
+  assertFocusOn(rowOf(root, HOST_ONLY));
+});
+
+test("when the project's list can't be read after an import, focus is in the builder, not on the page", async () => {
+  fakeBackend("plan", "fails");
+  const root = await importFromHost();
+  assert.ok(notices(root).some((text) => text.includes("can't read .praxis")), JSON.stringify(notices(root)));
+  assertFocusOn(dialogOf(root));
+});
+
+test("focus the user moved to another control while the list was read stays there", async () => {
+  const { releaseLists } = fakeBackend("plan", "held");
+  const root = await importFromHost();
+  const other = rowOf(root, LOCAL);
+  other.focus();
+  await act(async () => releaseLists());
+  assert.deepEqual(newSinceCommit(root), ["triage: new since last commit. Show the diff"]);
+  assertFocusOn(other);
+});
+
+test("a refused import leaves focus on Import to project", async () => {
+  fakeBackend("refused");
+  const root = await importFromHost();
+  const importButton = buttons(templatesGroup(root)).find((b) => b.textContent === "Import to project");
+  assert.ok(importButton, "the panel still offers the import");
+  assertFocusOn(importButton);
+});
+
+test("an import is announced once, and moving focus to the row announces nothing more", async () => {
+  fakeBackend("plan");
+  const root = await importFromHost();
+  assertFocusOn(rowOf(root, HOST_ONLY));
+  // The live region ends each odd announcement with a no-break space and each even one without,
+  // so a second announcement of the same words would have taken the space away again.
+  const region = root.querySelector('[role="status"][aria-live="polite"][aria-atomic="true"]');
+  assert.equal(region?.textContent, `${CONFIRMATION} `);
 });
