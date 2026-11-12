@@ -5,10 +5,12 @@
 // rules but with a narrower person-wait (#570): a run waiting for a person is read every 15 s only
 // while none of its nodes is active (graphRunDetail.ts), and on the backoff otherwise. Its one
 // `praxis status` read per poll feeds them all, and the node panel; the run canvas reads its
-// revision and the saved layout besides. The revision and the times are the run's row's in the
+// revision and the saved layout besides. The revision and the times are the ones the run's view
+// gives (#586), and each it doesn't give, as on a host with an older SDK, is the run's row's in the
 // Runs list, which its Runs view keeps (#579): once newer runs push the row off the list, they
-// stay as its last row gave them, and the run canvas stays drawn. While no row has named the run,
-// the run canvas's place says why. While the host can't be used, the facts, the run canvas, the
+// stay as its last row gave them, and the run canvas stays drawn. Once a read of the view has
+// ended without naming the revision, the detail tells its Runs view that the row is needed. While
+// neither names the revision, the run canvas's place says why. While the host can't be used, the facts, the run canvas, the
 // node panel and the table dim. When the revision can't be read, or is read but can't be drawn,
 // or Quay can't tell which revision the run runs, the node table opens by itself.
 //
@@ -28,7 +30,7 @@
 // panel's hold link goes to the node panel's heading instead (NodePanel.tsx). Decisions on a run
 // (approve, pause, cancel, resolving a hold) are made only in the host's browser page, so it has
 // no control for any of them, not even a disabled one.
-import { useCallback, useId, useRef, useState, type FC, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FC, type KeyboardEvent } from "react";
 import { Hourglass } from "lucide-react";
 import { formatDateTime } from "../../lib/dates.ts";
 import { REVISION_CACHE, type RevisionCache } from "./graphRevision.ts";
@@ -50,12 +52,18 @@ interface GraphRunDetailProps {
   workOrderId: string;
   /**
    * The run's row in the Runs list, the last that named it once newer runs push it off the list;
-   * null before a row named it: the revision, the times, and the fallback for what `status`
-   * doesn't give.
+   * null before a row named it: the fallback for what `status` doesn't give, the revision and the
+   * times among it.
    */
   row: RunRow | null;
-  /** Why no row of the Runs list has named the run; read only while `row` is null. */
+  /** Why no row of the Runs list has named the run; read only while neither the view nor a row names the revision. */
   unlisted: Unlisted;
+  /**
+   * Told whether run `workOrderId`'s row is needed to tell its revision: true once a read of the
+   * run's view has ended, answered or failed, without the view naming the revision, and false
+   * before, and while the view names it.
+   */
+  onRowNeeded?: (workOrderId: string, needed: boolean) => void;
   /** True while the Runs view is on screen. */
   shown: boolean;
   /** Looks up the run's page when neither `status` nor the row gave it. */
@@ -91,6 +99,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   workOrderId,
   row,
   unlisted,
+  onRowNeeded,
   shown,
   runPage,
   runInTerminal,
@@ -100,6 +109,12 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
   const view = useRunDetail(projectPath, workOrderId, row, shown, "graph");
   const run = view.run;
   const revision = run?.revision ?? null;
+  const rowNeeded = run?.revisionFromView !== true && (view.readAt !== null || view.problem !== null);
+  // Withdrawn when the detail closes, so the run shown again waits for its view once more.
+  useEffect(() => {
+    onRowNeeded?.(workOrderId, rowNeeded);
+    return () => onRowNeeded?.(workOrderId, false);
+  }, [onRowNeeded, workOrderId, rowNeeded]);
   const { name, notice, openButton, trust } = useRunPageActions({ projectPath, workOrderId, run, row, runPage, runInTerminal });
   const [nodesOpen, setNodesOpen] = useState(false);
   const openNodes = useCallback(() => setNodesOpen(true), []);

@@ -13,9 +13,14 @@
 // Quay doesn't draw is ignored. A drawn field that is missing or of another type, from a host that
 // breaks the format, falls back to the run's row in the Runs list, or to nothing, so the run is
 // still drawn; a node entry without its `nodeId` or `phase` gets a problem line in place of its
-// row. The view gives no creation or update time and its `revision` is the snapshot's, so those
-// come from the row, whose `workflowRevision` is the admitted revision that runs.
-import { formatDateTime } from "../../lib/dates.ts";
+// row.
+//
+// The admitted revision that runs and the run's creation and update times are the view's
+// `workflowRevision`, `createdAt` and `updatedAt` (#586, AI-WS-SDK #684), which are optional: a
+// host on an older SDK gives none of them. Each the view doesn't give, or gives as something other
+// than a positive whole number or a UTC timestamp, comes from the row, whose `workflowRevision` is
+// that revision too. The view's `revision` is the snapshot's, and is never the revision that runs.
+import { formatDateTime, parseUtcTimestamp } from "../../lib/dates.ts";
 import { hasOwn, isObject } from "./model.ts";
 import { isActiveNodePhase } from "./nodePhase.ts";
 import { holdOf, NO_HOLD_REASON, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
@@ -76,10 +81,13 @@ export interface GraphRunDetail extends FollowedRun {
   workOrderId: string;
   runId: string;
   /**
-   * The graph workflow's admitted revision that runs, from the run's row in the Runs list, the last
-   * that named it once newer runs push it off the list; null before a row named it.
+   * The graph workflow's admitted revision that runs: the one the view names, else the one the run's
+   * row in the Runs list names, the last that named it once newer runs push it off the list; null
+   * while neither names one.
    */
   revision: number | null;
+  /** True when the view names that revision, so no row of the Runs list is needed to tell it. */
+  revisionFromView: boolean;
   status: string;
   /** `SUCCEEDED` or `NOT_SUCCEEDED` once the run ended; null before. */
   outcome: string | null;
@@ -87,7 +95,7 @@ export interface GraphRunDetail extends FollowedRun {
   held: boolean;
   /** True while the run waits for its one approval. */
   awaitingApproval: boolean;
-  /** When the run was created and last changed, as its row gives them; see `RunRow`. */
+  /** When the run was created and last changed, as the view gives each, else as its row does; see `RunRow`. */
   createdAt: number | null;
   createdAtText: string | null;
   updatedAt: number | null;
@@ -248,6 +256,15 @@ function nodesOf(view: Obj): GraphRunNodes {
   return { reported: true, rows, problems };
 }
 
+/** The admitted revision the view names in `workflowRevision`: a positive whole number, or null for anything else. */
+const revisionOf = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null);
+
+/** A time of the view, as a row gives its own (`RunRow`): null unless it is a UTC timestamp Quay reads. */
+function timeOf(value: unknown): { ms: number; text: string } | null {
+  const ms = typeof value === "string" ? parseUtcTimestamp(value) : null;
+  return ms === null ? null : { ms, text: value as string };
+}
+
 /** The run as its detail draws it, from the view where it has a field and the row where it doesn't. */
 export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint: string | null, workOrderId: string): GraphRunDetail | null {
   if (view === null && row === null) return null;
@@ -276,19 +293,23 @@ export function graphRunDetailOf(view: Obj | null, row: RunRow | null, trustHint
   const nodes = view === null ? null : nodesOf(view);
   const waiting = view === null ? (row?.needsYou ?? false) : held || decisions.length > 0;
   const active = nodes?.reported === true && nodes.rows.some((n) => isActiveNodePhase(n.phase));
+  const viewRevision = revisionOf(v.workflowRevision);
+  const created = timeOf(v.createdAt);
+  const updated = timeOf(v.updatedAt);
   return {
     workOrderId,
     runId: str(v.runId) ?? row?.runId ?? workOrderId,
-    revision: row?.revision ?? null,
+    revision: viewRevision ?? row?.revision ?? null,
+    revisionFromView: viewRevision !== null,
     status,
     outcome,
     control,
     held,
     awaitingApproval,
-    createdAt: row?.createdAt ?? null,
-    createdAtText: row?.createdAtText ?? null,
-    updatedAt: row?.updatedAt ?? null,
-    updatedAtText: row?.updatedAtText ?? null,
+    createdAt: created ? created.ms : (row?.createdAt ?? null),
+    createdAtText: created ? created.text : (row?.createdAtText ?? null),
+    updatedAt: updated ? updated.ms : (row?.updatedAt ?? null),
+    updatedAtText: updated ? updated.text : (row?.updatedAtText ?? null),
     decisions,
     holds,
     nodes,

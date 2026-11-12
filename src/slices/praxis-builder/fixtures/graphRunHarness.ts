@@ -18,7 +18,7 @@ import { IS_MAC } from "../keymap.ts";
 import type { CallOutcome } from "../praxisHost.ts";
 import type { FileProblem } from "../types.ts";
 import { recordedStdout } from "./graphOutputs.ts";
-import { graphRunEntry as entry, graphRunsRecord, statusRecord } from "./runs.ts";
+import { graphRunEntry as entry, graphRunsRecord, onOlderHost, statusRecord } from "./runs.ts";
 
 const { GraphWorkflowForm } = await import("../GraphWorkflowForm.tsx");
 
@@ -211,6 +211,8 @@ export const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLEle
 /** The recorded revision the recorded run of several phases runs. */
 export const recordedRevision = (): CallOutcome => ({ kind: "record", record: recordedStdout("graphs show: a revision") });
 export const severalPhases = () => statusRecord(recordedStdout("status: nodes in several phases"));
+/** The recorded run of several phases as a host on an older SDK gives it: its view names neither its revision nor its times. */
+export const severalPhasesOnOlderHost = () => statusRecord(onOlderHost(recordedStdout("status: nodes in several phases")));
 
 /** Shows run 1, whose view is the recorded run of several phases, and answers its revision read with `revision`. */
 export async function drawRun(backend: Backend, revision: CallOutcome = recordedRevision(), spies: FormSpies = {}): Promise<HTMLElement> {
