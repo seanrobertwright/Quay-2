@@ -3,12 +3,14 @@
 //! ([`process`], [`runner`]), turns their `--json` records into typed outcomes ([`outcome`]) and
 //! keeps one [`HostCondition`] per project's builder session. A graph workflow's bundle goes to
 //! `praxis` as the paths of its saved files ([`bundle`]), and a graph trigger as its saved file
-//! with the target its target file names ([`trigger`]).
+//! with the target its target file names ([`trigger`]). A workflow template draft goes as a file
+//! Quay writes for the one call and then removes ([`preview`]).
 
 mod bundle;
 pub mod commands;
 mod launch;
 mod outcome;
+mod preview;
 mod process;
 mod runner;
 mod settings;

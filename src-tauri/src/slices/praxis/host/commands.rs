@@ -3,8 +3,8 @@
 //! registered project, whose host condition it updates, and a `callId` that
 //! [`praxis_host_cancel`] cancels. A template or graph workflow name that the host refuses comes
 //! back as a refusal from [`PraxisCli::call`], which never runs `praxis` with it, and so does a
-//! graph trigger name. The graph commands (#460), the graph trigger commands (#474) and the agent
-//! picker (#482) go through the same runner, so they share its bounds, its sharing of identical
+//! graph trigger name. The graph commands (#460), the graph trigger commands (#474), the agent
+//! picker (#482) and the authoring preview (#596) go through the same runner, so they share its bounds, its sharing of identical
 //! calls in flight and its host condition.
 
 use std::path::{Path, PathBuf};
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use super::bundle::bundle_operands;
 use super::outcome::{CallOutcome, HostCondition, Verb};
+use super::preview::preview_template;
 use super::runner::PraxisCli;
 use super::settings::PraxisCliSettings;
 use super::trigger::trigger_operands;
@@ -567,6 +568,26 @@ pub async fn praxis_host_agents(
     workspace: State<'_, WorkspaceManager>,
 ) -> Result<CallOutcome, String> {
     call(&cli, &workspace, &project_path, Verb::Agents, vec![], call_id).await
+}
+
+/// `praxis preview <file> --template --format aiws-authoring-preview/1 --json`: the host's
+/// authoring preview of `draft`, the workflow template as the form holds it, saved or not. The
+/// record says whether a run can be created from the draft and carries the host's diagnostics; a
+/// draft no run can be created from is a record too. A read: the draft creates nothing on the
+/// host. See [`preview_template`] for the file `praxis` is given.
+#[tauri::command]
+pub async fn praxis_host_template_preview(
+    project_path: String,
+    draft: serde_json::Value,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    let root = project_root(&workspace, &project_path)?;
+    let cli = cli.inner().clone();
+    tokio::task::spawn_blocking(move || preview_template(&cli, &root, &std::env::temp_dir(), &draft, call_id))
+        .await
+        .map_err(|e| format!("The praxis call failed: {e}"))
 }
 
 /// Cancels a call. See [`PraxisCli::cancel`].

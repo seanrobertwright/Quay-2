@@ -58,10 +58,10 @@ fn a_picker_in_another_format_is_not_read() {
 }
 
 #[test]
-fn a_praxis_that_does_not_know_agents_needs_an_update_and_a_host_that_is_down_is_down() {
+fn a_praxis_that_does_not_know_agents_says_so_and_a_host_that_is_down_is_down() {
     let h = Harness::new();
-    let unknown = praxis_err("Unknown command: agents");
-    assert!(matches!(read(&h, json!({ "stderr": unknown, "exit": 2 })), CallOutcome::NeedsUpdate { .. }));
+    let unknown = praxis_err("unknown command: agents");
+    assert_eq!(read(&h, json!({ "stderr": unknown, "exit": 2 })), CallOutcome::CommandUnknown { command: "agents".into() });
     let down = praxis_err("Could not reach the host at https://127.0.0.1:8443; is it running?");
     assert!(matches!(read(&h, json!({ "stderr": down, "exit": 1 })), CallOutcome::HostDown { .. }));
     assert_eq!(h.condition(), HostCondition::HostUnreachable);

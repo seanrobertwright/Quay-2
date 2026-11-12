@@ -7,7 +7,8 @@ use serde_json::Value;
 /// The `praxis` commands Quay runs headless: the template commands (#446), the graph commands
 /// (#460), whose names, records and exits are those of `praxis` in AI-WS-SDK `GRAPH-WORKFLOWS.md`,
 /// "The praxis commands", the graph trigger commands (#474), in `GRAPH-TRIGGERS.md`, "The
-/// praxis commands", and the agent picker (#482).
+/// praxis commands", the agent picker (#482), and the authoring preview of a workflow template
+/// draft (#596), in `WORKFLOW-TEMPLATES.md`, "`praxis preview`".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     WorkflowsList,
@@ -67,6 +68,9 @@ pub enum Verb {
     /// `praxis agents`: the host's agent picker, which lists every agent its agent catalog offers,
     /// in catalog order, and why one can't be bound. It selects, binds and grants nothing.
     Agents,
+    /// `praxis preview <file> --template`: the host's authoring preview of the workflow template
+    /// draft in the file. It creates nothing, and submits, approves, binds and grants nothing.
+    Preview,
 }
 
 impl Verb {
@@ -103,6 +107,9 @@ impl Verb {
             // another format is refused by name, and the builder falls back to what it suggests
             // without a host.
             Verb::Agents => "aiws-agent-picker/1",
+            // `PROVISIONAL` too. A host that serves another format is refused by name, and the
+            // template form then says the host couldn't check the draft.
+            Verb::Preview => "aiws-authoring-preview/1",
         }
     }
 
@@ -145,6 +152,13 @@ impl Verb {
         }
     }
 
+    /// Whether exit 1 with this command's own record on stdout is an answer. `praxis preview`
+    /// exits 1 when the host answered and no run can be created from the draft, and prints the
+    /// same record, with the diagnostics that say why, and no `praxis-error/1` record.
+    fn answers_on_exit_1(self) -> bool {
+        self == Verb::Preview
+    }
+
     /// What this command's exit-9 `record` means: faults in a graph trigger for the trigger
     /// commands, and in a graph workflow's bundle for the others.
     fn invalid(self, record: Value) -> CallOutcome {
@@ -182,13 +196,14 @@ impl Verb {
             Verb::TriggersRetire => &["triggers", "retire"],
             Verb::EventSourcesList => &["event-sources", "list"],
             Verb::Agents => &["agents"],
+            Verb::Preview => &["preview"],
         }
     }
 
     /// Whether `praxis` is asked for this command's [`format`](Self::format) by name, with
     /// `--format`, so a host that doesn't serve it is refused with exit 8 rather than answered
-    /// in another format. The graph and graph trigger reads and the agent picker, which take
-    /// `--format`, pin it;
+    /// in another format. The graph and graph trigger reads, the agent picker and the authoring
+    /// preview, which take `--format`, pin it;
     /// `runs` and `status` need it to read a graph workflow's record rather than a template's.
     /// The template commands keep the CLI's default.
     fn pins_format(self) -> bool {
@@ -207,6 +222,7 @@ impl Verb {
                 | Verb::TriggersFires
                 | Verb::EventSourcesList
                 | Verb::Agents
+                | Verb::Preview
         )
     }
 
@@ -290,6 +306,9 @@ pub enum CallOutcome {
     Blocked { record: Value, blocking_run_address: String },
     /// Exit 2, or a record Quay doesn't read: "Quay needs an update for this praxis".
     NeedsUpdate { detail: String },
+    /// The installed `praxis` doesn't have `command`: it is older than the command, so it is
+    /// `praxis` that needs the update.
+    CommandUnknown { command: String },
     /// The installation has no connection descriptor: no host has been set up.
     NoHost { message: String },
     /// Nothing answered at the host's address.
@@ -361,6 +380,20 @@ const PHRASES: [(&str, Phrase); 5] = [
     ("The host did not accept the CLI session", Phrase::Expired),
 ];
 
+/// What `praxis` says of a command it doesn't have, in any letter case (`unknown command: <name>`
+/// in `engine/src/praxis.ts`), as a usage error with exit 2.
+const UNKNOWN_COMMAND_PHRASE: &str = "unknown command: ";
+
+/// The outcome of a usage error whose `message` is `praxis`'s own: a command this `praxis`
+/// doesn't have is told apart from arguments it didn't accept.
+fn usage_failure(verb: Verb, message: &str) -> CallOutcome {
+    if message.to_lowercase().contains(UNKNOWN_COMMAND_PHRASE) {
+        CallOutcome::CommandUnknown { command: verb.words().join(" ") }
+    } else {
+        CallOutcome::NeedsUpdate { detail: format!("praxis didn't accept Quay's arguments: {message}") }
+    }
+}
+
 /// The words every certificate hint of `praxis status` holds (`trustHint` in
 /// `engine/src/praxis-follow.ts` at the pinned SDK commit).
 const TRUST_HINT_PHRASE: &str = "this host's certificate";
@@ -422,7 +455,7 @@ fn praxis_error(stdout: &[u8]) -> Option<(Value, String, String)> {
 fn from_error_record(verb: Verb, record: &Value, code: &str, message: String) -> Option<CallOutcome> {
     let host_code = record.get("hostCode").and_then(Value::as_str);
     Some(match code {
-        "USAGE" => CallOutcome::NeedsUpdate { detail: format!("praxis didn't accept Quay's arguments: {message}") },
+        "USAGE" => usage_failure(verb, &message),
         "CONNECTION" => CallOutcome::HostDown { message },
         "FORMAT_NOT_SERVED" => CallOutcome::NeedsUpdate { detail: message },
         "OUTCOME_UNKNOWN" if verb.writes() => CallOutcome::Unknown {
@@ -464,6 +497,9 @@ pub fn interpret(verb: Verb, code: Option<i32>, stdout: &[u8], stderr: &str) -> 
             Err(outcome) => outcome,
         },
         9 if let Some(format) = verb.invalid_format() => record(stdout, format).map_or_else(|o| o, |record| verb.invalid(record)),
+        1 if let Some(record) = verb.answers_on_exit_1().then(|| record(stdout, verb.format()).ok()).flatten() => {
+            CallOutcome::Record { record, trust_hint: None }
+        }
         _ => match praxis_error(stdout).and_then(|(record, kind, message)| from_error_record(verb, &record, &kind, message)) {
             Some(outcome) => outcome,
             None => by_exit(verb, code, stderr),
@@ -484,7 +520,7 @@ fn by_exit(verb: Verb, code: i32, stderr: &str) -> CallOutcome {
                 None => CallOutcome::Refused { message },
             }
         }
-        2 => CallOutcome::NeedsUpdate { detail: format!("praxis didn't accept Quay's arguments: {}", message(stderr, code)) },
+        2 => usage_failure(verb, &message(stderr, code)),
         _ => unread_failure(verb, format!("praxis exited with {code}. {}", message(stderr, code))),
     }
 }
@@ -507,6 +543,6 @@ pub fn condition_after(outcome: &CallOutcome) -> Option<HostCondition> {
         CallOutcome::HostDown { .. } => Some(HostCondition::HostUnreachable),
         CallOutcome::NotSignedIn { .. } | CallOutcome::Expired { .. } => Some(HostCondition::NotSignedIn),
         CallOutcome::CliNotFound { reason } => Some(HostCondition::CliNotFound { reason: reason.clone() }),
-        CallOutcome::NeedsUpdate { .. } | CallOutcome::Refused { .. } | CallOutcome::Unknown { .. } | CallOutcome::TimedOut | CallOutcome::Cancelled => None,
+        CallOutcome::NeedsUpdate { .. } | CallOutcome::CommandUnknown { .. } | CallOutcome::Refused { .. } | CallOutcome::Unknown { .. } | CallOutcome::TimedOut | CallOutcome::Cancelled => None,
     }
 }

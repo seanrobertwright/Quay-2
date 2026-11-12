@@ -162,7 +162,7 @@ A workflow template is a coding plan without a work order or run id, and its fil
 - **Names follow the host's rule.** New template and rename refuse a name the Praxis host would refuse, and say why as you type. A template file already named that way still opens, with a warning in the list, an issue above the form and a **Rename** button. Quay never passes such a name to `praxis`.
 - Commands are argument lists, one row per argument with the executable first. Quay never splits a command line and never runs a command.
 - **Agent** is a catalog agent id, and empty means the built-in `engine:local-coding`. It suggests the agents of the host's catalog and warns of one the host doesn't offer or can't bind, from the [agent picker](#the-agent-picker).
-- Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. Readiness and the host's other rules come from the host: beside **Install on host…**, a status line shows the template's [state on the host](#template-host-states).
+- Each template's shape is checked against the SDK's PROVISIONAL coding-plan schema. Readiness and the host's other rules come from the host: beside **Install on host…**, a status line shows the template's [state on the host](#template-host-states), and **Check on host** asks the host what it says of the draft, [saved or not](#check-a-template-draft-on-the-host).
 
 **Template | Runs** above the form switches the work area between the form and the template's [runs on the host](#runs).
 
@@ -198,7 +198,7 @@ A graph trigger is a trigger with a saved **Starts** target: the graph workflow 
 
 ## The Praxis host
 
-The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`. For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. For graph triggers they are `triggers list`, `triggers show`, `triggers check`, `triggers submit`, `triggers withdraw`, `triggers disable`, `triggers retire` and `triggers fires`. For the [agent picker](#the-agent-picker) it is `agents`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, never fires a trigger by hand, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
+The builder reaches a Praxis host only by running the `praxis` CLI. Its reads and writes are headless `praxis <command> --json` calls. For workflow templates they are `workflows list`, `workflows show`, `runs`, `status` and `run`, and `preview` for [Check on host](#check-a-template-draft-on-the-host). For graph workflows they are `graphs list`, `graphs show`, `graphs check`, `graphs submit` and `graphs withdraw`, then `runs`, `status` and `run` with the graph record formats. For graph triggers they are `triggers list`, `triggers show`, `triggers check`, `triggers submit`, `triggers withdraw`, `triggers disable`, `triggers retire` and `triggers fires`. For the [agent picker](#the-agent-picker) it is `agents`. The commands that need a person, `setup`, `serve`, `login` and `trust`, run only in a visible terminal. Quay never writes the host's configuration or template directory, never fires a trigger by hand, and admission, enabling a graph trigger and every decision on a run [happen in the browser](#decisions-happen-in-the-browser).
 
 ### Linking the `praxis` CLI
 
@@ -208,6 +208,7 @@ Quay runs `praxis` from an AI-WS-SDK checkout, with Node 24 or later. To link it
 - **A found `praxis` is kept for 60 seconds** before Quay looks it up again. A failed lookup is never kept, so linking the CLI takes effect on the next call.
 - **Every call is bounded.** A read, `graphs check` included, may take 15 seconds, and a write (a run creation, a submission, a withdrawal, or disabling or retiring a graph trigger) 75 seconds, and then Quay kills its whole process tree. A `praxis` that prints more than 8 MiB is stopped too.
 - **A `praxis` Quay can't read**, one that refuses Quay's arguments or prints a record in a format this Quay doesn't read, gets "Quay needs an update for this praxis".
+- **A `praxis` older than a command** Quay runs, one that answers "unknown command", is told apart from that: it is `praxis` that needs the update, and the message says which command it lacks.
 
 ### Per-user settings
 
@@ -294,6 +295,18 @@ A read that failed shows **Couldn't check**, with what it said, and a template n
 - **Name the host refuses**: no steps, only the rule and a pointer to rename the file from the list.
 
 When the file has uncommitted changes, the dialog leads with their diff and a warning, and when the draft has unsaved edits, it says the host gets the saved file. Unless the host refuses the name, the dialog ends with the status line and **Check again**, and notes that the host reads its template directory only when it starts, and that Quay can say the host's copy differs, never how. Quay never writes the host's configuration or template directory, never guesses that directory, and never runs `engine:author`.
+
+### Check a template draft on the host
+
+**Check on host**, beside **Install on host…**, asks the host for its authoring preview of the template as the form holds it, saved or not. It is the only thing that asks: nothing is previewed when a template opens, when you edit it, or when you press **Check host**. Quay writes the draft to a temporary file with a name of its own, runs `praxis preview <file> --template --format aiws-authoring-preview/1 --json`, and removes the file when the call ends, however it ends. The preview is a read. It creates nothing on the host, and submits, approves, binds and grants nothing.
+
+- **The verdict** is one line under the shape check's: the host can create a run from this draft, or it can't, with the number of problems when it found any. A draft the host can't create a run from is an answer like any other, not a failure.
+- **The host's diagnostics** show under the field each is about, after the shape check's issues, in the host's own words with its code, and each says it is the host's. One about a field the form has no input for is listed by the verdict, with the field named. The form shows at most 200 and says how many more the host gave.
+- **They never block anything.** The host's diagnostics don't reach the verdict that allows a save, and never stop a save, an install or a run. The shape check stays as it is.
+- **An edit makes the result out of date.** It stays on the form, marked "Out of date", until the next check or until you leave the template. Putting the draft back as the host saw it clears the mark.
+- **When the host can't be asked**, because none is set up, it is down or `praxis` isn't signed in, the button is unavailable and says why.
+- **When the preview can't be read**, the form says in one line that the host couldn't check the draft, and shows no host diagnostics. That is so when the host goes down or refuses the read, the call takes longer than 15 seconds, or the record isn't `aiws-authoring-preview/1`. A `praxis` without `preview` gets its own line: the installed `praxis` is too old for this check. The format is PROVISIONAL in the AI-WS-SDK, so a host that changes it gets the one line until Quay is updated.
+- **Only the newest check counts.** Pressing the button while a check runs does nothing, and an answer that arrives after you have left the template or the project is dropped.
 
 ### Runs
 

@@ -1,0 +1,548 @@
+{
+  "provenance": "Recorded by preview_outputs.record.mjs from praxis in seanrobertwright/AI-WS-SDK at c8c3e214, run against its simulated host on Node 26.13.0.",
+  "cases": [
+    {
+      "name": "preview: a template a run can be created from",
+      "args": [
+        "preview",
+        "template.json",
+        "--template",
+        "--format",
+        "aiws-authoring-preview/1"
+      ],
+      "exit": 0,
+      "stdout": {
+        "format": "aiws-authoring-preview/1",
+        "form": "TEMPLATE",
+        "valid": true,
+        "authorized": false,
+        "plan": {
+          "correction": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "const f=require('node:fs');f.writeFileSync('sum.cjs','exports.add=(a,b)=>a+b');f.appendFileSync('runs.txt','C');"
+          ],
+          "criteriaRef": "addition",
+          "description": "Implement addition with correction",
+          "implementation": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "const f=require('node:fs');f.writeFileSync('sum.cjs','exports.add=(a,b)=>a-b');f.appendFileSync('runs.txt','I');"
+          ],
+          "maxAttempts": 6,
+          "maxCorrections": 1,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "outputPaths": [
+            "sum.cjs"
+          ],
+          "reapproveCorrections": false,
+          "validation": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "require('node:fs').appendFileSync('runs.txt','V');require('node:assert/strict').equal(require('./sum.cjs').add(2,3),5);"
+          ]
+        },
+        "diagnostics": [
+          {
+            "field": "reapproveCorrections",
+            "code": "CORRECTIONS_PREAUTHORIZED",
+            "severity": "WARNING",
+            "message": "The initial human approval permits correction cycles without a separate correction approval."
+          }
+        ],
+        "steps": [
+          {
+            "id": "APPROVE",
+            "afterAny": [],
+            "condition": "Human approves the exact plan and capability binding."
+          },
+          {
+            "id": "IMPLEMENTATION",
+            "afterAny": [
+              "APPROVE"
+            ],
+            "condition": "Current readiness and resource checks pass."
+          },
+          {
+            "id": "VALIDATION",
+            "afterAny": [
+              "IMPLEMENTATION",
+              "CORRECTION"
+            ],
+            "condition": "After successful implementation or correction; consumes another attempt."
+          },
+          {
+            "id": "CORRECTION",
+            "afterAny": [
+              "VALIDATION"
+            ],
+            "condition": "On validation failure, up to 1 cycles within remaining budgets. Initial approval permits these corrections."
+          },
+          {
+            "id": "HELD",
+            "afterAny": [
+              "IMPLEMENTATION",
+              "VALIDATION",
+              "CORRECTION"
+            ],
+            "condition": "Implementation/correction failure, exhausted corrections or uncertain execution require inspection and governed recovery."
+          },
+          {
+            "id": "ACCEPT",
+            "afterAny": [
+              "VALIDATION"
+            ],
+            "condition": "Successful validation followed by separate human acceptance of the exact deliverable."
+          }
+        ],
+        "readiness": {
+          "agentId": "engine:local-coding",
+          "agentMatches": true,
+          "authorized": false,
+          "checks": [
+            {
+              "evidenceRef": "fixture:host",
+              "observed": "SUPPORTED",
+              "remediation": "",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "TOOL",
+                "name": "node"
+              },
+              "status": "SATISFIED"
+            },
+            {
+              "evidenceRef": "fixture:host",
+              "observed": "SUPPORTED",
+              "remediation": "",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "OUTPUT",
+                "name": "file-artifacts"
+              },
+              "status": "SATISFIED"
+            },
+            {
+              "evidenceRef": "fixture:host",
+              "observed": "SUPPORTED",
+              "remediation": "",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "CONTEXT",
+                "name": "fresh"
+              },
+              "status": "SATISFIED"
+            }
+          ],
+          "evaluatedAtMs": 1794509976846,
+          "expectedManifestDigest": null,
+          "fresh": true,
+          "manifestDigest": "4d48e6fb4d824667d2e8bbf6f008ab429b6321912be2524cde4f00cc473d158f",
+          "pinMatches": true,
+          "profile": "aiws-readiness/2",
+          "reasons": [],
+          "requirementsDigest": "94455c691195f36302fe0391a1fc2684acc3e9f0880e3b3f2f86d07c3f2da40e",
+          "status": "READY",
+          "version": "2.0.0"
+        },
+        "binding": {
+          "manifestDigest": "4d48e6fb4d824667d2e8bbf6f008ab429b6321912be2524cde4f00cc473d158f",
+          "profile": "aiws-readiness-binding/2",
+          "requirements": {
+            "agentId": "engine:local-coding",
+            "capabilities": [
+              {
+                "assurance": "VERIFIED",
+                "kind": "TOOL",
+                "name": "node"
+              },
+              {
+                "assurance": "VERIFIED",
+                "kind": "OUTPUT",
+                "name": "file-artifacts"
+              },
+              {
+                "assurance": "VERIFIED",
+                "kind": "CONTEXT",
+                "name": "fresh"
+              }
+            ],
+            "profile": "aiws-requirements/2",
+            "version": "2.0.0"
+          },
+          "version": "2.0.0"
+        },
+        "reviewDigest": null,
+        "bindingReview": null,
+        "creatable": true,
+        "bindingReviewLines": [
+          "Binding review of a workflow template draft, before it is installed: stage IMPLEMENTATION 0.",
+          "Agent engine:local-coding (no model), bound to nodes implementation, validation, correction:",
+          "  Tool: no model-relevant configuration; capability digest 4d48e6fb4d82.",
+          "  TOOL capabilities: node.",
+          "  Model set: uses no model.",
+          "  Credential: none.",
+          "  Named gaps: none.",
+          "Node implementation: node assignment made when the run is created, agent engine:local-coding.",
+          "  Readiness: READY.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Node validation: node assignment made when the run is created, agent engine:local-coding.",
+          "  Readiness: READY.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Node correction: node assignment made when the run is created, agent engine:local-coding.",
+          "  Readiness: READY.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Scope tree: RUN (each run's own scope) bounds 6 attempts, 60000 ms of active time and cost 0 USD_MICRO.",
+          "Scope tree: NODE (each run's node scope) of node implementation, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of node validation, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of node correction, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of inserted preparation nodes, under RUN, inherits the RUN bounds.",
+          "Account crossings: none. Every node of this run is bound to one agent, so no artifact moves between accounts. Only artifacts ever cross between nodes, never a session, login or credential.",
+          "Shown, not pinned (a change here never invalidates the approval):",
+          "  Price table: no version in effect.",
+          "  Model register: the agent uses no model.",
+          "  Retirement dates: none recorded.",
+          "  Agent catalog: none is configured on this host."
+        ],
+        "bindingReviewDetailLines": [
+          "Model-relevant configuration of engine:local-coding: none; the agent uses no model."
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\n"
+    },
+    {
+      "name": "preview: a template with an authoring error",
+      "args": [
+        "preview",
+        "incomplete.json",
+        "--template",
+        "--format",
+        "aiws-authoring-preview/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "aiws-authoring-preview/1",
+        "form": "TEMPLATE",
+        "valid": false,
+        "authorized": false,
+        "plan": null,
+        "diagnostics": [
+          {
+            "field": "maxAttempts",
+            "code": "INVALID_FIELD",
+            "severity": "ERROR",
+            "message": "Enter an exact integer between 2 and 9007199254740991. Attempts include implementation and validation."
+          }
+        ],
+        "steps": [],
+        "readiness": null,
+        "binding": null,
+        "reviewDigest": null,
+        "bindingReview": null,
+        "creatable": false,
+        "bindingReviewLines": [],
+        "bindingReviewDetailLines": [],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: No run can be created from this draft.\n"
+    },
+    {
+      "name": "preview: a valid template no run can be created from",
+      "args": [
+        "preview",
+        "unready.json",
+        "--template",
+        "--format",
+        "aiws-authoring-preview/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "aiws-authoring-preview/1",
+        "form": "TEMPLATE",
+        "valid": true,
+        "authorized": false,
+        "plan": {
+          "agent": "no-such-agent",
+          "correction": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "const f=require('node:fs');f.writeFileSync('sum.cjs','exports.add=(a,b)=>a+b');f.appendFileSync('runs.txt','C');"
+          ],
+          "criteriaRef": "addition",
+          "description": "Implement addition with correction",
+          "implementation": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "const f=require('node:fs');f.writeFileSync('sum.cjs','exports.add=(a,b)=>a-b');f.appendFileSync('runs.txt','I');"
+          ],
+          "maxAttempts": 6,
+          "maxCorrections": 1,
+          "maxTaskMs": 10000,
+          "maxTotalActiveMs": 60000,
+          "outputPaths": [
+            "sum.cjs"
+          ],
+          "reapproveCorrections": false,
+          "validation": [
+            "C:\\Program Files\\nodejs\\node.exe",
+            "-e",
+            "require('node:fs').appendFileSync('runs.txt','V');require('node:assert/strict').equal(require('./sum.cjs').add(2,3),5);"
+          ]
+        },
+        "diagnostics": [
+          {
+            "field": "reapproveCorrections",
+            "code": "CORRECTIONS_PREAUTHORIZED",
+            "severity": "WARNING",
+            "message": "The initial human approval permits correction cycles without a separate correction approval."
+          },
+          {
+            "field": "agent",
+            "code": "AGENT_NOT_OFFERED",
+            "severity": "ERROR",
+            "message": "No agent catalog is configured on this host, so agent no-such-agent cannot be selected; omit the agent field to bind the built-in local agent."
+          }
+        ],
+        "steps": [
+          {
+            "id": "APPROVE",
+            "afterAny": [],
+            "condition": "Human approves the exact plan and capability binding."
+          },
+          {
+            "id": "IMPLEMENTATION",
+            "afterAny": [
+              "APPROVE"
+            ],
+            "condition": "Current readiness and resource checks pass."
+          },
+          {
+            "id": "VALIDATION",
+            "afterAny": [
+              "IMPLEMENTATION",
+              "CORRECTION"
+            ],
+            "condition": "After successful implementation or correction; consumes another attempt."
+          },
+          {
+            "id": "CORRECTION",
+            "afterAny": [
+              "VALIDATION"
+            ],
+            "condition": "On validation failure, up to 1 cycles within remaining budgets. Initial approval permits these corrections."
+          },
+          {
+            "id": "HELD",
+            "afterAny": [
+              "IMPLEMENTATION",
+              "VALIDATION",
+              "CORRECTION"
+            ],
+            "condition": "Implementation/correction failure, exhausted corrections or uncertain execution require inspection and governed recovery."
+          },
+          {
+            "id": "ACCEPT",
+            "afterAny": [
+              "VALIDATION"
+            ],
+            "condition": "Successful validation followed by separate human acceptance of the exact deliverable."
+          }
+        ],
+        "readiness": {
+          "agentId": "no-such-agent",
+          "agentMatches": true,
+          "authorized": false,
+          "checks": [
+            {
+              "evidenceRef": null,
+              "observed": "MISSING",
+              "remediation": "Install an agent declaring this capability.",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "TOOL",
+                "name": "node"
+              },
+              "status": "MISSING"
+            },
+            {
+              "evidenceRef": null,
+              "observed": "MISSING",
+              "remediation": "Install an agent declaring this capability.",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "OUTPUT",
+                "name": "file-artifacts"
+              },
+              "status": "MISSING"
+            },
+            {
+              "evidenceRef": null,
+              "observed": "MISSING",
+              "remediation": "Install an agent declaring this capability.",
+              "requirement": {
+                "assurance": "VERIFIED",
+                "kind": "CONTEXT",
+                "name": "fresh"
+              },
+              "status": "MISSING"
+            }
+          ],
+          "evaluatedAtMs": 1794509977449,
+          "expectedManifestDigest": null,
+          "fresh": true,
+          "manifestDigest": "bfa3e757614b8f1e6a95fb08c61d2dc6a9731fa50ef1470ec45e26b676050c20",
+          "pinMatches": true,
+          "profile": "aiws-readiness/2",
+          "reasons": [
+            "One or more requirements are not satisfied.",
+            "The exact reviewed agent adapter is not installed."
+          ],
+          "requirementsDigest": "ac0816e9b49a2297edd75ef41ce44c78546bcf8cacd9e25daa02ce4a71939fc3",
+          "status": "BLOCKED",
+          "version": "2.0.0"
+        },
+        "binding": {
+          "manifestDigest": "bfa3e757614b8f1e6a95fb08c61d2dc6a9731fa50ef1470ec45e26b676050c20",
+          "profile": "aiws-readiness-binding/2",
+          "requirements": {
+            "agentId": "no-such-agent",
+            "capabilities": [
+              {
+                "assurance": "VERIFIED",
+                "kind": "TOOL",
+                "name": "node"
+              },
+              {
+                "assurance": "VERIFIED",
+                "kind": "OUTPUT",
+                "name": "file-artifacts"
+              },
+              {
+                "assurance": "VERIFIED",
+                "kind": "CONTEXT",
+                "name": "fresh"
+              }
+            ],
+            "profile": "aiws-requirements/2",
+            "version": "2.0.0"
+          },
+          "version": "2.0.0"
+        },
+        "reviewDigest": null,
+        "bindingReview": null,
+        "creatable": false,
+        "bindingReviewLines": [
+          "Binding review of a workflow template draft, before it is installed: stage IMPLEMENTATION 0.",
+          "Agent no-such-agent (no model), bound to nodes implementation, validation, correction:",
+          "  Tool: no model-relevant configuration; capability digest bfa3e757614b.",
+          "  TOOL capabilities: none.",
+          "  Model set: uses no model.",
+          "  Credential: none.",
+          "  Named gaps: none.",
+          "Node implementation: node assignment made when the run is created, agent no-such-agent.",
+          "  Readiness: BLOCKED. One or more requirements are not satisfied. The exact reviewed agent adapter is not installed.",
+          "  Failing: TOOL node MISSING: Install an agent declaring this capability.",
+          "  Failing: OUTPUT file-artifacts MISSING: Install an agent declaring this capability.",
+          "  Failing: CONTEXT fresh MISSING: Install an agent declaring this capability.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Node validation: node assignment made when the run is created, agent no-such-agent.",
+          "  Readiness: BLOCKED. One or more requirements are not satisfied. The exact reviewed agent adapter is not installed.",
+          "  Failing: TOOL node MISSING: Install an agent declaring this capability.",
+          "  Failing: OUTPUT file-artifacts MISSING: Install an agent declaring this capability.",
+          "  Failing: CONTEXT fresh MISSING: Install an agent declaring this capability.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Node correction: node assignment made when the run is created, agent no-such-agent.",
+          "  Readiness: BLOCKED. One or more requirements are not satisfied. The exact reviewed agent adapter is not installed.",
+          "  Failing: TOOL node MISSING: Install an agent declaring this capability.",
+          "  Failing: OUTPUT file-artifacts MISSING: Install an agent declaring this capability.",
+          "  Failing: CONTEXT fresh MISSING: Install an agent declaring this capability.",
+          "  Runner minimums: TOOL node, OUTPUT file-artifacts, CONTEXT fresh.",
+          "  Proposed above the minimums: none.",
+          "  Figures: no exposure is declared; the agent uses no model, so an attempt reserves zero cost.",
+          "  Stop: not applicable; the agent uses no model, and the active-time bound stops an attempt.",
+          "Scope tree: RUN (each run's own scope) bounds 6 attempts, 60000 ms of active time and cost 0 USD_MICRO.",
+          "Scope tree: NODE (each run's node scope) of node implementation, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of node validation, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of node correction, under RUN, inherits the RUN bounds.",
+          "Scope tree: NODE (each run's node scope) of inserted preparation nodes, under RUN, inherits the RUN bounds.",
+          "Account crossings: none. Every node of this run is bound to one agent, so no artifact moves between accounts. Only artifacts ever cross between nodes, never a session, login or credential.",
+          "Shown, not pinned (a change here never invalidates the approval):",
+          "  Price table: no version in effect.",
+          "  Model register: the agent uses no model.",
+          "  Retirement dates: none recorded.",
+          "  Agent catalog: none is configured on this host."
+        ],
+        "bindingReviewDetailLines": [
+          "Model-relevant configuration of no-such-agent: none; the agent uses no model."
+        ],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: No run can be created from this draft.\n"
+    },
+    {
+      "name": "preview: a template that carries identities",
+      "args": [
+        "preview",
+        "identified.json",
+        "--template",
+        "--format",
+        "aiws-authoring-preview/1"
+      ],
+      "exit": 1,
+      "stdout": {
+        "format": "aiws-authoring-preview/1",
+        "form": "TEMPLATE",
+        "valid": false,
+        "authorized": false,
+        "plan": null,
+        "diagnostics": [
+          {
+            "field": "workOrderId",
+            "code": "TEMPLATE_IDENTITY",
+            "severity": "ERROR",
+            "message": "A workflow template carries no work order or run identity; the host gives each run fresh ones. Remove this field."
+          },
+          {
+            "field": "runId",
+            "code": "TEMPLATE_IDENTITY",
+            "severity": "ERROR",
+            "message": "A workflow template carries no work order or run identity; the host gives each run fresh ones. Remove this field."
+          },
+          {
+            "field": "reapproveCorrections",
+            "code": "CORRECTIONS_PREAUTHORIZED",
+            "severity": "WARNING",
+            "message": "The initial human approval permits correction cycles without a separate correction approval."
+          }
+        ],
+        "steps": [],
+        "readiness": null,
+        "binding": null,
+        "reviewDigest": null,
+        "bindingReview": null,
+        "creatable": false,
+        "bindingReviewLines": [],
+        "bindingReviewDetailLines": [],
+        "simulatedIdentity": true
+      },
+      "stderr": "Simulated identity: nothing decided on this host is a human decision.\npraxis: No run can be created from this draft.\n"
+    }
+  ]
+}

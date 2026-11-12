@@ -4,7 +4,7 @@
 // commands' in trigger_outputs.fixture.json (#474):
 //
 //   { "stdout": <record or text>, "stderr": "praxis: …", "exit": 1,
-//     "delayMs": 500, "stdoutBytes": 9437184, "child": true, "profile": true }
+//     "delayMs": 500, "stdoutBytes": 9437184, "child": true, "profile": true, "keepFile": 1 }
 //
 // Each run appends its arguments to `calls.log` beside it. With `child`, it first starts a Node
 // process that sleeps for two minutes and writes that process's id to `child.pid`, so a test can
@@ -12,9 +12,11 @@
 // profile (#361): before its delay it saves a pending creation, with a fresh request id, in
 // `profile.json` beside it, unless one is pending already, which it resumes; it clears the
 // pending creation when it prints, and its record carries the pending creation's request id.
+// With `keepFile`, it copies the file its argument at that index names to `kept.json` beside it,
+// as `praxis preview` reads the draft it is given (#596), so a test can see what Quay sent.
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const scenario = JSON.parse(readFileSync(join(here, 'scenario.json'), 'utf8'));
 appendFileSync(join(here, 'calls.log'), JSON.stringify(process.argv.slice(2)) + '\n');
 
+if (scenario.keepFile !== undefined) copyFileSync(process.argv[2 + scenario.keepFile], join(here, 'kept.json'));
 if (scenario.child) {
   const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' });
   writeFileSync(join(here, 'child.pid'), String(child.pid));

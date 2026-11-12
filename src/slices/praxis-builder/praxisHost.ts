@@ -29,6 +29,8 @@ export type CallOutcome =
    */
   | { kind: "triggerInvalid"; record: Record<string, unknown> }
   | { kind: "needsUpdate"; detail: string }
+  /** The installed `praxis` is older than `command`, such as `preview`, and doesn't have it. */
+  | { kind: "commandUnknown"; command: string }
   | { kind: "noHost"; message: string }
   | { kind: "hostDown"; message: string }
   | { kind: "notSignedIn"; message: string }
@@ -66,6 +68,8 @@ export function outcomeMessage(outcome: CallOutcome): string {
   switch (outcome.kind) {
     case "needsUpdate":
       return `Quay needs an update for this praxis: ${outcome.detail}`;
+    case "commandUnknown":
+      return `The installed praxis is too old for this: it has no \`${outcome.command}\` command. Update praxis.`;
     case "bundleInvalid":
       return "The host found faults in the bundle.";
     case "triggerInvalid":

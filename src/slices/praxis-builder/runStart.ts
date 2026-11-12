@@ -7,7 +7,7 @@
 // confirm dialogs draw it.
 import { invoke } from "@tauri-apps/api/core";
 import type { TemplateHostState } from "./hostCatalog.ts";
-import { praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
+import { outcomeMessage, praxisCall, type CallOutcome, type Invoker } from "./praxisHost.ts";
 import type { GitChange } from "./types.ts";
 import { normalizePath } from "../../utils/paths.ts";
 
@@ -93,6 +93,9 @@ export function runStartOf(outcome: CallOutcome, name: string, noun: RunNoun = "
       return { kind: "refused", message: outcome.message };
     case "needsUpdate":
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} ${outcome.detail}` };
+    // A `praxis` without the command never reached the host.
+    case "commandUnknown":
+      return { kind: "refused", message: `${outcomeMessage(outcome)} No run was started.` };
     // `praxis run` never checks a bundle or a graph trigger, so these answers are ones Quay can't read.
     case "bundleInvalid":
       return { kind: "needsUpdate", message: `${NEEDS_UPDATE} praxis answered the run with a bundle's faults.` };

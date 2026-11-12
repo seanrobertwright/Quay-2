@@ -147,4 +147,9 @@ test("a host's refusal reads in praxis's words, and a faulty bundle says the hos
   assert.equal(outcomeMessage(faults), "The host found faults in the bundle.");
   const triggerFaults: CallOutcome = { kind: "triggerInvalid", record: { format: "aiws-graph-trigger-error/1", code: "TRIGGER_INVALID", findings: [{ path: "/maxDepth", code: "TRIGGER_DEPTH_UNSUPPORTED" }] } };
   assert.equal(outcomeMessage(triggerFaults), "The host found faults in the graph trigger.");
+  // A praxis older than a command is the one to update, and the message names the command.
+  assert.equal(
+    outcomeMessage({ kind: "commandUnknown", command: "preview" }),
+    "The installed praxis is too old for this: it has no `preview` command. Update praxis.",
+  );
 });
