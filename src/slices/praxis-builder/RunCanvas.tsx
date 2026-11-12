@@ -323,7 +323,7 @@ const READING: CanvasState = { state: "reading" };
 
 /**
  * Revision `revision` of `workflow`, through `revisions`, with the saved layout of its graph, and a
- * way to read it again after a failed read, and whether that read is running. `onUnreadable` is
+ * way to read it again after a failed read, and whether that read is running. `onNoDrawing` is
  * called each time a read of it ends with no drawing: it can't be read, or it is read but can't be
  * drawn. A result for another revision or an earlier try is never shown as this one's.
  */
@@ -332,14 +332,14 @@ function useRevision(
   workflow: string,
   revision: number,
   revisions: RevisionCache,
-  onUnreadable: () => void
+  onNoDrawing: () => void
 ): { state: CanvasState; retrying: boolean; retry: () => void } {
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([projectPath, workflow, revision, attempt]);
   const [shown, setShown] = useState<{ key: string; state: CanvasState } | null>(null);
-  const unreadable = useRef(onUnreadable);
+  const noDrawing = useRef(onNoDrawing);
   useEffect(() => {
-    unreadable.current = onUnreadable;
+    noDrawing.current = onNoDrawing;
   });
   useEffect(() => {
     let live = true;
@@ -347,10 +347,10 @@ function useRevision(
       if (!live) return;
       if (read.kind === "failed") {
         setShown({ key, state: { state: "failed", problem: read.problem } });
-        unreadable.current();
+        noDrawing.current();
       } else if (read.kind === "undrawn") {
         setShown({ key, state: { state: "undrawn", reason: read.reason } });
-        unreadable.current();
+        noDrawing.current();
       } else {
         const layout = await savedLayout(projectPath, read.graph.id);
         if (live) setShown({ key, state: { state: "drawn", graph: read.graph, ...layout } });
@@ -398,7 +398,7 @@ interface RunCanvasProps {
    * but can't be drawn, and once Quay can't tell which revision the run runs, so the node table
    * can open in the run canvas's place.
    */
-  onUnreadable: () => void;
+  onNoDrawing: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;
   /** Selects node `nodeId`, when its card is chosen. */
@@ -419,7 +419,7 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...
         {revision !== null && `, revision ${revision}`}
       </h4>
       {revision === null ? (
-        <UnlistedRevision unlisted={unlisted} onUnreadable={rest.onUnreadable} />
+        <UnlistedRevision unlisted={unlisted} onNoDrawing={rest.onNoDrawing} />
       ) : (
         <RevisionCanvas revision={revision} labelledBy={headingId} {...rest} />
       )}
@@ -441,17 +441,17 @@ function unlistedLine(unlisted: Unlisted): string {
 
 /**
  * The run canvas's place while no row of the Runs list has named the run's revision: why, on a
- * status line. Once Quay can't tell the revision, `onUnreadable` is called, so the node table
+ * status line. Once Quay can't tell the revision, `onNoDrawing` is called, so the node table
  * opens, and not again while the reason stays the same, so a reader who closes the table keeps it
  * closed.
  */
-const UnlistedRevision: FC<{ unlisted: Unlisted; onUnreadable: () => void }> = ({ unlisted, onUnreadable }) => {
-  const unreadable = useRef(onUnreadable);
+const UnlistedRevision: FC<{ unlisted: Unlisted; onNoDrawing: () => void }> = ({ unlisted, onNoDrawing }) => {
+  const noDrawing = useRef(onNoDrawing);
   useEffect(() => {
-    unreadable.current = onUnreadable;
+    noDrawing.current = onNoDrawing;
   });
   useEffect(() => {
-    if (unlisted !== "reading") unreadable.current();
+    if (unlisted !== "reading") noDrawing.current();
   }, [unlisted]);
   return (
     <p role="status" className="text-[#8b949e] break-words">
@@ -466,12 +466,12 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName" | "unlisted
   revision,
   nodes,
   revisions,
-  onUnreadable,
+  onNoDrawing,
   selected,
   onSelect,
   labelledBy,
 }) => {
-  const { state, retrying, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
+  const { state, retrying, retry } = useRevision(projectPath, workflow, revision, revisions, onNoDrawing);
   const status = useRef<HTMLParagraphElement>(null);
   const drawing = useRef<HTMLDivElement>(null);
   // Try again stays, with focus, while its read runs, and leaves once the read ends other than in

@@ -187,7 +187,7 @@ export const GraphRunDetail: FC<GraphRunDetailProps> = ({
               runName={name}
               nodes={run.nodes.rows}
               revisions={revisions}
-              onUnreadable={openNodes}
+              onNoDrawing={openNodes}
               selected={selected}
               onSelect={setSelected}
             />
