@@ -4,8 +4,8 @@
 // host doesn't report node phases instead; an empty list gets an empty table. It is fed by the
 // detail's own read of the run, so it updates on the detail's poll and never reads the host
 // itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The detail
-// holds whether it is open, so it can open it when the run canvas's revision can't be read or
-// drawn (#571).
+// holds whether it is open, so it can open it when the run canvas's revision can't be read, or is
+// read but can't be drawn (#571), or Quay can't tell which revision the run runs (#579).
 //
 // Each row's node id is a button that selects the node (#572), which the detail shares with the
 // run canvas and shows in the node panel, so Tab and Enter or Space select a node from the
