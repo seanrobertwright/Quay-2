@@ -1,7 +1,8 @@
 /// <reference types="node" />
 // Component tests under `node --test`. Importing this module installs a happy-dom window as the
 // globals React renders into, a fake Tauri `invoke` (the out-of-process boundary), stand-ins for
-// Tauri's event listening, and a load hook that compiles `.tsx` with TypeScript, which Node's own type stripping doesn't handle,
+// Tauri's event listening and for the window a component is in, and a load hook that compiles
+// `.tsx` with TypeScript, which Node's own type stripping doesn't handle,
 // and loads a stylesheet a component imports as an empty module.
 // Static imports are all loaded before any module runs, so a test imports the components it
 // renders with `await import(...)` after this module.
@@ -38,6 +39,8 @@ Object.assign(window, {
     invoke: (cmd: string, args: Record<string, unknown>) =>
       fakeEventCommands.has(cmd) ? Promise.resolve(fakeEventCommands.get(cmd)) : invokeImpl(cmd, args),
     transformCallback: () => 1,
+    // A component that asks which window it is in, with `getCurrentWindow()`, is in Quay's main one.
+    metadata: { currentWindow: { label: "main" } },
   },
   __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
 });

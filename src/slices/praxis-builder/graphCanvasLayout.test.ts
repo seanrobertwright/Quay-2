@@ -3,7 +3,7 @@
 // `.praxis/layout/<id>.json` `praxis_read` reports it can't use opens with a line above the canvas
 // that says why, in the words the run canvas uses too (runCanvas.test.ts).
 // They render the real builder into happy-dom and fake only Tauri's `invoke`, the out-of-process
-// boundary, and the window label Tauri gives the builder.
+// boundary.
 import { fakeInvoke } from "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,9 +12,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type { FileProblem } from "./types.ts";
 
 const { PraxisBuilderModal } = await import("./PraxisBuilderModal.tsx");
-
-// The builder watches Quay's window for closing, which asks Tauri which window it is.
-Object.assign((window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__, { metadata: { currentWindow: { label: "main" } } });
 
 const PROJECT = "C:/project";
 const GRAPH = "release-review";
