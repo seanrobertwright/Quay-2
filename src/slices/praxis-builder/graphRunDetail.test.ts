@@ -17,7 +17,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createDraft } from "./drafts.ts";
 import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
 import type { CallOutcome } from "./praxisHost.ts";
-import { BROWSER_ORIGIN, graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
+import { BROWSER_ORIGIN, graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, onOlderHost, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout } from "./fixtures/graphOutputs.ts";
 import { READS } from "./fixtures/graphRunHarness.ts";
 import { formatDateTime } from "../../lib/dates.ts";
@@ -246,14 +246,14 @@ test("the recorded held run is RUNNING and Held, with a hold panel drawn from it
   assert.deepEqual(buttons(panel).map((b) => text(b)), ["Resolve in browser"], "the exits are words, never controls");
 });
 
-test("showing a run reads the graph run status verb for its work order and shows its run-level facts", async () => {
+test("showing a run reads the graph run status verb for its work order and shows its run-level facts, the revision and the times from its row when its view gives none", async () => {
   const backend = fakeBackend();
   const row = entry(1, { workflowRevision: 4, createdAt: "2026-11-08T09:30:00.000Z", updatedAt: "2026-11-08T09:45:00.000Z" });
   const root = await showRun(backend, 1, [row]);
   assert.equal(backend.statuses().length, 1);
   assert.equal(backend.statuses()[0].args.workOrderId, "wo-1");
   assert.equal(backend.statuses()[0].args.projectPath, PROJECT);
-  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { status: "RUNNING", control: { status: "PAUSED", reason: null } })));
+  await answer(backend.statuses()[0], statusRecord(onOlderHost(graphOperatorView(1, { status: "RUNNING", control: { status: "PAUSED", reason: null } }))));
   assert.match(text(header(root)), /RUNNING/);
   assert.equal(text(header(root).querySelector('[data-chip="control"]')), "PAUSED");
   assert.match(text(header(root)), /revision 4/);
@@ -262,11 +262,11 @@ test("showing a run reads the graph run status verb for its work order and shows
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 45)));
 });
 
-test("while its row is listed a run's times follow the row, and once newer runs push the row off the Runs list they stay as its last row gave them (#579)", async () => {
+test("on a host whose view gives no times, while its row is listed a run's times follow the row, and once newer runs push the row off the Runs list they stay as its last row gave them (#579)", async () => {
   const backend = fakeBackend();
   const row = (updatedAt: string) => entry(1, { workflowRevision: 4, createdAt: "2026-11-08T09:30:00.000Z", updatedAt });
   const root = await showRun(backend, 1, [row("2026-11-08T09:45:00.000Z")]);
-  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1)));
+  await answer(backend.statuses()[0], statusRecord(onOlderHost(graphOperatorView(1))));
   await tick(15_000);
   await answer(backend.lists()[1], graphRunsRecord(NAME, [row("2026-11-08T09:50:00.000Z")]));
   assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 50)), "the newest row's");
@@ -281,6 +281,50 @@ test("while its row is listed a run's times follow the row, and once newer runs 
     [20, 20, 20],
     "a run a row named isn't looked for in the newest 100",
   );
+});
+
+// The revision and the times the view gives (#586) come before the row's.
+
+test("the revision and the times the run's view gives are shown, not its row's", async () => {
+  const backend = fakeBackend();
+  const row = entry(1, { workflowRevision: 4, createdAt: "2026-11-08T09:30:00.000Z", updatedAt: "2026-11-08T09:45:00.000Z" });
+  const root = await showRun(backend, 1, [row]);
+  assert.match(text(header(root)), /revision 4/, "the row's, until the view is read");
+  const view = graphOperatorView(1, { workflowRevision: 5, createdAt: "2026-11-08T09:29:00.000Z", updatedAt: "2026-11-08T09:47:00.000Z" });
+  await answer(backend.statuses()[0], statusRecord(view));
+  assert.match(text(header(root)), /revision 5/);
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 29)));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 47)));
+});
+
+test("a run's updated time follows each read of its view, while its row and its change token stay the same", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1)]);
+  const view = (updatedAt: string) => statusRecord(graphOperatorView(1, { workflowRevision: 1, createdAt: "2026-11-08T09:30:00.000Z", updatedAt }));
+  await answer(backend.statuses()[0], view("2026-11-08T09:47:00.000Z"));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 47)));
+  await tick(3_000);
+  await answer(backend.statuses()[1], view("2026-11-08T09:52:00.000Z"));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 52)));
+  assert.equal(backend.lists().length, 1, "the Runs list wasn't read again in between");
+});
+
+for (const [what, workflowRevision] of [["zero", 0], ["a fraction", 1.5], ["text", "5"], ["null", null]] as const) {
+  test(`a view whose workflowRevision is ${what} doesn't name the revision, so the row's is shown`, async () => {
+    const backend = fakeBackend();
+    const root = await showRun(backend, 1, [entry(1, { workflowRevision: 4 })]);
+    await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { workflowRevision })));
+    assert.match(text(header(root)), /revision 4/);
+  });
+}
+
+test("a time of the view that isn't a UTC timestamp isn't shown: that time alone is the row's", async () => {
+  const backend = fakeBackend();
+  const row = entry(1, { createdAt: "2026-11-08T09:30:00.000Z", updatedAt: "2026-11-08T09:45:00.000Z" });
+  const root = await showRun(backend, 1, [row]);
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { createdAt: 1762594200000, updatedAt: "2026-11-08T09:47:00.000Z" })));
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)), "the row's");
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 47)), "the view's");
 });
 
 /** Asserts no status read follows within `ms - 1`, and one does at `ms`; answers it with `outcome`. */

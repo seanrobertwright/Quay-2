@@ -92,6 +92,15 @@ export const statusRecord = (view: Record<string, unknown>, trustHint?: string):
   trustHint === undefined ? { kind: "record", record: view } : { kind: "record", record: view, trustHint };
 
 /**
+ * `view`, an `aiws-graph-operator-view/1`, as a host on an SDK before AI-WS-SDK #684 gives it:
+ * without the workflow, its admitted revision and the run's times, which are optional in the format.
+ */
+export function onOlderHost(view: Record<string, unknown>): Record<string, unknown> {
+  const { workflow: _workflow, workflowRevision: _workflowRevision, createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = view;
+  return rest;
+}
+
+/**
  * Node `nodeId` of kind `kind` in node phase `phase`, as an entry of a graph run's
  * `aiws-graph-operator-view/1` `nodes[]` (graph_outputs.fixture.json), with `extra` replacing its
  * fields. It has no attempt, scope, loop, wait or human task.
@@ -118,7 +127,7 @@ export function graphNodeView(nodeId: string, kind: string, phase: string, extra
  * Graph run `n`'s `aiws-graph-operator-view/1`, as `praxis status wo-<n> --format
  * aiws-graph-operator-view/1 --json` printed it against the SDK's simulated host
  * (graph_outputs.fixture.json), with its nodes left out and `extra` replacing its fields. It is
- * a running run that waits for nothing.
+ * a running run that waits for nothing, of the revision and with the times `graphRunEntry(n)` gives.
  */
 export function graphOperatorView(n: number, extra: Record<string, unknown> = {}) {
   return {
@@ -128,6 +137,10 @@ export function graphOperatorView(n: number, extra: Record<string, unknown> = {}
     graphId: "release-review",
     graphDigest: `sha256:${"a".repeat(64)}`,
     bindingRevision: "1",
+    workflow: "release-train",
+    workflowRevision: 1,
+    createdAt: "2026-11-08T09:30:00.000Z",
+    updatedAt: "2026-11-08T09:31:00.000Z",
     status: "RUNNING",
     outcome: null,
     control: { status: "RUNNING", reason: null },

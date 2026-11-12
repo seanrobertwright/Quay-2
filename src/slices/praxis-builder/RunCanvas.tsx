@@ -384,9 +384,9 @@ interface RunCanvasProps {
   projectPath: string;
   /** The graph workflow the run is a run of. */
   workflow: string;
-  /** The revision the run runs, from the last row of the Runs list that named the run; null before a row did. */
+  /** The revision the run runs, as its view names it, else the last row of the Runs list that named the run; null while neither does. */
   revision: number | null;
-  /** Why no row of the Runs list has named the run, while `revision` is null. */
+  /** Why no row of the Runs list has named the run; read while `revision` is null. */
   unlisted: Unlisted;
   /** The run's name, for the heading. */
   runName: string;
@@ -406,9 +406,9 @@ interface RunCanvasProps {
 }
 
 /**
- * The run canvas of a graph run, with a heading that names the run and its revision. Until a row of
- * the Runs list names the revision, its place says the revision is being looked up, or why Quay
- * can't tell it (#579).
+ * The run canvas of a graph run, with a heading that names the run and its revision. Until the
+ * run's view or a row of the Runs list names the revision, its place says the revision is being
+ * looked up, or why Quay can't tell it (#579).
  */
 export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...rest }) => {
   const headingId = useId();
@@ -427,7 +427,7 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...
   );
 };
 
-/** What the run canvas's place says while no row of the Runs list has named the run's revision. */
+/** What the run canvas's place says while neither the run's view nor a row of the Runs list has named its revision. */
 function unlistedLine(unlisted: Unlisted): string {
   switch (unlisted) {
     case "reading":
@@ -440,10 +440,10 @@ function unlistedLine(unlisted: Unlisted): string {
 }
 
 /**
- * The run canvas's place while no row of the Runs list has named the run's revision: why, on a
- * status line. Once Quay can't tell the revision, `onNoDrawing` is called, so the node table
- * opens, and not again while the reason stays the same, so a reader who closes the table keeps it
- * closed.
+ * The run canvas's place while neither the run's view nor a row of the Runs list has named its
+ * revision: why, on a status line. Once Quay can't tell the revision, `onNoDrawing` is called, so
+ * the node table opens, and not again while the reason stays the same, so a reader who closes the
+ * table keeps it closed.
  */
 const UnlistedRevision: FC<{ unlisted: Unlisted; onNoDrawing: () => void }> = ({ unlisted, onNoDrawing }) => {
   const noDrawing = useRef(onNoDrawing);

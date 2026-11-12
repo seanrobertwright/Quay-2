@@ -14,7 +14,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createDraft, type Draft } from "./drafts.ts";
 import { createGraphHost, type GraphHost } from "./graphHost.ts";
 import type { CallOutcome, HostCondition } from "./praxisHost.ts";
-import { graphOperatorView, graphRunEntry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
+import { graphOperatorView, graphRunEntry, graphRunsRecord, onOlderHost, statusRecord } from "./fixtures/runs.ts";
 import { createRunStarts, GRAPH_RUN } from "./runStart.ts";
 
 const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
@@ -440,10 +440,10 @@ const fact = (detail: HTMLElement, term: string) => text([...detail.querySelecto
 /** What the place of the run canvas in a run's `detail` says while no revision is drawn there. */
 const canvasStatus = (detail: HTMLElement) =>
   text([...detail.querySelectorAll("section")].find((s) => /^Run canvas/.test(text(s.querySelector("h4"))))?.querySelector('[role="status"]') ?? null);
-/** Answers the status read of the run Run created with a view of it that has no nodes. */
+/** Answers the status read of the run Run created with a view of it that has no nodes, from a host whose view names no revision. */
 async function answerCreatedStatus(backend: ReturnType<typeof fakeBackend>): Promise<void> {
   const status = backend.statuses().find((s) => s.args.workOrderId === CREATED_ID) as Sent;
-  await act(async () => status.answer(statusRecord(graphOperatorView(1, { workOrderId: CREATED_ID, runId: CREATED_RUN }))));
+  await act(async () => status.answer(statusRecord(onOlderHost(graphOperatorView(1, { workOrderId: CREATED_ID, runId: CREATED_RUN })))));
 }
 
 test("a run Run creates is looked up until the read its creation asks for ends, even when the list held every run before it (#579)", async () => {
