@@ -122,6 +122,7 @@ import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
+import { focusLost } from "./useKeptFocus.ts";
 import { importHostTemplate, type ImportHostTemplateOutcome } from "./hostCatalog.ts";
 import { useGraphHost } from "./useGraphHost.ts";
 import { graphRowBadges } from "./graphHostStatus.ts";
@@ -360,6 +361,12 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const [invalid, setInvalid] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [revealError, setRevealError] = useState<string | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
+  // The template whose row takes focus once the project's list has been read again: one just
+  // imported from the host, whose Import to project button went away with focus on it (#591). The
+  // next read of that project's list takes it, so it never waits for a later, unrelated one.
+  const rowFocusWanted = useRef<{ projectKey: string; name: string } | null>(null);
+  // That read's answer: the template, and whether the list read has it.
+  const [rowFocus, setRowFocus] = useState<{ name: string; listed: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   // A line under the header: a save's error or warning, or what a rename or delete did.
   const [notice, setNotice] = useState<{ tone: "error" | "warning" | "info"; text: string } | null>(null);
@@ -612,9 +619,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // disk while it was hidden appear. A response that arrives after a newer request, or
   // after the builder hid, is dropped.
   useEffect(() => {
-    if (!isOpen || !projectPath) return;
+    // A row's focus is wanted in the project shown, while the builder is shown.
+    if (!isOpen || !projectPath) {
+      rowFocusWanted.current = null;
+      return;
+    }
     let stale = false;
     const key = normalizePath(projectPath);
+    if (rowFocusWanted.current?.projectKey !== key) rowFocusWanted.current = null;
+    const wanted = rowFocusWanted.current;
     void Promise.allSettled(
       LISTED_KINDS.map((kind) => invoke<DefinitionList>("praxis_list", { projectPath, kind }))
     ).then((results) => {
@@ -625,6 +638,10 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
         byKind[kind] = r.status === "fulfilled" ? { list: r.value } : { error: String(r.reason) };
       });
       setListing({ projectKey: key, byKind });
+      if (wanted && rowFocusWanted.current === wanted) {
+        rowFocusWanted.current = null;
+        setRowFocus({ name: wanted.name, listed: byKind.templates.list?.entries.some((e) => e.id === wanted.name) ?? false });
+      }
     });
     return () => {
       stale = true;
@@ -973,6 +990,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     if (!outcome.ok) {
       return outcome;
     }
+    rowFocusWanted.current = { projectKey: normalizePath(projectPath), name };
     setRefreshCount((c) => c + 1);
     openDefinition({ kind: "templates", id: name });
     const toastText = `Imported ${name} into .praxis/templates/${name}.json`;
@@ -1584,6 +1602,22 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen, quitPrompt]);
+
+  // Once the list read after an import is drawn, focus that the Import to project button took with
+  // it goes to the imported template's row, or to the builder when that read doesn't have the
+  // template. Focus the user has put elsewhere in the builder meanwhile, or that a dialog over the
+  // builder holds, stays where it is.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!rowFocus || !dialog) return;
+    const focused = document.activeElement;
+    if (!focusLost(focused) && focused?.closest('[aria-modal="true"]')) return;
+    const rowKey = definitionKey({ kind: "templates", id: rowFocus.name });
+    const row = rowFocus.listed
+      ? [...dialog.querySelectorAll<HTMLElement>("[data-definition-row]")].find((el) => el.dataset.definitionRow === rowKey)
+      : undefined;
+    (row ?? dialog).focus();
+  }, [rowFocus]);
 
   // A text field losing focus ends its typing step.
   const onDialogBlur = (e: ReactFocusEvent<HTMLDivElement>) => {
@@ -2339,6 +2373,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                                     ))}
                                   <ListRow
                                     id={def.id}
+                                    rowKey={key}
                                     problem={def.problem}
                                     idMismatch={def.idMismatch}
                                     nameProblem={def.nameProblem}
@@ -2762,6 +2797,8 @@ const draftLabel = (d: DirtyDraft) =>
 
 const ListRow: FC<{
   id: string;
+  /** The definition's key, by which code finds its row to give it focus. A binding's row has none. */
+  rowKey?: string;
   problem: FileProblem | undefined;
   idMismatch: DefinitionEntry["idMismatch"];
   /** A workflow template's name the Praxis host refuses: the host's rule. */
@@ -2773,7 +2810,7 @@ const ListRow: FC<{
   draft: Draft | undefined;
   current: boolean;
   onOpen: () => void;
-}> = ({ id, problem, idMismatch, nameProblem, invalid, crossIssues, draft, current, onOpen }) => {
+}> = ({ id, rowKey, problem, idMismatch, nameProblem, invalid, crossIssues, draft, current, onOpen }) => {
   const dirty = draft ? isDirty(draft) : false;
   const deleted = draft?.deletedOnDisk ?? false;
   const unsaved = draft?.baseHash === null;
@@ -2792,6 +2829,7 @@ const ListRow: FC<{
     <button
       type="button"
       aria-current={current ? "page" : undefined}
+      data-definition-row={rowKey}
       onClick={onOpen}
       title={notes.length > 0 ? `${id}: ${notes.join("; ")}` : id}
       className={`flex-1 min-w-0 ml-1.5 px-2 py-1 rounded-md flex items-center gap-1.5 text-left text-xs font-mono ${
