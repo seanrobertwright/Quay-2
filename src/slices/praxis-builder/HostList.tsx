@@ -108,6 +108,7 @@ export const HostGroupHeaderBar: FC<HostGroupHeaderProps> = ({ header, onCheckHo
     };
   }, []);
   const check = () => {
+    if (checking) return;
     setChecking(true);
     void onCheckHost().finally(() => {
       if (mounted.current) setChecking(false);
@@ -123,9 +124,10 @@ export const HostGroupHeaderBar: FC<HostGroupHeaderProps> = ({ header, onCheckHo
         </span>
         <button
           type="button"
+          // Not `disabled`, which would drop focus while the check runs.
+          aria-disabled={checking}
           onClick={check}
-          disabled={checking}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d] aria-disabled:opacity-50"
         >
           <RefreshCw className={`w-3 h-3 ${checking ? "animate-spin" : ""}`} aria-hidden="true" />
           {checking ? "Checking…" : header.checkHostLabel}
@@ -237,10 +239,14 @@ export const HostOnlySubsection: FC<HostOnlySubsectionProps> = ({ section, onImp
                           <div>
                             <button
                               type="button"
-                              disabled={!availability.allowed || importingName !== null}
+                              // `disabled` only for a template the host calls invalid, which doesn't
+                              // change under a focused button. While an import runs the button is
+                              // `aria-disabled` and `handleImport` ignores it, so focus stays on it.
+                              disabled={!availability.allowed}
+                              aria-disabled={importingName !== null}
                               title={availability.diagnostic ?? undefined}
                               onClick={() => void handleImport(row.name)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-[#30363d] text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-[#30363d] text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50 aria-disabled:opacity-50"
                             >
                               {isImporting ? (
                                 <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
