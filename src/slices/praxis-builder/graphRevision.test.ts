@@ -1,8 +1,9 @@
 /// <reference types="node" />
-// Tests for the revision cache (#571): a revision of a graph workflow, read once with
+// Tests for the revision cache (#571): a revision of a graph workflow, read with
 // `praxis graphs show <name> --revision <n>` and kept, at most `REVISION_CACHE_SIZE` of them, the
-// oldest dropped first. They fake only the runner's `invoke`, the out-of-process boundary, with the
-// recorded revision (graph_outputs.fixture.json).
+// oldest dropped first, so a revision kept is never read again; a read that failed isn't kept, so
+// the next read of it asks the host again. They fake only the runner's `invoke`, the out-of-process
+// boundary, with the recorded revision (graph_outputs.fixture.json).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRevisionCache, REVISION_CACHE_SIZE } from "./graphRevision.ts";

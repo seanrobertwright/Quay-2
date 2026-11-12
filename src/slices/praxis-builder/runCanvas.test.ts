@@ -3,180 +3,59 @@
 // names, read from the host with `praxis graphs show <name> --revision <n>`, drawn read-only above
 // the node table with each card in its node phase.
 // They render the real graph workflow form into happy-dom and fake only Tauri's `invoke`, the
-// out-of-process boundary. The recorded run of several phases and the recorded revision it runs
-// (graph_outputs.fixture.json) are drawn, and hand-made revisions in the recorded one's shape.
+// out-of-process boundary, with the scaffold they share with the node panel's tests
+// (fixtures/graphRunHarness.ts). The recorded run of several phases and the recorded revision it
+// runs (graph_outputs.fixture.json) are drawn, and hand-made revisions in the recorded one's shape.
 // happy-dom lays nothing out, so React Flow never measures a card: the cards are in the document
 // at their positions, and the edges, which wait for the measures, aren't.
-import { fakeInvoke } from "../../test-support/dom.ts";
+import {
+  answer,
+  button,
+  buttons,
+  click,
+  detail,
+  drawRun,
+  fakeBackend,
+  form,
+  MOD,
+  NAME,
+  nodesToggle,
+  NOW,
+  press,
+  PROJECT,
+  READS,
+  recordedRevision,
+  refused,
+  render,
+  runCanvas,
+  severalPhases,
+  showRun,
+  text,
+  tick,
+  unmount,
+  type Backend,
+  type SavedGraph,
+} from "./fixtures/graphRunHarness.ts";
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { createDraft } from "./drafts.ts";
-import { createRevisionCache, type RevisionCache } from "./graphRevision.ts";
-import { IS_MAC } from "./keymap.ts";
-import type { CallOutcome } from "./praxisHost.ts";
+import { act } from "react";
 import { graphNodeView as node, graphOperatorView, graphRunEntry as entry, graphRunsRecord, statusRecord } from "./fixtures/runs.ts";
 import { recordedStdout, revisionRecord } from "./fixtures/graphOutputs.ts";
-
-const { GraphWorkflowForm } = await import("./GraphWorkflowForm.tsx");
-
-const NOW = Date.UTC(2026, 10, 8, 12, 0, 0);
-const PROJECT = "C:/project";
-/** The graph workflow the recorded run of several phases runs. */
-const NAME = "release-train";
-
-let mounted: { root: Root; container: HTMLElement } | null = null;
-/** Each test's own revision cache, so no test reads a revision another kept. */
-let revisions: RevisionCache;
+import { formatDateTime } from "../../lib/dates.ts";
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: NOW });
-  revisions = createRevisionCache();
 });
-
-const unmount = () => {
-  if (!mounted) return;
-  const { root, container } = mounted;
-  act(() => root.unmount());
-  container.remove();
-  mounted = null;
-};
 
 afterEach(() => {
   unmount();
   mock.timers.reset();
 });
 
-interface Sent {
-  command: string;
-  args: Record<string, unknown>;
-  answer: (value: unknown) => void;
-}
-
-/** What `praxis_read` gives for a graph: the project's saved graph file and its layout file, if any. */
-type SavedGraph = { content?: Record<string, unknown>; layout?: Record<string, unknown> } | null;
-
-/**
- * The backend: the form's own reads answer at once, and so does `praxis_read` of a graph, with
- * `saved`, or as a graph the project hasn't got; the runs list, graph status and revision reads
- * wait for the test.
- */
-function fakeBackend(saved: SavedGraph = null) {
-  const sent: Sent[] = [];
-  fakeInvoke(
-    (command, args) =>
-      new Promise((resolve, reject) => {
-        sent.push({ command, args, answer: resolve });
-        switch (command) {
-          case "praxis_validate":
-            return resolve({ verdict: null, diagnostics: [], omitted: { errors: 0, warnings: 0, info: 0 } });
-          case "praxis_check_graph_workflow":
-            return resolve({ grants: [], diagnostics: [] });
-          case "praxis_graph_workflow_triggers":
-            return resolve({ ids: [], unchecked: [] });
-          case "praxis_read":
-            if (args.kind !== "graphs") return reject(new Error(`unexpected read of ${String(args.kind)}`));
-            return resolve(
-              saved === null
-                ? { id: args.id, kind: "graphs", missing: true }
-                : { id: args.id, kind: "graphs", missing: false, contentHash: "h", content: saved.content ?? { id: args.id, nodes: [] }, layout: saved.layout },
-            );
-          case "praxis_host_graph_runs":
-          case "praxis_host_graph_status":
-          case "praxis_host_graph_revision":
-            return;
-          case "praxis_host_cancel":
-            return resolve(undefined);
-          default:
-            return reject(new Error(`unexpected invoke ${command}`));
-        }
-      }),
-  );
-  const of = (command: string) => sent.filter((s) => s.command === command);
-  return {
-    sent,
-    lists: () => of("praxis_host_graph_runs"),
-    statuses: () => of("praxis_host_graph_status"),
-    revisionReads: () => of("praxis_host_graph_revision"),
-    layoutReads: () => of("praxis_read"),
-  };
-}
-type Backend = ReturnType<typeof fakeBackend>;
-
-/** Everything the form and its Runs view may send: each reads, and none writes a file or the host. */
-const READS = new Set([
-  "praxis_validate",
-  "praxis_check_graph_workflow",
-  "praxis_graph_workflow_triggers",
-  "praxis_read",
-  "praxis_host_graph_runs",
-  "praxis_host_graph_status",
-  "praxis_host_graph_revision",
-  "praxis_host_cancel",
-]);
 /** Asserts the backend was sent only reads: no layout file, or any other, was written or changed. */
 const onlyReads = (backend: Backend) => assert.deepEqual(backend.sent.map((s) => s.command).filter((c) => !READS.has(c)), []);
 
-interface FormSpies {
-  onEdit?: (edit: unknown) => void;
-  onOpen?: (ref: unknown) => void;
-  /** The `workOrderId` of a run to show as the form opens. */
-  showRun?: string;
-}
-
-function form(spies: FormSpies = {}) {
-  const ref = { kind: "graph-workflows" as const, id: NAME };
-  const content = { version: 1, contractId: "c", graphId: "g", graphBindingId: "g-1" };
-  const draft = createDraft(ref, { id: NAME, kind: "graph-workflows", missing: false, content, contentHash: "h" });
-  assert.ok(draft.ok);
-  return createElement(GraphWorkflowForm, {
-    projectPath: PROJECT,
-    draft: draft.value,
-    contracts: ["c"],
-    graphs: ["g"],
-    graphBindings: [{ id: "g-1", graphId: "g" }],
-    refresh: 0,
-    onEdit: spies.onEdit ?? (() => {}),
-    onOpen: spies.onOpen ?? (() => {}),
-    onValidated: () => {},
-    runsShown: true,
-    showRun: spies.showRun,
-    revisions,
-  });
-}
-
-async function render(element: ReturnType<typeof form>): Promise<HTMLElement> {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  mounted = { root, container };
-  await act(async () => root.render(element));
-  return container;
-}
-
-const text = (el: Element | null | undefined) => el?.textContent ?? "";
-const buttons = (root: Element) => [...root.querySelectorAll("button")];
-const button = (root: Element, name: RegExp) =>
-  buttons(root).find((b) => name.test(b.getAttribute("aria-label") ?? text(b))) as HTMLButtonElement | undefined;
-const click = (el: HTMLElement | undefined) => act(async () => el?.click());
-const tick = (ms: number) => act(async () => mock.timers.tick(ms));
-const answer = (s: Sent, outcome: CallOutcome) => act(async () => s.answer(outcome));
-
-/** Opens Runs, lists `rows`, and shows run `n`'s detail. */
-async function showRun(backend: Backend, n = 1, rows: unknown[] = [entry(n)], spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await render(form(spies));
-  await click(button(root, /^Runs$/));
-  await answer(backend.lists()[0], graphRunsRecord(NAME, rows));
-  await click(button(root, new RegExp(`^Show run-${n}$`)));
-  return root;
-}
-
-const detail = (root: HTMLElement) => root.querySelector('[aria-label^="Run run-"]') as HTMLElement | null;
 const header = (root: HTMLElement) => detail(root)?.querySelector("header") as HTMLElement;
-/** The run canvas, found by its heading. */
-const runCanvas = (root: HTMLElement) =>
-  ([...(detail(root)?.querySelectorAll("section") ?? [])].find((s) => /^Run canvas/.test(text(s.querySelector("h4")))) as HTMLElement | undefined) ?? null;
 const cards = (root: HTMLElement) => [...(runCanvas(root)?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])];
 /** The ids of the run canvas's cards, in the order it draws them. */
 const cardIds = (root: HTMLElement) => cards(root).map((card) => card.getAttribute("data-id"));
@@ -189,7 +68,8 @@ const cardStates = (root: HTMLElement) =>
     return [card.getAttribute("data-id"), text(chip), chip?.getAttribute("data-tone") ?? null, text(card.querySelector("[data-counter]"))];
   });
 const problems = (root: HTMLElement) => [...(runCanvas(root)?.querySelectorAll('[aria-label="Run canvas problems"] li') ?? [])].map((li) => text(li));
-const nodesToggle = (root: HTMLElement) => button(detail(root) as HTMLElement, /^Nodes/) as HTMLButtonElement;
+/** The run canvas's note on why the project's saved layout wasn't used, or null when it has none. */
+const layoutNote = (root: HTMLElement) => runCanvas(root)?.querySelector<HTMLElement>('[role="note"]') ?? null;
 const nodeTable = (root: HTMLElement) => detail(root)?.querySelector("table") ?? null;
 /** The node table's rows, each as its id, its phase chip's text and tone, and its counter line. */
 const nodeRows = (root: HTMLElement) =>
@@ -197,20 +77,8 @@ const nodeRows = (root: HTMLElement) =>
     const chip = tr.querySelector('[data-chip="phase"]');
     return [text(tr.querySelector("th")), text(chip), chip?.getAttribute("data-tone") ?? null, text(tr.lastElementChild)];
   });
-
-/** The recorded revision the recorded run of several phases runs. */
-const recordedRevision = (): CallOutcome => ({ kind: "record", record: recordedStdout("graphs show: a revision") });
-const severalPhases = () => statusRecord(recordedStdout("status: nodes in several phases"));
 /** The ids of the recorded revision's nodes, in its graph's order. */
 const RECORDED_IDS = ["build", "test", "cooldown", "signoff", "package", "deploy", "end"];
-
-/** Shows run 1, whose view is the recorded run of several phases, and answers its revision read with `revision`. */
-async function drawRun(backend: Backend, revision: CallOutcome = recordedRevision(), spies: FormSpies = {}): Promise<HTMLElement> {
-  const root = await showRun(backend, 1, [entry(1)], spies);
-  await answer(backend.statuses()[0], severalPhases());
-  await answer(backend.revisionReads()[0], revision);
-  return root;
-}
 
 /** A graph node with no settings. */
 const graphNode = (id: string, kind: string, dependsOn: string[] = []) => ({ id, kind, dependsOn, config: {} });
@@ -293,23 +161,55 @@ test("with the project's saved layout for the revision's graph id, the cards tak
   onlyReads(backend);
 });
 
-test("without a saved layout for the graph id, dagre lays the revision out", async () => {
-  for (const saved of [null, { content: { id: "release-review", nodes: [] } }]) {
-    revisions = createRevisionCache();
+/** Where dagre places the recorded revision's nodes, when no saved position places any. */
+const DAGRE_POSITIONS = {
+  build: "translate(540px,0px)",
+  test: "translate(270px,172px)",
+  cooldown: "translate(0px,344px)",
+  signoff: "translate(540px,172px)",
+  package: "translate(270px,344px)",
+  deploy: "translate(540px,344px)",
+  end: "translate(270px,516px)",
+};
+
+test("without a saved layout for the graph id or a layout problem, or when `praxis_read` fails, dagre lays the revision out and no note says why", async () => {
+  // No graph of that id, one with no layout file and nothing wrong with `.praxis/layout`, and a
+  // `praxis_read` that fails, as it does when `.praxis/graphs` can't be opened. A layout file, or a
+  // `.praxis/layout`, that can't be used fails no read: `praxis_read` gives why as its
+  // `layoutProblem` (the next test).
+  const cases: SavedGraph[] = [
+    null,
+    { content: { id: "release-review", nodes: [] } },
+    { readFails: ".praxis/graphs can't be opened: Access is denied. (os error 5)" },
+  ];
+  for (const saved of cases) {
     const backend = fakeBackend(saved);
     const root = await drawRun(backend);
-    assert.deepEqual(cardPositions(root), {
-      build: "translate(540px,0px)",
-      test: "translate(270px,172px)",
-      cooldown: "translate(0px,344px)",
-      signoff: "translate(540px,172px)",
-      package: "translate(270px,344px)",
-      deploy: "translate(540px,344px)",
-      end: "translate(270px,516px)",
-    });
+    assert.deepEqual(cardPositions(root), DAGRE_POSITIONS);
+    assert.equal(layoutNote(root), null, JSON.stringify(saved));
+    assert.equal(runCanvas(root)?.querySelector(".react-flow")?.hasAttribute("aria-describedby"), false, JSON.stringify(saved));
     onlyReads(backend);
     unmount();
   }
+});
+
+test("a saved layout for the graph id that can't be used is ignored: dagre lays the revision out, and a note says why in the graph canvas's words", async () => {
+  // As `praxis_read` reports `.praxis/layout/release-review.json` holding `{nope`.
+  const layoutProblem = { message: "Not valid JSON: key must be a string at line 1 column 2", line: 1, column: 2 };
+  const backend = fakeBackend({ layoutProblem });
+  const root = await drawRun(backend);
+  assert.deepEqual(cardPositions(root), DAGRE_POSITIONS, "the revision is still drawn, laid out by dagre");
+  const note = layoutNote(root);
+  assert.equal(
+    text(note),
+    ".praxis/layout/release-review.json was ignored, so the graph is laid out automatically: Not valid JSON: key must be a string at line 1 column 2",
+  );
+  // Information, not one of the run canvas's problem lines, and the drawing's description, so a
+  // screen reader reaches it from the drawing too.
+  assert.deepEqual(problems(root), []);
+  assert.ok(note?.id, "the note has an id");
+  assert.equal(runCanvas(root)?.querySelector(".react-flow")?.getAttribute("aria-describedby"), note?.id);
+  onlyReads(backend);
 });
 
 test("each card shows the same node phase, in the same tone, and the same counter line as its row in the node table", async () => {
@@ -434,13 +334,7 @@ test("a graph node with no view entry draws no chip and says no state is reporte
   );
 });
 
-/** The recorded refusal of a revision the host doesn't hold. */
-function refused(): CallOutcome {
-  const refusal = recordedStdout("graphs show: a revision, not submitted");
-  return { kind: "hostRefused", message: String(refusal.message), hostCode: "NOT_FOUND", record: refusal };
-}
-
-test("when the revision can't be read, the canvas area gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
+test("when the revision can't be read, the run canvas's place gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
   await answer(backend.statuses()[0], severalPhases());
@@ -504,10 +398,53 @@ test("once Try again's read finds the revision can't be drawn, focus goes to the
   assert.ok(document.activeElement === status, "focus is on the status line, not the page");
 });
 
-test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table still shows", async () => {
+// Only Try again's own read hands focus on, and only focus that fell to the page with it (#578).
+
+test("opening a run's detail with focus on the page, as when the control that opened it has gone, leaves focus there once the first read draws the revision, not on the run canvas", async () => {
   const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  assert.ok(document.activeElement === document.body, "focus is on the page");
+  await answer(backend.revisionReads()[0], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS, "the revision is drawn");
+  // Compared by identity, so a failure doesn't print two whole DOM nodes.
+  assert.ok(document.activeElement === document.body, "focus stays where it was: only a read Try again started hands it on");
+});
+
+test("focus the reader moves to another control while Try again's read runs stays there once the read draws the revision", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await triedAgain(backend, root);
+  const toggle = nodesToggle(root);
+  await act(async () => toggle.focus());
+  await answer(backend.revisionReads()[1], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS, "the revision is drawn, and Try again has gone");
+  assert.ok(document.activeElement === toggle, "focus stays on the Nodes toggle, where the reader put it");
+});
+
+test("when Try again's read finds the revision can't be drawn and opens the node table the reader closed, Try again's focus goes to the status line, and the detail, drawn again with it, moves none", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.revisionReads()[0], refused());
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the reader closed the node table that opened by itself");
+  const tryAgain = button(runCanvas(root) as HTMLElement, /^Try again$/) as HTMLButtonElement;
+  await act(async () => tryAgain.focus());
+  await click(tryAgain);
+  await answer(backend.revisionReads()[1], revisionRecord(Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"))));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened again, so the detail was drawn again too");
+  const status = runCanvas(root)?.querySelector('[role="status"]');
+  assert.ok(document.activeElement === status, "focus is on the status line, as Try again hands it on, not on the detail's heading");
+});
+
+test("a revision with more nodes than the builder draws isn't drawn: the run canvas's place says why, and the node table opens by itself", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend);
+  await answer(backend.statuses()[0], severalPhases());
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the table stays collapsed while the revision is read");
   const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));
-  const root = await drawRun(backend, revisionRecord(many));
+  await answer(backend.revisionReads()[0], revisionRecord(many));
   assert.match(
     text(runCanvas(root)),
     /Revision 1 of release-train isn't drawn\. Its graph has 1001 nodes, more than the 1000 the builder draws\. The node table lists the run's nodes\./,
@@ -515,6 +452,46 @@ test("a revision with more nodes than the builder draws isn't drawn: the canvas 
   assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no canvas");
   assert.equal(button(runCanvas(root) as HTMLElement, /^Try again$/), undefined, "rereading it would give the same");
   assert.equal(text(nodesToggle(root)), "Nodes (7)");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+  assert.equal(nodeRows(root).length, 7);
+});
+
+test("a revision praxis gives without a graph, or with a graph the builder can't read, isn't drawn either, and the node table opens by itself", async () => {
+  for (const [revision, reason] of [
+    [revisionRecord([], { graph: "none" }), "praxis gave it without a graph."],
+    [revisionRecord([graphNode("a", "TASK"), graphNode("a", "END")]), 'Its graph can\'t be drawn: More than one node has the id "a".'],
+  ] as const) {
+    const backend = fakeBackend();
+    const root = await drawRun(backend, revision);
+    assert.equal(text(runCanvas(root)?.querySelector('[role="status"]')), `Revision 1 of release-train isn't drawn. ${reason} The node table lists the run's nodes.`);
+    assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, `${reason}: no canvas`);
+    assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", `${reason}: the node table opened by itself`);
+    unmount();
+  }
+});
+
+test("once the node table opened by itself for a revision that isn't drawn and the reader closed it, the next read of the run leaves it closed", async () => {
+  const backend = fakeBackend();
+  const many = Array.from({ length: 1001 }, (_, n) => graphNode(`node-${n}`, "TASK"));
+  const root = await drawRun(backend, revisionRecord(many));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true");
+  await click(nodesToggle(root));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the reader closed it");
+  const view = recordedStdout("status: nodes in several phases");
+  const nodes = view.nodes as Record<string, unknown>[];
+  await tick(15_000);
+  await answer(backend.statuses()[1], statusRecord({ ...view, changeToken: "1".repeat(64), nodes: [{ ...nodes[0], phase: "FAILED" }, ...nodes.slice(1)] }));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the read didn't open it again");
+  assert.equal(backend.revisionReads().length, 1, "the revision wasn't read again");
+  await click(nodesToggle(root));
+  assert.deepEqual(nodeRows(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"], "the read came while the table was closed");
+});
+
+test("a revision that is drawn leaves the node table collapsed", async () => {
+  const backend = fakeBackend();
+  const root = await drawRun(backend);
+  assert.deepEqual(cardIds(root), RECORDED_IDS);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false");
 });
 
 test("when the view has no nodes[], there is no run canvas and no revision is read", async () => {
@@ -538,26 +515,107 @@ test("after a failed read of the run the run canvas dims with the detail, and dr
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
 
-test("a run whose revision the Runs list doesn't name yet says so in place of the run canvas", async () => {
+// A run the Runs list doesn't name (#579), such as one a fire's Show run opens: the list reads the
+// newest 100 once to find it, and the run canvas's place says why when Quay still can't tell its
+// revision.
+
+/** Graph runs `newest` down to `oldest`, newest first, as the Runs list lists them. */
+const runsFrom = (newest: number, oldest: number) => Array.from({ length: newest - oldest + 1 }, (_, i) => entry(newest - i));
+/** The limit each read of the Runs list asked for, in order. */
+const limits = (backend: Backend) => backend.lists().map((s) => s.args.limit);
+/** The value of the detail's fact named `term`. */
+const fact = (root: HTMLElement, term: string) => text([...(detail(root)?.querySelectorAll("dt") ?? [])].find((dt) => text(dt) === term)?.nextElementSibling);
+
+test("a run a fire's Show run opens that is among runs 21 to 100 is found by one read of the newest 100, with no step by the reader, and its run canvas and times are drawn", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-70" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.deepEqual(limits(backend), [20, 100], "the newest 100 are read at once, as Show more reads them");
+  const row = entry(70, { createdAt: "2026-11-07T08:00:00.000Z", updatedAt: "2026-11-07T08:20:00.000Z" });
+  await answer(backend.lists()[1], graphRunsRecord(NAME, [...runsFrom(150, 71), row, ...runsFrom(69, 51)]));
+  assert.deepEqual(backend.revisionReads().map((s) => s.args.revision), [1], "the revision its row names is read");
+  await answer(backend.revisionReads()[0], recordedRevision());
+  assert.deepEqual(cardIds(root), RECORDED_IDS);
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 7, 8, 0)));
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 7, 8, 20)));
+  assert.equal(root.querySelectorAll('[aria-label="Runs"] li').length, 100, "the list shows the newest 100, as after Show more");
+  assert.match(text(root), /Showing the newest 100 runs, the most praxis lists/);
+  assert.deepEqual(limits(backend), [20, 100], "one read of the newest 100");
+});
+
+/** What the run canvas's place says while no row of the Runs list has named the run's revision. */
+const unlistedLine = (root: HTMLElement) => text(runCanvas(root)?.querySelector('[role="status"]'));
+const LOOKING = "Looking in the Runs list for the revision this run runs…";
+
+test("while the Runs list's first read, and its read of the newest 100, run, the run canvas's place says the revision is being looked up, and promises nothing", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-70" }));
+  await answer(backend.statuses()[0], severalPhases());
+  assert.equal(unlistedLine(root), LOOKING);
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.equal(limits(backend).length, 2, "the newest 100 are being read");
+  assert.equal(unlistedLine(root), LOOKING);
+  assert.equal(text(runCanvas(root)?.querySelector("h4")), `Run canvas: ${String(recordedStdout("status: nodes in several phases").runId)}`);
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null);
+  assert.deepEqual(backend.revisionReads(), []);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "the node table is left as it is");
+  assert.equal(fact(root, "Created"), "Not given");
+});
+
+test("a run not among the newest 100 says Quay can't tell its revision because praxis lists only the newest 100, draws no run canvas, and opens the node table", async () => {
   const backend = fakeBackend();
   const root = await render(form({ showRun: "wo-9" }));
-  await answer(backend.lists()[0], graphRunsRecord(NAME, [entry(1)]));
   await answer(backend.statuses()[0], severalPhases());
-  assert.match(text(runCanvas(root)), /The run canvas is drawn once the Runs list names the revision this run runs\./);
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "not while the newest 100 are read");
+  await answer(backend.lists()[1], graphRunsRecord(NAME, runsFrom(150, 51)));
+  assert.equal(
+    unlistedLine(root),
+    "Quay can't tell which revision this run runs, because praxis lists only the newest 100 runs of a graph workflow, and this run isn't among them. The run canvas isn't drawn: the node table shows the run's node phases.",
+  );
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null, "no run canvas");
+  assert.deepEqual(backend.revisionReads(), [], "no revision is guessed");
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+  assert.equal(nodeRows(root).length, 7);
+  assert.match(text(header(root)), /RUNNING/, "the run-level facts still show");
+  assert.equal(fact(root, "Created"), "Not given");
+  assert.equal(fact(root, "Updated"), "Not given");
+  await click(nodesToggle(root));
+  await tick(15_000);
+  await answer(backend.lists()[2], graphRunsRecord(NAME, runsFrom(151, 52)));
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "false", "a read that says the same doesn't open the table the reader closed");
+  assert.deepEqual(limits(backend), [20, 100, 100], "one read of the newest 100, and the poll that follows at that limit");
+});
+
+/** Asserts the run canvas's place says the Runs list, holding every run, doesn't name the run, and that the node table opened. */
+function saysNotListed(backend: Backend, root: HTMLElement): void {
+  assert.equal(unlistedLine(root), "The Runs list doesn't name this run, so Quay can't tell which revision it runs. The run canvas isn't drawn: the node table shows the run's node phases.");
+  assert.equal(runCanvas(root)?.querySelector(".react-flow"), null);
   assert.deepEqual(backend.revisionReads(), []);
+  assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
+}
+
+test("a run the Runs list doesn't name when its first read gives every run says so, without the cap, and reads no more while the list gives every run", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-999" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, [entry(2), entry(1)]));
+  saysNotListed(backend, root);
+  assert.deepEqual(limits(backend), [20], "no read of the newest 100");
+});
+
+test("a run the newest 100 don't name when they are every run says the Runs list doesn't name it, without the cap", async () => {
+  const backend = fakeBackend();
+  const root = await render(form({ showRun: "wo-999" }));
+  await answer(backend.statuses()[0], severalPhases());
+  await answer(backend.lists()[0], graphRunsRecord(NAME, runsFrom(150, 131)));
+  await answer(backend.lists()[1], graphRunsRecord(NAME, runsFrom(150, 81)));
+  saysNotListed(backend, root);
+  assert.deepEqual(limits(backend), [20, 100]);
 });
 
 // Read-only: the run canvas is given no edit handlers and no draft, and React Flow edits nothing on it.
-
-/** The modifier a builder chord's Mod is here: Cmd on macOS, else Ctrl. */
-const MOD = IS_MAC ? "metaKey" : "ctrlKey";
-
-/** Sends a keydown of `key` to `target`, as the browser does, and returns it. */
-async function press(target: Element, key: string, init: KeyboardEventInit = {}): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
-  await act(async () => void target.dispatchEvent(event));
-  return event;
-}
 
 /** Sends mouse event `type` to `target` at a point on screen, as the browser does. */
 async function mouse(target: Element, type: string, at: { x: number; y: number }, init: MouseEventInit = {}): Promise<void> {
@@ -664,7 +722,7 @@ test("the builder's zoom keys zoom the run canvas in and out and back to 100%, f
   assert.deepEqual(cardIds(root), RECORDED_IDS);
 });
 
-test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, since a run's revision never changes", async () => {
+test("a run that newer runs push off the Runs list keeps its run canvas drawn, as it was viewed, and its times, as its last row gave them", async () => {
   const backend = fakeBackend();
   const root = await drawRun(backend);
   const viewport = () => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
@@ -679,4 +737,218 @@ test("a run that newer runs push off the Runs list keeps its run canvas drawn, a
   assert.match(text(runCanvas(root)?.querySelector("h4")), /, revision 1$/);
   assert.match(text(header(root)), /revision 1/, "the detail still names the revision");
   assert.equal(backend.revisionReads().length, 1, "and didn't read it again");
+  assert.equal(fact(root, "Created"), formatDateTime(Date.UTC(2026, 10, 8, 9, 30)), "the times stay as the last row gave them");
+  assert.equal(fact(root, "Updated"), formatDateTime(Date.UTC(2026, 10, 8, 9, 31)));
+});
+
+// Bringing a card into view (#575): a card that takes keyboard focus, and the selected card, are
+// panned into view when they aren't wholly in it, at the same zoom and without animation.
+
+/** Where the run canvas's drawing is on screen while no node panel is open beside it. */
+const DRAWING = { left: 100, top: 50, width: 900, height: 320 };
+/** How much narrower the drawing is while the node panel is open beside it: the panel's w-64 and the gap-3 between them. */
+const PANEL_SPACE = 256 + 12;
+/** A card's size on screen at 100%: the layout's, which it keeps until React Flow measures it. */
+const CARD = { width: 230, height: 92 };
+
+/** A rectangle on screen, as `getBoundingClientRect` gives one. */
+const screenRect = (left: number, top: number, width: number, height: number) =>
+  ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+
+/** The offset of an element's `translate(...)` transform, and the scale after it, if any. */
+function transformOf(el: Element | null): { x: number; y: number; zoom: number } {
+  const m = /translate\((-?[\d.e-]+)px, ?(-?[\d.e-]+)px\)(?: scale\(([\d.e-]+)\))?/.exec((el as HTMLElement | null)?.style.transform ?? "");
+  return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3] ?? 1) } : { x: 0, y: 0, zoom: 1 };
+}
+
+/**
+ * Lays the run canvas out while `body` runs, as a browser would, since happy-dom lays nothing out.
+ * The drawing is at `DRAWING` on screen, `PANEL_SPACE` narrower while a node panel is open beside
+ * it, and each card is where the view's offset and zoom put it, at `CARD`'s size times the zoom.
+ * `resize` gives the drawing a new width, before any node panel takes its space, and reports the
+ * change to the resize observers watching it, as a browser does. Nothing else is reported: a node
+ * panel opening narrows the drawing unreported, so a test sees what the change of selection does.
+ */
+async function withLayout(body: (resize: (width: number) => Promise<void>) => Promise<void>): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  const observer = g.ResizeObserver;
+  const proto = HTMLElement.prototype;
+  const own = (key: string) => Object.getOwnPropertyDescriptor(proto, key);
+  const saved = { rect: own("getBoundingClientRect"), width: own("offsetWidth"), height: own("offsetHeight") };
+  let width = DRAWING.width;
+  const panelOpen = () => [...document.querySelectorAll("section h4")].some((h) => /^Node panel/.test(text(h)));
+  const drawing = () => screenRect(DRAWING.left, DRAWING.top, width - (panelOpen() ? PANEL_SPACE : 0), DRAWING.height);
+  // React Flow's element, and the pane in it that it takes its size from, which fills it.
+  const isDrawing = (el: Element) => el.classList.contains("react-flow") || el.classList.contains("react-flow__renderer");
+  type Report = (entries: { target: Element; contentRect: DOMRect }[]) => void;
+  const watching: { report: Report; targets: Set<Element> }[] = [];
+  g.ResizeObserver = class {
+    watch: (typeof watching)[number];
+    constructor(report: Report) {
+      this.watch = { report, targets: new Set() };
+      watching.push(this.watch);
+    }
+    observe(target: Element) {
+      this.watch.targets.add(target);
+    }
+    unobserve(target: Element) {
+      this.watch.targets.delete(target);
+    }
+    disconnect() {
+      this.watch.targets.clear();
+    }
+  };
+  Object.defineProperty(proto, "getBoundingClientRect", {
+    configurable: true,
+    writable: true,
+    value(this: HTMLElement) {
+      if (isDrawing(this)) return drawing();
+      if (!this.classList.contains("react-flow__node")) return screenRect(0, 0, 0, 0);
+      const at = transformOf(this);
+      const view = transformOf(this.closest(".react-flow__viewport"));
+      const box = drawing();
+      return screenRect(box.left + view.x + at.x * view.zoom, box.top + view.y + at.y * view.zoom, CARD.width * view.zoom, CARD.height * view.zoom);
+    },
+  });
+  Object.defineProperty(proto, "offsetWidth", { configurable: true, get(this: HTMLElement) { return isDrawing(this) ? drawing().width : 0; } });
+  Object.defineProperty(proto, "offsetHeight", { configurable: true, get(this: HTMLElement) { return isDrawing(this) ? drawing().height : 0; } });
+  const resize = async (next: number) => {
+    width = next;
+    await act(async () => {
+      for (const { report, targets } of watching) {
+        const resized = [...targets].filter(isDrawing);
+        const size = drawing();
+        if (resized.length > 0) report(resized.map((target) => ({ target, contentRect: screenRect(0, 0, size.width, size.height) })));
+      }
+    });
+  };
+  try {
+    await body(resize);
+  } finally {
+    g.ResizeObserver = observer;
+    for (const [key, descriptor] of [["getBoundingClientRect", saved.rect], ["offsetWidth", saved.width], ["offsetHeight", saved.height]] as const) {
+      if (descriptor) Object.defineProperty(proto, key, descriptor);
+      else delete (proto as unknown as Record<string, unknown>)[key];
+    }
+  }
+}
+
+/** The run canvas's view: its offset and zoom, as React Flow transforms its viewport. */
+const viewOf = (root: HTMLElement) => (runCanvas(root)?.querySelector(".react-flow__viewport") as HTMLElement).style.transform;
+/** The run canvas's card for node `nodeId`. */
+const cardOf = (root: HTMLElement, nodeId: string) => runCanvas(root)?.querySelector<HTMLElement>(`.react-flow__node[data-id="${nodeId}"]`) as HTMLElement;
+/**
+ * How far card `nodeId`'s centre is from the drawing's, in whole pixels across and down, as the
+ * test's layout puts them: [0, 0] for a card a reveal centred.
+ */
+function offCentre(root: HTMLElement, nodeId: string): [number, number] {
+  const card = cardOf(root, nodeId).getBoundingClientRect();
+  const drawing = (runCanvas(root)?.querySelector(".react-flow") as HTMLElement).getBoundingClientRect();
+  const off = (a: number, b: number) => Math.round(a - b) || 0;
+  return [off(card.left + card.width / 2, drawing.left + drawing.width / 2), off(card.top + card.height / 2, drawing.top + drawing.height / 2)];
+}
+/** Whether card `nodeId` is wholly in the drawing, as the test's layout puts them. */
+function whollyInView(root: HTMLElement, nodeId: string): boolean {
+  const card = cardOf(root, nodeId).getBoundingClientRect();
+  const drawing = (runCanvas(root)?.querySelector(".react-flow") as HTMLElement).getBoundingClientRect();
+  return card.left >= drawing.left && card.top >= drawing.top && card.right <= drawing.right && card.bottom <= drawing.bottom;
+}
+
+test("a card that takes keyboard focus outside the run canvas's view is panned into view at once, at the same zoom, and one wholly in view moves nothing", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await withReducedMotion(async () => void (await press(cards(root)[0], "=", { [MOD]: true })));
+    const zoomed = viewOf(root);
+    assert.match(zoomed, /scale\(1\.2\)$/);
+    // happy-dom matches :focus-visible for any focus, as a browser does for focus from the keyboard.
+    await act(async () => cardOf(root, "test").focus());
+    assert.ok(whollyInView(root, "test"));
+    assert.equal(viewOf(root), zoomed, "a card wholly in view doesn't move the run canvas");
+    assert.equal(whollyInView(root, "end"), false, "end starts out of view");
+    // Not async: an animated pan would have drawn none of its frames when this act ends.
+    act(() => cardOf(root, "end").focus());
+    assert.deepEqual(offCentre(root, "end"), [0, 0], "panned to centre the card, at once");
+    assert.match(viewOf(root), /scale\(1\.2\)$/, "at the same zoom");
+  });
+});
+
+/** The button in node `nodeId`'s row of the node table, which selects the node. */
+const rowButton = (root: HTMLElement, nodeId: string) =>
+  [...(nodeTable(root)?.querySelectorAll<HTMLButtonElement>("tbody th button") ?? [])].find((b) => text(b) === nodeId);
+
+test("choosing a node table row whose card is out of view pans the run canvas to the card, in the width the node panel leaves it", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(nodesToggle(root));
+    assert.equal(whollyInView(root, "cooldown"), false, "cooldown starts below the view");
+    await click(rowButton(root, "cooldown"));
+    assert.equal(viewOf(root), "translate(201px,-230px) scale(1)", "panned, at the same zoom");
+    assert.deepEqual(offCentre(root, "cooldown"), [0, 0], "to centre the card in the drawing beside the node panel");
+  });
+});
+
+test("choosing a node table row whose card is wholly in view doesn't move the run canvas", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(nodesToggle(root));
+    await click(rowButton(root, "test"));
+    assert.equal(cardOf(root, "test").getAttribute("aria-current"), "true", "test is selected");
+    assert.ok(whollyInView(root, "test"), "wholly in view beside the node panel");
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)");
+  });
+});
+
+test("selecting a card near the right edge, so the node panel opens and narrows the run canvas, leaves the card wholly in view", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    assert.ok(whollyInView(root, "build"), "build starts wholly in view, near the right edge");
+    await click(cardOf(root, "build"));
+    assert.equal(viewOf(root), "translate(-339px,114px) scale(1)", "panned, at the same zoom");
+    assert.ok(whollyInView(root, "build"), "wholly in the narrower drawing");
+    assert.deepEqual(offCentre(root, "build"), [0, 0]);
+  });
+});
+
+test("a read of the run that keeps the selection doesn't move the run canvas once the person has panned away from the selected card", async () => {
+  await withLayout(async () => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await click(cardOf(root, "test"));
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "a click on a card wholly in view moves nothing");
+    // A drag of the empty canvas pans the view away from the selected card.
+    const pane = runCanvas(root)?.querySelector(".react-flow__pane") as HTMLElement;
+    await mouse(pane, "mousedown", { x: 10, y: 10 });
+    await mouse(pane, "mousemove", { x: 710, y: 10 });
+    await mouse(pane, "mouseup", { x: 710, y: 10 });
+    const panned = viewOf(root);
+    assert.equal(panned, "translate(700px,0px) scale(1)");
+    assert.equal(whollyInView(root, "test"), false, "test is out of view");
+    // The next read changes a node's phase, so every card is drawn again, and test stays selected.
+    const view = recordedStdout("status: nodes in several phases");
+    const nodes = view.nodes as Record<string, unknown>[];
+    await tick(15_000);
+    await answer(backend.statuses()[1], statusRecord({ ...view, changeToken: "1".repeat(64), nodes: [{ ...nodes[0], phase: "FAILED" }, ...nodes.slice(1)] }));
+    assert.deepEqual(cardStates(root)[0], ["build", "FAILED", "error", "Attempts: 1 of 2"], "the read was drawn");
+    assert.equal(cardOf(root, "test").getAttribute("aria-current"), "true", "test is still selected");
+    assert.equal(viewOf(root), panned, "the run canvas stays where it was panned");
+  });
+});
+
+test("when the run canvas changes size while a node is selected, the selected card is panned into view, and with none selected nothing moves", async () => {
+  await withLayout(async (resize) => {
+    const backend = fakeBackend();
+    const root = await drawRun(backend);
+    await resize(700);
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "no node is selected");
+    await resize(900);
+    await click(cardOf(root, "test"));
+    assert.equal(viewOf(root), "translate(0px,0px) scale(1)", "test is wholly in view beside the node panel");
+    await resize(600);
+    assert.equal(viewOf(root), "translate(-219px,-58px) scale(1)", "panned, at the same zoom");
+    assert.deepEqual(offCentre(root, "test"), [0, 0], "to centre the card in the drawing's new size");
+  });
 });

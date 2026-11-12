@@ -249,6 +249,42 @@ test("fewer than 100 runs after Show more is not the cap", async () => {
   assert.equal(runsList.view().canShowMore, false);
 });
 
+test("a read that gives fewer runs than it asked for is complete; a full one isn't, nor is it while Show more's read is in flight", async () => {
+  const backend = fakeBackend();
+  const runsList = start(backend);
+  await settle();
+  assert.equal(runsList.view().complete, false, "not before the first read");
+  backend.reads()[0].answer(runs(Array.from({ length: 20 }, (_, i) => entry(100 - i))));
+  await settle();
+  assert.equal(runsList.view().complete, false, "20 of 20: older runs may be left out");
+  runsList.showMore();
+  assert.equal(runsList.view().complete, false, "the 20 shown while the newest 100 are read were a full read");
+  await settle();
+  backend.reads()[1].answer(runs(Array.from({ length: 42 }, (_, i) => entry(100 - i))));
+  await settle();
+  assert.equal(runsList.view().complete, true, "42 of 100: the host has no older run");
+  mock.timers.tick(15_000);
+  await settle();
+  backend.reads()[2].answer({ kind: "hostDown", message: "Nothing answered at https://127.0.0.1:7443; is it running?" });
+  await settle();
+  assert.equal(runsList.view().complete, true, "a failed read keeps the last list, and what it was");
+  mock.timers.tick(60_000);
+  await settle();
+  backend.reads()[3].answer(runs(Array.from({ length: 100 }, (_, i) => entry(100 - i))));
+  await settle();
+  assert.equal(runsList.view().complete, false, "100 of 100 is the cap, not the whole list");
+  assert.equal(runsList.view().atCap, true);
+});
+
+test("a template with fewer runs than the first limit has a complete list", async () => {
+  const backend = fakeBackend();
+  const runsList = start(backend);
+  await settle();
+  backend.reads()[0].answer(runs([entry(1)]));
+  await settle();
+  assert.equal(runsList.view().complete, true);
+});
+
 test("a run waiting for a person (awaiting approval, or held) needs you; others don't", async () => {
   const backend = fakeBackend();
   const runsList = start(backend);

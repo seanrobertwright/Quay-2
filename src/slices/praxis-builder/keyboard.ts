@@ -1,6 +1,7 @@
 // Keyboard-only use of the graph canvas (#248, #264): what a node is called to a screen
-// reader, how far the arrow keys nudge, what Go to node lists, where a node added from the
-// palette below the selected one goes, and where Tab goes once the edges join the order.
+// reader, there and on the run canvas, how far the arrow keys nudge, what Go to node lists,
+// where a node added from the palette below the selected one goes, and where Tab goes once the
+// edges join the order.
 import { NUDGE_WINDOW_MS, type Step } from "./history.ts";
 import type { NodeIssues } from "./issues.ts";
 import { configSummary } from "./kinds.ts";
@@ -18,10 +19,14 @@ export const BELOW_GAP = 48;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** A card's accessible name: "`<KIND>` `<id>`, `<summary>`, depends on N, M problems". */
+/** A node as a card's accessible name starts with it on either canvas: "`<KIND>` `<id>`, `<summary>`". */
+export function nodeName(node: PraxisNode): string {
+  return `${node.kind || "No kind"} ${node.id}, ${configSummary(node) || "no settings"}`;
+}
+
+/** A graph canvas card's accessible name: "`<KIND>` `<id>`, `<summary>`, depends on N, M problems". */
 export function nodeAriaLabel(node: PraxisNode, issues: NodeIssues | undefined): string {
-  const summary = configSummary(node) || "no settings";
-  return `${node.kind || "No kind"} ${node.id}, ${summary}, depends on ${node.dependsOn.length}, ${plural(issues?.count ?? 0, "problem", "problems")}`;
+  return `${nodeName(node)}, depends on ${node.dependsOn.length}, ${plural(issues?.count ?? 0, "problem", "problems")}`;
 }
 
 const ARROWS: Record<string, XYPosition> = {

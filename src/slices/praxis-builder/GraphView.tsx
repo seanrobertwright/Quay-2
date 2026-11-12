@@ -28,7 +28,9 @@ import { bindingMarks } from "./graphBinding.ts";
 import type { ShownBinding } from "./RunsAsForm.tsx";
 import { positionBelow } from "./keyboard.ts";
 import { ariaKeyShortcuts, shortcutLabel } from "./keymap.ts";
-import { prefersReducedMotion } from "./motion.ts";
+import { moveView, prefersReducedMotion } from "./motion.ts";
+import { cardNodeId } from "./NodeCard.tsx";
+import { cardRect, reveal, revealFocused } from "./reveal.ts";
 import { useValidation } from "./useValidation.ts";
 import { isObject, MAX_NODES, type NodeKind, type PraxisGraph, type XYPosition } from "./model.ts";
 
@@ -149,9 +151,10 @@ const findCard = (box: HTMLElement | null, id: string) => box?.querySelector<HTM
 /** The canvas item an element is, or is inside. */
 function itemOf(el: Element | null): CanvasItem | null {
   const item = el?.closest(".react-flow__node, .react-flow__edge");
+  const nodeId = cardNodeId(item);
+  if (nodeId !== null) return { type: "node", id: nodeId };
   const id = item?.getAttribute("data-id");
-  if (!item || id == null) return null;
-  if (item.classList.contains("react-flow__node")) return { type: "node", id };
+  if (id == null) return null;
   // Edge ids are JSON `[source, target, tag]` (see `edgeId`).
   try {
     const [source, target] = JSON.parse(id) as unknown[];
@@ -183,21 +186,6 @@ const GraphViewInner: FC<GraphViewProps> = ({
 }) => {
   const flow = useReactFlow();
   const canvasBox = useRef<HTMLDivElement | null>(null);
-  /** Pans, at the same zoom, to centre a rectangle on screen that isn't wholly in the canvas. */
-  const reveal = useCallback(
-    (r: { left: number; top: number; width: number; height: number }) => {
-      const box = canvasBox.current?.getBoundingClientRect();
-      if (!box) return;
-      if (r.left >= box.left && r.top >= box.top && r.left + r.width <= box.right && r.top + r.height <= box.bottom) return;
-      const vp = flow.getViewport();
-      void flow.setViewport({
-        x: vp.x + box.left + box.width / 2 - (r.left + r.width / 2),
-        y: vp.y + box.top + box.height / 2 - (r.top + r.height / 2),
-        zoom: vp.zoom,
-      });
-    },
-    [flow]
-  );
   /**
    * Focuses a node's card once the canvas draws it: a node just added has no card until React
    * Flow renders it, which can be a frame or two after the edit. The focus doesn't scroll:
@@ -242,7 +230,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
   useEffect(() => {
     if (!fitPending.current) return;
     fitPending.current = false;
-    void flow.fitView({ duration: prefersReducedMotion() ? 0 : 200 });
+    moveView(flow, "fit-view");
   }, [positions, flow]);
 
   const diagnostics = status.state === "done" ? status.validation.diagnostics : NO_DIAGNOSTICS;
@@ -254,12 +242,10 @@ const GraphViewInner: FC<GraphViewProps> = ({
 
   const canvasReady = useCallback(
     (controls: CanvasControls) => {
-      const duration = () => (prefersReducedMotion() ? 0 : 200);
       onReady?.({
         ...controls,
         contains: (target) => canvasBox.current?.contains(target) ?? false,
-        isNode: (target) =>
-          target instanceof Element && target.classList.contains("react-flow__node") && (canvasBox.current?.contains(target) ?? false),
+        isNode: (target) => cardNodeId(target) !== null && (canvasBox.current?.contains(target) ?? false),
         itemAt: (target) => (target instanceof Element && canvasBox.current?.contains(target) ? itemOf(target) : null),
         goToNode: (nodeId) => latest.current.goToNode(nodeId),
         openNodeMenu: (nodeId) => latest.current.openNodeMenu(nodeId),
@@ -270,13 +256,13 @@ const GraphViewInner: FC<GraphViewProps> = ({
           return { lastNode: cards[cards.length - 1] ?? null, edges };
         },
         focus: () => canvasBox.current?.focus(),
-        fitView: () => void flow.fitView({ duration: duration() }),
+        fitView: () => moveView(flow, "fit-view"),
         fitViewWhenMoved: () => {
           fitPending.current = true;
         },
-        zoomIn: () => void flow.zoomIn({ duration: duration() }),
-        zoomOut: () => void flow.zoomOut({ duration: duration() }),
-        zoomReset: () => void flow.zoomTo(1, { duration: duration() }),
+        zoomIn: () => moveView(flow, "zoom-in"),
+        zoomOut: () => moveView(flow, "zoom-out"),
+        zoomReset: () => moveView(flow, "zoom-reset"),
         getCanvasRect: () => {
           const r = canvasBox.current?.getBoundingClientRect();
           return r ? { width: r.width, height: r.height } : null;
@@ -392,9 +378,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
     focusNode(id);
     // Below a node off screen, or after a click, which doesn't show focus, the new card may
     // be out of view.
-    const { zoom } = flow.getViewport();
-    const corner = flow.flowToScreenPosition(position);
-    reveal({ left: corner.x, top: corner.y, width: NODE_WIDTH * zoom, height: NODE_HEIGHT * zoom });
+    reveal(canvasBox.current, flow, cardRect(flow, position));
   };
 
   return (
@@ -406,11 +390,7 @@ const GraphViewInner: FC<GraphViewProps> = ({
           ref={canvasBox}
           tabIndex={-1}
           className="flex-1 min-h-0 relative outline-none"
-          onFocus={(e) => {
-            if (e.target.matches(".react-flow__node:focus-visible, .react-flow__edge:focus-visible")) {
-              reveal(e.target.getBoundingClientRect());
-            }
-          }}
+          onFocus={(e) => revealFocused(canvasBox.current, flow, e.target)}
         >
           <GraphCanvas
             graph={graph}

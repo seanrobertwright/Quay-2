@@ -48,7 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { normalizePath } from "../../utils/paths.ts";
-import { MAX_NODES, hasOwn, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
+import { MAX_NODES, hasOwn, layoutIgnoredText, parseGraph, type JsonObject, type XYPosition } from "./model.ts";
 import { RECORD_KINDS, type RecordKindEntry } from "./kinds.ts";
 import { hostNameProblem, namingProblem, nextDefinitionId } from "./lifecycle.ts";
 import { GraphView, UndrawnGraphProblems, type BuilderCanvas } from "./GraphView.tsx";
@@ -3062,9 +3062,7 @@ const GraphDraftView: FC<{
       {layoutProblem && (
         <p role="status" className="shrink-0 px-4 py-1.5 flex items-center gap-1.5 text-[11px] text-[#e3b341] border-b border-[#30363d] bg-[#161b22]">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span className="break-words">
-            .praxis/layout/{draft.ref.id}.json was ignored, so the graph is laid out automatically: {layoutProblem.message}
-          </span>
+          <span className="break-words">{layoutIgnoredText(draft.ref.id, layoutProblem.message)}</span>
         </p>
       )}
       <GraphView

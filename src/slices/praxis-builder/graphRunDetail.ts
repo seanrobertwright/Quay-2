@@ -8,17 +8,17 @@
 //
 // `aiws-graph-operator-view/1` is `STABLE` (GRAPH-WORKFLOWS.md, "Graph operator view", promoted in
 // AI-WS-SDK #659): a field or a value of its closed enums changes only in a new format, which the
-// follow refuses. Each open hold is one `aiws-graph-hold-card/1` in its `holds[]`. Only the fields
-// drawn are read, and any field Quay doesn't draw is ignored. A drawn field that is missing or of
-// another type, from a host that breaks the format, falls back to the run's row in the Runs list,
-// or to nothing, so the run is still drawn; a node entry without its `nodeId` or `phase` gets a
-// problem line in place of its row. The view gives no creation or update time and its
-// `revision` is the snapshot's, so those come from the row, whose `workflowRevision` is the
-// admitted revision that runs.
+// follow refuses. Each open hold on a node is one `aiws-graph-hold-card/1` in its `holds[]`, and a
+// hold on a grant, a branch or the run has none. Only the fields drawn are read, and any field
+// Quay doesn't draw is ignored. A drawn field that is missing or of another type, from a host that
+// breaks the format, falls back to the run's row in the Runs list, or to nothing, so the run is
+// still drawn; a node entry without its `nodeId` or `phase` gets a problem line in place of its
+// row. The view gives no creation or update time and its `revision` is the snapshot's, so those
+// come from the row, whose `workflowRevision` is the admitted revision that runs.
 import { formatDateTime } from "../../lib/dates.ts";
 import { hasOwn, isObject } from "./model.ts";
 import { isActiveNodePhase } from "./nodePhase.ts";
-import { holdOf, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
+import { holdOf, NO_HOLD_REASON, str, strings, type FollowedRun, type FollowSource, type HoldExit, type HoldPanel, type Obj } from "./runDetail.ts";
 import type { RunRow } from "./runsList.ts";
 
 /** The view's record format. */
@@ -75,7 +75,10 @@ export type GraphRunNodes = { reported: false } | { reported: true; rows: GraphR
 export interface GraphRunDetail extends FollowedRun {
   workOrderId: string;
   runId: string;
-  /** The graph workflow's admitted revision that runs, from the run's row; null before the list gave it. */
+  /**
+   * The graph workflow's admitted revision that runs, from the run's row in the Runs list, the last
+   * that named it once newer runs push it off the list; null before a row named it.
+   */
   revision: number | null;
   status: string;
   /** `SUCCEEDED` or `NOT_SUCCEEDED` once the run ended; null before. */
@@ -91,7 +94,7 @@ export interface GraphRunDetail extends FollowedRun {
   updatedAtText: string | null;
   /** The decisions the run waits for in the browser, in words, oldest first; empty when it waits for none. */
   decisions: string[];
-  /** One hold panel per open hold; a reconciliation with no hold card gets one of its own. Empty unless held. */
+  /** One hold panel for each open hold on a node; a reconciliation with no hold card gets one of its own. Empty unless held. */
   holds: GraphHold[];
   /** The run's nodes, from the view's `nodes[]`; null before the first read. */
   nodes: GraphRunNodes | null;
@@ -125,26 +128,30 @@ function attemptsOf(used: number, allowed: unknown): string {
   return `${used}${bound}`;
 }
 
-/** The attempts a node used of those it has, as a line of words, as a hold panel's note gives them. */
-const attemptsText = (used: number, allowed: unknown) => `Attempts: ${attemptsOf(used, allowed)}`;
+/** The attempts a node used of those it has, as its node panel's fact, and as a line (`factLine`) its counter line and a hold panel's note give. */
+const attemptsFact = (used: number, allowed: unknown): NodeFact => ({ term: "Attempts", value: attemptsOf(used, allowed) });
+
+/** Fact `fact` as a line of words, "`<term>`: `<value>`", as a node's counter line and a hold panel's note give it. */
+const factLine = (fact: NodeFact) => `${fact.term}: ${fact.value}`;
 
 /**
  * The panel of one open hold, from its `aiws-graph-hold-card/1`: the held node and the host's
  * reason, with the cause of an EXECUTION_FAILED hold, the effect of the node's attempt, the
  * attempts the node used of those it has, and each exit the card offers, all taken in the
- * browser. A card that offers none says so and points to the run's page in the browser, which
- * says what can be done: an EXPOSURE_EXCEEDED hold is left by a change of the limit, and a run
- * that ended can't be cancelled. Codes are shown as the host gave them; an exit Quay doesn't know
- * is named by its code.
+ * browser. A card that offers none gets a note that says so and points to the run's page in the
+ * browser. Quay names no way out of such a hold itself, not even cancelling the run, because none
+ * fits every card that offers no exit: an EXPOSURE_EXCEEDED hold is left by a change of the limit,
+ * and a run that ended can't be cancelled. Codes are shown as the host gave them; an exit Quay
+ * doesn't know is named by its code.
  */
 function graphHoldOf(card: Obj): HoldPanel {
-  const reason = str(card.reason) ?? "praxis gave no reason";
+  const reason = str(card.reason) ?? NO_HOLD_REASON;
   const node = str(card.nodeId);
   const cause = str(card.cause);
   const notes: string[] = [];
   const effect = str(card.effect);
   if (effect !== null) notes.push(`Effect: ${effect}`);
-  if (typeof card.attempts === "number") notes.push(attemptsText(card.attempts, card.maxAttempts));
+  if (typeof card.attempts === "number") notes.push(factLine(attemptsFact(card.attempts, card.maxAttempts)));
   const exits = strings(card.exits).map((exit) => {
     const words = hasOwn(GRAPH_HOLD_EXITS, exit) ? GRAPH_HOLD_EXITS[exit] : { label: exit, does: "" };
     return { id: exit, ...words, available: true };
@@ -201,7 +208,7 @@ function runNodeOf(entry: Obj, nodeId: string, phase: string): GraphRunNode {
   const scope = objectOf(entry.scope);
   const loop = objectOf(entry.loop);
   const wait = objectOf(entry.wait);
-  const attempts = typeof scope.attempts === "number" ? factOf("Attempts", attemptsOf(scope.attempts, scope.maxAttempts ?? null)) : null;
+  const attempts = typeof scope.attempts === "number" ? attemptsFact(scope.attempts, scope.maxAttempts ?? null) : null;
   const iterations =
     typeof loop.iteration === "number" && typeof loop.maxIterations === "number" ? factOf("Iterations", `${loop.iteration} of ${loop.maxIterations}`) : null;
   const counter = iterations ?? attempts;
@@ -217,7 +224,7 @@ function runNodeOf(entry: Obj, nodeId: string, phase: string): GraphRunNode {
     factOf("Wait status", str(wait.status)),
     factOf("Human task", isObject(entry.humanTask) ? "Open" : null),
   ].filter((fact): fact is NodeFact => fact !== null);
-  return { nodeId, kind: str(entry.kind) ?? "", phase, counter: counter && `${counter.term}: ${counter.value}`, holdId: str(entry.holdId) || null, facts };
+  return { nodeId, kind: str(entry.kind) ?? "", phase, counter: counter && factLine(counter), holdId: str(entry.holdId) || null, facts };
 }
 
 /** The problem line of node entry `n`, counted from 1, which lacks its `nodeId` or its `phase`. */

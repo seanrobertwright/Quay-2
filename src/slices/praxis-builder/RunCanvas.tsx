@@ -9,8 +9,13 @@
 //
 // Positions come from the project's saved layout for the graph's id, when it has one, through the
 // graph canvas's rule for a partial layout (`placeNodes`, flow/layout.ts): saved positions kept and
-// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. The run canvas
-// never writes a layout.
+// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. A layout that
+// `praxis_read` reports a problem with, as it does when the graph's layout file or `.praxis/layout`
+// itself can't be used, is ignored, and a note above the drawing says so and why, in the graph
+// canvas's words (`layoutIgnoredText`, model.ts). The note is information, not a problem line: the
+// revision is still drawn. Nothing is said when the project has no graph of that id, or when
+// `praxis_read` fails; nor when the graph has no layout file, unless `.praxis/layout` itself can't
+// be used. The run canvas never writes a layout.
 //
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
 // Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
@@ -20,10 +25,19 @@
 //
 // One node is selected at a time (#572), shared with the node table: the run's detail holds it.
 // A click on a card, or the builder's select key (Enter or Space) on the card with focus, selects
-// its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
-// selected card has a ring around it and is the current one to a screen reader. Every other key
-// of the graph canvas, adding to the selection included, does nothing on it.
-import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type Ref } from "react";
+// its node and so opens its node panel; each card is a tab stop, as on the graph canvas. While a
+// node is selected, Escape on the run canvas clears the selection (#577, GraphRunDetail.tsx). The
+// selected card has a near-white ring close around its border, in no node phase's tone, and is the
+// current one to a screen reader. The ring a card with keyboard focus has stands further out, so a
+// selected card with keyboard focus shows both. Every other selection or edit key of the graph
+// canvas, adding to the selection included, does nothing on it.
+//
+// A card that takes keyboard focus while not wholly in view is panned into view (#575), as on the
+// graph canvas, and so is the selected card, when the selection changes and when the run canvas
+// changes size, as when the node panel opens beside it and narrows it. Each is the graph canvas's
+// reveal (reveal.ts): a pan at the same zoom, without animation. A read of the run that keeps the
+// selection moves nothing, so a person who panned away from the selected card stays there.
+import { useEffect, useId, useMemo, useRef, useState, type FC, type KeyboardEvent, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Background,
@@ -31,6 +45,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   type Dimensions,
   type Node,
   type NodeChange,
@@ -38,19 +53,21 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RotateCw, TriangleAlert } from "lucide-react";
+import { Info, RotateCw, TriangleAlert } from "lucide-react";
 import { graphToFlow, PRAXIS_NODE_TYPE, type PraxisNodeData } from "./flow/to-flow.ts";
 import type { GraphRunNode } from "./graphRunDetail.ts";
 import type { RevisionCache } from "./graphRevision.ts";
-import { configSummary } from "./kinds.ts";
+import { nodeName } from "./keyboard.ts";
 import { commandFor } from "./keymap.ts";
-import { parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
-import { prefersReducedMotion } from "./motion.ts";
-import { NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
+import { layoutIgnoredText, parseLayoutPositions, type PraxisGraph, type PraxisNode, type XYPosition } from "./model.ts";
+import { moveView } from "./motion.ts";
+import { cardNodeId, NODE_FOCUS_CLASS, NodeCard } from "./NodeCard.tsx";
 import { NodePhaseChip, phaseFrame } from "./NodePhaseChip.tsx";
-import type { DefinitionFile } from "./types.ts";
-
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
+import { cardRect, reveal, revealFocused } from "./reveal.ts";
+import { BUTTON } from "./RunDetail.tsx";
+import { RUNS_MAX_LIMIT, type Unlisted } from "./runsList.ts";
+import type { DefinitionFile, FileProblem } from "./types.ts";
+import { focusLost } from "./useKeptFocus.ts";
 
 /** A run canvas card's data: the graph node, and its row from the view's nodes, or null when the view has none for it. */
 interface RunNodeData extends PraxisNodeData {
@@ -61,8 +78,14 @@ type RunFlowNode = Node<RunNodeData>;
 /** The border of a card for a node the view has no entry for. */
 const NO_STATE_FRAME = "border-dashed border-[#30363d]";
 
-/** The ring around the selected card, outside its border in its node phase's tone: a shape as well as a colour. */
-const SELECTED_RING = "ring-2 ring-[#58a6ff]";
+/**
+ * The ring around the selected card, a shape as well as a colour: near-white, at least 3:1 against
+ * the card, the run canvas and the border of every node phase's tone, and close against the card's
+ * border, so the ring a card with keyboard focus has (NODE_FOCUS_CLASS), further out, stays apart
+ * from it. An outline rather than Tailwind's `ring`, which is a box shadow: a Windows contrast
+ * theme drops box shadows but keeps outlines.
+ */
+const SELECTED_RING = "outline-2 outline-[#f0f6fc]";
 
 const RunCard: FC<NodeProps<RunFlowNode>> = ({ data, selected }) => {
   const { node, run } = data;
@@ -90,9 +113,8 @@ const RUN_NODE_TYPES = { [PRAXIS_NODE_TYPE]: RunCard };
 
 /** How a card is named to a screen reader: its kind, id and settings, then its node phase and counter line. */
 function runCardLabel(node: PraxisNode, run: GraphRunNode | null): string {
-  const summary = configSummary(node) || "no settings";
   const state = run === null ? "no state reported" : [run.phase, run.counter].filter((s) => s !== null).join(", ");
-  return `${node.kind || "No kind"} ${node.id}, ${summary}, ${state}`;
+  return `${nodeName(node)}, ${state}`;
 }
 
 /**
@@ -109,9 +131,9 @@ function matchNodes(graph: PraxisGraph, nodes: readonly GraphRunNode[], revision
   return { runs, problems };
 }
 
-/** The node id of `target` when it is a card, which React Flow draws with its node's id as `data-id`; else null. */
-const cardId = (target: unknown): string | null =>
-  target instanceof HTMLElement && target.classList.contains("react-flow__node") ? (target.dataset.id ?? null) : null;
+/** The card of node `nodeId` in `root`, the reverse of `cardNodeId`; null when no run canvas there draws one for it. */
+export const cardOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
+  [...root.querySelectorAll<HTMLElement>(".react-flow__node")].find((card) => cardNodeId(card) === nodeId) ?? null;
 
 /** Each card's size as React Flow measured it, by node id. */
 type Sizes = ReadonlyMap<string, Dimensions>;
@@ -132,12 +154,19 @@ function withMeasures(sizes: Sizes, changes: NodeChange<RunFlowNode>[]): Sizes {
 /** The first fit shows the whole graph, no larger than its cards' own size. One identity, as GraphCanvas.tsx's `FIRST_FIT` explains. */
 const RUN_FIT = { maxZoom: 1 } as const;
 
-/** How long a pan or zoom the keys start takes, unless the system asks for reduced motion. */
-const VIEW_MOVE_MS = 200;
-
-interface DrawnProps {
-  graph: PraxisGraph;
+/** The project's saved layout for a graph, as the run canvas draws with it. */
+interface SavedLayout {
+  /** The saved position of each node the layout places. */
   saved: ReadonlyMap<string, XYPosition>;
+  /**
+   * Why the project's layout for the graph was ignored, as `praxis_read` reports it when the graph's
+   * layout file or `.praxis/layout` itself can't be used; else null.
+   */
+  layoutProblem: FileProblem | null;
+}
+
+interface DrawnProps extends SavedLayout {
+  graph: PraxisGraph;
   nodes: readonly GraphRunNode[];
   revision: number;
   /** The id of the heading that names the run canvas. */
@@ -146,13 +175,17 @@ interface DrawnProps {
   selected: string | null;
   /** Selects node `nodeId`, when its card is chosen. */
   onSelect: (nodeId: string) => void;
-  /** The drawing's element, which takes focus. */
-  drawingRef: Ref<HTMLDivElement>;
+  /** The drawing's element, which takes focus, and whose box a card is brought into view in. */
+  drawingRef: RefObject<HTMLDivElement | null>;
 }
 
-/** The drawn revision, its cards in their node phases, and its problem lines. Inside a ReactFlowProvider. */
-const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy, selected, onSelect, drawingRef }) => {
+/**
+ * The drawn revision, its cards in their node phases, and its problem lines, under a note that says
+ * why the project's saved layout wasn't used, when it was ignored. Inside a ReactFlowProvider.
+ */
+const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, layoutProblem, nodes, revision, labelledBy, selected, onSelect, drawingRef }) => {
   const view = useReactFlow();
+  const noteId = useId();
   const flow = useMemo(() => graphToFlow(graph, saved), [graph, saved]);
   const { runs, problems } = useMemo(() => matchNodes(graph, nodes, revision), [graph, nodes, revision]);
   // React Flow measures each card and reports its size as a change. A card keeps its size from one
@@ -174,26 +207,29 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
     () => cards.map((c) => (c.id === selected ? { ...c, selected: true, domAttributes: { "aria-current": "true" as const } } : c)),
     [cards, selected]
   );
+  // The selected card is brought into view when the selection changes, checked against the
+  // drawing's size once the change is drawn, so the node panel opening beside it can't hide it,
+  // and again when the drawing changes size, which React Flow measures. Nothing else moves it.
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
+  useEffect(() => {
+    const node = selected === null ? undefined : view.getInternalNode(selected);
+    if (node) reveal(drawingRef.current, view, cardRect(view, node.internals.positionAbsolute, node.measured));
+  }, [view, drawingRef, selected, width, height]);
   // The builder's view keys, which the builder itself runs only on the graph canvas, and its key
   // for selecting the node whose card has focus.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const duration = prefersReducedMotion() ? 0 : VIEW_MOVE_MS;
-    const focused = cardId(e.target);
-    switch (commandFor(e.nativeEvent, focused === null ? "canvas" : "node")) {
+    const focused = cardNodeId(e.target);
+    const command = commandFor(e.nativeEvent, focused === null ? "canvas" : "node");
+    switch (command) {
       case "select":
         if (focused !== null) onSelect(focused);
         break;
       case "fit-view":
-        void view.fitView({ duration });
-        break;
       case "zoom-in":
-        void view.zoomIn({ duration });
-        break;
       case "zoom-out":
-        void view.zoomOut({ duration });
-        break;
       case "zoom-reset":
-        void view.zoomTo(1, { duration });
+        moveView(view, command);
         break;
       default:
         return;
@@ -202,6 +238,13 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
   };
   return (
     <>
+      {layoutProblem !== null && (
+        // Information, not one of the problem lines: the revision is drawn, laid out automatically.
+        <p id={noteId} role="note" className="flex items-start gap-1.5 text-[#8b949e]">
+          <Info className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+          <span className="break-words min-w-0">{layoutIgnoredText(graph.id, layoutProblem.message)}</span>
+        </p>
+      )}
       <div className="h-80 rounded-md border border-[#30363d] overflow-hidden">
         <ReactFlow
           ref={drawingRef}
@@ -223,9 +266,13 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
           fitViewOptions={RUN_FIT}
           minZoom={0.2}
           onKeyDown={onKeyDown}
+          // A card that takes keyboard focus while not wholly in view is panned into view.
+          onFocus={(e) => revealFocused(drawingRef.current, view, e.target)}
           // Focusable, so a click on the run canvas puts focus in it for its keys.
           tabIndex={-1}
           aria-labelledby={labelledBy}
+          // The note is also the drawing's description, which a screen reader gives as focus enters it.
+          aria-describedby={layoutProblem === null ? undefined : noteId}
         >
           <Background gap={20} color="#21262d" />
           <Controls position="bottom-right" showInteractive={false} />
@@ -245,49 +292,54 @@ const DrawnCanvas: FC<DrawnProps> = ({ graph, saved, nodes, revision, labelledBy
   );
 };
 
+/** No saved layout: dagre places every node, and nothing says why. */
+const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
+
 /**
- * The node positions of the project's saved layout for graph `graphId`, which `praxis_read` gives
- * with the project's own graph of that id. None when the project has no such graph, or no layout
- * for it, or they can't be read, so dagre places every node.
+ * The project's saved layout for graph `graphId`, which `praxis_read` gives with the project's own
+ * graph of that id: the node positions of its layout file, and the layout problem `praxis_read`
+ * reports when that file, or `.praxis/layout` itself, can't be used. No positions when the project
+ * has no such graph, no layout file for it or a layout problem, so dagre places every node. When
+ * `praxis_read` fails there are no positions and no problem, so the run canvas says nothing of it.
  */
-async function savedPositions(projectPath: string, graphId: string): Promise<Map<string, XYPosition>> {
-  if (graphId === "") return new Map();
+async function savedLayout(projectPath: string, graphId: string): Promise<SavedLayout> {
+  if (graphId === "") return NO_LAYOUT;
   try {
     const file = await invoke<DefinitionFile>("praxis_read", { projectPath, kind: "graphs", id: graphId });
-    return parseLayoutPositions(file.layout);
+    return { saved: parseLayoutPositions(file.layout), layoutProblem: file.layoutProblem ?? null };
   } catch {
-    return new Map();
+    return NO_LAYOUT;
   }
 }
 
-/** Where the run canvas's revision is: being read, not read, read but not drawn, or drawn with its saved positions. */
+/** Where the run canvas's revision is: being read, not read, read but not drawn, or drawn with its saved layout. */
 type CanvasState =
   | { state: "reading" }
   | { state: "failed"; problem: string }
   | { state: "undrawn"; reason: string }
-  | { state: "drawn"; graph: PraxisGraph; saved: ReadonlyMap<string, XYPosition> };
+  | ({ state: "drawn"; graph: PraxisGraph } & SavedLayout);
 
 const READING: CanvasState = { state: "reading" };
 
 /**
  * Revision `revision` of `workflow`, through `revisions`, with the saved layout of its graph, and a
- * way to read it again after a failed read, and whether that read is running. `onUnreadable` is
- * called each time it can't be read. A result for another revision or an earlier try is never
- * shown as this one's.
+ * way to read it again after a failed read, and whether that read is running. `onNoDrawing` is
+ * called each time a read of it ends with no drawing: it can't be read, or it is read but can't be
+ * drawn. A result for another revision or an earlier try is never shown as this one's.
  */
 function useRevision(
   projectPath: string,
   workflow: string,
   revision: number,
   revisions: RevisionCache,
-  onUnreadable: () => void
+  onNoDrawing: () => void
 ): { state: CanvasState; retrying: boolean; retry: () => void } {
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([projectPath, workflow, revision, attempt]);
   const [shown, setShown] = useState<{ key: string; state: CanvasState } | null>(null);
-  const unreadable = useRef(onUnreadable);
+  const noDrawing = useRef(onNoDrawing);
   useEffect(() => {
-    unreadable.current = onUnreadable;
+    noDrawing.current = onNoDrawing;
   });
   useEffect(() => {
     let live = true;
@@ -295,12 +347,13 @@ function useRevision(
       if (!live) return;
       if (read.kind === "failed") {
         setShown({ key, state: { state: "failed", problem: read.problem } });
-        unreadable.current();
+        noDrawing.current();
       } else if (read.kind === "undrawn") {
         setShown({ key, state: { state: "undrawn", reason: read.reason } });
+        noDrawing.current();
       } else {
-        const saved = await savedPositions(projectPath, read.graph.id);
-        if (live) setShown({ key, state: { state: "drawn", graph: read.graph, saved } });
+        const layout = await savedLayout(projectPath, read.graph.id);
+        if (live) setShown({ key, state: { state: "drawn", graph: read.graph, ...layout } });
       }
     });
     return () => {
@@ -312,9 +365,6 @@ function useRevision(
   const retrying = state.state === "reading" && shown?.state.state === "failed";
   return { state, retrying, retry: () => setAttempt((n) => n + 1) };
 }
-
-/** True when focus is on no element of the page, as when the element that had it was removed. */
-const focusLost = (focused: Element | null) => focused === null || focused === document.body || !focused.isConnected;
 
 /** What the status line says of the revision, or nothing once it is drawn. */
 function statusLine(state: CanvasState, workflow: string, revision: number): string {
@@ -334,23 +384,33 @@ interface RunCanvasProps {
   projectPath: string;
   /** The graph workflow the run is a run of. */
   workflow: string;
-  /** The revision the run runs, from its row in the Runs list; null before the list named it. */
+  /** The revision the run runs, from the last row of the Runs list that named the run; null before a row did. */
   revision: number | null;
+  /** Why no row of the Runs list has named the run, while `revision` is null. */
+  unlisted: Unlisted;
   /** The run's name, for the heading. */
   runName: string;
   /** The run's nodes, from the view's `nodes[]`. */
   nodes: readonly GraphRunNode[];
   revisions: RevisionCache;
-  /** Called each time the revision can't be read, so the node table can open in the run canvas's place. */
-  onUnreadable: () => void;
+  /**
+   * Called each time a read of the revision ends with no drawing, as it can't be read, or is read
+   * but can't be drawn, and once Quay can't tell which revision the run runs, so the node table
+   * can open in the run canvas's place.
+   */
+  onNoDrawing: () => void;
   /** The id of the selected node, or null when none is. */
   selected: string | null;
   /** Selects node `nodeId`, when its card is chosen. */
   onSelect: (nodeId: string) => void;
 }
 
-/** The run canvas of a graph run, with a heading that names the run and its revision. */
-export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) => {
+/**
+ * The run canvas of a graph run, with a heading that names the run and its revision. Until a row of
+ * the Runs list names the revision, its place says the revision is being looked up, or why Quay
+ * can't tell it (#579).
+ */
+export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, unlisted, ...rest }) => {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="space-y-1.5 text-[11px] text-[#c9d1d9]">
@@ -359,7 +419,7 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) =>
         {revision !== null && `, revision ${revision}`}
       </h4>
       {revision === null ? (
-        <p className="text-[#8b949e]">The run canvas is drawn once the Runs list names the revision this run runs.</p>
+        <UnlistedRevision unlisted={unlisted} onNoDrawing={rest.onNoDrawing} />
       ) : (
         <RevisionCanvas revision={revision} labelledBy={headingId} {...rest} />
       )}
@@ -367,18 +427,51 @@ export const RunCanvas: FC<RunCanvasProps> = ({ revision, runName, ...rest }) =>
   );
 };
 
-const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revision: number; labelledBy: string }> = ({
+/** What the run canvas's place says while no row of the Runs list has named the run's revision. */
+function unlistedLine(unlisted: Unlisted): string {
+  switch (unlisted) {
+    case "reading":
+      return "Looking in the Runs list for the revision this run runs…";
+    case "atCap":
+      return `Quay can't tell which revision this run runs, because praxis lists only the newest ${RUNS_MAX_LIMIT} runs of a graph workflow, and this run isn't among them. The run canvas isn't drawn: the node table shows the run's node phases.`;
+    case "complete":
+      return "The Runs list doesn't name this run, so Quay can't tell which revision it runs. The run canvas isn't drawn: the node table shows the run's node phases.";
+  }
+}
+
+/**
+ * The run canvas's place while no row of the Runs list has named the run's revision: why, on a
+ * status line. Once Quay can't tell the revision, `onNoDrawing` is called, so the node table
+ * opens, and not again while the reason stays the same, so a reader who closes the table keeps it
+ * closed.
+ */
+const UnlistedRevision: FC<{ unlisted: Unlisted; onNoDrawing: () => void }> = ({ unlisted, onNoDrawing }) => {
+  const noDrawing = useRef(onNoDrawing);
+  useEffect(() => {
+    noDrawing.current = onNoDrawing;
+  });
+  useEffect(() => {
+    if (unlisted !== "reading") noDrawing.current();
+  }, [unlisted]);
+  return (
+    <p role="status" className="text-[#8b949e] break-words">
+      {unlistedLine(unlisted)}
+    </p>
+  );
+};
+
+const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName" | "unlisted"> & { revision: number; labelledBy: string }> = ({
   projectPath,
   workflow,
   revision,
   nodes,
   revisions,
-  onUnreadable,
+  onNoDrawing,
   selected,
   onSelect,
   labelledBy,
 }) => {
-  const { state, retrying, retry } = useRevision(projectPath, workflow, revision, revisions, onUnreadable);
+  const { state, retrying, retry } = useRevision(projectPath, workflow, revision, revisions, onNoDrawing);
   const status = useRef<HTMLParagraphElement>(null);
   const drawing = useRef<HTMLDivElement>(null);
   // Try again stays, with focus, while its read runs, and leaves once the read ends other than in
@@ -413,6 +506,7 @@ const RevisionCanvas: FC<Omit<RunCanvasProps, "revision" | "runName"> & { revisi
           <DrawnCanvas
             graph={state.graph}
             saved={state.saved}
+            layoutProblem={state.layoutProblem}
             nodes={nodes}
             revision={revision}
             labelledBy={labelledBy}

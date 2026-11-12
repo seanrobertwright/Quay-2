@@ -52,6 +52,9 @@ export interface XYPosition {
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
 
+/** What `parseGraph` makes of a graph's JSON: a graph refused for its node count gives that count too. */
+export type GraphParseResult = ParseResult<PraxisGraph> | { ok: false; message: string; nodeCount: number };
+
 /** Whether `o` has `k` as its own property, not one inherited from its prototype. */
 export const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -76,9 +79,11 @@ export const isObject = (v: unknown): v is JsonObject =>
  * Reads a graph file's JSON for display. It is lenient where the canvas can still draw
  * something (a missing `dependsOn` or `config` reads as empty), and refuses only what it
  * can't draw: no `nodes` list, a node without a string id, a repeated id, or more nodes
- * than the SDK allows.
+ * than the SDK allows. The run canvas reads a revision's graph through it too, and words that
+ * last refusal its own way from the node count it gives, rather than check the cap again
+ * (graphRevision.ts).
  */
-export function parseGraph(content: unknown): ParseResult<PraxisGraph> {
+export function parseGraph(content: unknown): GraphParseResult {
   if (!isObject(content)) return { ok: false, message: "The file isn't a JSON object." };
   if (!Array.isArray(content.nodes)) {
     return { ok: false, message: 'The graph has no "nodes" list.' };
@@ -87,6 +92,7 @@ export function parseGraph(content: unknown): ParseResult<PraxisGraph> {
     return {
       ok: false,
       message: `The graph has ${content.nodes.length} nodes, more than the ${MAX_NODES} a graph may hold.`,
+      nodeCount: content.nodes.length,
     };
   }
   const seen = new Set<string>();
@@ -150,6 +156,16 @@ export function parseLayoutViewport(layout: unknown): { x: number; y: number; zo
   const { x, y, zoom } = layout.viewport;
   const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
   return finite(x) && finite(y) && finite(zoom) && zoom > 0 ? { x, y, zoom } : undefined;
+}
+
+/**
+ * What the graph canvas and the run canvas say when `praxis_read` reports a layout problem for
+ * graph `graphId`, as it does when its layout file or `.praxis/layout` itself can't be used, for
+ * `message`, the reason `praxis_read` gave. Both say it in these words, so the two can't drift
+ * apart.
+ */
+export function layoutIgnoredText(graphId: string, message: string): string {
+  return `.praxis/layout/${graphId}.json was ignored, so the graph is laid out automatically: ${message}`;
 }
 
 /** The DECISION branch, if any, that `target` is for `source`. */

@@ -72,8 +72,8 @@ impl Verb {
         match self {
             Verb::WorkflowsList | Verb::WorkflowsShow => "aiws-workflow-catalog/1",
             Verb::Runs => "aiws-workflow-runs/1",
-            // The operator view isn't a contracted read model (#361). Only its format is checked
-            // here; the builder reads the fields it draws leniently.
+            // The operator view is `STABLE` at the SDK pin (READ-MODELS.md). Only its format is
+            // checked here; the builder reads the fields it draws leniently.
             Verb::Status => "coding-operator-view/1",
             Verb::Run => "aiws-workflow-run-result/1",
             Verb::GraphsCheck => "aiws-graph-workflow-check-result/1",

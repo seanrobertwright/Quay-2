@@ -1,14 +1,19 @@
-// The host chip in the builder header (#448, #362) and the pieces other views reuse: the panel
-// that says what to do about a host condition, its terminal action button, and the simulated
-// host's standing banner. The chip shows the latest call's condition and never calls `praxis`
-// itself. Every condition has a text label, so its
-// colour is never the only sign of it.
+// The host chip in the builder header (#448, #362), with its panel that says what to do about a
+// host condition, and the pieces other views reuse: the panel's terminal action button, the
+// simulated host's standing banner, and each tone's classes (`TONE_CLASSES`). The chip shows the
+// latest call's condition and never calls `praxis` itself. Every condition has a text label, so
+// its colour is never the only sign of it.
 import { useId, useRef, useState, type FC } from "react";
 import { SquareTerminal, TriangleAlert } from "lucide-react";
 import { hostConditionView, type HostAction, type HostTone } from "./hostCondition.ts";
 import type { HostCondition, InteractiveCommand } from "./praxisHost.ts";
 
-const TONE_CLASSES: Record<HostTone, { chip: string; dot: string }> = {
+/**
+ * Each tone's classes: a chip's border, text and fill, and its dot. Others draw in these tones too:
+ * a node phase's chip, in each tone it shares with the host chip (NodePhaseChip.tsx), and a run's
+ * cautions, in amber (`AMBER`, RunDetail.tsx).
+ */
+export const TONE_CLASSES: Readonly<Record<HostTone, { chip: string; dot: string }>> = {
   neutral: { chip: "border-[#30363d] text-[#8b949e]", dot: "bg-[#8b949e]" },
   ok: { chip: "border-[#238636]/60 text-[#3fb950]", dot: "bg-[#3fb950]" },
   error: { chip: "border-[#f85149]/60 text-[#ff7b72]", dot: "bg-[#f85149]" },

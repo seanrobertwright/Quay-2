@@ -195,7 +195,8 @@ test("the Fires panel reads nothing until it is opened, then lists the 20 newest
   await act(async () => backend.reads()[0].answer(recordedFires()));
   const [third, second, first] = rows(root);
   assert.equal(rows(root).length, 3);
-  assert.ok(text(third).includes(formatDateTime(Date.UTC(2026, 10, 9, 15, 37, 11, 875))), "the time the host received it");
+  const [thirdFire] = recordedTrigger("triggers fires").fires as Record<string, unknown>[];
+  assert.ok(text(third).includes(formatDateTime(Date.parse(String(thirdFire.receivedAt)))), "the time the host received it");
   assert.match(text(third), /REFUSED/);
   assert.match(text(third), /RUN_HELD/);
   assert.match(text(second), /REFUSED/);

@@ -4,8 +4,8 @@
 // host doesn't report node phases instead; an empty list gets an empty table. It is fed by the
 // detail's own read of the run, so it updates on the detail's poll and never reads the host
 // itself. Each phase chip is NodePhaseChip.tsx's, and always shows the phase's text. The detail
-// holds whether it is open, so it can open it when the run canvas's revision can't be read
-// (#571).
+// holds whether it is open, so it can open it when the run canvas's revision can't be read, or is
+// read but can't be drawn (#571), or Quay can't tell which revision the run runs (#579).
 //
 // Each row's node id is a button that selects the node (#572), which the detail shares with the
 // run canvas and shows in the node panel, so Tab and Enter or Space select a node from the
@@ -15,8 +15,7 @@ import { useId, type FC } from "react";
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import type { GraphRunNodes } from "./graphRunDetail.ts";
 import { NodePhaseChip } from "./NodePhaseChip.tsx";
-
-const BUTTON = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-[11px] text-white";
+import { BUTTON } from "./RunDetail.tsx";
 
 interface NodeTableProps {
   nodes: GraphRunNodes;
@@ -29,6 +28,13 @@ interface NodeTableProps {
   onSelect: (nodeId: string) => void;
 }
 
+/** The button in node `nodeId`'s row in `root`, which selects the node; null when no node table there shows a row for it. */
+export const rowOf = (root: ParentNode, nodeId: string): HTMLElement | null =>
+  [...root.querySelectorAll<HTMLElement>("button[data-node-id]")].find((b) => b.dataset.nodeId === nodeId) ?? null;
+
+/** The node table's Nodes toggle in `root`, or null when there is none, as for a host that doesn't report node phases. */
+export const nodesToggleOf = (root: ParentNode): HTMLElement | null => root.querySelector<HTMLElement>("button[data-nodes-toggle]");
+
 /** The node table of a graph run. */
 export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selected, onSelect }) => {
   const tableId = useId();
@@ -36,7 +42,7 @@ export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selec
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="space-y-1.5 text-[11px] text-[#c9d1d9]">
-      <button type="button" aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => onOpenChange(!open)} className={BUTTON}>
+      <button type="button" data-nodes-toggle aria-expanded={open} aria-controls={open ? tableId : undefined} onClick={() => onOpenChange(!open)} className={BUTTON}>
         <Chevron className="w-3.5 h-3.5" aria-hidden="true" />
         Nodes ({nodes.rows.length})
       </button>
@@ -76,6 +82,7 @@ export const NodeTable: FC<NodeTableProps> = ({ nodes, open, onOpenChange, selec
                   <th scope="row" className="py-1 pr-3 font-mono font-normal">
                     <button
                       type="button"
+                      data-node-id={node.nodeId}
                       aria-current={isSelected ? "true" : undefined}
                       onClick={() => onSelect(node.nodeId)}
                       className={`underline-offset-2 hover:underline ${isSelected ? "font-semibold text-white underline" : ""}`}
