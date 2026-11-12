@@ -4,9 +4,9 @@
 // inside a stand-in for the builder's root that counts the Escapes reaching it, and fakes only
 // Tauri's `invoke`, the out-of-process boundary. It shows a run's detail, and draws the recorded run
 // of several phases and the recorded revision it runs (graph_outputs.fixture.json). `READS`, the
-// commands the form may send, all reads, is the graph run detail's tests' too
-// (graphRunDetail.test.ts). No production module imports it. It installs happy-dom first
-// (test-support/dom.ts), so a test file imports it before anything that renders.
+// commands the form sends in these tests, each a read or the cancel of one, is the graph run
+// detail's tests' too (graphRunDetail.test.ts). No production module imports it. It installs
+// happy-dom first (test-support/dom.ts), so a test file imports it before anything that renders.
 import { fakeInvoke } from "../../../test-support/dom.ts";
 import { mock } from "node:test";
 import assert from "node:assert/strict";
@@ -102,7 +102,11 @@ export function fakeBackend(saved: SavedGraph = null) {
 }
 export type Backend = ReturnType<typeof fakeBackend>;
 
-/** Everything the form and its Runs view may send: each reads, and none writes a file or the host. */
+/**
+ * The commands the form sends in these tests: each reads, or cancels a read, and none writes a file
+ * or changes the host. Its Runs view may send others, as Run, Open in browser and Trust
+ * certificate do.
+ */
 export const READS: ReadonlySet<string> = new Set([
   "praxis_validate",
   "praxis_check_graph_workflow",
