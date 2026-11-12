@@ -1,8 +1,8 @@
-// The host chip in the builder header (#448, #362) and the pieces other views reuse: the panel
-// that says what to do about a host condition, its terminal action button, and the simulated
-// host's standing banner. The chip shows the latest call's condition and never calls `praxis`
-// itself. Every condition has a text label, so its
-// colour is never the only sign of it.
+// The host chip in the builder header (#448, #362), with its panel that says what to do about a
+// host condition, and the pieces other views reuse: the panel's terminal action button, the
+// simulated host's standing banner, and each tone's classes (`TONE_CLASSES`). The chip shows the
+// latest call's condition and never calls `praxis` itself. Every condition has a text label, so
+// its colour is never the only sign of it.
 import { useId, useRef, useState, type FC } from "react";
 import { SquareTerminal, TriangleAlert } from "lucide-react";
 import { hostConditionView, type HostAction, type HostTone } from "./hostCondition.ts";

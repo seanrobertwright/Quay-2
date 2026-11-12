@@ -159,9 +159,10 @@ export function parseLayoutViewport(layout: unknown): { x: number; y: number; zo
 }
 
 /**
- * What the graph canvas and the run canvas say when graph `graphId`'s layout file is there but
- * can't be used, for `message`, the reason `praxis_read` gave. Both say it in these words, so the
- * two can't drift apart.
+ * What the graph canvas and the run canvas say when `praxis_read` reports a layout problem for
+ * graph `graphId`, as it does when its layout file or `.praxis/layout` itself can't be used, for
+ * `message`, the reason `praxis_read` gave. Both say it in these words, so the two can't drift
+ * apart.
  */
 export function layoutIgnoredText(graphId: string, message: string): string {
   return `.praxis/layout/${graphId}.json was ignored, so the graph is laid out automatically: ${message}`;

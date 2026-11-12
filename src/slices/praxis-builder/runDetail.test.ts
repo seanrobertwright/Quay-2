@@ -339,6 +339,8 @@ const holdCard = {
   ],
 };
 const panel = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[role="region"]') ?? [])].find((r) => /^Held:/.test(text(r))) as HTMLElement | undefined;
+/** The name a hold panel's heading gives it. */
+const panelName = (hold: HTMLElement | undefined) => text(document.getElementById(hold?.getAttribute("aria-labelledby") ?? ""));
 
 test("a held run gets a Held badge, its stopping stage marked on the strip, and a hold panel from its holdCard with Resolve in browser", async () => {
   const backend = fakeBackend();
@@ -374,6 +376,17 @@ test("a run with reconciliation pending and no hold card is held too, with the r
   assert.match(text(stage(root, "Implementation")), /Held here/);
   assert.match(text(panel(root)), /Held: ATTEMPT_UNKNOWN/);
   assert.ok(button(panel(root) as HTMLElement, /^Resolve in browser for run-1$/));
+});
+
+test("a hold praxis gives no reason for, with no hold card or with a card that gives none, is named in the words a graph run's hold panel uses", async () => {
+  const { reasonText: _, ...unexplained } = holdCard;
+  for (const card of [null, unexplained]) {
+    const backend = fakeBackend();
+    const root = await showRun(backend);
+    await answer(backend.statuses()[0], statusRecord(operatorView(1, { status: "HELD", pending: ["HOLD_DECISION"], holdCard: card })));
+    assert.equal(panelName(panel(root)), "Held: praxis gave no reason", card === null ? "no hold card" : "a card with no reasonText");
+    unmount();
+  }
 });
 
 test("Quay never runs praxis hold or praxis open, and the detail has no approve, pause, cancel or hold control", async () => {

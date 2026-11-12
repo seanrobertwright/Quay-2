@@ -172,10 +172,11 @@ const DAGRE_POSITIONS = {
   end: "translate(270px,516px)",
 };
 
-test("without a saved layout for the graph id, or when `praxis_read` fails, dagre lays the revision out and no note says why", async () => {
-  // No graph of that id, one with no layout file, and a `praxis_read` that fails, as it does when
-  // `.praxis/graphs` can't be opened. A layout file that can't be read or parsed fails no read:
-  // `praxis_read` gives why as its `layoutProblem` (the next test).
+test("without a saved layout for the graph id or a layout problem, or when `praxis_read` fails, dagre lays the revision out and no note says why", async () => {
+  // No graph of that id, one with no layout file and nothing wrong with `.praxis/layout`, and a
+  // `praxis_read` that fails, as it does when `.praxis/graphs` can't be opened. A layout file, or a
+  // `.praxis/layout`, that can't be used fails no read: `praxis_read` gives why as its
+  // `layoutProblem` (the next test).
   const cases: SavedGraph[] = [
     null,
     { content: { id: "release-review", nodes: [] } },
@@ -333,7 +334,7 @@ test("a graph node with no view entry draws no chip and says no state is reporte
   );
 });
 
-test("when the revision can't be read, the canvas area gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
+test("when the revision can't be read, the run canvas's place gives the host's problem and Try again, the node table opens by itself, and the run-level facts still show", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
   await answer(backend.statuses()[0], severalPhases());
@@ -437,7 +438,7 @@ test("when Try again's read finds the revision can't be drawn and opens the node
   assert.ok(document.activeElement === status, "focus is on the status line, as Try again hands it on, not on the detail's heading");
 });
 
-test("a revision with more nodes than the builder draws isn't drawn: the canvas area says why, and the node table opens by itself", async () => {
+test("a revision with more nodes than the builder draws isn't drawn: the run canvas's place says why, and the node table opens by itself", async () => {
   const backend = fakeBackend();
   const root = await showRun(backend);
   await answer(backend.statuses()[0], severalPhases());
@@ -515,7 +516,8 @@ test("after a failed read of the run the run canvas dims with the detail, and dr
 });
 
 // A run the Runs list doesn't name (#579), such as one a fire's Show run opens: the list reads the
-// newest 100 once to find it, and the canvas area says why when Quay still can't tell its revision.
+// newest 100 once to find it, and the run canvas's place says why when Quay still can't tell its
+// revision.
 
 /** Graph runs `newest` down to `oldest`, newest first, as the Runs list lists them. */
 const runsFrom = (newest: number, oldest: number) => Array.from({ length: newest - oldest + 1 }, (_, i) => entry(newest - i));
@@ -546,7 +548,7 @@ test("a run a fire's Show run opens that is among runs 21 to 100 is found by one
 const unlistedLine = (root: HTMLElement) => text(runCanvas(root)?.querySelector('[role="status"]'));
 const LOOKING = "Looking in the Runs list for the revision this run runs…";
 
-test("while the Runs list's first read, and its read of the newest 100, run, the canvas area says the revision is being looked up, and promises nothing", async () => {
+test("while the Runs list's first read, and its read of the newest 100, run, the run canvas's place says the revision is being looked up, and promises nothing", async () => {
   const backend = fakeBackend();
   const root = await render(form({ showRun: "wo-70" }));
   await answer(backend.statuses()[0], severalPhases());
@@ -586,7 +588,7 @@ test("a run not among the newest 100 says Quay can't tell its revision because p
   assert.deepEqual(limits(backend), [20, 100, 100], "one read of the newest 100, and the poll that follows at that limit");
 });
 
-/** Asserts the canvas area says the Runs list, holding every run, doesn't name the run, and that the node table opened. */
+/** Asserts the run canvas's place says the Runs list, holding every run, doesn't name the run, and that the node table opened. */
 function saysNotListed(backend: Backend, root: HTMLElement): void {
   assert.equal(unlistedLine(root), "The Runs list doesn't name this run, so Quay can't tell which revision it runs. The run canvas isn't drawn: the node table shows the run's node phases.");
   assert.equal(runCanvas(root)?.querySelector(".react-flow"), null);
@@ -594,7 +596,7 @@ function saysNotListed(backend: Backend, root: HTMLElement): void {
   assert.equal(nodesToggle(root).getAttribute("aria-expanded"), "true", "the node table opened by itself");
 }
 
-test("a run the Runs list doesn't name when its first read gives every run says so, without the cap, and reads no more", async () => {
+test("a run the Runs list doesn't name when its first read gives every run says so, without the cap, and reads no more while the list gives every run", async () => {
   const backend = fakeBackend();
   const root = await render(form({ showRun: "wo-999" }));
   await answer(backend.statuses()[0], severalPhases());

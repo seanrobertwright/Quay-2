@@ -165,6 +165,8 @@ const fact = (root: HTMLElement, term: string) => {
 };
 const banner = (root: HTMLElement) => detail(root)?.querySelector('[aria-label="Waiting for a decision"]') as HTMLElement | null;
 const panels = (root: HTMLElement) => [...(detail(root)?.querySelectorAll('[role="region"]') ?? [])].filter((r) => /^Held:/.test(text(r))) as HTMLElement[];
+/** The name a hold panel's heading gives it. */
+const panelName = (hold: HTMLElement | undefined) => text(document.getElementById(hold?.getAttribute("aria-labelledby") ?? ""));
 /** The ways out of the hold `panel` lists, in its words. */
 const exitsOf = (panel: HTMLElement) => [...panel.querySelectorAll('[aria-label="Ways out of the hold"] li')].map((li) => text(li));
 
@@ -618,6 +620,15 @@ test("a card whose holdId reads like a card without one still gets its own panel
   assert.equal(panels(root).length, 2);
   assert.match(text(first), /^Held: UNCERTAIN_EFFECT on node test/);
   assert.match(text(second), /^Held: EXECUTION_FAILED on node build/);
+});
+
+test("a hold card that gives no reason is named in the words a template run's hold panel uses, with its node", async () => {
+  const backend = fakeBackend();
+  const root = await showRun(backend, 1, [entry(1, { held: true })]);
+  const { reason: _, ...unexplained } = holdCard("hold-1", "build", "EXECUTION_FAILED");
+  await answer(backend.statuses()[0], statusRecord(graphOperatorView(1, { pending: [holdDecision("hold-1", "build")], holds: [unexplained] })));
+  assert.equal(panels(root).length, 1);
+  assert.equal(panelName(panels(root)[0]), "Held: praxis gave no reason on node build");
 });
 
 test("a run with reconciliation pending and no hold card is held too, with a panel saying why", async () => {

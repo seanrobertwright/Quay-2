@@ -9,12 +9,13 @@
 //
 // Positions come from the project's saved layout for the graph's id, when it has one, through the
 // graph canvas's rule for a partial layout (`placeNodes`, flow/layout.ts): saved positions kept and
-// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. A layout file
-// that is there but can't be used, as `praxis_read` reports it, is ignored, and a note above the
-// drawing says so and why, in the graph canvas's words (`layoutIgnoredText`, model.ts). The note is
-// information, not a problem line: the revision is still drawn. Nothing is said when the project has
-// no graph of that id or no layout file for it, or when `praxis_read` fails. The run canvas never
-// writes a layout.
+// the rest placed near their placed neighbours. Otherwise dagre lays the graph out. A layout that
+// `praxis_read` reports a problem with, as it does when the graph's layout file or `.praxis/layout`
+// itself can't be used, is ignored, and a note above the drawing says so and why, in the graph
+// canvas's words (`layoutIgnoredText`, model.ts). The note is information, not a problem line: the
+// revision is still drawn. Nothing is said when the project has no graph of that id, or when
+// `praxis_read` fails; nor when the graph has no layout file, unless `.praxis/layout` itself can't
+// be used. The run canvas never writes a layout.
 //
 // It is read-only by construction: it is given no edit handlers and no draft to write to, React
 // Flow drags, connects, selects and deletes nothing on it, and the one change it takes from React
@@ -24,11 +25,12 @@
 //
 // One node is selected at a time (#572), shared with the node table: the run's detail holds it.
 // A click on a card, or the builder's select key (Enter or Space) on the card with focus, selects
-// its node and so opens its node panel; each card is a tab stop, as on the graph canvas. The
+// its node and so opens its node panel; each card is a tab stop, as on the graph canvas. While a
+// node is selected, Escape on the run canvas clears the selection (#577, GraphRunDetail.tsx). The
 // selected card has a near-white ring close around its border, in no node phase's tone, and is the
 // current one to a screen reader. The ring a card with focus has stands further out, so a card
-// both selected and focused shows both. Every other key of the graph canvas, adding to the
-// selection included, does nothing on it.
+// both selected and focused shows both. Every other selection or edit key of the graph canvas,
+// adding to the selection included, does nothing on it.
 //
 // A card that takes keyboard focus while not wholly in view is panned into view (#575), as on the
 // graph canvas, and so is the selected card, when the selection changes and when the run canvas
@@ -156,7 +158,10 @@ const RUN_FIT = { maxZoom: 1 } as const;
 interface SavedLayout {
   /** The saved position of each node the layout places. */
   saved: ReadonlyMap<string, XYPosition>;
-  /** Why the project's layout file for the graph was ignored, when it is there but can't be used; else null. */
+  /**
+   * Why the project's layout for the graph was ignored, as `praxis_read` reports it when the graph's
+   * layout file or `.praxis/layout` itself can't be used; else null.
+   */
   layoutProblem: FileProblem | null;
 }
 
@@ -292,9 +297,9 @@ const NO_LAYOUT: SavedLayout = { saved: new Map(), layoutProblem: null };
 
 /**
  * The project's saved layout for graph `graphId`, which `praxis_read` gives with the project's own
- * graph of that id: the node positions of its layout file, and why that file was ignored when it is
- * there but can't be used, as `praxis_read` reports it. No positions when the project has no such
- * graph, no layout file for it or one that can't be used, so dagre places every node. When
+ * graph of that id: the node positions of its layout file, and the layout problem `praxis_read`
+ * reports when that file, or `.praxis/layout` itself, can't be used. No positions when the project
+ * has no such graph, no layout file for it or a layout problem, so dagre places every node. When
  * `praxis_read` fails there are no positions and no problem, so the run canvas says nothing of it.
  */
 async function savedLayout(projectPath: string, graphId: string): Promise<SavedLayout> {
@@ -379,7 +384,7 @@ interface RunCanvasProps {
   projectPath: string;
   /** The graph workflow the run is a run of. */
   workflow: string;
-  /** The revision the run runs, from its row in the Runs list; null before the list named it. */
+  /** The revision the run runs, from the last row of the Runs list that named the run; null before a row did. */
   revision: number | null;
   /** Why no row of the Runs list has named the run, while `revision` is null. */
   unlisted: Unlisted;
