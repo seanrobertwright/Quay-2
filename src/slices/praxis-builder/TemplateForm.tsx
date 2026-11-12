@@ -1,21 +1,23 @@
 // The workflow template form (#224): a template opens full width in the work area, under a
 // read-only strip of the coding profile's stages. Its shape is checked against the SDK's
-// coding-plan schema, and nothing more: the plan's warnings come from a host's authoring preview,
-// which Quay doesn't call yet. The Agent field takes its suggestions and warnings from the host's
+// coding-plan schema, and nothing more: the cross-field rules, warnings and readiness come from a
+// host's authoring preview, which Check on host asks for when it is pressed (#596) and shows
+// apart from the shape check. The Agent field takes its suggestions and warnings from the host's
 // agent picker (#482). Beside Install on host…, a status line shows
 // the template's state on the Praxis host from the host catalog (#363, #451), with the host's
 // readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
 // resolves a command. A Template | Runs switch turns the work area to the template's runs on the
 // host (#452), where a run's detail is drawn on the same stage strip (#453) and Run starts one (#454).
-import { useEffect, useId, useState, type FC, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Download, Info, Plus, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState, type FC, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, CircleAlert, CircleCheck, Download, Info, ListChecks, LoaderCircle, Plus, X } from "lucide-react";
 import { AgentIdField } from "./AgentIdField.tsx";
 import type { AgentPicker } from "./agentPicker.ts";
-import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
+import { described, FieldMessages, inputBaseClass, inputClass, labelClass, SeverityIcon } from "./ConfigForms.tsx";
 import { isDirty, type Draft } from "./drafts.ts";
+import { hostConditionView } from "./hostCondition.ts";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
-import type { RunInTerminal } from "./praxisHost.ts";
+import type { HostCondition, RunInTerminal } from "./praxisHost.ts";
 import { RunsView } from "./RunsView.tsx";
 import { StageStrip } from "./StageStrip.tsx";
 import {
@@ -53,6 +55,8 @@ import {
   type StageKey,
   type TemplateEdit,
 } from "./template.ts";
+import { draftText, hostIssuesByPath, verdictLine, type TemplatePreview } from "./templatePreview.ts";
+import { useTemplatePreview, type TemplatePreviewState } from "./useTemplatePreview.ts";
 import { useValidation } from "./useValidation.ts";
 import { WorkAreaSwitch, type WorkAreaView } from "./WorkAreaSwitch.tsx";
 import type { GitChange, Diagnostic } from "./types.ts";
@@ -70,6 +74,11 @@ interface TemplateFormProps {
    * couldn't be read, and the agent ids the project already uses. Without it the field suggests nothing.
    */
   agents?: { picker: AgentPicker | null; used: readonly string[] };
+  /**
+   * The project whose host Check on host asks (#596), and that host's condition, which says
+   * whether it can be asked. Without it the form has no Check on host.
+   */
+  hostCheck?: { projectPath: string; condition: HostCondition } | null;
   /**
    * Where the Runs view lists runs from, whether the builder is shown, and how a run's detail
    * opens a visible terminal for `praxis trust`; without it there is no switch.
@@ -99,7 +108,7 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, agents, runs }) => {
+export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, agents, hostCheck, runs }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
@@ -112,21 +121,40 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
   const anchorBase = useId();
   const anchor = (key: StageKey) => `${anchorBase}-${key}`;
 
+  const t = draft.content;
+  // The host's answer is about the draft it was asked about. Once the draft differs, it is out of date.
+  const preview = useTemplatePreview(hostCheck?.projectPath ?? "");
+  const text = useMemo(() => draftText(t), [t]);
+  const answered = preview.result?.state === "answered" ? preview.result : null;
+  const stale = answered !== null && answered.checked !== text;
+  const hostByPath = useMemo(() => (answered ? hostIssuesByPath(answered.preview, stale) : new Map<string, Diagnostic[]>()), [answered, stale]);
+
   // Each field takes the issues at its path, or under it for a command. Whatever no shown
   // field takes shows with the verdict, and a field the form has no input for gets a fix.
+  // The host's diagnostics are placed the same way, after the shape check's and marked as the
+  // host's; whatever no field takes shows with the host's verdict.
   const byPath = issuesByPath(status);
   const taken = new Set<string>();
+  const hostTaken = new Set<string>();
+  const within = (path: string) => ([p]: [string, Diagnostic[]]) => p === path || p.startsWith(`${path}/`);
+  /** Everything the host says at `path` or under it. */
+  const hostUnder = (path: string) => {
+    const found = [...hostByPath].filter(within(path));
+    for (const [p] of found) hostTaken.add(p);
+    return found;
+  };
   const at = (path: string) => {
     taken.add(path);
-    return byPath.get(path);
+    hostTaken.add(path);
+    const issues = [...(byPath.get(path) ?? []), ...(hostByPath.get(path) ?? [])];
+    return issues.length > 0 ? issues : undefined;
   };
   const under = (path: string) => {
-    const found = [...byPath].filter(([p]) => p === path || p.startsWith(`${path}/`));
+    const found = new Map([...byPath].filter(within(path)));
     for (const [p] of found) taken.add(p);
-    return new Map(found);
+    for (const [p, issues] of hostUnder(path)) found.set(p, [...(found.get(p) ?? []), ...issues]);
+    return found;
   };
-
-  const t = draft.content;
   // A never-saved draft, or one whose file was deleted, has no file to install.
   const installable = draft.baseHash !== null && !draft.deletedOnDisk;
   const set = (key: string, value: Json | undefined, live = false) => onEdit({ type: "set-field", key, value, live });
@@ -146,6 +174,10 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
     onEdit({ type: "set-fields", values: switched.values, label: `Set exposure to ${label}` });
   };
   const stopFill = exposure ? eightyPercent(asString(exposure.allowance)) : null;
+  // The exposure's own inputs show no issues of their own, so the group takes the shape check's
+  // at its path and everything the host says at it or under it.
+  taken.add("/exposure");
+  const exposureIssues = [...(byPath.get("/exposure") ?? []), ...hostUnder("/exposure").flatMap(([, issues]) => issues)];
 
   const fields = (
     <>
@@ -247,7 +279,7 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
           onChange={(v) => set("agent", v === "" ? undefined : v, true)}
           hint="A catalog agent id. Empty uses the built-in engine:local-coding."
         />
-        <ExposureGroup choice={choice} issues={at("/exposure")} onChoose={choose}>
+        <ExposureGroup choice={choice} issues={exposureIssues} onChoose={choose}>
           {choice === "BOUNDED" && exposure && (
             <>
               <IntegerInput
@@ -308,6 +340,7 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
     (d) => (REMOVABLE.has(d.code) || (d.path === "/maxTotalCost" && choice !== "BOUNDED")) && d.path.split("/").length === 2
   );
   const rest = untaken.filter((d) => !removable.includes(d));
+  const hostRest = [...hostByPath].filter(([path]) => !hostTaken.has(path)).flatMap(([, issues]) => issues);
 
   const viewSwitch = runs && <WorkAreaSwitch recordLabel="Template" shown={shownView} onShow={setShownView} />;
 
@@ -343,13 +376,14 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
           </h2>
           <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0">{host && <HostStatusLine host={host} />}</div>
+            {hostCheck && <CheckOnHost condition={hostCheck.condition} checking={preview.checking} onCheck={() => preview.check(t)} />}
             <button
               type="button"
               // Not `disabled`, which would drop focus; the reason is in the title.
               aria-disabled={!installable}
               title={installable ? "How to install this template on a Praxis host" : "Save the template first: a host is given the saved file."}
               onClick={() => installable && onInstall()}
-              className="ml-auto aria-disabled:opacity-40 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white shrink-0"
+              className="aria-disabled:opacity-40 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white shrink-0"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
               Install on host…
@@ -372,10 +406,104 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
             accepts="The template's shape matches the coding-plan schema."
             refuses="The template's shape doesn't match the coding-plan schema"
           />
+          {hostCheck && <HostVerdict state={preview} stale={stale} issues={hostRest} />}
         </div>
         {removable.length > 0 && <RemovableFields issues={removable} onRemove={(field) => set(field, undefined)} />}
         {fields}
       </form>
+    </div>
+  );
+};
+
+/** What the button says of a host that can't be asked, or of a check that is running. */
+function checkBlocked(condition: HostCondition, checking: boolean): string | null {
+  const view = hostConditionView(condition);
+  if (!view.usable) return `The host can't be asked: ${view.label}.`;
+  return checking ? "The host is being asked." : null;
+}
+
+/** Check on host (#596): asks the host for its authoring preview of the draft as the form holds it. */
+const CheckOnHost: FC<{ condition: HostCondition; checking: boolean; onCheck: () => void }> = ({ condition, checking, onCheck }) => {
+  const reasonId = useId();
+  const blocked = checkBlocked(condition, checking);
+  return (
+    <>
+      <button
+        type="button"
+        // Not `disabled`, which would drop focus; the reason is in the title and the description.
+        aria-disabled={blocked !== null}
+        aria-describedby={blocked !== null ? reasonId : undefined}
+        title={blocked ?? "Ask the Praxis host what it says of this draft, saved or not. Nothing is created on the host."}
+        onClick={() => blocked === null && onCheck()}
+        className="ml-auto aria-disabled:opacity-40 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[#30363d] bg-[#21262d] hover:bg-[#30363d] text-xs text-white shrink-0"
+      >
+        {checking ? (
+          <LoaderCircle className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        ) : (
+          <ListChecks className="w-3.5 h-3.5" aria-hidden="true" />
+        )}
+        Check on host
+      </button>
+      {blocked !== null && (
+        <span id={reasonId} className="sr-only">
+          {blocked}
+        </span>
+      )}
+    </>
+  );
+};
+
+/** What a verdict says after its line once the draft has changed. */
+const OUT_OF_DATE = "Out of date: the draft has changed since the host was asked.";
+
+/**
+ * The host's verdict on the draft (#596), with the diagnostics no field of the form shows. Its
+ * line is one live region, mounted before the first check, so each change of it is announced.
+ */
+const HostVerdict: FC<{ state: TemplatePreviewState; stale: boolean; issues: readonly Diagnostic[] }> = ({ state, stale, issues }) => {
+  const { result, checking } = state;
+  const preview: TemplatePreview | null = result?.state === "answered" ? result.preview : null;
+  const tone = stale ? "" : preview?.creatable ? "text-[#3fb950]" : "text-[#ff7b72]";
+  return (
+    <div>
+      <p role="status" className="flex items-start gap-1.5 text-[11px] text-[#8b949e] empty:hidden">
+        {result?.state === "failed" && <span className="text-[#ff7b72] break-words">{result.message}</span>}
+        {preview && (
+          <>
+            {preview.creatable ? (
+              <CircleCheck className={`w-3.5 h-3.5 mt-px shrink-0 ${tone}`} aria-hidden="true" />
+            ) : (
+              <CircleAlert className={`w-3.5 h-3.5 mt-px shrink-0 ${tone}`} aria-hidden="true" />
+            )}
+            <span className={`min-w-0 break-words ${tone}`}>
+              {verdictLine(preview)}
+              {stale && <> {OUT_OF_DATE}</>}
+            </span>
+          </>
+        )}
+        {checking && <span>{result ? "Asking the host again…" : "Asking the host…"}</span>}
+      </p>
+      {preview && issues.length > 0 && (
+        <ul aria-label="What the host says of fields this form doesn't show" className="mt-1 space-y-0.5">
+          {issues.map((d, index) => (
+            // The host may say one thing of a field twice, so the place in its list is part of the key.
+            <li
+              key={`${d.path}|${d.code}|${index}`}
+              className={`flex items-start gap-1 text-[11px] break-words ${d.severity === "error" ? "text-[#ff7b72]" : "text-[#d29922]"}`}
+            >
+              <SeverityIcon severity={d.severity} className="w-3 h-3 mt-px shrink-0" />
+              <span className="min-w-0">
+                <span className="font-mono">{fieldOf(d)}</span>: {d.message} <span className="font-mono text-[#8b949e]">{d.code}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {preview && preview.omitted > 0 && (
+        <p className="mt-1 text-[11px] text-[#8b949e]">
+          The host said {preview.omitted} more {preview.omitted === 1 ? "thing" : "things"}, not shown.
+        </p>
+      )}
     </div>
   );
 };

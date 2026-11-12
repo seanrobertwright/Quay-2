@@ -2607,6 +2607,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onInstall={() => setInstallShown(open.id)}
                     host={templateHost(open.id)}
                     agents={templateAgents}
+                    hostCheck={projectPath ? { projectPath, condition: host.condition } : null}
                     // The builder is only hidden when it closes, so the Runs view is told when.
                     runs={
                       projectPath

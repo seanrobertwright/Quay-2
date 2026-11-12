@@ -3,8 +3,9 @@
 //! `$defs/Template`: a coding plan without `workOrderId` and `runId`.
 //!
 //! This is a shape check only. The cross-field rules, warnings, readiness and agent
-//! selectability come from the host's authoring preview, which Quay doesn't call yet, so
-//! nothing here claims more than the schema says. Each schema error becomes one diagnostic,
+//! selectability come from the host's authoring preview, which the template form asks for when
+//! Check on host is pressed (#596) and shows apart from this check, so nothing here claims more
+//! than the schema says. Each schema error becomes one diagnostic,
 //! coded the way the SDK's fixture vectors record it: `UNKNOWN_FIELD` for a field the
 //! template doesn't have, `UNSUPPORTED_FEATURE` for a field it refuses, `INVALID_FIELD` for
 //! the rest, and `INVALID_DOCUMENT` when the template isn't an object.

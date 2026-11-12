@@ -14,7 +14,7 @@ import { createHostCatalog, type HostCatalog } from "./hostCatalog.ts";
 import type { TemplateHost } from "./HostStatusLine.tsx";
 import type { CallOutcome } from "./praxisHost.ts";
 import { runsRecord } from "./fixtures/runs.ts";
-import { createRunStarts } from "./runStart.ts";
+import { createRunStarts, runStartOf } from "./runStart.ts";
 import type { GitChange } from "./types.ts";
 
 const { TemplateForm } = await import("./TemplateForm.tsx");
@@ -438,6 +438,13 @@ test("exit 2 or an unknown format says Quay needs an update for this praxis", as
     await act(async () => call.answer(outcome));
     assert.match(text(notice(root, "Run not started")), /Quay needs an update for this praxis/);
   }
+});
+
+test("a praxis without the run command says praxis is too old, and that no run was started", () => {
+  assert.deepEqual(runStartOf({ kind: "commandUnknown", command: "run" }, "build-app"), {
+    kind: "refused",
+    message: "The installed praxis is too old for this: it has no `run` command. Update praxis. No run was started.",
+  });
 });
 
 test("a created run Quay can't follow is called a run, in Praxis's words, never a work order (#481)", async () => {
