@@ -6,8 +6,8 @@ use serde_json::Value;
 
 /// The `praxis` commands Quay runs headless: the template commands (#446), the graph commands
 /// (#460), whose names, records and exits are those of `praxis` in AI-WS-SDK `GRAPH-WORKFLOWS.md`,
-/// "The praxis commands", and the graph trigger commands (#474), in `GRAPH-TRIGGERS.md`, "The
-/// praxis commands".
+/// "The praxis commands", the graph trigger commands (#474), in `GRAPH-TRIGGERS.md`, "The
+/// praxis commands", and the agent picker (#482).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     WorkflowsList,
@@ -64,6 +64,9 @@ pub enum Verb {
     TriggersRetire,
     /// `praxis event-sources list`: the host's event sources, in name order.
     EventSourcesList,
+    /// `praxis agents`: the host's agent picker, which lists every agent its agent catalog offers,
+    /// in catalog order, and why one can't be bound. It selects, binds and grants nothing.
+    Agents,
 }
 
 impl Verb {
@@ -96,6 +99,10 @@ impl Verb {
             Verb::TriggersWithdraw => "aiws-graph-trigger-withdraw-result/1",
             Verb::TriggersDisable | Verb::TriggersRetire => "aiws-graph-trigger-control-result/1",
             Verb::EventSourcesList => "aiws-event-sources/1",
+            // `PROVISIONAL` in AI-WS-SDK (READ-MODELS.md), so it may change: a host that serves
+            // another format is refused by name, and the builder falls back to what it suggests
+            // without a host.
+            Verb::Agents => "aiws-agent-picker/1",
         }
     }
 
@@ -174,12 +181,14 @@ impl Verb {
             Verb::TriggersDisable => &["triggers", "disable"],
             Verb::TriggersRetire => &["triggers", "retire"],
             Verb::EventSourcesList => &["event-sources", "list"],
+            Verb::Agents => &["agents"],
         }
     }
 
     /// Whether `praxis` is asked for this command's [`format`](Self::format) by name, with
     /// `--format`, so a host that doesn't serve it is refused with exit 8 rather than answered
-    /// in another format. The graph and graph trigger reads, which take `--format`, pin it;
+    /// in another format. The graph and graph trigger reads and the agent picker, which take
+    /// `--format`, pin it;
     /// `runs` and `status` need it to read a graph workflow's record rather than a template's.
     /// The template commands keep the CLI's default.
     fn pins_format(self) -> bool {
@@ -197,6 +206,7 @@ impl Verb {
                 | Verb::TriggersRevision
                 | Verb::TriggersFires
                 | Verb::EventSourcesList
+                | Verb::Agents
         )
     }
 

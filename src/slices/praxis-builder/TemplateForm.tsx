@@ -1,7 +1,8 @@
 // The workflow template form (#224): a template opens full width in the work area, under a
 // read-only strip of the coding profile's stages. Its shape is checked against the SDK's
-// coding-plan schema, and nothing more: warnings and agent selectability come from a host's
-// authoring preview, which Quay doesn't call yet. Beside Install on host…, a status line shows
+// coding-plan schema, and nothing more: the plan's warnings come from a host's authoring preview,
+// which Quay doesn't call yet. The Agent field takes its suggestions and warnings from the host's
+// agent picker (#482). Beside Install on host…, a status line shows
 // the template's state on the Praxis host from the host catalog (#363, #451), with the host's
 // readiness reason when it has installed the template but can't run it. The three commands are
 // argument lists edited a row at a time. Quay never splits a command line and never runs or
@@ -9,6 +10,8 @@
 // host (#452), where a run's detail is drawn on the same stage strip (#453) and Run starts one (#454).
 import { useEffect, useId, useState, type FC, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, Info, Plus, X } from "lucide-react";
+import { AgentIdField } from "./AgentIdField.tsx";
+import type { AgentPicker } from "./agentPicker.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import { isDirty, type Draft } from "./drafts.ts";
 import { HostStatusLine, type TemplateHost } from "./HostStatusLine.tsx";
@@ -63,6 +66,11 @@ interface TemplateFormProps {
   /** This template's state on the Praxis host, from the host catalog; null without one. */
   host: TemplateHost | null;
   /**
+   * What the Agent field suggests and warns of (#482): the host's agent picker, null when it
+   * couldn't be read, and the agent ids the project already uses. Without it the field suggests nothing.
+   */
+  agents?: { picker: AgentPicker | null; used: readonly string[] };
+  /**
    * Where the Runs view lists runs from, whether the builder is shown, and how a run's detail
    * opens a visible terminal for `praxis trust`; without it there is no switch.
    */
@@ -91,7 +99,7 @@ const EXPOSURE_CHOICES: { choice: ExposureChoice; label: string }[] = [
   { choice: "NOT_APPLICABLE", label: "Not applicable (agent uses no model)" },
 ];
 
-export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, runs }) => {
+export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated, onInstall, host, agents, runs }) => {
   const [shownView, setShownView] = useState<WorkAreaView>("record");
   const status = useValidation("templates", draft.content);
   const verdict = status.state === "done" ? status.validation.verdict : undefined;
@@ -230,12 +238,14 @@ export const TemplateForm: FC<TemplateFormProps> = ({ draft, onEdit, onValidated
       </Section>
 
       <Section title="Agent and cost">
-        <TextInput
+        <AgentIdField
           label="Agent"
           value={asString(t.agent)}
           issues={at("/agent")}
+          picker={agents?.picker ?? null}
+          used={agents?.used ?? []}
           onChange={(v) => set("agent", v === "" ? undefined : v, true)}
-          hint="A catalog agent id. Empty uses the built-in engine:local-coding. Quay lists no agents until a host is attached."
+          hint="A catalog agent id. Empty uses the built-in engine:local-coding."
         />
         <ExposureGroup choice={choice} issues={at("/exposure")} onChoose={choose}>
           {choice === "BOUNDED" && exposure && (

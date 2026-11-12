@@ -3,7 +3,8 @@
 //! the SDK pin, and exit codes. The template commands' records are the vendored read-model
 //! fixtures. The graph commands' (#460) are `graph_outputs.fixture.json`, what the real `praxis`
 //! printed for each, refusals and `praxis-error/1` records included. The graph trigger commands'
-//! (#474) are in [`triggers`], against `trigger_outputs.fixture.json`.
+//! (#474) are in [`triggers`], against `trigger_outputs.fixture.json`, and the agent picker's
+//! (#482) in [`agents`], against `agent_outputs.fixture.json`.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -21,6 +22,8 @@ use crate::test_support::TempDir;
 
 const FAKE: &str = include_str!("fake_praxis.mjs");
 
+#[path = "agent_tests.rs"]
+mod agents;
 #[path = "trigger_tests.rs"]
 mod triggers;
 

@@ -3,9 +3,9 @@
 //! registered project, whose host condition it updates, and a `callId` that
 //! [`praxis_host_cancel`] cancels. A template or graph workflow name that the host refuses comes
 //! back as a refusal from [`PraxisCli::call`], which never runs `praxis` with it, and so does a
-//! graph trigger name. The graph commands (#460) and the graph trigger commands (#474) go through
-//! the same runner, so they share its bounds, its sharing of identical calls in flight and its
-//! host condition.
+//! graph trigger name. The graph commands (#460), the graph trigger commands (#474) and the agent
+//! picker (#482) go through the same runner, so they share its bounds, its sharing of identical
+//! calls in flight and its host condition.
 
 use std::path::{Path, PathBuf};
 
@@ -554,6 +554,19 @@ pub async fn praxis_host_trigger_retire(
     let mut operands = vec![name];
     operands.extend(request_id_operands(request_id));
     call(&cli, &workspace, &project_path, Verb::TriggersRetire, operands, call_id).await
+}
+
+/// `praxis agents --format aiws-agent-picker/1 --json`: the host's agent picker, which says
+/// whether the host has an agent catalog and lists each agent it offers, in catalog order, with
+/// whether it can be bound and the host's reasons when it can't. A read: it changes nothing.
+#[tauri::command]
+pub async fn praxis_host_agents(
+    project_path: String,
+    call_id: Uuid,
+    cli: State<'_, PraxisCli>,
+    workspace: State<'_, WorkspaceManager>,
+) -> Result<CallOutcome, String> {
+    call(&cli, &workspace, &project_path, Verb::Agents, vec![], call_id).await
 }
 
 /// Cancels a call. See [`PraxisCli::cancel`].

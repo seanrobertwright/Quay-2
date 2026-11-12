@@ -8,6 +8,8 @@
 import { useId, useState, type FC, type ReactNode } from "react";
 import { Plus, X } from "lucide-react";
 import { formatDuration } from "../../lib/dates.ts";
+import { AgentIdField } from "./AgentIdField.tsx";
+import type { AgentPicker } from "./agentPicker.ts";
 import { described, FieldMessages, inputBaseClass, inputClass, labelClass } from "./ConfigForms.tsx";
 import { entryWorstCase, worstCase, WORST_CASE_LABEL, type AttachStatus, type WorstCaseNode } from "./bindingChecks.ts";
 import { integerProblem } from "./contract.ts";
@@ -24,6 +26,8 @@ export interface ShownBinding {
   diagnostics: readonly Diagnostic[];
   /** Ids already used in the project's bindings and workflow templates, for the id fields' suggestions. */
   suggestions: Readonly<Record<SuggestedField, readonly string[]>>;
+  /** The host's agent picker (#482), for the agent id's suggestions and warnings; null when it couldn't be read. */
+  agentPicker: AgentPicker | null;
   /** The binding's attach checks under each contract that lists its graph (#274). */
   attach: AttachStatus;
   onEdit: (edit: BindingEdit) => void;
@@ -572,11 +576,12 @@ export const RunsAsSection: FC<{ node: PraxisNode; binding: ShownBinding | null 
         )}
         {kind === "AGENT" && (
           <>
-            <SuggestedText
+            <AgentIdField
               label="Agent id"
-              value={entry.agentId}
-              suggestions={binding.suggestions.agentId}
+              value={typeof entry.agentId === "string" ? entry.agentId : ""}
               issues={at("agentId")}
+              picker={binding.agentPicker}
+              used={binding.suggestions.agentId}
               onChange={(v) => set("agentId", v, true)}
             />
             <CommandsField value={entry.commands} base={`${base}/commands`} issues={at("commands")} onChange={(c) => set("commands", c)} />

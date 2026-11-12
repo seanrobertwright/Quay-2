@@ -120,6 +120,7 @@ import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { DiffView } from "./DiffView.tsx";
 import { InstallDialog } from "./InstallDialog.tsx";
 import { HostChip, SimulatedHostBanner } from "./HostChip.tsx";
+import { useAgentPicker } from "./useAgentPicker.ts";
 import { useHostCondition } from "./useHostCondition.ts";
 import { useHostCatalog } from "./useHostCatalog.ts";
 import { focusLost } from "./useKeptFocus.ts";
@@ -436,6 +437,8 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   // view that needs the host, so the 60 s recheck runs only while one is shown and its host
   // condition is failing.
   const host = useHostCondition(projectPath, isOpen && (openKind === "templates" || openKind === "graph-workflows" || openKind === "triggers"));
+  // The host's agent picker (#482), for the Runs as agent id and a workflow template's Agent.
+  const { picker: agentPicker, reread: rereadAgentPicker } = useAgentPicker(projectPath, host.condition, isOpen);
   // Each workflow template's host state (#449), for the views that draw it. The Workflow
   // templates group is shown whenever the builder is open with the project listed.
   const listedTemplates = listing?.projectKey === projectKey ? listing.byKind.templates.list?.entries : undefined;
@@ -713,10 +716,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   }, [isOpen, projectPath, openKind, openId, refreshCount]);
 
   // The ids used across the project's saved bindings and templates (#247), read with an open
-  // graph and after every save, for the Runs as section to suggest. Keyed by project.
+  // graph or workflow template and after every save, for the Runs as section and a template's
+  // Agent to suggest. Keyed by project.
   const [savedSuggestions, setSavedSuggestions] = useState<{ projectKey: string; ids: BindingSuggestions } | null>(null);
   useEffect(() => {
-    if (!isOpen || !projectPath || openKind !== "graphs") return;
+    if (!isOpen || !projectPath || (openKind !== "graphs" && openKind !== "templates")) return;
     let stale = false;
     const key = normalizePath(projectPath);
     invoke<BindingSuggestions>("praxis_binding_suggestions", { projectPath }).then(
@@ -1421,10 +1425,11 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
   const shownBinding: Omit<ShownBinding, "diagnostics"> | null = useMemo(
     () =>
       chosenId !== null && chosenContent
-        ? { id: chosenId, content: chosenContent, suggestions, attach, onEdit: editChosenBinding }
+        ? { id: chosenId, content: chosenContent, suggestions, agentPicker, attach, onEdit: editChosenBinding }
         : null,
-    [chosenId, chosenContent, suggestions, attach, editChosenBinding]
+    [chosenId, chosenContent, suggestions, agentPicker, attach, editChosenBinding]
   );
+  const templateAgents = useMemo(() => ({ picker: agentPicker, used: suggestions.agentId }), [agentPicker, suggestions.agentId]);
 
   const recordValidity = useCallback(
     (verdict: string | null) => {
@@ -2294,7 +2299,15 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                         <Icon className="w-3 h-3" aria-hidden="true" /> {label}
                       </h3>
                       {groupHost && (
-                        <HostGroupHeaderBar header={hostGroupHeader(host.condition)} onCheckHost={groupHost.checkHost} onRun={runHostCommand} />
+                        <HostGroupHeaderBar
+                          header={hostGroupHeader(host.condition)}
+                          // Checking the host again reads its agent picker again too (#482).
+                          onCheckHost={() => {
+                            rereadAgentPicker();
+                            return groupHost.checkHost();
+                          }}
+                          onRun={runHostCommand}
+                        />
                       )}
                       {entry.error !== undefined && (
                         <p role="alert" className="mx-3 text-[11px] text-[#ff7b72] break-words">
@@ -2593,6 +2606,7 @@ export const PraxisBuilderModal: FC<PraxisBuilderModalProps> = ({
                     onValidated={recordValidity}
                     onInstall={() => setInstallShown(open.id)}
                     host={templateHost(open.id)}
+                    agents={templateAgents}
                     // The builder is only hidden when it closes, so the Runs view is told when.
                     runs={
                       projectPath
