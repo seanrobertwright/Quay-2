@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Becomes of Stage Header &amp; Status Strip — Quay Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --cyan: #06b6d4; --go: #238636; --go-line: #2ea043; --sel: #132339;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--body); padding: 22px 20px 84px; }
+.wrap { max-width: 1380px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.tag { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+h1 { font: 600 22px/1.2 var(--display); color: var(--hi); margin: 4px 0 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.seg { display: flex; gap: 5px; border: 0; padding: 0; margin: 0; flex-wrap: wrap; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; padding: 0; }
+.seg button {
+  border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  background: var(--q-panel); color: var(--fg); font: 500 12px var(--body); display: inline-flex; align-items: center; gap: 6px;
+  transition: all .12s;
+}
+.seg button:hover { border-color: #6e7681; }
+.seg button[aria-pressed="true"] { border-color: var(--blue); color: #fff; background: var(--sel); }
+.seg button.sub-btn[aria-pressed="true"] { border-color: var(--amber); background: rgba(210,153,34,.14); color: #f2cc60; }
+
+/* Mock Shell */
+.shell {
+  position: relative; display: flex; height: 620px; min-width: 1040px;
+  background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 8px; overflow: hidden;
+  font: 12px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+.scroll { overflow-x: auto; }
+
+/* 48px Module Bar */
+.abar {
+  width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; z-index: 2;
+}
+.ib {
+  width: 34px; height: 34px; border-radius: 6px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); display: grid; place-items: center; cursor: pointer; position: relative;
+}
+.ib:hover { color: var(--hi); background: var(--q-raise); }
+.ib.active { color: #fff; background: var(--sel); border-color: rgba(88,166,255,.45); }
+.ib svg { width: 17px; height: 17px; }
+.ib .badge {
+  position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px; border-radius: 7px;
+  font: 600 9px/14px var(--mono); background: var(--amber); color: #0d1117; padding: 0 3px; text-align: center;
+}
+.grow { flex: 1; }
+.spend-ticker {
+  font: 600 10px var(--mono); color: var(--amber); text-align: center; padding: 4px 2px;
+  border-radius: 4px; cursor: pointer;
+}
+.spend-ticker:hover { background: var(--q-raise); color: #fff; }
+
+/* Collapsible Left Panel */
+.panel {
+  width: 230px; flex: none; background: #0e131a; border-right: 1px solid var(--q-line);
+  display: flex; flex-direction: column; min-height: 0; transition: width .15s ease;
+}
+.panel.closed { width: 0; border-right: none; display: none; }
+.phead {
+  padding: 8px 10px; border-bottom: 1px solid var(--q-line); background: var(--q-panel);
+  display: flex; align-items: center; justify-content: space-between; font-weight: 600; color: var(--hi);
+}
+.phead small { font: 500 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.pbody { flex: 1; min-height: 0; overflow: auto; padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; }
+.prow {
+  display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 5px;
+  color: var(--fg); cursor: pointer; font-size: 11.5px;
+}
+.prow:hover { background: var(--q-panel); color: #fff; }
+.prow.active { background: var(--q-panel); border: 1px solid var(--q-line); color: #fff; }
+.prow .dot { width: 6px; height: 6px; border-radius: 50%; }
+.dot-green { background: var(--green); }
+.dot-amber { background: var(--amber); }
+
+/* Center Stage Area */
+.stage { flex: 1; min-width: 320px; display: flex; flex-direction: column; background: var(--q-bg); position: relative; min-height: 0; }
+
+/* Candidate A: Zero chrome */
+/* Candidate B: Stage Tabs bar */
+.stage-tabbar {
+  height: 34px; flex: none; background: var(--q-panel); border-bottom: 1px solid var(--q-line);
+  display: flex; align-items: center; padding: 0 8px; gap: 3px; z-index: 1;
+}
+.stab {
+  height: 26px; padding: 0 10px; border-radius: 5px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); font: 500 11.5px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.stab:hover { color: var(--hi); background: var(--q-raise); }
+.stab.active { background: var(--q-bg); border-color: var(--q-line); color: var(--hi); font-weight: 500; }
+.stab .xclose { font-size: 12px; color: var(--muted); margin-left: 2px; }
+.stab .xclose:hover { color: var(--red); }
+.tabbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.layout-btn-group { display: flex; gap: 2px; background: var(--q-bg); padding: 2px; border-radius: 4px; border: 1px solid var(--q-line); }
+.lbtn {
+  width: 22px; height: 20px; border: 0; background: transparent; color: var(--muted);
+  border-radius: 3px; cursor: pointer; display: grid; place-items: center; padding: 0;
+}
+.lbtn:hover { color: var(--hi); background: var(--q-raise); }
+.lbtn.active { color: var(--blue); background: var(--sel); }
+.lbtn svg { width: 12px; height: 12px; }
+
+/* Candidate C & D: Status Strip */
+.stage-statusstrip {
+  height: 24px; flex: none; background: #161b22; border-top: 1px solid var(--q-line);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 10px;
+  font: 11px/24px var(--mono); color: var(--muted); z-index: 1; user-select: none;
+}
+.stage-statusstrip.classic { height: 32px; font-size: 11.5px; }
+.status-left { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+.status-right { display: flex; align-items: center; gap: 8px; flex: none; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; height: 18px;
+  border-radius: 3px; font-size: 10px;
+}
+.status-pill.amber { background: rgba(210,153,34,.16); color: #f2cc60; border: 1px solid rgba(210,153,34,.3); }
+.status-pill.green { background: rgba(63,185,80,.15); color: #56d364; border: 1px solid rgba(63,185,80,.3); }
+
+/* Candidate D: Micro Header */
+.stage-microhead {
+  height: 24px; flex: none; background: #161b22; border-bottom: 1px solid var(--q-line);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 10px;
+  font: 11px var(--body); color: var(--muted);
+}
+
+/* Terminal Viewport / Panes */
+.stage-viewport {
+  flex: 1; min-height: 0; position: relative; background: #0d1117; padding: 4px;
+  display: flex; gap: 4px;
+}
+.pane-col { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.terminal-pane {
+  flex: 1; display: flex; flex-direction: column; background: #090c10;
+  border: 1px solid var(--q-line); border-radius: 6px; overflow: hidden; min-height: 0;
+}
+.pane-focused { border-color: rgba(88,166,255,.5); box-shadow: 0 0 0 1px rgba(88,166,255,.2); }
+.tp-head {
+  height: 28px; flex: none; background: #13171f; border-bottom: 1px solid var(--q-line);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 8px;
+  font: 11.5px var(--body); user-select: none;
+}
+.tp-title { display: flex; align-items: center; gap: 6px; font-weight: 500; color: #fff; min-width: 0; }
+.tp-actions { display: flex; align-items: center; gap: 4px; }
+.mode-tag {
+  font: 600 10px var(--mono); padding: 1px 6px; border-radius: 3px; cursor: pointer;
+  background: rgba(63,185,80,.15); color: #56d364; border: 1px solid rgba(63,185,80,.3);
+}
+.tp-btn {
+  width: 18px; height: 18px; border: 0; background: transparent; color: var(--muted);
+  border-radius: 3px; cursor: pointer; display: grid; place-items: center; font-size: 11px;
+}
+.tp-btn:hover { color: #fff; background: var(--q-raise); }
+.term-content {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px;
+  font: 11.5px/1.55 var(--mono); color: #c9d1d9; white-space: pre-wrap;
+}
+.term-content .c-dim { color: var(--muted); }
+.term-content .c-cyan { color: var(--cyan); }
+.term-content .c-grn { color: var(--green); }
+.term-content .c-amb { color: var(--amber); }
+
+/* Praxis Canvas Mock */
+.praxis-stage {
+  flex: 1; min-height: 0; background: #080b0f; display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
+}
+.canvas-bg {
+  flex: 1; position: relative;
+  background-image: radial-gradient(circle, #21262d 1px, transparent 1px);
+  background-size: 18px 18px; display: grid; place-items: center;
+}
+.node-card {
+  position: absolute; width: 170px; background: #161b22; border: 1px solid var(--q-line);
+  border-radius: 6px; padding: 8px 10px; font-size: 11.5px; box-shadow: 0 4px 12px rgba(0,0,0,.5);
+}
+.node-card.active { border-color: var(--blue); }
+.node-title { font-weight: 600; color: #fff; margin-bottom: 2px; }
+.node-sub { font: 10px var(--mono); color: var(--muted); }
+
+/* Right Companion */
+.comp {
+  width: 320px; flex: none; border-left: 1px solid var(--q-line); background: #0b0f14;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.comp-head {
+  padding: 8px 12px; background: var(--q-panel); border-bottom: 1px solid var(--q-line);
+  display: flex; align-items: center; justify-content: space-between; font-weight: 600; color: #fff;
+}
+.comp-body { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.comp-card {
+  background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 6px; padding: 8px 10px;
+}
+.comp-card h4 { margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+/* Metrics & Assessment Section */
+.assess-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 14px;
+}
+.card {
+  background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 8px; padding: 14px 16px;
+}
+.card small { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+.card strong { display: block; font: 600 16px var(--display); color: var(--hi); margin: 3px 0 4px; }
+.card p { margin: 0; color: var(--fg); font-size: 12px; line-height: 1.5; }
+.card ul { margin: 6px 0 0 16px; padding: 0; font-size: 12px; color: var(--fg); }
+.card li { margin-bottom: 3px; }
+
+/* Floating Bar */
+.float-bar {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: #1c2128; border: 1px solid #444c56; border-radius: 24px; padding: 5px 8px;
+  display: flex; align-items: center; gap: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.6);
+  z-index: 50; font: 500 12px var(--body);
+}
+.fbtn {
+  width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--q-raise);
+  color: var(--hi); display: grid; place-items: center; cursor: pointer;
+}
+.fbtn:hover { background: #38414e; }
+.flabel { padding: 0 8px; color: #fff; font-weight: 600; white-space: nowrap; }
+.pill {
+  font: 600 10px var(--mono); padding: 2px 7px; border-radius: 10px; background: rgba(88,166,255,.2);
+  color: var(--blue); margin-left: 4px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="tag">Prototype #616 · Shell Redesign</div>
+      <h1>What Becomes of the Stage Header and Status Strip</h1>
+    </div>
+    <div class="controls">
+      <fieldset class="seg">
+        <legend>Stage &amp; Status Chrome Candidates</legend>
+        <button type="button" class="var-btn" data-var="A">A · Pure Canvas (Remove Both)</button>
+        <button type="button" class="var-btn" data-var="B">B · Stage Tabs Only (No Status Strip)</button>
+        <button type="button" class="var-btn" data-var="C">C · Micro Statusline Only (No Top Header)</button>
+        <button type="button" class="var-btn" data-var="D">D · Dual Micro Bars (24px + 24px)</button>
+      </fieldset>
+      <fieldset class="seg">
+        <legend>Stage Layout</legend>
+        <button type="button" class="sub-btn" data-lay="single">Single (1x1)</button>
+        <button type="button" class="sub-btn" data-lay="split">Split (Side-by-Side)</button>
+        <button type="button" class="sub-btn" data-lay="grid">2x2 Grid</button>
+      </fieldset>
+      <fieldset class="seg">
+        <legend>Stage Mode</legend>
+        <button type="button" class="sub-btn" data-mode="terminal">Terminals</button>
+        <button type="button" class="sub-btn" data-mode="praxis">Praxis Builder Tab</button>
+      </fieldset>
+    </div>
+  </div>
+
+  <!-- Interactive Mock Quay Shell -->
+  <div class="scroll">
+    <div class="shell" id="shell">
+      <!-- 1. Left 48px Module Bar -->
+      <nav class="abar" aria-label="Module bar">
+        <button type="button" class="ib active" title="Projects (Ctrl+Shift+B 1)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+        </button>
+        <button type="button" class="ib" title="Source Control (Ctrl+Shift+B c)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>
+        </button>
+        <button type="button" class="ib" title="Agents (Ctrl+Shift+B q)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/><circle cx="12" cy="12" r="6"/></svg>
+          <span class="badge">2</span>
+        </button>
+        <button type="button" class="ib" title="Workflows &amp; Praxis (Ctrl+Shift+B p)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </button>
+        <button type="button" class="ib" title="Project Settings (Ctrl+Shift+B t)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <span class="grow"></span>
+        <div class="spend-ticker" title="Today's Claude Spend: $0.20">$0.20</div>
+        <button type="button" class="ib" title="Command Palette (Ctrl+Shift+P)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+      </nav>
+
+      <!-- 2. Left Module Panel (Projects) -->
+      <aside class="panel" id="panel">
+        <div class="phead">
+          <span>PROJECTS</span>
+          <small>Ctrl+Shift+B 1</small>
+        </div>
+        <div class="pbody">
+          <div style="font:600 10px var(--mono); color:var(--muted); padding:4px 6px;">QUAY2 (MASTER)</div>
+          <div class="prow active">
+            <span class="dot dot-green"></span>
+            <span style="font-weight:600">Claude #616</span>
+            <span style="margin-left:auto; font:10px var(--mono); color:var(--muted)">1</span>
+          </div>
+          <div class="prow">
+            <span class="dot dot-amber"></span>
+            <span>Codex #614</span>
+            <span style="margin-left:auto; font:10px var(--mono); color:var(--muted)">2</span>
+          </div>
+          <div class="prow">
+            <span class="dot dot-green"></span>
+            <span>PowerShell</span>
+            <span style="margin-left:auto; font:10px var(--mono); color:var(--muted)">3</span>
+          </div>
+          <div style="font:600 10px var(--mono); color:var(--muted); padding:8px 6px 2px;">WORKTREES</div>
+          <div class="prow">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>
+            <span>shell-redesign</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 3. Center Stage -->
+      <main class="stage" id="stage">
+        <!-- Rendered dynamically by candidate -->
+      </main>
+
+      <!-- 4. Right Companion -->
+      <aside class="comp">
+        <div class="comp-head">
+          <span>COMPANION</span>
+          <span style="font:10px var(--mono); color:var(--muted)">#616</span>
+        </div>
+        <div class="comp-body">
+          <div class="comp-card">
+            <h4>Active Terminal PR</h4>
+            <div style="font-weight:600; color:#fff">Quay shell redesign</div>
+            <div style="font:11px var(--mono); color:var(--muted); margin-top:2px;">Branch: prototype/shell-redesign</div>
+          </div>
+          <div class="comp-card">
+            <h4>Readiness Summary</h4>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <span class="status-pill green">Checks 4/4</span>
+              <span class="status-pill green">Diff +120 -8</span>
+            </div>
+          </div>
+          <div class="comp-card">
+            <h4>Decision In Progress</h4>
+            <div style="font-size:12px; color:var(--fg)">
+              Resolving what remains of the stage header and status strip in Quay's redesigned window.
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Real Estate & Tradeoffs Assessment Grid -->
+  <div class="assess-grid" id="assess">
+    <!-- Populated by JavaScript -->
+  </div>
+</div>
+
+<!-- Floating Switcher Bar -->
+<div class="float-bar">
+  <button type="button" class="fbtn" id="prev-btn" title="Previous variant (←)">‹</button>
+  <span class="flabel" id="float-label">Candidate B · Stage Tabs Only</span>
+  <button type="button" class="fbtn" id="next-btn" title="Next variant (→)">›</button>
+</div>
+
+<script>
+const VARIANTS = {
+  A: {
+    id: "A",
+    name: "Pure Canvas",
+    label: "A · Pure Canvas (Remove Both)",
+    tag: "Maximum Real Estate",
+    topHeight: 0,
+    bottomHeight: 0,
+    totalChrome: 0,
+    reclaimedPx: 72,
+    linesGained: "+4.8 lines",
+    summary: "Stage Header and Status Strip are both eliminated completely. The terminal viewport stretches 100% between window top and bottom. Each terminal pane keeps its 28px pane header (title, status dot, Skip mode pill, zoom, close). Stage layout is controlled via Pie Menu (SW), chords (Ctrl+Shift+B z/x), or Command Palette.",
+    pros: [
+      "Maximum vertical terminal real estate (+72px total: 40px stage header + 32px status strip gone)",
+      "Zero redundant chrome — no duplicate project names, no button clutter",
+      "Pure focus on terminal code and agent conversation",
+      "Terminals expand to full window borders"
+    ],
+    cons: [
+      "No permanent clickable surface for stage layout buttons (requires Pie SW or chord)",
+      "Praxis Builder stage tab (#617) has no natural tab bar to live in — must swap view or overlay",
+      "Status telemetry depends entirely on individual pane headers"
+    ]
+  },
+  B: {
+    id: "B",
+    name: "Stage Tabs Only",
+    label: "B · Stage Tabs Only (No Status Strip)",
+    tag: "Recommended",
+    topHeight: 34,
+    bottomHeight: 0,
+    totalChrome: 34,
+    reclaimedPx: 38,
+    linesGained: "+2.5 lines",
+    summary: "Status Strip is completely eliminated (telemetry moved to Pane Header; spend and attention badges live in the Module Bar). Stage Header is replaced by a slim 34px Stage Tab Bar hosting terminal tabs, the Praxis Builder stage tab (#617), and permanent stage layout switchers (Single, Split, Grid, Zoom) on the right.",
+    pros: [
+      "Directly satisfies Decision #617: Praxis Builder opens as a Stage Tab in 1 click",
+      "1-click switching between terminals and workflow tools with visible titles",
+      "Stage layout buttons stay permanently visible and discoverable (0-click pointing)",
+      "Reclaims 38px of vertical height by banishing the bottom status strip",
+      "Zero duplicate buttons: Swarm, Diffs, Spend, Factory moved out to module panels"
+    ],
+    cons: [
+      "Takes 34px at top of stage compared to pure canvas (Variant A)"
+    ]
+  },
+  C: {
+    id: "C",
+    name: "Micro Statusline Only",
+    label: "C · Micro Statusline Only (No Top Header)",
+    tag: "Editor / IDE Style",
+    topHeight: 0,
+    bottomHeight: 24,
+    totalChrome: 24,
+    reclaimedPx: 48,
+    linesGained: "+3.2 lines",
+    summary: "Stage Header is completely removed. Terminals stretch flush to the window top. A 24px micro-statusline at the stage bottom hosts active project/worktree context, agent live status text ('Claude: working (search)'), auto-approved count, and stage layout pills.",
+    pros: [
+      "Terminals are flush with the top of the window (clean top canvas)",
+      "Reclaims 48px vertical height total",
+      "Familiar VS Code / vim statusline at bottom with layout switcher pills"
+    ],
+    cons: [
+      "In multi-pane splits (Split or Grid), a single bottom statusline is ambiguous about which pane it describes",
+      "Praxis Builder stage tab (#617) has no top tab bar to live in",
+      "Redundant with the terminal pane header's own status indicators"
+    ]
+  },
+  D: {
+    id: "D",
+    name: "Dual Micro Bars",
+    label: "D · Dual Micro Bars (24px + 24px)",
+    tag: "High Density",
+    topHeight: 24,
+    bottomHeight: 24,
+    totalChrome: 48,
+    reclaimedPx: 24,
+    linesGained: "+1.6 lines",
+    summary: "Both bars are retained but slimmed to 24px micro-bars. Top bar hosts micro-tabs for terminals and layout buttons. Bottom bar hosts agent telemetry text and spend.",
+    pros: [
+      "Preserves both top tabs and bottom global statusline",
+      "24px reclaimed compared to today's Quay (72px → 48px)"
+    ],
+    cons: [
+      "Still consumes 48px of stage height across two separate chrome bars",
+      "High visual noise: four horizontal lines (micro-head, pane-head, terminal, statusline)",
+      "Fragments information that belongs together"
+    ]
+  }
+};
+
+const state = {
+  variant: "B",
+  layout: "single", // "single", "split", "grid"
+  mode: "terminal", // "terminal" or "praxis"
+  activeTab: "term1"
+};
+
+function syncUrl() {
+  const url = new URL(window.location);
+  url.searchParams.set("variant", state.variant);
+  url.searchParams.set("layout", state.layout);
+  url.searchParams.set("mode", state.mode);
+  window.history.replaceState({}, "", url);
+}
+
+function initFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("variant");
+  if (v && VARIANTS[v]) state.variant = v;
+  const l = params.get("layout");
+  if (l && ["single", "split", "grid"].includes(l)) state.layout = l;
+  const m = params.get("mode");
+  if (m && ["terminal", "praxis"].includes(m)) state.mode = m;
+}
+
+function renderStageTabs() {
+  return `
+    <div class="stage-tabbar">
+      <button type="button" class="stab ${state.activeTab === "term1" ? "active" : ""}" data-tab="term1">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>Claude #616</span>
+      </button>
+      <button type="button" class="stab ${state.activeTab === "term2" ? "active" : ""}" data-tab="term2">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>Codex #614</span>
+      </button>
+      <button type="button" class="stab ${state.activeTab === "praxis" ? "active" : ""}" data-tab="praxis">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        <span>Praxis Builder</span>
+        <span class="xclose" title="Close Stage Tab">×</span>
+      </button>
+      <div class="tabbar-right">
+        <span style="font:11px var(--mono); color:var(--muted); margin-right:6px;">Quay2 › master</span>
+        <div class="layout-btn-group">
+          <button type="button" class="lbtn ${state.layout === "single" ? "active" : ""}" data-setlayout="single" title="Single Layout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          </button>
+          <button type="button" class="lbtn ${state.layout === "split" ? "active" : ""}" data-setlayout="split" title="Split Horizontal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+          </button>
+          <button type="button" class="lbtn ${state.layout === "grid" ? "active" : ""}" data-setlayout="grid" title="2x2 Grid">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMicroHead() {
+  return `
+    <div class="stage-microhead">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-weight:600; color:#fff;">Quay2</span>
+        <span style="color:var(--q-line);">›</span>
+        <span>master</span>
+        <span style="color:var(--q-line);">|</span>
+        <span style="color:${state.activeTab === "praxis" ? "var(--amber)" : "var(--hi)"}">
+          ${state.activeTab === "praxis" ? "🎛 Praxis Builder" : "Claude #616"}
+        </span>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button type="button" class="lbtn ${state.layout === "single" ? "active" : ""}" data-setlayout="single">▢</button>
+        <button type="button" class="lbtn ${state.layout === "split" ? "active" : ""}" data-setlayout="split">◫</button>
+        <button type="button" class="lbtn ${state.layout === "grid" ? "active" : ""}" data-setlayout="grid">⊞</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderStatusStrip(classic) {
+  return `
+    <footer class="stage-statusstrip ${classic ? "classic" : ""}">
+      <div class="status-left">
+        <span style="font-weight:600; color:#fff;">Claude #616</span>
+        <span style="color:var(--q-line);">|</span>
+        <span style="color:var(--green)">●</span>
+        <span class="truncate">Working: run_command (prototypes/shell-redesign)</span>
+        <span class="status-pill green">1 auto-approved</span>
+      </div>
+      <div class="status-right">
+        ${state.variant === "C" ? `
+          <div class="layout-btn-group" style="margin-right:4px;">
+            <button type="button" class="lbtn ${state.layout === "single" ? "active" : ""}" data-setlayout="single" title="Single">▢</button>
+            <button type="button" class="lbtn ${state.layout === "split" ? "active" : ""}" data-setlayout="split" title="Split">◫</button>
+            <button type="button" class="lbtn ${state.layout === "grid" ? "active" : ""}" data-setlayout="grid" title="Grid">⊞</button>
+          </div>
+        ` : ""}
+        <span>Quay2 @ master</span>
+      </div>
+    </footer>
+  `;
+}
+
+function renderTerminalPane(id, title, isFocused, lines) {
+  return `
+    <section class="terminal-pane ${isFocused ? "pane-focused" : ""}">
+      <header class="tp-head">
+        <div class="tp-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span>${title}</span>
+          <span style="color:var(--green); font-size:9px;">●</span>
+        </div>
+        <div class="tp-actions">
+          <span class="mode-tag" title="Toggle Auto-Approve / Ask (Ctrl+Shift+B a)">Skip</span>
+          <button type="button" class="tp-btn" title="Zoom Pane (Ctrl+Shift+B z)">⛶</button>
+          <button type="button" class="tp-btn" title="Close Pane (Ctrl+Shift+B x)">×</button>
+        </div>
+      </header>
+      <div class="term-content">
+        ${lines}
+      </div>
+    </section>
+  `;
+}
+
+function renderPraxisCanvas() {
+  return `
+    <div class="praxis-stage">
+      <div class="canvas-bg">
+        <div class="node-card" style="top:50px; left:60px;">
+          <div class="node-title">1. git-fetch</div>
+          <div class="node-sub">type: git_action</div>
+        </div>
+        <div class="node-card active" style="top:140px; left:260px;">
+          <div class="node-title">2. test-runner</div>
+          <div class="node-sub">pnpm vitest run</div>
+          <span class="status-pill green" style="margin-top:4px;">PASS (48)</span>
+        </div>
+        <div class="node-card" style="top:230px; left:480px;">
+          <div class="node-title">3. build-audit</div>
+          <div class="node-sub">pre-pr leak gate</div>
+        </div>
+        <div style="position:absolute; bottom:12px; left:12px; font:11px var(--mono); color:var(--muted); background:rgba(0,0,0,.6); padding:4px 8px; border-radius:4px;">
+          Praxis 2D Canvas · 3 nodes · Full stage width active
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTerminalContent() {
+  const term1Code = `
+<span class="c-dim"># Terminal 1 — Claude (wayfinder driver)</span>
+<span class="c-cyan">➜ Quay2 (prototype/shell-redesign) $</span> git status
+On branch prototype/shell-redesign
+Changes not staged for commit:
+  <span class="c-grn">modified: prototypes/shell-redesign/quay-command-surfaces.html</span>
+  <span class="c-amb">new file: prototypes/shell-redesign/quay-stage-and-status.html</span>
+
+<span class="c-cyan">➜ Quay2 (prototype/shell-redesign) $</span> gh issue view 616
+title: What becomes of the stage header and status strip
+labels: wayfinder:prototype
+state: OPEN
+<span class="c-dim">Stage chrome measurement active...</span>
+`;
+
+  const term2Code = `
+<span class="c-dim"># Terminal 2 — Codex (ticket-614 worker)</span>
+<span class="c-cyan">➜ Quay2 (master) $</span> cargo check
+    Checking quay-core v0.7.0
+    Finished dev profile in 1.42s
+<span class="c-grn">All checks passing</span>
+`;
+
+  const term3Code = `
+<span class="c-dim"># Terminal 3 — Vitest watch</span>
+PASS src/slices/stage/singlePane.test.ts
+PASS src/slices/terminal/terminalMenu.test.ts
+`;
+
+  const term4Code = `
+<span class="c-dim"># Terminal 4 — Build Server</span>
+vite v6.1.0 dev server running at http://localhost:1420/
+`;
+
+  if (state.layout === "single") {
+    return `
+      <div class="stage-viewport">
+        ${renderTerminalPane("t1", "1: Claude #616 (bash)", true, term1Code)}
+      </div>
+    `;
+  } else if (state.layout === "split") {
+    return `
+      <div class="stage-viewport">
+        ${renderTerminalPane("t1", "1: Claude #616", true, term1Code)}
+        ${renderTerminalPane("t2", "2: Codex #614", false, term2Code)}
+      </div>
+    `;
+  } else if (state.layout === "grid") {
+    return `
+      <div class="stage-viewport">
+        <div class="pane-col">
+          ${renderTerminalPane("t1", "1: Claude #616", true, term1Code)}
+          ${renderTerminalPane("t3", "3: Vitest", false, term3Code)}
+        </div>
+        <div class="pane-col">
+          ${renderTerminalPane("t2", "2: Codex #614", false, term2Code)}
+          ${renderTerminalPane("t4", "4: Vite Dev", false, term4Code)}
+        </div>
+      </div>
+    `;
+  }
+}
+
+function render() {
+  syncUrl();
+  const v = VARIANTS[state.variant];
+
+  // Button state
+  document.querySelectorAll(".var-btn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.var === state.variant)));
+  document.querySelectorAll(".sub-btn[data-lay]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lay === state.layout)));
+  document.querySelectorAll(".sub-btn[data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+
+  // Float bar label
+  document.getElementById("float-label").innerHTML = `${v.label} <span class="pill">${v.tag}</span>`;
+
+  // Render Stage
+  const stageEl = document.getElementById("stage");
+  let stageHtml = "";
+
+  // Top Chrome
+  if (state.variant === "B") {
+    stageHtml += renderStageTabs();
+  } else if (state.variant === "D") {
+    stageHtml += renderMicroHead();
+  }
+
+  // Middle Content
+  if (state.mode === "praxis") {
+    stageHtml += renderPraxisCanvas();
+  } else {
+    stageHtml += renderTerminalContent();
+  }
+
+  // Bottom Chrome
+  if (state.variant === "C") {
+    stageHtml += renderStatusStrip(false);
+  } else if (state.variant === "D") {
+    stageHtml += renderStatusStrip(false);
+  }
+
+  stageEl.innerHTML = stageHtml;
+
+  // Render Assessment Grid
+  const assessEl = document.getElementById("assess");
+  assessEl.innerHTML = `
+    <div class="card">
+      <small>Real Estate Comparison</small>
+      <strong>${v.reclaimedPx} px Reclaimed (${v.linesGained})</strong>
+      <p>Today's Quay: <strong>72 px</strong> (40px Header + 32px Strip).<br>
+      Candidate ${v.id}: <strong>${v.totalChrome} px</strong> (Top: ${v.topHeight}px, Bottom: ${v.bottomHeight}px).
+      Reclaims vertical canvas space equivalent to ${v.linesGained} on a standard display.</p>
+    </div>
+    <div class="card">
+      <small>Stage Layout Affordance</small>
+      <strong>${state.variant === "B" ? "Permanent 1-Click Buttons" : state.variant === "A" ? "Pie Menu SW / Chords" : "Bottom Statusline Pills"}</strong>
+      <p>${state.variant === "B" ? "Dedicated layout switchers stay anchored in top-right tab bar. Zero muscle memory loss." : state.variant === "A" ? "No persistent buttons. Switch layout via Pie Menu SW (Split → Side, Stack, Grid) or Ctrl+Shift+B z/x." : "Layout switchers anchored in bottom-right statusline."}</p>
+    </div>
+    <div class="card">
+      <small>Praxis Stage Tab (#617 Fit)</small>
+      <strong>${state.variant === "B" ? "Native 1-Click Tab" : "View Swap / Modal"}</strong>
+      <p>${state.variant === "B" ? "Approved Decision #617 places Praxis Builder in a Stage Tab. Candidate B provides the native tab bar for seamless switching." : "Without a top tab bar, switching between terminal and Praxis Builder requires an in-pane header toggle or command palette."}</p>
+    </div>
+    <div class="card">
+      <small>Deduplication &amp; Cleanliness</small>
+      <strong>Zero Redundant Buttons</strong>
+      <p>Swarm, Diffs, Spend, Factory, Worktree, and New Terminal all live in their respective Module Panels (#615). Neither the top nor bottom bar carries button duplicates.</p>
+    </div>
+  `;
+}
+
+// Event Delegation
+document.addEventListener("click", e => {
+  const vb = e.target.closest(".var-btn");
+  if (vb) { state.variant = vb.dataset.var; render(); return; }
+
+  const lb = e.target.closest("[data-lay]");
+  if (lb) { state.layout = lb.dataset.lay; render(); return; }
+
+  const mb = e.target.closest("[data-mode]");
+  if (mb) {
+    state.mode = mb.dataset.mode;
+    state.activeTab = state.mode === "praxis" ? "praxis" : "term1";
+    render();
+    return;
+  }
+
+  const tab = e.target.closest("[data-tab]");
+  if (tab) {
+    state.activeTab = tab.dataset.tab;
+    state.mode = state.activeTab === "praxis" ? "praxis" : "terminal";
+    render();
+    return;
+  }
+
+  const setLay = e.target.closest("[data-setlayout]");
+  if (setLay) {
+    state.layout = setLay.dataset.setlayout;
+    render();
+    return;
+  }
+});
+
+const VAR_KEYS = ["A", "B", "C", "D"];
+function stepVar(dir) {
+  const idx = VAR_KEYS.indexOf(state.variant);
+  state.variant = VAR_KEYS[(idx + dir + VAR_KEYS.length) % VAR_KEYS.length];
+  render();
+}
+document.getElementById("prev-btn").onclick = () => stepVar(-1);
+document.getElementById("next-btn").onclick = () => stepVar(1);
+
+document.addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (e.key === "ArrowLeft") stepVar(-1);
+  if (e.key === "ArrowRight") stepVar(1);
+  if (e.key === "1") { state.layout = "single"; render(); }
+  if (e.key === "2") { state.layout = "split"; render(); }
+  if (e.key === "3") { state.layout = "grid"; render(); }
+  if (e.key.toLowerCase() === "t") { state.mode = "terminal"; state.activeTab = "term1"; render(); }
+  if (e.key.toLowerCase() === "p") { state.mode = "praxis"; state.activeTab = "praxis"; render(); }
+});
+
+initFromUrl();
+render();
+</script>
+</body>
+</html>

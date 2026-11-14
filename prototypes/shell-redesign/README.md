@@ -27,4 +27,7 @@ with example data; nothing is wired to Quay.
   stage tab, full-window) for Topos, Praxis Builder, and Machina Factory.
   Chosen: Topos in companion (with Wide), Praxis Builder as a stage tab,
   Machina Factory in the Workflows panel.
+- `quay-stage-and-status.html`: four candidates for what becomes of the
+  stage header and status strip (Pure Canvas, Stage Tabs Only, Micro
+  Statusline Only, Dual Micro Bars) across Single, Split, and Grid layouts.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.
