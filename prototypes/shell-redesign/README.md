@@ -20,4 +20,7 @@ with example data; nothing is wired to Quay.
 - `quay-companion-wide.html`: four ways for the companion to go wide for
   a large diff. Chosen: the diff lens, which slides the files over the
   terminal while the companion keeps the readiness card and merge.
+- `quay-command-surfaces.html`: interactive prototype showing where every
+  command lives across the module bar, 5 module panels, pane header,
+  companion, 2-ring pie menu, and command palette.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.

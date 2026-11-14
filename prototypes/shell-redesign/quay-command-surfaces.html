@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quay Shell Redesign: Where Every Command Lives</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12;
+  --q-bg: #0d1117;
+  --q-panel: #161b22;
+  --q-raise: #21262d;
+  --q-line: #30363d;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --blue: #58a6ff;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+  --purple: #bc8cff;
+  --cyan: #38bdf8;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 var(--body);
+  margin: 0;
+  padding: 24px;
+}
+.wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+header.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--q-line);
+  padding-bottom: 16px;
+}
+h1 {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px 0;
+}
+.lede { color: var(--muted); font-size: 13px; margin: 0; }
+.actions-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--q-line);
+  background: var(--q-panel);
+  border-radius: 6px;
+  padding: 6px 12px;
+  transition: all 0.15s ease;
+}
+button:hover { background: var(--q-raise); color: #fff; }
+button.primary { background: #1f6feb; border-color: #388bfd; color: #fff; font-weight: 600; }
+button.primary:hover { background: #388bfd; }
+
+/* Interactive Shell Mock */
+.shell-frame {
+  position: relative;
+  display: flex;
+  height: 640px;
+  background: var(--q-bg);
+  border: 1px solid var(--q-line);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(0,0,0,0.45);
+}
+
+/* 1. Module Bar (48px) */
+.module-bar {
+  width: 48px;
+  flex: none;
+  background: var(--q-panel);
+  border-right: 1px solid var(--q-line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  z-index: 5;
+}
+.mod-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.mod-btn:hover { background: var(--q-raise); color: #fff; }
+.mod-btn.active {
+  background: var(--q-raise);
+  color: #fff;
+  border-color: var(--q-line);
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+.mod-btn svg { width: 18px; height: 18px; }
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--amber);
+  color: #0d1117;
+  font: 700 9px/14px var(--mono);
+  text-align: center;
+  padding: 0 3px;
+}
+.badge.blue { background: var(--blue); }
+.badge.green { background: var(--green); }
+.bar-spacer { flex: 1; }
+.spend-ticker {
+  font: 600 10px var(--mono);
+  color: var(--amber);
+  text-align: center;
+  padding: 4px 2px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.spend-ticker:hover { background: var(--q-raise); color: #fff; }
+
+/* 2. Collapsible Module Panel */
+.module-panel {
+  width: 250px;
+  flex: none;
+  background: #0d1117;
+  border-right: 1px solid var(--q-line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.18s ease;
+}
+.module-panel.closed {
+  width: 0;
+  border-right: none;
+}
+.panel-head {
+  padding: 10px 14px;
+  background: var(--q-panel);
+  border-bottom: 1px solid var(--q-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.panel-head .hint { font: 10px var(--mono); color: var(--muted); font-weight: normal; }
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.section-title {
+  font: 600 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 10px 6px 3px 6px;
+}
+.panel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  background: transparent;
+  width: 100%;
+}
+.panel-item:hover { background: var(--q-panel); color: #fff; }
+.panel-item.active { background: var(--q-panel); border-color: var(--q-line); color: #fff; }
+.panel-item svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.panel-item:hover svg { color: #fff; }
+.panel-item .meta { margin-left: auto; font: 10px var(--mono); color: var(--muted); }
+.panel-item .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.dot.green { background: var(--green); }
+.dot.amber { background: var(--amber); }
+
+/* 3. Stage & Terminal Pane */
+.stage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--q-bg);
+}
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+}
+.pane-head {
+  height: 36px;
+  background: #161b22;
+  border-bottom: 1px solid var(--q-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: 12px;
+  user-select: none;
+}
+.pane-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.run-kind-icon { color: #f0883e; display: flex; align-items: center; }
+.pane-title { font-weight: 600; color: #fff; white-space: nowrap; }
+.pane-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--blue);
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 12px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.pane-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.skip-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font: 600 11px var(--mono);
+  color: var(--green);
+  background: rgba(63, 185, 80, 0.12);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.skip-toggle:hover { background: rgba(63, 185, 80, 0.25); }
+.icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+}
+.icon-btn:hover { background: var(--q-raise); color: #fff; }
+.icon-btn svg { width: 14px; height: 14px; }
+
+.terminal-body {
+  flex: 1;
+  padding: 16px;
+  font: 12px/1.65 var(--mono);
+  overflow-y: auto;
+  color: #c9d1d9;
+}
+.t-cmd { color: var(--cyan); }
+.t-tool { color: var(--amber); }
+.t-path { color: var(--blue); text-decoration: underline; }
+.t-box {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--green);
+  background: rgba(63, 185, 80, 0.05);
+}
+
+/* 4. Companion (Right Column) */
+.companion {
+  width: 320px;
+  flex: none;
+  background: #090d13;
+  border-left: 1px solid var(--q-line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.comp-head {
+  padding: 10px 12px;
+  background: var(--q-panel);
+  border-bottom: 1px solid var(--q-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.comp-head b { color: #fff; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.comp-head .pr-num { font: 11px var(--mono); color: var(--blue); }
+.comp-readiness {
+  padding: 12px;
+  border-bottom: 1px solid var(--q-line);
+  background: rgba(13, 17, 23, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pr-title { font-weight: 600; font-size: 13px; color: #fff; }
+.readiness-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.r-card {
+  padding: 6px 8px;
+  background: var(--q-raise);
+  border: 1px solid var(--q-line);
+  border-radius: 5px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.r-card .k { color: var(--muted); font: 10px var(--mono); }
+.r-card .v { font-weight: 600; color: var(--green); }
+.comp-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--q-line);
+  background: var(--q-panel);
+}
+.comp-tab {
+  flex: 1;
+  padding: 7px 0;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.comp-tab.active {
+  color: #fff;
+  border-bottom-color: var(--blue);
+  background: #0d1117;
+}
+.comp-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  font-size: 12px;
+}
+.diff-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  font: 11px var(--mono);
+}
+.diff-item .stat { color: var(--green); }
+.comp-footer {
+  padding: 10px 12px;
+  background: var(--q-panel);
+  border-top: 1px solid var(--q-line);
+  display: flex;
+  gap: 8px;
+}
+.comp-footer button { flex: 1; }
+
+/* 5. Pie Menu (Neon Wireframe) */
+.pie-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 400px;
+  height: 400px;
+  margin-left: -200px;
+  margin-top: -200px;
+  pointer-events: none;
+  z-index: 100;
+  animation: pop 0.12s ease-out;
+}
+@keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.pie-overlay.hidden { display: none; }
+.pie-overlay svg { width: 100%; height: 100%; }
+
+/* Command Palette Modal */
+.palette-modal {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 580px;
+  max-width: calc(100% - 40px);
+  background: #161b22;
+  border: 1px solid #388bfd;
+  border-radius: 8px;
+  box-shadow: 0 20px 48px rgba(0,0,0,0.7);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.palette-modal.hidden { display: none; }
+.pal-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--q-line);
+}
+.pal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font: 14px var(--body);
+}
+.pal-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.pal-item:hover, .pal-item.selected { background: #1f6feb; color: #fff; }
+.pal-item .shortcut {
+  margin-left: auto;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.pal-item:hover .shortcut { color: #fff; }
+
+/* Taxonomy Mapping Table */
+.mapping-card {
+  background: var(--q-panel);
+  border: 1px solid var(--q-line);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.mapping-card h3 {
+  font-family: var(--display);
+  font-size: 16px;
+  margin: 0 0 12px 0;
+  color: #fff;
+}
+.table-wrap { overflow-x: auto; }
+table.mapping-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.mapping-tbl th {
+  text-align: left;
+  padding: 8px 10px;
+  background: #0d1117;
+  color: var(--muted);
+  font: 600 11px var(--mono);
+  border-bottom: 1px solid var(--q-line);
+}
+table.mapping-tbl td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+}
+table.mapping-tbl tr:hover td { background: rgba(255,255,255,0.02); }
+.tag-surf {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font: 600 10px var(--mono);
+}
+.tag-pane { background: rgba(88,166,255,0.15); color: var(--blue); }
+.tag-comp { background: rgba(188,140,255,0.15); color: var(--purple); }
+.tag-mod { background: rgba(63,185,80,0.15); color: var(--green); }
+.tag-pie { background: rgba(210,153,34,0.15); color: var(--amber); }
+.tag-pal { background: rgba(139,148,158,0.15); color: var(--muted); }
+.chord-k {
+  font: 500 11px var(--mono);
+  color: #fff;
+  background: var(--q-raise);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--q-line);
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="page-head">
+    <div>
+      <h1>Quay Shell Redesign: Interactive Command Surfaces</h1>
+      <p class="lede">Every command mapped to its canonical home: Terminal pane header, Companion, 5-Module panel, 2-Ring Pie menu, and Command Palette.</p>
+    </div>
+    <div class="actions-bar">
+      <button id="toggle-pie-btn" class="primary">Toggle Pie Menu Stroke</button>
+      <button id="toggle-palette-btn">Open Command Palette (Ctrl+Shift+P)</button>
+    </div>
+  </header>
+
+  <!-- Interactive Shell Simulation -->
+  <div class="shell-frame" id="shell">
+    
+    <!-- 1. 48px Module Bar -->
+    <nav class="module-bar" aria-label="Modules">
+      <!-- 1. Projects -->
+      <button class="mod-btn active" data-mod="projects" title="Projects (Ctrl+Shift+B 1..9)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </button>
+
+      <!-- 2. Source Control -->
+      <button class="mod-btn" data-mod="source" title="Source Control: GitHub & Topos (Ctrl+Shift+B c, i)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15v-3a3 3 0 0 0-3-3H9"/></svg>
+        <span class="badge blue">2</span>
+      </button>
+
+      <!-- 3. Agents -->
+      <button class="mod-btn" data-mod="agents" title="Agents: Swarms, Waiting on You, Mission Control (Ctrl+Shift+B s, q, m)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
+        <span class="badge">1</span>
+      </button>
+
+      <!-- 4. Workflows -->
+      <button class="mod-btn" data-mod="workflows" title="Workflows: Archon, Machina Factory, Praxis Builder (Ctrl+Shift+B r, f, p)">
+        <!-- Praxis Builder Canvas Handles icon -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h5a3 3 0 0 1 0 6H7v4M12 13h5"/></svg>
+      </button>
+
+      <!-- 5. Project -->
+      <button class="mod-btn" data-mod="project" title="Project: Settings, VS Code, Token Spend, Logs (Ctrl+Shift+B t, u)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+
+      <div class="bar-spacer"></div>
+
+      <!-- Spend Ticker -->
+      <div class="spend-ticker" title="Today API Spend: $14.20 (Click for Token Spend modal)">$14.20</div>
+
+      <!-- Palette Icon -->
+      <button class="mod-btn" id="bar-palette-btn" title="Command Palette (Ctrl+Shift+P)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>
+      </button>
+    </nav>
+
+    <!-- 2. Folding Module Panel -->
+    <aside class="module-panel" id="panel">
+      <!-- Dynamic Panel Content injected via JS -->
+    </aside>
+
+    <!-- 3. Stage & Terminal Pane -->
+    <main class="stage">
+      <div class="terminal-pane">
+        <!-- Minimal Pane Header -->
+        <header class="pane-head">
+          <div class="pane-title-group">
+            <span class="run-kind-icon" title="Claude Code AI Agent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            </span>
+            <span class="pane-title">1: implement 615</span>
+            <div class="pane-status-pill">
+              <span class="pulse-dot"></span>
+              <span>Working: Edit src/App.tsx</span>
+            </div>
+          </div>
+
+          <div class="pane-tools">
+            <button class="skip-toggle" title="Permission Mode: Click to toggle Ask / Skip">
+              <span>Skip</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <button class="icon-btn" title="Zoom Active Pane (Ctrl+Shift+B z)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </button>
+            <button class="icon-btn" title="Close Terminal (Ctrl+Shift+B x)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- Terminal Output Simulation -->
+        <div class="terminal-body">
+          <div><span class="t-cmd">$ quay agent run</span> --task "Redesign command surfaces"</div>
+          <div>Claude Code v0.7.0 [Session id: <span class="t-path">85583259-1a25-4dda</span>]</div>
+          <div class="t-box">
+            <div><span class="t-tool">Tool Call:</span> write_file(<span class="t-path">prototypes/quay-command-surfaces.html</span>)</div>
+            <div>Status: <span style="color:var(--green)">Auto-approved (Skip Mode active)</span></div>
+          </div>
+          <br>
+          <div>All commands cleanly partitioned:</div>
+          <div>• Pane header: Local controls only (Zoom, Skip, Close).</div>
+          <div>• Module bar: 5 modules + badges; tool views live in folding panels.</div>
+          <div>• Companion: PR #615 review, readiness cards, merge button.</div>
+          <div>• Pie menu: Right-click anywhere for instant 2-ring gesture shortcuts!</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 4. Companion (Right Column) -->
+    <aside class="companion">
+      <div class="comp-head">
+        <b>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15v-3a3 3 0 0 0-3-3H9"/></svg>
+          Following Terminal 1
+        </b>
+        <span class="pr-num">PR #615</span>
+      </div>
+
+      <div class="comp-readiness">
+        <div class="pr-title">Shell redesign: command taxonomy & deduplication</div>
+        <div class="readiness-grid">
+          <div class="r-card">
+            <span class="k">CHECKS</span>
+            <span class="v">✓ All 12 passing</span>
+          </div>
+          <div class="r-card">
+            <span class="k">READINESS</span>
+            <span class="v">Ready to merge</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comp-tabs">
+        <button class="comp-tab active">Files (4)</button>
+        <button class="comp-tab">Conversation</button>
+        <button class="comp-tab">Checks</button>
+      </div>
+
+      <div class="comp-body">
+        <div class="diff-item">
+          <span>src/slices/rail/Rail.tsx</span>
+          <span class="stat">+42 -120</span>
+        </div>
+        <div class="diff-item">
+          <span>src/slices/stage/Stage.tsx</span>
+          <span class="stat">+18 -85</span>
+        </div>
+        <div class="diff-item">
+          <span>src/slices/stage/StatusStrip.tsx</span>
+          <span class="stat">+0 -96</span>
+        </div>
+        <div class="diff-item">
+          <span>src/slices/workspace/ctrlBPrefix.ts</span>
+          <span class="stat">+12 -2</span>
+        </div>
+      </div>
+
+      <div class="comp-footer">
+        <button class="primary" title="Merge pull request and delete branch">Squash and Merge</button>
+      </div>
+    </aside>
+
+    <!-- 5. Neon Wireframe Pie Menu Overlay -->
+    <div class="pie-overlay hidden" id="pie-menu">
+      <svg viewBox="-200 -200 400 400">
+        <!-- Outer boundary & rings -->
+        <circle cx="0" cy="0" r="190" fill="none" stroke="#30363d" stroke-dasharray="2 6"/>
+        <circle cx="0" cy="0" r="115" fill="none" stroke="#58a6ff" stroke-width="1.2" opacity="0.6"/>
+        <circle cx="0" cy="0" r="32" fill="rgba(13,17,23,0.85)" stroke="#58a6ff" stroke-width="1.5"/>
+        <text x="0" y="4" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#58a6ff" font-weight="700">QUAY</text>
+
+        <!-- 8 Wedges with sub-actions -->
+        <!-- North: Merge -->
+        <g class="wedge" transform="translate(0, -78)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#3fb950">MERGE [M]</text>
+          <!-- Ring 2 Sub-actions -->
+          <text y="-52" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#c9d1d9">Squash · Commit · Rebase</text>
+        </g>
+        <!-- North-East: Files -->
+        <g class="wedge" transform="translate(56, -56)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#38bdf8">FILES [F]</text>
+        </g>
+        <!-- East: Comment -->
+        <g class="wedge" transform="translate(78, 0)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#bc8cff">COMMENT [C]</text>
+        </g>
+        <!-- South-East: Widen -->
+        <g class="wedge" transform="translate(56, 56)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#e3b341">WIDEN [W]</text>
+        </g>
+        <!-- South: Palette -->
+        <g class="wedge" transform="translate(0, 78)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#8b949e">PALETTE [P]</text>
+        </g>
+        <!-- South-West: Split -->
+        <g class="wedge" transform="translate(-56, 56)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#58a6ff">SPLIT [S]</text>
+          <text y="48" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#c9d1d9">Side · Stack · Grid</text>
+        </g>
+        <!-- West: New Term -->
+        <g class="wedge" transform="translate(-78, 0)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#f0883e">NEW TERM [N]</text>
+          <text y="18" text-anchor="middle" font-family="JetBrains Mono" font-size="8.5" fill="#c9d1d9">Claude · Codex · Pwsh</text>
+        </g>
+        <!-- North-West: Next Wait -->
+        <g class="wedge" transform="translate(-56, -56)">
+          <text text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#d29922">NEXT WAIT [Q]</text>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Command Palette Overlay -->
+    <div class="palette-modal hidden" id="palette-modal">
+      <div class="pal-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="pal-input" placeholder="Type a command or jump to tool..." autofocus>
+      </div>
+      <div class="pal-list">
+        <div class="pal-item selected">
+          <span>Topos: Git Cockpit</span>
+          <span class="shortcut">Ctrl+Shift+B c</span>
+        </div>
+        <div class="pal-item">
+          <span>Swarm Preset Launcher...</span>
+          <span class="shortcut">Ctrl+Shift+B s</span>
+        </div>
+        <div class="pal-item">
+          <span>Archon & SDD Spec Graph...</span>
+          <span class="shortcut">Ctrl+Shift+B r</span>
+        </div>
+        <div class="pal-item">
+          <span>Machina Factory Station...</span>
+          <span class="shortcut">Ctrl+Shift+B f</span>
+        </div>
+        <div class="pal-item">
+          <span>Praxis Builder...</span>
+          <span class="shortcut">Ctrl+Shift+B p</span>
+        </div>
+        <div class="pal-item">
+          <span>Pre-PR Audit Gate...</span>
+          <span class="shortcut">Ctrl+Shift+B a</span>
+        </div>
+        <div class="pal-item">
+          <span>Mission Control (A2A Message Bus)...</span>
+          <span class="shortcut">Ctrl+Shift+B m</span>
+        </div>
+        <div class="pal-item">
+          <span>Token Spend & Turn Chimes...</span>
+          <span class="shortcut">Ctrl+Shift+B t</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Command Mapping Breakdown Table -->
+  <div class="mapping-card">
+    <h3>Command Placement Reference Matrix (All 40+ Quay Commands)</h3>
+    <div class="table-wrap">
+      <table class="mapping-tbl">
+        <thead>
+          <tr>
+            <th>Command / Feature</th>
+            <th>Primary Redesign Surface</th>
+            <th>Secondary Surface</th>
+            <th>Hotkey Chord</th>
+            <th>Old Location (Removed from)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>New Terminal</strong></td>
+            <td><span class="tag-surf tag-pie">Pie (West)</span></td>
+            <td>Projects Panel + Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B n</span></td>
+            <td>Stage header & Rail header</td>
+          </tr>
+          <tr>
+            <td><strong>Layout Splits (H, V, Grid, Unsplit)</strong></td>
+            <td><span class="tag-surf tag-pie">Pie (South-West)</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B %, ", g, x</span></td>
+            <td>Stage header 4-button switcher</td>
+          </tr>
+          <tr>
+            <td><strong>Zoom Active Pane</strong></td>
+            <td><span class="tag-surf tag-pane">Pane Header Icon</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B z</span></td>
+            <td>Stage header button</td>
+          </tr>
+          <tr>
+            <td><strong>Skip / Ask Permission Mode</strong></td>
+            <td><span class="tag-surf tag-pane">Pane Header Pill</span></td>
+            <td>Command Palette</td>
+            <td>—</td>
+            <td>Status strip pill</td>
+          </tr>
+          <tr>
+            <td><strong>Swarm Presets Launcher</strong></td>
+            <td><span class="tag-surf tag-mod">Agents Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B s</span></td>
+            <td>Rail header & Stage header (Deduplicated)</td>
+          </tr>
+          <tr>
+            <td><strong>Diffs & Write Log</strong></td>
+            <td><span class="tag-surf tag-comp">Companion (Files)</span></td>
+            <td>Source Control Panel + Pie</td>
+            <td><span class="chord-k">Ctrl+Shift+B d</span></td>
+            <td>Stage header & Status strip (Deduplicated)</td>
+          </tr>
+          <tr>
+            <td><strong>Token Spend & Audio Chimes</strong></td>
+            <td><span class="tag-surf tag-mod">Project Panel</span></td>
+            <td>Module Bar Footer Ticker</td>
+            <td><span class="chord-k">Ctrl+Shift+B t</span></td>
+            <td>Status strip & Rail footer (Deduplicated)</td>
+          </tr>
+          <tr>
+            <td><strong>Topos: Git Cockpit</strong></td>
+            <td><span class="tag-surf tag-mod">Source Control Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B c</span></td>
+            <td>Rail bottom toolbar</td>
+          </tr>
+          <tr>
+            <td><strong>GitHub Issues & PRs</strong></td>
+            <td><span class="tag-surf tag-mod">Source Control Panel</span></td>
+            <td>Companion (active terminal)</td>
+            <td><span class="chord-k">Ctrl+Shift+B i</span></td>
+            <td>Rail bottom toolbar</td>
+          </tr>
+          <tr>
+            <td><strong>Pre-PR Audit Gate</strong></td>
+            <td><span class="tag-surf tag-mod">Source Control Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B a</span></td>
+            <td>Rail bottom toolbar & Status strip</td>
+          </tr>
+          <tr>
+            <td><strong>Waiting on You (Attention Queue)</strong></td>
+            <td><span class="tag-surf tag-pie">Pie (North-West)</span></td>
+            <td>Agents Panel + Bar Badge</td>
+            <td><span class="chord-k">Ctrl+Shift+B q</span></td>
+            <td>Status strip amber pill</td>
+          </tr>
+          <tr>
+            <td><strong>Mission Control (A2A Bus)</strong></td>
+            <td><span class="tag-surf tag-mod">Agents Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B m</span></td>
+            <td>Rail bottom toolbar</td>
+          </tr>
+          <tr>
+            <td><strong>Session History & Resume</strong></td>
+            <td><span class="tag-surf tag-mod">Agents Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B h</span></td>
+            <td>Rail bottom toolbar & Status strip</td>
+          </tr>
+          <tr>
+            <td><strong>Action Log (Tool Telemetry)</strong></td>
+            <td><span class="tag-surf tag-mod">Agents Panel</span></td>
+            <td>Command Palette</td>
+            <td>—</td>
+            <td>Status strip link</td>
+          </tr>
+          <tr>
+            <td><strong>Archon & SDD Spec Graph</strong></td>
+            <td><span class="tag-surf tag-mod">Workflows Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B r</span></td>
+            <td>Rail bottom toolbar</td>
+          </tr>
+          <tr>
+            <td><strong>Machina Factory Station</strong></td>
+            <td><span class="tag-surf tag-mod">Workflows Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B f</span></td>
+            <td>Rail bottom toolbar & Stage header</td>
+          </tr>
+          <tr>
+            <td><strong>Praxis Builder</strong></td>
+            <td><span class="tag-surf tag-mod">Workflows Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B p</span></td>
+            <td>Chords & Palette</td>
+          </tr>
+          <tr>
+            <td><strong>Workspace Settings (Env/Flags)</strong></td>
+            <td><span class="tag-surf tag-mod">Project Panel</span></td>
+            <td>Command Palette</td>
+            <td>—</td>
+            <td>Stage header gear</td>
+          </tr>
+          <tr>
+            <td><strong>Open in VS Code</strong></td>
+            <td><span class="tag-surf tag-mod">Project Panel</span></td>
+            <td>Command Palette</td>
+            <td>—</td>
+            <td>Stage header & Rail row button</td>
+          </tr>
+          <tr>
+            <td><strong>Check for Updates</strong></td>
+            <td><span class="tag-surf tag-mod">Project Panel</span></td>
+            <td>Command Palette</td>
+            <td><span class="chord-k">Ctrl+Shift+B u</span></td>
+            <td>Workspace settings modal</td>
+          </tr>
+          <tr>
+            <td><strong>Topos Fetch / Pull / Push / Branch</strong></td>
+            <td><span class="tag-surf tag-pal">Palette Only</span></td>
+            <td>Topos Cockpit view</td>
+            <td>—</td>
+            <td>Command Palette</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const PANEL_DATA = {
+  projects: {
+    title: "Projects",
+    hint: "Ctrl+Shift+B 1..9",
+    sections: [
+      {
+        title: "Active Workspace",
+        items: [
+          { icon: "folder", label: "Quay-2", meta: "master", active: true },
+          { icon: "git-branch", label: "wt/shell-proto-611", meta: "worktree" }
+        ]
+      },
+      {
+        title: "Terminals (3)",
+        items: [
+          { icon: "terminal", label: "1: implement 615", meta: "claude", dot: "green" },
+          { icon: "terminal", label: "2: review PR 569", meta: "codex", dot: "amber" },
+          { icon: "terminal", label: "3: test runner", meta: "pwsh" }
+        ]
+      },
+      {
+        title: "Actions",
+        items: [
+          { icon: "plus", label: "New Terminal...", meta: "^⇧b n" },
+          { icon: "plus-circle", label: "Add Project Workspace..." }
+        ]
+      }
+    ]
+  },
+  source: {
+    title: "Source Control",
+    hint: "GitHub + Topos",
+    sections: [
+      {
+        title: "Pull Requests",
+        items: [
+          { icon: "git-pull", label: "615: Shell redesign", meta: "#615", active: true },
+          { icon: "git-pull", label: "569: Node phases", meta: "#569" }
+        ]
+      },
+      {
+        title: "Cockpit & Tools",
+        items: [
+          { icon: "git-commit", label: "Topos: Git Cockpit", meta: "^⇧b c" },
+          { icon: "git-diff", label: "Diffs & Write Log", meta: "^⇧b d" },
+          { icon: "shield", label: "Pre-PR Audit Gate", meta: "^⇧b a" }
+        ]
+      }
+    ]
+  },
+  agents: {
+    title: "Agents & Orchestration",
+    hint: "Ctrl+Shift+B s",
+    sections: [
+      {
+        title: "Attention Queue",
+        items: [
+          { icon: "bell", label: "Terminal 2: Decision waiting", meta: "^⇧b q", dot: "amber" }
+        ]
+      },
+      {
+        title: "Launch & Control",
+        items: [
+          { icon: "zap", label: "Swarm Presets Launcher", meta: "^⇧b s" },
+          { icon: "activity", label: "Mission Control (A2A Bus)", meta: "^⇧b m" },
+          { icon: "history", label: "Session History & Auto-Resume", meta: "^⇧b h" },
+          { icon: "list", label: "Action Log (Tool Telemetry)" }
+        ]
+      }
+    ]
+  },
+  workflows: {
+    title: "Workflows & Factory",
+    hint: "Archon + Praxis",
+    sections: [
+      {
+        title: "Execution & Factory",
+        items: [
+          { icon: "cpu", label: "Archon Graph & SDD Tasks", meta: "^⇧b r" },
+          { icon: "layers", label: "Machina Factory Station", meta: "^⇧b f" }
+        ]
+      },
+      {
+        title: "Authoring",
+        items: [
+          { icon: "layout", label: "Praxis Builder", meta: "^⇧b p" }
+        ]
+      }
+    ]
+  },
+  project: {
+    title: "Project & Settings",
+    hint: "Quay-2",
+    sections: [
+      {
+        title: "Environment & Tools",
+        items: [
+          { icon: "settings", label: "Workspace Settings (Env & Flags)" },
+          { icon: "code", label: "Open in VS Code" },
+          { icon: "dollar-sign", label: "Token Spend & Turn Chimes", meta: "^⇧b t" }
+        ]
+      },
+      {
+        title: "Maintenance",
+        items: [
+          { icon: "folder", label: "Open Logs Folder" },
+          { icon: "download", label: "Check for Updates", meta: "^⇧b u" }
+        ]
+      }
+    ]
+  }
+};
+
+let currentMod = "projects";
+
+function renderPanel(modKey) {
+  const data = PANEL_DATA[modKey];
+  const panel = $("panel");
+  if (!modKey) {
+    panel.classList.add("closed");
+    return;
+  }
+  panel.classList.remove("closed");
+
+  let html = `<div class="panel-head"><span>${data.title}</span><span class="hint">${data.hint}</span></div>`;
+  html += `<div class="panel-body">`;
+  for (const sec of data.sections) {
+    html += `<div class="section-title">${sec.title}</div>`;
+    for (const item of sec.items) {
+      html += `
+        <div class="panel-item ${item.active ? 'active' : ''}">
+          ${item.dot ? `<span class="dot ${item.dot}"></span>` : ''}
+          <span>${item.label}</span>
+          ${item.meta ? `<span class="meta">${item.meta}</span>` : ''}
+        </div>
+      `;
+    }
+  }
+  html += `</div>`;
+  panel.innerHTML = html;
+}
+
+// Module Bar clicks
+document.querySelectorAll(".mod-btn[data-mod]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const mod = btn.dataset.mod;
+    if (currentMod === mod) {
+      currentMod = null;
+      btn.classList.remove("active");
+      renderPanel(null);
+    } else {
+      document.querySelectorAll(".mod-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentMod = mod;
+      renderPanel(mod);
+    }
+  });
+});
+
+// Toggle Pie Menu
+const pie = $("pie-menu");
+$("toggle-pie-btn").addEventListener("click", () => {
+  pie.classList.toggle("hidden");
+});
+$("shell").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  pie.classList.toggle("hidden");
+});
+
+// Toggle Palette
+const pal = $("palette-modal");
+const togglePal = () => pal.classList.toggle("hidden");
+$("toggle-palette-btn").addEventListener("click", togglePal);
+$("bar-palette-btn").addEventListener("click", togglePal);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    pie.classList.add("hidden");
+    pal.classList.add("hidden");
+  }
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    togglePal();
+  }
+});
+
+// Initial render
+renderPanel("projects");
+</script>
+</body>
+</html>
