@@ -13,4 +13,8 @@ with example data; nothing is wired to Quay.
 - `quay-pie-menu.html`: the two-ring pie menu as a transparent neon
   wireframe in six palettes. Chosen: all six as a setting, spectrum as the
   default.
+- `quay-companion-pr-view.html`: four ways to fit GitHub's new pull
+  request view into the companion, with a live click and pointer-travel
+  counter. Chosen: readiness first, where the readiness cells are the
+  navigation.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.

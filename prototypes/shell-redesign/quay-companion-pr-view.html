@@ -1,0 +1,717 @@
+<title>Companion Pull Request View</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one live Quay window (module bar, terminal, companion) with four switchable ways to fit
+   GitHub's new pull request view into the companion, a width slider, a live click and travel
+   counter for one review-and-merge job, and per-variant notes. Single dark look, Quay's palette. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d; --q-soft: #21262d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 12px; cursor: pointer; background: var(--q-panel); font-weight: 500; }
+.seg input:checked + label { border-color: var(--blue); color: #fff; background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.slider { display: flex; flex-direction: column; gap: 4px; }
+.slider label { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.slider div { display: flex; gap: 10px; align-items: center; font: 12px var(--mono); }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* ---------- mock window ---------- */
+.shell { position: relative; display: flex; height: 660px; min-width: 1000px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg { width: 16px; height: 16px; flex: none; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+.ib { border: 0; background: none; padding: 9px; border-radius: 6px; display: inline-flex; position: relative; color: var(--muted); }
+.ib svg { width: 18px; height: 18px; }
+.grow { flex: 1; }
+.badge { position: absolute; top: 2px; right: 1px; min-width: 13px; height: 13px; border-radius: 7px; font: 600 9px/13px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.b { background: var(--blue); } .badge.r { background: var(--red); color: #fff; }
+.term { flex: 1; min-width: 300px; display: flex; flex-direction: column; }
+.ph { padding: 8px 12px; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 8px; color: #e6edf3; background: var(--q-panel); white-space: nowrap; min-height: 34px; box-sizing: border-box; }
+.ph small { color: var(--muted); font: 10px var(--mono); margin-left: auto; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; }
+.g { color: var(--green); } .y { color: var(--amber); } .p { color: #d2a8ff; }
+.ok { color: var(--green); } .bad { color: var(--red); } .m { color: var(--muted); } .pu { color: var(--purple); }
+
+/* companion */
+.comp { width: var(--cw, 400px); flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--q-line); background: #0b0f14; min-height: 0; transition: width .15s; }
+@media (prefers-reduced-motion: reduce) { .comp { transition: none; } }
+.crow { flex: 1; min-height: 0; display: flex; }
+.cmain { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.prh { padding: 10px 12px 8px; border-bottom: 1px solid var(--q-line); display: flex; flex-direction: column; gap: 5px; }
+.prt { font-size: 14px; font-weight: 600; color: var(--hi); line-height: 1.3; }
+.prm { color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.pill { border-radius: 10px; padding: 1px 8px; font-weight: 600; color: #fff; background: var(--go); display: inline-flex; gap: 4px; align-items: center; }
+.pill.merged { background: #8957e5; } .pill.closed { background: #da3633; }
+.chip { font: 11px var(--mono); background: rgba(56,139,253,.15); color: #79c0ff; border-radius: 5px; padding: 0 6px; }
+.chip.gone { text-decoration: line-through; color: var(--muted); background: var(--q-soft); }
+.tabs { display: flex; padding: 0 6px; border-bottom: 1px solid var(--q-line); overflow-x: auto; }
+.tab { border: 0; background: none; padding: 8px 8px 7px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; display: inline-flex; gap: 5px; align-items: center; }
+.tab.on { color: #fff; border-bottom-color: #f78166; font-weight: 600; }
+.cnt { background: var(--q-raise); border-radius: 9px; padding: 0 6px; font-size: 11px; color: var(--fg); }
+.cbody { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { .cbody { scroll-behavior: auto; } }
+.h { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; margin: 2px 0 -4px; }
+.h::after { content: ""; flex: 1; border-bottom: 1px solid var(--q-line); }
+.btn { border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 10px; background: var(--q-raise); color: var(--fg); white-space: nowrap; }
+.btn:hover { border-color: #8b949e; }
+.btn.go { background: var(--go); border-color: var(--go-line); color: #fff; font-weight: 600; }
+.btn.warn { background: #9e6a03; border-color: var(--amber); color: #fff; font-weight: 600; }
+.btn.sm { padding: 2px 8px; font-size: 11px; }
+.btn.link { border-color: transparent; background: none; color: var(--blue); padding: 2px 4px; }
+
+/* readiness summary */
+.ready { border: 1px solid var(--q-line); border-radius: 8px; background: var(--q-panel); display: flex; flex-direction: column; }
+.ready.fail { border-color: rgba(248,81,73,.55); } .ready.done { border-color: rgba(163,113,247,.55); }
+.rtop { display: flex; gap: 10px; padding: 10px 12px; align-items: flex-start; }
+.ricon { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; color: #fff; background: var(--go); }
+.ricon.fail { background: #da3633; } .ricon.done { background: #8957e5; } .ricon.closed { background: var(--q-raise); }
+.rtxt { min-width: 0; } .rtxt b { color: var(--hi); font-size: 13px; display: block; } .rtxt span { color: var(--muted); }
+.rmerge { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--q-line); }
+.cells.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cell { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; border: 0; background: none; text-align: left; min-width: 0; }
+.cell + .cell { border-left: 1px solid var(--q-line); }
+.cells.four .cell:nth-child(3) { border-left: 0; } .cells.four .cell:nth-child(n+3) { border-top: 1px solid var(--q-line); }
+button.cell:hover { background: var(--q-raise); }
+button.cell.on { background: var(--sel); box-shadow: inset 0 -2px 0 var(--blue); }
+.cell small { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; }
+.cell span { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bars { display: flex; gap: 2px; height: 5px; }
+.bars i { flex: 1; border-radius: 2px; background: var(--q-raise); }
+.bars .k { background: var(--green); } .bars .x { background: var(--red); } .bars .u { background: var(--amber); } .bars .d { background: var(--red); flex: .18; }
+
+/* merge control */
+.split { display: inline-flex; }
+.split .btn:first-child { border-radius: 6px 0 0 6px; }
+.split .btn:last-child { border-radius: 0 6px 6px 0; border-left-color: rgba(0,0,0,.35); padding: 4px 8px; }
+.mrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.menu { border: 1px solid var(--q-line); border-radius: 6px; background: var(--q-bg); display: flex; flex-direction: column; }
+.menu button { border: 0; background: none; text-align: left; padding: 7px 10px; display: flex; gap: 8px; }
+.menu button + button { border-top: 1px solid var(--q-soft); }
+.menu button:hover { background: var(--q-raise); }
+.menu b { color: var(--hi); font-weight: 600; display: block; } .menu span.m { display: block; font-size: 11px; }
+.menu .tick { width: 12px; flex: none; color: var(--blue); }
+.confirm { border: 1px solid var(--q-line); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; background: var(--q-bg); }
+.confirm label { color: var(--muted); display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.confirm label.cb { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }
+.confirm input[type=text] { background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 5px; padding: 4px 7px; color: var(--hi); }
+.mbar { border-top: 1px solid var(--q-line); background: var(--q-panel); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* conversation */
+.desc { border: 1px solid var(--q-line); border-radius: 6px; }
+.desc header, .cm header { padding: 5px 10px; background: var(--q-panel); border-bottom: 1px solid var(--q-line); color: var(--muted); border-radius: 6px 6px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.desc header b, .cm header b { color: #e6edf3; }
+.desc div, .cm > div { padding: 8px 10px; }
+.desc code, .cm code { font: 11px var(--mono); background: var(--q-raise); padding: 0 4px; border-radius: 4px; }
+.ctools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fchip { border: 1px solid var(--q-line); background: none; border-radius: 12px; padding: 1px 9px; color: var(--muted); }
+.fchip[aria-pressed=true] { background: var(--sel); border-color: var(--blue); color: #fff; }
+.ctools .btn.link { margin-left: auto; }
+.compose { display: flex; flex-direction: column; gap: 6px; }
+.compose textarea { background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 9px; min-height: 48px; resize: vertical; color: var(--hi); }
+.compose div { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.items { display: flex; flex-direction: column; gap: 8px; }
+.cm { border: 1px solid var(--q-line); border-radius: 6px; }
+.cm.mine { border-color: rgba(88,166,255,.5); }
+.cm .where { font: 11px var(--mono); color: var(--muted); padding: 4px 10px 0; }
+.ev { display: flex; gap: 8px; align-items: center; color: var(--muted); padding: 0 4px; }
+.ev::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--q-line); flex: none; }
+.ev b { color: var(--fg); font-weight: 600; }
+.unres { color: var(--amber); font-weight: 600; margin-left: auto; }
+.empty { color: var(--muted); border: 1px dashed var(--q-line); border-radius: 6px; padding: 10px; text-align: center; }
+
+/* checks */
+.cgroup { border: 1px solid var(--q-line); border-radius: 6px; overflow: hidden; }
+.cgroup > header { padding: 5px 10px; background: var(--q-panel); font-weight: 600; color: #e6edf3; display: flex; gap: 6px; align-items: center; }
+.crun { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border: 0; border-top: 1px solid var(--q-soft); background: none; width: 100%; text-align: left; }
+.cgroup > header + .crun { border-top: 0; }
+button.crun:hover { background: var(--q-raise); }
+.av { width: 16px; height: 16px; border-radius: 4px; background: #30363d; display: grid; place-items: center; font: 600 9px var(--mono); color: var(--fg); flex: none; }
+.crun small { margin-left: auto; color: var(--muted); font: 10px var(--mono); }
+.log { margin: 0; padding: 8px 10px; background: #010409; border-top: 1px solid var(--q-soft); font: 11px/1.6 var(--mono); white-space: pre-wrap; color: var(--fg); overflow-x: auto; }
+
+/* commits */
+.commit { display: flex; gap: 8px; align-items: baseline; padding: 6px 2px; border-bottom: 1px solid var(--q-soft); }
+.commit code { font: 11px var(--mono); color: var(--blue); }
+.commit small { margin-left: auto; color: var(--muted); white-space: nowrap; }
+
+/* files */
+.ftools { display: flex; gap: 6px; align-items: center; }
+.ftools input { flex: 1; min-width: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 8px; color: var(--hi); }
+.ftree { display: flex; flex-direction: column; gap: 1px; font: 11.5px var(--mono); border: 1px solid var(--q-line); border-radius: 6px; padding: 4px; background: var(--q-bg); }
+.ftree .dir { color: var(--muted); padding: 3px 6px; display: flex; gap: 5px; align-items: center; }
+.fnode { border: 0; background: none; text-align: left; padding: 3px 6px 3px 20px; border-radius: 4px; display: flex; gap: 6px; align-items: center; color: var(--fg); width: 100%; }
+.fnode:hover { background: var(--q-raise); } .fnode.on { background: var(--sel); color: #fff; }
+.fnode .st { margin-left: auto; font-size: 10px; display: inline-flex; gap: 4px; }
+.mk { font-size: 10px; } .mk.c { color: var(--blue); } .mk.e { color: var(--red); }
+.fsplit { display: flex; gap: 10px; align-items: flex-start; }
+.fsplit .ftree { flex: 0 0 176px; position: sticky; top: 0; }
+.fsplit .diffs { flex: 1; min-width: 0; }
+.diffs { display: flex; flex-direction: column; gap: 10px; }
+.diff { border: 1px solid var(--q-line); border-radius: 6px; overflow: hidden; }
+.dhead { display: flex; gap: 6px; align-items: center; padding: 5px 8px; background: var(--q-panel); border: 0; border-bottom: 1px solid var(--q-line); width: 100%; text-align: left; font: 11px var(--mono); color: #e6edf3; }
+.dhead span.p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; color: #e6edf3; }
+.dhead small { white-space: nowrap; }
+.dbody { overflow-x: auto; font: 11px/1.6 var(--mono); }
+.dl { display: flex; white-space: pre; min-width: max-content; }
+.dl i { font-style: normal; width: 26px; flex: none; text-align: right; padding-right: 6px; color: #6e7681; user-select: none; }
+.dl em { font-style: normal; padding: 0 8px 0 4px; }
+.dl.a { background: rgba(46,160,67,.15); } .dl.a em::before { content: "+"; color: var(--green); margin-right: 4px; }
+.dl.d { background: rgba(248,81,73,.15); } .dl.d em::before { content: "−"; color: var(--red); margin-right: 4px; }
+.dl.c em::before { content: " "; margin-right: 4px; }
+.dl.hk { background: rgba(56,139,253,.1); color: var(--muted); }
+.dl.note { white-space: normal; min-width: 0; background: var(--q-panel); border-block: 1px solid var(--q-line); padding: 5px 10px; font-family: "Segoe UI", system-ui, sans-serif; }
+.stepper { display: flex; gap: 6px; align-items: center; }
+.stepper select { flex: 1; min-width: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 6px; color: var(--hi); font: 11px var(--mono); }
+.crumb { display: flex; gap: 6px; align-items: center; }
+
+/* one column */
+.jumps { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--q-line); flex-wrap: wrap; }
+.sec { display: flex; flex-direction: column; gap: 10px; scroll-margin-top: 4px; }
+
+/* docked strip */
+.strip { width: 44px; flex: none; border-left: 1px solid var(--q-line); background: var(--q-panel); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+.strip .ib.on { color: #fff; background: var(--q-raise); box-shadow: inset -2px 0 0 var(--blue); }
+.strip .ib:hover { background: var(--q-raise); color: #fff; }
+.ptitle { padding: 8px 12px; border-bottom: 1px solid var(--q-line); font-weight: 600; color: #e6edf3; display: flex; gap: 8px; align-items: center; }
+.ptitle small { margin-left: auto; color: var(--muted); font: 10px var(--mono); font-weight: 400; }
+.srow { display: flex; gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--q-soft); align-items: flex-start; }
+.srow .ic { width: 18px; text-align: center; font-weight: 700; flex: none; }
+.srow b { color: #e6edf3; display: block; } .srow span { color: var(--muted); }
+.activity { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; }
+.activity div { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; }
+.activity b { font: 600 16px var(--display); color: var(--hi); } .activity span { color: var(--muted); font-size: 11px; }
+
+/* page below the mock */
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); }
+.job li.done::before { background: var(--green); border-color: var(--green); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+tr.cur td { background: var(--sel); }
+.bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--blue); vertical-align: middle; margin-right: 8px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5M12 19h8"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 7h6M14 4h6M4 14h6v6H4zM14 17h6M14 20h6"/></symbol>
+  <symbol id="i-merge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 7.500v9M6 8c0 4 4 4 9.500 4"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Companion Pull Request View</h1>
+    <p class="lede">The first cut of the pull request view, drawn after GitHub's new page and squeezed into the companion beside the terminal. Four ways to fit it. Run the same job in each and the page counts your clicks and pointer travel.</p>
+  </header>
+
+  <div class="controls">
+    <fieldset class="seg">
+      <legend>Layout</legend>
+      <input type="radio" name="v" id="v-tabs" value="tabs" checked><label for="v-tabs">A · Tabs, as GitHub</label>
+      <input type="radio" name="v" id="v-scroll" value="scroll"><label for="v-scroll">B · One column</label>
+      <input type="radio" name="v" id="v-dock" value="dock"><label for="v-dock">C · Docked panels</label>
+      <input type="radio" name="v" id="v-ready" value="ready"><label for="v-ready">D · Readiness first</label>
+    </fieldset>
+    <fieldset class="seg">
+      <legend>Pull request</legend>
+      <input type="radio" name="sc" id="sc-green" value="green" checked><label for="sc-green">Checks green</label>
+      <input type="radio" name="sc" id="sc-fail" value="failing"><label for="sc-fail">One check failing</label>
+    </fieldset>
+    <div class="slider">
+      <label for="cw">Companion width</label>
+      <div><input type="range" id="cw" min="360" max="640" step="20" value="400"><output id="cw-out" for="cw">400 px</output></div>
+    </div>
+  </div>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+    <span class="toast" id="toast"></span>
+  </div>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Your runs of the job</h2>
+  <p class="lede">Counted live in the mock: every press on a control is a click, and pointer travel is the straight-line distance between presses. Scrolling and typing are not counted. The table keeps your best run per layout; it resets when the page reloads. Today's row is the hand count from the window concepts prototype.</p>
+  <div class="scroll"><table id="bench"></table></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+/* ---------- example data: pull request 574 ---------- */
+const DIR_DOCS = "docs/", DIR_SRC = "src/slices/praxis-builder/";
+const FILES = [
+  { dir: DIR_DOCS, name: "praxis-builder.md", a: 8, d: 8, o: 40, n: 40, hunk: "## Run canvas", lines: [
+    [" ", "A graph run draws every node on the canvas."], ["-", "Nodes are grey until the run ends."],
+    ["+", "Each node shows its phase while the run is live:"], ["+", "idle, running, done or failed."], [" ", ""] ] },
+  { dir: DIR_SRC, name: "phases.test.ts", a: 44, d: 0, o: 0, n: 1, hunk: "", lines: [
+    ["+", 'import { describe, expect, it } from "vitest";'], ["+", 'import { phaseForNode } from "./phases";'], ["+", ""],
+    ["+", 'it("maps a missing step to idle", () => {'], ["+", '  expect(phaseForNode(emptyRun, "a")).toBe("idle");'], ["+", "});"] ] },
+  { dir: DIR_SRC, name: "phases.ts", a: 47, d: 0, o: 0, n: 1, hunk: "", lines: [
+    ["+", 'export type NodePhase = "idle" | "running" | "done" | "failed";'], ["+", ""],
+    ["+", "export function phaseForNode(run: GraphRun, id: string): NodePhase {"], ["+", "  const step = run.steps.find((s) => s.nodeId === id);"],
+    ["+", '  if (!step) return "idle";'], ["+", "  return step.status;"], ["+", "}"] ] },
+  { dir: DIR_SRC, name: "runCanvas.test.ts", a: 58, d: 0, o: 0, n: 1, hunk: "", err: true, lines: [
+    ["+", 'import { layoutRun } from "./runCanvas";'], ["+", ""], ["+", 'describe("layoutRun", () => {'],
+    ["+", '  it("idle nodes keep their phase", () => {'], ["+", '    expect(layoutRun(idleRun).at(0)?.phase).toBe("idle");'], ["+", "  });"] ] },
+  { dir: DIR_SRC, name: "runCanvas.ts", a: 24, d: 18, o: 9, n: 9, hunk: "export function layoutRun(run: GraphRun) {", job: true, note: 2, lines: [
+    [" ", "  const nodes = run.graph.nodes;"], [" ", "  const edges = run.graph.edges;"], ["-", "  return nodes.map(toIdle);"],
+    ["+", "  return nodes.map((n) => ({"], ["+", "    ...n,"], ["+", "    phase: phaseForNode(run, n.id),"],
+    ["+", "    outline: OUTLINE[phaseForNode(run, n.id)],"], ["+", "  }));"], [" ", "}"] ] },
+  { dir: DIR_SRC, name: "RunNode.tsx", a: 31, d: 12, o: 22, n: 22, hunk: "export function RunNode({ node }: Props) {", lines: [
+    [" ", "  return ("], ["-", '    <div className="run-node">'], ["+", '    <div className="run-node" data-phase={node.phase}'],
+    ["+", "      style={{ outlineColor: node.outline }}>"], [" ", "      <span>{node.label}</span>"], ["+", "      <PhaseChip phase={node.phase} />"], [" ", "    </div>"] ] },
+];
+const RUNCANVAS = 4;
+const COMMITS = [["a1c4e07", "Render node phases on the run canvas", "3 h"], ["7d90b2e", "Test phase mapping for idle and failed nodes", "3 h"], ["3f2a91c", "Rename phaseOf to phaseForNode", "1 h"]];
+const BASE_ITEMS = [
+  { k: "event", t: 1, html: "<b>claude</b> linked ticket <b>Run canvas: node phases</b>", ago: "3 h" },
+  { k: "event", t: 2, html: "<b>claude</b> pushed 2 commits", ago: "3 h" },
+  { k: "thread", t: 3, who: "review-bot", where: "runCanvas.ts · line 13", html: "No blocking findings. One note: <code>phaseOf</code> reads like a getter; consider <code>phaseForNode</code>.", ago: "2 h", unresolved: true },
+  { k: "comment", t: 4, who: "claude", html: "Renamed to <code>phaseForNode</code> in <code>3f2a91c</code>.", ago: "1 h" },
+  { k: "event", t: 5, html: "<b>claude</b> pushed 1 commit", ago: "1 h" },
+];
+const METHODS = { merge: ["Create a merge commit", "Merge pull request", "All 3 commits are added to master with a merge commit."],
+  squash: ["Squash and merge", "Squash and merge", "The 3 commits become 1 commit on master."],
+  rebase: ["Rebase and merge", "Rebase and merge", "The 3 commits are replayed onto master."] };
+
+const VARIANTS = {
+  tabs: { name: "A · Tabs, as GitHub",
+    what: "GitHub's new page squeezed to companion width: Overview, Commits, Checks and Files changed tabs, the readiness summary with the merge button at the top of Overview, and the comment box above the comments. Below 520 px the file tree folds into a drawer; drag the width slider past 520 to see it sit beside the diffs.",
+    pro: ["Same places as github.com, so there is nothing to relearn", "Each tab is short, so there is little scrolling", "From 520 px the file tree sits beside the diffs, as on GitHub"],
+    con: ["Merge lives only on Overview, so from Files changed it is a tab away", "Puts the merge box at the top, against the companion decision that keeps it at the bottom", "Four tabs with counts only just fit at 400 px"] },
+  scroll: { name: "B · One column",
+    what: "No tabs. Everything is one scroll, in the order you check it: readiness, description, checks, comments, files. Chips under the header jump to a section. The merge bar is pinned to the bottom of the companion, where the companion decision put it.",
+    pro: ["Merge is always in the same spot at the bottom, whatever you are reading", "Scrolling replaces most clicks, the cheapest way to see everything", "Each diff folds on its own header"],
+    con: ["A long page: six diffs push the bottom of the files far down", "No file tree; a filter field stands in for it", "Scroll position is your only sense of where you are"] },
+  dock: { name: "C · Docked panels",
+    what: "Modelled on GitHub's docked panels and its Merge status side panel, the designs GitHub already ships near this width. An icon strip on the companion's outer edge switches between Overview, Comments, Checks, Files and Merge status. Files drill in: pick a file in the tree, read its diff, step to the next.",
+    pro: ["The strip sits on the window's right edge, so the pointer can overshoot and still hit it", "Each panel gets the full height", "The file tree gets the full width instead of sharing it with the diff"],
+    con: ["Merging is a panel switch away from everything else", "Icons need learning; the counts and badges on them help", "Drill-in means the tree and a diff are never on screen together"] },
+  ready: { name: "D · Readiness first",
+    what: "The readiness summary is the page. Its cells (Checks, Comments, Files, Commits) are the navigation: click one and its detail opens underneath. It opens whatever needs you on its own, so a failing check or an unresolved comment is already showing when you arrive. Files show one at a time, with a picker and next and previous.",
+    pro: ["Answers the open question of what a readiness cell opens: its own detail, in place", "Arrives with the failing check or the unresolved comment already open", "Merge sits at the top, beside the status that decides it"],
+    con: ["Furthest from GitHub's own layout", "One file at a time is slow for a wide change", "The summary card takes about 200 px before any detail"] },
+};
+
+/* ---------- state ---------- */
+const S = { v: "tabs", scen: "green", cw: 400 };
+let R; // per-run state
+const BEST = {};
+function freshRun() {
+  R = { tab: "overview", panel: "overview", cell: null, tree: false, sel: null, drill: null, fileIx: 0, filter: "",
+    folded: {}, logClosed: {}, filt: "all", sort: "new", draft: "", posted: [], pr: "open", menu: false, method: "squash",
+    msg: "Run canvas: node phases for a graph run (#574)", delOnMerge: true, branch: "present",
+    clicks: 0, travel: 0, last: null, job: { checks: false, diff: false, comment: false }, recorded: false, scrollTo: null, top: true };
+  R.cell = S.scen === "failing" ? "checks" : "comments";
+}
+const failing = () => S.scen === "failing";
+const merged = () => R.pr === "merged";
+const closed = () => R.pr === "closed";
+const unresolvedCount = () => BASE_ITEMS.filter((i) => i.unresolved).length;
+const commentCount = () => BASE_ITEMS.filter((i) => i.k !== "event").length + R.posted.length;
+const shown = () => FILES.map((f, i) => [f, i]).filter(([f]) => (f.dir + f.name).toLowerCase().includes(R.filter.trim().toLowerCase()));
+
+function checks() {
+  return [
+    { n: "test", st: failing() ? "fail" : "ok", t: failing() ? "1m 28s" : "1m 34s" },
+    { n: "lint", st: "ok", t: "18s" }, { n: "build", st: "ok", t: "1m 1s" },
+    { n: "pre-pr-audit", st: "ok", t: "7s" }, { n: "bench", st: "skip", t: "" },
+  ];
+}
+const LOG = `FAIL  src/slices/praxis-builder/runCanvas.test.ts
+  layoutRun > idle nodes keep their phase
+AssertionError: expected undefined to be 'idle'
+ ❯ runCanvas.test.ts:5:44
+
+Tests  1 failed | 13 passed (14)`;
+
+/* ---------- pieces ---------- */
+function prHeader() {
+  const pill = merged() ? `<span class="pill merged">${ico("merge")}Merged</span>` : closed() ? `<span class="pill closed">Closed</span>` : `<span class="pill">${ico("pr")}Open</span>`;
+  return `<div class="prh"><div class="prt">Run canvas: node phases for a graph run <span class="m">#574</span></div>
+    <div class="prm">${pill}<span class="chip">master</span>←<span class="chip ${R.branch === "deleted" ? "gone" : ""}">ticket-569</span>
+    <span class="ok">+212</span><span class="bad">−38</span></div></div>`;
+}
+
+function headline() {
+  if (merged()) return ["done", "✓", "Merged", `${METHODS[R.method][0]} into master · ticket-569 ${R.branch === "deleted" ? "deleted" : "still there"}`];
+  if (closed()) return ["closed", "×", "Closed without merging", `ticket-569 ${R.branch === "deleted" ? "deleted" : "still there"}`];
+  if (failing()) return ["fail", "✗", "1 check failing", "test failed in 1m 28s. Nothing is required, so you can still merge."];
+  return ["", "✓", "Ready to merge", `All checks passed · ${unresolvedCount()} unresolved comment · no review required`];
+}
+
+function mergeControl() {
+  if (merged() || closed()) {
+    const b = R.branch === "deleted" ? `<button class="btn" data-act="restore">Restore branch</button>` : `<button class="btn" data-act="delbranch">Delete branch</button>`;
+    return `<div class="mrow">${closed() ? `<button class="btn" data-act="reopen">Reopen pull request</button>` : ""}${b}<span class="m">ticket-569</span></div>`;
+  }
+  const [, label] = METHODS[R.method];
+  if (R.pr === "confirm") return `<div class="confirm">
+      <label for="msg">Commit message<input type="text" id="msg" value="${esc(R.msg)}"></label>
+      <label class="cb"><input type="checkbox" id="delmerge" ${R.delOnMerge ? "checked" : ""}> Delete ticket-569 after merge</label>
+      <div class="mrow"><button class="btn ${failing() ? "warn" : "go"}" data-act="confirm">Confirm ${label.toLowerCase()}</button><button class="btn" data-act="cancel">Cancel</button></div></div>`;
+  const menu = !R.menu ? "" : `<div class="menu" role="menu" aria-label="Merge method">${Object.entries(METHODS).map(([k, [title, , sub]]) =>
+    `<button role="menuitemradio" aria-checked="${R.method === k}" data-act="method" data-k="${k}"><span class="tick">${R.method === k ? "✓" : ""}</span><span><b>${title}</b><span class="m">${sub}</span></span></button>`).join("")}</div>`;
+  return `<div class="mrow"><span class="split"><button class="btn ${failing() ? "warn" : "go"}" data-act="merge">${label}</button><button class="btn ${failing() ? "warn" : "go"}" data-act="menu" aria-label="Choose merge method" aria-expanded="${R.menu}">▾</button></span></div>${menu}`;
+}
+
+function bars(spec) { return `<div class="bars">${spec.map((c) => `<i class="${c}"></i>`).join("")}</div>`; }
+function cellData() {
+  const chk = checks(), okN = chk.filter((c) => c.st === "ok").length, fN = chk.filter((c) => c.st === "fail").length;
+  return {
+    checks: ["Checks", fN ? `${fN} failing, ${okN} passed` : `${okN} passed, 1 skipped`, bars(chk.map((c) => c.st === "ok" ? "k" : c.st === "fail" ? "x" : "")), fN ? "✗" : "✓"],
+    comments: ["Comments", `${unresolvedCount()} unresolved of ${commentCount()}`, bars([...Array(commentCount())].map((_, i) => i < unresolvedCount() ? "u" : "k")), `${commentCount()}`],
+    approvals: ["Approvals", "Not required", bars([""]), "—"],
+    files: ["Files", "6 files, +212 −38", `<div class="bars"><i class="k"></i><i class="k"></i><i class="k"></i><i class="k"></i><i class="d"></i></div>`, "6"],
+    commits: ["Commits", "3 commits by claude", bars(["k", "k", "k"]), "3"],
+  };
+}
+function readiness({ merge = true, cells = ["checks", "comments", "approvals"], clickable = false } = {}) {
+  const [cls, icon, head, sub] = headline(), cd = cellData();
+  const cellHtml = cells.map((k) => { const [t, v, b, n] = cd[k]; const inner = `<small>${t}<span>${n}</span></small><span>${v}</span>${b}`;
+    return clickable ? `<button class="cell ${R.cell === k ? "on" : ""}" data-act="cell" data-k="${k}" aria-expanded="${R.cell === k}">${inner}</button>` : `<div class="cell">${inner}</div>`; }).join("");
+  return `<section class="ready ${cls}" aria-label="Merge readiness"><div class="rtop"><span class="ricon ${cls}">${icon}</span><div class="rtxt"><b>${head}</b><span>${sub}</span></div></div>
+    ${merge ? `<div class="rmerge">${mergeControl()}</div>` : ""}<div class="cells ${cells.length === 4 ? "four" : ""}">${cellHtml}</div></section>`;
+}
+
+function description() {
+  return `<div class="desc"><header><b>claude</b> opened this from ticket 569 · 3 h ago</header>
+    <div>Node phases render on the run canvas for a graph run: idle, running, done and failed, each with its own outline. Tested with <code>pnpm test runCanvas phases</code>. Closes #569.</div></div>`;
+}
+
+function comments() {
+  let items = [...BASE_ITEMS, ...R.posted];
+  if (R.filt === "unresolved") items = items.filter((i) => i.unresolved);
+  if (R.filt === "mine") items = items.filter((i) => i.mine);
+  items.sort((a, b) => R.sort === "new" ? b.t - a.t : a.t - b.t);
+  const f = (k, l) => `<button class="fchip" data-act="filt" data-k="${k}" aria-pressed="${R.filt === k}">${l}</button>`;
+  const list = items.map((i) => i.k === "event" ? `<div class="ev"><span>${i.html} · ${i.ago} ago</span></div>`
+    : `<article class="cm ${i.mine ? "mine" : ""}"><header><b>${i.who}</b>commented · ${i.ago}${i.unresolved ? `<span class="unres">Unresolved</span>` : ""}</header>${i.where ? `<div class="where">${i.where}</div>` : ""}<div>${i.html}</div></article>`).join("");
+  return `<div class="ctools">${f("all", "All")}${f("unresolved", `Unresolved ${unresolvedCount()}`)}${f("mine", "Mine")}
+      <button class="btn link" data-act="sort">${R.sort === "new" ? "Newest first" : "Oldest first"} ▾</button></div>
+    <div class="compose"><label for="draft" class="m">Add a comment</label><textarea id="draft" placeholder="Leave a comment">${esc(R.draft)}</textarea>
+      <div>${!merged() && !closed() ? `<button class="btn" data-act="closepr">Close pull request</button>` : ""}<button class="btn go" data-act="post">Comment</button></div></div>
+    <div class="items">${list || `<div class="empty">Nothing matches this filter.</div>`}</div>`;
+}
+
+function checksList() {
+  const chk = checks(), order = [["fail", "failing"], ["pending", "pending"], ["skip", "skipped"], ["ok", "successful"]];
+  return order.map(([st, word]) => {
+    const rows = chk.filter((c) => c.st === st); if (!rows.length) return "";
+    const mark = st === "fail" ? `<span class="bad">✗</span>` : st === "ok" ? `<span class="ok">✓</span>` : `<span class="m">⊘</span>`;
+    const body = rows.map((c) => {
+      if (c.st === "fail") { const open = !R.logClosed[c.n];
+        return `<button class="crun" data-act="log" data-k="${c.n}" aria-expanded="${open}">${mark}<span class="av">CI</span>${c.n}<small>${c.t} ${open ? "▴" : "▾"}</small></button>${open ? `<pre class="log" data-job="checks">${esc(LOG)}</pre>` : ""}`; }
+      return `<div class="crun">${mark}<span class="av">CI</span>${c.n}<small>${c.t || "skipped"}</small></div>`;
+    }).join("");
+    return `<section class="cgroup" ${st === "ok" && !failing() ? `data-job="checks"` : ""}><header>${mark}${rows.length} ${word}</header>${body}</section>`;
+  }).join("");
+}
+
+function commitsList() {
+  return COMMITS.map(([sha, msg, ago]) => `<div class="commit"><code>${sha}</code><span>${msg}</span><small>${ago}</small></div>`).join("");
+}
+
+function marks(f) {
+  return `${f.note && !merged() ? `<span class="mk c" title="Has a comment">●</span>` : ""}${f.err && failing() ? `<span class="mk e" title="Failing test">✗</span>` : ""}`;
+}
+function tree(act, active) {
+  let dir = "", out = "";
+  for (const [f, i] of shown()) {
+    if (f.dir !== dir) { dir = f.dir; out += `<div class="dir">${ico("folder")}${dir}</div>`; }
+    out += `<button class="fnode ${active === i ? "on" : ""}" data-act="${act}" data-i="${i}">${f.name}<span class="st">${marks(f)}<span class="ok">+${f.a}</span><span class="bad">−${f.d}</span></span></button>`;
+  }
+  return `<nav class="ftree" aria-label="Changed files">${out || `<div class="dir">No file matches.</div>`}</nav>`;
+}
+function diffBody(f) {
+  let o = f.o, n = f.n;
+  const rows = f.lines.map(([t, txt]) => {
+    const on = t === "+" ? "" : o++, nn = t === "-" ? "" : n++;
+    return `<div class="dl ${t === "+" ? "a" : t === "-" ? "d" : "c"}"><i>${on}</i><i>${nn}</i><em>${esc(txt)}</em></div>`;
+  });
+  if (f.note) rows.splice(f.note + 3, 0, `<div class="dl note"><b>review-bot</b> · No blocking findings. One note: <code>phaseOf</code> reads like a getter. <span class="unres">Unresolved</span></div>`);
+  const hk = `<div class="dl hk"><i></i><i></i><em>@@ -${f.o},${f.o ? f.lines.filter((l) => l[0] !== "+").length : 0} +${f.n},${f.lines.filter((l) => l[0] !== "-").length} @@ ${esc(f.hunk)}</em></div>`;
+  return `<div class="dbody" ${f.job ? `data-job="diff"` : ""}>${hk}${rows.join("")}</div>`;
+}
+function diffCard(f, i, foldable) {
+  const fold = foldable && R.folded[i];
+  const head = `<span class="p">&lrm;${f.dir}${f.name}</span><small><span class="ok">+${f.a}</span> <span class="bad">−${f.d}</span></small>`;
+  return `<article class="diff" id="d${i}">${foldable ? `<button class="dhead" data-act="fold" data-i="${i}" aria-expanded="${!fold}">${fold ? "▸" : "▾"} ${head}</button>` : `<div class="dhead">${head}</div>`}${fold ? "" : diffBody(f)}</article>`;
+}
+const filterField = () => `<input type="search" id="ffilter" aria-label="Filter changed files" placeholder="Filter files" value="${esc(R.filter)}">`;
+
+/* ---------- variants ---------- */
+function vTabs() {
+  const tab = (k, label, cnt) => `<button class="tab ${R.tab === k ? "on" : ""}" data-act="tab" data-k="${k}" aria-current="${R.tab === k ? "page" : "false"}">${label}${cnt !== undefined ? `<span class="cnt">${cnt}</span>` : ""}</button>`;
+  let body;
+  if (R.tab === "overview") body = readiness() + description() + `<div class="h">Comments</div>` + comments();
+  else if (R.tab === "commits") body = commitsList();
+  else if (R.tab === "checks") body = checksList();
+  else {
+    const wide = S.cw >= 520;
+    const diffs = `<div class="diffs">${shown().map(([f, i]) => diffCard(f, i, true)).join("")}</div>`;
+    body = `<div class="ftools">${wide ? "" : `<button class="btn sm" data-act="tree" aria-expanded="${R.tree}">${R.tree ? "Hide" : "Show"} tree</button>`}${filterField()}</div>
+      ${wide ? `<div class="fsplit">${tree("pick", R.sel)}${diffs}</div>` : (R.tree ? tree("pick", R.sel) : "") + diffs}`;
+  }
+  return `<div class="cmain">${prHeader()}<nav class="tabs" aria-label="Pull request sections">${tab("overview", "Overview")}${tab("commits", "Commits", 3)}${tab("checks", "Checks", failing() ? "✗" : "✓")}${tab("files", "Files changed", 6)}</nav>
+    <div class="cbody">${body}</div></div>`;
+}
+
+function vScroll() {
+  const j = (k, l) => `<button class="fchip" data-act="jump" data-k="${k}">${l}</button>`;
+  return `<div class="cmain">${prHeader()}<nav class="jumps" aria-label="Jump to section">${j("top", "Overview")}${j("checks", `Checks ${failing() ? "✗" : "✓"}`)}${j("comments", `Comments ${commentCount()}`)}${j("files", "Files 6")}</nav>
+    <div class="cbody">
+      <section class="sec" data-sec="top">${readiness({ merge: false })}${description()}</section>
+      <section class="sec" data-sec="checks"><div class="h">Checks</div>${checksList()}</section>
+      <section class="sec" data-sec="comments"><div class="h">Comments</div>${comments()}</section>
+      <section class="sec" data-sec="files"><div class="h">Files changed · 6</div><div class="ftools">${filterField()}</div>
+        <div class="diffs">${shown().map(([f, i]) => diffCard(f, i, true)).join("")}</div></section>
+    </div>
+    <div class="mbar"><div class="rtxt" style="display:flex;gap:8px;align-items:center"><span class="${headline()[0] === "fail" ? "bad" : merged() ? "pu" : "ok"}">${headline()[1]}</span><b style="font-size:12px">${headline()[2]}</b></div>${mergeControl()}</div></div>`;
+}
+
+function vDock() {
+  const P = R.panel; let title, body;
+  if (P === "overview") { title = "Overview";
+    body = `${description()}<div class="h">Since you last looked</div><div class="activity"><div><b>1</b><span>push</span></div><div><b>2</b><span>comments</span></div><div><b>${failing() ? "1" : "0"}</b><span>failing checks</span></div></div>
+      <div class="h">Commits</div>${commitsList()}`; }
+  else if (P === "comments") { title = "Comments"; body = comments(); }
+  else if (P === "checks") { title = "Checks"; body = checksList(); }
+  else if (P === "files") {
+    if (R.drill === null) { title = "Files changed"; body = `<div class="ftools">${filterField()}</div>${tree("drill", null)}`; }
+    else { const f = FILES[R.drill]; title = "Files changed";
+      body = `<div class="crumb"><button class="btn sm" data-act="back">‹ All files</button><span class="m" style="margin-left:auto">${R.drill + 1} of ${FILES.length}</span>
+        <button class="btn sm" data-act="step" data-k="-1" aria-label="Previous file" ${R.drill === 0 ? "disabled" : ""}>‹</button><button class="btn sm" data-act="step" data-k="1" aria-label="Next file" ${R.drill === FILES.length - 1 ? "disabled" : ""}>›</button></div>${diffCard(f, R.drill, false)}`; } }
+  else { title = "Merge status"; const [cls, icon, head, sub] = headline();
+    const row = (ic, c, b, s) => `<div class="srow"><span class="ic ${c}">${ic}</span><div><b>${b}</b><span>${s}</span></div></div>`;
+    body = `<div class="srow" style="border:0"><span class="ricon ${cls}">${icon}</span><div><b>${head}</b><span>${sub}</span></div></div>
+      ${row(failing() ? "✗" : "✓", failing() ? "bad" : "ok", failing() ? "1 check failing" : "All checks passed", failing() ? "test · 1m 28s" : "4 passed, 1 skipped")}
+      ${row("!", "y", `${unresolvedCount()} unresolved comment`, "review-bot on runCanvas.ts")}
+      ${row("✓", "ok", "No review required", "master has no required reviewers")}
+      ${row("✓", "ok", "No conflicts with master", "Up to date with master")}
+      <div class="rmerge" style="padding:4px 0 0">${mergeControl()}</div>`; }
+  const s = (k, icon, label, badge) => `<button class="ib ${P === k ? "on" : ""}" data-act="panel" data-k="${k}" aria-label="${label}" aria-pressed="${P === k}" title="${label}">${ico(icon)}${badge || ""}</button>`;
+  const mergeBadge = merged() || closed() ? "" : `<span class="badge ${failing() ? "r" : "b"}">${failing() ? "!" : "✓"}</span>`;
+  return `<div class="crow"><div class="cmain">${prHeader()}<div class="ptitle">${title}<small>${P === "files" ? "6 files" : ""}</small></div><div class="cbody">${body}</div></div>
+    <nav class="strip" aria-label="Pull request panels">${s("overview", "doc", "Overview")}${s("comments", "chat", "Comments", `<span class="badge">${unresolvedCount()}</span>`)}${s("checks", "check", "Checks", failing() ? `<span class="badge r">1</span>` : "")}${s("files", "file", "Files changed", `<span class="badge b">6</span>`)}<span class="grow"></span>${s("merge", "merge", "Merge status", mergeBadge)}</nav></div>`;
+}
+
+function vReady() {
+  let detail = "";
+  if (R.cell === "checks") detail = checksList();
+  else if (R.cell === "comments") detail = comments();
+  else if (R.cell === "commits") detail = commitsList();
+  else if (R.cell === "files") { const f = FILES[R.fileIx];
+    detail = `<div class="stepper"><button class="btn sm" data-act="step" data-k="-1" aria-label="Previous file" ${R.fileIx === 0 ? "disabled" : ""}>‹</button>
+      <select id="fpick" aria-label="Changed file">${FILES.map((x, i) => `<option value="${i}" ${i === R.fileIx ? "selected" : ""}>${i + 1}/6 ${x.name}  +${x.a} −${x.d}${x.note ? "  ●" : ""}</option>`).join("")}</select>
+      <button class="btn sm" data-act="step" data-k="1" aria-label="Next file" ${R.fileIx === FILES.length - 1 ? "disabled" : ""}>›</button></div>${diffCard(f, R.fileIx, false)}`; }
+  else detail = description();
+  return `<div class="cmain">${prHeader()}<div class="cbody">${readiness({ cells: ["checks", "comments", "files", "commits"], clickable: true })}
+    ${R.cell ? `<div class="h">${cellData()[R.cell][0]}</div>` : `<div class="h">Description</div>`}${detail}</div></div>`;
+}
+
+/* ---------- window ---------- */
+function shellHtml() {
+  const b = (icon, badge) => `<span class="ib">${ico(icon)}${badge || ""}</span>`;
+  const bar = `<nav class="abar" aria-label="Modules">${b("folder")}${b("branch", merged() || closed() ? "" : `<span class="badge b">1</span>`)}${b("bot", `<span class="badge">1</span>`)}${b("flow")}<span class="grow"></span>${b("sliders")}</nav>`;
+  const term = `<div class="term"><div class="ph">${ico("term")}<b>implement 569</b><span class="dot"></span><span class="m">waiting on you</span><small>terminal 2</small></div>
+    <pre class="out"><span class="m">● implement ticket 569: run canvas node phases</span>
+  Edit src/slices/praxis-builder/runCanvas.ts <span class="g">+24</span> <span class="bad">-18</span>
+  Write src/slices/praxis-builder/phases.ts
+  Bash pnpm test runCanvas phases
+${failing() ? `<span class="bad">  ✗ 1 failed</span> <span class="m">| 13 passed</span>` : `<span class="g">  ✓ 14 passed</span> <span class="m">(1.9 s)</span>`}
+  Bash gh pr create
+  <span class="g">Opened pull request 574</span>
+
+<span class="p">recap:</span> node phases render for a graph run.
+${failing() ? "CI's test job fails on idle nodes. Look before merging." : "Checks are green. Merge when you've looked it over."}
+
+<span class="y">Reply: [ Yes ] [ Go with your recommendation ] [ No ]</span>
+&gt; _</pre></div>`;
+  const comp = `<aside class="comp" aria-label="Companion"><div class="ph">${ico("pr")}<b>Following terminal 2</b><small>pin · widen</small></div>
+    ${{ tabs: vTabs, scroll: vScroll, dock: vDock, ready: vReady }[S.v]()}</aside>`;
+  return bar + term + comp;
+}
+
+function render() {
+  const shell = $("shell"), oldBody = shell.querySelector(".cbody"), top = oldBody ? oldBody.scrollTop : 0;
+  const a = document.activeElement, fid = a && shell.contains(a) && a.id ? a.id : null, caret = fid && a.selectionStart != null ? a.selectionStart : null;
+  shell.style.setProperty("--cw", S.cw + "px");
+  shell.innerHTML = shellHtml();
+  const body = shell.querySelector(".cbody");
+  if (body) {
+    body.style.scrollBehavior = "auto";
+    body.scrollTop = R.top ? 0 : top;
+    if (R.scrollTo) { const el = body.querySelector(R.scrollTo); if (el) body.scrollTop = el.offsetTop - body.offsetTop - 4; }
+    body.style.scrollBehavior = "";
+  }
+  R.top = false; R.scrollTo = null;
+  if (fid) { const el = $(fid); if (el) { el.focus(); if (caret != null && el.setSelectionRange) try { el.setSelectionRange(caret, caret); } catch (e) {} } }
+  requestAnimationFrame(seen);
+  notes(); renderJob();
+}
+
+/* ---------- job tracking ---------- */
+function seen() {
+  const body = $("shell").querySelector(".cbody"); if (!body) return;
+  const br = body.getBoundingClientRect();
+  for (const el of body.querySelectorAll("[data-job]")) {
+    const r = el.getBoundingClientRect(), vis = Math.min(r.bottom, br.bottom) - Math.max(r.top, br.top);
+    if (r.height && vis >= Math.min(40, r.height * 0.6)) R.job[el.dataset.job] = true;
+  }
+  renderJob();
+}
+function steps() {
+  return [[failing() ? "Read the failing check's log" : "Saw the check results", R.job.checks], ["Read the runCanvas.ts diff", R.job.diff],
+    ["Posted a comment", R.job.comment], ["Merged", merged()], ["Deleted the branch", merged() && R.branch === "deleted"]];
+}
+function renderJob() {
+  const st = steps();
+  $("job").innerHTML = st.map(([t, d]) => `<li class="${d ? "done" : ""}">${t}</li>`).join("");
+  const done = st.every(([, d]) => d);
+  if (done && !R.recorded) {
+    R.recorded = true;
+    const key = S.v + ":" + S.scen, prev = BEST[key];
+    if (!prev || R.clicks < prev.clicks || (R.clicks === prev.clicks && R.travel < prev.travel)) BEST[key] = { clicks: R.clicks, travel: Math.round(R.travel), runs: (prev?.runs || 0) + 1 };
+    else prev.runs++;
+    $("toast").textContent = `Job done: ${R.clicks} clicks, ${Math.round(R.travel).toLocaleString()} px of pointer travel.`;
+    bench();
+  }
+  readout();
+}
+function readout() {
+  const n = steps().filter(([, d]) => d).length;
+  $("readout").innerHTML = `<span>Layout <b>${VARIANTS[S.v].name}</b></span><span>Companion <b>${S.cw} px</b></span><span>Terminal <b>${Math.round($("shell").querySelector(".term")?.getBoundingClientRect().width || 0)} px</b></span>` +
+    `<span>State <b>${R.pr}${R.branch === "deleted" ? ", branch deleted" : ""}</b></span><span>Clicks <b>${R.clicks}</b></span><span>Pointer travel <b>${Math.round(R.travel).toLocaleString()} px</b></span><span>Job <b>${n} of 5</b></span>`;
+}
+function notes() {
+  const v = VARIANTS[S.v];
+  $("n-what").textContent = v.what;
+  for (const [id, items] of [["n-pro", v.pro], ["n-con", v.con]]) $(id).replaceChildren(...items.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+}
+function bench() {
+  const scen = failing() ? "one check failing" : "checks green";
+  const rows = Object.entries(VARIANTS).map(([k, v]) => { const b = BEST[k + ":" + S.scen];
+    return `<tr class="${k === S.v ? "cur" : ""}"><td>${v.name}</td><td class="n">${b ? `<span class="bar" style="width:${b.clicks * 10}px"></span>${b.clicks}` : `<span class="m">not run</span>`}</td><td>${b ? b.travel.toLocaleString() + " px" : "—"}</td><td>${b ? b.runs : 0}</td></tr>`; }).join("");
+  $("bench").innerHTML = `<tr><th>Layout (${scen})</th><th>Best clicks</th><th>Pointer travel</th><th>Runs</th></tr>
+    <tr><td>Today: drawer, then the browser</td><td class="n"><span class="bar" style="width:90px"></span>9</td><td class="m">plus a trip to the browser</td><td class="m">hand count</td></tr>${rows}`;
+}
+
+/* ---------- actions ---------- */
+const scrollSec = (k) => { const body = $("shell").querySelector(".cbody"), el = body?.querySelector(`[data-sec="${k}"]`); if (el) body.scrollTop = el.offsetTop - body.offsetTop - 4; };
+const ACTS = {
+  tab: (d) => { R.tab = d.k; R.top = true; },
+  jump: (d) => { scrollSec(d.k); return false; },
+  panel: (d) => { R.panel = d.k; R.top = true; },
+  cell: (d) => { R.cell = R.cell === d.k ? null : d.k; },
+  tree: () => { R.tree = !R.tree; },
+  pick: (d) => { R.sel = +d.i; R.folded[+d.i] = false; R.scrollTo = `#d${d.i}`; },
+  drill: (d) => { R.drill = +d.i; R.top = true; },
+  back: () => { R.drill = null; R.top = true; },
+  step: (d) => { if (S.v === "dock") R.drill = Math.min(FILES.length - 1, Math.max(0, R.drill + +d.k)); else R.fileIx = Math.min(FILES.length - 1, Math.max(0, R.fileIx + +d.k)); },
+  fold: (d) => { R.folded[d.i] = !R.folded[d.i]; },
+  log: (d) => { R.logClosed[d.k] = !R.logClosed[d.k]; },
+  filt: (d) => { R.filt = d.k; },
+  sort: () => { R.sort = R.sort === "new" ? "old" : "new"; },
+  post: () => { const t = R.draft.trim(); if (!t) { $("draft")?.focus(); return false; }
+    R.posted.push({ k: "comment", t: 10 + R.posted.length, who: "you", html: esc(t), ago: "now", mine: true }); R.draft = ""; R.job.comment = true; },
+  closepr: () => { R.pr = "closed"; },
+  reopen: () => { R.pr = "open"; },
+  menu: () => { R.menu = !R.menu; },
+  method: (d) => { R.method = d.k; R.menu = false; R.msg = d.k === "squash" ? "Run canvas: node phases for a graph run (#574)" : "Merge pull request #574 from ticket-569"; },
+  merge: () => { R.pr = "confirm"; R.menu = false; },
+  cancel: () => { R.pr = "open"; },
+  confirm: () => { R.pr = "merged"; if (R.delOnMerge) R.branch = "deleted"; },
+  delbranch: () => { R.branch = "deleted"; },
+  restore: () => { R.branch = "present"; },
+};
+
+const shell = $("shell");
+shell.addEventListener("pointerdown", (e) => {
+  if (!e.target.closest("button,input,textarea,select,label,[data-act]")) return;
+  const r = shell.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (R.last) R.travel += Math.hypot(x - R.last[0], y - R.last[1]);
+  R.last = [x, y]; R.clicks++; readout();
+});
+shell.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]"); if (!el || el.disabled) return;
+  if (ACTS[el.dataset.act](el.dataset) !== false) render();
+});
+shell.addEventListener("input", (e) => {
+  const id = e.target.id;
+  if (id === "draft") R.draft = e.target.value;
+  else if (id === "msg") R.msg = e.target.value;
+  else if (id === "ffilter") { R.filter = e.target.value; render(); }
+});
+shell.addEventListener("change", (e) => {
+  if (e.target.id === "delmerge") R.delOnMerge = e.target.checked;
+  if (e.target.id === "fpick") { R.fileIx = +e.target.value; render(); }
+});
+shell.addEventListener("scroll", () => seen(), true);
+
+function restart() { freshRun(); $("toast").textContent = ""; render(); bench(); }
+document.querySelectorAll('input[name="v"]').forEach((r) => r.addEventListener("change", () => { S.v = r.value; restart(); }));
+document.querySelectorAll('input[name="sc"]').forEach((r) => r.addEventListener("change", () => { S.scen = r.value; restart(); }));
+$("cw").addEventListener("input", (e) => { S.cw = +e.target.value; $("cw-out").textContent = S.cw + " px"; render(); });
+$("reset").addEventListener("click", restart);
+restart();
+</script>
