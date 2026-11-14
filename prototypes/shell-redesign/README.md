@@ -30,4 +30,8 @@ with example data; nothing is wired to Quay.
 - `quay-stage-and-status.html`: four candidates for what becomes of the
   stage header and status strip (Pure Canvas, Stage Tabs Only, Micro
   Statusline Only, Dual Micro Bars) across Single, Split, and Grid layouts.
+- `quay-pie-second-ring.html`: a guided, timed mouse test of four ways to
+  reach the pie menu's second ring (distance, turn, pause, turn or pause).
+  Chosen: distance, with the outer slices locked to the nearest action
+  that has sub-actions.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.
