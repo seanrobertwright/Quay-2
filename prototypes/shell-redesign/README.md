@@ -39,3 +39,6 @@ with example data; nothing is wired to Quay.
   terminal, the companion pull request, the module bar or a panel row, and
   an empty stage, with a grid of which strokes stay fixed. Chosen: fixed
   axes with family diagonals.
+- `quay-module-bar-badges.html`: four ways the module bar shows terminal
+  status while the Projects panel is closed, with a scripted event feed and
+  a click counter. Chosen: a dot per terminal under the Projects icon.

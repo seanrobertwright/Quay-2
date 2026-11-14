@@ -1,0 +1,355 @@
+<title>Quay Module Bar Badges</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: instructions and variant switcher on top, then one mock Quay window (module bar,
+   Source control panel open, stage, companion), then a scripted event feed you step through.
+   Deliberately dark only: this is Quay's own look. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #1c232c; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc;
+  --blue: #58a6ff; --amber: #e3b341; --green: #3fb950; --red: #f85149; --grey: #6e7681;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; } h3 { font-size: 14px; }
+p { margin: 0; max-width: 75ch; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+.lede { color: var(--muted); margin-top: 6px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.card { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 8px; padding: 12px 16px; }
+.card ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 14px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; flex: 1 1 220px; min-width: 0; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: #132339; }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pc { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px 24px; }
+.pc ul { margin: 4px 0 0; padding-left: 18px; }
+.pro { color: var(--green); } .con { color: var(--red); }
+.m { color: var(--muted); }
+
+/* Mock window */
+.winwrap { overflow-x: auto; border: 1px solid var(--q-line); border-radius: 8px; }
+.win { width: 1100px; height: 560px; display: flex; background: var(--q-bg); position: relative; font-size: 13px; }
+.bar { width: 48px; flex: 0 0 48px; border-right: 1px solid var(--q-line); background: #0b0f14; display: flex; flex-direction: column; align-items: stretch; position: relative; }
+.mod { height: 48px; border: 0; background: none; position: relative; display: grid; place-items: center; color: var(--muted); }
+.mod svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mod:hover { color: var(--hi); background: var(--q-raise); }
+.mod.active { color: var(--hi); }
+.mod.active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; background: var(--blue); }
+.cnt { position: absolute; top: 6px; right: 5px; min-width: 15px; height: 15px; border-radius: 8px; font: 700 10px/15px var(--mono); text-align: center; padding: 0 3px; color: #0d1117; background: var(--amber); }
+.cnt.red { background: var(--red); color: #fff; top: auto; bottom: 6px; }
+.cnt.blue { background: var(--blue); }
+.sumdot { position: absolute; right: 8px; bottom: 9px; width: 8px; height: 8px; border-radius: 50%; }
+.dots { display: flex; flex-direction: column; padding: 2px 0 6px; border-bottom: 1px solid var(--q-line); }
+.dots .gap { height: 6px; }
+.dot { height: 24px; border: 0; background: none; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; padding: 0; }
+.dot:hover { background: var(--q-raise); }
+.dot i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.dot.sel::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--hi); }
+.chip { height: 30px; border: 0; background: none; display: grid; place-items: center; position: relative; padding: 0; }
+.chip span { width: 30px; height: 22px; border-radius: 5px; font: 700 11px/22px var(--mono); text-align: center; display: block; }
+.chip:hover span { outline: 1px solid var(--hi); }
+.chips { display: flex; flex-direction: column; padding: 4px 0; border-bottom: 1px solid var(--q-line); }
+.s-working { background: var(--green); animation: pulse 1.4s ease-in-out infinite; }
+.s-waiting { background: var(--amber); box-shadow: 0 0 0 3px rgba(227,179,65,.25); }
+.s-idle { background: transparent; border: 1.5px solid var(--grey); }
+.s-exited { background: var(--red); border-radius: 2px !important; }
+.chip .s-waiting { color: #0d1117; box-shadow: none; }
+.chip .s-exited { color: #fff; }
+@keyframes pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .s-working { animation: none; } }
+.spacer { flex: 1; }
+.spend { font: 500 10px var(--mono); color: var(--muted); text-align: center; padding: 6px 0; }
+.bell { height: 56px; border: 0; border-top: 1px solid var(--q-line); background: none; display: grid; place-items: center; position: relative; color: var(--muted); }
+.bell svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.bell.hot { color: var(--amber); background: rgba(227,179,65,.08); }
+.bell .cnt { top: 8px; }
+.tip { position: absolute; left: 54px; z-index: 5; background: var(--q-raise); border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 8px; font: 12px var(--mono); color: var(--hi); white-space: nowrap; pointer-events: none; }
+.panel { width: 270px; flex: 0 0 270px; border-right: 1px solid var(--q-line); background: var(--q-panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.panel h4 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.row { padding: 6px 8px; border-radius: 6px; background: var(--q-bg); border: 1px solid var(--q-line); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.row i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.row .ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .rk { font: 11px var(--mono); color: var(--muted); }
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tabs { height: 34px; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 4px; padding: 0 8px; font: 12px var(--mono); color: var(--muted); }
+.tabs span { padding: 4px 10px; border-radius: 6px; }
+.tabs span.on { background: var(--q-raise); color: var(--hi); }
+.pane { flex: 1; padding: 10px 14px; font: 12px/1.7 var(--mono); color: #8b949e; white-space: pre-wrap; overflow: hidden; transition: background .3s; }
+.pane .hdr { color: var(--hi); display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.pane .hdr i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pane.flash { background: #132339; }
+.comp { width: 250px; flex: 0 0 250px; border-left: 1px solid var(--q-line); padding: 10px 12px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; }
+.comp .box { border: 1px solid var(--q-line); border-radius: 6px; padding: 8px; background: var(--q-panel); }
+
+/* Event feed */
+.feed { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; align-items: center; }
+.feed .now { font: 13px var(--mono); color: var(--hi); min-height: 22px; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--q-line); background: var(--q-raise); border-radius: 6px; padding: 6px 12px; }
+.btn.primary { border-color: var(--blue); background: #132339; color: var(--hi); }
+.log { margin: 0; font: 12px/1.7 var(--mono); color: var(--muted); background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 6px; padding: 8px 12px; min-height: 48px; max-height: 140px; overflow: auto; white-space: pre-wrap; }
+.log b { color: var(--hi); font-weight: 500; }
+.counter { font: 12px var(--mono); color: var(--muted); }
+.counter b { color: var(--hi); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+@media (max-width: 560px) { .feed { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · nothing runs</div>
+    <h1>Quay Module Bar Badges</h1>
+    <p class="lede">The Source control panel is open, so the Projects panel and its terminal list are hidden. How does the module bar tell you a terminal needs you, has crashed, or is still working?</p>
+  </header>
+
+  <section class="card" aria-labelledby="how">
+    <h3 id="how">How to use this page</h3>
+    <ol>
+      <li>Pick a variant below.</li>
+      <li>Press <b>Next event</b> to play what happens while you read a pull request: an agent stops to ask you something, another crashes, you answer one.</li>
+      <li>After each event, click whatever on the module bar would get you to that terminal. The counter shows clicks used.</li>
+      <li>Try all four, then answer the questions back in the terminal.</li>
+    </ol>
+  </section>
+
+  <fieldset class="seg" aria-label="Variant">
+    <input type="radio" name="v" id="v-a" value="a"><label for="v-a"><b>A · Count on the Projects icon</b><small>Amber number for waiting, red for crashed; click opens the panel</small></label>
+    <input type="radio" name="v" id="v-b" value="b" checked><label for="v-b"><b>B · A dot per terminal</b><small>Every terminal's status under the Projects icon; click a dot to show it</small></label>
+    <input type="radio" name="v" id="v-c" value="c"><label for="v-c"><b>C · Only what needs you</b><small>A chip appears for waiting or crashed terminals only; click to show it</small></label>
+    <input type="radio" name="v" id="v-d" value="d"><label for="v-d"><b>D · Corner bell</b><small>Bottom-left corner bell; each click jumps to the next waiting terminal</small></label>
+  </fieldset>
+
+  <section class="card pc" aria-live="polite">
+    <div><h3 id="pc-t"></h3><p class="m" id="pc-d"></p></div>
+    <div><ul id="pc-l"></ul></div>
+  </section>
+
+  <div class="legend">
+    <span><i class="s-working"></i> Working</span>
+    <span><i class="s-waiting"></i> Waiting on you</span>
+    <span><i class="s-idle"></i> Idle</span>
+    <span><i class="s-exited" style="border-radius: 2px"></i> Exited</span>
+  </div>
+
+  <div class="winwrap"><div class="win" id="win">
+    <nav class="bar" id="bar" aria-label="Module bar"></nav>
+    <aside class="panel" aria-label="Source control panel">
+      <h4>Source control</h4>
+      <div class="row"><span class="ttl">#621 Companion issue view</span><span class="rk">open</span></div>
+      <div class="row"><span class="ttl">#630 Module bar replaces the rail</span><span class="rk">review</span></div>
+      <div class="row"><span class="ttl">#629 Pie contexts in the spec</span><span class="rk">draft</span></div>
+      <h4 style="margin-top: 8px">Topos</h4>
+      <div class="row"><span class="ttl">master ← 3 worktrees</span></div>
+    </aside>
+    <section class="stage" aria-label="Stage">
+      <div class="tabs"><span class="on">Terminals</span><span>Praxis Builder</span></div>
+      <div class="pane" id="pane"></div>
+    </section>
+    <aside class="comp" aria-label="Companion">
+      <div class="box"><b style="color: var(--hi)">#630</b> Module bar replaces the rail<br>Checks 9/9 · Comments 2</div>
+      <div class="box">Files changed 14 · Commits 5</div>
+      <div class="box">[ Squash and merge ▾ ]</div>
+    </aside>
+  </div></div>
+
+  <section class="card feed" aria-label="Events">
+    <div>
+      <div class="now" id="now" aria-live="polite"></div>
+      <div class="counter">Clicks on the module bar this run: <b id="clicks">0</b></div>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="next">Next event</button>
+      <button class="btn" id="reset">Start over</button>
+    </div>
+  </section>
+  <pre class="log" id="log" aria-label="What happened"></pre>
+</div>
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <symbol id="i-proj" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></symbol>
+  <symbol id="i-src" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-12 7"/></symbol>
+  <symbol id="i-agents" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6h4a2 2 0 0 1 2 2v7"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></symbol>
+</svg>
+
+<script>
+const VARIANTS = {
+  a: { t: "A · Count on the Projects icon", d: "The Projects icon carries an amber count of terminals waiting on you, and a red count of terminals that exited. Clicking it opens the Projects panel as usual; you pick the terminal there.",
+       l: [["pro", "Quietest; nothing new to learn"], ["con", "Two clicks to reach a waiting terminal, and the Source control panel closes"], ["con", "Working and idle are invisible"]] },
+  b: { t: "B · A dot per terminal (chosen)", d: "Under the Projects icon, one 24 px row per terminal, grouped by project, coloured by status. Clicking a dot shows that terminal in the focused pane; the open panel stays open. Hover names it. Chosen: always shown, and past the cap the terminals that need you show first, then a +N row.",
+       l: [["pro", "One click to any terminal, and you see everything at a glance"], ["pro", "Rows run to the screen edge, so they are easy to hit"], ["con", "Busy with many terminals: past about 12 it needs a +N row"]] },
+  c: { t: "C · Only what needs you", d: "A chip appears under the Projects icon only for a terminal that is waiting or exited, labelled with its run kind's letter. It disappears once you deal with it. Clicking a chip shows that terminal.",
+       l: [["pro", "One click, and quiet when nothing needs you"], ["pro", "Scales: a chip per exception, not per terminal"], ["con", "Chips appear and vanish, so positions are never learned"], ["con", "Working terminals are invisible"]] },
+  d: { t: "D · Corner bell", d: "A bell in the bottom-left corner of the screen shows the waiting count. Each click jumps to the next waiting terminal, like the pie's Next wait stroke. The Projects icon gets one summary dot: red if any exited, amber if any wait.",
+       l: [["pro", "The corner is the easiest target on screen: throw the mouse down-left and click"], ["pro", "One click per waiting terminal, without aiming"], ["con", "Crashed terminals need the Projects panel to reach"]] },
+};
+
+const START = () => [
+  { id: 1, p: "Quay2", rk: "claude", k: "C", name: "wayfinder 600", s: "working" },
+  { id: 2, p: "Quay2", rk: "codex", k: "X", name: "implement issue view", s: "working" },
+  { id: 3, p: "Quay2", rk: "claude", k: "C", name: "implement Agents panel", s: "waiting" },
+  { id: 4, p: "Quay2", rk: "pwsh", k: "P", name: "pnpm dev", s: "idle" },
+  { id: 5, p: "AI-WS-SDK", rk: "claude", k: "C", name: "engine fix #247", s: "working" },
+  { id: 6, p: "AI-WS-SDK", rk: "pi", k: "π", name: "review PR #88", s: "idle" },
+];
+const EVENTS = [
+  { say: "wayfinder 600 stops and asks you a question.", act: (t) => { t[0].s = "waiting"; }, want: 1 },
+  { say: "engine fix #247 crashes: Claude exited with code 1.", act: (t) => { t[4].s = "exited"; }, want: 5 },
+  { say: "You answered implement Agents panel elsewhere; it is working again.", act: (t) => { t[2].s = "working"; }, want: null },
+  { say: "implement issue view finishes its turn and waits for you.", act: (t) => { t[1].s = "waiting"; }, want: 2 },
+];
+
+let terms, step, clicks, shown, cursor;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const variant = () => document.querySelector('input[name="v"]:checked').value;
+const statusWord = { working: "working", waiting: "waiting on you", idle: "idle", exited: "exited" };
+const color = { working: "var(--green)", waiting: "var(--amber)", idle: "var(--grey)", exited: "var(--red)" };
+
+function log(html) { $("log").innerHTML = html + "\n" + $("log").innerHTML; }
+
+function show(id, how) {
+  const t = terms.find((x) => x.id === id);
+  shown = id;
+  log(`<b>${esc(how)}</b> → showing ${esc(t.name)} (${statusWord[t.s]})`);
+  renderPane(true);
+  renderBar();
+}
+
+function click(what) { clicks++; $("clicks").textContent = clicks; return what; }
+
+function modBtn(icon, label, extra = "", active = false) {
+  return `<button class="mod${active ? " active" : ""}" data-mod="${icon}" aria-label="${esc(label)}"><svg><use href="#i-${icon}"/></svg>${extra}</button>`;
+}
+
+function renderBar() {
+  const v = variant();
+  const waiting = terms.filter((t) => t.s === "waiting");
+  const exited = terms.filter((t) => t.s === "exited");
+  let projExtra = "";
+  if (v === "a") {
+    if (waiting.length) projExtra += `<span class="cnt">${waiting.length}</span>`;
+    if (exited.length) projExtra += `<span class="cnt red">${exited.length}</span>`;
+  }
+  if (v === "d") {
+    const c = exited.length ? "var(--red)" : waiting.length ? "var(--amber)" : "";
+    if (c) projExtra = `<span class="sumdot" style="background:${c}"></span>`;
+  }
+  const projLabel = `Projects${waiting.length ? `, ${waiting.length} waiting` : ""}${exited.length ? `, ${exited.length} exited` : ""}`;
+  let h = modBtn("proj", projLabel, projExtra);
+  if (v === "b") {
+    h += `<div class="dots" role="list" aria-label="Terminals">`;
+    let last = null;
+    for (const t of terms) {
+      if (last && last !== t.p) h += `<div class="gap"></div>`;
+      last = t.p;
+      h += `<button class="dot${shown === t.id ? " sel" : ""}" role="listitem" data-t="${t.id}" aria-label="${esc(t.name)}, ${statusWord[t.s]}"><i class="s-${t.s}"></i></button>`;
+    }
+    h += `</div>`;
+  }
+  if (v === "c") {
+    const need = terms.filter((t) => t.s === "waiting" || t.s === "exited");
+    if (need.length) {
+      h += `<div class="chips" role="list" aria-label="Terminals that need you">`;
+      for (const t of need) h += `<button class="chip" role="listitem" data-t="${t.id}" aria-label="${esc(t.name)}, ${statusWord[t.s]}"><span class="s-${t.s}">${esc(t.k)}</span></button>`;
+      h += `</div>`;
+    }
+  }
+  h += modBtn("src", "Source control", `<span class="cnt blue">3</span>`, true) + modBtn("agents", "Agents") + modBtn("flow", "Workflows") + modBtn("cog", "Project");
+  h += `<div class="spacer"></div><div class="spend">$14.20</div>`;
+  if (v === "d") h += `<button class="bell${waiting.length ? " hot" : ""}" id="bellbtn" aria-label="Next waiting terminal, ${waiting.length} waiting"><svg><use href="#i-bell"/></svg>${waiting.length ? `<span class="cnt">${waiting.length}</span>` : ""}</button>`;
+  $("bar").innerHTML = h;
+
+  $("bar").querySelectorAll("[data-t]").forEach((b) => {
+    const t = terms.find((x) => x.id === +b.dataset.t);
+    b.addEventListener("click", () => { click(); show(t.id, v === "b" ? "Clicked its dot" : "Clicked its chip"); });
+    b.addEventListener("pointerenter", () => tip(b, `${t.p} · ${t.name} · ${statusWord[t.s]}`));
+    b.addEventListener("pointerleave", untip);
+    b.addEventListener("focus", () => tip(b, `${t.p} · ${t.name} · ${statusWord[t.s]}`));
+    b.addEventListener("blur", untip);
+  });
+  $("bar").querySelectorAll(".mod").forEach((b) => b.addEventListener("click", () => {
+    click();
+    if (b.dataset.mod === "proj") log(`<b>Clicked Projects</b> → the Projects panel opens and Source control closes. Pick the terminal in the list: one more click.`);
+    else log(`<b>Clicked ${esc(b.getAttribute("aria-label"))}</b> → that module's panel. No terminal shown.`);
+  }));
+  const bell = $("bellbtn");
+  if (bell) bell.addEventListener("click", () => {
+    click();
+    const w = terms.filter((t) => t.s === "waiting");
+    if (!w.length) { log(`<b>Clicked the bell</b> → nothing waits.`); return; }
+    const i = w.findIndex((t) => t.id === shown);
+    const nextT = w[(i + 1) % w.length];
+    show(nextT.id, "Clicked the bell");
+  });
+}
+
+let tipEl = null;
+function tip(el, text) {
+  untip();
+  tipEl = document.createElement("div");
+  tipEl.className = "tip";
+  tipEl.textContent = text;
+  const top = el.getBoundingClientRect().top - $("win").getBoundingClientRect().top + el.offsetHeight / 2 - 12;
+  tipEl.style.top = top + "px";
+  $("win").appendChild(tipEl);
+}
+function untip() { if (tipEl) { tipEl.remove(); tipEl = null; } }
+
+function renderPane(flash) {
+  const t = terms.find((x) => x.id === shown);
+  const body = {
+    working: "● Editing src/slices/...\n● Running pnpm test\n  ✓ 412 passed",
+    waiting: "● Done with step 2.\n\n> Which second-ring parents should the spec list?\n\n▌",
+    idle: "PS> ▌",
+    exited: "Error: request failed\n\n[process exited with code 1]  Relaunch?",
+  }[t.s];
+  $("pane").innerHTML = `<div class="hdr"><i style="background:${color[t.s]}"></i>${esc(t.rk)} · ${esc(t.name)} <span class="m">(${esc(t.p)})</span></div>${esc(body)}`;
+  if (flash) { $("pane").classList.add("flash"); setTimeout(() => $("pane").classList.remove("flash"), 400); }
+}
+
+function renderVariantCard() {
+  const V = VARIANTS[variant()];
+  $("pc-t").textContent = V.t;
+  $("pc-d").textContent = V.d;
+  $("pc-l").innerHTML = V.l.map(([k, s]) => `<li><span class="${k}">${k === "pro" ? "+" : "−"}</span> ${esc(s)}</li>`).join("");
+}
+
+function reset() {
+  terms = START(); step = 0; clicks = 0; shown = 4;
+  $("clicks").textContent = "0";
+  $("log").innerHTML = "";
+  $("now").textContent = "Ready. You are reading pull request #630. Press Next event.";
+  $("next").disabled = false;
+  renderVariantCard(); renderBar(); renderPane(false);
+}
+
+$("next").addEventListener("click", () => {
+  if (step >= EVENTS.length) return;
+  const e = EVENTS[step++];
+  e.act(terms);
+  $("now").textContent = `Event ${step} of ${EVENTS.length}: ${e.say}`;
+  log(`<b>Event ${step}:</b> ${esc(e.say)}`);
+  if (step >= EVENTS.length) { $("next").disabled = true; $("now").textContent += " That was the last event."; }
+  renderBar(); renderPane(false);
+});
+$("reset").addEventListener("click", reset);
+document.querySelectorAll('input[name="v"]').forEach((r) => r.addEventListener("change", reset));
+reset();
+</script>
