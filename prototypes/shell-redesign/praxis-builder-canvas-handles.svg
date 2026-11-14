@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="t">
+  <title id="t">Praxis Builder</title>
+  <rect x="2.5" y="2.5" width="19" height="19" fill="none" stroke="#FDA4AF" stroke-width="1" stroke-dasharray="2 2" opacity=".75"/>
+  <g fill="#FDA4AF">
+    <rect x="1" y="1" width="3.2" height="3.2"/>
+    <rect x="19.8" y="1" width="3.2" height="3.2"/>
+    <rect x="1" y="19.8" width="3.2" height="3.2"/>
+    <rect x="19.8" y="19.8" width="3.2" height="3.2"/>
+  </g>
+  <g transform="translate(1.9 1.9) scale(.21)">
+    <polygon points="25,16 39,16 25,80" fill="#FB7185"/>
+    <polygon points="39,16 39,80 25,80" fill="#BE123C"/>
+    <polygon points="39,16 59,16 51,34" fill="#FDA4AF"/>
+    <polygon points="59,16 71,34 51,34" fill="#FB7185"/>
+    <polygon points="71,34 59,52 51,34" fill="#E11D48"/>
+    <polygon points="59,52 39,52 51,34" fill="#9F1239"/>
+  </g>
+</svg>

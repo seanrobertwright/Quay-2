@@ -1,0 +1,378 @@
+<title>Quay Window Concepts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one live mock of the whole Quay window, four switchable arrangements of
+   terminal and pull request, a state readout, and a click-count comparison. Quay's dark palette. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --blue: #58a6ff; --rose: #fb7185; --green: #3fb950;
+  --amber: #d29922; --red: #f85149; --purple: #a371f7;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: #f0f6fc; text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 22px; }
+p { margin: 0; max-width: 70ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 12px; cursor: pointer; background: var(--q-panel); font-weight: 500; }
+.seg input:checked + label { border-color: var(--blue); color: #fff; background: #132339; }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* mock window */
+.shell { position: relative; display: flex; height: 600px; min-width: 1040px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.4 "Segoe UI", system-ui, sans-serif; user-select: none; }
+.shell svg { width: 16px; height: 16px; flex: none; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+.ib { border: 0; background: none; padding: 9px; border-radius: 6px; display: inline-flex; position: relative; color: var(--muted); }
+.ib svg { width: 18px; height: 18px; }
+.ib:hover { background: var(--q-raise); color: #fff; }
+.ib.on { color: #fff; background: var(--q-raise); box-shadow: inset 2px 0 0 var(--blue); }
+.grow { flex: 1; }
+.badge { position: absolute; top: 2px; right: 1px; min-width: 13px; height: 13px; border-radius: 7px; font: 600 9px/13px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.b { background: var(--blue); }
+.panel { width: 226px; flex: none; border-right: 1px solid var(--q-line); display: flex; flex-direction: column; overflow: hidden; }
+.ph { padding: 9px 12px; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 8px; color: #e6edf3; background: var(--q-panel); white-space: nowrap; }
+.ph b { font-weight: 600; } .ph small { color: var(--muted); font: 10px var(--mono); margin-left: auto; }
+.plist { padding: 8px; display: flex; flex-direction: column; gap: 3px; overflow: auto; }
+.plist h4 { margin: 8px 4px 2px; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; border: 1px solid transparent; background: none; text-align: left; width: 100%; }
+.item:hover { background: var(--q-panel); }
+.item.on { background: var(--q-panel); border-color: var(--q-line); color: #fff; }
+.item small { margin-left: auto; color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.run { background: var(--green); } .dot.wait { background: var(--amber); }
+.ok { color: var(--green); } .bad { color: var(--red); } .m { color: var(--muted); }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.panes { flex: 1; min-height: 0; display: flex; }
+.pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pane + .pane { border-left: 1px solid var(--q-line); }
+.pane.side { flex: 0 0 400px; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; }
+.out .g { color: var(--green); } .out .y { color: var(--amber); } .out .p { color: #d2a8ff; }
+.reply { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--q-line); flex-wrap: wrap; }
+.btn { border: 1px solid var(--q-line); border-radius: 5px; padding: 4px 9px; background: var(--q-raise); color: var(--fg); white-space: nowrap; }
+.btn.go { background: #238636; border-color: #2ea043; color: #fff; font-weight: 600; }
+.btn.warn { background: #9e6a03; border-color: var(--amber); color: #fff; font-weight: 600; }
+
+/* pull request view (schematic until the GitHub research lands) */
+.pr { background: #0b0f14; }
+.prh { padding: 10px 14px; border-bottom: 1px solid var(--q-line); }
+.prt { font-size: 14px; font-weight: 600; color: #f0f6fc; }
+.prm { margin-top: 5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pill { border-radius: 10px; padding: 1px 9px; font-weight: 600; color: #fff; background: #238636; }
+.pill.merged { background: #8957e5; } .pill.issue { background: #1f6feb; }
+.tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--q-line); }
+.tab { border: 0; background: none; padding: 8px 10px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tab.on { color: #fff; border-bottom-color: #f78166; }
+.prb { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.cm { border: 1px solid var(--q-line); border-radius: 6px; }
+.cm header { padding: 5px 10px; background: var(--q-panel); border-bottom: 1px solid var(--q-line); color: var(--muted); border-radius: 6px 6px 0 0; }
+.cm header b { color: #e6edf3; } .cm div { padding: 8px 10px; }
+.box { border: 1px solid var(--q-line); border-radius: 6px; padding: 8px 10px; color: var(--muted); min-height: 34px; }
+.chk { display: flex; gap: 8px; align-items: center; padding: 6px 4px; border-bottom: 1px solid #21262d; }
+.chk small { margin-left: auto; color: var(--muted); font: 10px var(--mono); }
+.files { display: flex; gap: 12px; min-height: 0; }
+.ftree { flex: 0 0 190px; display: flex; flex-direction: column; gap: 2px; font: 11px var(--mono); color: var(--muted); }
+.ftree span { padding: 3px 6px; border-radius: 4px; } .ftree .on { background: var(--q-panel); color: #fff; }
+.diff { flex: 1; min-width: 0; margin: 0; border: 1px solid var(--q-line); border-radius: 6px; font: 11.5px/1.6 var(--mono); overflow: hidden; }
+.diff b { display: block; padding: 5px 10px; background: var(--q-panel); border-bottom: 1px solid var(--q-line); font-weight: 500; color: #e6edf3; }
+.diff i { display: block; padding: 0 10px; font-style: normal; white-space: pre; }
+.diff .a { background: rgba(46,160,67,.16); } .diff .d { background: rgba(248,81,73,.16); }
+.mbox { border-top: 1px solid var(--q-line); background: var(--q-panel); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.mbox label { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); }
+
+/* concept: flip */
+.flip { display: flex; flex-direction: column; gap: 4px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--q-line); }
+.dock { border-top: 1px solid var(--q-line); background: var(--q-panel); display: flex; align-items: center; gap: 10px; padding: 7px 12px; }
+.dock code { font: 11.5px var(--mono); color: var(--amber); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chipbtn { margin-left: auto; border: 1px solid #2ea043; background: rgba(46,160,67,.15); color: #7ee787; border-radius: 10px; padding: 2px 10px; }
+
+/* concept: pipeline */
+.lane { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); }
+.col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.col h5 { margin: 0; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 6px; }
+.col h5::after { content: ""; flex: 1; border-bottom: 1px dashed var(--q-line); transform: translateY(-4px); }
+.card { text-align: left; border: 1px solid var(--q-line); background: var(--q-bg); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; min-height: 46px; }
+.card.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.card b { color: #e6edf3; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.empty { border: 1px dashed var(--q-line); border-radius: 6px; min-height: 46px; }
+
+/* pie menu */
+.pie { position: absolute; z-index: 9; width: 0; height: 0; }
+.pie button { position: absolute; width: 74px; height: 34px; margin: -17px 0 0 -37px; border-radius: 17px; border: 1px solid var(--blue); background: #132339; color: #fff; font-size: 11px; box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+.pie button:hover { background: var(--blue); color: #0d1117; }
+.pie::after { content: ""; position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--blue); }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.readout b { color: #f0f6fc; font-weight: 500; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: #f0f6fc; }
+.bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--blue); vertical-align: middle; margin-right: 8px; }
+tr.cur td { background: #132339; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/><circle cx="12" cy="3.500" r="1"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5M12 19h8"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Quay Window Concepts</h1>
+    <p class="lede">Four ways to put the terminal and a pull request in one window, all on the module bar you picked. Try the same job in each: review the pull request an agent just opened, merge it, and get back to the terminal.</p>
+  </header>
+
+  <fieldset class="seg" aria-label="Window concept">
+    <input type="radio" name="c" id="c-split" value="split"><label for="c-split">1 · Split stage</label>
+    <input type="radio" name="c" id="c-follow" value="follow" checked><label for="c-follow">2 · Companion that follows</label>
+    <input type="radio" name="c" id="c-flip" value="flip"><label for="c-flip">3 · Flip</label>
+    <input type="radio" name="c" id="c-pipe" value="pipe"><label for="c-pipe">4 · Ticket pipeline</label>
+  </fieldset>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+
+  <div class="row">
+    <button class="ghost" id="pie-btn" type="button">Open the pie menu</button>
+    <span class="m">or right-click anywhere in the mock: the six commonest actions appear around the pointer, so the pointer barely moves.</span>
+  </div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Clicks to review and merge, then return to the terminal</h2>
+  <p class="lede">Hand counts from these mocks, not measurements: open the pull request, look at the files, merge, confirm, and be back at the terminal. Delete branch is ticked by default.</p>
+  <div class="scroll"><table id="bench"></table></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg><use href="#i-${n}"/></svg>`;
+
+const TERMS = {
+  1: { name: "wayfinder", st: "run", label: "working", link: "map",
+       lines: `<span class="m">● /lril:wayfinder UI milestone</span>\n  Question 5: where should a pull request open?\n  <span class="p">recommendation:</span> beside the terminal that produced it.\n\n&gt; _` },
+  2: { name: "implement 569", st: "wait", label: "waiting on you", link: "pr",
+       lines: `<span class="m">● implement ticket 569: run canvas node phases</span>\n  Edit src/slices/praxis-builder/runCanvas.ts <span class="g">+41</span> <span class="bad">-6</span>\n  Bash pnpm test runCanvas\n<span class="g">  ✓ 14 passed</span> <span class="m">(1.9 s)</span>\n  Bash gh pr create\n  <span class="g">Opened pull request 574</span>\n\n<span class="p">recap:</span> node phases render for a graph run.\nChecks are green. Merge when you've looked it over.\n\n<span class="y">Reply: [ Yes ] [ Go with your recommendation ] [ No ]</span>\n&gt; _` },
+  3: { name: "implement 570", st: "run", label: "working", link: "issue",
+       lines: `<span class="m">● implement ticket 570: pull request timeline</span>\n  Read src/slices/github/GithubCompanionDrawer.tsx\n  Write src/slices/github/Timeline.tsx\n  Bash pnpm test Timeline\n<span class="bad">  ✗ 1 failed</span> <span class="m">fixing…</span>` },
+  4: { name: "powershell", st: "", label: "idle", link: null, lines: `PS E:\\Projects\\Quay2&gt; git status\nOn branch master\nnothing to commit, working tree clean\nPS E:\\Projects\\Quay2&gt; _` },
+};
+
+const CONCEPTS = {
+  split: { name: "Split stage", clicks: 5, steps: "Source icon, pull request row, Files, Merge, Confirm",
+    what: "A pull request opens as a pane in the stage, exactly like a second terminal. The Source control panel is the list you pick from.",
+    pro: ["One mental model: everything is a pane, and the layout buttons already work on panes", "Terminal stays visible and live while you review"],
+    con: ["You still go and fetch the pull request yourself every time", "The list panel, the terminal and the pull request share the width three ways"] },
+  follow: { name: "Companion that follows", clicks: 3, steps: "Files, Merge, Confirm",
+    what: "My recommendation. A right-hand companion always shows whatever the selected terminal is working on: its pull request, its ticket, or the repository when there is no link. Click the terminals on the left and watch it change.",
+    pro: ["No fetching: the pull request is already open when the agent says it is ready", "The merge box is always in the same place, at the bottom right", "Works for tickets too, so you see the acceptance list while the agent works"],
+    con: ["Quay has to know which ticket and pull request a terminal belongs to", "A 400 px column is narrow for a large diff, so it needs a way to go wide"] },
+  flip: { name: "Flip", clicks: 5, steps: "Flip, Files, Merge, Confirm, Flip back",
+    what: "The whole stage flips between Terminal and Review with one key or one click. Review gets the full width and a file tree. A dock at the bottom keeps the terminal's last line and its reply buttons.",
+    pro: ["The diff gets the whole window, closest to GitHub's own page", "Two of the five steps can be a single key, so three clicks in practice", "You can answer the agent from the dock without flipping back"],
+    con: ["You can't read terminal output and the diff at the same time", "Two modes to keep track of"] },
+  pipe: { name: "Ticket pipeline", clicks: 4, steps: "Card, Files, Merge, Confirm",
+    what: "The boldest one. The window is organised around tickets, not terminals. A lane across the top follows your own loop: brainstorm, spec, tickets, implement, review, done. Pick a card and the stage shows that ticket's terminal and pull request together. Merge and the card moves itself to Done.",
+    pro: ["Matches how you described your work, step for step", "Everything waiting on you is visible at once, in the order it flows", "Starting implement on the next ticket is one click on its card"],
+    con: ["Quay must track every ticket's stage, which is the most new machinery of the four", "Work that isn't a ticket, such as a plain shell, needs a second home", "The lane costs about 70 px of terminal height"] },
+};
+
+const S = { c: "follow", term: 2, tab: "conv", pr: "open", flip: "term", card: "569", note: "" };
+
+const termPane = (id) => { const t = TERMS[id]; return `
+  <div class="pane term"><div class="ph">${ico("term")}<b>${t.name}</b><span class="dot ${t.st}"></span><span class="m">${t.label}</span>
+    ${S.c === "flip" && t.link === "pr" && S.pr !== "merged" ? `<button class="chipbtn" data-act="flip">✓ Pull request 574 ready · Review</button>` : ""}</div>
+    <pre class="out">${t.lines}</pre></div>`; };
+
+const merged = () => S.pr === "merged";
+
+function prBody(wide) {
+  if (S.tab === "checks") return ["Lint", "Unit tests", "Build", "Pre-PR audit"].map((n, i) =>
+    `<div class="chk"><span class="ok">✓</span>${n}<small>${[18, 94, 61, 7][i]} s</small></div>`).join("");
+  if (S.tab === "files") return `<div class="files">${wide ? `<div class="ftree"><span class="on">runCanvas.ts</span><span>runCanvas.test.ts</span><span>RunNode.tsx</span><span>phases.ts</span><span>phases.test.ts</span><span>praxis-builder.md</span></div>` : ""}
+    <div class="diff"><b>src/slices/praxis-builder/runCanvas.ts</b><i>  const nodes = run.graph.nodes;</i><i class="d">- return nodes.map(toIdle);</i><i class="a">+ return nodes.map((n) =&gt; ({</i><i class="a">+   ...n,</i><i class="a">+   phase: phaseOf(run, n.id),</i><i class="a">+ }));</i><i>}</i></div></div>`;
+  return `<div class="cm"><header><b>claude</b> opened this from ticket 569</header><div>Node phases render on the run canvas for a graph run. Closes #569.</div></div>
+    <div class="cm"><header><b>review-bot</b> commented</header><div>No blocking findings. One note on <code>phaseOf</code> naming.</div></div>
+    <div class="box">Add a comment…</div>`;
+}
+
+function prPane(opts = {}) {
+  const tab = (k, label) => `<button class="tab ${S.tab === k ? "on" : ""}" data-act="tab" data-k="${k}">${label}</button>`;
+  const box = merged()
+    ? `<span class="pill merged">Merged</span><span>into master · branch ticket-569 deleted</span><button class="btn" data-act="reset" style="margin-left:auto">Reset demo</button>`
+    : S.pr === "confirm"
+      ? `<button class="btn warn" data-act="confirm">Confirm squash and merge</button><button class="btn" data-act="cancel">Cancel</button><span class="m">ticket-569 → master</span>`
+      : `<span class="ok">✓ 4 checks passed</span><button class="btn go" data-act="merge">Squash and merge ▾</button><label><input type="checkbox" id="delbranch" checked> Delete branch</label><button class="btn" style="margin-left:auto">Close</button>`;
+  return `<div class="pane pr ${opts.side ? "side" : ""}" id="prpane">
+    ${opts.head || ""}
+    <div class="prh"><div class="prt">Run canvas: node phases for a graph run <span class="m">#574</span></div>
+      <div class="prm"><span class="pill ${merged() ? "merged" : ""}">${merged() ? "Merged" : "Open"}</span>ticket-569 → master · 6 files · <span class="ok">+212</span> <span class="bad">−38</span></div></div>
+    <div class="tabs">${tab("conv", "Conversation 2")}${tab("checks", "Checks ✓")}${tab("files", "Files 6")}</div>
+    <div class="prb">${prBody(opts.wide)}</div>
+    <div class="mbox">${box}</div></div>`;
+}
+
+const issuePane = (n, title, opts = {}) => `<div class="pane pr ${opts.side ? "side" : ""}">${opts.head || ""}
+  <div class="prh"><div class="prt">${title} <span class="m">#${n}</span></div><div class="prm"><span class="pill issue">Open</span>ready-for-agent · part of the UI milestone</div></div>
+  <div class="prb"><div class="cm"><header><b>Acceptance</b></header><div>☑ Timeline lists every comment, oldest first<br>☐ Checks row expands a failed run<br>☐ Comment box posts and clears</div></div>
+  ${opts.start ? `<button class="btn go" data-act="note" data-n="Would start /implement 571 in a new terminal" style="align-self:flex-start">▶ Start implement</button>` : `<div class="box">Add a comment…</div>`}</div></div>`;
+
+const repoPane = (head) => `<div class="pane pr side">${head}<div class="prh"><div class="prt">Quay2</div><div class="prm">No ticket linked to this terminal</div></div>
+  <div class="prb"><div class="chk"><span class="ok">✓</span>Run canvas: node phases<small>#574</small></div><div class="chk"><span class="bad">✗</span>Import to project button<small>#567</small></div></div></div>`;
+
+function linked(id, opts) {
+  const k = TERMS[id].link;
+  if (k === "pr") return prPane(opts);
+  if (k === "issue") return issuePane(570, "Pull request timeline", opts);
+  if (k === "map") return issuePane(601, "Wayfinder map: UI milestone", opts);
+  return repoPane(opts.head);
+}
+
+function bar(active) {
+  const b = (k, icon, badge) => `<span class="ib ${active === k ? "on" : ""}">${ico(icon)}${badge || ""}</span>`;
+  const flip = S.c !== "flip" ? "" : `<div class="flip">
+      <button class="ib ${S.flip === "term" ? "on" : ""}" data-act="flipto" data-k="term" aria-label="Terminal">${ico("term")}</button>
+      <button class="ib ${S.flip === "review" ? "on" : ""}" data-act="flipto" data-k="review" aria-label="Review">${ico("pr")}${merged() ? "" : `<span class="badge b">1</span>`}</button></div>`;
+  return `<nav class="abar" aria-label="Modules">${flip}${b("projects", "folder")}${b("source", "branch", merged() ? "" : `<span class="badge b">1</span>`)}
+    ${b("agents", "bot", `<span class="badge">1</span>`)}${b("workflows", "flow")}<span class="grow"></span>${b("project", "sliders")}</nav>`;
+}
+
+const termList = () => `<div class="panel"><div class="ph"><b>Projects</b><small>Quay2</small></div><div class="plist"><h4>Terminals</h4>
+  ${Object.entries(TERMS).map(([id, t]) => `<button class="item ${+id === S.term ? "on" : ""}" data-act="term" data-id="${id}"><span class="m">${id}</span><span class="dot ${t.st}"></span>${t.name}<small>${t.link || ""}</small></button>`).join("")}
+  <h4>Worktrees</h4><div class="item">ticket-569</div><div class="item">ticket-570</div></div></div>`;
+
+const sourceList = () => `<div class="panel"><div class="ph"><b>Source control</b><small>GitHub + Topos</small></div><div class="plist"><h4>Pull requests</h4>
+  <div class="item on">Run canvas: node phases<small>${merged() ? "merged" : "#574 <span class='ok'>✓</span>"}</small></div><div class="item">Import to project button<small>#567 <span class='bad'>✗</span></small></div>
+  <h4>Issues</h4><div class="item">Pull request timeline<small>#570</small></div><div class="item">Rail module bar<small>#571</small></div>
+  <h4>Repository</h4><div class="item">Commit graph</div><div class="item">Worktrees<small>2</small></div></div></div>`;
+
+const CARDS = [
+  ["Brainstorm", [["ui", "UI milestone", "run", "wayfinder"]]], ["Spec", []],
+  ["Tickets", [["571", "#571 Rail module bar", "", "not started"]]],
+  ["Implement", [["570", "#570 PR timeline", "run", "working"]]],
+  ["Review", [["569", "#569 Run canvas phases", "wait", "checks green"]]],
+  ["Done", [["565", "#565 Import button", "", "merged"]]],
+];
+function lane() {
+  const cols = CARDS.map(([name, cards]) => {
+    let list = cards;
+    if (merged() && name === "Review") list = [];
+    if (merged() && name === "Done") list = [["569", "#569 Run canvas phases", "", "merged just now"], ...cards];
+    return `<div class="col"><h5>${name}</h5>${list.map(([id, t, st, sub]) =>
+      `<button class="card ${S.card === id ? "on" : ""}" data-act="card" data-id="${id}"><b>${t}</b><span><span class="dot ${st}"></span>${sub}</span></button>`).join("") || `<div class="empty"></div>`}</div>`;
+  });
+  return `<div class="lane">${cols.join("")}</div>`;
+}
+function pipeStage() {
+  const c = S.card;
+  if (c === "ui") return termPane(1);
+  if (c === "571") return issuePane(571, "Rail module bar", { start: true });
+  if (c === "570") return termPane(3) + issuePane(570, "Pull request timeline");
+  if (c === "565") return `<div class="pane pr"><div class="prh"><div class="prt">Import to project button <span class="m">#567</span></div><div class="prm"><span class="pill merged">Merged</span>branch deleted</div></div><div class="prb m">Nothing left to do on this ticket.</div></div>`;
+  return termPane(2) + prPane();
+}
+
+function shellHtml() {
+  if (S.c === "split") return bar("source") + sourceList() + `<main class="stage"><div class="panes">${termPane(2)}${prPane()}</div></main>`;
+  if (S.c === "follow") { const head = `<div class="ph">${ico("pr")}<b>Following terminal ${S.term}</b><small>pin · widen</small></div>`;
+    return bar("projects") + termList() + `<main class="stage"><div class="panes">${termPane(S.term)}${linked(S.term, { side: true, head })}</div></main>`; }
+  if (S.c === "flip") return bar("") + `<main class="stage"><div class="panes">${S.flip === "term" ? termPane(2) : prPane({ wide: true })}</div>
+    ${S.flip === "review" ? `<div class="dock">${ico("term")}<b>implement 569</b><code>Checks are green. Merge when you've looked it over.</code><span class="btn">Yes</span><span class="btn">Go with your recommendation</span><span class="btn">No</span></div>` : ""}</main>`;
+  return bar("projects") + `<main class="stage">${lane()}<div class="panes">${pipeStage()}</div></main>`;
+}
+
+function readout() {
+  const w = (sel) => { const el = $("shell").querySelector(sel); return el ? Math.round(el.getBoundingClientRect().width) : 0; };
+  const t = w(".term"), p = w("#prpane"), c = CONCEPTS[S.c];
+  $("readout").innerHTML = `<span>Concept <b>${c.name}</b></span><span>Terminal <b>${t ? t + " px" : "hidden"}</b></span>` +
+    `<span>Pull request <b>${p ? p + " px" : "not showing"}</b></span><span>Both visible <b>${t && p ? "yes" : "no"}</b></span>` +
+    `<span>State <b>${S.pr}</b></span>${S.note ? `<span>Last action <b>${S.note}</b></span>` : ""}`;
+}
+
+function render() {
+  $("shell").innerHTML = shellHtml();
+  const c = CONCEPTS[S.c];
+  $("n-what").textContent = c.what;
+  for (const [id, items] of [["n-pro", c.pro], ["n-con", c.con]])
+    $(id).replaceChildren(...items.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+  const rows = [["today", "Today (drawer, then the browser)", 9, "GitHub icon, Pull requests, Open in browser, Files, Conversation, Merge, Confirm, Delete branch, back to Quay"],
+    ...Object.entries(CONCEPTS).map(([k, v]) => [k, v.name, v.clicks, v.steps])];
+  $("bench").innerHTML = `<tr><th>Arrangement</th><th>Clicks</th><th>The steps counted</th></tr>` + rows.map(([k, n, clicks, steps]) =>
+    `<tr class="${k === S.c ? "cur" : ""}"><td>${n}</td><td class="n"><span class="bar" style="width:${clicks * 12}px"></span>${clicks}</td><td class="m">${steps}</td></tr>`).join("");
+  readout();
+}
+
+const ACTS = {
+  tab: (d) => { S.tab = d.k; }, merge: () => { S.pr = "confirm"; }, cancel: () => { S.pr = "open"; },
+  confirm: () => { S.pr = "merged"; S.note = "merged, branch deleted"; }, reset: () => { S.pr = "open"; S.tab = "conv"; S.note = ""; },
+  term: (d) => { S.term = +d.id; }, card: (d) => { S.card = d.id; },
+  flip: () => { S.flip = "review"; }, flipto: (d) => { S.flip = d.k; }, note: (d) => { S.note = d.n; },
+  pie: (d) => ({
+    merge: () => { if (!merged()) S.pr = "confirm"; S.note = "pie: Merge"; if (S.c === "flip") S.flip = "review"; },
+    files: () => { S.tab = "files"; S.note = "pie: Files"; if (S.c === "flip") S.flip = "review"; },
+    next: () => { S.term = 2; S.card = "569"; S.flip = "term"; S.note = "pie: jumped to the terminal waiting on you"; },
+    comment: () => { S.tab = "conv"; S.note = "pie: Comment"; }, newterm: () => { S.note = "pie: would open New Terminal"; },
+    palette: () => { S.note = "pie: would open the command palette"; },
+  }[d.k]()),
+};
+
+function closePie() { document.querySelectorAll(".pie").forEach((p) => p.remove()); }
+function openPie(x, y) {
+  closePie();
+  const items = [["merge", "Merge"], ["files", "Files"], ["next", "Next waiting"], ["newterm", "New terminal"], ["palette", "Palette"], ["comment", "Comment"]];
+  const pie = document.createElement("div");
+  pie.className = "pie"; pie.style.left = x + "px"; pie.style.top = y + "px";
+  pie.innerHTML = items.map(([k, label], i) => { const a = ((i * 60 - 90) * Math.PI) / 180;
+    return `<button data-act="pie" data-k="${k}" style="left:${Math.round(84 * Math.cos(a))}px;top:${Math.round(62 * Math.sin(a))}px">${label}</button>`; }).join("");
+  $("shell").append(pie);
+}
+
+$("shell").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]");
+  if (!el) { closePie(); return; }
+  ACTS[el.dataset.act](el.dataset);
+  render();
+});
+$("shell").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const r = $("shell").getBoundingClientRect();
+  openPie(Math.min(Math.max(e.clientX - r.left, 130), r.width - 130), Math.min(Math.max(e.clientY - r.top, 90), r.height - 90));
+});
+$("pie-btn").addEventListener("click", () => { const s = $("shell"); openPie(s.clientWidth / 2, s.clientHeight / 2); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePie(); });
+document.querySelectorAll('input[name="c"]').forEach((r) => r.addEventListener("change", () => { S.c = r.value; S.term = 2; S.flip = "term"; S.card = "569"; render(); }));
+new ResizeObserver(readout).observe($("shell"));
+render();
+</script>

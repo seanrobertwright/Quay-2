@@ -1,0 +1,441 @@
+<title>Quay Shell Prototypes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a throwaway review page. Each question gets one band: a variant switcher,
+   a live mock of the Quay shell, and a state readout. Single dark look, Quay's own palette. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12;
+  --q-bg: #0d1117;
+  --q-panel: #161b22;
+  --q-raise: #21262d;
+  --q-line: #30363d;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --blue: #58a6ff;
+  --rose: #fb7185;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --pb-bg: #161b22;
+}
+body {
+  background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body);
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+h1, h2 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; color: #f0f6fc; }
+h1 { font-size: 26px; }
+h2 { font-size: 19px; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.scroll { overflow-x: auto; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* variant switcher */
+.seg { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 12px; cursor: pointer; background: var(--q-panel); font-weight: 500; }
+.seg input:checked + label { border-color: var(--blue); color: #fff; background: #132339; }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* mock shell */
+.shell { display: flex; height: 500px; min-width: 800px; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 8px; overflow: hidden; font: 12px/1.4 "Segoe UI", system-ui, sans-serif; user-select: none; }
+.railwrap { position: relative; flex: none; width: 300px; transition: width .16s ease; }
+.rail { position: absolute; inset: 0 auto 0 0; width: 300px; z-index: 2; background: var(--q-bg); border-right: 1px solid var(--q-line); overflow: hidden; transition: width .16s ease; }
+.rail-full { display: flex; flex-direction: column; height: 100%; width: 299px; }
+.rail-mini { display: none; flex-direction: column; align-items: center; gap: 6px; height: 100%; padding: 8px 0; }
+.shell[data-rail="mini"] .railwrap, .shell[data-rail="mini"] .rail { width: 52px; }
+.shell[data-rail="mini"] .rail-full { display: none; }
+.shell[data-rail="mini"] .rail-mini { display: flex; }
+.shell[data-v="peek"][data-rail="mini"] .railwrap:hover .rail,
+.shell[data-v="peek"][data-rail="mini"] .railwrap:focus-within .rail { width: 300px; box-shadow: 12px 0 28px rgba(0,0,0,.55); }
+.shell[data-v="peek"][data-rail="mini"] .railwrap:hover .rail-full,
+.shell[data-v="peek"][data-rail="mini"] .railwrap:focus-within .rail-full { display: flex; }
+.shell[data-v="peek"][data-rail="mini"] .railwrap:hover .rail-mini,
+.shell[data-v="peek"][data-rail="mini"] .railwrap:focus-within .rail-mini { display: none; }
+.shell[data-v="today"] [data-act="toggle"] { display: none; }
+@media (prefers-reduced-motion: reduce) { .railwrap, .rail, .panel { transition: none; } }
+
+.ib { border: 0; background: none; padding: 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; position: relative; color: var(--muted); }
+.ib:hover { background: var(--q-raise); color: #fff; }
+.ib svg, .ico { width: 16px; height: 16px; flex: none; }
+.rhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--q-line); }
+.logo { font-weight: 700; letter-spacing: .04em; color: #fff; }
+.port { margin-left: auto; font: 11px var(--mono); color: var(--green); background: var(--q-panel); padding: 2px 6px; border-radius: 4px; }
+.rsub { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; color: var(--muted); font-size: 11px; letter-spacing: .06em; border-bottom: 1px solid var(--q-line); }
+.rsub span + span { color: var(--blue); letter-spacing: 0; }
+.tree { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.proj { border: 1px solid var(--q-line); border-radius: 6px; background: rgba(22,27,34,.5); }
+.prow { display: flex; align-items: center; gap: 8px; padding: 7px 9px; font-weight: 600; color: #e6edf3; }
+.count { margin-left: auto; font: 10px var(--mono); background: var(--q-raise); color: var(--muted); border-radius: 8px; padding: 1px 6px; }
+.kids { margin: 0 6px 6px 18px; padding-left: 8px; border-left: 1px solid var(--q-line); display: flex; flex-direction: column; gap: 4px; }
+.term { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 5px; }
+.term.on { background: var(--q-panel); border: 1px solid var(--q-line); }
+.num { font: 10px var(--mono); color: var(--muted); width: 10px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.run { background: var(--green); } .dot.wait { background: var(--amber); }
+.skip { font: 600 9px var(--mono); color: var(--red); border: 1px solid var(--red); border-radius: 3px; padding: 0 4px; margin-left: auto; }
+.wt { color: var(--blue); font-size: 10.5px; letter-spacing: .05em; padding: 4px 8px; }
+.tools { display: flex; justify-content: space-between; padding: 6px 8px; border-top: 1px solid var(--q-line); background: var(--q-panel); }
+.rail-mini .chip { width: 36px; border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; background: rgba(22,27,34,.5); }
+.rail-mini .chip b { font: 600 10px var(--mono); color: #e6edf3; }
+.tchip { display: flex; align-items: center; gap: 3px; font: 10px var(--mono); color: var(--muted); border-radius: 4px; padding: 1px 4px; }
+.tchip.on { background: var(--q-raise); color: #fff; }
+.rail-mini .grow { flex: 1; }
+.badge { position: absolute; top: 1px; right: 0; min-width: 13px; height: 13px; border-radius: 7px; font: 600 9px/13px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.b { background: var(--blue); }
+
+/* variant D: activity bar and panel */
+.barwrap { display: flex; flex: none; }
+.abar { width: 48px; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+.abar .ib { padding: 9px; }
+.abar .ib svg { width: 18px; height: 18px; }
+.abar .ib[aria-pressed="true"] { color: #fff; background: var(--q-raise); box-shadow: inset 2px 0 0 var(--blue); }
+.abar .grow { flex: 1; }
+.panel { width: 262px; border-right: 1px solid var(--q-line); display: flex; flex-direction: column; overflow: hidden; }
+.phead { padding: 10px 12px; border-bottom: 1px solid var(--q-line); font-weight: 600; color: #e6edf3; display: flex; align-items: center; justify-content: space-between; }
+.phead small { font: 10px var(--mono); color: var(--muted); font-weight: 400; }
+.plist { padding: 8px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.plist h4 { margin: 8px 4px 2px; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; }
+.item:hover { background: var(--q-panel); }
+.item small { margin-left: auto; color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
+.ok { color: var(--green); } .bad { color: var(--red); }
+
+/* stage */
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shead { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); }
+.shead strong { color: #e6edf3; }
+.shead .sp { flex: 1; }
+.btn { border: 1px solid var(--q-line); border-radius: 5px; padding: 3px 8px; background: var(--q-raise); color: var(--fg); white-space: nowrap; }
+.out { flex: 1; overflow: hidden; padding: 10px 14px; font: 12px/1.6 var(--mono); color: #c9d1d9; white-space: pre; }
+.out .m { color: var(--muted); } .out .g { color: var(--green); } .out .p { color: #d2a8ff; } .out .y { color: var(--amber); }
+.strip { display: flex; gap: 14px; padding: 6px 12px; border-top: 1px solid var(--q-line); background: var(--q-panel); color: var(--muted); white-space: nowrap; overflow: hidden; }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.readout b { color: #f0f6fc; font-weight: 500; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+
+/* icon candidates */
+.cands { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.cand { border: 1px solid var(--q-line); border-radius: 8px; background: var(--q-panel); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cand header { display: flex; align-items: baseline; gap: 8px; }
+.cand header b { font: 600 15px var(--display); color: #f0f6fc; }
+.cand header span { font: 11px var(--mono); color: var(--muted); }
+.big { display: flex; align-items: center; gap: 18px; }
+.big > svg { width: 72px; height: 72px; flex: none; }
+.sizes { display: flex; align-items: flex-end; gap: 12px; }
+.sizes figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 10px var(--mono); color: var(--muted); }
+.inrail { display: flex; align-items: center; gap: 10px; background: var(--q-bg); --pb-bg: #0d1117; border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 10px; color: var(--muted); }
+.inrail svg { width: 16px; height: 16px; }
+.inrail span { margin-left: auto; font: 10px var(--mono); }
+.cand p { color: var(--muted); font-size: 13px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="foldp">
+      <polygon points="25,16 39,16 25,80" fill="#FB7185"/><polygon points="39,16 39,80 25,80" fill="#BE123C"/>
+      <polygon points="39,16 59,16 51,34" fill="#FDA4AF"/><polygon points="59,16 71,34 51,34" fill="#FB7185"/>
+      <polygon points="71,34 59,52 51,34" fill="#E11D48"/><polygon points="59,52 39,52 51,34" fill="#9F1239"/>
+    </g>
+    <!-- shell line icons -->
+    <symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/><circle cx="12" cy="3.5" r="1"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+    <symbol id="i-cmd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.200-8-4.500-8-9V6z"/></symbol>
+    <symbol id="i-net" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></symbol>
+    <symbol id="i-mach" viewBox="13 13 70 70"><use href="#foldp"/></symbol>
+
+    <!-- Praxis Builder candidates, drawn on a 24 grid -->
+    <symbol id="pb1" viewBox="0 0 24 24">
+      <rect x="2.500" y="2.500" width="19" height="19" fill="none" stroke="#FDA4AF" stroke-width="1" stroke-dasharray="2 2" opacity=".75"/>
+      <g fill="#FDA4AF"><rect x="1" y="1" width="3.200" height="3.200"/><rect x="19.800" y="1" width="3.200" height="3.200"/><rect x="1" y="19.800" width="3.200" height="3.200"/><rect x="19.800" y="19.800" width="3.200" height="3.200"/></g>
+      <g transform="translate(1.900 1.900) scale(.21)"><use href="#foldp"/></g>
+    </symbol>
+    <symbol id="pb2" viewBox="0 0 24 24">
+      <path d="M7 20V4h6.500a4.500 4.500 0 0 1 0 9H7" fill="none" stroke="#FB7185" stroke-width="1.800" stroke-linecap="round"/>
+      <circle cx="7" cy="4" r="2.500" fill="#FDA4AF"/><circle cx="18" cy="8.500" r="2.500" fill="#FB7185"/>
+      <circle cx="7" cy="13" r="2" fill="#E11D48"/><circle cx="7" cy="20" r="2.500" fill="#E11D48"/>
+    </symbol>
+    <symbol id="pb3" viewBox="0 0 24 24">
+      <path d="M5 12C8.500 12 8.500 6 12 6M5 12C8.500 12 8.500 18 12 18M12 6c3.500 0 3.500 6 7 6M12 18c3.500 0 3.500-6 7-6" fill="none" stroke="#FB7185" stroke-width="1.600"/>
+      <circle cx="4.500" cy="12" r="2.400" fill="#FDA4AF"/><circle cx="12" cy="6" r="2.400" fill="#FB7185"/><circle cx="12" cy="18" r="2.400" fill="#FB7185"/>
+      <circle cx="19.300" cy="12" r="2.900" fill="#E11D48" stroke="#FDA4AF" stroke-width="1"/>
+    </symbol>
+    <symbol id="pb4" viewBox="0 0 24 24">
+      <rect x="2" y="7.500" width="9" height="9" rx="2.200" fill="#E11D48"/>
+      <path d="M11 12h3" stroke="#FB7185" stroke-width="1.800"/>
+      <rect x="13.700" y="7.700" width="8.600" height="8.600" rx="2.200" fill="none" stroke="#FDA4AF" stroke-width="1.400" stroke-dasharray="2.200 1.600"/>
+      <path d="M18 10v4M16 12h4" stroke="#FDA4AF" stroke-width="1.700" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="pb5" viewBox="0 0 24 24">
+      <rect x="1.700" y="1.700" width="17.600" height="17.600" rx="4.200" fill="#4C0519" stroke="#9F1239" stroke-width="1.200"/>
+      <g transform="translate(2.340 2.340) scale(.17)"><use href="#foldp"/></g>
+      <circle cx="18.300" cy="18.300" r="4.800" fill="#FB7185" stroke="var(--pb-bg)" stroke-width="1.500"/>
+      <path d="M18.300 16v4.600M16 18.300h4.600" stroke="#4C0519" stroke-width="1.700" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="pb6" viewBox="0 0 24 24">
+      <path d="M7 20V4h7l4.500 4.500L14 13H7" fill="rgba(251,113,133,.18)" stroke="#FB7185" stroke-width="1.600" stroke-linejoin="round"/>
+      <g fill="var(--pb-bg)" stroke="#FDA4AF" stroke-width="1.200">
+        <rect x="5.300" y="2.300" width="3.400" height="3.400"/><rect x="12.300" y="2.300" width="3.400" height="3.400"/><rect x="16.800" y="6.800" width="3.400" height="3.400"/>
+        <rect x="12.300" y="11.300" width="3.400" height="3.400"/><rect x="5.300" y="18.300" width="3.400" height="3.400"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<template id="tree-tpl">
+  <div class="proj">
+    <div class="prow"><svg class="ico"><use href="#i-folder"/></svg>AI-WS-SDK<span class="count">2</span></div>
+    <div class="kids">
+      <div class="term on"><span class="num">3</span><span class="dot wait"></span>Archon Workflows<span class="skip">SKIP</span></div>
+      <div class="term"><span class="num">4</span><span class="dot"></span>powershell</div>
+      <div class="wt">WORKTREES (5)</div>
+    </div>
+  </div>
+  <div class="proj"><div class="prow"><svg class="ico"><use href="#i-folder"/></svg>lril-sdlc-archon<span class="count">0</span></div></div>
+  <div class="proj">
+    <div class="prow"><svg class="ico"><use href="#i-folder"/></svg>Quay2<span class="count">1</span></div>
+    <div class="kids"><div class="term"><span class="num">1</span><span class="dot run"></span>wayfinder</div></div>
+  </div>
+</template>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data</div>
+    <h1>Quay Shell Prototypes</h1>
+    <p class="lede">Two questions from the UI milestone grilling. Nothing here is wired to Quay; the projects, terminals and pull requests are examples.</p>
+  </header>
+
+  <section aria-labelledby="h-rail">
+    <h2 id="h-rail">Question 1: should the rail collapse, and how?</h2>
+    <fieldset class="seg" aria-label="Rail variant">
+      <input type="radio" name="v" id="v-today" value="today"><label for="v-today">A · Today</label>
+      <input type="radio" name="v" id="v-strip" value="strip"><label for="v-strip">B · Collapse to strip</label>
+      <input type="radio" name="v" id="v-peek" value="peek"><label for="v-peek">C · Strip that peeks on hover</label>
+      <input type="radio" name="v" id="v-bar" value="bar" checked><label for="v-bar">D · Module bar + panel</label>
+    </fieldset>
+
+    <div class="scroll">
+      <div class="shell" id="shell" data-v="bar" data-rail="full">
+        <div class="railwrap" id="railwrap">
+          <aside class="rail" aria-label="Rail">
+            <div class="rail-full">
+              <div class="rhead"><span class="logo">QUAY</span><span class="port">:59965</span>
+                <button class="ib" data-act="toggle" aria-label="Collapse rail" id="btn-collapse"><svg><use href="#i-panel"/></svg></button></div>
+              <div class="rsub"><span>WORKSPACES 3</span><span>Swarm &nbsp; + Term &nbsp; Add</span></div>
+              <div class="tree" data-tree></div>
+              <div class="tools">
+                <span class="ib"><svg><use href="#i-branch"/></svg></span><span class="ib"><svg><use href="#i-clock"/></svg></span>
+                <span class="ib"><svg><use href="#i-shield"/></svg></span><span class="ib"><svg><use href="#i-flow"/></svg></span>
+                <span class="ib"><svg><use href="#i-mach"/></svg></span><span class="ib"><svg><use href="#i-cmd"/></svg></span>
+                <span class="ib"><svg><use href="#i-net"/></svg></span>
+              </div>
+            </div>
+            <div class="rail-mini">
+              <button class="ib" data-act="toggle" aria-label="Expand rail" id="btn-expand"><svg><use href="#i-panel"/></svg></button>
+              <div class="chip"><b>AI</b><span class="tchip on"><span class="dot wait"></span>3</span><span class="tchip"><span class="dot"></span>4</span></div>
+              <div class="chip"><b>LR</b></div>
+              <div class="chip"><b>Q2</b><span class="tchip"><span class="dot run"></span>1</span></div>
+              <span class="grow"></span>
+              <span class="ib"><svg><use href="#i-branch"/></svg></span><span class="ib"><svg><use href="#i-clock"/></svg></span>
+              <span class="ib"><svg><use href="#i-shield"/></svg></span><span class="ib"><svg><use href="#i-flow"/></svg></span>
+              <span class="ib"><svg><use href="#i-mach"/></svg></span><span class="ib"><svg><use href="#i-cmd"/></svg></span>
+              <span class="ib"><svg><use href="#i-net"/></svg></span>
+            </div>
+          </aside>
+        </div>
+
+        <div class="barwrap" id="barwrap">
+          <nav class="abar" aria-label="Modules">
+            <button class="ib" data-mod="projects" aria-label="Projects and terminals" id="m-projects"><svg><use href="#i-folder"/></svg></button>
+            <button class="ib" data-mod="source" aria-label="Source control: GitHub and Topos" id="m-source"><svg><use href="#i-branch"/></svg><span class="badge b">2</span></button>
+            <button class="ib" data-mod="agents" aria-label="Agents" id="m-agents"><svg><use href="#i-bot"/></svg><span class="badge">1</span></button>
+            <button class="ib" data-mod="workflows" aria-label="Workflows" id="m-workflows"><svg><use href="#i-flow"/></svg></button>
+            <span class="grow"></span>
+            <button class="ib" data-mod="project" aria-label="Project settings" id="m-project"><svg><use href="#i-sliders"/></svg></button>
+            <span class="ib" title="Command palette"><svg><use href="#i-cmd"/></svg></span>
+          </nav>
+          <div class="panel" id="panel">
+            <div class="phead"><span id="ptitle"></span><small id="pkey"></small></div>
+            <div class="plist" id="plist"></div>
+          </div>
+        </div>
+
+        <main class="stage" id="stage">
+          <div class="shead"><svg class="ico"><use href="#i-folder"/></svg><strong>AI-WS-SDK</strong><span style="color:var(--muted)">/ Archon Workflows</span><span class="sp"></span><span class="btn">Layouts</span><span class="btn">+ New Terminal</span></div>
+          <div class="out"><span class="m">● implement ticket 569: run canvas node phases</span>
+  Read src/slices/praxis-builder/runCanvas.ts
+  Edit src/slices/praxis-builder/runCanvas.ts <span class="g">+41</span> <span class="bad">-6</span>
+  Bash pnpm test runCanvas
+<span class="g">  ✓ 14 passed</span> <span class="m">(1.9 s)</span>
+
+<span class="p">recap:</span> node phases render for a graph run. Next I'd open
+the pull request and add Closes #569 to the body.
+
+<span class="y">Reply: [ Yes ] [ Go with your recommendation ] [ No ]</span>
+<span class="m">model sonnet 5.5 · effort medium · context 12%</span>
+&gt; _</div>
+          <div class="strip"><span>Archon Workflows (claude)</span><span class="bad">Skip</span><span>Action Log</span><span>Diffs (3)</span><span>$9467.76</span></div>
+        </main>
+      </div>
+    </div>
+
+    <div class="readout" id="readout" aria-live="polite"></div>
+    <div class="notes">
+      <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+      <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+      <div><h3>Costs</h3><ul id="n-con"></ul></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-icon">
+    <h2 id="h-icon">Question 2: which icon for the Praxis Builder?</h2>
+    <p class="lede">All six keep the rose of the folded P that Machina already uses, so the family reads as one. The rail draws icons at 16 px, so judge the small sizes first.</p>
+    <div class="cands" id="cands"></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+document.querySelectorAll("[data-tree]").forEach((el) => el.append($("tree-tpl").content.cloneNode(true)));
+
+const NOTES = {
+  today: {
+    what: "The rail as it is now: always open, resizable by dragging its edge, never hidden.",
+    pro: ["Every terminal and its status is always readable", "Nothing new to learn"],
+    con: ["Takes about a quarter of the window from the terminal", "Seven unlabelled icons sit in the far bottom-left corner"],
+  },
+  strip: {
+    what: "One button (and a chord) folds the rail to a 52 px strip. The strip keeps each project's initials, its terminal numbers and their status dots. Click the top button to try it.",
+    pro: ["Terminal gains about 250 px when you want it", "Waiting and running terminals stay visible while collapsed", "One click on a number still switches terminal"],
+    con: ["Module icons stay a second, separate group at the bottom", "Project names become two letters"],
+  },
+  peek: {
+    what: "The strip from B, but pointing at it slides the full rail over the terminal without moving the terminal text. Move away and it folds back. The top button pins it open.",
+    pro: ["Terminal keeps its full width and never reflows", "Full names are one hover away, no click"],
+    con: ["Easy to open by accident when aiming at the left edge", "The overlay covers the start of terminal lines while open"],
+  },
+  bar: {
+    what: "My recommendation. A permanent 48 px bar holds one icon per module. The panel beside it shows the selected module. Click the active icon again to fold the panel away. Try the icons.",
+    pro: ["The left screen edge is the easiest target to hit, so every module is one short throw away", "Collapsing and the module regrouping are the same control", "GitHub, Agents and Workflows open beside the terminal, not over it", "Badges show waiting agents and open pull requests while folded"],
+    con: ["Terminal status is hidden when a module other than Projects is open, so the badges must carry it", "Biggest change from today's layout"],
+  },
+};
+
+const MODS = {
+  projects: { title: "Projects", key: "Ctrl+Shift+B 1..9", tree: true },
+  source: { title: "Source control", key: "GitHub + Topos", rows: [
+    ["h", "Pull requests"], ["i", "Run canvas: node phases", "#574 <span class='ok'>✓</span>"], ["i", "Import to project button", "#567 <span class='bad'>✗</span>"],
+    ["h", "Issues"], ["i", "Graph trigger test fire", "#485"], ["i", "Host template controller", "#564"],
+    ["h", "Repository"], ["i", "Commit graph (Topos)"], ["i", "Worktrees", "5"], ["i", "Diffs", "3"], ["i", "Pre-PR audit"] ] },
+  agents: { title: "Agents", key: "", rows: [
+    ["h", "Waiting on you"], ["i", "<span class='dot wait'></span>Archon Workflows", "reply"],
+    ["h", "Launch"], ["i", "Swarm presets"], ["i", "Mission Control"], ["h", "Past"], ["i", "Session history"] ] },
+  workflows: { title: "Workflows", key: "", rows: [
+    ["h", "Run"], ["i", "Archon runs and graph"], ["i", "Machina Factory"], ["h", "Author"], ["i", "Praxis Builder"] ] },
+  project: { title: "Project", key: "AI-WS-SDK", rows: [
+    ["i", "Settings: env vars and flags"], ["i", "Open in VS Code"], ["i", "Token spend", "$9467.76"], ["i", "Logs folder"], ["i", "Check for updates"] ] },
+};
+
+const state = { v: "bar", rail: "full", mod: "projects" };
+
+function renderPanel() {
+  const m = MODS[state.mod];
+  $("panel").hidden = !m;
+  document.querySelectorAll("[data-mod]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mod === state.mod)));
+  if (!m) return;
+  $("ptitle").textContent = m.title;
+  $("pkey").textContent = m.key;
+  const list = $("plist");
+  list.replaceChildren();
+  if (m.tree) { list.append($("tree-tpl").content.cloneNode(true)); return; }
+  for (const [kind, text, meta] of m.rows) {
+    const el = document.createElement(kind === "h" ? "h4" : "div");
+    if (kind === "i") el.className = "item";
+    el.innerHTML = text + (meta ? `<small>${meta}</small>` : "");
+    list.append(el);
+  }
+}
+
+function readout() {
+  const shell = $("shell").clientWidth, stage = $("stage").clientWidth;
+  const side = shell - stage;
+  $("readout").innerHTML =
+    `<span>Variant <b>${state.v}</b></span><span>Side area <b>${side} px</b></span>` +
+    `<span>Terminal <b>${stage} px</b> (${Math.round((stage / shell) * 100)}% of the window)</span>` +
+    `<span>About <b>${Math.floor((stage - 28) / 7.200)}</b> terminal columns</span>`;
+}
+
+function render() {
+  const shell = $("shell");
+  shell.dataset.v = state.v;
+  shell.dataset.rail = state.rail;
+  $("railwrap").hidden = state.v === "bar";
+  $("barwrap").hidden = state.v !== "bar";
+  renderPanel();
+  const n = NOTES[state.v];
+  $("n-what").textContent = n.what;
+  for (const [id, items] of [["n-pro", n.pro], ["n-con", n.con]]) {
+    $(id).replaceChildren(...items.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+  }
+  setTimeout(readout, 200);
+}
+
+document.querySelectorAll('input[name="v"]').forEach((r) => r.addEventListener("change", () => {
+  state.v = r.value;
+  state.rail = r.value === "strip" || r.value === "peek" ? "mini" : "full";
+  state.mod = "projects";
+  render();
+}));
+document.querySelectorAll('[data-act="toggle"]').forEach((b) => b.addEventListener("click", () => {
+  state.rail = state.rail === "full" ? "mini" : "full";
+  render();
+}));
+document.querySelectorAll("[data-mod]").forEach((b) => b.addEventListener("click", () => {
+  state.mod = state.mod === b.dataset.mod ? null : b.dataset.mod;
+  render();
+}));
+new ResizeObserver(readout).observe($("stage"));
+
+const CANDS = [
+  ["pb1", "Canvas Handles", "The folded P selected on a canvas, with the four handles of an editor's selection box."],
+  ["pb2", "Graph P", "A P drawn as a graph: four nodes joined by edges. The builder's subject in the builder's letter."],
+  ["pb3", "Fork and Join", "A graph that splits and joins on one highlighted result. Says graph clearly, says Praxis less."],
+  ["pb4", "Add Node", "A placed node wired to the dashed outline of the next one. The act of building."],
+  ["pb5", "Tile and Plus", "The Praxis P in an app tile with a plus badge: Praxis, and make a new thing."],
+  ["pb6", "Anchor Path", "The P as a vector path with its anchor points showing, as it looks while being edited."],
+];
+$("cands").innerHTML = CANDS.map(([id, name, why], i) => `
+  <article class="cand">
+    <header><b>${name}</b><span>option ${i + 1}</span></header>
+    <div class="big"><svg role="img" aria-label="${name} at 72 px"><use href="#${id}"/></svg>
+      <div class="sizes">
+        ${[16, 20, 32].map((s) => `<figure><svg width="${s}" height="${s}" aria-hidden="true"><use href="#${id}"/></svg>${s}</figure>`).join("")}
+      </div></div>
+    <div class="inrail"><svg><use href="#i-branch"/></svg><svg><use href="#i-bot"/></svg><svg><use href="#${id}"/></svg><svg><use href="#i-mach"/></svg><svg><use href="#i-cmd"/></svg><span>in the rail, 16 px</span></div>
+    <p>${why}</p>
+  </article>`).join("");
+
+render();
+</script>

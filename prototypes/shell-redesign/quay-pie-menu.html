@@ -1,0 +1,369 @@
+<title>Quay Pie Menu</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: one arena to stroke in, a style switcher above it, live telemetry and a
+   selection log below. Six instrument-panel treatments of the same eight-way menu. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --blue: #58a6ff; --rose: #fb7185; --green: #3fb950; --amber: #d29922; --violet: #b392f0;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: #f0f6fc; text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 70ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 12px; cursor: pointer; background: var(--q-panel); font-weight: 500; }
+.seg input:checked + label { border-color: var(--blue); color: #fff; background: #132339; }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+.m { color: var(--muted); }
+
+.arena { position: relative; height: 580px; border: 1px solid var(--q-line); border-radius: 8px; overflow: hidden; background: var(--q-bg);
+  touch-action: none; user-select: none; cursor: crosshair; display: flex; }
+.fake { flex: 1; min-width: 0; padding: 14px 16px; font: 12px/1.7 var(--mono); color: #9aa4af; white-space: pre-wrap; overflow: hidden; }
+.fake + .fake { flex: 0 0 34%; border-left: 1px solid var(--q-line); }
+.hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font: 12px var(--mono); color: var(--muted); background: rgba(13,17,23,.85);
+  border: 1px solid var(--q-line); border-radius: 14px; padding: 4px 12px; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+#pm { position: absolute; width: 460px; height: 460px; margin: -230px 0 0 -230px; pointer-events: none; }
+#pm svg { width: 100%; height: 100%; overflow: visible; }
+#pm text { font-family: var(--mono); text-anchor: middle; dominant-baseline: middle; }
+.spin { animation: spin 16s linear infinite; } .spin.fast { animation-duration: 3.6s; } .spin.rev { animation-direction: reverse; animation-duration: 28s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pop { from { transform: scale(.82); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#pm svg, .tui { animation: pop .11s ease-out; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .spin, #pm svg, .tui { animation: none; } }
+.trail { fill: none; stroke: #fff; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 1 4; opacity: .7; }
+
+/* 1 HUD and 6 Two-ring share a renderer; --a is the accent */
+.hud { --a: #58a6ff; } .nest { --a: #b392f0; }
+.hud .veil, .nest .veil { fill: rgba(5,8,13,.72); }
+.hud .line, .nest .line { fill: none; stroke: var(--a); }
+.hud .s, .nest .s { fill: color-mix(in srgb, var(--a) 9%, transparent); stroke: var(--a); stroke-width: .8; }
+.hud .s.on, .nest .s.on { fill: color-mix(in srgb, var(--a) 38%, transparent); stroke-width: 1.6; filter: drop-shadow(0 0 7px var(--a)); }
+.hud .s.sel, .nest .s.sel { fill: #fff; }
+.hud .l, .nest .l { font-size: 9.500px; letter-spacing: .1em; fill: color-mix(in srgb, var(--a) 75%, #fff); }
+.hud .l.on, .nest .l.on { fill: #fff; font-weight: 700; }
+.hud .k, .nest .k { font-size: 8px; fill: var(--a); opacity: .75; }
+.hud .big, .nest .big { font-size: 12px; font-weight: 700; fill: #fff; letter-spacing: .08em; }
+.hud .sm, .nest .sm { font-size: 8.500px; fill: var(--a); letter-spacing: .08em; }
+
+/* Neon wireframe: lines only, --a is the resting line, --b the aimed line */
+.cyber { --a: #00f0ff; --b: #ff2bd6; } .tron { --a: #18e0ff; --b: #ff9a1f; } .acid { --a: #b6ff1a; --b: #00e5ff; }
+.sunset { --a: #ff3d81; --b: #ffd60a; } .ice { --a: #dfe9ff; --b: #39ff88; } .spectrum { --a: #7df9ff; --b: #ffffff; }
+.spectrum .sg { --a: hsl(calc(var(--h) * 45 + 170) 100% 62%); }
+.wire .veil { fill: none; }
+.wire text { paint-order: stroke; stroke: #0d1117; stroke-width: 3px; stroke-linejoin: round; }
+#pm.nohalo text { stroke: none; }
+.wire .line { fill: none; stroke: var(--a); }
+.wire .glow { filter: drop-shadow(0 0 2px var(--a)) drop-shadow(0 0 8px var(--a)); }
+.wire .s { fill: none; stroke: var(--a); stroke-width: 1.100; filter: drop-shadow(0 0 4px var(--a)); }
+.wire .s.on { stroke: var(--b); stroke-width: 2.200; filter: drop-shadow(0 0 3px var(--b)) drop-shadow(0 0 11px var(--b)); }
+.wire .s.sel { fill: color-mix(in srgb, var(--b) 40%, transparent); }
+.wire .s.c { stroke: var(--b); stroke-width: 1; }
+.wire .s.c.on { stroke: #fff; stroke-width: 2.200; }
+.wire .s2 { fill: none; stroke: var(--b); stroke-width: .7; stroke-dasharray: 2 3; }
+.wire .v { fill: var(--a); }
+.wire .tab { fill: none; stroke: var(--b); stroke-width: 2; filter: drop-shadow(0 0 4px var(--b)); }
+.wire .spoke { stroke: var(--b); stroke-width: .8; }
+.wire .l { font-size: 9.500px; letter-spacing: .1em; fill: var(--a); }
+.wire .l.on { fill: #fff; font-weight: 700; }
+.wire .k { font-size: 8px; fill: var(--a); opacity: .7; }
+.wire .big { font-size: 12px; font-weight: 700; fill: #fff; letter-spacing: .08em; }
+.wire .sm { font-size: 8.500px; fill: var(--b); letter-spacing: .08em; }
+.wire .trail { stroke: var(--b); }
+
+/* 2 Blueprint */
+.bp .veil { fill: #0b2a4a; stroke: #9ecbff; stroke-width: 1; }
+.bp .line { fill: none; stroke: #9ecbff; stroke-width: .8; }
+.bp .s { fill: transparent; stroke: #cfe8ff; stroke-width: 1; }
+.bp .s.on { fill: url(#bp-hatch); stroke-width: 2; }
+.bp .s.sel { fill: #cfe8ff; }
+.bp .l { font-size: 10px; fill: #cfe8ff; letter-spacing: .08em; } .bp .l.on { fill: #fff; font-weight: 700; }
+.bp .k { font-size: 9px; fill: #0b2a4a; font-weight: 700; } .bp .big { font-size: 11px; fill: #fff; font-weight: 700; } .bp .sm { font-size: 8px; fill: #9ecbff; }
+
+/* 3 Radar */
+.radar .veil { fill: #03140a; stroke: #1f6f37; stroke-width: 1.5; }
+.radar .line { fill: none; stroke: #1f6f37; stroke-width: .8; }
+.radar .sweep { fill: rgba(63,185,80,.2); }
+.radar .blip { fill: #3fb950; } .radar .blip.on { fill: #d1ffd9; filter: drop-shadow(0 0 8px #3fb950); } .radar .blip.sel { fill: #fff; }
+.radar .lock { fill: none; stroke: #d1ffd9; stroke-width: 1.4; }
+.radar .l { font-size: 9.500px; fill: #3fb950; letter-spacing: .1em; } .radar .l.on { fill: #d1ffd9; font-weight: 700; }
+.radar .k { font-size: 8px; fill: #2b8a43; } .radar .big { font-size: 11px; fill: #d1ffd9; font-weight: 700; letter-spacing: .1em; } .radar .sm { font-size: 8px; fill: #3fb950; }
+
+/* 4 Octa plate */
+.octa .veil { fill: rgba(5,8,13,.6); }
+.octa .line { fill: none; stroke: #6e7681; stroke-width: 1.2; }
+.octa .s { fill: #1b2028; stroke: #3d444d; stroke-width: 1; }
+.octa .s.on { fill: #3a1420; stroke: var(--rose); } .octa .s.sel { fill: var(--rose); }
+.octa .edge { stroke: #9f1239; stroke-width: 3; } .octa .edge.on { stroke: var(--rose); stroke-width: 4; filter: drop-shadow(0 0 6px var(--rose)); }
+.octa .l { font-size: 9.500px; fill: #c9d1d9; letter-spacing: .08em; } .octa .l.on { fill: #fff; font-weight: 700; }
+.octa .k { font-size: 7.500px; fill: #6e7681; } .octa .big { font-size: 11px; fill: #fff; font-weight: 700; } .octa .sm { font-size: 8px; fill: var(--rose); }
+
+/* 5 TUI */
+.tui { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(3, 118px); grid-auto-rows: 62px;
+  font: 12px/1.3 var(--mono); color: #3fb950; background: #010409; border: 1px solid #3fb950; box-shadow: 0 0 0 3px #010409, 0 0 0 4px #1f6f37, 0 14px 40px rgba(0,0,0,.7); }
+.tui div { border: 1px solid #1f6f37; margin: -1px 0 0 -1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.tui div b { font-weight: 700; } .tui div small { color: #2b8a43; font-size: 10px; }
+.tui div.on { background: #3fb950; color: #010409; } .tui div.on small { color: #010409; } .tui div.sel { background: #fff; color: #010409; }
+.tui div.c { color: #d1ffd9; }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.readout b { color: #f0f6fc; font-weight: 500; }
+.log { margin: 0; font: 12px/1.7 var(--mono); color: var(--muted); background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 6px; padding: 10px 14px; min-height: 60px; overflow-x: auto; white-space: pre; }
+.log b { color: #f0f6fc; font-weight: 500; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px 28px; }
+.notes div { min-width: 0; border-left: 2px solid var(--q-line); padding-left: 12px; }
+.notes h3 { margin: 0 0 4px; font: 600 14px var(--display); color: #f0f6fc; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · the menu runs nothing</div>
+    <h1>Quay Pie Menu</h1>
+    <p class="lede">The two-ring menu as a neon wireframe, in six palettes. Aim at Merge, Split or New term and push further out for the second ring. Hold the right mouse button in the arena, drag toward an action and release. A plain right-click leaves it open so you can read it, then click or press the action's letter.</p>
+  </header>
+
+  <fieldset class="seg" aria-label="Menu style">
+    <input type="radio" name="st" id="st-cyber" value="cyber"><label for="st-cyber">A · Cyan + magenta</label>
+    <input type="radio" name="st" id="st-tron" value="tron"><label for="st-tron">B · Cyan + orange</label>
+    <input type="radio" name="st" id="st-acid" value="acid"><label for="st-acid">C · Lime + cyan</label>
+    <input type="radio" name="st" id="st-sunset" value="sunset"><label for="st-sunset">D · Pink + yellow</label>
+    <input type="radio" name="st" id="st-spectrum" value="spectrum" checked><label for="st-spectrum">E · Spectrum, one hue per action</label>
+    <input type="radio" name="st" id="st-ice" value="ice"><label for="st-ice">F · Ice white + green</label>
+  </fieldset>
+
+  <div class="arena" id="arena" tabindex="0" aria-label="Pie menu arena. Press Enter to open the menu at the centre.">
+    <div class="fake">● implement ticket 569: run canvas node phases
+  Edit src/slices/praxis-builder/runCanvas.ts +41 -6
+  Bash pnpm test runCanvas
+  ✓ 14 passed (1.9 s)
+  Bash gh pr create
+  Opened pull request 574
+
+recap: node phases render for a graph run.
+Checks are green. Merge when you've looked it over.
+
+Reply: [ Yes ] [ Go with your recommendation ] [ No ]
+&gt; _</div>
+    <div class="fake">Following terminal 2
+
+Run canvas: node phases for a graph run  #574
+Open · ticket-569 → master · 6 files
+
+Conversation   Checks ✓   Files
+
+✓ 4 checks passed
+[ Squash and merge ]  ☑ Delete branch</div>
+    <div id="pm" hidden></div>
+    <div class="hint" id="hint">hold right button · drag · release</div>
+  </div>
+
+  <div class="row">
+    <button class="ghost" id="open-btn" type="button">Open at the centre</button>
+    <label><input type="checkbox" id="halo" checked> Thin dark outline on label letters</label>
+    <span class="m">Esc closes it. Letters select while it is open.</span>
+  </div>
+  <div class="readout" id="readout" aria-live="off"></div>
+  <pre class="log" id="log" aria-live="polite">No selections yet.</pre>
+
+  <h2>Why a pie menu is fast</h2>
+  <div class="notes">
+    <div><h3>Direction, not distance</h3><p>Each action owns a wedge that runs outward without end. A 40 px flick and a 400 px throw both land, so there is no small target to slow down for. The readout shows how short your strokes get.</p></div>
+    <div><h3>It opens where the pointer is</h3><p>Travel to the menu is zero. Compare that with crossing the window to a toolbar button and back.</p></div>
+    <div><h3>The stroke becomes a habit</h3><p>Merge is always up. After a few uses you stroke before reading, and the menu is only a confirmation. Eight directions per ring is the usual ceiling for doing that reliably; the research ticket will check that figure against the marking-menu studies.</p></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ITEMS = [
+  { label: "Merge", key: "M", kids: ["Squash", "Commit", "Rebase"] },
+  { label: "Files", key: "F" },
+  { label: "Comment", key: "C" },
+  { label: "Widen", key: "W" },
+  { label: "Palette", key: "P" },
+  { label: "Split", key: "S", kids: ["Side", "Stack", "Grid"] },
+  { label: "New term", key: "N", kids: ["Claude", "Codex", "Pwsh"] },
+  { label: "Next wait", key: "Q" },
+];
+const DEAD = 26, OUTER = 132;
+const S = { style: "nest", pal: "spectrum", open: false, drag: false, cx: 0, cy: 0, hover: null, ang: 0, dist: 0, lock: null, t0: 0, trail: [], sel: false };
+
+const f = (n) => (Math.round(n * 10) / 10).toString();
+const P = (r, deg) => { const a = ((deg - 90) * Math.PI) / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
+const pt = (r, deg) => P(r, deg).map(f).join(" ");
+const arc = (r0, r1, a0, a1) => `M${pt(r1, a0)}A${r1} ${r1} 0 0 1 ${pt(r1, a1)}L${pt(r0, a1)}A${r0} ${r0} 0 0 0 ${pt(r0, a0)}Z`;
+const T = (r, deg, s, cls, dy = 0) => { const [x, y] = P(r, deg); return `<text x="${f(x)}" y="${f(y + dy)}" class="${cls}">${s}</text>`; };
+const brg = (a) => String(Math.round(a) % 360).padStart(3, "0") + "°";
+const name = (h) => (h ? ITEMS[h.i].label + (h.child != null ? " › " + ITEMS[h.i].kids[h.child] : "") : "");
+const on = (h, i) => (h && h.i === i ? (S.sel ? " on sel" : " on") : "");
+const trail = () => (S.trail.length > 1 ? `<polyline class="trail" points="${S.trail.map((p) => f(p[0]) + "," + f(p[1])).join(" ")}"/>` : "");
+const centre = (h, idle) => h
+  ? `<text y="-5" class="big">${name(h).toUpperCase()}</text><text y="12" class="sm">${brg(S.ang)} · ${Math.round(S.dist)} PX</text>`
+  : `<text y="-5" class="big">${idle}</text><text y="12" class="sm">STROKE OR CLICK</text>`;
+
+const STYLES = {
+  hud: {
+    stat: () => { let ticks = ""; for (let a = 0; a < 360; a += 5) ticks += `M${pt(a % 45 ? 141 : 136, a)}L${pt(146, a)}`;
+      return `<circle r="182" class="veil"/><g class="spin"><circle r="170" class="line" stroke-width="1" stroke-dasharray="3 9" opacity=".7"/></g>
+        <g class="spin rev"><path class="line" stroke-width="2.500" d="M${pt(158, 10)}A158 158 0 0 1 ${pt(158, 70)}M${pt(158, 190)}A158 158 0 0 1 ${pt(158, 250)}" opacity=".55"/></g>
+        <path class="line" stroke-width=".8" opacity=".6" d="${ticks}"/>`; },
+    dyn: (h) => { const nest = S.style === "nest"; let s = "";
+      ITEMS.forEach((it, i) => { const a = i * 45, o = on(h, i);
+        s += `<path class="s${h && h.i === i && h.child != null ? " on" : o}" d="${arc(62, 128, a - 21, a + 21)}"/>` + T(93, a, it.label.toUpperCase(), "l" + o) + T(116, a, it.key, "k");
+        if (nest && it.kids) s += `<path class="line" stroke-width="2" d="M${pt(133, a - 12)}A133 133 0 0 1 ${pt(133, a + 12)}"/>`;
+        if (nest && it.kids && h && h.i === i) it.kids.forEach((kid, c) => { const a0 = a - 30 + c * 20, co = h.child === c ? (S.sel ? " on sel" : " on") : "";
+          s += `<path class="s${co}" d="${arc(138, 180, a0 + 1, a0 + 19)}"/>` + T(159, a0 + 10, kid.toUpperCase(), "l" + co); }); });
+      return s + `<circle r="54" class="line" stroke-width="1"/><path class="line" stroke-width=".6" opacity=".5" d="M-54 0H-30M30 0H54M0 -54V-30M0 30V54"/>` + centre(h, "QUAY") + trail(); },
+  },
+  bp: {
+    stat: () => `<defs><pattern id="bp-grid" width="16" height="16" patternUnits="userSpaceOnUse" x="-8" y="-8"><path d="M16 0H0V16" fill="none" stroke="#9ecbff" stroke-width=".4" opacity=".35"/></pattern>
+        <pattern id="bp-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V6" stroke="#cfe8ff" stroke-width="2"/></pattern></defs>
+      <rect x="-224" y="-206" width="448" height="412" rx="6" class="veil"/><rect x="-224" y="-206" width="448" height="412" rx="6" fill="url(#bp-grid)"/>
+      <circle r="134" class="line" stroke-dasharray="6 4"/><text x="-150" y="194" class="sm">QUAY · PIE MENU · SCALE 1:1 · REV A</text>`,
+    dyn: (h) => { let s = "";
+      ITEMS.forEach((it, i) => { const a = i * 45, o = on(h, i), [x, y] = P(150, a), [nx, ny] = P(92, a);
+        const anchor = a === 0 || a === 180 ? "middle" : a < 180 ? "start" : "end";
+        s += `<path class="s${o}" d="${arc(58, 124, a - 22.500, a + 22.500)}"/><path class="line" d="M${pt(124, a)}L${pt(143, a)}"/>
+          <circle cx="${f(nx)}" cy="${f(ny)}" r="9" fill="#cfe8ff"/><text x="${f(nx)}" y="${f(ny + .500)}" class="k">${it.key}</text>
+          <text x="${f(x)}" y="${f(y + (a === 0 ? -4 : a === 180 ? 6 : 0))}" class="l${o}" style="text-anchor:${anchor}">${it.label.toUpperCase()}</text>`; });
+      return s + `<circle r="58" class="line"/><path class="line" d="M-58 0H58M0 -58V58" stroke-dasharray="8 3 2 3" opacity=".6"/><rect x="-44" y="-16" width="88" height="34" fill="#0b2a4a"/>` + centre(h, "⌀ 248") + trail(); },
+  },
+  radar: {
+    stat: () => `<circle r="180" class="veil"/><circle r="60" class="line"/><circle r="104" class="line"/><circle r="148" class="line"/><path class="line" d="M-180 0H180M0 -180V180" opacity=".6"/>
+      <g class="spin fast"><path class="sweep" d="M0 0L${pt(180, 0)}A180 180 0 0 1 ${pt(180, 42)}Z"/><path class="line" stroke="#3fb950" stroke-width="1.500" d="M0 0L${pt(180, 42)}"/></g>`,
+    dyn: (h) => { let s = "";
+      ITEMS.forEach((it, i) => { const a = i * 45, o = on(h, i), [x, y] = P(104, a), hot = h && h.i === i;
+        if (hot) s += `<path class="lock" d="M0 0L${f(x)} ${f(y)}" stroke-dasharray="2 4"/><path class="lock" d="M${f(x - 14)} ${f(y - 8)}v-6h6M${f(x + 8)} ${f(y - 14)}h6v6M${f(x + 14)} ${f(y + 8)}v6h-6M${f(x - 8)} ${f(y + 14)}h-6v-6"/>`;
+        s += `<circle cx="${f(x)}" cy="${f(y)}" r="${hot ? 7 : 4.500}" class="blip${o}"/>` + T(104, a, it.label.toUpperCase(), "l" + o, 25) + T(104, a, brg(a) + " [" + it.key + "]", "k", 36); });
+      return s + `<circle r="40" fill="#03140a" class="line"/>` + centre(h, "SCAN") + trail(); },
+  },
+  octa: {
+    stat: () => `<circle r="186" class="veil"/><path class="line" d="M-190 -160V-190H-160M160 -190H190V-160M190 160V190H160M-160 190H-190V160"/>
+      <text x="-150" y="-180" class="sm">QY-PIE/08</text><text x="150" y="182" class="sm">ARMED</text>`,
+    dyn: (h) => { let s = "";
+      ITEMS.forEach((it, i) => { const a = i * 45, o = on(h, i), a0 = a - 20.500, a1 = a + 20.500, hot = h && h.i === i;
+        s += `<polygon class="s${o}" points="${pt(58, a0)} ${pt(130, a0)} ${pt(130, a1)} ${pt(58, a1)}"/><path class="edge${hot ? " on" : ""}" d="M${pt(130, a0)}L${pt(130, a1)}"/>`
+          + T(96, a, it.label.toUpperCase(), "l" + o) + T(72, a, "0" + (i + 1) + "·" + it.key, "k"); });
+      const oct = Array.from({ length: 8 }, (_, i) => pt(50, i * 45 + 22.500)).join(" ");
+      return s + `<polygon points="${oct}" fill="#0d1117" class="line"/>` + centre(h, "SELECT") + trail(); },
+  },
+};
+STYLES.nest = {
+  stat: () => { let ticks = ""; for (let a = 0; a < 360; a += 5) ticks += `M${pt(a % 45 ? 187 : 183, a)}L${pt(191, a)}`;
+    return `<circle r="196" class="veil"/><g class="glow"><g class="spin"><circle r="201" class="line" stroke-width="1" stroke-dasharray="2 10"/></g>
+      <path class="line" stroke-width=".7" opacity=".75" d="${ticks}"/><circle r="134" class="line" stroke-width=".5" opacity=".5"/></g>`; },
+  dyn: (h) => { let s = "";
+    ITEMS.forEach((it, i) => { const a = i * 45, hot = h && h.i === i, o = hot ? (h.child != null ? " on" : on(h, i)) : "";
+      const corners = [[62, a - 21], [62, a + 21], [128, a - 21], [128, a + 21]].map(([r, d]) => { const [x, y] = P(r, d); return `<circle cx="${f(x)}" cy="${f(y)}" r="1.700" class="v"/>`; }).join("");
+      s += `<g class="sg" style="--h:${i}"><path class="s${o}" d="${arc(62, 128, a - 21, a + 21)}"/>${hot ? `<path class="s2" d="${arc(67, 123, a - 18.500, a + 18.500)}"/>` : ""}${corners}`
+        + T(93, a, it.label.toUpperCase(), "l" + o) + T(116, a, it.key, "k");
+      if (it.kids) s += `<path class="tab" d="M${pt(133, a - 12)}A133 133 0 0 1 ${pt(133, a + 12)}"/>`;
+      if (it.kids && hot) it.kids.forEach((kid, c) => { const a0 = a - 30 + c * 20, co = h.child === c ? (S.sel ? " on sel" : " on") : "";
+        s += `<path class="s c${co}" d="${arc(138, 180, a0 + 1, a0 + 19)}"/><path class="spoke" d="M${pt(128, a0 + 10)}L${pt(138, a0 + 10)}"/>` + T(159, a0 + 10, kid.toUpperCase(), "l" + co); });
+      s += `</g>`; });
+    return s + `<g class="glow"><circle r="54" class="line" stroke-width="1"/><circle r="48" class="line" stroke-width=".5" stroke-dasharray="1 5"/><path class="line" stroke-width=".6" d="M-54 0H-30M30 0H54M0 -54V-30M0 30V54"/></g>` + centre(h, "QUAY") + trail(); },
+};
+
+const GRID = [7, 0, 1, 6, -1, 2, 5, 4, 3], ARROWS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
+function tuiHtml(h) {
+  return `<div class="tui">${GRID.map((i) => i < 0
+    ? `<div class="c"><b>${h ? name(h).toUpperCase() : "QUAY"}</b><small>${h ? brg(S.ang) : "stroke/click"}</small></div>`
+    : `<div class="${on(h, i).trim()}"><b>${ARROWS[i]} ${ITEMS[i].label}</b><small>[${ITEMS[i].key}]</small></div>`).join("")}</div>`;
+}
+
+function draw(full) {
+  const pm = $("pm");
+  if (S.style === "tui") { pm.innerHTML = tuiHtml(S.hover); return; }
+  if (full) pm.innerHTML = `<svg viewBox="-230 -230 460 460" class="wire ${S.pal}"><g>${STYLES[S.style].stat()}</g><g id="dyn"></g></svg>`;
+  pm.querySelector("#dyn").innerHTML = STYLES[S.style].dyn(S.hover);
+}
+
+function readout() {
+  const h = S.hover;
+  $("readout").innerHTML = `<span>Palette <b>${S.pal}</b></span><span>Menu <b>${S.open ? "open" : "closed"}</b></span>` +
+    `<span>Aimed at <b>${h ? name(h) : "nothing"}</b></span><span>Bearing <b>${S.open ? brg(S.ang) : "—"}</b></span>` +
+    `<span>Stroke <b>${S.open ? Math.round(S.dist) + " px" : "—"}</b></span>`;
+}
+
+function aim(x, y) {
+  const dx = x - S.cx, dy = y - S.cy;
+  S.dist = Math.hypot(dx, dy);
+  S.ang = ((Math.atan2(dy, dx) * 180) / Math.PI + 450) % 360;
+  if (S.dist < DEAD) { S.hover = null; S.lock = null; return; }
+  const rel = (i) => ((S.ang - i * 45 + 540) % 360) - 180;
+  if (S.style === "nest" && S.dist > OUTER) {
+    if (S.lock == null || Math.abs(rel(S.lock)) > 32) { const i = Math.round(S.ang / 45) % 8; S.lock = ITEMS[i].kids ? i : null; }
+    if (S.lock != null) { S.hover = { i: S.lock, child: Math.max(0, Math.min(2, Math.floor((rel(S.lock) + 30) / 20))) }; return; }
+  } else S.lock = null;
+  S.hover = { i: Math.round(S.ang / 45) % 8 };
+}
+
+function open(x, y, drag) {
+  const a = $("arena"), m = Math.min(236, a.clientWidth / 2), n = Math.min(236, a.clientHeight / 2);
+  Object.assign(S, { open: true, drag, hover: null, lock: null, dist: 0, ang: 0, sel: false, trail: [[0, 0]], t0: performance.now(),
+    cx: Math.min(Math.max(x, m), a.clientWidth - m), cy: Math.min(Math.max(y, n), a.clientHeight - n) });
+  const pm = $("pm"); pm.style.left = S.cx + "px"; pm.style.top = S.cy + "px"; pm.hidden = false;
+  $("hint").hidden = true;
+  draw(true); readout();
+}
+function close() { S.open = false; S.drag = false; $("pm").hidden = true; $("hint").hidden = false; readout(); }
+
+const lines = [];
+function select(h, mode) {
+  if (!h || S.sel) return;
+  const ms = Math.round(performance.now() - S.t0);
+  S.hover = h; S.sel = true; draw(false);
+  const d = new Date(), ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+  lines.unshift(`${ts}  <b>${name(h).toUpperCase().padEnd(20)}</b>  ${mode.padEnd(6)}  bearing ${mode === "key" ? " — " : brg(S.ang)}  stroke ${String(mode === "key" ? 0 : Math.round(S.dist)).padStart(3)} px  <b>${String(ms).padStart(4)} ms</b>`);
+  $("log").innerHTML = lines.slice(0, 6).join("\n");
+  setTimeout(close, 230);
+}
+
+const arena = $("arena");
+const pos = (e) => { const r = arena.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+arena.addEventListener("contextmenu", (e) => e.preventDefault());
+arena.addEventListener("pointerdown", (e) => {
+  const [x, y] = pos(e);
+  if (e.button === 2) { arena.setPointerCapture(e.pointerId); open(x, y, true); }
+  else if (S.open) { aim(x, y); if (S.hover) select(S.hover, "click"); else close(); }
+});
+arena.addEventListener("pointermove", (e) => {
+  if (!S.open || S.sel) return;
+  const [x, y] = pos(e); aim(x, y);
+  if (S.drag) S.trail.push([x - S.cx, y - S.cy]);
+  draw(false); readout();
+});
+arena.addEventListener("pointerup", (e) => {
+  if (e.button !== 2 || !S.drag) return;
+  S.drag = false;
+  if (S.hover) select(S.hover, "stroke"); else { S.trail = []; draw(false); }
+});
+document.addEventListener("keydown", (e) => {
+  if (!S.open) { if (e.key === "Enter" && document.activeElement === arena) open(arena.clientWidth / 2, arena.clientHeight / 2, false); return; }
+  if (e.key === "Escape") return close();
+  const i = ITEMS.findIndex((it) => it.key === e.key.toUpperCase());
+  if (i >= 0) { e.preventDefault(); select({ i }, "key"); }
+});
+$("halo").addEventListener("change", (e) => $("pm").classList.toggle("nohalo", !e.target.checked));
+$("open-btn").addEventListener("click", () => open(arena.clientWidth / 2, arena.clientHeight / 2, false));
+document.querySelectorAll('input[name="st"]').forEach((r) => r.addEventListener("change", () => {
+  S.pal = r.value;
+  if (S.open) { draw(true); } else open(arena.clientWidth / 2, arena.clientHeight / 2, false);
+  readout();
+}));
+readout();
+open(arena.clientWidth / 2, arena.clientHeight / 2, false);
+</script>
