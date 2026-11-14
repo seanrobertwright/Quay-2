@@ -35,3 +35,7 @@ with example data; nothing is wired to Quay.
   Chosen: distance, with the outer slices locked to the nearest action
   that has sub-actions.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.
+- `quay-pie-contexts.html`: three schemes for what the pie holds over a
+  terminal, the companion pull request, the module bar or a panel row, and
+  an empty stage, with a grid of which strokes stay fixed. Chosen: fixed
+  axes with family diagonals.
