@@ -23,4 +23,8 @@ with example data; nothing is wired to Quay.
 - `quay-command-surfaces.html`: interactive prototype showing where every
   command lives across the module bar, 5 module panels, pane header,
   companion, 2-ring pie menu, and command palette.
+- `quay-tool-placement.html`: four placements (module panel, companion,
+  stage tab, full-window) for Topos, Praxis Builder, and Machina Factory.
+  Chosen: Topos in companion (with Wide), Praxis Builder as a stage tab,
+  Machina Factory in the Workflows panel.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.

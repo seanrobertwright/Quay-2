@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where Topos, Praxis Builder &amp; Machina Factory Open — Quay Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --cyan: #06b6d4; --go: #238636; --go-line: #2ea043; --sel: #132339;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--body); padding: 22px 20px 84px; }
+.wrap { max-width: 1340px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.tag { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+h1 { font: 600 22px/1.2 var(--display); color: var(--hi); margin: 4px 0 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.seg { display: flex; gap: 5px; border: 0; padding: 0; margin: 0; flex-wrap: wrap; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; padding: 0; }
+.seg button {
+  border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  background: var(--q-panel); color: var(--fg); font: 500 12.5px var(--body); display: inline-flex; align-items: center; gap: 6px;
+}
+.seg button:hover { border-color: #6e7681; }
+.seg button[aria-pressed="true"] { border-color: var(--blue); color: #fff; background: var(--sel); }
+.seg button.tool-btn[aria-pressed="true"] { border-color: var(--amber); background: rgba(210,153,34,.14); color: #f2cc60; }
+
+/* Mock Quay Window */
+.shell {
+  position: relative; display: flex; height: 640px; min-width: 980px;
+  background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 8px; overflow: hidden;
+  font: 12px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+.scroll { overflow-x: auto; }
+
+/* 48px Module Bar */
+.abar {
+  width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; z-index: 2;
+}
+.ib {
+  width: 34px; height: 34px; border-radius: 6px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); display: grid; place-items: center; cursor: pointer; position: relative;
+}
+.ib:hover { color: var(--hi); background: var(--q-raise); }
+.ib.active { color: #fff; background: var(--sel); border-color: rgba(88,166,255,.45); }
+.ib svg { width: 17px; height: 17px; }
+.ib .badge {
+  position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px; border-radius: 7px;
+  font: 600 9px/14px var(--mono); background: var(--amber); color: #0d1117; padding: 0 3px; text-align: center;
+}
+.grow { flex: 1; }
+
+/* Left Module Panel */
+.panel {
+  width: 270px; flex: none; background: #0e131a; border-right: 1px solid var(--q-line);
+  display: flex; flex-direction: column; min-height: 0; transition: width .15s ease;
+}
+.panel.wide-panel { width: 410px; }
+.panel.hidden { display: none; }
+.phead {
+  padding: 8px 10px; border-bottom: 1px solid var(--q-line); background: var(--q-panel);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--hi);
+}
+.phead small { font: 500 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.pbody { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+
+/* Center Stage */
+.stage { flex: 1; min-width: 280px; display: flex; flex-direction: column; background: var(--q-bg); position: relative; min-height: 0; }
+.stage-tabs {
+  height: 35px; flex: none; background: var(--q-panel); border-bottom: 1px solid var(--q-line);
+  display: flex; align-items: center; padding: 0 10px; gap: 4px;
+}
+.stab {
+  height: 27px; padding: 0 10px; border-radius: 5px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); font: 500 12px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.stab:hover { color: var(--hi); background: var(--q-raise); }
+.stab.active { background: var(--q-bg); border-color: var(--q-line); color: var(--hi); }
+.stab .close-x { font-size: 13px; color: var(--muted); margin-left: 2px; }
+.stage-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font: 11px var(--mono); }
+.term-out {
+  flex: 1; margin: 0; padding: 12px 14px; overflow: auto; font: 12px/1.6 var(--mono);
+  white-space: pre-wrap; color: #c9d1d9;
+}
+.g { color: var(--green); } .y { color: var(--amber); } .b { color: var(--blue); } .m { color: var(--muted); } .pu { color: var(--purple); }
+
+/* Right Companion */
+.comp {
+  width: 340px; flex: none; border-left: 1px solid var(--q-line); background: #0b0f14;
+  display: flex; flex-direction: column; min-height: 0; position: relative; transition: width .15s ease;
+}
+.comp.wide-comp { width: 560px; }
+.comp.hidden { display: none; }
+
+/* Full-window overlay (Variant D) */
+.overlay-backdrop {
+  position: absolute; inset: 0; background: rgba(6, 9, 14, .82); backdrop-filter: blur(2px);
+  z-index: 20; display: flex; padding: 18px;
+}
+.overlay-modal {
+  flex: 1; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.65); display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* Shared Tool UI pieces */
+.tbar {
+  padding: 8px 12px; border-bottom: 1px solid var(--q-line); background: var(--q-panel);
+  display: flex; align-items: center; gap: 8px; flex: none;
+}
+.tbar-title { font-weight: 600; color: var(--hi); display: flex; align-items: center; gap: 7px; }
+.tbar .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.btn {
+  border: 1px solid var(--q-line); border-radius: 5px; padding: 4px 9px; background: var(--q-raise);
+  color: var(--fg); font: 500 11.5px var(--body); cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: #6e7681; }
+.btn.primary { background: var(--sel); border-color: var(--blue); color: #fff; }
+.btn.go { background: var(--go); border-color: var(--go-line); color: #fff; }
+.btn.danger { background: rgba(248,81,73,.14); border-color: rgba(248,81,73,.5); color: #ff7b72; }
+.pill {
+  font: 600 10px var(--mono); padding: 1px 6px; border-radius: 99px;
+  background: rgba(88,166,255,.15); color: var(--blue);
+}
+.pill.amber { background: rgba(210,153,34,.18); color: #f2cc60; }
+.pill.green { background: rgba(63,185,80,.18); color: #56d364; }
+.pill.red { background: rgba(248,81,73,.18); color: #ff7b72; }
+
+/* Responsive Tool Layouts (adapts to narrow panel vs wide stage/overlay) */
+.tool-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.tool-body.stacked { flex-direction: column; }
+.pane-list { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.pane-detail {
+  width: 46%; min-width: 240px; border-left: 1px solid var(--q-line); background: #0e131a;
+  overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.tool-body.stacked .pane-detail { width: 100%; min-width: 0; height: 48%; border-left: 0; border-top: 1px solid var(--q-line); }
+
+.row-item {
+  padding: 6px 8px; border-radius: 5px; border: 1px solid transparent; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+}
+.row-item:hover { background: var(--q-panel); }
+.row-item.sel { background: var(--sel); border-color: rgba(88,166,255,.45); }
+.sha { font: 500 11px var(--mono); color: var(--amber); }
+.diff-box {
+  font: 11px/1.5 var(--mono); background: #090c10; border: 1px solid var(--q-line);
+  border-radius: 5px; padding: 8px; white-space: pre; overflow-x: auto;
+}
+.d-add { color: #56d364; background: rgba(63,185,80,.1); display: block; }
+.d-del { color: #ff7b72; background: rgba(248,81,73,.1); display: block; }
+
+/* Praxis Canvas */
+.canvas-wrap {
+  flex: 1; min-width: 0; min-height: 0; position: relative; overflow: auto;
+  background-image: radial-gradient(circle, #21262d 1px, transparent 1px);
+  background-size: 18px 18px; background-color: #090c10;
+}
+.node-card {
+  position: absolute; width: 146px; padding: 7px 9px; border-radius: 6px;
+  background: var(--q-panel); border: 1px solid var(--q-line); cursor: pointer;
+}
+.node-card.sel { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.node-card b { display: block; font-size: 11.5px; color: var(--hi); }
+.node-card small { font: 10px var(--mono); color: var(--muted); }
+
+/* Assessment strip below window */
+.assess {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+}
+.card {
+  background: var(--q-panel); border: 1px solid var(--q-line); border-radius: 7px; padding: 10px 12px;
+}
+.card small { display: block; font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 3px; }
+.card strong { font-size: 13px; color: var(--hi); }
+.card p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+
+/* Floating bottom switcher (per prototype UI spec) */
+.float-bar {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 50;
+  background: #161b22; border: 1px solid var(--blue); border-radius: 999px;
+  padding: 5px 8px; display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.7); font: 500 12px var(--body);
+}
+.float-bar button {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--q-line);
+  background: var(--q-raise); color: var(--hi); cursor: pointer; display: grid; place-items: center;
+}
+.float-bar button:hover { border-color: var(--blue); }
+.float-bar span { padding: 0 6px; color: var(--hi); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="tag">Wayfinder #617 · Quay Shell Redesign</div>
+      <h1>Where Topos, Praxis Builder &amp; Machina Factory Open</h1>
+    </div>
+    <div class="controls">
+      <fieldset class="seg">
+        <legend>1. Tool (keys 1-3)</legend>
+        <button type="button" class="tool-btn" data-tool="topos">Topos (Git)</button>
+        <button type="button" class="tool-btn" data-tool="praxis">Praxis Builder</button>
+        <button type="button" class="tool-btn" data-tool="factory">Machina Factory</button>
+      </fieldset>
+      <fieldset class="seg">
+        <legend>2. Placement (← / →)</legend>
+        <button type="button" class="var-btn" data-var="A">A · Module panel</button>
+        <button type="button" class="var-btn" data-var="B">B · Companion</button>
+        <button type="button" class="var-btn" data-var="C">C · Stage tab</button>
+        <button type="button" class="var-btn" data-var="D">D · Full-window</button>
+      </fieldset>
+    </div>
+  </div>
+
+  <div class="scroll">
+    <div class="shell" id="shell">
+      <!-- 48px Module Bar -->
+      <nav class="abar" aria-label="Modules">
+        <button class="ib" id="mod-projects" title="Projects">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+        </button>
+        <button class="ib" id="mod-source" title="Source control (GitHub + Topos + Diffs)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M6 9v6M9 7l6 4"/></svg>
+          <span class="badge">2</span>
+        </button>
+        <button class="ib" id="mod-agents" title="Agents">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+        </button>
+        <button class="ib" id="mod-workflows" title="Workflows (Archon, Machina Factory, Praxis Builder)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></svg>
+        </button>
+        <div class="grow"></div>
+        <button class="ib" id="mod-project" title="Project settings &amp; spend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </nav>
+
+      <!-- Left Module Panel -->
+      <aside class="panel" id="left-panel"></aside>
+
+      <!-- Center Stage -->
+      <main class="stage" id="stage"></main>
+
+      <!-- Right Companion -->
+      <aside class="comp" id="companion"></aside>
+
+      <!-- Overlay slot (Variant D) -->
+      <div id="overlay-slot"></div>
+    </div>
+  </div>
+
+  <div class="assess" id="assess"></div>
+</div>
+
+<div class="float-bar" aria-label="Prototype variant switcher">
+  <button type="button" id="prev-var" title="Previous placement (←)">←</button>
+  <span id="float-label">A · Module panel</span>
+  <button type="button" id="next-var" title="Next placement (→)">→</button>
+</div>
+
+<script>
+const TOOLS = {
+  topos: {
+    name: "Topos: Git Cockpit",
+    module: "source",
+    moduleLabel: "Source control",
+    badge: "master · 3 worktrees",
+    actions: ["Fetch", "Pull", "Push", "+ Branch"],
+  },
+  praxis: {
+    name: "Praxis Builder",
+    module: "workflows",
+    moduleLabel: "Workflows",
+    badge: "unsaved draft",
+    actions: ["Validate", "Run", "Save draft"],
+  },
+  factory: {
+    name: "Machina Factory",
+    module: "workflows",
+    moduleLabel: "Workflows",
+    badge: "1 hold · 2 queued",
+    actions: ["Refresh", "+ Work Order"],
+  },
+};
+
+const VARIANTS = {
+  A: {
+    label: "A · Module panel",
+    summary: "Opens inside the left module panel (expandable to ~410px).",
+  },
+  B: {
+    label: "B · Companion",
+    summary: "Opens in the right companion (with Wide toggle, like the PR diff lens).",
+  },
+  C: {
+    label: "C · Stage tab",
+    summary: "Opens in the center stage alongside the terminal as a switchable tab.",
+  },
+  D: {
+    label: "D · Full-window",
+    summary: "Covers the whole Quay window as an overlay (today's behavior).",
+  },
+};
+
+const COMMITS = [
+  { sha: "a4f91c2", msg: "feat(shell): readiness card in companion", branch: "feat/shell-pr", files: 4, diff: "+24 -7  src/slices/github/PrCompanion.tsx\n+12 -0  src/slices/github/readiness.ts" },
+  { sha: "8c21e0b", msg: "fix(topos): keep graph scroll on refresh", branch: "master", files: 2, diff: "+8 -3   src/slices/git/topos/GraphPane.tsx" },
+  { sha: "19d04aa", msg: "chore(wayfinder): capture #611 prototype", branch: "prototype/shell-redesign", files: 1, diff: "+310 -0 prototypes/shell-redesign/quay-companion-wide.html" },
+  { sha: "f03b719", msg: "test(ctrlB): guard non-text inputs", branch: "", files: 1, diff: "+19 -2  src/slices/workspace/ctrlBPrefix.test.ts" },
+];
+
+const NODES = [
+  { id: "n1", x: 18, y: 24, title: "trigger: pr.opened", kind: "event", contract: "github.pr.v1" },
+  { id: "n2", x: 190, y: 24, title: "audit.secrets", kind: "gate", contract: "audit.result.v1" },
+  { id: "n3", x: 190, y: 120, title: "agent.review", kind: "claude", contract: "review.note.v1" },
+  { id: "n4", x: 365, y: 72, title: "gh.comment", kind: "effect", contract: "github.comment.v1" },
+];
+
+const ORDERS = [
+  { id: "WO-42", title: "Add readiness cell keyboard nav", status: "HOLD", repo: "Quay-2", detail: "Waiting for operator Accept/Reject on 2 modified files (+48 -11)." },
+  { id: "WO-41", title: "Sweep stale worktree locks", status: "RUNNING", repo: "Quay-2", detail: "Worker 2 executing cargo test in worktrees/wo-41." },
+  { id: "WO-40", title: "Bump lucide-react icons", status: "QUEUED", repo: "Quay-2", detail: "Queued behind WO-41." },
+];
+
+let state = {
+  tool: "topos",
+  variant: "A",
+  panelWide: false,
+  compWide: false,
+  stageTab: "tool", // "tool" | "terminal"
+  selCommit: 0,
+  selNode: "n2",
+  selOrder: 0,
+  orderStatus: { "WO-42": "HOLD" },
+};
+
+const params = new URLSearchParams(location.search);
+if (TOOLS[params.get("tool")]) state.tool = params.get("tool");
+if (VARIANTS[params.get("variant")]) state.variant = params.get("variant");
+
+function syncUrl() {
+  const u = new URL(location.href);
+  u.searchParams.set("tool", state.tool);
+  u.searchParams.set("variant", state.variant);
+  history.replaceState(null, "", u);
+}
+
+function renderToolContent(stacked) {
+  const t = TOOLS[state.tool];
+  let inner = "";
+  if (state.tool === "topos") {
+    const c = COMMITS[state.selCommit];
+    inner = `
+      <div class="tool-body ${stacked ? "stacked" : ""}">
+        <div class="pane-list">
+          ${COMMITS.map((cm, i) => `
+            <div class="row-item ${i === state.selCommit ? "sel" : ""}" data-commit="${i}">
+              <span class="sha">${cm.sha}</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cm.msg}</span>
+              ${cm.branch ? `<span class="pill">${cm.branch}</span>` : ""}
+            </div>
+          `).join("")}
+        </div>
+        <div class="pane-detail">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="color:var(--hi)">${c.sha} · ${c.files} files</strong>
+            <span class="pill green">clean</span>
+          </div>
+          <div style="color:var(--fg)">${c.msg}</div>
+          <div class="diff-box">${c.diff.split("\n").map(l => l.startsWith("+") ? `<span class="d-add">${l}</span>` : `<span class="d-del">${l}</span>`).join("")}</div>
+        </div>
+      </div>`;
+  } else if (state.tool === "praxis") {
+    const nd = NODES.find(n => n.id === state.selNode) || NODES[0];
+    inner = `
+      <div class="tool-body ${stacked ? "stacked" : ""}">
+        <div class="canvas-wrap">
+          <svg style="position:absolute;inset:0;width:540px;height:210px;pointer-events:none">
+            <path d="M164 48 C178 48, 176 48, 190 48" stroke="#58a6ff" stroke-width="1.6" fill="none"/>
+            <path d="M164 48 C178 48, 176 144, 190 144" stroke="#a371f7" stroke-width="1.6" fill="none"/>
+            <path d="M336 48 C350 48, 350 96, 365 96" stroke="#3fb950" stroke-width="1.6" fill="none"/>
+            <path d="M336 144 C350 144, 350 96, 365 96" stroke="#3fb950" stroke-width="1.6" fill="none"/>
+          </svg>
+          ${NODES.map(n => `
+            <div class="node-card ${n.id === state.selNode ? "sel" : ""}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px">
+              <b>${n.title}</b>
+              <small>${n.kind}</small>
+            </div>
+          `).join("")}
+        </div>
+        <div class="pane-detail">
+          <strong style="color:var(--hi)">Inspector · ${nd.title}</strong>
+          <div style="font:11px var(--mono);color:var(--muted)">contract: ${nd.contract}</div>
+          <div style="font-size:11.5px;color:var(--fg)">Grants: <span class="pill">github:comment</span> <span class="pill">repo:read</span></div>
+          <div style="display:flex;gap:6px;margin-top:auto">
+            <button class="btn primary" type="button">Edit contract</button>
+            <button class="btn" type="button">Test node</button>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    const o = ORDERS[state.selOrder];
+    const st = state.orderStatus[o.id] || o.status;
+    inner = `
+      <div class="tool-body ${stacked ? "stacked" : ""}">
+        <div class="pane-list">
+          ${ORDERS.map((ord, i) => {
+            const ost = state.orderStatus[ord.id] || ord.status;
+            const cls = ost === "HOLD" ? "amber" : ost === "ACCEPTED" ? "green" : ost === "REJECTED" ? "red" : "";
+            return `
+              <div class="row-item ${i === state.selOrder ? "sel" : ""}" data-order="${i}">
+                <span class="sha">${ord.id}</span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ord.title}</span>
+                <span class="pill ${cls}">${ost}</span>
+              </div>`;
+          }).join("")}
+        </div>
+        <div class="pane-detail">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong style="color:var(--hi)">${o.id} · ${o.repo}</strong>
+            <span class="pill ${st === "HOLD" ? "amber" : st === "ACCEPTED" ? "green" : "red"}">${st}</span>
+          </div>
+          <div>${o.title}</div>
+          <div style="color:var(--muted);font-size:11.5px">${o.detail}</div>
+          <div style="display:flex;gap:6px;margin-top:auto">
+            <button class="btn go" type="button" data-decide="ACCEPTED">Accept</button>
+            <button class="btn danger" type="button" data-decide="REJECTED">Reject</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const widthToggle =
+    state.variant === "A"
+      ? `<button class="btn" type="button" id="toggle-panel-wide">${state.panelWide ? "Narrow" : "Widen"}</button>`
+      : state.variant === "B"
+      ? `<button class="btn" type="button" id="toggle-comp-wide">${state.compWide ? "Normal" : "Wide"}</button>`
+      : "";
+
+  return `
+    <div class="tbar">
+      <div class="tbar-title">${t.name} <span class="pill amber">${t.badge}</span></div>
+      <div class="r">
+        ${t.actions.map(a => `<button class="btn" type="button">${a}</button>`).join("")}
+        ${widthToggle}
+        ${state.variant === "D" ? `<button class="btn primary" type="button" id="close-overlay">Esc · Close</button>` : ""}
+      </div>
+    </div>
+    ${inner}`;
+}
+
+function renderDefaultPanel() {
+  return `
+    <div class="phead"><span>Projects</span><small>Quay-2</small></div>
+    <div class="pbody" style="padding:8px;gap:6px">
+      <div class="row-item sel"><span style="color:var(--green)">●</span><span style="flex:1">Claude · #617</span><small class="m">master</small></div>
+      <div class="row-item"><span style="color:var(--amber)">◆</span><span style="flex:1">Codex · audit</span><small class="m">wt/audit</small></div>
+      <div class="row-item"><span style="color:var(--muted)">○</span><span style="flex:1">PowerShell</span><small class="m">master</small></div>
+    </div>`;
+}
+
+function renderDefaultCompanion() {
+  return `
+    <div class="tbar">
+      <div class="tbar-title">PR #612 · Shell companion <span class="pill green">Ready</span></div>
+      <div class="r"><button class="btn go" type="button">Merge</button></div>
+    </div>
+    <div style="padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+        <div class="card"><small>Checks</small><strong>6 / 6 passed</strong></div>
+        <div class="card"><small>Files</small><strong>4 changed</strong></div>
+      </div>
+      <div style="color:var(--muted);font-size:12px">Follows the selected terminal (<code style="font-family:var(--mono)">Claude · #617</code>).</div>
+    </div>`;
+}
+
+function renderTerminal() {
+  return `<pre class="term-out"><span class="g">claude@Quay2</span> <span class="b">master</span>
+<span class="m">────────────────────────────────────────</span>
+<span class="pu">●</span> Running prototype check for <span class="y">#617</span>
+  <span class="g">✓</span> 48px module bar active
+  <span class="g">✓</span> Companion bound to selected terminal
+  <span class="y">◆</span> Evaluating where <span class="b">${TOOLS[state.tool].name}</span> opens…
+
+<span class="m">&gt; _</span></pre>`;
+}
+
+function updateAssess() {
+  const v = state.variant;
+  const t = state.tool;
+  const termVis = v === "A" || v === "B" ? "Always visible" : v === "C" ? "1 click away (tab)" : "Hidden";
+  const compVis = v === "A" || v === "C" ? "Visible (PR/issue stays open)" : v === "B" ? "Replaced by tool" : "Hidden";
+  const spaceFit =
+    v === "A"
+      ? t === "praxis" ? "Cramped (2D canvas needs width)" : "Tight; needs stacked layout"
+      : v === "B"
+      ? t === "praxis" ? "Needs Wide mode for canvas" : "Good with Wide toggle"
+      : v === "C"
+      ? "Full stage width; great for graphs &amp; diffs"
+      : "Maximum width, but loses terminal &amp; PR context";
+  const switchCost =
+    v === "A" ? "0 clicks (already beside terminal)" :
+    v === "B" ? "0 clicks to watch terminal; 1 click to restore PR" :
+    v === "C" ? "1 click (stage tab) or chord" :
+    "1 click / Esc (blocks everything until closed)";
+
+  document.getElementById("assess").innerHTML = `
+    <div class="card"><small>Placement</small><strong>${VARIANTS[v].label}</strong><p>${VARIANTS[v].summary}</p></div>
+    <div class="card"><small>Terminal &amp; Companion</small><strong>${termVis}</strong><p>Companion: ${compVis}</p></div>
+    <div class="card"><small>Spatial Fit (${TOOLS[t].name.split(":")[0]})</small><strong>${v === "C" || v === "D" ? "Spacious" : v === "B" ? "Medium / Wide" : "Narrow"}</strong><p>${spaceFit}</p></div>
+    <div class="card"><small>Context Switch Cost</small><strong>${switchCost.split(" (")[0]}</strong><p>${switchCost}</p></div>
+  `;
+}
+
+function render() {
+  syncUrl();
+  document.querySelectorAll(".tool-btn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tool === state.tool)));
+  document.querySelectorAll(".var-btn").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.var === state.variant)));
+  document.getElementById("float-label").textContent = `${VARIANTS[state.variant].label} · ${TOOLS[state.tool].name.split(":")[0]}`;
+
+  // Module bar active icon
+  const activeMod = state.variant === "A" ? TOOLS[state.tool].module : "projects";
+  ["projects", "source", "agents", "workflows", "project"].forEach(m => {
+    document.getElementById("mod-" + m).classList.toggle("active", m === activeMod);
+  });
+
+  const leftPanel = document.getElementById("left-panel");
+  const stage = document.getElementById("stage");
+  const comp = document.getElementById("companion");
+  const overlaySlot = document.getElementById("overlay-slot");
+
+  leftPanel.className = "panel" + (state.variant === "A" && state.panelWide ? " wide-panel" : "");
+  comp.className = "comp" + (state.variant === "B" && state.compWide ? " wide-comp" : "");
+  overlaySlot.innerHTML = "";
+
+  // Left panel
+  leftPanel.innerHTML = state.variant === "A" ? renderToolContent(true) : renderDefaultPanel();
+
+  // Stage
+  if (state.variant === "C") {
+    stage.innerHTML = `
+      <div class="stage-tabs">
+        <button type="button" class="stab ${state.stageTab === "terminal" ? "active" : ""}" data-stab="terminal">Terminal · Claude #617</button>
+        <button type="button" class="stab ${state.stageTab === "tool" ? "active" : ""}" data-stab="tool">${TOOLS[state.tool].name} <span class="close-x">×</span></button>
+        <span class="stage-meta">Quay-2 · master</span>
+      </div>
+      ${state.stageTab === "tool" ? renderToolContent(false) : renderTerminal()}
+    `;
+  } else {
+    stage.innerHTML = `
+      <div class="stage-tabs">
+        <span style="font-weight:600;color:var(--hi)">Claude · #617</span>
+        <span class="stage-meta">Quay-2 · master · Skip</span>
+      </div>
+      ${renderTerminal()}
+    `;
+  }
+
+  // Companion
+  comp.innerHTML = state.variant === "B" ? renderToolContent(!state.compWide) : renderDefaultCompanion();
+
+  // Overlay
+  if (state.variant === "D") {
+    overlaySlot.innerHTML = `<div class="overlay-backdrop"><div class="overlay-modal">${renderToolContent(false)}</div></div>`;
+  }
+
+  updateAssess();
+}
+
+// Event delegation
+document.addEventListener("click", e => {
+  const tb = e.target.closest(".tool-btn");
+  if (tb) { state.tool = tb.dataset.tool; render(); return; }
+  const vb = e.target.closest(".var-btn");
+  if (vb) { state.variant = vb.dataset.var; state.stageTab = "tool"; render(); return; }
+  const stab = e.target.closest("[data-stab]");
+  if (stab) { state.stageTab = stab.dataset.stab; render(); return; }
+  const cm = e.target.closest("[data-commit]");
+  if (cm) { state.selCommit = Number(cm.dataset.commit); render(); return; }
+  const nd = e.target.closest("[data-node]");
+  if (nd) { state.selNode = nd.dataset.node; render(); return; }
+  const ord = e.target.closest("[data-order]");
+  if (ord) { state.selOrder = Number(ord.dataset.order); render(); return; }
+  const dec = e.target.closest("[data-decide]");
+  if (dec) { const o = ORDERS[state.selOrder]; state.orderStatus[o.id] = dec.dataset.decide; render(); return; }
+  if (e.target.id === "toggle-panel-wide") { state.panelWide = !state.panelWide; render(); return; }
+  if (e.target.id === "toggle-comp-wide") { state.compWide = !state.compWide; render(); return; }
+  if (e.target.id === "close-overlay") { state.variant = "C"; render(); return; }
+});
+
+const VAR_KEYS = ["A", "B", "C", "D"];
+function stepVariant(dir) {
+  const i = VAR_KEYS.indexOf(state.variant);
+  state.variant = VAR_KEYS[(i + dir + VAR_KEYS.length) % VAR_KEYS.length];
+  state.stageTab = "tool";
+  render();
+}
+document.getElementById("prev-var").onclick = () => stepVariant(-1);
+document.getElementById("next-var").onclick = () => stepVariant(1);
+document.addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (e.key === "ArrowLeft") stepVariant(-1);
+  if (e.key === "ArrowRight") stepVariant(1);
+  if (e.key === "1") { state.tool = "topos"; render(); }
+  if (e.key === "2") { state.tool = "praxis"; render(); }
+  if (e.key === "3") { state.tool = "factory"; render(); }
+});
+
+render();
+</script>
+</body>
+</html>
