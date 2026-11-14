@@ -1,0 +1,522 @@
+<title>Companion Wide Mode</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one live Quay window with a large pull request in the companion (readiness first) and four
+   switchable ways for it to go wide, a live click and travel counter for one job, and per-variant notes.
+   Single dark look, Quay's palette. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d; --q-soft: #21262d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 6px; padding: 6px 12px; cursor: pointer; background: var(--q-panel); font-weight: 500; }
+.seg input:checked + label { border-color: var(--blue); color: #fff; background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* mock window */
+.shell { position: relative; display: flex; height: 660px; min-width: 1100px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg { width: 16px; height: 16px; flex: none; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
+.ib { padding: 9px; border-radius: 6px; display: inline-flex; position: relative; color: var(--muted); }
+.ib svg { width: 18px; height: 18px; }
+.grow { flex: 1; }
+.badge { position: absolute; top: 2px; right: 1px; min-width: 13px; height: 13px; border-radius: 7px; font: 600 9px/13px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.badge.b { background: var(--blue); }
+.term { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ph { padding: 7px 12px; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 8px; color: #e6edf3; background: var(--q-panel); white-space: nowrap; min-height: 34px; box-sizing: border-box; }
+.ph small { color: var(--muted); font: 10px var(--mono); }
+.ph .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; } .dot.run { background: var(--green); }
+.out { flex: 1; margin: 0; overflow: auto; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; }
+.g { color: var(--green); } .y { color: var(--amber); } .p { color: #d2a8ff; }
+.ok { color: var(--green); } .bad { color: var(--red); } .m { color: var(--muted); } .pu { color: var(--purple); }
+.replies { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 0; }
+.btn { border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 10px; background: var(--q-raise); color: var(--fg); white-space: nowrap; }
+.btn:hover { border-color: #8b949e; }
+.btn.go { background: var(--go); border-color: var(--go-line); color: #fff; font-weight: 600; }
+.btn.sm { padding: 2px 8px; font-size: 11px; }
+.btn.wide { border-color: var(--blue); color: #cfe3ff; background: var(--sel); }
+.btn.reply { font: 11.5px var(--mono); border-color: var(--amber); color: #f2cc60; background: rgba(210,153,34,.1); }
+
+/* companion */
+.comp { flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--q-line); background: #0b0f14; min-height: 0; min-width: 0; }
+.divider { width: 7px; flex: none; margin: 0 -4px 0 -3px; cursor: col-resize; position: relative; z-index: 3; touch-action: none; }
+.divider::after { content: ""; position: absolute; inset: 0 3px; background: transparent; transition: background .1s; }
+.divider:hover::after, .divider.drag::after { background: var(--blue); }
+.divider span { position: absolute; top: 50%; left: -2px; width: 11px; height: 34px; margin-top: -17px; border-radius: 4px; background: var(--q-raise); border: 1px solid var(--q-line); }
+.snaps { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.snaps i { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(88,166,255,.35); }
+.snaps b { position: absolute; top: 40px; transform: translateX(-50%); font: 600 10px var(--mono); color: var(--blue); background: var(--q-bg); padding: 1px 4px; border-radius: 3px; white-space: nowrap; }
+.prh { padding: 9px 12px 7px; border-bottom: 1px solid var(--q-line); display: flex; flex-direction: column; gap: 4px; }
+.prt { font-size: 14px; font-weight: 600; color: var(--hi); line-height: 1.3; }
+.prm { color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.pill { border-radius: 10px; padding: 1px 8px; font-weight: 600; color: #fff; background: var(--go); }
+.pill.merged { background: #8957e5; }
+.chip { font: 11px var(--mono); background: rgba(56,139,253,.15); color: #79c0ff; border-radius: 5px; padding: 0 6px; }
+.chip.gone { text-decoration: line-through; color: var(--muted); background: var(--q-soft); }
+.cbody { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.h { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.h::after { content: ""; flex: 1; border-bottom: 1px solid var(--q-line); }
+
+/* readiness */
+.ready { border: 1px solid var(--q-line); border-radius: 8px; background: var(--q-panel); display: flex; flex-direction: column; flex: none; }
+.ready.done { border-color: rgba(163,113,247,.55); }
+.rtop { display: flex; gap: 10px; padding: 10px 12px; align-items: flex-start; }
+.ricon { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; color: #fff; background: var(--go); }
+.ricon.done { background: #8957e5; }
+.rtxt { min-width: 0; } .rtxt b { color: var(--hi); font-size: 13px; display: block; } .rtxt span { color: var(--muted); }
+.rmerge { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--q-line); }
+.cell { padding: 7px 12px; display: flex; flex-direction: column; gap: 3px; border: 0; background: none; text-align: left; min-width: 0; }
+.cell:nth-child(2n) { border-left: 1px solid var(--q-line); } .cell:nth-child(n+3) { border-top: 1px solid var(--q-line); }
+.cell:hover { background: var(--q-raise); } .cell.on { background: var(--sel); box-shadow: inset 0 -2px 0 var(--blue); }
+.cell small { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+.cell span { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bars { display: flex; gap: 2px; height: 5px; } .bars i { flex: 1; border-radius: 2px; background: var(--q-raise); }
+.bars .k { background: var(--green); } .bars .u { background: var(--amber); } .bars .d { background: var(--red); }
+/* the bar form of the card, for wide views */
+.ready.bar { flex-direction: row; flex-wrap: wrap; align-items: stretch; }
+.ready.bar .rtop { flex: 1 1 240px; } .ready.bar .rmerge { padding: 10px 12px; justify-content: center; }
+.ready.bar .cells { display: flex; border-top: 0; border-left: 1px solid var(--q-line); flex: 2 1 420px; }
+.ready.bar .cell { flex: 1; border-top: 0 !important; border-left: 1px solid var(--q-line); } .ready.bar .cell:first-child { border-left: 0; }
+.split { display: inline-flex; }
+.split .btn:first-child { border-radius: 6px 0 0 6px; } .split .btn:last-child { border-radius: 0 6px 6px 0; border-left-color: rgba(0,0,0,.35); padding: 4px 8px; }
+.mrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.confirm { display: flex; flex-direction: column; gap: 6px; }
+.confirm label { display: flex; gap: 6px; align-items: center; }
+
+/* files */
+.stepper { display: flex; gap: 6px; align-items: center; }
+.stepper .name { flex: 1; min-width: 0; font: 11px var(--mono); color: var(--hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--q-line); border-radius: 6px; padding: 3px 8px; background: var(--q-bg); }
+.ftools { display: flex; gap: 6px; align-items: center; }
+.ftools input { flex: 1; min-width: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 4px 8px; color: var(--hi); }
+.wfiles { flex: 1; min-height: 0; display: flex; gap: 0; }
+.ftree { flex: 0 0 230px; overflow: auto; border-right: 1px solid var(--q-line); padding: 8px; display: flex; flex-direction: column; gap: 1px; font: 11.5px var(--mono); }
+.ftree .dir { color: var(--muted); padding: 5px 6px 2px; }
+.fnode { border: 0; background: none; text-align: left; padding: 3px 6px 3px 16px; border-radius: 4px; display: flex; gap: 6px; align-items: center; color: var(--fg); width: 100%; }
+.fnode:hover { background: var(--q-raise); } .fnode.on { background: var(--sel); color: #fff; }
+.fnode.seen::before { content: "✓"; color: var(--green); margin-left: -12px; width: 8px; font-size: 10px; }
+.fnode .st { margin-left: auto; font-size: 10px; display: inline-flex; gap: 4px; }
+.diffs { flex: 1; min-width: 0; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.diff { border: 1px solid var(--q-line); border-radius: 6px; overflow: hidden; flex: none; }
+.dhead { display: flex; gap: 8px; align-items: center; padding: 5px 10px; background: var(--q-panel); border-bottom: 1px solid var(--q-line); font: 11px var(--mono); color: #e6edf3; }
+.dhead span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbody { overflow-x: auto; font: 11px/1.6 var(--mono); }
+.dl { display: flex; white-space: pre; min-width: max-content; }
+.dl i { font-style: normal; width: 30px; flex: none; text-align: right; padding-right: 6px; color: #6e7681; user-select: none; }
+.dl em { font-style: normal; padding: 0 10px 0 4px; }
+.dl.a { background: rgba(46,160,67,.15); } .dl.a em::before { content: "+"; color: var(--green); margin-right: 4px; }
+.dl.d { background: rgba(248,81,73,.15); } .dl.d em::before { content: "−"; color: var(--red); margin-right: 4px; }
+.dl.c em::before { content: " "; margin-right: 4px; }
+.dl.hk { background: rgba(56,139,253,.1); color: var(--muted); }
+.wide-view { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: #0b0f14; }
+.wide-view .top { padding: 10px 12px; border-bottom: 1px solid var(--q-line); display: flex; flex-direction: column; gap: 10px; }
+.wide-view .ftools { padding: 8px 10px; border-bottom: 1px solid var(--q-line); }
+
+/* flip dock */
+.dock { border-top: 1px solid var(--q-line); background: var(--q-panel); display: flex; align-items: center; gap: 10px; padding: 7px 12px; flex-wrap: wrap; }
+.dock code { font: 11.5px var(--mono); color: var(--amber); flex: 1 1 260px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* pop-out window */
+.popwin { position: absolute; z-index: 20; width: 780px; height: 520px; background: #0b0f14; border: 1px solid #484f58; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.5); }
+.ptitle { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; background: #1c2128; border-bottom: 1px solid var(--q-line); cursor: grab; touch-action: none; color: #e6edf3; }
+.ptitle small { color: var(--muted); font: 10px var(--mono); }
+.ptitle .r { margin-left: auto; display: flex; gap: 2px; }
+.wbtn { border: 0; background: none; width: 30px; height: 22px; border-radius: 4px; color: var(--muted); }
+.wbtn:hover { background: var(--q-raise); color: #fff; } .wbtn.x:hover { background: #da3633; }
+.monitor { position: absolute; z-index: 19; right: 8px; top: 8px; font: 600 10px var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+/* lens */
+.lens { position: absolute; z-index: 15; top: 0; bottom: 0; left: 48px; display: flex; flex-direction: column; background: #0b0f14; border-right: 2px solid var(--blue);
+  box-shadow: 12px 0 40px rgba(0,0,0,.55); }
+.scrim { position: absolute; inset: 0; z-index: 14; background: rgba(1,4,9,.35); }
+
+/* below the mock */
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); } .job li.done::before { background: var(--green); border-color: var(--green); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); vertical-align: top; }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+tr.cur td { background: var(--sel); }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5M12 19h8"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click and drag everything</div>
+    <h1>Companion Wide Mode</h1>
+    <p class="lede">A 14-file pull request in the readiness-first companion. Four ways for the companion to go wide when one file at a time is too slow, each keeping a way to answer the agent. Run the same job in each and the page counts your clicks and pointer travel.</p>
+  </header>
+
+  <fieldset class="seg">
+    <legend>How it goes wide</legend>
+    <input type="radio" name="v" id="v-flip" value="flip" checked><label for="v-flip">A · Flip the stage</label>
+    <input type="radio" name="v" id="v-drag" value="drag"><label for="v-drag">B · Drag the divider</label>
+    <input type="radio" name="v" id="v-pop" value="pop"><label for="v-pop">C · Pop out the files</label>
+    <input type="radio" name="v" id="v-lens" value="lens"><label for="v-lens">D · Diff lens</label>
+  </fieldset>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+    <span class="toast" id="toast"></span>
+  </div>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Side by side</h2>
+  <p class="lede">The second question on the ticket is whether the wide view keeps the readiness card and its merge control. Each layout answers it differently. The click columns fill in as you run the job; the table keeps your best run per layout until the page reloads.</p>
+  <div class="scroll"><table id="bench"></table></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+/* ---------- example data: a large pull request ---------- */
+const F = (dir, name, a, d, o, hunk, lines) => ({ dir, name, a, d, o, hunk, lines });
+const RAIL = "src/slices/rail/";
+const FILES = [
+  F("", "GLOSSARY.md", 6, 0, 88, "## Shell", [[" ", "**Stage**: the area that holds terminal panes."], ["+", "**Module bar**: the 48 px icon bar on the left edge."], ["+", "**Panel**: the column beside the module bar for the"], ["+", "selected module. It folds away."]]),
+  F("docs/", "shell.md", 19, 4, 12, "## Layout", [[" ", "The window has three parts."], ["-", "The rail lists projects, terminals and GitHub."], ["+", "The module bar holds one icon per module."], ["+", "Clicking the active icon folds its panel away."]]),
+  F(RAIL, "icons.tsx", 57, 0, 0, "", [["+", 'import { CanvasHandles } from "./CanvasHandles";'], ["+", ""], ["+", "export const MODULE_ICONS = {"], ["+", "  projects: FolderIcon,"], ["+", "  source: BranchIcon,"], ["+", "  agents: BotIcon,"], ["+", "};"]]),
+  F(RAIL, "ModuleBar.test.tsx", 148, 0, 0, "", [["+", 'it("folds the panel when the active icon is clicked", async () => {'], ["+", "  render(<ModuleBar active=\"projects\" />);"], ["+", '  await user.click(screen.getByRole("button", { name: "Projects" }));'], ["+", '  expect(screen.queryByRole("region", { name: "Projects" })).toBeNull();'], ["+", "});"]]),
+  F(RAIL, "ModuleBar.tsx", 212, 0, 0, "", [["+", "export function ModuleBar({ active, onSelect }: Props) {"], ["+", "  return ("], ["+", '    <nav className="module-bar" aria-label="Modules">'], ["+", "      {MODULES.map((m) => ("], ["+", "        <ModuleIcon key={m.id} module={m}"], ["+", "          pressed={m.id === active} onClick={() => onSelect(m.id)} />"], ["+", "      ))}"], ["+", "    </nav>"]], true),
+  F(RAIL, "ModulePanel.tsx", 96, 12, 14, "export function ModulePanel(", [[" ", "  const module = useModule(id);"], ["-", "  if (!open) return <RailCollapsed />;"], ["+", "  if (!open) return null;"], ["+", '  return <section className="module-panel" aria-label={module.title}>'], [" ", "    {module.render()}"]]),
+  F(RAIL, "Rail.test.tsx", 4, 88, 1, 'describe("Rail", () => {', [["-", 'it("collapses to a 52 px strip", () => {'], ["-", "  render(<Rail collapsed />);"], ["-", "  expect(rail()).toHaveStyle({ width: \"52px\" });"], ["-", "});"]]),
+  F(RAIL, "Rail.tsx", 18, 241, 1, "", [["-", "export function Rail({ collapsed }: RailProps) {"], ["-", "  const sections = useRailSections();"], ["-", '  return <aside className="rail">{sections.map(renderSection)}</aside>;'], ["+", 'export { ModuleBar as Rail } from "./ModuleBar";']]),
+  F(RAIL, "railStore.ts", 41, 27, 30, "export const railStore = create(", [["-", "  collapsed: false,"], ["-", "  toggle: () => set((s) => ({ collapsed: !s.collapsed })),"], ["+", '  active: "projects" as ModuleId,'], ["+", "  open: true,"], ["+", "  select: (id) => set((s) => ({ open: s.active !== id || !s.open, active: id })),"]]),
+  F("src/slices/command-palette/", "commands.ts", 22, 6, 140, "  // Rail", [["-", '  { id: "rail.toggle", title: "Toggle rail" },'], ["+", '  { id: "module.projects", title: "Show Projects" },'], ["+", '  { id: "module.source", title: "Show Source control" },'], ["+", '  { id: "module.fold", title: "Fold panel" },']]),
+  F("src/slices/stage/", "Stage.tsx", 12, 9, 40, "export function Stage() {", [[" ", '  <main className="stage">'], ["-", "    <RailSpacer width={railWidth} />"], ["+", "    <ModuleBarSpacer />"], [" ", "    <Panes />"]]),
+  F("src/slices/workspace/", "layout.ts", 33, 14, 8, "export function shellColumns(", [["-", "  return [railWidth, \"1fr\"];"], ["+", "  return [48, open ? PANEL_WIDTH : 0, \"1fr\", companionWidth];"]]),
+  F("src/styles/", "module-bar.css", 88, 0, 0, "", [["+", ".module-bar { width: 48px; display: flex; flex-direction: column; }"], ["+", ".module-bar [aria-pressed=true] { box-shadow: inset 2px 0 0 var(--accent); }"], ["+", ".module-panel { width: var(--panel-width, 226px); }"]]),
+  F("src/styles/", "rail.css", 0, 64, 1, "", [["-", ".rail { width: 280px; transition: width .2s; }"], ["-", ".rail.collapsed { width: 52px; }"], ["-", ".rail-section summary { cursor: pointer; }"]]),
+];
+FILES.forEach((f, i) => { f.i = i; });
+const KEY = 4; // ModuleBar.tsx carries a review comment
+const TOTAL_A = FILES.reduce((s, f) => s + f.a, 0), TOTAL_D = FILES.reduce((s, f) => s + f.d, 0);
+
+const VARIANTS = {
+  flip: { name: "A · Flip the stage", word: "Review wide", back: "Back to terminal",
+    what: "Review wide flips the whole stage to the pull request: the readiness card as a bar across the top with merge in it, then the file tree beside the diffs at full width. A dock at the bottom keeps the agent's last question and its reply buttons. Back to terminal flips it back.",
+    pro: ["The diff gets the whole window, closest to GitHub's own page", "Readiness and merge stay one glance away, in a bar", "You answer the agent from the dock without flipping back"],
+    con: ["Terminal output is hidden while you review; only its last line shows", "Two modes to keep track of", "The flip was rejected as the base layout; here it only returns as the wide mode"],
+    card: "Kept, as a bar across the top", reply: "Dock at the bottom" },
+  drag: { name: "B · Drag the divider", word: "Widen", back: "Drag back, or double-click the divider",
+    what: "The edge between terminal and companion is a divider. Drag it, or press Widen to jump to 70%. It snaps at 400 px, half and 70%, and double-click toggles between 400 px and 70%. Once the companion passes 640 px it switches from one file at a time to the tree beside the diffs.",
+    pro: ["One window, no modes: the terminal stays live and readable beside the diff", "Any width you like, and the snap points make the common ones quick", "The card and merge never move"],
+    con: ["The terminal gets narrow at 70%, so long lines wrap", "Dragging is slower and less precise than a click", "The companion has two layouts and switches between them at 640 px"],
+    card: "Kept, unchanged", reply: "Terminal stays visible" },
+  pop: { name: "C · Pop out the files", word: "Pop out files", back: "Close the files window",
+    what: "Pop out files opens the files in their own window, meant for a second monitor. The companion keeps the readiness card and merge, and the terminal stays exactly as it was. In this mock the window floats over Quay; drag it by its title bar.",
+    pro: ["Nothing in the main window changes", "Best on two monitors: a full-size diff beside a full-size terminal", "Merge stays in the companion, in the same place as always"],
+    con: ["On one screen the window covers Quay, which makes this the worst of the four", "A second window to manage, focus and close", "The files and merge are in different windows"],
+    card: "Stays in the companion; the window has files only", reply: "Terminal untouched" },
+  lens: { name: "D · Diff lens", word: "Open the lens", back: "Close the lens, or press Escape",
+    what: "The lens slides the files over the terminal, from the module bar to the companion's edge, while the companion with its readiness card and merge stays put on the right. The agent's question and reply buttons ride along at the bottom of the lens. Close it, press Escape or click the companion to put it away.",
+    pro: ["The readiness card and merge sit right beside the wide diff, in their usual place", "No layout changes underneath, so closing it puts everything back", "Clicking a file in the companion can open the lens straight on that file"],
+    con: ["The terminal is covered while the lens is open, apart from its last line", "An overlay can feel temporary; it suits a look, less a long review", "The tree and diffs are about 400 px narrower than the flip"],
+    card: "Stays in the companion, beside the lens", reply: "Reply strip on the lens" },
+};
+
+/* ---------- state ---------- */
+const S = { v: "flip" };
+let R;
+const BEST = {};
+const W = () => $("shell").clientWidth;
+function freshRun() {
+  R = { wide: false, cw: 400, cell: "files", ix: KEY, sel: null, filter: "", seen: new Set(), replied: null, pr: "open", menu: false, delOnMerge: true,
+    branch: "present", clicks: 0, travel: 0, last: null, wentWide: false, backNormal: false, recorded: false, pop: { x: 0, y: 0, set: false }, scrollTo: null };
+}
+const merged = () => R.pr === "merged";
+const isWide = () => S.v === "drag" ? R.cw >= 640 : R.wide;
+const shown = () => FILES.filter((f) => (f.dir + f.name).toLowerCase().includes(R.filter.trim().toLowerCase()));
+
+/* ---------- pieces ---------- */
+function termPane() {
+  const answered = R.replied ? `\n<span class="m">&gt;</span> ${esc(R.replied)}\n  Edit src/slices/rail/ModuleBar.test.tsx\n  Bash git push\n  <span class="g">Pushed 1 commit to ticket-571</span>\n\n&gt; _` : "";
+  return `<div class="term"><div class="ph">${ico("term")}<b>implement 571</b><span class="dot ${R.replied ? "run" : ""}"></span><span class="m">${R.replied ? "working" : "waiting on you"}</span><small class="r">terminal 2</small></div>
+    <div class="out"><span class="m">● implement ticket 571: module bar replaces the rail</span>
+  Write src/slices/rail/ModuleBar.tsx
+  Edit src/slices/rail/Rail.tsx <span class="g">+18</span> <span class="bad">-241</span>
+  Bash pnpm test rail
+<span class="g">  ✓ 38 passed</span> <span class="m">(4.1 s)</span>
+  Bash gh pr create
+  <span class="g">Opened pull request 590</span> <span class="m">(14 files)</span>
+
+<span class="p">question:</span> two older tests still use the rail's selector names.
+Rename them in this pull request, or leave them for a follow-up?
+${R.replied ? answered : `<div class="replies">${replies()}</div>&gt; _`}</div></div>`;
+}
+const replies = () => ["Rename them here", "Leave for a follow-up", "Go with your recommendation"].map((t) => `<button class="btn reply" data-act="reply" data-t="${t}">${t}</button>`).join("");
+
+function prHeader(extra = "") {
+  return `<div class="prh"><div class="prt">Module bar replaces the rail <span class="m">#590</span></div>
+    <div class="prm"><span class="pill ${merged() ? "merged" : ""}">${merged() ? "Merged" : "Open"}</span><span class="chip">master</span>←<span class="chip ${R.branch === "deleted" ? "gone" : ""}">ticket-571</span>
+    <span class="ok">+${TOTAL_A}</span><span class="bad">−${TOTAL_D}</span><span>· ${FILES.length} files</span>${extra}</div></div>`;
+}
+
+function mergeControl() {
+  if (merged()) return `<div class="mrow"><span class="pu">✓ Squashed into master</span>${R.branch === "deleted" ? `<button class="btn sm" data-act="restore">Restore branch</button>` : `<button class="btn sm" data-act="delbranch">Delete branch</button>`}</div>`;
+  if (R.pr === "confirm") return `<div class="confirm"><label><input type="checkbox" id="delmerge" ${R.delOnMerge ? "checked" : ""}> Delete ticket-571 after merge</label>
+    <div class="mrow"><button class="btn go" data-act="confirm">Confirm squash and merge</button><button class="btn" data-act="cancel">Cancel</button></div></div>`;
+  return `<div class="mrow"><span class="split"><button class="btn go" data-act="merge">Squash and merge</button><button class="btn go" aria-label="Choose merge method" title="Method menu as in the pull request view prototype">▾</button></span></div>`;
+}
+function card(form = "tall") {
+  const m = merged();
+  const head = m ? ["done", "✓", "Merged", `Squashed into master · ticket-571 ${R.branch === "deleted" ? "deleted" : "still there"}`] : ["", "✓", "Ready to merge", "All checks passed · 1 unresolved comment · no review required"];
+  const cells = [["checks", "Checks", "5 passed", `<i class="k"></i>`.repeat(5)], ["comments", "Comments", "1 unresolved of 3", `<i class="u"></i><i class="k"></i><i class="k"></i>`],
+    ["files", "Files", `${FILES.length} files, +${TOTAL_A} −${TOTAL_D}`, `<i class="k"></i><i class="k"></i><i class="k"></i><i class="d"></i><i class="d"></i>`], ["commits", "Commits", "6 commits by claude", `<i class="k"></i>`.repeat(6)]];
+  const cellHtml = cells.map(([k, t, v, b]) => `<button class="cell ${form === "tall" && R.cell === k ? "on" : ""}" data-act="cell" data-k="${k}"><small>${t}</small><span>${v}</span><div class="bars">${b}</div></button>`).join("");
+  return `<section class="ready ${head[0]} ${form === "bar" ? "bar" : ""}" aria-label="Merge readiness"><div class="rtop"><span class="ricon ${head[0]}">${head[1]}</span><div class="rtxt"><b>${head[2]}</b><span>${head[3]}</span></div></div>
+    <div class="rmerge">${mergeControl()}</div><div class="cells">${cellHtml}</div></section>`;
+}
+
+function diffCard(f) {
+  let o = f.o, n = f.o || 1;
+  const rows = f.lines.map(([t, txt]) => { const on = t === "+" ? "" : o++, nn = t === "-" ? "" : n++;
+    return `<div class="dl ${t === "+" ? "a" : t === "-" ? "d" : "c"}"><i>${on}</i><i>${nn}</i><em>${esc(txt)}</em></div>`; }).join("");
+  const more = f.a + f.d - f.lines.length;
+  return `<article class="diff" id="d${f.i}" data-f="${f.i}"><div class="dhead"><span>${f.dir}${f.name}</span><span class="ok" style="flex:none">+${f.a}</span><span class="bad" style="flex:none">−${f.d}</span></div>
+    <div class="dbody"><div class="dl hk"><i></i><i></i><em>@@ -${f.o},${f.d + 3} +${f.o || 1},${f.a + 3} @@ ${esc(f.hunk)}</em></div>${rows}${more > 0 ? `<div class="dl hk"><i></i><i></i><em>… ${more} more changed lines in this file</em></div>` : ""}</div></article>`;
+}
+function filesWide(extraTop = "") {
+  let dir = null, tree = "";
+  for (const f of shown()) {
+    if (f.dir !== dir) { dir = f.dir; tree += `<div class="dir">${f.dir || "(root)"}</div>`; }
+    tree += `<button class="fnode ${R.sel === f.i ? "on" : ""} ${R.seen.has(f.i) ? "seen" : ""}" data-act="pick" data-i="${f.i}">${f.name}<span class="st">${f.i === KEY && !merged() ? `<span style="color:var(--blue)">●</span>` : ""}<span class="ok">+${f.a}</span><span class="bad">−${f.d}</span></span></button>`;
+  }
+  return `${extraTop}<div class="ftools"><input type="search" id="ffilter" aria-label="Filter changed files" placeholder="Filter ${FILES.length} files" value="${esc(R.filter)}"><span class="m">${R.seen.size} of ${FILES.length} viewed</span></div>
+    <div class="wfiles"><nav class="ftree" aria-label="Changed files">${tree || `<div class="dir">No file matches.</div>`}</nav><div class="diffs" id="diffs">${shown().map(diffCard).join("")}</div></div>`;
+}
+function filesNarrow() {
+  const f = FILES[R.ix];
+  return `<div class="stepper"><button class="btn sm" data-act="step" data-k="-1" aria-label="Previous file" ${R.ix === 0 ? "disabled" : ""}>‹</button><span class="name">${R.ix + 1}/${FILES.length} ${f.name}</span>
+    <button class="btn sm" data-act="step" data-k="1" aria-label="Next file" ${R.ix === FILES.length - 1 ? "disabled" : ""}>›</button></div>
+    <button class="btn wide" data-act="wide" style="align-self:flex-start">⤢ ${VARIANTS[S.v].word}: tree and all ${FILES.length} diffs</button>${diffCard(f)}`;
+}
+function cellDetail() {
+  if (R.cell === "files") return filesNarrow();
+  if (R.cell === "checks") return ["lint 18s", "test 2m 2s", "build 1m 4s", "pre-pr-audit 9s", "bench 41s"].map((c) => `<div class="m"><span class="ok">✓</span> ${c}</div>`).join("");
+  if (R.cell === "comments") return `<div class="m"><b style="color:var(--fg)">review-bot</b> on ModuleBar.tsx: <span class="y">Unresolved</span> ModuleIcon gets <code>pressed</code>; check it renders <code>aria-pressed</code>.</div>`;
+  if (R.cell === "commits") return `<div class="m">6 commits, newest: <code>e41b07c</code> Fold the panel on a second click</div>`;
+  return `<div class="m">Replaces the rail with the module bar and its panel. Closes #571.</div>`;
+}
+function companion(width) {
+  const wideLayout = S.v === "drag" && width >= 640;
+  const btn = R.wide && S.v !== "drag" ? `<button class="btn sm" data-act="unwide">${S.v === "pop" ? "Close files window" : S.v === "lens" ? "Close lens" : ""}</button>`
+    : `<button class="btn sm wide" data-act="wide">⤢ ${S.v === "drag" && width > 400 ? "400 px" : VARIANTS[S.v].word}</button>`;
+  const head = `<div class="ph">${ico("pr")}<b>Following terminal 2</b><span class="r"><small>${Math.round(width)} px</small>${btn}</span></div>`;
+  if (wideLayout) return `<aside class="comp" style="width:${width}px" aria-label="Companion">${head}<div class="wide-view">${prHeader()}<div class="top">${card("bar")}</div>${filesWide()}</div></aside>`;
+  return `<aside class="comp" style="width:${width}px" aria-label="Companion">${head}${prHeader()}<div class="cbody">${card()}<div class="h">${{ files: "Files", checks: "Checks", comments: "Comments", commits: "Commits" }[R.cell] || "Description"}</div>${cellDetail()}</div></aside>`;
+}
+
+/* ---------- variants ---------- */
+function shellHtml() {
+  const b = (icon, badge) => `<span class="ib">${ico(icon)}${badge || ""}</span>`;
+  const bar = `<nav class="abar" aria-label="Modules">${b("folder")}${b("branch", merged() ? "" : `<span class="badge b">1</span>`)}${b("bot", R.replied ? "" : `<span class="badge">1</span>`)}${b("flow")}<span class="grow"></span>${b("sliders")}</nav>`;
+  const lastLine = R.replied ? `&gt; ${esc(R.replied)} · pushed 1 commit` : "Rename them in this pull request, or leave them for a follow-up?";
+  const dock = `<div class="dock">${ico("term")}<b>implement 571</b><code>${lastLine}</code>${R.replied ? "" : replies()}</div>`;
+  if (S.v === "flip" && R.wide)
+    return bar + `<div class="wide-view">${`<div class="ph">${ico("pr")}<b>Review · pull request 590</b><span class="r"><small>flipped from terminal 2</small><button class="btn sm" data-act="unwide">${ico("term")} Back to terminal</button></span></div>`}${prHeader()}<div class="top">${card("bar")}</div>${filesWide()}${dock}</div>`;
+  if (S.v === "drag") {
+    const total = W() - 48, snaps = [400, Math.round(total * 0.5), Math.round(total * 0.7)];
+    return bar + termPane() + `<div class="divider ${R.dragging ? "drag" : ""}" id="divider" role="separator" aria-orientation="vertical" aria-label="Companion width" aria-valuenow="${Math.round(R.cw)}" tabindex="0"><span></span></div>` + companion(R.cw) +
+      (R.dragging ? `<div class="snaps" style="left:48px;right:0">${snaps.map((s, i) => `<i style="right:${s}px"></i><b style="right:${s - 28}px">${["400 px", "half", "70%"][i]}</b>`).join("")}</div>` : "");
+  }
+  let html = bar + termPane() + companion(400);
+  if (S.v === "pop" && R.wide) {
+    if (!R.pop.set) { R.pop = { x: 140, y: 70, set: true }; }
+    html += `<div class="monitor">Second monitor, in real life</div><div class="popwin" id="popwin" style="left:${R.pop.x}px;top:${R.pop.y}px">
+      <div class="ptitle" id="ptitle">${ico("pr")}<b>Quay · Files · pull request 590</b><small>${FILES.length} files</small><span class="r"><button class="wbtn" aria-label="Minimise" tabindex="-1">–</button><button class="wbtn" aria-label="Maximise" tabindex="-1">▢</button><button class="wbtn x" data-act="unwide" aria-label="Close files window">✕</button></span></div>
+      <div class="wide-view">${filesWide()}</div></div>`;
+  }
+  if (S.v === "lens" && R.wide)
+    html += `<div class="lens" style="right:400px"><div class="ph">${ico("pr")}<b>Files · pull request 590</b><span class="r"><small>Esc closes</small><button class="btn sm" data-act="unwide">✕ Close lens</button></span></div><div class="wide-view">${filesWide()}</div>${dock}</div>`;
+  return html;
+}
+
+function render() {
+  const shell = $("shell"), d = shell.querySelector("#diffs"), dTop = d ? d.scrollTop : 0;
+  const a = document.activeElement, fid = a && shell.contains(a) && a.id ? a.id : null, caret = fid && a.selectionStart != null ? a.selectionStart : null;
+  shell.innerHTML = shellHtml();
+  const nd = shell.querySelector("#diffs");
+  if (nd) { nd.scrollTop = dTop; if (R.scrollTo != null) { const el = nd.querySelector(`#d${R.scrollTo}`); if (el) nd.scrollTop = el.offsetTop - nd.offsetTop - 6; } }
+  R.scrollTo = null;
+  if (fid) { const el = $(fid); if (el) { el.focus(); if (caret != null && el.setSelectionRange) try { el.setSelectionRange(caret, caret); } catch (e) {} } }
+  requestAnimationFrame(seen);
+  notes(); renderJob();
+}
+
+/* ---------- job ---------- */
+function seen() {
+  const d = $("shell").querySelector("#diffs");
+  if (d && isWide()) { const br = d.getBoundingClientRect();
+    for (const el of d.querySelectorAll("[data-f]")) { const r = el.getBoundingClientRect(), vis = Math.min(r.bottom, br.bottom) - Math.max(r.top, br.top);
+      if (vis >= Math.min(60, r.height * 0.7)) R.seen.add(+el.dataset.f); } }
+  if (!isWide() && R.cell === "files") R.seen.add(R.ix);
+  renderJob();
+}
+function steps() {
+  return [["Go wide", R.wentWide], ["View 6 of the 14 files", R.seen.size >= 6], ["Answer the agent", !!R.replied], ["Merge", merged()], [`Back to normal (${VARIANTS[S.v].back.toLowerCase()})`, R.backNormal]];
+}
+function renderJob() {
+  const st = steps();
+  $("job").innerHTML = st.map(([t, d]) => `<li class="${d ? "done" : ""}">${t}</li>`).join("");
+  if (st.every(([, d]) => d) && !R.recorded) {
+    R.recorded = true;
+    const prev = BEST[S.v];
+    if (!prev || R.clicks < prev.clicks) BEST[S.v] = { clicks: R.clicks, travel: Math.round(R.travel), runs: (prev?.runs || 0) + 1 }; else prev.runs++;
+    $("toast").textContent = `Job done: ${R.clicks} clicks, ${Math.round(R.travel).toLocaleString()} px of pointer travel.`;
+    bench();
+  }
+  readout();
+}
+function readout() {
+  const shell = $("shell"), w = (sel) => Math.round(shell.querySelector(sel)?.getBoundingClientRect().width || 0);
+  const termCovered = (S.v === "flip" && R.wide) || (S.v === "lens" && R.wide);
+  const diffW = isWide() ? w("#diffs") : w(".comp .diff");
+  $("readout").innerHTML = `<span>Layout <b>${VARIANTS[S.v].name}</b></span><span>Wide <b>${isWide() ? "yes" : "no"}</b></span>` +
+    `<span>Terminal <b>${termCovered ? "covered, last line shown" : w(".term") + " px"}</b></span><span>Diff column <b>${diffW} px</b></span>` +
+    `<span>Files viewed <b>${R.seen.size} of ${FILES.length}</b></span><span>Clicks <b>${R.clicks}</b></span><span>Pointer travel <b>${Math.round(R.travel).toLocaleString()} px</b></span>`;
+}
+function notes() {
+  const v = VARIANTS[S.v];
+  $("n-what").textContent = v.what;
+  for (const [id, items] of [["n-pro", v.pro], ["n-con", v.con]]) $(id).replaceChildren(...items.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+}
+function bench() {
+  $("bench").innerHTML = `<tr><th>Layout</th><th>Readiness card and merge when wide</th><th>Answering the agent</th><th>Best clicks</th><th>Pointer travel</th></tr>` +
+    Object.entries(VARIANTS).map(([k, v]) => { const b = BEST[k];
+      return `<tr class="${k === S.v ? "cur" : ""}"><td>${v.name}</td><td>${v.card}</td><td>${v.reply}</td><td class="n">${b ? b.clicks : `<span class="m" style="font:12px var(--body)">not run</span>`}</td><td>${b ? b.travel.toLocaleString() + " px" : "—"}</td></tr>`; }).join("");
+}
+
+/* ---------- actions ---------- */
+function goWide() {
+  R.wentWide = true;
+  if (S.v === "drag") { const total = W() - 48; R.cw = R.cw > 400 ? 400 : Math.round(total * 0.7); if (R.cw === 400) R.backNormal = R.wentWide; }
+  else R.wide = true;
+  R.sel = R.sel ?? R.ix; R.scrollTo = R.sel;
+}
+const ACTS = {
+  wide: goWide,
+  unwide: () => { R.wide = false; if (R.wentWide) R.backNormal = true; },
+  cell: (d) => { R.cell = R.cell === d.k ? null : d.k; if (R.wide && S.v === "lens") { R.wide = false; if (R.wentWide) R.backNormal = true; } },
+  step: (d) => { R.ix = Math.min(FILES.length - 1, Math.max(0, R.ix + +d.k)); },
+  pick: (d) => { R.sel = +d.i; R.scrollTo = +d.i; },
+  reply: (d) => { R.replied = d.t; },
+  merge: () => { R.pr = "confirm"; },
+  cancel: () => { R.pr = "open"; },
+  confirm: () => { R.pr = "merged"; if (R.delOnMerge) R.branch = "deleted"; },
+  delbranch: () => { R.branch = "deleted"; },
+  restore: () => { R.branch = "present"; },
+};
+
+const shell = $("shell");
+let drag = null;
+shell.addEventListener("pointerdown", (e) => {
+  const t = e.target;
+  if (t.closest("button,input,label,[data-act],#divider,#ptitle")) {
+    const r = shell.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (R.last) R.travel += Math.hypot(x - R.last[0], y - R.last[1]);
+    R.last = [x, y]; R.clicks++; readout();
+  }
+  if (t.closest("#divider")) { drag = { kind: "div", x0: e.clientX, w0: R.cw, moved: false }; R.dragging = true; e.preventDefault(); render(); }
+  else if (t.closest("#ptitle") && !t.closest("button")) { drag = { kind: "pop", x0: e.clientX, y0: e.clientY, px: R.pop.x, py: R.pop.y }; e.preventDefault(); }
+});
+document.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  if (drag.kind === "div") {
+    const total = W() - 48, nw = Math.min(total - 260, Math.max(360, drag.w0 - (e.clientX - drag.x0)));
+    if (Math.abs(e.clientX - drag.x0) > 2) drag.moved = true;
+    const was = R.cw >= 640; R.cw = nw;
+    const comp = shell.querySelector(".comp");
+    if (was !== (nw >= 640) || !comp) render(); else { comp.style.width = nw + "px"; comp.querySelector(".ph small").textContent = Math.round(nw) + " px"; readout(); }
+  } else {
+    const win = $("popwin"); R.pop.x = drag.px + e.clientX - drag.x0; R.pop.y = Math.max(0, drag.py + e.clientY - drag.y0);
+    if (win) { win.style.left = R.pop.x + "px"; win.style.top = R.pop.y + "px"; }
+  }
+});
+document.addEventListener("pointerup", () => {
+  if (!drag) return;
+  if (drag.kind === "div") {
+    const total = W() - 48, snaps = [400, Math.round(total * 0.5), Math.round(total * 0.7)];
+    const near = snaps.find((s) => Math.abs(s - R.cw) < 36); if (near) R.cw = near;
+    if (R.cw >= 640) { R.wentWide = true; R.sel = R.sel ?? R.ix; }
+    if (R.cw <= 400 && R.wentWide) R.backNormal = true;
+    R.dragging = false; render();
+  }
+  drag = null;
+});
+shell.addEventListener("dblclick", (e) => { if (e.target.closest("#divider")) { goWide(); render(); } });
+shell.addEventListener("keydown", (e) => {
+  if (e.target.id === "divider" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { R.cw = Math.min(W() - 308, Math.max(360, R.cw + (e.key === "ArrowLeft" ? 40 : -40))); if (R.cw >= 640) R.wentWide = true; if (R.cw <= 400 && R.wentWide) R.backNormal = true; render(); $("divider")?.focus(); }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.v === "lens" && R.wide) { R.wide = false; R.backNormal = true; render(); } });
+shell.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]"); if (!el || el.disabled) return;
+  if (ACTS[el.dataset.act](el.dataset) !== false) render();
+});
+shell.addEventListener("input", (e) => { if (e.target.id === "ffilter") { R.filter = e.target.value; render(); } });
+shell.addEventListener("change", (e) => { if (e.target.id === "delmerge") R.delOnMerge = e.target.checked; });
+shell.addEventListener("scroll", () => seen(), true);
+
+function restart() { freshRun(); $("toast").textContent = ""; render(); bench(); }
+document.querySelectorAll('input[name="v"]').forEach((r) => r.addEventListener("change", () => { S.v = r.value; restart(); }));
+$("reset").addEventListener("click", restart);
+new ResizeObserver(() => readout()).observe(shell);
+restart();
+</script>

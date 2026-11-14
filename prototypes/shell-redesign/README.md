@@ -17,4 +17,7 @@ with example data; nothing is wired to Quay.
   request view into the companion, with a live click and pointer-travel
   counter. Chosen: readiness first, where the readiness cells are the
   navigation.
+- `quay-companion-wide.html`: four ways for the companion to go wide for
+  a large diff. Chosen: the diff lens, which slides the files over the
+  terminal while the companion keeps the readiness card and merge.
 - `praxis-builder-canvas-handles.svg`: the approved Praxis Builder icon.
