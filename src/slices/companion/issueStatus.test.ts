@@ -1,7 +1,7 @@
 // The issue view's status card, cells and arrival cell, from an issue's state (#641).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { IssueStatus } from "../github/types.ts";
+import type { CheckRollupState, IssueState, IssueStatus, PullRequestState } from "../github/types.ts";
 import { closeButtonLabel, issueArrivalCell, issueCells, newComments, statusCard } from "./issueStatus.ts";
 
 const issue = (over: Partial<IssueStatus> = {}): IssueStatus => ({
@@ -37,7 +37,7 @@ test("an open ticket with no open blocker and no open pull request is Ready to s
   assert.equal(statusCard(issue({ assignees: ["claude"] })).reason, "No open blockers · assigned to claude");
 });
 
-const blocker = (number: number, state = "OPEN") => ({
+const blocker = (number: number, state: IssueState = "OPEN") => ({
   repo: "o/r",
   number,
   title: `Blocker ${number}`,
@@ -58,7 +58,7 @@ test("closed blockers do not block", () => {
   assert.equal(statusCard(issue({ blockedBy: [blocker(560, "CLOSED")], openBlockerCount: 0 })).headline, "Ready to start");
 });
 
-const pullRequest = (number: number, state = "OPEN", checkState: string | null = "FAILURE") => ({
+const pullRequest = (number: number, state: PullRequestState = "OPEN", checkState: CheckRollupState | null = "FAILURE") => ({
   repo: "o/r",
   number,
   title: `Change ${number}`,
@@ -73,7 +73,7 @@ test("an open ticket with an open pull request shows Open pull request #N with i
   assert.equal(card.headline, "Pull request open · checks failing");
   assert.equal(card.reason, "Change 574 (#574)");
   assert.deepEqual(card.action, { kind: "open-pull-request", pullRequest: pullRequest(574) });
-  const said = (checkState: string | null) => statusCard(issue({ pullRequests: [pullRequest(574, "OPEN", checkState)] })).headline;
+  const said = (checkState: CheckRollupState | null) => statusCard(issue({ pullRequests: [pullRequest(574, "OPEN", checkState)] })).headline;
   assert.equal(said("SUCCESS"), "Pull request open · checks passing");
   assert.equal(said("ERROR"), "Pull request open · checks failing");
   assert.equal(said("PENDING"), "Pull request open · checks running");

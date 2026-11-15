@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
-import type { IssueChoices, IssueStatus, PullRequestReadiness } from "../github/types.ts";
+import type { IssueChoices, IssuePullRequest, IssueStatus, IssueViewRef, PullRequestReadiness } from "../github/types.ts";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
 
@@ -185,8 +185,8 @@ function recordingLinking(link: TerminalLink) {
   };
 }
 
-const blocker = { repo: "o/r", number: 4, title: "Graph run events", state: "OPEN", url: "https://github.com/o/r/issues/4" };
-const openPr = { repo: "o/r", number: 12, title: "Node phases", state: "OPEN", url: "https://github.com/o/r/pull/12", checkState: "FAILURE" };
+const blocker: IssueViewRef = { repo: "o/r", number: 4, title: "Graph run events", state: "OPEN", url: "https://github.com/o/r/issues/4" };
+const openPr: IssuePullRequest = { repo: "o/r", number: 12, title: "Node phases", state: "OPEN", url: "https://github.com/o/r/pull/12", checkState: "FAILURE" };
 
 test("Blocked shows Show the blocker, which pins the blocker as the terminal's ticket", async () => {
   const { pins, linking } = recordingLinking(ticketOnly);
@@ -473,7 +473,7 @@ test("the Assignees, Labels and Type Edit pickers offer the repository's choices
 
 test("Blocked by lists each blocker and the parent, and Show pins one as the terminal's ticket", async () => {
   const { pins, linking } = recordingLinking(ticketOnly);
-  const parent = { repo: "o/p", number: 2, title: "Graph runs", state: "OPEN", url: "https://github.com/o/p/issues/2" };
+  const parent: IssueViewRef = { repo: "o/p", number: 2, title: "Graph runs", state: "OPEN", url: "https://github.com/o/p/issues/2" };
   const { container } = await render(
     github({ blockedBy: [blocker, { ...blocker, number: 3, title: "Old", state: "CLOSED" }], openBlockerCount: 1, parent }),
     { linking },
@@ -492,7 +492,7 @@ test("Blocked by lists each blocker and the parent, and Show pins one as the ter
 
 test("Pull request lists the pull requests that will close the ticket, and Show opens one in the companion", async () => {
   const { pins, linking } = recordingLinking(ticketOnly);
-  const merged = { ...openPr, number: 9, title: "Earlier try", state: "MERGED", checkState: "SUCCESS" };
+  const merged: IssuePullRequest = { ...openPr, number: 9, title: "Earlier try", state: "MERGED", checkState: "SUCCESS" };
   const { container } = await render(github({ pullRequests: [openPr, merged] }), { linking });
   await click(cellButton(container, "pull-request"));
   const items = [...detail(container)!.querySelectorAll<HTMLElement>("[data-ref]")];

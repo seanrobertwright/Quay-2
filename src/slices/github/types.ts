@@ -221,14 +221,16 @@ export type IssueState = "OPEN" | "CLOSED";
 /** Why an issue was closed, or REOPENED once it is open again; null when GitHub gives none. */
 export type IssueStateReason = "COMPLETED" | "NOT_PLANNED" | "DUPLICATE" | "REOPENED";
 
-/** Another issue the issue view names: a blocker or the parent. */
+/** GitHub's check rollup state for a commit. */
+export type CheckRollupState = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
+
+/** Another issue the Ticket view names: a blocker or the parent. */
 export interface IssueViewRef {
   /** `owner/name` of the issue's repository. */
   repo: string;
   number: number;
   title: string;
-  /** OPEN or CLOSED. */
-  state: string;
+  state: IssueState;
   url: string;
 }
 
@@ -237,11 +239,10 @@ export interface IssuePullRequest {
   repo: string;
   number: number;
   title: string;
-  /** OPEN, MERGED or CLOSED. */
-  state: string;
+  state: PullRequestState;
   url: string;
-  /** The head commit's check rollup: SUCCESS, FAILURE, ERROR, PENDING or EXPECTED; null with no checks. */
-  checkState: string | null;
+  /** The head commit's check rollup; null with no checks. */
+  checkState: CheckRollupState | null;
 }
 
 /** One conversation comment on an issue. */

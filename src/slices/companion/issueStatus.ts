@@ -1,4 +1,4 @@
-import type { IssueComment, IssuePullRequest, IssueStatus, IssueViewRef } from "../github/types.ts";
+import type { CheckRollupState, IssueComment, IssuePullRequest, IssueStatus, IssueViewRef } from "../github/types.ts";
 import { parseUtcTimestamp } from "../../lib/dates.ts";
 
 /** The colour family the status card's headline takes. */
@@ -30,7 +30,7 @@ export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
 };
 
 /** How a pull request's head commit checks stand, in words, from GitHub's check rollup state. */
-export function checkStateText(checkState: string | null): string {
+export function checkStateText(checkState: CheckRollupState | null): string {
   switch (checkState) {
     case "SUCCESS":
       return "checks passing";

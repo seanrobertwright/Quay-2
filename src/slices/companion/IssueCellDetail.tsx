@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { IssueChoices, IssueStatus, IssueViewRef } from "../github/types.ts";
+import type { IssueChoices, IssueState, IssueStatus, IssueViewRef, PullRequestState } from "../github/types.ts";
 import { formatDateTime, formatRelative, parseUtcTimestamp } from "../../lib/dates.ts";
 import {
   checkStateText,
@@ -433,7 +433,7 @@ const ChoicesState = ({ read }: { read: GithubRead<IssueChoices> }) =>
 
 // ---- Blocked by and Pull request ----
 
-const STATE_TEXT: Record<string, string> = { OPEN: "Open", CLOSED: "Closed", MERGED: "Merged" };
+const STATE_TEXT: Record<IssueState | PullRequestState, string> = { OPEN: "Open", CLOSED: "Closed", MERGED: "Merged" };
 
 /** A blocker, the parent or a pull request: its title and number on GitHub, its state, and Show. */
 const RefRow = ({
@@ -473,7 +473,7 @@ const BlockedByDetail = ({ issue, acting }: DetailProps) => {
     <RefRow
       key={`${ref.repo}#${ref.number}`}
       {...ref}
-      state={STATE_TEXT[ref.state] ?? ref.state}
+      state={STATE_TEXT[ref.state]}
       onShow={show && (() => show({ repo: ref.repo, number: ref.number }))}
     />
   );
@@ -503,7 +503,7 @@ const PullRequestDetail = ({ issue, acting }: DetailProps) => {
         <RefRow
           key={`${pr.repo}#${pr.number}`}
           {...pr}
-          state={pr.state === "OPEN" ? `Open · ${checkStateText(pr.checkState)}` : (STATE_TEXT[pr.state] ?? pr.state)}
+          state={pr.state === "OPEN" ? `Open · ${checkStateText(pr.checkState)}` : STATE_TEXT[pr.state]}
           onShow={show && (() => show({ repo: pr.repo, number: pr.number }))}
         />
       ))}
