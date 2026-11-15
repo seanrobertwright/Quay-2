@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { IssueChoices, IssueState, IssueStatus, IssueViewRef, PullRequestState } from "../github/types.ts";
+import type { IssueChoices, IssueState, IssueStatus, IssueRef, PullRequestState } from "../github/types.ts";
 import { formatDateTime, formatRelative, parseUtcTimestamp } from "../../lib/dates.ts";
 import {
   checkStateText,
@@ -10,16 +10,16 @@ import {
   closeButtonLabel,
   newComments,
   type CloseReason,
-  type IssueCellId,
-} from "./issueStatus.ts";
+  type TicketCellId,
+} from "./ticketStatus.ts";
 import { errorText } from "./usePullRequestReadiness.ts";
 import { SplitButton } from "./SplitButton.tsx";
-import type { Acting, IssueLocation } from "./IssueView.tsx";
+import type { Acting, TicketLocation } from "./TicketView.tsx";
 import { Failure, useAction } from "./PullRequestView.tsx";
 import { useGithubRead, type GithubRead } from "./useGithubRead.ts";
 import { MUTED, PRIMARY, SECONDARY } from "./buttonStyles.ts";
 
-const LABELS: Record<IssueCellId, string> = {
+const LABELS: Record<TicketCellId, string> = {
   "blocked-by": "Blocked by",
   comments: "Comments",
   "pull-request": "Pull request",
@@ -33,7 +33,7 @@ interface DetailProps {
 }
 
 /** The open cell's detail, under the status card. `id` is what the cell's `aria-controls` names. */
-export const IssueCellDetail = ({ cell, id, ...props }: DetailProps & { cell: IssueCellId; id: string }) => (
+export const TicketCellDetail = ({ cell, id, ...props }: DetailProps & { cell: TicketCellId; id: string }) => (
   <section id={id} data-cell-detail aria-label={LABELS[cell]} className="space-y-2">
     {cell === "blocked-by" && <BlockedByDetail {...props} />}
     {cell === "comments" && <CommentsDetail {...props} />}
@@ -347,7 +347,7 @@ const DetailRow = ({ name, edit, children }: { name: string; edit?: ReactNode; c
 );
 
 /** Reads what the Edit pickers offer in the ticket's repository. */
-const useChoices = (location: IssueLocation) =>
+const useChoices = (location: TicketLocation) =>
   useGithubRead<IssueChoices>("get_github_issue_choices", { repoPath: location.repoPath, repo: location.repo });
 
 /** An Edit picker of checkboxes: each toggle adds or removes one choice at once. */
@@ -359,7 +359,7 @@ const ChoicePicker = ({
   disabled,
   onToggle,
 }: {
-  location: IssueLocation;
+  location: TicketLocation;
   label: string;
   options: (choices: IssueChoices) => string[];
   chosen: readonly string[];
@@ -394,7 +394,7 @@ const TypePicker = ({
   disabled,
   onPick,
 }: {
-  location: IssueLocation;
+  location: TicketLocation;
   chosen: string | null;
   disabled: boolean;
   onPick: (type: string | null) => void;
@@ -465,7 +465,7 @@ const RefRow = ({
 /** The ticket's blockers, open and closed, then its parent, each of which Show pins as the terminal's ticket. */
 const BlockedByDetail = ({ issue, acting }: DetailProps) => {
   const show = acting.showTicket;
-  const row = (ref: IssueViewRef) => (
+  const row = (ref: IssueRef) => (
     <RefRow
       key={`${ref.repo}#${ref.number}`}
       {...ref}

@@ -5,22 +5,22 @@ import type { LinkRef } from "../terminal/types.ts";
 import { formatDateTime, formatRelative, parseUtcTimestamp } from "../../lib/dates.ts";
 import {
   CLOSE_REASON_TEXT,
-  issueArrivalCell,
-  issueCells,
+  ticketArrivalCell,
+  ticketCells,
   statusCard,
-  type IssueCell,
-  type IssueCellId,
-  type IssueCellTone,
+  type TicketCell,
+  type TicketCellId,
+  type TicketCellTone,
   type StatusTone,
-} from "./issueStatus.ts";
-import { IssueCellDetail } from "./IssueCellDetail.tsx";
+} from "./ticketStatus.ts";
+import { TicketCellDetail } from "./TicketCellDetail.tsx";
 import { useGithubRead } from "./useGithubRead.ts";
 import { SplitButton } from "./SplitButton.tsx";
 import { Failure, useAction } from "./PullRequestView.tsx";
 import { MUTED, SECONDARY } from "./buttonStyles.ts";
 
 /** Where a ticket lives: the folder `gh` runs in, the slot's repository when it names one, and its number. */
-export interface IssueLocation {
+export interface TicketLocation {
   repoPath: string;
   /** `owner/name`, or null for the repository at `repoPath`. */
   repo: string | null;
@@ -28,7 +28,7 @@ export interface IssueLocation {
 }
 
 /** The ticket a start action works on. */
-export interface TicketToStart extends IssueLocation {
+export interface TicketToStart extends TicketLocation {
   title: string;
 }
 
@@ -46,8 +46,8 @@ const START_ITEMS: readonly { key: StartKey; label: string }[] = [
   { key: "newWorktree", label: "New worktree" },
 ];
 
-/** What the issue view asks of the companion around it. */
-export interface IssueViewProps extends IssueLocation {
+/** What the Ticket view asks of the companion around it. */
+export interface TicketViewProps extends TicketLocation {
   /** Starts work on the ticket; without it the card offers no Implement. */
   actions?: TicketActions | null;
   /** Shows another ticket, such as a blocker, in the companion; without it none is offered. */
@@ -58,7 +58,7 @@ export interface IssueViewProps extends IssueLocation {
 
 /** What the view's parts are handed to act with. */
 export interface Acting {
-  location: IssueLocation;
+  location: TicketLocation;
   actions: TicketActions | null;
   showTicket: ((ref: LinkRef) => void) | null;
   showPullRequest: ((ref: LinkRef) => void) | null;
@@ -74,10 +74,10 @@ const HEADLINE_TONE: Record<StatusTone, string> = {
 };
 
 /**
- * The companion's issue view: GitHub's header, then the status card, then the open cell's detail,
+ * The companion's Ticket view: GitHub's header, then the status card, then the open cell's detail,
  * or the description while no cell is open.
  */
-export const IssueView = ({ actions = null, showTicket = null, showPullRequest = null, ...location }: IssueViewProps) => {
+export const TicketView = ({ actions = null, showTicket = null, showPullRequest = null, ...location }: TicketViewProps) => {
   const read = useGithubRead<IssueStatus>("get_github_issue_status", { ...location });
   const issue = read.data;
   if (!issue) {
@@ -92,7 +92,7 @@ export const IssueView = ({ actions = null, showTicket = null, showPullRequest =
     );
   }
   return (
-    <IssueBody
+    <TicketBody
       issue={issue}
       error={read.error}
       acting={{ location, actions, showTicket, showPullRequest, onChanged: read.reload }}
@@ -104,13 +104,13 @@ export const IssueView = ({ actions = null, showTicket = null, showPullRequest =
  * The view once the ticket is read. It mounts on the first answer, so the cell it opens on arrival
  * comes from that answer and a later refresh leaves the operator's choice alone.
  */
-const IssueBody = ({ issue, error, acting }: { issue: IssueStatus; error: string | null; acting: Acting }) => {
-  const [arrival] = useState(() => issueArrivalCell(issue));
-  const [open, setOpen] = useState<IssueCellId | null>(arrival);
+const TicketBody = ({ issue, error, acting }: { issue: IssueStatus; error: string | null; acting: Acting }) => {
+  const [arrival] = useState(() => ticketArrivalCell(issue));
+  const [open, setOpen] = useState<TicketCellId | null>(arrival);
   const detailId = useId();
   return (
     <div className="p-3 space-y-3 text-xs">
-      <IssueHeader issue={issue} />
+      <TicketHeader issue={issue} />
       {error && (
         <p role="alert" className="text-[#f85149]">
           Could not refresh: {error}
@@ -118,7 +118,7 @@ const IssueBody = ({ issue, error, acting }: { issue: IssueStatus; error: string
       )}
       <StatusCardView issue={issue} acting={acting}>
         <ul className="grid grid-cols-4 border-t border-[#30363d]">
-          {issueCells(issue).map((cell) => (
+          {ticketCells(issue).map((cell) => (
             <Cell
               key={cell.id}
               cell={cell}
@@ -130,7 +130,7 @@ const IssueBody = ({ issue, error, acting }: { issue: IssueStatus; error: string
         </ul>
       </StatusCardView>
       {open ? (
-        <IssueCellDetail key={open} cell={open} id={detailId} issue={issue} acting={acting} />
+        <TicketCellDetail key={open} cell={open} id={detailId} issue={issue} acting={acting} />
       ) : (
         issue.body.trim() !== "" && (
           <section aria-label="Description" className="whitespace-pre-wrap break-words text-[#c9d1d9]">
@@ -142,15 +142,15 @@ const IssueBody = ({ issue, error, acting }: { issue: IssueStatus; error: string
   );
 };
 
-const CELL_TONE: Record<IssueCellTone, string> = {
+const CELL_TONE: Record<TicketCellTone, string> = {
   alert: "text-[#f85149]",
   attention: "text-[#d29922]",
   neutral: "text-white",
 };
 
 /** One of the card's cells: its name and what it holds, on a button that opens and closes its detail. */
-const Cell = ({ cell, open, detailId, onToggle }: { cell: IssueCell; open: boolean; detailId: string; onToggle: () => void }) => (
-  <li data-issue-cell={cell.id} className="min-w-0 border-r last:border-r-0 border-[#30363d]">
+const Cell = ({ cell, open, detailId, onToggle }: { cell: TicketCell; open: boolean; detailId: string; onToggle: () => void }) => (
+  <li data-ticket-cell={cell.id} className="min-w-0 border-r last:border-r-0 border-[#30363d]">
     <button
       type="button"
       aria-expanded={open}
@@ -174,11 +174,11 @@ function pill(issue: IssueStatus): { label: string; className: string } {
 }
 
 /** GitHub's issue header: title and number, state pill, type, and who opened it when. */
-const IssueHeader = ({ issue }: { issue: IssueStatus }) => {
+const TicketHeader = ({ issue }: { issue: IssueStatus }) => {
   const p = pill(issue);
   const opened = parseUtcTimestamp(issue.createdAt);
   return (
-    <header data-issue-header className="space-y-2">
+    <header data-ticket-header className="space-y-2">
       <h2 className="text-sm font-semibold text-white break-words">
         {issue.title} <span className={`font-normal ${MUTED}`}>#{issue.number}</span>
       </h2>

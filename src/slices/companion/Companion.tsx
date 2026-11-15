@@ -13,7 +13,7 @@ import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, typ
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
 import { PullRequestView } from "./PullRequestView.tsx";
-import { IssueView, type TicketActions } from "./IssueView.tsx";
+import { TicketView, type TicketActions } from "./TicketView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
@@ -130,7 +130,7 @@ export const TICKET_VIEW: CompanionView<CompanionContext> = {
     const slot = link?.ticket;
     if (!slot) return null;
     return (
-      <IssueView
+      <TicketView
         key={`${repository.path}|${slot.repo ?? ""}#${slot.number}`}
         repoPath={repository.path}
         repo={slot.repo}

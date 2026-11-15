@@ -1,4 +1,4 @@
-//! The companion's issue view: one ticket's status, and commenting on it, closing it with a
+//! The companion's Ticket view: one ticket's status, and commenting on it, closing it with a
 //! reason, reopening it, and editing its assignees, labels and type, all through `gh api`.
 
 use serde::Serialize;
@@ -22,9 +22,9 @@ const CHOICES_READ: u32 = 100;
 /// Issue types offered by the Type picker.
 const TYPES_READ: u32 = 25;
 
-/// Another ticket the issue view names: a blocker or the parent.
+/// Another ticket the Ticket view names: a blocker or the parent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct IssueViewRef {
+pub struct IssueRef {
     pub repo: String,
     pub number: u32,
     pub title: String,
@@ -62,7 +62,7 @@ pub struct IssueMilestone {
     pub url: String,
 }
 
-/// What the companion's issue view reads about one ticket. Mirrors `IssueStatus` in the frontend.
+/// What the companion's Ticket view reads about one ticket. Mirrors `IssueStatus` in the frontend.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueStatus {
@@ -80,8 +80,8 @@ pub struct IssueStatus {
     pub assignees: Vec<String>,
     pub labels: Vec<GithubLabel>,
     pub milestone: Option<IssueMilestone>,
-    pub parent: Option<IssueViewRef>,
-    pub blocked_by: Vec<IssueViewRef>,
+    pub parent: Option<IssueRef>,
+    pub blocked_by: Vec<IssueRef>,
     pub open_blocker_count: u32,
     pub pull_requests: Vec<IssuePullRequest>,
     pub comments: Vec<IssueComment>,
@@ -106,8 +106,8 @@ fn nodes(value: &serde_json::Value) -> &[serde_json::Value] {
     value["nodes"].as_array().map(Vec::as_slice).unwrap_or_default()
 }
 
-fn issue_ref(node: &serde_json::Value) -> IssueViewRef {
-    IssueViewRef {
+fn issue_ref(node: &serde_json::Value) -> IssueRef {
+    IssueRef {
         repo: text(&node["repository"]["nameWithOwner"]),
         number: count(&node["number"]),
         title: text(&node["title"]),
@@ -137,7 +137,7 @@ fn parse_status(stdout: &[u8], stderr: &str) -> Result<IssueStatus, String> {
     if !issue.is_object() {
         return Err(api_error(stdout, stderr, "GitHub returned no issue"));
     }
-    let blocked_by: Vec<IssueViewRef> = nodes(&issue["blockedBy"]).iter().map(issue_ref).collect();
+    let blocked_by: Vec<IssueRef> = nodes(&issue["blockedBy"]).iter().map(issue_ref).collect();
     let open_listed = blocked_by.iter().filter(|b| b.state == "OPEN").count() as u32;
     Ok(IssueStatus {
         repo: text(&repo["nameWithOwner"]),
@@ -337,7 +337,7 @@ fn remove_label_args(slug: &RepoSlug, number: u32, label: &str) -> Vec<String> {
     api_args("DELETE", format!("{}/issues/{number}/labels/{}", slug.path(), path_segment(label)), [])
 }
 
-/// One ticket's status, for the companion's issue view. `repo` is the ticket slot's `owner/name`,
+/// One ticket's status, for the companion's Ticket view. `repo` is the ticket slot's `owner/name`,
 /// or none for the repository at `repo_path`.
 #[tauri::command]
 pub async fn get_github_issue_status(repo_path: String, repo: Option<String>, number: u32) -> Result<IssueStatus, String> {
@@ -352,7 +352,7 @@ pub async fn get_github_issue_status(repo_path: String, repo: Option<String>, nu
     .await
 }
 
-/// What the issue view's Edit pickers offer: the repository's assignable users, labels and issue
+/// What the Ticket view's Edit pickers offer: the repository's assignable users, labels and issue
 /// types. A repository without issue types offers none, rather than failing.
 #[tauri::command]
 pub async fn get_github_issue_choices(repo_path: String, repo: Option<String>) -> Result<IssueChoices, String> {

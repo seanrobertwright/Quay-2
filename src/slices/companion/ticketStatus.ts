@@ -1,4 +1,4 @@
-import type { CheckRollupState, IssueComment, IssuePullRequest, IssueStatus, IssueViewRef } from "../github/types.ts";
+import type { CheckRollupState, IssueComment, IssuePullRequest, IssueStatus, IssueRef } from "../github/types.ts";
 import { parseUtcTimestamp } from "../../lib/dates.ts";
 
 /** The colour family the status card's headline takes. */
@@ -7,7 +7,7 @@ export type StatusTone = "ready" | "blocked" | "progress" | "closed";
 /** The status card's one button, which follows the ticket's state. */
 export type StatusAction =
   | { kind: "implement" }
-  | { kind: "show-blocker"; blocker: IssueViewRef }
+  | { kind: "show-blocker"; blocker: IssueRef }
   | { kind: "open-pull-request"; pullRequest: IssuePullRequest }
   | { kind: "reopen" };
 
@@ -22,7 +22,7 @@ export function closeButtonLabel(reason: CloseReason, typed: boolean): string {
   return typed ? "Close with comment" : `Close as ${CLOSE_REASON_TEXT[reason]}`;
 }
 
-/** How the issue view names each close reason. */
+/** How the Ticket view names each close reason. */
 export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
   COMPLETED: "completed",
   NOT_PLANNED: "not planned",
@@ -106,24 +106,24 @@ export function newComments(issue: IssueStatus): IssueComment[] {
 }
 
 /** A status card cell, which opens its detail under the card. */
-export type IssueCellId = "blocked-by" | "comments" | "pull-request" | "details";
+export type TicketCellId = "blocked-by" | "comments" | "pull-request" | "details";
 
-/** The cell the issue view opens on arrival: Blocked by while a blocker is open, else Comments while one is new, else none. */
-export function issueArrivalCell(issue: IssueStatus): IssueCellId | null {
+/** The cell the Ticket view opens on arrival: Blocked by while a blocker is open, else Comments while one is new, else none. */
+export function ticketArrivalCell(issue: IssueStatus): TicketCellId | null {
   if (issue.blockedBy.some((b) => b.state === "OPEN")) return "blocked-by";
   if (newComments(issue).length > 0) return "comments";
   return null;
 }
 
 /** The colour a cell's value takes: an open blocker, something waiting on the operator, or neither. */
-export type IssueCellTone = "alert" | "attention" | "neutral";
+export type TicketCellTone = "alert" | "attention" | "neutral";
 
 /** One of the status card's cells: its name and what it holds. */
-export interface IssueCell {
-  id: IssueCellId;
+export interface TicketCell {
+  id: TicketCellId;
   label: string;
   value: string;
-  tone: IssueCellTone;
+  tone: TicketCellTone;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -134,7 +134,7 @@ export function shownPullRequest(issue: IssueStatus): IssuePullRequest | null {
 }
 
 /** The status card's cells, in the order the card shows them. */
-export function issueCells(issue: IssueStatus): IssueCell[] {
+export function ticketCells(issue: IssueStatus): TicketCell[] {
   const openBlockers = issue.blockedBy.some((b) => b.state === "OPEN") ? Math.max(issue.openBlockerCount, 1) : 0;
   const fresh = newComments(issue).length;
   const pr = shownPullRequest(issue);

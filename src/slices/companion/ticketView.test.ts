@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// Component tests for the companion's issue view (#641): the header, the status card and its one
+// Component tests for the companion's Ticket view (#641): the header, the status card and its one
 // button, the cells and their details, and the switch between the pull request and the ticket.
 // GitHub is reached through Tauri's `invoke`, the out-of-process boundary these tests fake.
 import { fakeInvoke } from "../../test-support/dom.ts";
@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { LinkRef, LinkSlotName, TerminalInfo, TerminalLink } from "../terminal/types.ts";
-import type { IssueChoices, IssuePullRequest, IssueStatus, IssueViewRef, PullRequestReadiness } from "../github/types.ts";
+import type { IssueChoices, IssuePullRequest, IssueStatus, IssueRef, PullRequestReadiness } from "../github/types.ts";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
 
@@ -63,7 +63,7 @@ const settle = () =>
     for (let i = 0; i < 5; i++) await Promise.resolve();
   });
 
-/** A GitHub that answers every read the issue view makes, with `over` taking precedence. */
+/** A GitHub that answers every read the Ticket view makes, with `over` taking precedence. */
 const github =
   (status: Partial<IssueStatus> = {}, over: (cmd: string, args: Record<string, unknown>) => unknown = () => undefined) =>
   (cmd: string, args: Record<string, unknown>) => {
@@ -110,7 +110,7 @@ test("a terminal with only a ticket shows the Ticket view: title, number, state 
   const { container, calls } = await render(github());
   assert.equal(container.querySelector("[data-companion-view]")?.getAttribute("data-companion-view"), "ticket");
   assert.deepEqual(calls[0], ["get_github_issue_status", { repoPath: "E:/alpha", repo: "o/r", number: 5 }]);
-  const header = container.querySelector<HTMLElement>("[data-issue-header]");
+  const header = container.querySelector<HTMLElement>("[data-ticket-header]");
   assert.ok(header, "issue header");
   assert.match(header.querySelector("h2")?.textContent ?? "", /Run canvas: node phases\s*#5/);
   assert.equal(header.querySelector("[data-state-pill]")?.textContent, "Open");
@@ -185,7 +185,7 @@ function recordingLinking(link: TerminalLink) {
   };
 }
 
-const blocker: IssueViewRef = { repo: "o/r", number: 4, title: "Graph run events", state: "OPEN", url: "https://github.com/o/r/issues/4" };
+const blocker: IssueRef = { repo: "o/r", number: 4, title: "Graph run events", state: "OPEN", url: "https://github.com/o/r/issues/4" };
 const openPr: IssuePullRequest = { repo: "o/r", number: 12, title: "Node phases", state: "OPEN", url: "https://github.com/o/r/pull/12", checkState: "FAILURE" };
 
 test("Blocked shows Show the blocker, which pins the blocker as the terminal's ticket", async () => {
@@ -229,7 +229,7 @@ test("Closed shows Reopen, which reopens the ticket and reads it again", async (
 });
 
 const cellButton = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLButtonElement>(`[data-issue-cell="${id}"] button`) ?? undefined;
+  container.querySelector<HTMLButtonElement>(`[data-ticket-cell="${id}"] button`) ?? undefined;
 const detail = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-cell-detail]");
 const description = (container: HTMLElement) => container.querySelector('[aria-label="Description"]');
 const comment = (id: string, author: string, createdAt: string, body = id) => ({
@@ -243,7 +243,7 @@ const comment = (id: string, author: string, createdAt: string, body = id) => ({
 test("the cells are Blocked by, Comments, Pull request and Details; one opens its detail, a second click closes it", async () => {
   const { container } = await render(github({ commentCount: 2, assignees: ["claude"] }));
   assert.deepEqual(
-    [...card(container)!.querySelectorAll<HTMLElement>("[data-issue-cell]")].map((c) => [c.dataset.issueCell, c.textContent]),
+    [...card(container)!.querySelectorAll<HTMLElement>("[data-ticket-cell]")].map((c) => [c.dataset.ticketCell, c.textContent]),
     [
       ["blocked-by", "Blocked byNone open"],
       ["comments", "Comments2"],
@@ -473,7 +473,7 @@ test("the Assignees, Labels and Type Edit pickers offer the repository's choices
 
 test("Blocked by lists each blocker and the parent, and Show pins one as the terminal's ticket", async () => {
   const { pins, linking } = recordingLinking(ticketOnly);
-  const parent: IssueViewRef = { repo: "o/p", number: 2, title: "Graph runs", state: "OPEN", url: "https://github.com/o/p/issues/2" };
+  const parent: IssueRef = { repo: "o/p", number: 2, title: "Graph runs", state: "OPEN", url: "https://github.com/o/p/issues/2" };
   const { container } = await render(
     github({ blockedBy: [blocker, { ...blocker, number: 3, title: "Old", state: "CLOSED" }], openBlockerCount: 1, parent }),
     { linking },

@@ -225,7 +225,7 @@ export type IssueStateReason = "COMPLETED" | "NOT_PLANNED" | "DUPLICATE" | "REOP
 export type CheckRollupState = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
 
 /** Another issue the Ticket view names: a blocker or the parent. */
-export interface IssueViewRef {
+export interface IssueRef {
   /** `owner/name` of the issue's repository. */
   repo: string;
   number: number;
@@ -255,7 +255,7 @@ export interface IssueComment {
   url: string;
 }
 
-/** What the companion's issue view reads about one issue. Mirrors `IssueStatus` in the backend. */
+/** What the companion's Ticket view reads about one issue. Mirrors `IssueStatus` in the backend. */
 export interface IssueStatus {
   repo: string;
   number: number;
@@ -274,9 +274,9 @@ export interface IssueStatus {
   assignees: string[];
   labels: GithubLabel[];
   milestone: { title: string; url: string } | null;
-  parent: IssueViewRef | null;
+  parent: IssueRef | null;
   /** The issues that block this one, open and closed. */
-  blockedBy: IssueViewRef[];
+  blockedBy: IssueRef[];
   /** GitHub's count of open blockers; can exceed the open ones in `blockedBy`. */
   openBlockerCount: number;
   /** The pull requests that will close it, open, merged and closed. */
@@ -287,7 +287,7 @@ export interface IssueStatus {
   commentCount: number;
 }
 
-/** What the issue view's Edit pickers offer in the issue's repository. */
+/** What the Ticket view's Edit pickers offer in the issue's repository. */
 export interface IssueChoices {
   assignees: string[];
   labels: GithubLabel[];

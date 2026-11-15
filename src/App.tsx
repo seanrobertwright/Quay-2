@@ -14,7 +14,7 @@ import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
-import type { TicketActions, TicketToStart } from "./slices/companion/IssueView";
+import type { TicketActions, TicketToStart } from "./slices/companion/TicketView";
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
 import { diffLensFor } from "./slices/companion/diffLensTarget";

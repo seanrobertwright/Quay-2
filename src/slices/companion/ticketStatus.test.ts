@@ -1,8 +1,8 @@
-// The issue view's status card, cells and arrival cell, from an issue's state (#641).
+// The Ticket view's status card, cells and arrival cell, from an issue's state (#641).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CheckRollupState, IssueState, IssueStatus, PullRequestState } from "../github/types.ts";
-import { closeButtonLabel, issueArrivalCell, issueCells, newComments, statusCard } from "./issueStatus.ts";
+import { closeButtonLabel, ticketArrivalCell, ticketCells, newComments, statusCard } from "./ticketStatus.ts";
 
 const issue = (over: Partial<IssueStatus> = {}): IssueStatus => ({
   repo: "o/r",
@@ -118,13 +118,13 @@ test("new comments are the others' comments since the viewer last commented or o
 
 test("on arrival the view opens an open blocker, else a new comment, else nothing", () => {
   const fresh = [comment("c1", "claude", "2026-11-14T10:00:00Z")];
-  assert.equal(issueArrivalCell(issue({ blockedBy: [blocker(569)], openBlockerCount: 1, comments: fresh })), "blocked-by");
-  assert.equal(issueArrivalCell(issue({ blockedBy: [blocker(560, "CLOSED")], comments: fresh })), "comments");
-  assert.equal(issueArrivalCell(issue()), null);
+  assert.equal(ticketArrivalCell(issue({ blockedBy: [blocker(569)], openBlockerCount: 1, comments: fresh })), "blocked-by");
+  assert.equal(ticketArrivalCell(issue({ blockedBy: [blocker(560, "CLOSED")], comments: fresh })), "comments");
+  assert.equal(ticketArrivalCell(issue()), null);
 });
 
 test("the cells are Blocked by, Comments, Pull request and Details, each with what it holds", () => {
-  const cells = issueCells(
+  const cells = ticketCells(
     issue({
       blockedBy: [blocker(569)],
       openBlockerCount: 1,
@@ -144,7 +144,7 @@ test("the cells are Blocked by, Comments, Pull request and Details, each with wh
       ["details", "Details", "you, claude · 2 labels", "neutral"],
     ],
   );
-  const quiet = issueCells(issue({ pullRequests: [pullRequest(560, "MERGED")] }));
+  const quiet = ticketCells(issue({ pullRequests: [pullRequest(560, "MERGED")] }));
   assert.deepEqual(
     quiet.map((c) => [c.value, c.tone]),
     [
@@ -154,7 +154,7 @@ test("the cells are Blocked by, Comments, Pull request and Details, each with wh
       ["Unassigned · 1 label", "neutral"],
     ],
   );
-  assert.equal(issueCells(issue())[2].value, "None");
+  assert.equal(ticketCells(issue())[2].value, "None");
 });
 
 test("the close button reads Close as its reason, or Close with comment once text is typed", () => {
