@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, type MouseEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useState, useId, type MouseEvent, type KeyboardEvent } from "react";
 import type { PermissionMode, TerminalInfo } from "../terminal/types.ts";
 import type { Project } from "../workspace/types.ts";
 import type { GitWorktree } from "../git/types.ts";
@@ -7,7 +7,6 @@ import {
   FolderGit2,
   Plus,
   Radio,
-  Network,
   Activity,
   Layers,
   ChevronDown,
@@ -16,15 +15,9 @@ import {
   Trash2,
   Settings,
   Zap,
-  Command,
   GitBranch,
-  History,
-  ShieldCheck,
   Coins,
 } from "lucide-react";
-import { GithubIcon } from "../github/GithubIcon.tsx";
-import { ArchonIcon } from "../archon/ArchonIcon.tsx";
-import { PraxisIcon } from "../praxis-builder/PraxisIcon.tsx";
 import { VsCodeIcon } from "../workspace/VsCodeIcon.tsx";
 import type { ClaudeTokenStats } from "../sessions/types.ts";
 import { isSamePath, isSubpathOf, normalizePath } from "../../utils/paths.ts";
@@ -32,27 +25,7 @@ import { useContextMenu } from "../overlay/useContextMenu.ts";
 import { ProjectMenu, WorktreeMenu } from "./RailRowMenus.tsx";
 import { worktreeRowName } from "./worktreeMenu.ts";
 
-// The rail was a fixed 288px (`w-72`); the drag range is measured from that width
-const RAIL_BASE_WIDTH = 288;
-const RAIL_MIN_WIDTH = RAIL_BASE_WIDTH + 50;
-const RAIL_MAX_WIDTH = RAIL_BASE_WIDTH + 300;
-const RAIL_KEYBOARD_STEP = 16;
-const RAIL_WIDTH_KEY = "quay_rail_width";
-
-const clampRailWidth = (width: number) =>
-  Math.min(RAIL_MAX_WIDTH, Math.max(RAIL_MIN_WIDTH, Math.round(width)));
-
-// Falls back to the minimum width when storage is unavailable or holds anything but digits
-function loadRailWidth(): number {
-  try {
-    const saved = localStorage.getItem(RAIL_WIDTH_KEY);
-    return saved && /^\d+$/.test(saved) ? clampRailWidth(Number(saved)) : RAIL_MIN_WIDTH;
-  } catch {
-    return RAIL_MIN_WIDTH;
-  }
-}
-
-interface RailProps {
+interface ProjectsPanelProps {
   projects: Project[];
   activeProject: string;
   /** Normalized paths of the projects and worktrees with unsaved Praxis Builder drafts. */
@@ -69,27 +42,21 @@ interface RailProps {
   onAddProject: () => void;
   onRemoveProject: (path: string) => void;
   onRenameTerminal?: (id: string, name: string) => void;
-  onOpenA2APanel: () => void;
   onOpenSettings?: (project: Project) => void;
   onOpenSwarm?: () => void;
-  onOpenCommandPalette?: () => void;
   onOpenNewWorktree?: (repoPath: string) => void;
   onRemoveWorktree?: (repoPath: string, wtPath: string) => void;
   onOpenGithubDrawer?: () => void;
   /** Opens Topos on the active project. */
   onOpenTopos?: () => void;
-  onOpenPrePrAudit?: () => void;
-  onOpenSessionHistory?: () => void;
   onOpenTokenSpend?: () => void;
-  onOpenArchonGraph?: () => void;
-  onOpenFactoryStation?: () => void;
   onOpenInVsCode?: (projectPath: string) => void;
   onRelaunchTerminal?: (id: string) => void;
   /** Switches a terminal between Skip and Ask, from the mode it is in now. */
   onToggleTerminalAsk?: (id: string, currentMode: PermissionMode) => void;
 }
 
-/** The row a Rail menu is open for: a project's row, or one of its worktrees' rows. */
+/** The row a Projects panel menu is open for: a project's row, or one of its worktrees' rows. */
 type RowMenuTarget = { kind: "project"; path: string } | { kind: "worktree"; repoPath: string; path: string };
 
 /** Marks a project or worktree whose Praxis Builder drafts have unsaved changes. */
@@ -99,7 +66,7 @@ const UnsavedDot = () => (
   </span>
 );
 
-export const Rail: React.FC<RailProps> = ({
+export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
   projects,
   activeProject,
   unsavedPraxisProjects,
@@ -117,79 +84,19 @@ export const Rail: React.FC<RailProps> = ({
   onRenameTerminal,
   onRelaunchTerminal,
   onToggleTerminalAsk,
-  onOpenA2APanel,
   onOpenSettings,
   onOpenSwarm,
-  onOpenCommandPalette,
   onOpenNewWorktree,
   onRemoveWorktree,
   onOpenGithubDrawer,
   onOpenTopos,
-  onOpenPrePrAudit,
-  onOpenSessionHistory,
   onOpenTokenSpend,
-  onOpenArchonGraph,
-  onOpenFactoryStation,
   onOpenInVsCode,
 }) => {
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   // Worktree lists start collapsed; an entry of `false` means the user expanded it
   const [collapsedWorktrees, setCollapsedWorktrees] = useState<Record<string, boolean>>({});
   const railId = useId();
-  const [railWidth, setRailWidth] = useState<number>(loadRailWidth);
-  const [isResizing, setIsResizing] = useState(false);
-
-  // Persist once a drag ends rather than on every mouse move
-  useEffect(() => {
-    if (isResizing) return;
-    try {
-      localStorage.setItem(RAIL_WIDTH_KEY, String(railWidth));
-    } catch {
-      // Storage can be unavailable; the width still applies for this session
-    }
-  }, [railWidth, isResizing]);
-
-  // Draggable rail edge mouse down handler
-  const handleResizeMouseDown = (e: MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = railWidth;
-    setIsResizing(true);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-
-    const onMouseMove = (moveEvent: globalThis.MouseEvent) => {
-      setRailWidth(clampRailWidth(startWidth + moveEvent.clientX - startX));
-    };
-
-    const onMouseUp = () => {
-      setIsResizing(false);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  };
-
-  const handleResizeKeyDown = (e: KeyboardEvent) => {
-    const next =
-      e.key === "ArrowLeft"
-        ? railWidth - RAIL_KEYBOARD_STEP
-        : e.key === "ArrowRight"
-        ? railWidth + RAIL_KEYBOARD_STEP
-        : e.key === "Home"
-        ? RAIL_MIN_WIDTH
-        : e.key === "End"
-        ? RAIL_MAX_WIDTH
-        : null;
-    if (next === null) return;
-    e.preventDefault();
-    setRailWidth(clampRailWidth(next));
-  };
-
   const toggleCollapse = (path: string, e?: MouseEvent) => {
     e?.stopPropagation();
     setCollapsedProjects((prev) => ({
@@ -305,108 +212,8 @@ export const Rail: React.FC<RailProps> = ({
     return true;
   });
 
-  // Tool launchers rendered as one icon row so the project tree keeps the vertical space
-  const toolButtons: {
-    id: string;
-    label: string;
-    shortcut?: string;
-    icon: ReactNode;
-    onClick: () => void;
-  }[] = [];
-  if (onOpenGithubDrawer) {
-    toolButtons.push({
-      id: "github",
-      label: "GitHub Issues & PRs",
-      shortcut: "Ctrl+Shift+B i",
-      icon: <GithubIcon className="w-4 h-4 text-white" />,
-      onClick: onOpenGithubDrawer,
-    });
-  }
-  if (onOpenSessionHistory) {
-    toolButtons.push({
-      id: "sessions",
-      label: "Session History",
-      shortcut: "Ctrl+Shift+B h",
-      icon: <History className="w-4 h-4 text-[#58a6ff]" />,
-      onClick: onOpenSessionHistory,
-    });
-  }
-  if (onOpenPrePrAudit) {
-    toolButtons.push({
-      id: "audit",
-      label: "Pre-PR Audit Gate",
-      shortcut: "Ctrl+Shift+B a",
-      icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />,
-      onClick: onOpenPrePrAudit,
-    });
-  }
-  if (onOpenArchonGraph) {
-    toolButtons.push({
-      id: "archon",
-      label: "Archon & SDD Graph",
-      shortcut: "Ctrl+Shift+B r",
-      icon: <ArchonIcon className="w-4 h-4" />,
-      onClick: onOpenArchonGraph,
-    });
-  }
-  if (onOpenFactoryStation) {
-    toolButtons.push({
-      id: "machina",
-      label: "Machina",
-      shortcut: "Ctrl+Shift+B f",
-      icon: <PraxisIcon className="w-4 h-4" />,
-      onClick: onOpenFactoryStation,
-    });
-  }
-  if (onOpenCommandPalette) {
-    toolButtons.push({
-      id: "palette",
-      label: "Command Palette",
-      shortcut: "Ctrl+Shift+P",
-      icon: <Command className="w-4 h-4 text-[#58a6ff]" />,
-      onClick: onOpenCommandPalette,
-    });
-  }
-  toolButtons.push({
-    id: "a2a",
-    label: "Mission Control",
-    shortcut: "Ctrl+Shift+B m",
-    icon: <Network className="w-4 h-4 text-[#c9d1d9]" />,
-    onClick: onOpenA2APanel,
-  });
-
   return (
-    <aside
-      id={`${railId}-panel`}
-      style={{ width: railWidth }}
-      className="relative shrink-0 bg-[#0d1117] border-r border-[#30363d] flex flex-col h-full select-none text-[#c9d1d9]"
-    >
-      {/* Draggable rail edge: drag, arrow keys, or Home/End resize; double click resets */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- WAI-ARIA 1.2 focusable window splitter (separator with aria-valuenow) */}
-      <div role="separator" tabIndex={0}
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        aria-controls={`${railId}-panel`}
-        aria-valuenow={railWidth}
-        aria-valuemin={RAIL_MIN_WIDTH}
-        aria-valuemax={RAIL_MAX_WIDTH}
-        onMouseDown={handleResizeMouseDown}
-        onDoubleClick={() => setRailWidth(RAIL_MIN_WIDTH)}
-        onKeyDown={handleResizeKeyDown}
-        className={`group absolute top-0 bottom-0 -right-[5px] w-[10px] z-30 cursor-col-resize flex justify-center outline-none transition-colors ${
-          isResizing ? "bg-[#58a6ff]/20" : "hover:bg-[#58a6ff]/10"
-        }`}
-        title="Drag to resize sidebar (Double click to reset)"
-      >
-        <div
-          className={`w-[2px] h-full transition-colors ${
-            isResizing
-              ? "bg-[#58a6ff]"
-              : "bg-transparent group-hover:bg-[#58a6ff] group-focus-visible:bg-[#58a6ff]"
-          }`}
-        />
-      </div>
-
+    <div className="flex flex-col h-full min-h-0 select-none text-[#c9d1d9]">
       {/* App Branding & Quay Logo */}
       <div className="h-12 px-4 border-b border-[#30363d] flex items-center justify-between bg-[#161b22]">
         <div className="flex items-center gap-2">
@@ -826,41 +633,8 @@ export const Rail: React.FC<RailProps> = ({
         </div>
       </div>
 
-      {/* Bottom Mission Control: one compact icon toolbar + status line */}
+      {/* Status line: spend, the chord hint and the terminal backend */}
       <div className="px-2 py-1.5 border-t border-[#30363d] bg-[#161b22] flex flex-col gap-1">
-        <div role="toolbar" aria-label="Quay tools" className="flex items-center justify-between">
-          {toolButtons.map((tool, toolIdx) => {
-            const shortcutId = `${railId}-tool-${tool.id}-shortcut`;
-            // Styled tooltip instead of `title`, which WebView2 does not always show;
-            // it opens toward the rail's middle so the window edge never clips it
-            const opensRight = toolIdx < toolButtons.length / 2;
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                onClick={tool.onClick}
-                aria-label={tool.label}
-                aria-describedby={tool.shortcut ? shortcutId : undefined}
-                className="group/tool relative p-1.5 rounded-md transition-colors hover:bg-[#21262d]"
-              >
-                {tool.icon}
-                <span
-                  className={`pointer-events-none absolute bottom-full mb-1.5 z-50 whitespace-nowrap rounded border border-[#30363d] bg-[#161b22] px-2 py-1 text-[11px] text-[#c9d1d9] shadow-lg opacity-0 transition-opacity group-hover/tool:opacity-100 group-hover/tool:delay-150 group-focus-visible/tool:opacity-100 ${
-                    opensRight ? "left-0" : "right-0"
-                  }`}
-                >
-                  {tool.label}
-                  {tool.shortcut && (
-                    <span id={shortcutId} className="ml-1.5 font-mono text-[#8b949e]">
-                      {tool.shortcut}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
         <div className="flex items-center justify-between text-[10px] text-[#8b949e] px-1 font-mono">
           {onOpenTokenSpend ? (
             <button
@@ -888,6 +662,6 @@ export const Rail: React.FC<RailProps> = ({
         </div>
       </div>
       {renderRowMenu()}
-    </aside>
+    </div>
   );
 };

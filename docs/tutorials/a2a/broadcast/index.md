@@ -314,7 +314,7 @@ Paste `git restore README.md` into `shell`. Then paste `A release freeze is on. 
 One broadcast becomes one trail entry for each agent it reached. The trail is the only place a broadcast's answers are kept: the captain never sees them.
 
 ::: do
-1. Click the **Mission Control** icon, the network icon in the toolbar at the bottom of the rail, or press `Ctrl+Shift+B M`.
+1. Click the **Agents** icon, the robot on the bar down the window's left edge, then **Mission Control**, or press `Ctrl+Shift+B M`.
 2. Scroll down to **Live A2A Message Trail**. It lists the newest message first and has its own scroll bar: scroll inside it to read every entry.
 :::
 

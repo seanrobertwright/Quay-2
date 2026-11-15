@@ -61,5 +61,5 @@ Machina runs the same scan in its own gate, over the branch's diff against its b
 
 These badges are separate from the audit gate:
 
-- Any agent terminal running with `--dangerously-skip-permissions` is marked with a red **`SKIP`** badge in the navigation rail and on its pane, and a warning banner appears across the stage when it is focused.
+- Any agent terminal running with `--dangerously-skip-permissions` is marked with a red **`SKIP`** badge on its Projects panel row and on its pane, and a warning banner appears across the stage when it is focused.
 - Terminals in standard interactive mode show no `SKIP` badge.

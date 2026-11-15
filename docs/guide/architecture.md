@@ -10,6 +10,7 @@ Quay 2 is engineered around **Vertical Slice Architecture (VSA)**. Instead of tr
 graph TB
     subgraph Frontend["React 19 Frontend (Vite)"]
         TerminalSlice["src/slices/terminal/"]
+        ShellSlice["src/slices/shell/"]
         RailSlice["src/slices/rail/"]
         StageSlice["src/slices/stage/"]
         A2ASlice["src/slices/orchestrator/"]
@@ -105,7 +106,8 @@ graph TB
 The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xterm`:
 
 - **`terminal/`**: Terminal instance rendering, auto-fit addon, proposed API emoji width alignment, selection handling, and keyboard shortcuts.
-- **`rail/`**: Collapsible project and worktree navigation sidebar, active indicators, and mission control icon toolbar.
+- **`shell/`**: The module bar on the window's left edge and the panel beside it, which shows the open module.
+- **`rail/`**: The Projects panel: the collapsible project and worktree tree, terminal rows and their menus.
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.
 - **`archon/`**: SVG-powered DAG visualization canvas, live log viewer, and spec checklist.

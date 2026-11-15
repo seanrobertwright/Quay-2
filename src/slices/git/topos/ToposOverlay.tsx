@@ -60,7 +60,7 @@ import {
 const NO_SELECTION: CommitSelection = { kind: "none" };
 const NO_REF_BADGES: RefBadge[] = [];
 
-/** The repository or worktree Topos works on: the Rail selection when Topos is shown. */
+/** The repository or worktree Topos works on: the Projects panel selection when Topos is shown. */
 export interface ToposTarget {
   path: string;
   /** The project's name, or `Project · branch` for a worktree. */
@@ -71,7 +71,7 @@ export interface ToposTarget {
 
 export interface ToposOverlayProps {
   isOpen: boolean;
-  /** The active Rail selection, or null when no project is open. */
+  /** The active Projects panel selection, or null when no project is open. */
   project: ToposTarget | null;
   onClose: () => void;
   onAddProject: () => void;
@@ -82,8 +82,8 @@ export interface ToposOverlayProps {
   /** Starts an agent terminal in `cwd` for a conflict handed to a new agent (#392). */
   onNewAgent?: (cwd: string) => Promise<TerminalInfo | null>;
   /**
-   * Retargets the Rail selection to the worktree at `path`, for "Show that worktree" (#393).
-   * Resolves to false when the Rail doesn't list that worktree.
+   * Retargets the Projects panel selection to the worktree at `path`, for "Show that worktree" (#393).
+   * Resolves to false when the Projects panel doesn't list that worktree.
    */
   onShowWorktree?: (path: string) => boolean;
   /**
@@ -103,7 +103,7 @@ type VersionCheck =
 
 /**
  * Topos, the visual Git cockpit (#349): a full-window overlay toggled by `Ctrl+Shift+B c`. Closing
- * hides it without unmounting, so its state survives until it is shown again. It targets the Rail
+ * hides it without unmounting, so its state survives until it is shown again. It targets the Projects panel
  * selection it was shown with, and checks git's version on its first open (#369).
  */
 export const ToposOverlay: React.FC<ToposOverlayProps> = ({
@@ -620,7 +620,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
               <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center p-6" role="status">
                 <p className="text-sm text-white">This worktree or repository is gone.</p>
                 <p className="text-xs text-[#8b949e] max-w-md break-words">
-                  {target.path} was moved or removed. Pick another project or worktree in the Rail.
+                  {target.path} was moved or removed. Pick another project or worktree in the Projects panel.
                 </p>
               </div>
             ) : graph.feed ? (

@@ -38,7 +38,7 @@ interface TerminalViewProps {
   onRename?: (newName: string) => void;
   /** Switches the terminal between Skip and Ask. */
   onToggleAsk?: () => void;
-  /** Closes the terminal itself, as the Rail row's close button does. */
+  /** Closes the terminal itself, as the Projects panel row's close button does. */
   onCloseTerminal?: () => void;
   /** How many panes the stage shows, which decides whether Close pane can run. */
   paneCount?: number;
@@ -155,7 +155,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
     closeTerminal: onCloseTerminal,
   };
 
-  // The terminal menu on a Rail row asks this pane to redraw or search (#508).
+  // The terminal menu on a Projects panel row asks this pane to redraw or search (#508).
   useEffect(
     () =>
       onTerminalRequest(terminalId, (request) => {
@@ -272,7 +272,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
       >
         {/* Pane Header (only displayed in split/grid layout) */}
         {showPaneHeader && (
-          // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Rail row.
+          // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Projects panel row.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- a labelled group that opens its terminal menu from the keyboard
           <div role="group" tabIndex={0}
             aria-label={`Pane ${terminal?.name ?? terminalId}`}
@@ -498,7 +498,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
           at={bodyMenu.open.at}
           onClose={bodyMenu.close}
           // The rename box sits in the pane header, so a pane without one leaves Rename… out;
-          // the terminal's Rail row still offers it.
+          // the terminal's Projects panel row still offers it.
           handlers={showPaneHeader ? paneHandlers : { ...paneHandlers, rename: undefined }}
         />
       )}

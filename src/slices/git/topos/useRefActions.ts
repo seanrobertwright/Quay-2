@@ -91,7 +91,7 @@ interface Options {
   refs: GraphRefsReader;
   /** Hands a new HEAD to the refresh table, as a commit does. */
   onLanded: (head: string) => void;
-  /** Retargets the Rail selection to another worktree; false when the Rail doesn't list it. */
+  /** Retargets the Projects panel selection to another worktree; false when the Projects panel doesn't list it. */
   onShowWorktree: (path: string) => boolean;
   /** Opens the staging inspector, where local changes in the way of a checkout are dealt with. */
   onOpenInspector: () => void;
@@ -119,7 +119,7 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
   const dismiss = useCallback((id: number) => setToasts((q) => dismissToast(q, id)), []);
   const showWorktree = useCallback(
     (path: string) => {
-      if (!onShowWorktree(path)) toast({ tone: "failed", text: "That worktree isn't in the Rail" });
+      if (!onShowWorktree(path)) toast({ tone: "failed", text: "That worktree isn't in the Projects panel" });
     },
     [onShowWorktree, toast]
   );

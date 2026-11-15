@@ -1,4 +1,4 @@
-// The terminal menu (#508): one menu for a terminal, opened from its Rail row or its pane
+// The terminal menu (#508): one menu for a terminal, opened from its Projects panel row or its pane
 // header. This module only says what the menu offers; each surface binds the actions to the
 // handlers its own buttons and shortcuts already use.
 //
@@ -22,7 +22,7 @@ export type TerminalMenuAction =
   | "closePane"
   | "closeTerminal";
 
-/** Where the menu opens: a Rail row, or a pane header on a stage showing `paneCount` panes. */
+/** Where the menu opens: a Projects panel row, or a pane header on a stage showing `paneCount` panes. */
 export type TerminalMenuSurface = { kind: "rail" } | { kind: "pane"; paneCount: number };
 
 /** One item of the terminal menu, before its action is bound to a handler. */

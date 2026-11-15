@@ -29,7 +29,7 @@ export interface OverlayStack {
    * whether it did; the caller then keeps the key from everything else, a terminal included.
    *
    * Escape belongs to the stack when it comes from inside any open overlay, or from outside every
-   * other surface (a terminal, the rail, the page). It is left alone when it comes from inside a
+   * other surface (a terminal, the Projects panel, the page). It is left alone when it comes from inside a
    * surface the stack doesn't know, such as another modal open on top, which `isOtherSurface`
    * recognises.
    */

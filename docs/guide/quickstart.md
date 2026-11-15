@@ -6,9 +6,9 @@ This tutorial guides you through your first session with **Quay 2**, from regist
 
 ## 1. Registering a Project Workspace
 
-When Quay 2 launches, you are greeted by the **Navigation Rail** on the left side of the window.
+When Quay 2 launches, the **module bar** runs down the window's left edge, with the **Projects** panel open beside it. Click the **Projects** icon at the top of the bar to fold the panel away or bring it back.
 
-1. Click the **`+`** icon next to **Projects** in the rail, or press `Ctrl+Shift+P` and choose **"Add Project Folder"**.
+1. Click **Add** at the top of the **Projects** panel, or press `Ctrl+Shift+P` and choose **"Add Project Folder"**.
 2. Select your local git repository directory (e.g. `E:\Projects\MyProject`).
 3. Quay 2 registers the workspace, detects existing git branches, and discovers any secondary git worktrees associated with the repository.
 
@@ -16,7 +16,7 @@ When Quay 2 launches, you are greeted by the **Navigation Rail** on the left sid
 
 ## 2. Launching Your First Terminal (`Ctrl+Shift+B N`)
 
-1. Press `Ctrl+Shift+B N` (or click **"New Terminal"** in the navigation rail).
+1. Press `Ctrl+Shift+B N` (or click **Term** at the top of the **Projects** panel).
 2. The **New Terminal** dialog appears with options:
    - **Command Type**: Choose an agent (Claude Code, Antigravity, Codex, Pi, PiG, Gemini, Grok, Aider, Kiro, Copilot or OpenCode), a PowerShell Console, or a Custom Command, which runs any command line, such as `cmd.exe` or `wsl.exe`.
    - **Model**: For an agent, pick one of its presets (for Claude Code, e.g. **Claude Opus 5.5** or **Claude Sonnet 5.5**), or leave it on **Default**, the agent's own setting. See the [Agent Compatibility Matrix](../features/agent-support.md#agent-compatibility-matrix).
@@ -76,6 +76,6 @@ Every Claude Code session launched inside Quay 2 is automatically connected to t
 
 ## 7. Tracking Spend & Audio Chimes (`Ctrl+Shift+B T`)
 
-1. Check the bottom toolbar in the navigation rail to see your live all-time token spend.
+1. Check the status line at the bottom of the **Projects** panel to see your live all-time token spend.
 2. Press `Ctrl+Shift+B T` to open the **Token Spend & Audio Settings** dialog.
 3. Inspect model breakdowns (Opus 5.5, Sonnet 5.5, Haiku 5.5) and enable subtle audio chimes to notify you when long-running agent turns finish while you work in other applications.

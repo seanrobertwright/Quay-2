@@ -48,7 +48,7 @@ export interface RefContext {
   remotes: readonly string[];
 }
 
-/** The label of the item, and the toast button, that retargets the Rail to another worktree. */
+/** The label of the item, and the toast button, that retargets the Projects panel to another worktree. */
 export const SHOW_WORKTREE = "Show that worktree";
 
 /** Where a local branch is checked out: nowhere, in the selected worktree, or in another one. */

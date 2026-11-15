@@ -41,9 +41,9 @@ Quay always creates the worktree from the project's root repository. Pressing `C
 
 ---
 
-## Collapsible Navigation Rail Hierarchy
+## Collapsible Projects Panel Hierarchy
 
-To preserve vertical real estate in your sidebar when managing repositories with dozens of worktrees:
+To preserve vertical real estate in the **Projects** panel when managing repositories with dozens of worktrees:
 
 - Secondary worktrees under each project start **collapsed by default**.
 - Click the chevron next to **`Worktrees (N)`** to expand or collapse the worktree list.

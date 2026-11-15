@@ -74,7 +74,7 @@ Graphs are checked offline in Quay's Rust backend by the AI-WS-SDK's own crate, 
 
 ## Drafts and saving
 
-Every edit goes to an in-memory draft first. Unsaved drafts show `*` in the list and a dot on the project in the rail, and Quay asks before it quits while any are unsaved.
+Every edit goes to an in-memory draft first. Unsaved drafts show `*` in the list and a dot on the project in the Projects panel, and Quay asks before it quits while any are unsaved.
 
 - **Save** (`Ctrl+S`) writes the open definition. For a graph that includes its layout, and for a contract its bindings file.
 - **An invalid definition still saves.** The list marks it with an error badge until it is fixed.

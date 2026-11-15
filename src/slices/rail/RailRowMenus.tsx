@@ -1,5 +1,5 @@
 // The project row and worktree row menus (#509). The items come from `projectMenu` and
-// `worktreeMenu`; the Rail hands in the handlers its own buttons already call, and these
+// `worktreeMenu`; the Projects panel hands in the handlers its own buttons already call, and these
 // components add the clipboard and folder actions, shared with the terminal menu.
 import type { FC } from "react";
 import { ContextMenu, type MenuPoint } from "../overlay/ContextMenu.tsx";
@@ -12,7 +12,7 @@ import { worktreeBranch, worktreeMenu, worktreeMenuLabel, type WorktreeMenuActio
 interface MenuProps<A extends string> {
   at: MenuPoint;
   onClose: (refocus: boolean) => void;
-  /** The Rail's handlers. An item whose handler is missing is left out. */
+  /** The Projects panel's handlers. An item whose handler is missing is left out. */
   handlers: Partial<Record<A, () => void>>;
 }
 

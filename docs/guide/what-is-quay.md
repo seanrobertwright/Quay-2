@@ -43,7 +43,7 @@ flowchart TD
     end
 
     subgraph DesktopUI["React 19 & Tauri v2 Desktop"]
-        Rail["Navigation Rail (Projects, Worktrees, Tools)"]
+        Rail["Module Bar and Panels (Projects, Worktrees, Tools)"]
         Stage["Tiling Stage (Splits, 2x2 Grid, Zoom)"]
         ArchonModal["Archon SDD Graph & Logs"]
         MachinaModal["Machina Cockpit"]

@@ -1,10 +1,14 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useId } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspace } from "./slices/workspace/useWorkspace";
 import { useBridgeEvents } from "./slices/bridge/useBridgeEvents";
 import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
-import { Rail } from "./slices/rail/Rail";
+import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
+import { ModuleBar } from "./slices/shell/ModuleBar";
+import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
+import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
+import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
@@ -140,6 +144,9 @@ export function App() {
     null
   );
   const [vscodeError, setVscodeError] = useState<string | null>(null);
+  // The module whose panel shows beside the module bar; null while the panel is folded.
+  const [openModule, setOpenModule] = useState<ModuleId | null>("projects");
+  const modulePanelId = useId();
 
   const handleOpenInVsCode = useCallback(
     async (projectPath: string) => {
@@ -160,7 +167,7 @@ export function App() {
     return () => clearTimeout(timer);
   }, [vscodeError]);
 
-  // Remove a worktree from the rail. Git's refusal or error opens the Remove anyway dialog.
+  // Remove a worktree from the Projects panel. Git's refusal or error opens the Remove anyway dialog.
   const handleRemoveWorktree = async (repoPath: string, worktreePath: string) => {
     try {
       const result = await removeWorktree(repoPath, worktreePath);
@@ -254,8 +261,8 @@ export function App() {
     },
     [setIsToposOpen]
   );
-  // "Show that worktree" (#393) selects the Rail entry for a worktree git names, however its
-  // path is spelled, and reports false when the Rail lists no such worktree.
+  // "Show that worktree" (#393) selects the Projects panel entry for a worktree git names, however its
+  // path is spelled, and reports false when the Projects panel lists no such worktree.
   const showToposWorktree = useCallback(
     (path: string) => {
       for (const p of projects) {
@@ -311,7 +318,7 @@ export function App() {
     (cwd: string) => spawnTerminal({ project_path: cwd, run_kind: NEW_AGENT_RUN_KIND, name: "conflict agent" }),
     [spawnTerminal]
   );
-  // Normalized paths of the projects with unsaved Praxis drafts, which the rail marks.
+  // Normalized paths of the projects with unsaved Praxis drafts, which the Projects panel marks.
   const [praxisUnsaved, setPraxisUnsaved] = useState<ReadonlySet<string>>(new Set());
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
   const praxisBuilder = useRef<PraxisBuilderHandle | null>(null);
@@ -522,50 +529,82 @@ export function App() {
     }
   };
 
+  const launchers = placeholderLaunchers({
+    openGithub: () => setIsGithubDrawerOpen(true),
+    openTopos: () => setIsToposOpen(true),
+    openDiffs: () => setIsDiffInspectorOpen(true),
+    openPrePrAudit: () => setIsAuditModalOpen(true),
+    openMissionControl: () => setIsA2AOpen(true),
+    openSessionHistory: () => setIsSessionHistoryOpen(true),
+    openSwarm: () => setIsSwarmModalOpen(true),
+    openArchon: () => setIsArchonGraphOpen(true),
+    openFactory: () => setIsFactoryStationOpen(true),
+    openPraxisBuilder: () => setIsPraxisBuilderOpen(true),
+    // A worktree's settings are its project's, so the selected worktree resolves to its root repo.
+    openWorkspaceSettings: () => openWorkspaceSettings(activeRootRepo),
+    openInVsCode: () => void handleOpenInVsCode(activeProject),
+    openTokenSpend: () => setIsTokenSpendOpen(true),
+    hasProject: activeProject !== "",
+  });
+  const launcherPanel = (module: Exclude<ModuleId, "projects">) => (
+    <LauncherPanel title={MODULE_NAMES[module]} launchers={launchers[module]} />
+  );
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0d1117] text-[#c9d1d9]">
-      {/* Left Navigation Rail */}
-      <Rail
-        projects={projects}
-        activeProject={activeProject}
-        unsavedPraxisProjects={praxisUnsaved}
-        terminals={terminals}
-        activeTerminalId={activeTerminalId}
-        bridgePort={bridgePort}
-        projectWorktrees={projectWorktrees}
-        claudeStats={claudeStats}
-        onSelectTerminal={(id) => setActiveTerminalId(id)}
-        onCloseTerminal={(id) => killTerminal(id)}
-        onNewTerminal={(projPath) => {
-          if (projPath) setActiveProject(projPath);
-          setIsNewTerminalOpen(true);
+      <ModuleBar
+        openModule={openModule}
+        onOpenModule={setOpenModule}
+        panelId={modulePanelId}
+        onOpenPalette={() => setIsCommandPaletteOpen(true)}
+      />
+      <ModulePanel
+        id={modulePanelId}
+        openModule={openModule}
+        panels={{
+          projects: (
+            <ProjectsPanel
+              projects={projects}
+              activeProject={activeProject}
+              unsavedPraxisProjects={praxisUnsaved}
+              terminals={terminals}
+              activeTerminalId={activeTerminalId}
+              bridgePort={bridgePort}
+              projectWorktrees={projectWorktrees}
+              claudeStats={claudeStats}
+              onSelectTerminal={(id) => setActiveTerminalId(id)}
+              onCloseTerminal={(id) => killTerminal(id)}
+              onNewTerminal={(projPath) => {
+                if (projPath) setActiveProject(projPath);
+                setIsNewTerminalOpen(true);
+              }}
+              onSelectProject={(path) => setActiveProject(path)}
+              onAddProject={() => setIsAddProjectOpen(true)}
+              onRemoveProject={(path) => {
+                const worktrees = projectWorktrees[path]?.map((w) => w.path) ?? [];
+                void removeProject(path).then((removed) => {
+                  // Removing a project drops the builder's undo histories for it and its worktrees (#248).
+                  if (removed) praxisBuilder.current?.forgetProjects([path, ...worktrees]);
+                });
+              }}
+              onRenameTerminal={renameTerminal}
+              onOpenSettings={(proj) => openWorkspaceSettings(proj)}
+              onOpenSwarm={() => setIsSwarmModalOpen(true)}
+              onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
+              onRemoveWorktree={handleRemoveWorktree}
+              onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
+              onOpenTopos={() => setIsToposOpen(true)}
+              onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
+              onOpenInVsCode={handleOpenInVsCode}
+              onRelaunchTerminal={relaunchTerminal}
+              onToggleTerminalAsk={toggleTerminalLiveMode}
+            />
+          ),
+          "source-control": launcherPanel("source-control"),
+          agents: launcherPanel("agents"),
+          workflows: launcherPanel("workflows"),
+          project: launcherPanel("project"),
         }}
-        onSelectProject={(path) => setActiveProject(path)}
-        onAddProject={() => setIsAddProjectOpen(true)}
-        onRemoveProject={(path) => {
-          const worktrees = projectWorktrees[path]?.map((w) => w.path) ?? [];
-          void removeProject(path).then((removed) => {
-            // Removing a project drops the builder's undo histories for it and its worktrees (#248).
-            if (removed) praxisBuilder.current?.forgetProjects([path, ...worktrees]);
-          });
-        }}
-        onRenameTerminal={renameTerminal}
-        onOpenA2APanel={() => setIsA2AOpen(true)}
-        onOpenSettings={(proj) => openWorkspaceSettings(proj)}
-        onOpenSwarm={() => setIsSwarmModalOpen(true)}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-        onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
-        onRemoveWorktree={handleRemoveWorktree}
-        onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
-        onOpenTopos={() => setIsToposOpen(true)}
-        onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
-        onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
-        onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
-        onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
-        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
-        onOpenInVsCode={handleOpenInVsCode}
-        onRelaunchTerminal={relaunchTerminal}
-        onToggleTerminalAsk={toggleTerminalLiveMode}
       />
 
       {/* Main Workspace Stage */}

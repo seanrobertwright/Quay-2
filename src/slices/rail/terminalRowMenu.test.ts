@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// The terminal menu on a Rail row (#508): the real `TerminalRow` rendered into happy-dom, with
+// The terminal menu on a Projects panel row (#508): the real `TerminalRow` rendered into happy-dom, with
 // only Tauri's `invoke` (event listening and the opener plugin) and the clipboard faked. They
 // check what a user observes: that the menu opens without changing the selection, where it
 // opens, where focus goes, and what choosing an item does.
@@ -78,7 +78,7 @@ function rightClick(el: HTMLElement) {
   });
 }
 
-test("right-clicking a terminal's Rail row opens the menu named for it, and leaves the selection alone", () => {
+test("right-clicking a terminal's Projects panel row opens the menu named for it, and leaves the selection alone", () => {
   const row = renderRow();
   rightClick(row);
   assert.equal(menu()?.getAttribute("aria-label"), "Terminal claude-1");

@@ -6,7 +6,7 @@ export type GridSlots = [string | null, string | null, string | null, string | n
  * Picks the four slots for the 2x2 grid when `splitGrid` runs. When a grid is already showing,
  * filled slots stay where they are and only empty slots take the next visible terminal not
  * already in the grid. Switching into the grid from another layout puts the active terminal
- * in slot 0 and fills the rest in rail order.
+ * in slot 0 and fills the rest in Projects panel order.
  */
 export function chooseGridSlots({
   layout,

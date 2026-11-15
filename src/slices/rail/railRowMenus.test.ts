@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// The project and worktree row menus (#509): the real `Rail` rendered into happy-dom, with only
+// The project and worktree row menus (#509): the real `ProjectsPanel` rendered into happy-dom, with only
 // Tauri's `invoke` (the opener plugin), the clipboard and the confirmation prompt faked. They
 // check what a user observes: that a menu opens without changing the active project, where it
 // opens, and what choosing an item does. An element is compared as a boolean, since a failed
@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-const { Rail } = await import("./Rail.tsx");
+const { ProjectsPanel } = await import("./ProjectsPanel.tsx");
 type Project = import("../workspace/types.ts").Project;
 type GitWorktree = import("../git/types.ts").GitWorktree;
 
@@ -28,7 +28,7 @@ const BETA_MAIN: GitWorktree = { ...BETA_WT, path: BETA.path, branch: "refs/head
 
 let invoked: { cmd: string; args: Record<string, unknown> }[] = [];
 let mounted: { root: Root; container: HTMLElement } | null = null;
-/** What the Rail's handlers were asked to do, in order. */
+/** What the Projects panel's handlers were asked to do, in order. */
 let calls: string[] = [];
 
 beforeEach(() => {
@@ -49,7 +49,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-/** Renders the Rail with `alpha` active, and `beta` holding one worktree besides its main one. */
+/** Renders the Projects panel with `alpha` active, and `beta` holding one worktree besides its main one. */
 function renderRail() {
   const container = document.createElement("div");
   document.body.append(container);
@@ -58,7 +58,7 @@ function renderRail() {
   const log = (name: string) => (...args: unknown[]) => void calls.push([name, ...args.map(String)].join(" "));
   act(() =>
     root.render(
-      createElement(Rail, {
+      createElement(ProjectsPanel, {
         projects: [ALPHA, BETA],
         activeProject: ALPHA.path,
         terminals: [],
@@ -71,7 +71,6 @@ function renderRail() {
         onSelectProject: log("select"),
         onAddProject: log("addProject"),
         onRemoveProject: log("removeProject"),
-        onOpenA2APanel: log("a2a"),
         onOpenSettings: (project: Project) => void calls.push(`settings ${project.path}`),
         onOpenSwarm: log("swarm"),
         onOpenTopos: log("topos"),

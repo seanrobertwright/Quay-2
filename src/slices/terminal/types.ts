@@ -34,7 +34,7 @@ export function isAgentRunKind(kind?: RunKind | string | null): boolean {
 }
 /**
  * What a control that restarts a terminal's process is called: "Relaunch agent" on an agent
- * terminal, plain "Relaunch" on a shell, which has no agent. The terminal menu and the Rail
+ * terminal, plain "Relaunch" on a shell, which has no agent. The terminal menu and the Projects panel
  * row's relaunch button both use it.
  */
 export function relaunchLabel(kind?: RunKind | string | null): "Relaunch agent" | "Relaunch" {

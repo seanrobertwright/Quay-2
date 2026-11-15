@@ -8,7 +8,7 @@ import { terminalBodyMenu, terminalMenu, terminalMenuLabel, type TerminalMenuTar
 
 const claude: TerminalMenuTarget = { name: "claude-1", run_kind: "claude", claude_status: "working", live_mode: "skip" };
 
-test("a running agent's Rail row menu lists the terminal items in their groups, without the pane-only ones", () => {
+test("a running agent's Projects panel row menu lists the terminal items in their groups, without the pane-only ones", () => {
   assert.deepEqual(shown(terminalMenu(claude, { kind: "rail" })), [
     "Rename…",
     "Relaunch agent (disabled: Still running)",

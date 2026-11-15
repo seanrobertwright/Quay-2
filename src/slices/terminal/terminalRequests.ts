@@ -1,5 +1,5 @@
 // Asking a terminal's pane to run one of its own actions from elsewhere (#508): the terminal
-// menu on a Rail row redraws the screen or opens the scrollback search of a pane it isn't in.
+// menu on a Projects panel row redraws the screen or opens the scrollback search of a pane it isn't in.
 // The pane runs the same `repaintTerminal` and search toggle as its header buttons.
 
 /** What a pane can be asked to do. */
