@@ -14,6 +14,7 @@ import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import type { TicketActions, TicketToStart } from "./slices/companion/IssueView";
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
 import { diffLensFor } from "./slices/companion/diffLensTarget";
@@ -484,6 +485,30 @@ export function App() {
     openNewWorktreeModal(activeRootRepo, issue.number);
   };
 
+  // The Ticket view's Implement split button starts work through the same handlers as the GitHub
+  // drawer. They change on every render, so the companion gets one stable object that calls the
+  // latest of them.
+  const ticketHandlers = useRef({ handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue });
+  ticketHandlers.current = { handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue };
+  const ticketActions = useMemo<TicketActions>(() => {
+    const asIssue = (ticket: TicketToStart): GithubIssue => ({
+      number: ticket.number,
+      title: ticket.title,
+      state: "OPEN",
+      labels: [],
+      assignees: [],
+      updatedAt: "",
+      url: "",
+      blockedBy: [],
+      openBlockerCount: 0,
+    });
+    return {
+      implement: (ticket) => void ticketHandlers.current.handleImplementIssue(asIssue(ticket)),
+      triage: (ticket) => void ticketHandlers.current.handleTriageIssue(asIssue(ticket)),
+      newWorktree: (ticket) => ticketHandlers.current.handleCreateWorktreeForIssue(asIssue(ticket)),
+    };
+  }, []);
+
   // 1-Click: Auto-fix Pre-PR Audit Violations with Claude
   const handleFixAuditWithClaude = async (violations: AuditViolation[]) => {
     const summary = violations
@@ -697,6 +722,7 @@ export function App() {
         prefs={companionStore}
         linking={linking}
         lens={companionLens}
+        ticketActions={ticketActions}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
