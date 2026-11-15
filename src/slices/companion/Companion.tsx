@@ -313,6 +313,12 @@ export const Companion = ({
   );
 };
 
+/** The look of a companion header toggle such as Diff lens or Wide, pressed or not. */
+const headerToggleClass = (pressed: boolean) =>
+  `shrink-0 h-7 px-2.5 rounded-md border text-xs ${
+    pressed ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
+  }`;
+
 /**
  * The companion header's Diff lens button, while the selected terminal has a pull request: it
  * opens the diff lens on that pull request, and closes it while it is open.
@@ -327,9 +333,7 @@ const DiffLensToggle = ({ context, lens }: { context: CompanionContext; lens: Co
       aria-pressed={open}
       title={open ? "Close the diff lens" : "Open every diff of this pull request over the terminal"}
       onClick={() => (open ? lens.close() : lens.openDiff(target))}
-      className={`shrink-0 h-7 px-2.5 rounded-md border text-xs ${
-        open ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
-      }`}
+      className={headerToggleClass(open)}
     >
       Diff lens
     </button>
@@ -346,9 +350,7 @@ const WideToggle = ({ topos }: { topos: CompanionTopos }) => (
     aria-pressed={topos.wide}
     title={topos.wide ? "Close the Topos lens" : "Open Topos wide over the terminal"}
     onClick={() => (topos.wide ? topos.closeWide() : topos.openWide())}
-    className={`shrink-0 h-7 px-2.5 rounded-md border text-xs ${
-      topos.wide ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
-    }`}
+    className={headerToggleClass(topos.wide)}
   >
     Wide
   </button>
