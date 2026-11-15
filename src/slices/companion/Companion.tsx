@@ -12,6 +12,7 @@ import {
 import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
+import { PullRequestView } from "./PullRequestView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
@@ -65,10 +66,32 @@ export const REPOSITORY_VIEW: CompanionView<CompanionContext> = {
 };
 
 /**
- * The views the companion registers, in the order its view switch lists them. Each later view
- * (Pull request, Ticket, Activity, Run, Topos, Inspector) is added here.
+ * The Pull request view: the terminal's pull request slot, with its header and readiness card.
+ * Keyed by the pull request, so another one starts with a fresh merge control.
  */
-export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [REPOSITORY_VIEW];
+export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
+  id: "pull-request",
+  label: "Pull request",
+  available: ({ link }) => !!link?.pull_request,
+  render: ({ repository, link }) => {
+    const slot = link?.pull_request;
+    if (!slot) return null;
+    return (
+      <PullRequestView
+        key={`${repository.path}|${slot.repo ?? ""}#${slot.number}`}
+        repoPath={repository.path}
+        repo={slot.repo}
+        number={slot.number}
+      />
+    );
+  },
+};
+
+/**
+ * The views the companion registers, in the order its view switch lists them. Each later view
+ * (Ticket, Activity, Run, Topos, Inspector) is added here.
+ */
+export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, REPOSITORY_VIEW];
 
 /** The divider's hit area and the line it draws, in CSS px. */
 const DIVIDER_HIT_WIDTH = 9;

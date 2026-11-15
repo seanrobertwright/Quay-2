@@ -73,3 +73,63 @@ export interface GithubRepoInfo {
   nwo: string;
   is_authenticated: boolean;
 }
+
+/** How a pull request's head commit checks stand, counted by outcome. */
+export interface PullRequestCheckCounts {
+  /** Failed, timed out, cancelled, or waiting on an action. */
+  failing: number;
+  /** Queued or running. */
+  pending: number;
+  /** Skipped, neutral or stale. */
+  skipped: number;
+  passing: number;
+}
+
+/** GitHub's `PullRequestState`. */
+export type PullRequestState = "OPEN" | "MERGED" | "CLOSED";
+
+/** GitHub's `MergeableState`. */
+export type MergeableState = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+
+/** GitHub's `MergeStateStatus`. */
+export type MergeStateStatus = "BEHIND" | "BLOCKED" | "CLEAN" | "DIRTY" | "DRAFT" | "HAS_HOOKS" | "UNKNOWN" | "UNSTABLE";
+
+/** GitHub's `PullRequestReviewDecision`. */
+export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED";
+
+/**
+ * What the companion's pull request view reads about one pull request: its header, and what the
+ * readiness card needs to say whether it can merge. Mirrors `PullRequestReadiness` in the backend.
+ */
+export interface PullRequestReadiness {
+  /** `owner/name` of the pull request's repository. */
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  state: PullRequestState;
+  isDraft: boolean;
+  baseRefName: string;
+  headRefName: string;
+  /** The head commit's SHA, which Restore branch points the branch back at. */
+  headRefOid: string;
+  /** Whether the head branch is still on GitHub. */
+  headBranchExists: boolean;
+  /** Whether the head branch is in a fork. */
+  isCrossRepository: boolean;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergeable: MergeableState;
+  mergeStateStatus: MergeStateStatus;
+  /** Null when no review is asked for. */
+  reviewDecision: ReviewDecision | null;
+  checks: PullRequestCheckCounts;
+  /** Conversation comments and review threads; `unresolved` counts review threads only. */
+  comments: { total: number; unresolved: number };
+  commits: number;
+}
+
+/** A merge method GitHub's merge API takes. */
+export type MergeMethod = "merge" | "squash" | "rebase";
