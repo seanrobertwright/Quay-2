@@ -5,8 +5,11 @@ export interface GithubPage<T> {
   hasNextPage: boolean;
 }
 
-/** Items per page the drawer asks for. */
+/** Items per page a paged list asks for. */
 export const GITHUB_PAGE_SIZE = 50;
+
+/** Most items the Source control panel loads into one list before it stops paging. */
+export const GITHUB_LIST_CAP = 500;
 
 /** Everything loaded so far for one list, plus where the next page starts. */
 export interface PagedList<T> {
@@ -40,7 +43,17 @@ export function appendPage<T extends { number: number }>(
   };
 }
 
-/** "50 loaded" while more pages remain, "All 73 loaded" once the list is complete. */
-export function loadedCountLabel(list: PagedList<unknown>): string {
-  return list.hasNextPage ? `${list.items.length} loaded` : `All ${list.items.length} loaded`;
+/** Whether another page should load: more remain and the list holds fewer than `cap` items. */
+export function canLoadMore(list: PagedList<unknown>, cap: number = Infinity): boolean {
+  return list.hasNextPage && list.items.length < cap;
+}
+
+/**
+ * "50 loaded" while more pages remain, "All 73 loaded" once the list is complete, and "First 500
+ * shown; filter to narrow the list" once it reaches `cap` with more left on GitHub.
+ */
+export function loadedCountLabel(list: PagedList<unknown>, cap: number = Infinity): string {
+  if (!list.hasNextPage) return `All ${list.items.length} loaded`;
+  if (list.items.length >= cap) return `First ${list.items.length} shown; filter to narrow the list`;
+  return `${list.items.length} loaded`;
 }

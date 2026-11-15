@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendPage, emptyPagedList, loadedCountLabel } from "./paging.ts";
+import { appendPage, canLoadMore, emptyPagedList, loadedCountLabel } from "./paging.ts";
 
 const items = (...numbers: number[]) => numbers.map((number) => ({ number }));
 
@@ -28,4 +28,15 @@ test("a page with no cursor ends paging even if it claims a next page", () => {
 test("the count says how many are loaded and whether that is all of them", () => {
   assert.equal(loadedCountLabel({ items: items(1, 2), endCursor: "a", hasNextPage: true }), "2 loaded");
   assert.equal(loadedCountLabel({ items: items(1, 2), endCursor: null, hasNextPage: false }), "All 2 loaded");
+});
+
+test("a list stops paging at its cap, and its count says so", () => {
+  const under = { items: items(1, 2), endCursor: "a", hasNextPage: true };
+  assert.equal(canLoadMore(under, 3), true);
+  const atCap = { items: items(1, 2, 3), endCursor: "b", hasNextPage: true };
+  assert.equal(canLoadMore(atCap, 3), false);
+  assert.equal(loadedCountLabel(atCap, 3), "First 3 shown; filter to narrow the list");
+  const complete = { items: items(1, 2, 3), endCursor: null, hasNextPage: false };
+  assert.equal(canLoadMore(complete, 3), false);
+  assert.equal(loadedCountLabel(complete, 3), "All 3 loaded");
 });
