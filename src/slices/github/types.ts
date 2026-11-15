@@ -85,6 +85,18 @@ export interface PullRequestCheckCounts {
   passing: number;
 }
 
+/** GitHub's `PullRequestState`. */
+export type PullRequestState = "OPEN" | "MERGED" | "CLOSED";
+
+/** GitHub's `MergeableState`. */
+export type MergeableState = "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+
+/** GitHub's `MergeStateStatus`. */
+export type MergeStateStatus = "BEHIND" | "BLOCKED" | "CLEAN" | "DIRTY" | "DRAFT" | "HAS_HOOKS" | "UNKNOWN" | "UNSTABLE";
+
+/** GitHub's `PullRequestReviewDecision`. */
+export type ReviewDecision = "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED";
+
 /**
  * What the companion's pull request view reads about one pull request: its header, and what the
  * readiness card needs to say whether it can merge. Mirrors `PullRequestReadiness` in the backend.
@@ -96,8 +108,7 @@ export interface PullRequestReadiness {
   title: string;
   body: string;
   url: string;
-  /** `OPEN`, `MERGED` or `CLOSED`. */
-  state: string;
+  state: PullRequestState;
   isDraft: boolean;
   baseRefName: string;
   headRefName: string;
@@ -110,12 +121,10 @@ export interface PullRequestReadiness {
   additions: number;
   deletions: number;
   changedFiles: number;
-  /** GitHub's `MergeableState`: `MERGEABLE`, `CONFLICTING` or `UNKNOWN`. */
-  mergeable: string;
-  /** GitHub's `MergeStateStatus`, such as `CLEAN`, `BLOCKED`, `BEHIND`, `DIRTY` or `UNSTABLE`. */
-  mergeStateStatus: string;
-  /** `APPROVED`, `CHANGES_REQUESTED` or `REVIEW_REQUIRED`; null when no review is asked for. */
-  reviewDecision: string | null;
+  mergeable: MergeableState;
+  mergeStateStatus: MergeStateStatus;
+  /** Null when no review is asked for. */
+  reviewDecision: ReviewDecision | null;
   checks: PullRequestCheckCounts;
   /** Conversation comments and review threads; `unresolved` counts review threads only. */
   comments: { total: number; unresolved: number };

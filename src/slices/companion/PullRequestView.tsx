@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { MergeMethod, PullRequestReadiness } from "../github/types.ts";
+import type { MergeMethod, PullRequestReadiness, PullRequestState } from "../github/types.ts";
 import {
   commitMessageDefaults,
   DEFAULT_MERGE_METHOD,
   MERGE_METHODS,
+  mergeMethodLabel,
   readiness,
   readinessCells,
   type ReadinessCell,
@@ -19,7 +20,7 @@ interface MergeOutcome {
   branchError: string | null;
 }
 
-const PILL: Record<string, { label: string; className: string }> = {
+const PILL: Record<PullRequestState | "DRAFT", { label: string; className: string }> = {
   OPEN: { label: "Open", className: "bg-[#238636]" },
   DRAFT: { label: "Draft", className: "bg-[#6e7681]" },
   MERGED: { label: "Merged", className: "bg-[#8957e5]" },
@@ -73,6 +74,7 @@ export const PullRequestView = (location: PullRequestLocation) => {
 
 /** GitHub's pull request header: title and number, state pill, base and head branch chips, diffstat. */
 const PullRequestHeader = ({ pr }: { pr: PullRequestReadiness }) => {
+  // A response missing its state still renders, under a grey pill.
   const pill = PILL[pr.state === "OPEN" && pr.isDraft ? "DRAFT" : pr.state] ?? { label: pr.state, className: "bg-[#6e7681]" };
   return (
     <header data-pr-header className="space-y-2">
@@ -115,16 +117,22 @@ const ReadinessCard = ({
   location: PullRequestLocation;
   onChanged: () => void;
 }) => {
-  const said = readiness(pr);
+  const verdict = readiness(pr);
   return (
     <section aria-label="Readiness" className="rounded-md border border-[#30363d] bg-[#161b22]">
       <div className="p-3 space-y-2">
-        <h3 className={`text-sm font-semibold ${HEADLINE_TONE[said.tone]}`}>{said.headline}</h3>
-        <p className="text-[#8b949e]">{said.reason}</p>
-        {said.control.kind === "merge" ? (
-          <MergeControl pr={pr} location={location} enabled={said.control.enabled} onChanged={onChanged} />
+        <h3 className={`text-sm font-semibold ${HEADLINE_TONE[verdict.tone]}`}>{verdict.headline}</h3>
+        <p className="text-[#8b949e]">{verdict.reason}</p>
+        {verdict.control.kind === "merge" ? (
+          <MergeControl pr={pr} location={location} enabled={verdict.control.enabled} onChanged={onChanged} />
         ) : (
-          <AfterControls pr={pr} location={location} branch={said.control.branch} reopen={said.control.reopen} onChanged={onChanged} />
+          <AfterControls
+            pr={pr}
+            location={location}
+            branch={verdict.control.branch}
+            reopen={verdict.control.reopen}
+            onChanged={onChanged}
+          />
         )}
       </div>
       <ul className="grid grid-cols-4 border-t border-[#30363d]">
@@ -227,7 +235,7 @@ const MergeControl = ({
   const { busy, failure, run } = useAction(onChanged);
   const menuId = useId();
   const toggle = useRef<HTMLButtonElement>(null);
-  const label = MERGE_METHODS.find((m) => m.method === method)?.label ?? "Merge";
+  const label = mergeMethodLabel(method);
   const closeMenu = () => {
     setMenuOpen(false);
     toggle.current?.focus();
@@ -377,7 +385,7 @@ const ConfirmMerge = ({
   const [message, setMessage] = useState(defaults?.message ?? "");
   // A fork's branch is not Quay's to delete.
   const [deleteBranch, setDeleteBranch] = useState(!pr.isCrossRepository);
-  const label = MERGE_METHODS.find((m) => m.method === method)?.label ?? "Merge";
+  const label = mergeMethodLabel(method);
   const field = "w-full rounded-md border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-[#c9d1d9]";
   return (
     <form
@@ -437,49 +445,29 @@ const AfterControls = ({
   onChanged: () => void;
 }) => {
   const { busy, failure, run } = useAction(onChanged);
-  const at = { repoPath: location.repoPath, repo: location.repo };
+  const target = { repoPath: location.repoPath, repo: location.repo };
+  /** A button that runs `command` on the pull request's repository with `args`, named `what`. */
+  const action = (what: string, command: string, args: Record<string, unknown>) => (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() =>
+        void run(what, async () => {
+          await invoke(command, { ...target, ...args });
+          return null;
+        })
+      }
+      className={SECONDARY}
+    >
+      {what}
+    </button>
+  );
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        {branch === "delete" && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run("Delete branch", async () => {
-              await invoke("delete_github_branch", { ...at, branch: pr.headRefName });
-              return null;
-            })}
-            className={SECONDARY}
-          >
-            Delete branch
-          </button>
-        )}
-        {branch === "restore" && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run("Restore branch", async () => {
-              await invoke("restore_github_branch", { ...at, branch: pr.headRefName, sha: pr.headRefOid });
-              return null;
-            })}
-            className={SECONDARY}
-          >
-            Restore branch
-          </button>
-        )}
-        {reopen && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run("Reopen", async () => {
-              await invoke("reopen_github_pr", { ...at, number: location.number });
-              return null;
-            })}
-            className={SECONDARY}
-          >
-            Reopen
-          </button>
-        )}
+        {branch === "delete" && action("Delete branch", "delete_github_branch", { branch: pr.headRefName })}
+        {branch === "restore" && action("Restore branch", "restore_github_branch", { branch: pr.headRefName, sha: pr.headRefOid })}
+        {reopen && action("Reopen", "reopen_github_pr", { number: location.number })}
       </div>
       <Failure text={failure} />
     </div>

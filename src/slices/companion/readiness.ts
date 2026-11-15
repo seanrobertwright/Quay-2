@@ -1,4 +1,4 @@
-import type { MergeMethod, PullRequestReadiness } from "../github/types.ts";
+import type { MergeMethod, MergeStateStatus, PullRequestReadiness } from "../github/types.ts";
 
 /** The colour family the readiness card's headline takes. */
 export type ReadinessTone = "ready" | "failing" | "blocked" | "pending" | "merged" | "closed";
@@ -22,7 +22,7 @@ export interface Readiness {
 }
 
 /** Merge states in which GitHub takes a merge: clean, failing checks that are not required, or hooks to run. */
-const MERGEABLE_STATES = new Set(["CLEAN", "UNSTABLE", "HAS_HOOKS"]);
+const MERGEABLE_STATES: ReadonlySet<MergeStateStatus> = new Set(["CLEAN", "UNSTABLE", "HAS_HOOKS"]);
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -76,13 +76,13 @@ export function readiness(pr: PullRequestReadiness): Readiness {
     return say("blocked", "Merging is blocked", "A branch protection rule blocks this merge.");
   }
   if (!enabled) return say("pending", "Checking mergeability", "GitHub is still working out whether this can merge.");
-  const ran =
+  const checksReason =
     total === 0
       ? "No checks ran on this branch."
       : passing === 0
         ? "Every check was skipped."
         : `All ${plural(passing, "check")} passed${skipped > 0 ? `, ${skipped} skipped` : ""}.`;
-  return say("ready", "Ready to merge", ran);
+  return say("ready", "Ready to merge", checksReason);
 }
 
 /** A readiness card cell. Its detail comes in a later build. */
@@ -163,6 +163,10 @@ export const MERGE_METHODS: readonly { method: MergeMethod; label: string }[] = 
   { method: "squash", label: "Squash and merge" },
   { method: "rebase", label: "Rebase and merge" },
 ];
+
+/** The merge split button's text for `method`. */
+export const mergeMethodLabel = (method: MergeMethod): string =>
+  MERGE_METHODS.find((m) => m.method === method)?.label ?? "Merge";
 
 /** The method the merge split button starts on. */
 export const DEFAULT_MERGE_METHOD: MergeMethod = "squash";

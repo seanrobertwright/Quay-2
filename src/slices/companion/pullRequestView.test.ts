@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { TerminalInfo, TerminalLink } from "../terminal/types.ts";
-import type { PullRequestReadiness } from "../github/types.ts";
+import type { PullRequestReadiness, PullRequestState } from "../github/types.ts";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
 
@@ -146,7 +146,7 @@ test("merge is a split button on squash by default, whose menu picks merge commi
 });
 
 test("the confirm step shows the commit message and Delete branch after merge, ticked, then merges with them", async () => {
-  let state = "OPEN";
+  let state: PullRequestState = "OPEN";
   const { container, calls } = await render((cmd) => {
     if (cmd === "merge_github_pr") {
       state = "MERGED";
@@ -194,7 +194,7 @@ test("a failed merge says why, and the merge control stays", async () => {
 });
 
 test("a closed pull request offers Delete branch and Reopen, and each acts on GitHub", async () => {
-  let state = "CLOSED";
+  let state: PullRequestState = "CLOSED";
   let branch = true;
   const { container, calls } = await render((cmd) => {
     if (cmd === "reopen_github_pr") state = "OPEN";
