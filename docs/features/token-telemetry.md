@@ -33,6 +33,10 @@ Quay 2 calculates costs using official Anthropic API pricing tiers:
 
 ---
 
+## Spend Ticker on the Module Bar
+
+The bottom of the module bar shows today's spend, counted over the UTC day. Click it to open the same telemetry modal.
+
 ## Live Spend Pill in the Projects Panel
 
 At the bottom of the Projects panel, Quay 2 displays your live cumulative spend:
