@@ -13,6 +13,7 @@ import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, typ
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
 import { PullRequestView } from "./PullRequestView.tsx";
+import { IssueView, type TicketActions } from "./IssueView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
@@ -48,7 +49,15 @@ export interface CompanionContext {
   linking: CompanionLinking | null;
   /** The diff lens, or null where the companion opens none (as in some tests). */
   lens: CompanionLens | null;
+  /** Starts work on a ticket, or null where the companion starts none (as in some tests). */
+  ticketActions: TicketActions | null;
+  /** Shows `view` for the terminal, as the view switch does. */
+  show: (view: CompanionViewId) => void;
 }
+
+/** Whether `slot` holds `ref`; a slot without a repository holds the terminal's own repository's. */
+const holds = (slot: LinkRef | null | undefined, ref: LinkRef) =>
+  !!slot && slot.number === ref.number && (slot.repo === null || ref.repo === null || slot.repo === ref.repo);
 
 /** Whether `link` fills either slot. */
 export function isLinked(link: TerminalLink | null): boolean {
@@ -110,10 +119,38 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
 };
 
 /**
- * The views the companion registers, in the order its view switch lists them. Each later view
- * (Ticket, Activity, Run, Topos, Inspector) is added here.
+ * The Ticket view: the terminal's ticket slot, with its header and status card. Keyed by the
+ * ticket, so another one starts with its own arrival cell.
  */
-export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, REPOSITORY_VIEW];
+export const TICKET_VIEW: CompanionView<CompanionContext> = {
+  id: "ticket",
+  label: "Ticket",
+  available: ({ link }) => !!link?.ticket,
+  render: ({ terminal, repository, link, linking, ticketActions, show }) => {
+    const slot = link?.ticket;
+    if (!slot) return null;
+    return (
+      <IssueView
+        key={`${repository.path}|${slot.repo ?? ""}#${slot.number}`}
+        repoPath={repository.path}
+        repo={slot.repo}
+        number={slot.number}
+        actions={ticketActions}
+        showTicket={linking && ((ref) => linking.pin(terminal.id, "ticket", ref))}
+        showPullRequest={(ref) => {
+          if (!holds(link?.pull_request, ref)) linking?.pin(terminal.id, "pull_request", ref);
+          show("pull-request");
+        }}
+      />
+    );
+  },
+};
+
+/**
+ * The views the companion registers, in the order its view switch lists them. Each later view
+ * (Activity, Run, Topos, Inspector) is added here.
+ */
+export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, TICKET_VIEW, REPOSITORY_VIEW];
 
 /** The divider's hit area and the line it draws, in CSS px. */
 const DIVIDER_HIT_WIDTH = 9;
@@ -131,11 +168,25 @@ interface CompanionProps {
   linking?: CompanionLinking | null;
   /** The diff lens; without it the companion offers none. */
   lens?: CompanionLens | null;
+  /** Starts work on a ticket; without it the Ticket view offers no Implement. */
+  ticketActions?: TicketActions | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
-export const Companion = ({ selectedTerminal, projects, projectWorktrees, views, prefs, linking = null, lens = null }: CompanionProps) => {
+export const Companion = ({
+  selectedTerminal,
+  projects,
+  projectWorktrees,
+  views,
+  prefs,
+  linking = null,
+  lens = null,
+  ticketActions = null,
+}: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
+  // The view picked on the switch holds while its terminal stays selected and still has it.
+  // Selecting another terminal forgets it, so every selection starts from the first view.
+  const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
   const context = useMemo<CompanionContext | null>(
     () =>
       selectedTerminal
@@ -145,16 +196,19 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
             link: linking ? linking.linkOf(selectedTerminal) : (selectedTerminal.link ?? null),
             linking,
             lens,
+            ticketActions,
+            show: (view: CompanionViewId) => setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions],
   );
-  // The view picked on the switch holds while its terminal stays selected and still has it.
-  // Selecting another terminal forgets it, so every selection starts from the first view.
-  const [picked, setPicked] = useState<{ terminalId: string; view: CompanionViewId } | null>(null);
   const selectedId = context?.terminal.id ?? null;
   if (picked && picked.terminalId !== selectedId) setPicked(null);
   const choices = context ? switchableViews(views, context) : [];
+  // While both slots are filled, the slot switch in the terminal link reaches the ticket, and the
+  // view switch lists the pull request alone for the pair.
+  const bothSlots = !!(context?.link?.ticket && context.link.pull_request);
+  const viewChoices = bothSlots ? choices.filter((view) => view.id !== TICKET_VIEW.id) : choices;
   const pickedView =
     context && picked?.terminalId === context.terminal.id ? choices.find((view) => view.id === picked.view) : undefined;
   const shownId = pickedView?.id ?? (context ? firstView(views, context, prefs.readOpensOn()) : null);
@@ -174,7 +228,7 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
         <header className="shrink-0 flex flex-col border-b border-[#30363d] bg-[#161b22]">
           <div className="h-12 px-3 flex items-center">
             <ViewSwitch
-              views={choices}
+              views={viewChoices}
               shown={shown.id}
               onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
             />
@@ -185,6 +239,15 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
               link={context.link}
               onPin={(slot, ref) => linking?.pin(context.terminal.id, slot, ref)}
               onUnpin={(slot) => linking?.unpin(context.terminal.id, slot)}
+              slotSwitch={
+                bothSlots
+                  ? {
+                      shown: shown.id === "ticket" ? "ticket" : shown.id === PULL_REQUEST_VIEW.id ? "pull_request" : null,
+                      onPick: (slot) =>
+                        setPicked({ terminalId: context.terminal.id, view: slot === "ticket" ? "ticket" : PULL_REQUEST_VIEW.id }),
+                    }
+                  : null
+              }
             />
           )}
         </header>

@@ -1,5 +1,5 @@
 // Unit tests for which companion view shows first (#636): the Companion opens on setting's view
-// when the selected terminal has it, else Repository.
+// when the selected terminal has it, else the first registered view it has, else Repository.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { firstView, switchableViews, type CompanionView } from "./companionViews.ts";
@@ -27,9 +27,10 @@ test("the setting's view shows first when the terminal has it", () => {
   assert.equal(firstView([repository, pullRequest, ticket], both, "ticket"), "ticket");
 });
 
-test("a setting whose view the terminal lacks falls back to Repository", () => {
+test("a setting whose view the terminal lacks falls back to the first registered view it has, else Repository", () => {
   const ticketOnly = { hasPr: false, hasTicket: true };
-  assert.equal(firstView([repository, pullRequest, ticket], ticketOnly, "pull-request"), "repository");
+  assert.equal(firstView([pullRequest, ticket, repository], ticketOnly, "pull-request"), "ticket");
+  assert.equal(firstView([pullRequest, ticket], { hasPr: false, hasTicket: false }, "pull-request"), "repository");
 });
 
 test("the view switch lists the registered views the terminal has, in registration order", () => {

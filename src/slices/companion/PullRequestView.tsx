@@ -253,7 +253,7 @@ const Cell = ({ cell, open, detailId, onToggle }: { cell: ReadinessCell; open: b
 );
 
 /** A GitHub action under way, so the card's buttons wait, and what came of the last one. */
-function useAction(onChanged: () => void) {
+export function useAction(onChanged: () => void) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const alive = useRef(true);
@@ -282,7 +282,7 @@ function useAction(onChanged: () => void) {
   return { busy, failure, run };
 }
 
-const Failure = ({ text }: { text: string | null }) =>
+export const Failure = ({ text }: { text: string | null }) =>
   text ? (
     <p role="alert" className="text-[#f85149] break-words">
       {text}
