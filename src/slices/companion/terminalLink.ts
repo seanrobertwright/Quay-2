@@ -1,4 +1,4 @@
-import type { LinkRef, LinkSlot, LinkSlotName, LinkSource, TerminalLink } from "../terminal/types.ts";
+import { LINK_SOURCES, type LinkRef, type LinkSlot, type LinkSlotName, type LinkSource, type TerminalLink } from "../terminal/types.ts";
 
 /** A link with neither slot filled and no tie waiting. */
 export const EMPTY_LINK: TerminalLink = { ticket: null, pull_request: null, candidates: [] };
@@ -27,11 +27,10 @@ export interface LinkContext {
   repos: readonly string[];
 }
 
-/** A source's rank: lower is stronger. */
+/** A source's rank: lower is stronger. `LINK_SOURCES` lists the sources strongest first. */
 function strength(slot: Pick<LinkSlot, "source" | "pinned">): number {
-  return slot.pinned ? -1 : LINK_SOURCE_ORDER.indexOf(slot.source);
+  return slot.pinned ? -1 : LINK_SOURCES.indexOf(slot.source);
 }
-const LINK_SOURCE_ORDER: readonly LinkSource[] = ["pin", "launch", "activity", "branch"];
 
 /** Whether a signal from `source` may write a slot that `held` holds. */
 function mayWrite(held: LinkSlot | null, source: AutoLinkSource): boolean {
@@ -74,8 +73,10 @@ export interface PullRequestFacts extends LinkRef {
 /**
  * The link after Quay reads `facts` about a pull request. When it is the linked one, its slot
  * records the state and closing tickets, and the first ticket it closes fills the ticket slot at
- * the pull request's strength, unless a pin or a stronger source holds that slot. A merged or
- * closed pull request keeps its slot. Facts about any other pull request change nothing.
+ * the pull request's strength, unless a pin or a stronger source holds that slot. A pinned pull
+ * request's ticket is filled at the strongest automatic strength, `launch`: it is not a pin, so a
+ * newer launch fact may replace it, and it never overrides a ticket that a launch fact or a pin set. A merged or closed
+ * pull request keeps its slot. Facts about any other pull request change nothing.
  */
 export function applyPullRequestFacts(link: TerminalLink | null, facts: PullRequestFacts, at: number): TerminalLink {
   const current = link ?? EMPTY_LINK;
@@ -86,9 +87,15 @@ export function applyPullRequestFacts(link: TerminalLink | null, facts: PullRequ
   const [first] = facts.closes;
   if (first === undefined) return next;
   const ticket = current.ticket;
-  const ticketStrength = { source: held.source, pinned: false };
-  if (ticket && strength(ticket) < strength(ticketStrength)) return next;
-  return { ...next, ticket: { repo: held.repo, number: first, source: held.source, pinned: false, at } };
+  if (held.source === "pin") {
+    // Only a ticket weaker than launch, or one this pull request filled before, gives way.
+    const derived = ticket !== null && !ticket.pinned && ticket.repo === held.repo && (held.closes ?? []).includes(ticket.number);
+    if (ticket && !derived && strength(ticket) <= strength({ source: "launch", pinned: false })) return next;
+  } else if (!mayWrite(ticket, held.source)) {
+    return next;
+  }
+  const source: AutoLinkSource = held.source === "pin" ? "launch" : held.source;
+  return { ...next, ticket: { repo: held.repo, number: first, source, pinned: false, at } };
 }
 
 /** Whether two refs name the same ticket or pull request. */

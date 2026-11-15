@@ -130,6 +130,17 @@ test("Closes #N never replaces a pinned ticket or one set by a stronger source",
   assert.equal(applyPullRequestFacts(pinned, { repo: null, number: 658, state: "OPEN", closes: [636] }, 150).ticket?.number, 1);
 });
 
+test("a pinned pull request's Closes #N fills the ticket at the strongest automatic strength, never as a pin", () => {
+  const pinned = pinLink(EMPTY_LINK, "pull_request", { repo: null, number: 658 }, 100);
+  const link = applyPullRequestFacts(pinned, { repo: null, number: 658, state: "OPEN", closes: [636] }, 150);
+  assert.deepEqual(link.ticket, { repo: null, number: 636, source: "launch", pinned: false, at: 150 });
+  const relaunched = applyLinkSignal(link, ticket("launch", 637, 200), ctx);
+  assert.equal(relaunched.ticket?.number, 637, "a newer launch fact replaces the derived ticket");
+  const launched = applyLinkSignal(pinned, ticket("launch", 637, 110), ctx);
+  const kept = applyPullRequestFacts(launched, { repo: null, number: 658, state: "OPEN", closes: [636] }, 150);
+  assert.equal(kept.ticket?.number, 637, "a launch-set ticket is not overridden");
+});
+
 test("facts about another pull request than the linked one change nothing", () => {
   const linked = applyLinkSignal(EMPTY_LINK, pr("activity", 658, 100), ctx);
   assert.deepEqual(applyPullRequestFacts(linked, { repo: null, number: 7, state: "MERGED", closes: [6] }, 150), linked);
