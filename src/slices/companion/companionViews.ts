@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** The companion's views. This build registers Repository; later builds register the others. */
+/** The companion's views. This build registers Pull request, Ticket and Repository; later builds register the others. */
 export type CompanionViewId = "pull-request" | "ticket" | "repository" | "activity" | "run" | "topos" | "inspector";
 
 /** The Repository view's id: the view the companion falls back to. */
@@ -26,9 +26,11 @@ export function switchableViews<Ctx>(views: readonly CompanionView<Ctx>[], ctx: 
 
 /**
  * The view the companion shows first for a terminal: the Companion opens on setting's view when
- * it is registered and the terminal has it, else Repository.
+ * it is registered and the terminal has it, else the first registered view the terminal has, else
+ * Repository.
  */
 export function firstView<Ctx>(views: readonly CompanionView<Ctx>[], ctx: Ctx, opensOn: CompanionViewId): CompanionViewId {
   const preferred = views.find((view) => view.id === opensOn);
-  return preferred && preferred.available(ctx) ? preferred.id : REPOSITORY_VIEW_ID;
+  if (preferred && preferred.available(ctx)) return preferred.id;
+  return views.find((view) => view.available(ctx))?.id ?? REPOSITORY_VIEW_ID;
 }

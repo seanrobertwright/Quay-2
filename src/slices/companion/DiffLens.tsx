@@ -5,8 +5,7 @@ import { commentsByPath } from "./cellDetails.ts";
 import { FileDiff } from "./FileDiff.tsx";
 import { useGithubRead } from "./useGithubRead.ts";
 import type { DiffLensTarget } from "./diffLensTarget.ts";
-
-const MUTED = "text-[#8b949e]";
+import { MUTED } from "./buttonStyles.ts";
 
 /** A path's folder, or "" for a file at the repository's root. */
 const folderOf = (path: string) => {

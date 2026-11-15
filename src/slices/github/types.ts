@@ -214,3 +214,83 @@ export interface PullRequestCommit {
   authoredAt: string;
   url: string | null;
 }
+
+/** Where an issue stands. */
+export type IssueState = "OPEN" | "CLOSED";
+
+/** Why an issue was closed, or REOPENED once it is open again; null when GitHub gives none. */
+export type IssueStateReason = "COMPLETED" | "NOT_PLANNED" | "DUPLICATE" | "REOPENED";
+
+/** GitHub's check rollup state for a commit. */
+export type CheckRollupState = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
+
+/** Another issue the Ticket view names: a blocker or the parent. */
+export interface IssueRef {
+  /** `owner/name` of the issue's repository. */
+  repo: string;
+  number: number;
+  title: string;
+  state: IssueState;
+  url: string;
+}
+
+/** A pull request that will close the issue, from GitHub's Development section. */
+export interface IssuePullRequest {
+  repo: string;
+  number: number;
+  title: string;
+  state: PullRequestState;
+  url: string;
+  /** The head commit's check rollup; null with no checks. */
+  checkState: CheckRollupState | null;
+}
+
+/** One conversation comment on an issue. */
+export interface IssueComment {
+  id: string;
+  author: string;
+  /** GitHub's ISO 8601 UTC timestamp. */
+  createdAt: string;
+  body: string;
+  url: string;
+}
+
+/** What the companion's Ticket view reads about one issue. Mirrors `IssueStatus` in the backend. */
+export interface IssueStatus {
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  state: IssueState;
+  stateReason: IssueStateReason | null;
+  /** The issue type's name, or null when it has none. */
+  issueType: string | null;
+  /** Who opened it. */
+  author: string;
+  createdAt: string;
+  /** The signed-in login. */
+  viewer: string;
+  assignees: string[];
+  labels: GithubLabel[];
+  milestone: { title: string; url: string } | null;
+  parent: IssueRef | null;
+  /** The issues that block this one, open and closed. */
+  blockedBy: IssueRef[];
+  /** GitHub's count of open blockers; can exceed the open ones in `blockedBy`. */
+  openBlockerCount: number;
+  /** The pull requests that will close it, open, merged and closed. */
+  pullRequests: IssuePullRequest[];
+  /** The most recent conversation comments, oldest first. */
+  comments: IssueComment[];
+  /** GitHub's count of conversation comments; can exceed `comments.length`. */
+  commentCount: number;
+}
+
+/** What the Ticket view's Edit pickers offer in the issue's repository. */
+export interface IssueChoices {
+  assignees: string[];
+  labels: GithubLabel[];
+  /** The repository's issue types; empty where it has none. */
+  types: string[];
+}
