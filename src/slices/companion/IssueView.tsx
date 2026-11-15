@@ -168,7 +168,7 @@ const Cell = ({ cell, open, detailId, onToggle }: { cell: IssueCell; open: boole
   </li>
 );
 
-/** The state pill's words and colour: Open, or Closed with its reason. */
+/** The state pill's words and colour: Open, Closed, or Closed as not planned or as duplicate. */
 function pill(issue: IssueStatus): { label: string; className: string } {
   if (issue.state === "OPEN") return { label: "Open", className: "bg-[#238636]" };
   if (issue.stateReason === "NOT_PLANNED" || issue.stateReason === "DUPLICATE") {
