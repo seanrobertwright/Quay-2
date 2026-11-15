@@ -26,7 +26,7 @@ interface TerminalRowProps {
   onClose: () => void;
   onRename?: (id: string, newName: string) => void;
   onRelaunch?: (id: string) => void;
-  /** Switches the terminal between Skip and Ask, as the status strip's mode switch does. */
+  /** Switches the terminal between Skip and Ask, as the pane header's Skip/Ask pill does. */
   onToggleAsk?: (id: string, currentMode: PermissionMode) => void;
 }
 

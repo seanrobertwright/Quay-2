@@ -70,7 +70,7 @@ export function neverAsksBeforeTools(kind?: RunKind | string | null): boolean {
 
 /**
  * Whether a terminal of this run kind can switch between Skip and Ask: an agent whose CLI asks
- * before tool calls. The status strip's mode switch and the terminal menu's Ask toggle show
+ * before tool calls. The pane header's Skip/Ask pill and the terminal menu's Ask toggle show
  * under this rule.
  */
 export function offersAskToggle(kind?: RunKind | string | null): boolean {

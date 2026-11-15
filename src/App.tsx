@@ -137,7 +137,7 @@ export function App() {
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
   const attentionQueue = useAttentionQueue(terminals);
-  const { items: waitingItems, pendingPermissionIds, reopenPermissions } = attentionQueue;
+  const { items: waitingItems } = attentionQueue;
 
   // One instance shared by the swarm builder and the command palette
   const { savedSwarms, saveSwarm, removeSwarm } = useSavedSwarms();
@@ -621,8 +621,6 @@ export function App() {
         splitRatio={splitRatio}
         zoomedFromLayout={zoomedFromLayout}
         activeTool={currentTool}
-        pendingPermissionsCount={pendingPermissionIds.length}
-        waitingCount={waitingItems.length}
         onSelectTerminal={selectTerminal}
         onSelectPane={focusPane}
         onSwitchPaneTerminal={switchPaneTerminal}
@@ -634,12 +632,6 @@ export function App() {
         onSplitVertical={splitVertical}
         onSplitGrid={splitGrid}
         onNewTerminal={() => setIsNewTerminalOpen(true)}
-        onOpenActionLog={() => setIsActionLogOpen(true)}
-        onOpenPermissionModal={() => reopenPermissions(pendingPermissionIds)}
-        onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
-        onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
-        onOpenAuditModal={() => setIsAuditModalOpen(true)}
-        onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onToggleLiveMode={toggleTerminalLiveMode}
         onRelaunchTerminal={relaunchTerminal}
         onRenameTerminal={renameTerminal}
