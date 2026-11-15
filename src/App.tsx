@@ -15,6 +15,7 @@ import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
 import { companionPrefs } from "./slices/companion/companionPrefs";
+import { useCompanionLinking } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
@@ -525,6 +526,7 @@ export function App() {
   );
   // localStorage is the WebView's, so the companion's width is kept per machine.
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
+  const { linking, recordLaunch } = useCompanionLinking(terminals, projects, projectWorktrees);
 
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),
@@ -653,6 +655,7 @@ export function App() {
         projectWorktrees={projectWorktrees}
         views={COMPANION_VIEWS}
         prefs={companionStore}
+        linking={linking}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
@@ -817,13 +820,16 @@ export function App() {
         suggestedIssueNumber={worktreeModalTarget?.suggestedIssueNumber}
         onClose={() => setIsNewWorktreeOpen(false)}
         onCreate={async (branch, newBranch, baseBranch, launchClaude) => {
-          await createWorktree(
+          const fromIssue = worktreeModalTarget?.suggestedIssueNumber;
+          const { terminal } = await createWorktree(
             worktreeModalTarget?.repoPath || activeRootRepo,
             branch,
             newBranch,
             baseBranch,
             launchClaude
           );
+          // A worktree created from an issue launches its terminal with that ticket as a launch fact
+          if (terminal && fromIssue) recordLaunch(terminal, fromIssue);
         }}
       />
 
