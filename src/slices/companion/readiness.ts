@@ -85,8 +85,20 @@ export function readiness(pr: PullRequestReadiness): Readiness {
   return say("ready", "Ready to merge", checksReason);
 }
 
-/** A readiness card cell. Its detail comes in a later build. */
+/** A readiness card cell, which opens its detail under the card. */
 export type ReadinessCellId = "checks" | "comments" | "files" | "commits";
+
+/**
+ * The cell the pull request view opens on arrival, on what needs the operator: Checks when a
+ * check is failing, else Comments when a review thread is unresolved, else none. A merged or
+ * closed pull request needs nothing, so it opens none.
+ */
+export function arrivalCell(pr: Pick<PullRequestReadiness, "state" | "checks" | "comments">): ReadinessCellId | null {
+  if (pr.state !== "OPEN") return null;
+  if (pr.checks.failing > 0) return "checks";
+  if (pr.comments.unresolved > 0) return "comments";
+  return null;
+}
 
 /** The colour a bar segment takes. */
 export type SegmentTone = "failing" | "pending" | "skipped" | "passing" | "neutral";
