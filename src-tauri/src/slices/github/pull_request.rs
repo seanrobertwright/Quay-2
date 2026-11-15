@@ -367,7 +367,8 @@ pub struct MergeOutcome {
 
 /// Merges a pull request through GitHub's async merge API, waits for GitHub to report it merged,
 /// then deletes the head branch when `delete_branch` is set. Each `gh` call is killed after
-/// 20 s, and the wait gives up after 58 s with an error that says the merge may still land.
+/// 20 s, and the wait gives up after `MERGE_POLL_ATTEMPTS` polls `MERGE_POLL_INTERVAL` apart with
+/// an error that says the merge may still land.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn merge_github_pr(
