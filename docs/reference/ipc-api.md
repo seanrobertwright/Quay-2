@@ -44,7 +44,7 @@ Hides the plugin hint in a Claude terminal's pane until the terminal is relaunch
 
 ---
 
-## 2. GitHub Companion (`github`)
+## 2. GitHub (`github`)
 
 ### `list_github_issues`
 Retrieves open or closed issues using `gh issue list`, augmented with GraphQL `blockedBy` dependencies.

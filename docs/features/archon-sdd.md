@@ -16,7 +16,7 @@ flowchart TD
     Run --> ADR["Architectural Decision Records (ADRs)"]
     
     DAG --> Inspector["Node Inspector (Status, Output Artifacts, Diffs)"]
-    Github["GitHub Companion"] -->|"Implement with Archon"| Run
+    Github["Companion Ticket view"] -->|"Implement"| Run
 ```
 
 ### 1. Interactive Visual DAG Canvas
@@ -42,9 +42,9 @@ flowchart TD
 
 ---
 
-## 1-Click "Implement with Archon" from GitHub
+## 1-Click "Implement" from GitHub
 
-When browsing GitHub issues in the **GitHub Companion Drawer** (`Ctrl+Shift+B I`), Quay 2 provides a dedicated **"Implement with Archon"** button.
+When you pick an issue in the **Source control** panel (`Ctrl+Shift+B I`), it opens in the companion's Ticket view, whose **Implement** split button starts an Archon run on it.
 
 Clicking this button:
 1. Creates an isolated git worktree branch for the issue.

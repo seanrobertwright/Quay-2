@@ -58,9 +58,9 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | `Ctrl+Shift+B W` | **Create Worktree** | Opens Git Worktree branch creation dialog |
-| `Ctrl+Shift+B D` | **Diff lens** | Opens the diff lens on the selected terminal's pull request; with no pull request linked, opens the Diff Inspector, the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
-| `Ctrl+Shift+B I` | **GitHub Companion** | Toggles GitHub Issues & PR triage drawer |
-| `Ctrl+Shift+B A` | **Pre-PR Audit** | Runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
+| `Ctrl+Shift+B D` | **Diff lens** | Opens the diff lens on the selected terminal's pull request; with no pull request linked, opens the Source control panel and its repo-wide Diffs, the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
+| `Ctrl+Shift+B I` | **Source control** | Opens the Source control panel: the repository's pull requests and issues, Topos, Diffs and Pre-PR Audit. Picking a pull request or issue opens it in the companion for the selected terminal |
+| `Ctrl+Shift+B A` | **Pre-PR Audit** | Opens the Source control panel and runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
 | `Ctrl+Shift+B H` | **Session History** | Opens Claude Code session history and auto-resumer |
 | `Ctrl+Shift+B Q` | **Waiting on You** | Toggles the attention drawer: every session waiting on you across all projects, oldest first. A row focuses its terminal; a finished turn can be dismissed. A permission request is answered in place with **Allow** or **Deny**, and choosing a request put off with **Later** reopens the approval dialog on it. A terminal past its 20 permission requests shows **+N older not shown** on its oldest one. The count on the module bar's **Agents** icon shows how many wait |
 | `Ctrl+Shift+B T` | **Token Spend** | Opens token meter and audio chime settings |

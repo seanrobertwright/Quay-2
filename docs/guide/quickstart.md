@@ -79,10 +79,10 @@ Every Claude Code session launched inside Quay 2 is automatically connected to t
 
 ## 6. Triaging GitHub Issues (`Ctrl+Shift+B I`)
 
-1. Press `Ctrl+Shift+B I` to slide out the **GitHub Companion Drawer**.
-2. View all open issues and pull requests for your repository.
-3. Notice any issues marked with a red **`BLOCKED`** tag: hover over the tag to see the exact issue numbers currently blocking work.
-4. Click **"Implement with Claude"** or **"Implement with Archon"** on any ready issue. Quay will automatically create an isolated worktree branch and prompt the agent to implement the requested solution.
+1. Press `Ctrl+Shift+B I`, or click the **Source control** icon on the module bar, to open the **Source control** panel.
+2. Choose **Pull requests** or **Issues** to see the open ones for your repository; **All** adds closed ones.
+3. Notice any issues marked with a red **Blocked by N** tag: those wait on open blockers.
+4. Select a terminal, then pick a ready issue. It opens in the companion's Ticket view, where **Implement** starts an Archon run on it.
 
 ---
 

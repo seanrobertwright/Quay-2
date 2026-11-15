@@ -47,8 +47,8 @@ features:
     details: Instant isolated branch worktrees with collapsible navigation to maximize workspace visibility.
     icon: 🌿
     link: /features/git-worktrees
-  - title: 🐙 GitHub Companion
-    details: Native GraphQL issue dependency triage with prominent red BLOCKED badges and 1-click agent prompt submission.
+  - title: 🐙 Source Control
+    details: Pull requests and issues in a panel, native GraphQL issue dependency triage, and each pick opened in the companion.
     icon: 🐙
     link: /features/github-integration
   - title: 💰 Live Token Telemetry
