@@ -116,6 +116,14 @@ fn issue_ref(node: &serde_json::Value) -> IssueViewRef {
     }
 }
 
+fn parse_label(node: &serde_json::Value) -> GithubLabel {
+    GithubLabel {
+        name: text(&node["name"]),
+        color: text(&node["color"]),
+        description: node["description"].as_str().map(str::to_string),
+    }
+}
+
 /// A login, or `ghost` for a deleted account, as GitHub shows it.
 fn login(user: &serde_json::Value) -> String {
     user["login"].as_str().unwrap_or("ghost").to_string()
@@ -146,11 +154,7 @@ fn parse_status(stdout: &[u8], stderr: &str) -> Result<IssueStatus, String> {
         assignees: nodes(&issue["assignees"]).iter().map(login).collect(),
         labels: nodes(&issue["labels"])
             .iter()
-            .map(|l| GithubLabel {
-                name: text(&l["name"]),
-                color: text(&l["color"]),
-                description: l["description"].as_str().map(str::to_string),
-            })
+            .map(parse_label)
             .collect(),
         milestone: issue["milestone"]
             .is_object()
@@ -213,11 +217,7 @@ fn parse_choices(stdout: &[u8], stderr: &str) -> Result<IssueChoices, String> {
         assignees: nodes(&repo["assignableUsers"]).iter().map(login).collect(),
         labels: nodes(&repo["labels"])
             .iter()
-            .map(|l| GithubLabel {
-                name: text(&l["name"]),
-                color: text(&l["color"]),
-                description: l["description"].as_str().map(str::to_string),
-            })
+            .map(parse_label)
             .collect(),
         types: Vec::new(),
     })
@@ -258,13 +258,18 @@ impl CloseReason {
     }
 }
 
-fn patch_issue_args(slug: &RepoSlug, number: u32, fields: &[(&str, &str, String)]) -> Vec<String> {
-    let mut args: Vec<String> = vec!["api".into(), "--method".into(), "PATCH".into(), format!("{}/issues/{number}", slug.path())];
+/// `gh api --method <method> <path>`, then each `(flag, field, value)` as `<flag> field=value`.
+fn api_args<'a>(method: &str, path: String, fields: impl IntoIterator<Item = (&'a str, &'a str, String)>) -> Vec<String> {
+    let mut args: Vec<String> = vec!["api".into(), "--method".into(), method.into(), path];
     for (flag, field, value) in fields {
-        args.push((*flag).to_string());
+        args.push(flag.to_string());
         args.push(format!("{field}={value}"));
     }
     args
+}
+
+fn patch_issue_args(slug: &RepoSlug, number: u32, fields: &[(&str, &str, String)]) -> Vec<String> {
+    api_args("PATCH", format!("{}/issues/{number}", slug.path()), fields.iter().map(|(f, k, v)| (*f, *k, v.clone())))
 }
 
 fn close_args(slug: &RepoSlug, number: u32, reason: CloseReason) -> Vec<String> {
@@ -306,21 +311,13 @@ fn check_name(name: &str, what: &str) -> Result<(), String> {
 
 /// Adds (`POST`) or removes (`DELETE`) `logins` as the ticket's assignees.
 fn assignee_args(slug: &RepoSlug, number: u32, method: &str, logins: &[String]) -> Vec<String> {
-    let mut args: Vec<String> = vec!["api".into(), "--method".into(), method.into(), format!("{}/issues/{number}/assignees", slug.path())];
-    for login in logins {
-        args.push("-f".into());
-        args.push(format!("assignees[]={login}"));
-    }
-    args
+    let path = format!("{}/issues/{number}/assignees", slug.path());
+    api_args(method, path, logins.iter().map(|login| ("-f", "assignees[]", login.clone())))
 }
 
 fn add_labels_args(slug: &RepoSlug, number: u32, labels: &[String]) -> Vec<String> {
-    let mut args: Vec<String> = vec!["api".into(), "--method".into(), "POST".into(), format!("{}/issues/{number}/labels", slug.path())];
-    for label in labels {
-        args.push("-f".into());
-        args.push(format!("labels[]={label}"));
-    }
-    args
+    let path = format!("{}/issues/{number}/labels", slug.path());
+    api_args("POST", path, labels.iter().map(|label| ("-f", "labels[]", label.clone())))
 }
 
 /// `text` percent-encoded for one URL path segment: everything but unreserved characters.
@@ -337,7 +334,7 @@ fn path_segment(text: &str) -> String {
 }
 
 fn remove_label_args(slug: &RepoSlug, number: u32, label: &str) -> Vec<String> {
-    vec!["api".into(), "--method".into(), "DELETE".into(), format!("{}/issues/{number}/labels/{}", slug.path(), path_segment(label))]
+    api_args("DELETE", format!("{}/issues/{number}/labels/{}", slug.path(), path_segment(label)), [])
 }
 
 /// One ticket's status, for the companion's issue view. `repo` is the ticket slot's `owner/name`,
