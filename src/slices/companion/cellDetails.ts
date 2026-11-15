@@ -15,13 +15,14 @@ export function groupChecks(checks: readonly PullRequestCheck[]) {
   );
 }
 
-/** The Comments detail's filters. */
+/** A Comments detail filter. */
 export type CommentFilter = "all" | "unresolved" | "mine";
 
-export const COMMENT_FILTERS: readonly { filter: CommentFilter; label: string }[] = [
-  { filter: "all", label: "All" },
-  { filter: "unresolved", label: "Unresolved" },
-  { filter: "mine", label: "Mine" },
+/** The Comments detail's filters, in the order it shows them, each with what it says when it keeps nothing. */
+export const COMMENT_FILTERS: readonly { filter: CommentFilter; label: string; empty: string }[] = [
+  { filter: "all", label: "All", empty: "No comments yet." },
+  { filter: "unresolved", label: "Unresolved", empty: "No unresolved comments." },
+  { filter: "mine", label: "Mine", empty: "No comments of yours." },
 ];
 
 /** Whether the viewer wrote `item`, or any reply in it. */

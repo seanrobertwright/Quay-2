@@ -103,8 +103,9 @@ const ChecksDetail = ({ location }: DetailProps) => {
 const CheckRow = ({ check, location }: { check: PullRequestCheck; location: PullRequestLocation }) => {
   const mark = OUTCOME_MARK[check.outcome];
   const name = check.workflow ? `${check.workflow} / ${check.name}` : check.name;
-  const hasLog = check.outcome === "failing" && check.checkRunId !== null;
-  const [logOpen, setLogOpen] = useState(hasLog);
+  /** The check run whose log the row shows: a failing check run's, and none for a commit status. */
+  const logRunId = check.outcome === "failing" ? check.checkRunId : null;
+  const [logOpen, setLogOpen] = useState(logRunId !== null);
   const logId = useId();
   return (
     <li data-check={check.name} className="rounded-md border border-[#30363d] bg-[#0d1117] p-2 space-y-1">
@@ -116,7 +117,7 @@ const CheckRow = ({ check, location }: { check: PullRequestCheck; location: Pull
           <p className="break-words text-[#c9d1d9]">{name}</p>
           {check.description && <p className={`${MUTED} break-words`}>{check.description}</p>}
         </div>
-        {hasLog && (
+        {logRunId !== null && (
           <button
             type="button"
             aria-expanded={logOpen}
@@ -128,7 +129,7 @@ const CheckRow = ({ check, location }: { check: PullRequestCheck; location: Pull
           </button>
         )}
       </div>
-      {hasLog && logOpen && <CheckLogView id={logId} checkRunId={check.checkRunId as number} location={location} />}
+      {logRunId !== null && logOpen && <CheckLogView id={logId} checkRunId={logRunId} location={location} />}
     </li>
   );
 };
@@ -197,7 +198,7 @@ const CommentsDetail = ({ pr, location, onChanged, initialFilter }: DetailProps 
       </div>
       <ReadState read={read} what="comments" />
       {read.data && items.length === 0 && (
-        <p className={MUTED}>{filter === "all" ? "No comments yet." : filter === "unresolved" ? "No unresolved comments." : "No comments of yours."}</p>
+        <p className={MUTED}>{COMMENT_FILTERS.find((f) => f.filter === filter)?.empty}</p>
       )}
       <ol className="space-y-2">
         {items.map((item) => (
@@ -363,7 +364,7 @@ const patchLines = (patch: string) => {
   });
 };
 
-const FileDiff =({ file }: { file: PullRequestFile }) => (
+const FileDiff = ({ file }: { file: PullRequestFile }) => (
   <article data-file={file.path} aria-label={file.path} className="rounded-md border border-[#30363d] bg-[#0d1117]">
     <header className="flex flex-wrap items-baseline gap-2 border-b border-[#30363d] px-2 py-1">
       <code className="break-all text-[#c9d1d9]">

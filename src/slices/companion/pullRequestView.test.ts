@@ -386,6 +386,19 @@ test("Comments shows the whole timeline, filtered All, Unresolved or Mine, oldes
   assert.match(thread.textContent ?? "", /Because/);
 });
 
+test("each Comments filter says so when it keeps nothing", async () => {
+  const onlyOthers: PullRequestTimeline = { ...timeline, items: timeline.items.filter((item) => item.id === "C1") };
+  const { container } = await render(
+    github((cmd) => (cmd === "get_github_pr_timeline" ? onlyOthers : undefined), { comments: { total: 1, unresolved: 0 } }),
+  );
+  await click(cellButton(container, "comments"));
+  const empty = () => detail(container)?.querySelector("ol")?.previousElementSibling?.textContent;
+  await click(radio(container, "Unresolved"));
+  assert.equal(empty(), "No unresolved comments.");
+  await click(radio(container, "Mine"));
+  assert.equal(empty(), "No comments of yours.");
+});
+
 /** Types `text` into a React-controlled field. */
 const type = (field: HTMLTextAreaElement, text: string) =>
   act(() => {
