@@ -1,5 +1,5 @@
 import type { LinkRef, LinkSlotName } from "../terminal/types.ts";
-import { branchTicket, positiveNumber } from "./linkSignals.ts";
+import { branchTicket, OWNER_NAME_PATTERN, positiveNumber } from "./linkSignals.ts";
 
 /** One entry the Link to... picker offers; picking it pins `ref` to `slot`. */
 export interface LinkChoice {
@@ -48,7 +48,7 @@ export function linkGuesses(branch: string | null, openPullRequests: readonly Pu
 }
 
 /** `#N`, `N` or `owner/name#N`. */
-const NUMBER_QUERY = /^(?:([\w.-]+\/[\w.-]+))?#?(\d+)$/;
+const NUMBER_QUERY = new RegExp(String.raw`^(?:(${OWNER_NAME_PATTERN}))?#?(\d+)$`);
 
 /**
  * The picker's search results for `query`. A number, or `owner/name#N`, offers that pull request

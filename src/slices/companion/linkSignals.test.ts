@@ -6,6 +6,11 @@ import { branchSignals, branchTicket, launchSignals, toolCallActivity } from "./
 
 const call = (command: string, result = "", ok = true) => ({ command, result, ok });
 
+test("gh pr create ignores a pull request URL whose number is not a real one", () => {
+  const activity = toolCallActivity(call("gh pr create --fill", "https://github.com/seanrobertwright/Quay-2/pull/0\n"), 500);
+  assert.deepEqual(activity.signals, []);
+});
+
 test("gh pr create links the pull request whose URL its result prints", () => {
   const activity = toolCallActivity(
     call('git push -u origin ticket-637 && gh pr create --fill --base master', "Creating pull request\nhttps://github.com/seanrobertwright/Quay-2/pull/659\n"),

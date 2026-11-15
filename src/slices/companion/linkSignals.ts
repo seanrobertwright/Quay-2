@@ -18,8 +18,11 @@ export interface ToolCallActivity {
   branch: string | null;
 }
 
+/** A GitHub repository's `owner/name`, as a regular expression fragment with no groups. */
+export const OWNER_NAME_PATTERN = String.raw`[\w.-]+\/[\w.-]+`;
+
 /** A GitHub pull request URL, with its repository and number. */
-const PULL_URL = /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/g;
+const PULL_URL = new RegExp(String.raw`https:\/\/github\.com\/(${OWNER_NAME_PATTERN})\/pull\/(\d+)`, "g");
 
 /**
  * The link signals one tool call gives, read only from the commands the terminal link names:
@@ -129,14 +132,14 @@ function ghTarget(words: readonly string[], switches: ReadonlySet<string>): Link
     }
   }
   if (target === null) return null;
-  const url = lastPullOrIssueUrl(target);
+  const url = pullOrIssueUrl(target);
   if (url) return url;
   const number = positiveNumber(target.replace(/^#/, ""));
   return number === null ? null : { repo: repo && OWNER_NAME.test(repo) ? repo : null, number };
 }
 
 /** `owner/name`, as `-R` takes it. */
-const OWNER_NAME = /^[\w.-]+\/[\w.-]+$/;
+const OWNER_NAME = new RegExp(`^${OWNER_NAME_PATTERN}$`);
 
 /** `text` as a positive whole number, or null when it is anything else. */
 export function positiveNumber(text: string): number | null {
@@ -146,10 +149,10 @@ export function positiveNumber(text: string): number | null {
 }
 
 /** A GitHub pull request or issue URL, whole. */
-const PULL_OR_ISSUE_URL = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\/(\d+)\/?$/;
+const PULL_OR_ISSUE_URL = new RegExp(String.raw`^https:\/\/github\.com\/(${OWNER_NAME_PATTERN})\/(?:pull|issues)\/(\d+)\/?$`);
 
 /** The ref a whole GitHub pull request or issue URL names, or null. */
-function lastPullOrIssueUrl(text: string): LinkRef | null {
+function pullOrIssueUrl(text: string): LinkRef | null {
   const m = PULL_OR_ISSUE_URL.exec(text);
   const number = m ? positiveNumber(m[2]) : null;
   return m && number !== null ? { repo: m[1], number } : null;
@@ -158,7 +161,10 @@ function lastPullOrIssueUrl(text: string): LinkRef | null {
 /** The last pull request URL in `text`. */
 function lastPullUrl(text: string): LinkRef | null {
   let found: LinkRef | null = null;
-  for (const m of text.matchAll(PULL_URL)) found = { repo: m[1], number: Number(m[2]) };
+  for (const m of text.matchAll(PULL_URL)) {
+    const number = positiveNumber(m[2]);
+    if (number !== null) found = { repo: m[1], number };
+  }
   return found;
 }
 
