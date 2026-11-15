@@ -73,3 +73,54 @@ export interface GithubRepoInfo {
   nwo: string;
   is_authenticated: boolean;
 }
+
+/** How a pull request's head commit checks stand, counted by outcome. */
+export interface PullRequestCheckCounts {
+  /** Failed, timed out, cancelled, or waiting on an action. */
+  failing: number;
+  /** Queued or running. */
+  pending: number;
+  /** Skipped, neutral or stale. */
+  skipped: number;
+  passing: number;
+}
+
+/**
+ * What the companion's pull request view reads about one pull request: its header, and what the
+ * readiness card needs to say whether it can merge. Mirrors `PullRequestReadiness` in the backend.
+ */
+export interface PullRequestReadiness {
+  /** `owner/name` of the pull request's repository. */
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  /** `OPEN`, `MERGED` or `CLOSED`. */
+  state: string;
+  isDraft: boolean;
+  baseRefName: string;
+  headRefName: string;
+  /** The head commit's SHA, which Restore branch points the branch back at. */
+  headRefOid: string;
+  /** Whether the head branch is still on GitHub. */
+  headBranchExists: boolean;
+  /** Whether the head branch is in a fork. */
+  isCrossRepository: boolean;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  /** GitHub's `MergeableState`: `MERGEABLE`, `CONFLICTING` or `UNKNOWN`. */
+  mergeable: string;
+  /** GitHub's `MergeStateStatus`, such as `CLEAN`, `BLOCKED`, `BEHIND`, `DIRTY` or `UNSTABLE`. */
+  mergeStateStatus: string;
+  /** `APPROVED`, `CHANGES_REQUESTED` or `REVIEW_REQUIRED`; null when no review is asked for. */
+  reviewDecision: string | null;
+  checks: PullRequestCheckCounts;
+  /** Conversation comments and review threads; `unresolved` counts review threads only. */
+  comments: { total: number; unresolved: number };
+  commits: number;
+}
+
+/** A merge method GitHub's merge API takes. */
+export type MergeMethod = "merge" | "squash" | "rebase";
