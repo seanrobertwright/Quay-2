@@ -68,7 +68,8 @@ export interface CtrlBActions {
   splitVertical(): void;
   splitGrid(): void;
   openSwarmModal(): void;
-  openDiffInspector(): void;
+  /** The diff lens for the selected terminal's pull request, else the repo-wide Diffs. */
+  openDiffs(): void;
   openNewWorktreeModal(): void;
   toggleGithubDrawer(): void;
   openAuditModal(): void;
@@ -110,7 +111,7 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["'", "splitVertical"],
   ["g", "splitGrid"],
   ["s", "openSwarmModal"],
-  ["d", "openDiffInspector"],
+  ["d", "openDiffs"],
   ["w", "openNewWorktreeModal"],
   ["i", "toggleGithubDrawer"],
   ["a", "openAuditModal"],

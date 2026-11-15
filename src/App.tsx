@@ -13,7 +13,13 @@ import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
-import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import { Companion, COMPANION_VIEWS, type CompanionLens } from "./slices/companion/Companion";
+import { DiffLens } from "./slices/companion/DiffLens";
+import { diffLensFor, type DiffLensTarget } from "./slices/companion/diffLensTarget";
+import { terminalRepository } from "./slices/companion/terminalRepository";
+import { ReplyStrip } from "./slices/lens/ReplyStrip";
+import { lastQuestion } from "./slices/attention/attentionQueue";
+import { focusTerminal } from "./slices/terminal/terminalRequests";
 import { companionPrefs } from "./slices/companion/companionPrefs";
 import { useTerminalLinks } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -52,6 +58,8 @@ import { isSamePath, resolveRootRepo } from "./utils/paths";
 import { AlertCircle, X } from "lucide-react";
 
 export function App() {
+  // Chord `d` needs the terminal links, which are worked out from what the workspace returns.
+  const openDiffsRef = useRef<(() => void) | null>(null);
   const {
     projects,
     activeProject,
@@ -136,7 +144,7 @@ export function App() {
     relaunchTerminal,
     toggleTerminalLiveMode,
     openInVsCode,
-  } = useWorkspace();
+  } = useWorkspace({ openDiffs: () => openDiffsRef.current?.() });
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
   const attentionQueue = useAttentionQueue(terminals);
@@ -528,6 +536,33 @@ export function App() {
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
+  // The diff lens belongs to the terminal it opened for; selecting another terminal closes it.
+  const [diffLens, setDiffLens] = useState<DiffLensTarget | null>(null);
+  if (diffLens && diffLens.terminalId !== activeTerminalId) setDiffLens(null);
+  const companionLens = useMemo<CompanionLens>(
+    () => ({
+      shown: diffLens,
+      openDiff: setDiffLens,
+      close: () => {
+        if (!diffLens) return;
+        setDiffLens(null);
+        focusTerminal(diffLens.terminalId);
+      },
+    }),
+    [diffLens]
+  );
+  openDiffsRef.current = () => {
+    const target =
+      selectedTerminal &&
+      diffLensFor(
+        selectedTerminal.id,
+        terminalRepository(selectedTerminal, projects, projectWorktrees).path,
+        linking.linkOf(selectedTerminal)
+      );
+    if (target) setDiffLens(target);
+    else setIsDiffInspectorOpen(true);
+  };
+
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),
     openTopos: () => setIsToposOpen(true),
@@ -619,7 +654,8 @@ export function App() {
         }}
       />
 
-      {/* Main Workspace Stage */}
+      {/* Main Workspace Stage, with a lens over it when one is open */}
+      <div className="relative flex-1 min-w-0 h-full flex">
       <Stage
         terminals={terminals}
         activeProject={activeProject}
@@ -648,6 +684,21 @@ export function App() {
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
       />
+      {diffLens && selectedTerminal && (
+        <DiffLens
+          key={`${diffLens.repoPath}|${diffLens.repo ?? ""}#${diffLens.number}`}
+          target={diffLens}
+          onClose={() => setDiffLens(null)}
+          replyStrip={
+            <ReplyStrip
+              terminalName={selectedTerminal.name}
+              question={lastQuestion(waitingItems, selectedTerminal.id)}
+              onAnswer={attentionQueue.answerPermission}
+            />
+          }
+        />
+      )}
+      </div>
 
       <Companion
         selectedTerminal={selectedTerminal}
@@ -656,6 +707,7 @@ export function App() {
         views={COMPANION_VIEWS}
         prefs={companionStore}
         linking={linking}
+        lens={companionLens}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}

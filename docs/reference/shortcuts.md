@@ -58,7 +58,7 @@ While a terminal pane has focus, the shell's control keys reach it, as in any ot
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | `Ctrl+Shift+B W` | **Create Worktree** | Opens Git Worktree branch creation dialog |
-| `Ctrl+Shift+B D` | **Diff Inspector** | Opens the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
+| `Ctrl+Shift+B D` | **Diff lens** | Opens the diff lens on the selected terminal's pull request; with no pull request linked, opens the Diff Inspector, the Visual Diff & File Changes drawer: a log of agents' Edit and Write tool calls |
 | `Ctrl+Shift+B I` | **GitHub Companion** | Toggles GitHub Issues & PR triage drawer |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Runs the Pre-PR Audit Gate: scans changed file names and the git diff for secrets, key files and personal paths |
 | `Ctrl+Shift+B H` | **Session History** | Opens Claude Code session history and auto-resumer |

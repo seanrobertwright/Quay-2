@@ -160,3 +160,70 @@ for (const [how, close] of [
     }
   });
 }
+
+test("asked to open on another file while open, the lens moves to it and keeps what was viewed", async () => {
+  const { container } = await render();
+  const box = container.querySelector<HTMLInputElement>('article[data-file="README.md"] input[type="checkbox"]');
+  act(() => box?.click());
+  act(() =>
+    mounted?.root.render(
+      createElement(DiffLens, {
+        target: { terminalId: "a", repoPath: "E:/alpha", repo: "o/r", number: 12, file: "src/a.ts" },
+        onClose: () => {},
+      }),
+    ),
+  );
+  await settle();
+  const current = treeButtons(container).filter((b) => b.getAttribute("aria-current") === "true");
+  assert.deepEqual(current.map((b) => b.title), ["src/a.ts"]);
+  assert.equal(container.querySelector("[data-viewed-count]")?.textContent, "1 of 3 viewed");
+});
+
+test("Escape in the companion's merge method menu closes the menu, not the lens beside it", async () => {
+  const { Companion, COMPANION_VIEWS } = await import("./Companion.tsx");
+  const { companionPrefs } = await import("./companionPrefs.ts");
+  const { memoryStorage, terminalInfo } = await import("./fixtures/companionFixtures.ts");
+  const { closes } = await render();
+  fakeInvoke(async (cmd) => {
+    if (cmd === "get_github_pr_readiness")
+      return {
+        repo: "o/r", number: 12, title: "T", body: "", url: "u", state: "OPEN", isDraft: false, baseRefName: "master",
+        headRefName: "ticket-5", headRefOid: "0".repeat(40), headBranchExists: true, isCrossRepository: false,
+        additions: 1, deletions: 1, changedFiles: 1, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN", reviewDecision: null,
+        checks: { failing: 0, pending: 0, skipped: 0, passing: 1 }, comments: { total: 0, unresolved: 0 }, commits: 1,
+      };
+    if (cmd === "get_github_pr_files") return files;
+    if (cmd === "get_github_pr_timeline") return timeline;
+    throw new Error(`no fake for ${cmd}`);
+  });
+  const side = document.createElement("div");
+  document.body.append(side);
+  const sideRoot = createRoot(side);
+  try {
+    act(() =>
+      sideRoot.render(
+        createElement(Companion, {
+          selectedTerminal: {
+            ...terminalInfo("a", "E:/alpha"),
+            link: { ticket: null, pull_request: { repo: "o/r", number: 12, source: "branch", pinned: false, at: 1 }, candidates: [] },
+          },
+          projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+          projectWorktrees: {},
+          views: COMPANION_VIEWS,
+          prefs: companionPrefs(memoryStorage()),
+        }),
+      ),
+    );
+    await settle();
+    const toggle = side.querySelector<HTMLButtonElement>('button[aria-label="Choose a merge method"]');
+    act(() => toggle?.click());
+    const item = side.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]');
+    assert.ok(item, "the menu is open");
+    act(() => void item.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    assert.ok(side.querySelector('[role="menu"]') === null, "the menu closed");
+    assert.equal(closes.length, 0, "the lens stayed open");
+  } finally {
+    act(() => sideRoot.unmount());
+    side.remove();
+  }
+});

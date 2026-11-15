@@ -18,6 +18,7 @@ import type {
 } from "../github/types.ts";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
+import type { DiffLensTarget } from "./diffLensTarget.ts";
 
 const { Companion, COMPANION_VIEWS } = await import("./Companion.tsx");
 
@@ -73,7 +74,7 @@ const settle = () => act(async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 });
 
-async function render(answer: (cmd: string, args: Record<string, unknown>) => unknown) {
+async function render(answer: (cmd: string, args: Record<string, unknown>) => unknown, extra: Record<string, unknown> = {}) {
   const calls: [string, Record<string, unknown>][] = [];
   fakeInvoke(async (cmd, args) => {
     calls.push([cmd, args]);
@@ -91,6 +92,7 @@ async function render(answer: (cmd: string, args: Record<string, unknown>) => un
         projectWorktrees: {},
         views: COMPANION_VIEWS,
         prefs: companionPrefs(memoryStorage()),
+        ...extra,
       }),
     ),
   );
@@ -552,4 +554,60 @@ test("line comments, formal reviews, re-running checks and reviewer edits are no
   }
   assert.deepEqual([...offered].sort(), ["Close pull request", "Comment", "Hide log", "Next", "Previous"]);
   assert.equal(container.querySelectorAll("[data-file] textarea, [data-file] button").length, 0, "the diff takes no line comments");
+});
+
+// ---- The diff lens (#640) ----
+
+/** A lens control that records what the companion asks of it, with `shown` open. */
+const lensControl = (shown: DiffLensTarget | null = null) => {
+  const asked: (DiffLensTarget | "close")[] = [];
+  return { asked, lens: { shown, openDiff: (target: DiffLensTarget) => void asked.push(target), close: () => void asked.push("close") } };
+};
+const lensOn = (file: string | null): DiffLensTarget => ({ terminalId: "a", repoPath: "E:/alpha", repo: "o/r", number: 12, file });
+
+test("the companion header's Diff lens button opens the lens on the terminal's pull request", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(github(), { lens });
+  const toggle = byName(container, "button", "Diff lens");
+  assert.equal(toggle?.getAttribute("aria-pressed"), "false");
+  await click(toggle);
+  assert.deepEqual(asked, [lensOn(null)]);
+});
+
+test("with the lens open, the header button shows pressed and closes it", async () => {
+  const { asked, lens } = lensControl(lensOn(null));
+  const { container } = await render(github(), { lens });
+  const toggle = byName(container, "button", "Diff lens");
+  assert.equal(toggle?.getAttribute("aria-pressed"), "true");
+  await click(toggle);
+  assert.deepEqual(asked, ["close"]);
+});
+
+test("the Files detail opens the lens on the file it shows", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(
+    github((cmd) => (cmd === "get_github_pr_files" ? files : cmd === "get_github_pr_timeline" ? timeline : undefined), {
+      comments: { total: 5, unresolved: 0 },
+    }),
+    { lens },
+  );
+  await click(cellButton(container, "files"));
+  await click(byName(container, "button", "Next"));
+  await click(byName(container, "button", "Open in the diff lens"));
+  assert.deepEqual(asked, [lensOn("src/b.ts")]);
+});
+
+test("a click on a readiness cell closes the open lens", async () => {
+  const { asked, lens } = lensControl(lensOn(null));
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), { lens });
+  await click(cellButton(container, "commits"));
+  assert.deepEqual(asked, ["close"]);
+  assert.equal(cellButton(container, "commits")?.getAttribute("aria-expanded"), "true", "the cell still opens its detail");
+});
+
+test("with no lens open, a click on a readiness cell asks nothing of the lens", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), { lens });
+  await click(cellButton(container, "commits"));
+  assert.deepEqual(asked, []);
 });

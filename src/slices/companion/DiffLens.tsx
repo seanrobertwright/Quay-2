@@ -52,13 +52,20 @@ export const DiffLens = ({ target, onClose, replyStrip = null }: DiffLensProps) 
     );
     article?.scrollIntoView?.({ block: "start" });
   };
-  // Once the files are read, the stack starts at the file the lens opened on.
-  const opened = useRef(false);
+  // The stack moves to the file the lens was opened on once the files are read, and again each
+  // time it is asked to open on another.
+  const [openedOn, setOpenedOn] = useState(target.file);
+  const [scrollPending, setScrollPending] = useState(target.file);
+  if (target.file !== openedOn) {
+    setOpenedOn(target.file);
+    setSelected(target.file);
+    setScrollPending(target.file);
+  }
   useEffect(() => {
-    if (opened.current || list.length === 0) return;
-    opened.current = true;
-    if (target.file) scrollTo(target.file);
-  }, [list, target.file]);
+    if (scrollPending === null || list.length === 0) return;
+    scrollTo(scrollPending);
+    setScrollPending(null);
+  }, [list, scrollPending]);
 
   const toggleViewed = (path: string) =>
     setViewed((current) => {

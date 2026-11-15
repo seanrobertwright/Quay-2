@@ -42,7 +42,16 @@ export type { Project };
 /** How long a project's view must sit still before it is written to disk. */
 const VIEW_SAVE_DEBOUNCE_MS = 500;
 
-export function useWorkspace() {
+/** What the app hands the workspace for chords whose target lives outside it. */
+export interface WorkspaceOptions {
+  /**
+   * Chord `d`: opens the diff lens for the selected terminal's pull request, else the repo-wide
+   * Diffs. Without it, chord `d` opens the repo-wide Diffs.
+   */
+  openDiffs?: () => void;
+}
+
+export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
   // Empty until the backend reports the persisted active project
   const [activeProject, setActiveProject] = useState<string>("");
@@ -1263,6 +1272,9 @@ export function useWorkspace() {
   // to a focused terminal. The prefix outlives each render, so a re-render between Ctrl+Shift+B and
   // its second key keeps it.
   const ctrlBPrefix = useCtrlBPrefix();
+  // The chord handler reads the app's latest `openDiffs`, whichever render set it up.
+  const openDiffsRef = useRef(openDiffs);
+  openDiffsRef.current = openDiffs;
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1271,7 +1283,7 @@ export function useWorkspace() {
       splitVertical,
       splitGrid,
       openSwarmModal: () => setIsSwarmModalOpen(true),
-      openDiffInspector: () => setIsDiffInspectorOpen(true),
+      openDiffs: () => (openDiffsRef.current ? openDiffsRef.current() : setIsDiffInspectorOpen(true)),
       openNewWorktreeModal,
       toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
       openAuditModal: () => setIsAuditModalOpen(true),

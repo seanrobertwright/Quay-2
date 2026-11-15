@@ -29,6 +29,8 @@ interface DetailProps {
   location: PullRequestLocation;
   /** Reads the pull request again, after a comment or a close changes it. */
   onChanged: () => void;
+  /** Opens the diff lens on a file; without it the Files detail offers no lens. */
+  onOpenInLens?: (file: string) => void;
 }
 
 /**
@@ -305,7 +307,7 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
 // ---- Files ----
 
 /** One changed file at a time, with a picker that marks files with comments, and previous and next. */
-const FilesDetail = ({ pr, location }: DetailProps) => {
+const FilesDetail = ({ pr, location, onOpenInLens }: DetailProps) => {
   const files = useGithubRead<PullRequestFile[]>("get_github_pr_files", target(location));
   const timeline = useGithubRead<PullRequestTimeline>("get_github_pr_timeline", target(location));
   const [index, setIndex] = useState(0);
@@ -346,6 +348,11 @@ const FilesDetail = ({ pr, location }: DetailProps) => {
             File {at + 1} of {list.length}
             {list.length < pr.changedFiles && `; GitHub lists the first ${list.length} of ${pr.changedFiles} here`}
           </p>
+          {onOpenInLens && (
+            <button type="button" onClick={() => onOpenInLens(file.path)} className={SECONDARY}>
+              Open in the diff lens
+            </button>
+          )}
           <FileDiff file={file} />
         </>
       )}
