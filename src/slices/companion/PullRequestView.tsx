@@ -15,6 +15,7 @@ import {
   type SegmentTone,
 } from "./readiness.ts";
 import { CellDetail } from "./CellDetail.tsx";
+import { usePopupLayer } from "../overlay/useOverlay.ts";
 import { errorText, usePullRequestReadiness, type PullRequestLocation } from "./usePullRequestReadiness.ts";
 
 /** What `merge_github_pr` reports once the pull request has merged. */
@@ -47,11 +48,19 @@ const SEGMENT_TONE: Record<SegmentTone, string> = {
   neutral: "bg-[#58a6ff]",
 };
 
+/** What the pull request view asks of the diff lens. */
+export interface PullRequestLens {
+  /** Opens the diff lens on `file`, or on the first file when null. */
+  openOn: (file: string | null) => void;
+  /** Closes the diff lens when it is open, as a click on a readiness cell does. */
+  closeIfOpen: () => void;
+}
+
 /**
  * The companion's pull request view: GitHub's header, then the readiness card, then the open
  * cell's detail, or the description while no cell is open.
  */
-export const PullRequestView = (location: PullRequestLocation) => {
+export const PullRequestView = ({ lens = null, ...location }: PullRequestLocation & { lens?: PullRequestLens | null }) => {
   const { pr, loading, error, reload } = usePullRequestReadiness(location);
   if (!pr) {
     return (
@@ -60,7 +69,7 @@ export const PullRequestView = (location: PullRequestLocation) => {
       </p>
     );
   }
-  return <PullRequestBody pr={pr} error={error} location={location} onChanged={reload} />;
+  return <PullRequestBody pr={pr} error={error} location={location} lens={lens} onChanged={reload} />;
 };
 
 /**
@@ -71,11 +80,13 @@ const PullRequestBody = ({
   pr,
   error,
   location,
+  lens,
   onChanged,
 }: {
   pr: PullRequestReadiness;
   error: string | null;
   location: PullRequestLocation;
+  lens: PullRequestLens | null;
   onChanged: () => void;
 }) => {
   const [arrival] = useState(() => arrivalCell(pr));
@@ -95,7 +106,10 @@ const PullRequestBody = ({
         onChanged={onChanged}
         open={open}
         detailId={detailId}
-        onToggle={(cell) => setOpen((current) => (current === cell ? null : cell))}
+        onToggle={(cell) => {
+          lens?.closeIfOpen();
+          setOpen((current) => (current === cell ? null : cell));
+        }}
       />
       {open ? (
         <CellDetail
@@ -106,6 +120,7 @@ const PullRequestBody = ({
           pr={pr}
           location={location}
           onChanged={onChanged}
+          onOpenInLens={lens?.openOn}
         />
       ) : (
         pr.body.trim() !== "" && (
@@ -392,9 +407,13 @@ const MethodMenu = ({
     // Focus lands on the picked method once, when the menu opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // On the overlay stack, so Escape closes the menu before a lens open beside the companion.
+  const menu = useRef<HTMLDivElement>(null);
+  usePopupLayer(true, onClose, menu);
   const move = (from: number, by: number) => items.current[(from + by + MERGE_METHODS.length) % MERGE_METHODS.length]?.focus();
   return (
     <div
+      ref={menu}
       id={id}
       role="menu"
       aria-label="Merge method"

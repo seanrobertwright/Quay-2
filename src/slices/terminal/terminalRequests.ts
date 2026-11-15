@@ -26,3 +26,11 @@ export function onTerminalRequest(terminalId: string, handler: (request: Termina
   window.addEventListener(EVENT, listener);
   return () => window.removeEventListener(EVENT, listener);
 }
+
+/**
+ * Asks the pane of terminal `terminalId` to take keyboard focus, through the
+ * `quay:focus-terminal` event each pane listens for.
+ */
+export function focusTerminal(terminalId: string): void {
+  window.dispatchEvent(new CustomEvent("quay:focus-terminal", { detail: { terminalId } }));
+}

@@ -16,6 +16,7 @@ import { PullRequestView } from "./PullRequestView.tsx";
 import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
+import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -29,6 +30,14 @@ export interface CompanionLinking {
   loadChoices: (terminal: TerminalInfo) => void;
 }
 
+/** The diff lens as the companion sees it: which one is open, and how to open or close it. */
+export interface CompanionLens {
+  /** The diff lens open now, or null. */
+  shown: DiffLensTarget | null;
+  openDiff: (target: DiffLensTarget) => void;
+  close: () => void;
+}
+
 /** What the companion knows about the selected terminal, handed to each view. */
 export interface CompanionContext {
   terminal: TerminalInfo;
@@ -37,6 +46,8 @@ export interface CompanionContext {
   link: TerminalLink | null;
   /** Terminal links, or null where the companion has none to change (as in some tests). */
   linking: CompanionLinking | null;
+  /** The diff lens, or null where the companion opens none (as in some tests). */
+  lens: CompanionLens | null;
 }
 
 /** Whether `link` fills either slot. */
@@ -73,7 +84,7 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
   id: "pull-request",
   label: "Pull request",
   available: ({ link }) => !!link?.pull_request,
-  render: ({ repository, link }) => {
+  render: ({ terminal, repository, link, lens }) => {
     const slot = link?.pull_request;
     if (!slot) return null;
     return (
@@ -82,6 +93,17 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
         repoPath={repository.path}
         repo={slot.repo}
         number={slot.number}
+        lens={
+          lens && {
+            openOn: (file) => {
+              const target = diffLensFor(terminal.id, repository.path, link, file);
+              if (target) lens.openDiff(target);
+            },
+            closeIfOpen: () => {
+              if (lens.shown) lens.close();
+            },
+          }
+        }
       />
     );
   },
@@ -107,10 +129,12 @@ interface CompanionProps {
   prefs: CompanionPrefs;
   /** Terminal links; without it the companion shows none. */
   linking?: CompanionLinking | null;
+  /** The diff lens; without it the companion offers none. */
+  lens?: CompanionLens | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
-export const Companion = ({ selectedTerminal, projects, projectWorktrees, views, prefs, linking = null }: CompanionProps) => {
+export const Companion = ({ selectedTerminal, projects, projectWorktrees, views, prefs, linking = null, lens = null }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   const context = useMemo<CompanionContext | null>(
     () =>
@@ -120,9 +144,10 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
             repository: terminalRepository(selectedTerminal, projects, projectWorktrees),
             link: linking ? linking.linkOf(selectedTerminal) : (selectedTerminal.link ?? null),
             linking,
+            lens,
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking],
+    [selectedTerminal, projects, projectWorktrees, linking, lens],
   );
   // The view picked on the switch holds while its terminal stays selected and still has it.
   // Selecting another terminal forgets it, so every selection starts from the first view.
@@ -153,6 +178,7 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
               shown={shown.id}
               onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
             />
+            {lens && <DiffLensToggle context={context} lens={lens} />}
           </div>
           {context.link && (
             <TerminalLinkBar
@@ -175,6 +201,29 @@ export const Companion = ({ selectedTerminal, projects, projectWorktrees, views,
         <p className="p-4 text-xs text-[#8b949e]">Select a terminal to see what it is working on.</p>
       )}
     </aside>
+  );
+};
+
+/**
+ * The companion header's Diff lens button, while the selected terminal has a pull request: it
+ * opens the diff lens on that pull request, and closes it while it is open.
+ */
+const DiffLensToggle = ({ context, lens }: { context: CompanionContext; lens: CompanionLens }) => {
+  const target = diffLensFor(context.terminal.id, context.repository.path, context.link);
+  if (!target) return null;
+  const open = lens.shown !== null;
+  return (
+    <button
+      type="button"
+      aria-pressed={open}
+      title={open ? "Close the diff lens" : "Open every diff of this pull request over the terminal"}
+      onClick={() => (open ? lens.close() : lens.openDiff(target))}
+      className={`ml-auto shrink-0 h-7 px-2.5 rounded-md border text-xs ${
+        open ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
+      }`}
+    >
+      Diff lens
+    </button>
   );
 };
 

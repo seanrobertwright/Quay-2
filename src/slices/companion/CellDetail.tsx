@@ -14,6 +14,7 @@ import type { ReadinessCellId } from "./readiness.ts";
 import { COMMENT_FILTERS, commentsByPath, filterTimeline, groupChecks, type CommentFilter } from "./cellDetails.ts";
 import { errorText, type PullRequestLocation } from "./usePullRequestReadiness.ts";
 import { useGithubRead, type GithubRead } from "./useGithubRead.ts";
+import { FileDiff } from "./FileDiff.tsx";
 
 const BUTTON = "h-7 px-3 rounded-md border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed";
 const PRIMARY = `${BUTTON} border-[#2ea043] bg-[#238636] text-white enabled:hover:bg-[#2ea043]`;
@@ -28,6 +29,8 @@ interface DetailProps {
   location: PullRequestLocation;
   /** Reads the pull request again, after a comment or a close changes it. */
   onChanged: () => void;
+  /** Opens the diff lens on a file; without it the Files detail offers no lens. */
+  onOpenInLens?: (file: string) => void;
 }
 
 /**
@@ -303,10 +306,8 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
 
 // ---- Files ----
 
-const PATCH_LINE: Record<string, string> = { "+": "text-[#3fb950]", "-": "text-[#f85149]", "@": "text-[#58a6ff]" };
-
 /** One changed file at a time, with a picker that marks files with comments, and previous and next. */
-const FilesDetail = ({ pr, location }: DetailProps) => {
+const FilesDetail = ({ pr, location, onOpenInLens }: DetailProps) => {
   const files = useGithubRead<PullRequestFile[]>("get_github_pr_files", target(location));
   const timeline = useGithubRead<PullRequestTimeline>("get_github_pr_timeline", target(location));
   const [index, setIndex] = useState(0);
@@ -347,46 +348,17 @@ const FilesDetail = ({ pr, location }: DetailProps) => {
             File {at + 1} of {list.length}
             {list.length < pr.changedFiles && `; GitHub lists the first ${list.length} of ${pr.changedFiles} here`}
           </p>
+          {onOpenInLens && (
+            <button type="button" onClick={() => onOpenInLens(file.path)} className={SECONDARY}>
+              Open in the diff lens
+            </button>
+          )}
           <FileDiff file={file} />
         </>
       )}
     </>
   );
 };
-
-/** A patch's lines, each with the offset it starts at in the patch, which names it. */
-const patchLines = (patch: string) => {
-  let at = 0;
-  return patch.split("\n").map((line) => {
-    const entry = { at, line };
-    at += line.length + 1;
-    return entry;
-  });
-};
-
-const FileDiff = ({ file }: { file: PullRequestFile }) => (
-  <article data-file={file.path} aria-label={file.path} className="rounded-md border border-[#30363d] bg-[#0d1117]">
-    <header className="flex flex-wrap items-baseline gap-2 border-b border-[#30363d] px-2 py-1">
-      <code className="break-all text-[#c9d1d9]">
-        {file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}
-      </code>
-      <span className="ml-auto font-mono">
-        <span className="text-[#3fb950]">+{file.additions}</span> <span className="text-[#f85149]">−{file.deletions}</span>
-      </span>
-    </header>
-    {file.patch === null ? (
-      <p className={`${MUTED} p-2`}>No diff to show: the file is binary, or too large for GitHub to show.</p>
-    ) : (
-      <pre className="max-h-96 overflow-auto p-2 font-mono text-[11px] leading-4">
-        {patchLines(file.patch).map(({ at, line }) => (
-          <div key={at} className={PATCH_LINE[line[0]] ?? "text-[#c9d1d9]"}>
-            {line === "" ? " " : line}
-          </div>
-        ))}
-      </pre>
-    )}
-  </article>
-);
 
 // ---- Commits ----
 

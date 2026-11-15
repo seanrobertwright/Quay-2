@@ -107,12 +107,13 @@ The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xt
 
 - **`terminal/`**: Terminal instance rendering, auto-fit addon, proposed API emoji width alignment, selection handling, and keyboard shortcuts.
 - **`shell/`**: The module bar on the window's left edge and the panel beside it, which shows the open module.
-- **`companion/`**: The companion on the window's right edge: its divider, its view switch and the views that show the selected terminal's work: the Pull request view, whose readiness card comes from `readiness.ts` and whose cells open the details in `CellDetail.tsx`, and the Repository view. It also keeps each terminal's link: `terminalLink.ts` resolves a signal against the link's two slots, `linkSignals.ts` reads signals from a finished tool call, a launch and the branch, and `useTerminalLinks.ts` feeds them in and saves the result with `set_terminal_link`.
+- **`companion/`**: The companion on the window's right edge: its divider, its view switch and the views that show the selected terminal's work: the Pull request view, whose readiness card comes from `readiness.ts` and whose cells open the details in `CellDetail.tsx`, and the Repository view. `DiffLens.tsx` is the diff lens, opened from the companion header, the Files detail or chord `d` on the target `diffLensTarget.ts` works out. It also keeps each terminal's link: `terminalLink.ts` resolves a signal against the link's two slots, `linkSignals.ts` reads signals from a finished tool call, a launch and the branch, and `useTerminalLinks.ts` feeds them in and saves the result with `set_terminal_link`.
 - **`rail/`**: The Projects panel: the collapsible project and worktree tree, terminal rows and their menus.
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.
 - **`archon/`**: SVG-powered DAG visualization canvas, live log viewer, and spec checklist.
 - **`machina/`**: The Factory Station (**Machina: local**): work orders, the project gate, holds and Accept.
+- **`lens/`**: The frame every lens shares (`Lens.tsx`), which covers the stage beside the companion, closes from its button or Escape and hands focus back to the selected terminal, and the reply strip at its foot (`ReplyStrip.tsx`).
 - **`github/`**: Slide-over companion drawer with filter chips, red `BLOCKED` dependency badges, and 1-click prompt submission.
 
 ---

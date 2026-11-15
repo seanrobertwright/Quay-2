@@ -7,6 +7,7 @@ import {
   attentionItems,
   droppedPermissionCount,
   emptyAttentionQueue,
+  latestPermission,
   modalPermissions,
   pendingPermissionIds,
   type AttentionEvent,
@@ -412,4 +413,22 @@ test("closing the notice about an undelivered answer leaves the queue's requests
 
   assert.equal(undeliveredAnswer(queue), null);
   assert.deepEqual(keys(queue), ["permission:req-2"]);
+});
+
+test("a terminal's last question is its newest waiting permission request, deferred or not", () => {
+  const queue = run(
+    requested("old", "term-a", 100, "Write"),
+    requested("other", "term-b", 300),
+    requested("new", "term-a", 200, "Bash"),
+    { type: "permissionsDeferred", requestIds: ["new"] },
+    { type: "turnCompleted", terminalId: "term-a", project: "E:/proj", subagent: false, at: 400 },
+  );
+  assert.equal(latestPermission(attentionItems(queue), "term-a")?.requestId, "new");
+  assert.equal(latestPermission(attentionItems(queue), "term-b")?.requestId, "other");
+});
+
+test("a terminal asks nothing once its requests are answered, or when it never asked", () => {
+  const queue = run(requested("req", "term-a", 100), { type: "permissionResolved", requestId: "req" });
+  assert.equal(latestPermission(attentionItems(queue), "term-a"), null);
+  assert.equal(latestPermission(attentionItems(queue), "term-z"), null);
 });

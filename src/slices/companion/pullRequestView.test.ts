@@ -18,6 +18,7 @@ import type {
 } from "../github/types.ts";
 import { companionPrefs } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo } from "./fixtures/companionFixtures.ts";
+import type { DiffLensTarget } from "./diffLensTarget.ts";
 
 const { Companion, COMPANION_VIEWS } = await import("./Companion.tsx");
 
@@ -73,7 +74,7 @@ const settle = () => act(async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 });
 
-async function render(answer: (cmd: string, args: Record<string, unknown>) => unknown) {
+async function render(answer: (cmd: string, args: Record<string, unknown>) => unknown, extra: Record<string, unknown> = {}) {
   const calls: [string, Record<string, unknown>][] = [];
   fakeInvoke(async (cmd, args) => {
     calls.push([cmd, args]);
@@ -91,6 +92,7 @@ async function render(answer: (cmd: string, args: Record<string, unknown>) => un
         projectWorktrees: {},
         views: COMPANION_VIEWS,
         prefs: companionPrefs(memoryStorage()),
+        ...extra,
       }),
     ),
   );
@@ -552,4 +554,112 @@ test("line comments, formal reviews, re-running checks and reviewer edits are no
   }
   assert.deepEqual([...offered].sort(), ["Close pull request", "Comment", "Hide log", "Next", "Previous"]);
   assert.equal(container.querySelectorAll("[data-file] textarea, [data-file] button").length, 0, "the diff takes no line comments");
+});
+
+// ---- The diff lens (#640) ----
+
+/** A lens control that records what the companion asks of it, with `shown` open. */
+const lensControl = (shown: DiffLensTarget | null = null) => {
+  const asked: (DiffLensTarget | "close")[] = [];
+  return { asked, lens: { shown, openDiff: (target: DiffLensTarget) => void asked.push(target), close: () => void asked.push("close") } };
+};
+const lensOn = (file: string | null): DiffLensTarget => ({ terminalId: "a", repoPath: "E:/alpha", repo: "o/r", number: 12, file });
+
+test("the companion header's Diff lens button opens the lens on the terminal's pull request", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(github(), { lens });
+  const toggle = byName(container, "button", "Diff lens");
+  assert.equal(toggle?.getAttribute("aria-pressed"), "false");
+  await click(toggle);
+  assert.deepEqual(asked, [lensOn(null)]);
+});
+
+test("with the lens open, the header button shows pressed and closes it", async () => {
+  const { asked, lens } = lensControl(lensOn(null));
+  const { container } = await render(github(), { lens });
+  const toggle = byName(container, "button", "Diff lens");
+  assert.equal(toggle?.getAttribute("aria-pressed"), "true");
+  await click(toggle);
+  assert.deepEqual(asked, ["close"]);
+});
+
+test("the Files detail opens the lens on the file it shows", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(
+    github((cmd) => (cmd === "get_github_pr_files" ? files : cmd === "get_github_pr_timeline" ? timeline : undefined), {
+      comments: { total: 5, unresolved: 0 },
+    }),
+    { lens },
+  );
+  await click(cellButton(container, "files"));
+  await click(byName(container, "button", "Next"));
+  await click(byName(container, "button", "Open in the diff lens"));
+  assert.deepEqual(asked, [lensOn("src/b.ts")]);
+});
+
+test("a click on a readiness cell closes the open lens", async () => {
+  const { asked, lens } = lensControl(lensOn(null));
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), { lens });
+  await click(cellButton(container, "commits"));
+  assert.deepEqual(asked, ["close"]);
+  assert.equal(cellButton(container, "commits")?.getAttribute("aria-expanded"), "true", "the cell still opens its detail");
+});
+
+test("with no lens open, a click on a readiness cell asks nothing of the lens", async () => {
+  const { asked, lens } = lensControl();
+  const { container } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }), { lens });
+  await click(cellButton(container, "commits"));
+  assert.deepEqual(asked, []);
+});
+
+test("closing the lens with a click on a readiness cell returns keyboard focus to the selected terminal", async () => {
+  const { useDiffLens } = await import("./useDiffLens.ts");
+  // A stand-in for terminal a's pane: a textarea that takes focus when the pane is asked to.
+  const pane = document.createElement("textarea");
+  document.body.append(pane);
+  const focusPane = (e: Event) => {
+    if ((e as CustomEvent<{ terminalId?: string }>).detail?.terminalId === "a") pane.focus();
+  };
+  window.addEventListener("quay:focus-terminal", focusPane);
+  let shown: DiffLensTarget | null = null;
+  let opened = false;
+  try {
+    // The companion's real lens control, opened on the pull request before the companion renders.
+    type CompanionProps = Parameters<typeof Companion>[0];
+    const Host = (props: CompanionProps) => {
+      const lens = useDiffLens("a");
+      shown = lens.shown;
+      if (!lens.shown && !opened) {
+        opened = true;
+        lens.openDiff(lensOn(null));
+      }
+      return createElement(Companion, { ...props, lens });
+    };
+    fakeInvoke(async (cmd, args) => github(undefined, { comments: { total: 0, unresolved: 0 } })(cmd, args));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        createElement(Host, {
+          selectedTerminal: { ...terminalInfo("a", "E:/alpha"), link },
+          projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+          projectWorktrees: {},
+          views: COMPANION_VIEWS,
+          prefs: companionPrefs(memoryStorage()),
+        }),
+      ),
+    );
+    mounted = { root, container };
+    await settle();
+    assert.deepEqual(shown, lensOn(null), "the lens is open");
+    cellButton(container, "commits")?.focus();
+    assert.ok(document.activeElement !== pane, "focus starts in the companion");
+    await click(cellButton(container, "commits"));
+    assert.equal(shown, null, "the cell click closed the lens");
+    assert.ok(document.activeElement === pane, "focus is back on the terminal");
+  } finally {
+    window.removeEventListener("quay:focus-terminal", focusPane);
+    pane.remove();
+  }
 });

@@ -14,6 +14,12 @@ import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import { useDiffLens } from "./slices/companion/useDiffLens";
+import { DiffLens } from "./slices/companion/DiffLens";
+import { diffLensFor } from "./slices/companion/diffLensTarget";
+import { terminalRepository } from "./slices/companion/terminalRepository";
+import { ReplyStrip } from "./slices/lens/ReplyStrip";
+import { latestPermission } from "./slices/attention/attentionQueue";
 import { companionPrefs } from "./slices/companion/companionPrefs";
 import { useTerminalLinks } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -136,6 +142,7 @@ export function App() {
     relaunchTerminal,
     toggleTerminalLiveMode,
     openInVsCode,
+    diffLensOpener,
   } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
@@ -528,6 +535,23 @@ export function App() {
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
+  const companionLens = useDiffLens(activeTerminalId);
+  const diffLens = companionLens.shown;
+  // Chord `d`: the diff lens for the selected terminal's pull request; false leaves it to the
+  // workspace to open the Diff Inspector.
+  diffLensOpener.current = () => {
+    const target =
+      selectedTerminal &&
+      diffLensFor(
+        selectedTerminal.id,
+        terminalRepository(selectedTerminal, projects, projectWorktrees).path,
+        linking.linkOf(selectedTerminal)
+      );
+    if (!target) return false;
+    companionLens.openDiff(target);
+    return true;
+  };
+
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),
     openTopos: () => setIsToposOpen(true),
@@ -619,7 +643,8 @@ export function App() {
         }}
       />
 
-      {/* Main Workspace Stage */}
+      {/* Main Workspace Stage, with a lens over it when one is open */}
+      <div className="relative flex-1 min-w-0 h-full flex">
       <Stage
         terminals={terminals}
         activeProject={activeProject}
@@ -648,6 +673,21 @@ export function App() {
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
       />
+      {diffLens && selectedTerminal && (
+        <DiffLens
+          key={`${diffLens.repoPath}|${diffLens.repo ?? ""}#${diffLens.number}`}
+          target={diffLens}
+          onClose={companionLens.dismiss}
+          replyStrip={
+            <ReplyStrip
+              terminalName={selectedTerminal.name}
+              permission={latestPermission(waitingItems, selectedTerminal.id)}
+              onAnswer={attentionQueue.answerPermission}
+            />
+          }
+        />
+      )}
+      </div>
 
       <Companion
         selectedTerminal={selectedTerminal}
@@ -656,6 +696,7 @@ export function App() {
         views={COMPANION_VIEWS}
         prefs={companionStore}
         linking={linking}
+        lens={companionLens}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}

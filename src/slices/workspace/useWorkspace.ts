@@ -20,6 +20,7 @@ import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 import { reportTerminalRelaunched } from "../terminal/terminalRelaunched";
+import { focusTerminal } from "../terminal/terminalRequests";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
@@ -890,14 +891,10 @@ export function useWorkspace() {
 
       // Lock focus on the newly selected terminal
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
-        );
+        focusTerminal(id);
       }, 20);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
-        );
+        focusTerminal(id);
       }, 100);
     },
     [terminals, activeProject, selectProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
@@ -1162,19 +1159,13 @@ export function useWorkspace() {
 
       // Proactively notify the terminal to lock focus as soon as it mounts in the DOM
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 20);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 100);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 250);
       return newTerm;
     } catch (err) {
@@ -1243,14 +1234,10 @@ export function useWorkspace() {
 
       // Lock focus on the relaunched terminal
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
-        );
+        focusTerminal(terminalId);
       }, 50);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
-        );
+        focusTerminal(terminalId);
       }, 150);
     } catch (err) {
       console.error("Failed to relaunch terminal:", err);
@@ -1263,6 +1250,10 @@ export function useWorkspace() {
   // to a focused terminal. The prefix outlives each render, so a re-render between Ctrl+Shift+B and
   // its second key keeps it.
   const ctrlBPrefix = useCtrlBPrefix();
+  // Chord `d` asks the app to open the diff lens, which needs the terminal links the app works out
+  // from what this hook returns. The app sets the opener each render; it returns false when the
+  // selected terminal has no pull request, and the chord then opens the Diff Inspector.
+  const diffLensOpener = useRef<(() => boolean) | null>(null);
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1271,7 +1262,9 @@ export function useWorkspace() {
       splitVertical,
       splitGrid,
       openSwarmModal: () => setIsSwarmModalOpen(true),
-      openDiffInspector: () => setIsDiffInspectorOpen(true),
+      openDiffs: () => {
+        if (!diffLensOpener.current?.()) setIsDiffInspectorOpen(true);
+      },
       openNewWorktreeModal,
       toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
       openAuditModal: () => setIsAuditModalOpen(true),
@@ -1427,6 +1420,7 @@ export function useWorkspace() {
     setIsCommandPaletteOpen,
     isDiffInspectorOpen,
     setIsDiffInspectorOpen,
+    diffLensOpener,
     projectWorktrees,
     refreshWorktrees,
     isNewWorktreeOpen,
