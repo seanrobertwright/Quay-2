@@ -46,8 +46,9 @@ Object.assign(window, {
 });
 
 const globals = globalThis as Record<string, unknown>;
-// React Flow, which draws the run canvas, observes its pane's size with a bare `ResizeObserver`.
-for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle", "ResizeObserver"]) {
+// React Flow, which draws the run canvas, observes its pane's size with a bare `ResizeObserver`, and a
+// paged list watches its last row with a bare `IntersectionObserver`.
+for (const key of ["document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "KeyboardEvent", "MouseEvent", "getComputedStyle", "ResizeObserver", "IntersectionObserver"]) {
   // Node's own `navigator` is a getter, so each global is defined rather than assigned.
   Object.defineProperty(globalThis, key, { value: (window as unknown as Record<string, unknown>)[key], configurable: true, writable: true });
 }
