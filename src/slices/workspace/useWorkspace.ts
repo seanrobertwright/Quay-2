@@ -1257,6 +1257,17 @@ export function useWorkspace() {
   // Chords `i` and `a` open the Source control panel, a module the app owns. The app sets the opener
   // each render.
   const sourceControlOpener = useRef<(() => void) | null>(null);
+  // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
+  // chords and the app's palette and panel share these.
+  const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
+  const openRepoDiffs = useCallback(() => {
+    openSourceControl();
+    setIsDiffInspectorOpen(true);
+  }, [openSourceControl]);
+  const openPrePrAudit = useCallback(() => {
+    openSourceControl();
+    setIsAuditModalOpen(true);
+  }, [openSourceControl]);
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1267,15 +1278,11 @@ export function useWorkspace() {
       openSwarmModal: () => setIsSwarmModalOpen(true),
       openDiffs: () => {
         if (diffLensOpener.current?.()) return;
-        sourceControlOpener.current?.();
-        setIsDiffInspectorOpen(true);
+        openRepoDiffs();
       },
       openNewWorktreeModal,
-      openSourceControl: () => sourceControlOpener.current?.(),
-      openPrePrAudit: () => {
-        sourceControlOpener.current?.();
-        setIsAuditModalOpen(true);
-      },
+      openSourceControl,
+      openPrePrAudit,
       toggleSessionHistory: () => setIsSessionHistoryOpen((prev) => !prev),
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
@@ -1337,6 +1344,9 @@ export function useWorkspace() {
     unsplit,
     selectTerminal,
     openNewWorktreeModal,
+    openSourceControl,
+    openRepoDiffs,
+    openPrePrAudit,
   ]);
 
   // Rename terminal
@@ -1430,6 +1440,8 @@ export function useWorkspace() {
     setIsDiffInspectorOpen,
     diffLensOpener,
     sourceControlOpener,
+    openRepoDiffs,
+    openPrePrAudit,
     projectWorktrees,
     refreshWorktrees,
     isNewWorktreeOpen,

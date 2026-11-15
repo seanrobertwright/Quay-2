@@ -154,6 +154,8 @@ export function App() {
     openInVsCode,
     diffLensOpener,
     sourceControlOpener,
+    openRepoDiffs,
+    openPrePrAudit,
   } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
@@ -593,14 +595,6 @@ export function App() {
   // Chords `i` and `a`, and `d` with no pull request to show, open the Source control panel.
   const openSourceControl = () => setOpenModule("source-control");
   sourceControlOpener.current = openSourceControl;
-  const openRepoDiffs = () => {
-    openSourceControl();
-    setIsDiffInspectorOpen(true);
-  };
-  const openPrePrAudit = () => {
-    openSourceControl();
-    setIsAuditModalOpen(true);
-  };
 
   // A pick in the Source control panel pins it to the selected terminal and shows it in the companion.
   const [companionRequest, setCompanionRequest] = useState<CompanionShowRequest | null>(null);
