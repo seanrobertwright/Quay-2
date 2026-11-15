@@ -45,4 +45,17 @@ with example data; nothing is wired to Quay.
 - `quay-agents-panel.html`: four layouts for the Agents module (one
   accordion, lists left with detail in the companion, tabs in the panel,
   an Agents stage tab), with a guided six-step job, a click counter, and a
-  table of where each part opens. Awaiting the operator's choice.
+  table of where each part opens. Chosen: B, lists left with a terminal's
+  own activity in a companion Activity view.
+- `quay-workflows-panel.html`: four layouts for the Workflows module (by
+  engine with a Run stage tab, by state with detail in the companion, engine
+  tabs in the panel, a Workflows stage tab), with a guided six-step job over
+  Archon runs, Factory work orders and Praxis graphs, a click counter, and a
+  table of where each part opens. Chosen: B, by state, with a run's detail
+  in a companion Run view.
+- `quay-shell-preferences.html`: four homes for the shell's own settings
+  (pie palette, label outline, pie delay, Merge undo window, companion's
+  first view): a Project panel group, a Settings stage tab, palette only, or
+  in place on the pie and companion, with a guided five-step job, a click
+  counter, and a table of where each one lives. Chosen: A, a Quay group
+  in the Project panel.

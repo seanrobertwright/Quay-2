@@ -1,0 +1,721 @@
+<title>Quay Shell Preferences</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a guided walkthrough card, then one live Quay window (module bar, panel, stage, companion)
+   with four switchable homes for the shell's own preferences (pie palette, label outline, pie delay,
+   Merge undo window, companion's first view), a live click and travel counter for one five-step job,
+   a "where each one lives" table, and a decision form with one Copy button.
+   Single dark look, Quay's palette, same as the other shell-redesign prototypes. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339; --guide: #f0b72f;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; flex: 1 1 230px; min-width: 0; position: relative; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.rec-mark { font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.seg label.seen b::after { content: " ✓"; color: var(--green); font-size: 12px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+
+/* walkthrough */
+.walk { border: 1px solid rgba(240,183,47,.55); background: linear-gradient(180deg, rgba(240,183,47,.08), rgba(240,183,47,.02)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.walk .wtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.walk .wstep { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.walk h2 { margin: 0; font-size: 19px; }
+.walk .wprog { font: 12px var(--mono); color: var(--hi); margin-left: auto; }
+.walk .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdots { display: flex; gap: 6px; }
+.wdots i { width: 22px; height: 4px; border-radius: 2px; background: var(--q-line); }
+.wdots i.on { background: var(--guide); } .wdots i.ok { background: var(--green); }
+.wnav { display: flex; gap: 8px; }
+
+/* job strip */
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); font-size: 13px; }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); }
+.job li.done::before { background: var(--green); border-color: var(--green); }
+.job li.now { color: var(--hi); border-color: var(--guide); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* mock window */
+.shell { position: relative; display: flex; width: 1200px; height: 620px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg.i { width: 16px; height: 16px; flex: none; }
+.shell button { background: none; border: 0; padding: 0; text-align: left; color: inherit; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: stretch; }
+.ib { height: 44px; display: grid !important; place-items: center; position: relative; color: var(--muted) !important; }
+.ib svg.i { width: 20px; height: 20px; }
+.ib:hover { color: var(--hi) !important; background: var(--q-raise) !important; }
+.ib.on { color: #fff !important; box-shadow: inset 2px 0 0 var(--blue); }
+.ib.dim { opacity: .35; cursor: default; }
+.ib.dim:hover { background: none !important; color: var(--muted) !important; }
+.tdots { display: flex; flex-direction: column; padding: 2px 0 6px; border-bottom: 1px solid var(--q-line); }
+.tdot { height: 24px; display: grid !important; place-items: center; position: relative; }
+.tdot.sel::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; background: var(--hi); }
+.td { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.td.w { background: var(--green); } .td.a { background: var(--amber); box-shadow: 0 0 0 3px rgba(210,153,34,.25); }
+.badge { position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; border-radius: 7px; font: 600 9px/14px var(--mono); text-align: center; background: var(--blue); color: #0d1117; padding: 0 3px; }
+.grow { flex: 1; }
+.spend { font: 10px var(--mono); color: var(--muted); text-align: center; padding: 6px 0; }
+
+.panel { flex: none; border-right: 1px solid var(--q-line); background: var(--q-panel); display: flex; flex-direction: column; min-height: 0; }
+.phead { padding: 9px 12px 7px; font: 600 13px var(--display); color: var(--hi); display: flex; align-items: center; gap: 8px; }
+.phead small { font: 10px var(--mono); color: var(--muted); margin-left: auto; }
+.pscroll { flex: 1; overflow: auto; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.eh { display: flex; gap: 6px; align-items: center; padding: 10px 4px 4px; border-top: 1px solid var(--q-line); margin-top: 4px; font: 600 12px var(--display); color: var(--hi); }
+.eh:first-child { border-top: 0; margin-top: 0; }
+.eh small { margin-left: auto; font: 10px var(--mono); color: var(--muted); font-weight: 400; }
+.srow { width: 100%; display: flex !important; gap: 8px; align-items: center; padding: 6px 8px !important; border-radius: 6px; background: var(--q-bg) !important; border: 1px solid var(--q-line) !important; min-width: 0; box-sizing: border-box; color: var(--muted) !important; }
+.srow:hover { border-color: #484f58 !important; }
+.ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ttl b { color: #e6edf3; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ttl small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.m { color: var(--muted); }
+
+/* preference controls */
+.pref { display: flex; flex-direction: column; gap: 4px; padding: 4px 4px 6px; }
+.pref > .pl { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; gap: 6px; }
+.pref > .pl span { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; color: #e6edf3; }
+.pref > .ph { color: var(--muted); font-size: 11px; }
+.sw6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.sw6.big { grid-template-columns: repeat(3, minmax(0, 150px)); gap: 6px; }
+.swb { display: flex !important; flex-direction: column; gap: 3px; border: 1px solid var(--q-line) !important; border-radius: 6px; padding: 4px !important; background: var(--q-bg) !important; min-width: 0; }
+.swb i { height: 10px; border-radius: 3px; display: block; }
+.swb span { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swb.on { border-color: var(--blue) !important; background: var(--sel) !important; }
+.swb.on span { color: #fff; }
+.sw6.big .swb i { height: 16px; } .sw6.big .swb span { font-size: 11.5px; }
+.segc { display: flex; gap: 2px; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 2px; flex-wrap: wrap; }
+.segc button { flex: 1; text-align: center !important; padding: 3px 6px !important; border-radius: 4px; color: var(--muted) !important; font-size: 11px; white-space: nowrap; }
+.segc button[aria-checked=true] { background: var(--q-raise) !important; color: #fff !important; }
+.tog { display: flex !important; align-items: center; gap: 8px; font-size: 11.5px; color: #e6edf3 !important; }
+.tog i { width: 26px; height: 14px; border-radius: 7px; background: var(--q-line); position: relative; flex: none; }
+.tog i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #e6edf3; transition: left .12s; }
+.tog[aria-pressed=true] i { background: var(--go); } .tog[aria-pressed=true] i::after { left: 14px; }
+.pv { position: relative; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; overflow: hidden; display: grid; place-items: center; }
+.pv pre { position: absolute; inset: 0; margin: 0; padding: 6px 8px; font: 10.5px/1.5 var(--mono); color: #6e7681; white-space: pre; overflow: hidden; }
+.pv svg { position: relative; display: block; }
+.pv .cap { position: absolute; left: 6px; bottom: 4px; font: 9px var(--mono); color: var(--muted); background: rgba(13,17,23,.8); padding: 0 4px; border-radius: 3px; }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.stabs { height: 34px; flex: none; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--q-panel); overflow: hidden; }
+.stab { padding: 5px 10px !important; border-radius: 6px; color: var(--muted) !important; font: 11.5px var(--mono); display: inline-flex !important; gap: 6px; align-items: center; white-space: nowrap; }
+.stab[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; }
+.stab .x { width: 16px; height: 16px; border-radius: 4px; display: inline-grid !important; place-items: center; color: var(--muted) !important; }
+.stab .x:hover { background: var(--q-line) !important; color: #fff !important; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; color: #8b949e; }
+.out b { color: #e6edf3; font-weight: 500; } .out .g { color: var(--green); } .out .y { color: var(--amber); } .out .p { color: var(--purple); }
+.out.hot { cursor: context-menu; }
+.split { flex: 1; display: flex; min-height: 0; }
+.split > .lcol { width: 190px; flex: none; border-right: 1px solid var(--q-line); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.split > .rcol { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.nav { padding: 6px 10px !important; border-radius: 6px; color: var(--muted) !important; font-size: 12px; }
+.nav[aria-current=true] { background: var(--q-raise) !important; color: #fff !important; }
+.sect { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.sect h3 { margin: 0; font: 600 15px var(--display); color: var(--hi); }
+.sect .pref { padding: 0; }
+
+/* palette overlay */
+.palov { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: center; align-items: flex-start; padding-top: 44px; background: rgba(1,4,9,.35); }
+.palbox { width: 460px; background: var(--q-panel); border: 1px solid #484f58; border-radius: 8px; box-shadow: 0 16px 48px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
+.palbox input { background: var(--q-bg); border: 0; border-bottom: 1px solid var(--q-line); padding: 9px 12px; color: var(--hi); font-size: 13px; outline: none; }
+.palbox .pal-h { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px 12px 4px; display: flex; gap: 8px; align-items: center; }
+.palrow { display: flex !important; gap: 10px; align-items: center; padding: 7px 12px !important; color: #e6edf3 !important; font-size: 12.5px; }
+.palrow:hover { background: var(--q-raise) !important; }
+.palrow .val { margin-left: auto; color: var(--muted); font: 11px var(--mono); }
+.palrow .sq { width: 22px; height: 10px; border-radius: 3px; flex: none; }
+.palrow.cur .val::before { content: "● "; color: var(--blue); }
+.palbody { display: flex; }
+.palbody .list { flex: 1; min-width: 0; padding-bottom: 6px; }
+.palbody .pv { margin: 8px; flex: none; }
+
+/* pie overlay (variant D) */
+.pieov { position: absolute; inset: 34px 0 0 0; z-index: 4; display: flex; align-items: center; justify-content: center; gap: 18px; }
+.piewrap { position: relative; }
+.gear { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50% !important; display: grid !important; place-items: center; color: #e6edf3 !important; background: rgba(22,27,34,.85) !important; border: 1px solid #484f58 !important; }
+.gear svg.i { width: 16px; height: 16px; }
+.pop { width: 270px; background: var(--q-panel); border: 1px solid #484f58; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.55); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.pop h4 { margin: 0; font: 600 12px var(--display); color: var(--hi); display: flex; align-items: center; }
+.pop .btn { margin-left: auto; }
+.cmenu { position: absolute; right: 8px; top: 40px; z-index: 6; }
+.btn { border: 1px solid var(--q-line) !important; background: var(--q-raise) !important; border-radius: 6px; padding: 3px 10px !important; font-weight: 600; font-size: 11.5px; white-space: nowrap; color: #e6edf3 !important; }
+.btn.go { background: var(--go) !important; border-color: var(--go-line) !important; color: #fff !important; }
+
+.comp { width: 330px; flex: none; border-left: 1px solid var(--q-line); display: flex; flex-direction: column; min-height: 0; position: relative; }
+.chead { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); align-items: center; }
+.cseg { padding: 5px 9px !important; border-radius: 6px; color: var(--muted) !important; font-size: 11.5px; display: inline-flex !important; gap: 5px; align-items: center; }
+.cseg.on { background: var(--q-raise) !important; color: #fff !important; }
+.dots3 { width: 26px; height: 24px; border-radius: 6px; display: grid !important; place-items: center; color: var(--muted) !important; font: 700 14px/1 var(--mono); }
+.dots3:hover { background: var(--q-raise) !important; color: #fff !important; }
+.cscroll { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.card { border: 1px solid var(--q-line); border-radius: 8px; padding: 10px; background: var(--q-panel); display: flex; flex-direction: column; gap: 6px; }
+.card h3 { margin: 0; font: 600 13px var(--display); color: var(--hi); }
+.card .kind { font: 600 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { border: 1px solid var(--q-line); border-radius: 6px; padding: 5px 7px; font-size: 11px; }
+.cell b { display: block; color: var(--hi); font-size: 13px; }
+.mergerow { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); }
+
+/* the guide */
+.guide { outline: 2px solid var(--guide) !important; outline-offset: 2px; animation: pulse 1.1s ease-in-out infinite; position: relative; z-index: 1; }
+@keyframes pulse { 50% { outline-color: rgba(240,183,47,.25); } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } }
+.hint { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); background: rgba(240,183,47,.12); border: 1px dashed var(--guide); color: var(--guide); border-radius: 8px; padding: 8px 14px; font: 600 12px var(--body); pointer-events: none; z-index: 2; }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; min-height: 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+.recbox { border: 1px solid rgba(240,183,47,.45); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recbox h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.recbox ul { margin: 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); vertical-align: top; }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+th.cur, td.cur { background: var(--sel); }
+tr.cur td { background: var(--sel); }
+.where { font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
+.w-panel { background: rgba(88,166,255,.15); color: var(--blue); } .w-comp { background: rgba(163,113,247,.15); color: var(--purple); }
+.w-tab { background: rgba(63,185,80,.15); color: var(--green); } .w-pal { background: var(--q-raise); color: var(--muted); } .w-place { background: rgba(210,153,34,.15); color: var(--amber); }
+.w-no { background: rgba(248,81,73,.12); color: var(--red); }
+
+/* decision form */
+form.ask { display: flex; flex-direction: column; gap: 18px; border: 1px solid var(--q-line); border-radius: 10px; padding: 16px; background: var(--q-panel); }
+form.ask.lit { border-color: var(--guide); }
+.q { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.q legend { color: var(--hi); font-weight: 600; padding: 0; margin-bottom: 4px; }
+.q legend small { color: var(--muted); font-weight: 400; display: block; }
+.opt { display: flex; gap: 8px; align-items: flex-start; }
+.opt input { margin-top: 4px; accent-color: var(--blue); }
+.opt em { font-style: normal; font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+form.ask textarea { background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 9px; min-height: 60px; color: var(--hi); }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copybtn { background: var(--go); border: 1px solid var(--go-line); color: #fff; font-weight: 600; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+pre.answer { margin: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 10px 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; color: var(--fg); max-height: 260px; overflow: auto; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-cmd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M18 15V9a3 3 0 0 0-3-3h-3"/></symbol>
+  <symbol id="i-issue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Quay Shell Preferences</h1>
+    <p class="lede">The redesign adds five settings of its own: the pie menu's palette, the dark outline on its labels, the pie's display delay, the Merge undo window, and which view the companion opens on. Here are four places they could live. The card below walks you through it.</p>
+  </header>
+
+  <section class="walk" id="walk" aria-live="polite"></section>
+
+  <fieldset class="seg" id="seg">
+    <legend>Where the settings live</legend>
+    <input type="radio" name="v" id="v-A" value="A" checked><label for="v-A"><b>A · Project panel group<span class="rec-mark">Recommended</span></b><small>A "Quay · every project" group under This project, each setting a control, with a small live pie</small></label>
+    <input type="radio" name="v" id="v-B" value="B"><label for="v-B"><b>B · Settings stage tab</b><small>A gear at the foot of the module bar opens a Settings tab with sections and a large live pie</small></label>
+    <input type="radio" name="v" id="v-C" value="C"><label for="v-C"><b>C · Palette only</b><small>No screen at all: "Preferences: …" commands, each lists its values</small></label>
+    <input type="radio" name="v" id="v-D" value="D"><label for="v-D"><b>D · In place</b><small>A gear in the pie's centre for pie settings; the companion's ⋯ menu for its own and Merge's</small></label>
+  </fieldset>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+  </div>
+
+  <div class="scroll"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Where each one lives</h2>
+  <p class="lede">The column for the option you are looking at is highlighted.</p>
+  <div class="scroll"><table id="where"></table></div>
+
+  <h2>Your runs of the job</h2>
+  <p class="lede">Counted live in the mock: every press inside the window is a click, and pointer travel is the straight-line distance between presses. The table keeps your best run per option and resets when the page reloads. Switching option starts a fresh run.</p>
+  <div class="scroll"><table id="bench"></table></div>
+
+  <h2>My recommendation</h2>
+  <div class="recbox">
+    <h3>A · Project panel group</h3>
+    <ul>
+      <li>The Project module already holds Quay's housekeeping: spend, logs and updates. Shell settings are housekeeping too, so they go there instead of into a new kind of screen.</li>
+      <li>The panel gets two groups with plain headings: <b>This project</b> (workspace settings, Open in VS Code, logs) and <b>Quay · every project</b> (the five shell settings, sound, updates). The headings say the scope, so nobody wonders whether the pie palette is per project.</li>
+      <li>Every setting is a control right there: one click to open the panel, one click per change. The terminal stays in view, and the small pie redraws over terminal text as you change it, so you see the outline and palette where they matter.</li>
+      <li>Each setting is also a palette command, as the command taxonomy already requires of everything.</li>
+    </ul>
+    <p>The cost: per-project and Quay-wide settings share one panel, and a 300 px panel fills up if the shell gains many more settings (for example a theme, if the look ticket adds one). Past about eight, move the Quay group to a Settings tab like B. In my own run of the job, following the outline, A took 5 clicks, B 8, D 8 and C 11.</p>
+    <p>This is only my pick. Nothing is decided until you approve below.</p>
+  </div>
+
+  <h2>Your decision</h2>
+  <form class="ask" id="ask">
+    <fieldset class="q">
+      <legend>1. Where do the shell's settings live?</legend>
+      <label class="opt"><input type="radio" name="fav" value="A"> <span>A · Project panel group<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="fav" value="B"> B · Settings stage tab</label>
+      <label class="opt"><input type="radio" name="fav" value="C"> C · Palette only</label>
+      <label class="opt"><input type="radio" name="fav" value="D"> D · In place</label>
+      <label class="opt"><input type="radio" name="fav" value="none"> None of these; see my notes</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>2. Is every setting also a palette command?<small>Not asked for C, where the palette is the only home.</small></legend>
+      <label class="opt"><input type="radio" name="pal" value="yes"> <span>Yes, "Preferences: …" for each<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="pal" value="no"> No, only where they live</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>3. Do Quay's other every-project settings move to the same place?<small>Today the sound chime sits in the token spend window and Check for updates in each project's workspace settings.</small></legend>
+      <label class="opt"><input type="radio" name="move" value="yes"> <span>Yes, sound and updates join the shell settings<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="move" value="no"> No, leave them where they are</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>4. What should the pie's display delay be by default?<small>How long a held button waits before the pie draws. A flick made before then fires without the pie flashing up. The research said to treat it as tunable and measure it in Quay.</small></legend>
+      <label class="opt"><input type="radio" name="delay" value="0"> None: the pie draws at once</label>
+      <label class="opt"><input type="radio" name="delay" value="150"> <span>150 ms<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="delay" value="300"> 300 ms</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>5. Anything else? (optional)</legend>
+      <textarea id="notes" aria-label="Your notes"></textarea>
+    </fieldset>
+    <div class="copyrow">
+      <button class="copybtn" type="submit" id="copy">Copy my answers</button>
+      <span class="toast" id="copied" aria-live="polite"></span>
+    </div>
+    <pre class="answer" id="answer" tabindex="0" aria-label="Your answers as text"></pre>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const g = (key) => ` data-guide="${key}"`;
+const NAMES = { A: "A · Project panel group", B: "B · Settings stage tab", C: "C · Palette only", D: "D · In place" };
+
+/* ---------- settings ---------- */
+const PALS = {
+  spectrum: ["Spectrum", "#7df9ff", "#ffffff"], cyber: ["Cyan + magenta", "#00f0ff", "#ff2bd6"], tron: ["Cyan + orange", "#18e0ff", "#ff9a1f"],
+  acid: ["Lime + cyan", "#b6ff1a", "#00e5ff"], sunset: ["Pink + yellow", "#ff3d81", "#ffd60a"], ice: ["Ice white + green", "#dfe9ff", "#39ff88"],
+};
+const SPECTRUM = "linear-gradient(90deg,hsl(170,100%,62%),hsl(260,100%,62%),hsl(350,100%,62%),hsl(80,100%,62%))";
+const swatch = (k) => k === "spectrum" ? SPECTRUM : `linear-gradient(90deg,${PALS[k][1]} 50%,${PALS[k][2]} 50%)`;
+const OPTS = {
+  delay: [["0", "None"], ["150", "150 ms"], ["300", "300 ms"]],
+  undo: [["0", "Off"], ["3", "3 s"], ["5", "5 s"], ["10", "10 s"]],
+  cv: [["pr", "Pull request"], ["issue", "Ticket"], ["act", "Activity"]],
+};
+const LABEL = { pal: "Pie palette", outline: "Pie label outline", delay: "Pie display delay", undo: "Merge undo window", cv: "Companion opens on" };
+const valText = (k, p) => k === "pal" ? PALS[p.pal][0] : k === "outline" ? (p.outline ? "On" : "Off") : OPTS[k].find((o) => o[0] === String(p[k]))[1];
+const SLICES = ["NEXT", "MERGE", "SPLIT", "LOOK", "PALETTE", "WRITE", "NEW", "INSPECT"];
+const TERM_TXT = `$ claude --ticket 571
+● Reading ticket Run canvas: node phases (#571)
+✓ phases.ts, runCanvas.ts, RunNode.tsx updated
+✓ pnpm vitest run runCanvas.test.ts  12 passed
+● Writing the pull request body…
+  src/slices/praxis-builder/RunCanvas.tsx | 48 +++--
+  src/slices/praxis-builder/phases.ts     | 31 ++++
+  src/slices/praxis-builder/RunNode.tsx   | 22 +-
+● gh pr create --fill --base master
+✓ https://github.com/…/pull/574
+● Waiting on checks: lint, test, build
+✓ lint  ✓ test  ● build (2m 10s)`;
+
+/* the pie as the redesign drew it: a transparent neon wireframe, eight slices, MERGE aimed */
+function pieSvg(R, p) {
+  const c = R + 4, r0 = R * 0.34, pad = 2.5, aimed = 1;
+  const pt = (rad, deg) => [(c + rad * Math.cos(deg * Math.PI / 180)).toFixed(1), (c + rad * Math.sin(deg * Math.PI / 180)).toFixed(1)];
+  const [, a, b] = PALS[p.pal];
+  const fs = Math.max(7, Math.round(R * 0.085));
+  let s = `<svg viewBox="0 0 ${2 * c} ${2 * c}" width="${2 * c}" height="${2 * c}" aria-hidden="true">`;
+  SLICES.forEach((lab, i) => {
+    const mid = -90 + i * 45, d0 = mid - 22.5 + pad, d1 = mid + 22.5 - pad;
+    const col = p.pal === "spectrum" ? `hsl(${(i * 45 + 170) % 360},100%,62%)` : a;
+    const on = i === aimed, stroke = on ? b : col;
+    const [x0, y0] = pt(R, d0), [x1, y1] = pt(R, d1), [x2, y2] = pt(r0, d1), [x3, y3] = pt(r0, d0);
+    s += `<path d="M${x0} ${y0}A${R} ${R} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 0 0 ${x3} ${y3}Z" fill="${stroke}" fill-opacity="${on ? 0.14 : 0}" stroke="${stroke}" stroke-width="${on ? 2 : 1.3}"/>`;
+    const [lx, ly] = pt((R + r0) / 2, mid);
+    s += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-family="JetBrains Mono, Consolas, monospace" font-weight="600" letter-spacing=".05em" fill="${on ? "#ffffff" : col}"${p.outline ? ` stroke="#05070a" stroke-width="${Math.max(2.5, fs * 0.38).toFixed(1)}" stroke-linejoin="round" paint-order="stroke"` : ""}>${lab}</text>`;
+  });
+  s += `<circle cx="${c}" cy="${c}" r="${(r0 * 0.6).toFixed(1)}" fill="none" stroke="${p.pal === "spectrum" ? "#7df9ff" : a}" stroke-width="1" stroke-dasharray="2 3"/></svg>`;
+  return s;
+}
+const preview = (R, w, h, cap = true) => `<div class="pv" style="width:${w ? w + "px" : "auto"};height:${h}px"><pre aria-hidden="true">${esc(TERM_TXT)}</pre>${pieSvg(R, P)}${cap ? '<span class="cap">live preview over terminal text</span>' : ""}</div>`;
+
+/* controls shared by A, B and D */
+function ctlPal(big) {
+  return `<div class="sw6${big ? " big" : ""}" role="radiogroup" aria-label="Pie palette">${Object.keys(PALS).map((k) => `<button type="button" role="radio" aria-checked="${P.pal === k}" class="swb${P.pal === k ? " on" : ""}" data-a="set" data-arg="pal:${k}"${g("set-pal-" + k)}><i style="background:${swatch(k)}"></i><span>${PALS[k][0]}</span></button>`).join("")}</div>`;
+}
+const ctlSeg = (k) => `<div class="segc" role="radiogroup" aria-label="${LABEL[k]}">${OPTS[k].map(([val, t]) => `<button type="button" role="radio" aria-checked="${String(P[k]) === val}" data-a="set" data-arg="${k}:${val}"${g(`set-${k}-${val}`)}>${t}</button>`).join("")}</div>`;
+const ctlOutline = () => `<button class="tog" type="button" aria-pressed="${P.outline}" data-a="set" data-arg="outline:toggle"${g("set-outline")}><i></i>Dark outline on pie labels</button>`;
+const pref = (k, body, hint) => `<div class="pref"><div class="pl">${LABEL[k]}<span>${esc(valText(k, P))}</span></div>${body}${hint ? `<div class="ph">${hint}</div>` : ""}</div>`;
+
+/* ---------- state ---------- */
+const P0 = { pal: "spectrum", outline: true, delay: 150, undo: 5, cv: "pr" };
+let P = { ...P0 };
+const fresh = () => ({ mod: null, stage: "term", setTab: false, sec: "pie", palOpen: false, palCmd: null, q: "", pie: false, gear: false, compMenu: false, chime: true, toast: "" });
+let v = "A";
+let st = fresh();
+let J;
+const resetJob = () => { J = { clicks: 0, travel: 0, last: null, finished: false }; };
+resetJob();
+const bench = {};
+const W = { step: 0, seen: new Set(["A"]) };
+
+const covered = () => st.stage !== "term" || st.palOpen || st.pie || st.compMenu;
+const JOB = [
+  { label: "Set the pie palette to Pink + yellow", done: () => P.pal === "sunset",
+    keys: ["set-pal-sunset", "val-pal-sunset", "cmd-pal", "pal-back", "sec-pie", "stage-settings", "pie-gear", "open-pie", "open-pal", "open-settings", "mod-project"] },
+  { label: "Turn the dark label outline off", done: () => P.outline === false,
+    keys: ["set-outline", "cmd-outline", "pal-back", "sec-pie", "stage-settings", "pie-gear", "open-pie", "open-pal", "open-settings", "mod-project"] },
+  { label: "Make the Merge undo window 10 s", done: () => P.undo === 10,
+    keys: ["set-undo-10", "val-undo-10", "cmd-undo", "pal-back", "sec-merge", "stage-settings", "comp-menu", "open-pal", "open-settings", "mod-project"] },
+  { label: "Make the companion open on the ticket", done: () => P.cv === "issue",
+    keys: ["set-cv-issue", "val-cv-issue", "cmd-cv", "pal-back", "sec-companion", "stage-settings", "comp-menu", "open-pal", "open-settings", "mod-project"] },
+  { label: "End on the terminal, nothing covering it", done: () => !covered(),
+    keys: ["pal-close", "pie-done", "comp-done", "stage-term"] },
+];
+const jobStep = () => JOB.findIndex((j) => !j.done());
+
+/* ---------- actions ---------- */
+function setPref(k, val) {
+  if (k === "outline") P.outline = !P.outline;
+  else if (k === "pal" || k === "cv") P[k] = val;
+  else P[k] = Number(val);
+  st.toast = `${LABEL[k]}: ${valText(k, P)}`;
+}
+function act(a, arg) {
+  st.toast = "";
+  switch (a) {
+    case "mod": st.mod = st.mod === arg ? null : arg; break;
+    case "sel": st.stage = "term"; break;
+    case "set": { const [k, val] = arg.split(":"); setPref(k, val); break; }
+    case "open-settings": st.setTab = true; st.stage = "settings"; break;
+    case "stage": st.stage = arg; break;
+    case "close-settings": st.setTab = false; st.stage = "term"; break;
+    case "sec": st.sec = arg; break;
+    case "pal": st.palOpen = !st.palOpen; st.palCmd = null; st.q = ""; break;
+    case "cmd": if (arg === "outline") { setPref("outline"); st.palOpen = false; } else st.palCmd = arg; break;
+    case "val": { const [k, val] = arg.split(":"); setPref(k, val); st.palOpen = false; st.palCmd = null; break; }
+    case "pal-back": st.palCmd = null; break;
+    case "pal-close": st.palOpen = false; st.palCmd = null; break;
+    case "pie": st.pie = true; st.gear = false; st.compMenu = false; break;
+    case "gear": st.gear = !st.gear; break;
+    case "pie-done": st.pie = false; st.gear = false; break;
+    case "comp-menu": st.compMenu = !st.compMenu; st.pie = false; st.gear = false; break;
+    case "comp-done": st.compMenu = false; break;
+    case "chime": st.chime = !st.chime; break;
+    default: break;
+  }
+  if (!J.finished && jobStep() < 0) {
+    J.finished = true;
+    const b = bench[v], t = Math.round(J.travel);
+    if (!b || J.clicks < b.clicks || (J.clicks === b.clicks && t < b.travel)) bench[v] = { clicks: J.clicks, travel: t, runs: (b ? b.runs : 0) + 1 };
+    else b.runs++;
+  }
+}
+
+/* ---------- panels ---------- */
+function projectPanel() {
+  const proj = `<div class="eh">This project<small>quay-2</small></div>
+    <button class="srow" type="button" data-a="noop"><span class="ttl"><b>Workspace settings</b><small>env vars and default flags</small></span></button>
+    <button class="srow" type="button" data-a="noop"><span class="ttl"><b>Open in VS Code</b><small>E:\\Projects\\Quay2</small></span></button>
+    <button class="srow" type="button" data-a="noop"><span class="ttl"><b>Token spend</b><small>$4.12 today</small></span></button>
+    <button class="srow" type="button" data-a="noop"><span class="ttl"><b>Logs folder</b><small>crash.log, app.log</small></span></button>`;
+  if (v !== "A") return `<div class="phead">Project</div><div class="pscroll">${proj}${v === "B" ? `<button class="srow" type="button" data-a="open-settings"><span class="ttl"><b>Settings</b><small>also the gear at the foot of the bar, or Ctrl+,</small></span></button>` : ""}</div>`;
+  return `<div class="phead">Project</div><div class="pscroll">${proj}
+    <div class="eh">Quay · every project</div>
+    ${preview(62, 0, 140)}
+    ${pref("pal", ctlPal(false))}
+    ${pref("outline", ctlOutline())}
+    ${pref("delay", ctlSeg("delay"))}
+    ${pref("undo", ctlSeg("undo"))}
+    ${pref("cv", ctlSeg("cv"))}
+    <div class="pref"><div class="pl">Sound</div><button class="tog" type="button" aria-pressed="${st.chime}" data-a="chime"><i></i>Chime when a terminal needs you</button></div>
+    <button class="srow" type="button" data-a="noop"><span class="ttl"><b>Check for updates</b><small>v0.7.0 · up to date</small></span></button>
+  </div>`;
+}
+function projectsPanel() {
+  return `<div class="phead">Projects<small>3 terminals</small></div><div class="pscroll">${TERMS.map(([n, d, s]) => `<button class="srow" type="button" data-a="sel"><i class="td ${d}"></i><span class="ttl"><b>${n}</b><small>${s}</small></span></button>`).join("")}</div>`;
+}
+const TERMS = [["claude · ticket-571", "w", "working"], ["archon · implement-588", "a", "awaiting approval"], ["codex · review", "w", "working"]];
+
+/* ---------- stage ---------- */
+const SECS = [["pie", "Pie menu"], ["companion", "Companion"], ["merge", "Merge"], ["sound", "Sound"], ["updates", "Updates"]];
+function settingsBody() {
+  const s = st.sec;
+  let body;
+  if (s === "pie") body = `<h3>Pie menu</h3>${preview(118, 0, 270)}${pref("pal", ctlPal(true))}${pref("outline", ctlOutline(), "Keeps label letters readable over busy terminal text.")}${pref("delay", ctlSeg("delay"), "How long a held button waits before the pie draws. A flick made sooner fires without the pie flashing up.")}`;
+  else if (s === "companion") body = `<h3>Companion</h3>${pref("cv", ctlSeg("cv"), "Which view the companion shows first when the selected terminal has both a ticket and a pull request.")}`;
+  else if (s === "merge") body = `<h3>Merge</h3>${pref("undo", ctlSeg("undo"), "A Merge from the pie or the readiness card waits this long, with Cancel, before it runs.")}`;
+  else if (s === "sound") body = `<h3>Sound</h3><div class="pref"><button class="tog" type="button" aria-pressed="${st.chime}" data-a="chime"><i></i>Chime when a terminal needs you</button></div>`;
+  else body = `<h3>Updates</h3><p class="m">v0.7.0 · up to date</p>`;
+  return `<div class="split"><nav class="lcol" aria-label="Settings sections">${SECS.map(([k, t]) => `<button class="nav" type="button" aria-current="${st.sec === k}" data-a="sec" data-arg="${k}"${g("sec-" + k)}>${t}</button>`).join("")}</nav><div class="rcol"><div class="sect">${body}</div></div></div>`;
+}
+function paletteHtml() {
+  const q = st.q.trim().toLowerCase();
+  let head, rows, side = "";
+  if (!st.palCmd) {
+    const cmds = ["pal", "outline", "delay", "undo", "cv"].filter((k) => !q || ("preferences: " + LABEL[k]).toLowerCase().includes(q));
+    head = `<div class="pal-h">Preferences</div>`;
+    rows = cmds.map((k) => `<button class="palrow" type="button" data-a="cmd" data-arg="${k}"${g("cmd-" + k)}>Preferences: ${LABEL[k]}${k === "outline" ? (P.outline ? " (turn off)" : " (turn on)") : "…"}<span class="val">${esc(valText(k, P))}</span></button>`).join("") || `<p class="m" style="padding:8px 12px">No matching command</p>`;
+  } else {
+    const k = st.palCmd;
+    head = `<div class="pal-h"><button class="btn" type="button" data-a="pal-back"${g("pal-back")}>‹ Back</button>${LABEL[k]}</div>`;
+    const vals = k === "pal" ? Object.keys(PALS).map((p) => [p, PALS[p][0]]) : OPTS[k];
+    rows = vals.map(([val, t]) => `<button class="palrow${String(P[k]) === val ? " cur" : ""}" type="button" data-a="val" data-arg="${k}:${val}"${g(`val-${k}-${val}`)}>${k === "pal" ? `<i class="sq" style="background:${swatch(val)}"></i>` : ""}${t}<span class="val">${String(P[k]) === val ? "current" : ""}</span></button>`).join("");
+    if (k === "pal") side = preview(64, 150, 150, false);
+  }
+  return `<div class="palov" data-a="pal-close"${g("pal-close")}><div class="palbox" data-a="noop" role="dialog" aria-label="Command palette">
+    <input id="palq" type="text" aria-label="Type a command" placeholder="Type a command, or pick one below" value="${esc(st.q)}" autocomplete="off">
+    ${head}<div class="palbody"><div class="list">${rows}</div>${side}</div></div></div>`;
+}
+function pieOverlay() {
+  const pop = st.gear ? `<div class="pop" data-a="noop"><h4>Pie menu<button class="btn" type="button" data-a="pie-done"${g("pie-done")}>Done</button></h4>${pref("pal", ctlPal(false))}${pref("outline", ctlOutline())}${pref("delay", ctlSeg("delay"))}</div>` : "";
+  return `<div class="pieov" data-a="pie-done"${st.gear ? "" : g("pie-done")}><div class="piewrap" data-a="noop">${pieSvg(130, P)}<button class="gear" type="button" aria-label="Pie menu settings" aria-expanded="${st.gear}" data-a="gear"${g("pie-gear")}>${ico("gear")}</button></div>${pop}</div>`;
+}
+function stageHtml() {
+  const tabs = [`<button class="stab" type="button" role="tab" aria-selected="${st.stage === "term"}" data-a="stage" data-arg="term"${g("stage-term")}><i class="td w"></i>claude · ticket-571</button>`];
+  if (st.setTab) tabs.push(`<span class="stab" role="tab" aria-selected="${st.stage === "settings"}" style="padding-right:4px !important"><button type="button" data-a="stage" data-arg="settings"${g("stage-settings")} style="display:inline-flex;gap:6px;align-items:center">${ico("gear")}Settings</button><button class="x" type="button" aria-label="Close Settings tab" data-a="close-settings">${ico("x")}</button></span>`);
+  let body;
+  if (st.stage === "settings") body = settingsBody();
+  else body = `<pre class="out${v === "D" ? " hot" : ""}"${v === "D" ? ` data-a="pie"${g("open-pie")}` : ""}><span class="m">$</span> claude <span class="m">--ticket 571</span>
+<span class="p">●</span> Reading ticket <b>Run canvas: node phases</b> (#571)
+<span class="g">✓</span> phases.ts, runCanvas.ts, RunNode.tsx updated
+<span class="g">✓</span> pnpm vitest run …/runCanvas.test.ts  <span class="m">12 passed</span>
+<span class="p">●</span> gh pr create --fill --base master
+<span class="g">✓</span> https://github.com/…/pull/574
+<span class="p">●</span> Waiting on checks: lint, test, build</pre>${v === "D" && !st.pie && !J.finished && jobStep() >= 0 && jobStep() < 2 ? `<div class="hint">Right-click the terminal to open the pie (a plain click works in this mock)</div>` : ""}`;
+  const over = (v === "D" && st.pie && st.stage === "term" ? pieOverlay() : "") + (v === "C" && st.palOpen ? paletteHtml() : "");
+  return `<section class="stage" aria-label="Stage"><div class="stabs" role="tablist" aria-label="Stage tabs">${tabs.join("")}</div>${body}${over}</section>`;
+}
+
+/* ---------- companion ---------- */
+function compHtml() {
+  const undo = P.undo ? `Merge waits ${P.undo} s with Cancel` : "Merge runs at once";
+  const prc = `<div class="card"><span class="kind">Pull request</span><h3>Run canvas: node phases <span class="m">#574</span></h3><div class="cells"><div class="cell">Checks<b>2 of 3</b></div><div class="cell">Comments<b>2</b></div><div class="cell">Files<b>6</b></div><div class="cell">Commits<b>3</b></div></div><div class="mergerow"><button class="btn go" type="button" data-a="noop">Squash and merge</button><span>${undo}</span></div></div>`;
+  const isc = `<div class="card"><span class="kind">Ticket</span><h3>Run canvas: node phases <span class="m">#571</span></h3><div class="cells"><div class="cell">Blocked by<b>none</b></div><div class="cell">Comments<b>4</b></div></div></div>`;
+  const acc = `<div class="card"><span class="kind">Activity</span><h3>claude · ticket-571</h3><p class="m" style="font-size:11px">Edit RunCanvas.tsx · Bash pnpm vitest · Write phases.ts</p></div>`;
+  const order = { pr: [prc, isc, acc], issue: [isc, prc, acc], act: [acc, prc, isc] }[P.cv];
+  const segs = [["pr", "pr", "Pull request"], ["issue", "issue", "Ticket"], ["act", "act", "Activity"]].map(([k, i, t]) => `<span class="cseg${P.cv === k ? " on" : ""}">${ico(i)}${t}</span>`).join("");
+  const menu = v === "D" ? `<button class="dots3" type="button" aria-label="Companion settings" aria-expanded="${st.compMenu}" data-a="comp-menu"${g("comp-menu")}>⋯</button>` : "";
+  const pop = v === "D" && st.compMenu ? `<div class="cmenu"><div class="pop" data-a="noop"><h4>Companion<button class="btn" type="button" data-a="comp-done"${g("comp-done")}>Done</button></h4>${pref("cv", ctlSeg("cv"))}${pref("undo", ctlSeg("undo"))}</div></div>` : "";
+  return `<aside class="comp" aria-label="Companion"><div class="chead">${segs}<span class="grow"></span>${menu}</div><div class="cscroll">${order.slice(0, 2).join("")}<p class="m" style="font-size:11px">Opens on the view set in the settings. Stand-in for the views you chose earlier.</p></div>${pop}</aside>`;
+}
+
+/* ---------- notes and tables ---------- */
+const NOTES = {
+  A: { what: "The Project panel gets a second group, Quay · every project, under This project. Each of the five settings is a control right there, with a small live pie drawn over terminal text.",
+    pro: ["Nothing new to learn: the Project module already holds spend, logs and updates.", "One click to open, one click per change, and the terminal stays in view.", "Every current value is visible at a glance, and the small pie redraws as you change it."],
+    con: ["Per-project and every-project settings share one panel; only the two headings tell them apart.", "A 300 px panel fills up if the shell gains many more settings."] },
+  B: { what: "A gear at the foot of the module bar (or Ctrl+,) opens a Settings stage tab. Sections on the left: Pie menu, Companion, Merge, Sound, Updates. The pie section has a large live preview.",
+    pro: ["Room to grow, with the largest preview.", "Familiar from VS Code and most desktop apps.", "Keeps the Project panel about the project."],
+    con: ["Covers the terminal while open, and leaves a tab to close.", "A new kind of screen, plus a sixth icon on the bar, for five settings.", "Changing settings in two sections means extra section clicks."] },
+  C: { what: "No settings screen at all. Each setting is a palette command (Preferences: Pie palette…, and so on); picking one lists its values, and picking a value applies it and closes the palette.",
+    pro: ["Adds nothing to the window.", "Fast from the keyboard: type pref, then a few letters."],
+    con: ["Nowhere shows all the current values together.", "By mouse it costs two to three clicks per change, and a new user cannot find the settings without knowing to look.", "Only a small preview while you choose a palette."] },
+  D: { what: "Each setting lives on the thing it changes. A gear in the pie's centre opens its palette, outline and delay beside the live pie. The companion's ⋯ menu holds which view it opens on and the Merge undo window.",
+    pro: ["Found where you notice the need.", "Pie settings preview on the real pie, full size."],
+    con: ["The pie's centre is where releasing cancels; a gear there clashes with that.", "To change a pie setting you must first open the pie.", "Scattered: no one place to see or reset everything."] },
+};
+const WL = { panel: ["w-panel", "Panel"], tab: ["w-tab", "Stage tab"], pal: ["w-pal", "Palette"], comp: ["w-comp", "Companion"], place: ["w-place", "In place"], no: ["w-no", "Nowhere"] };
+const WHERE = [
+  ["Pie palette, outline, delay", { A: ["panel", "Project panel, Quay group"], B: ["tab", "Settings, Pie menu"], C: ["pal", "Preferences: …"], D: ["place", "gear in the pie's centre"] }],
+  ["Merge undo window", { A: ["panel", "Project panel, Quay group"], B: ["tab", "Settings, Merge"], C: ["pal", "Preferences: …"], D: ["comp", "companion ⋯ menu"] }],
+  ["Companion opens on", { A: ["panel", "Project panel, Quay group"], B: ["tab", "Settings, Companion"], C: ["pal", "Preferences: …"], D: ["comp", "companion ⋯ menu"] }],
+  ["Sound chime, updates", { A: ["panel", "Project panel, Quay group"], B: ["tab", "Settings, Sound and Updates"], C: ["pal", "Preferences: …"], D: ["place", "where they are today"] }],
+  ["All current values at once", { A: ["panel", "yes"], B: ["tab", "yes, one section at a time"], C: ["no", "no"], D: ["no", "no"] }],
+];
+function renderTables() {
+  $("where").innerHTML = `<thead><tr><th>What</th>${["A", "B", "C", "D"].map((k) => `<th class="${k === v ? "cur" : ""}">${NAMES[k]}</th>`).join("")}</tr></thead><tbody>${WHERE.map(([what, m]) => `<tr><td>${what}</td>${["A", "B", "C", "D"].map((k) => `<td class="${k === v ? "cur" : ""}"><span class="where ${WL[m[k][0]][0]}">${WL[m[k][0]][1]}</span> ${m[k][1]}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  $("bench").innerHTML = `<thead><tr><th>Option</th><th>Clicks</th><th>Pointer travel</th><th>Runs</th></tr></thead><tbody>${["A", "B", "C", "D"].map((k) => {
+    const b = bench[k];
+    return `<tr class="${k === v ? "cur" : ""}"><td>${NAMES[k]}</td><td class="n">${b ? b.clicks : "—"}</td><td class="n">${b ? b.travel.toLocaleString("en-US") + " px" : "—"}</td><td>${b ? b.runs : 0}</td></tr>`;
+  }).join("")}</tbody>`;
+}
+
+/* ---------- walkthrough ---------- */
+const WALK = [
+  { title: "Look at each option", body: "Press A, B, C and D in the row above the window. Each puts the same five settings somewhere else. A is my pick.",
+    prog: () => `${W.seen.size} of 4 seen`, done: () => W.seen.size === 4 },
+  { title: "Run the job in one option", body: "Pick an option, then follow the glowing outline in the window: it shows the next thing to press, for five short steps (the job row above the window ticks them off). Switching option starts a fresh run.",
+    prog: () => J.finished ? "Finished" : `Step ${jobStep() + 1} of ${JOB.length}`, done: () => Object.keys(bench).length >= 1 },
+  { title: "Run it in a second option", body: "Pick a different option and follow the outline again, so the table under the window compares two.",
+    prog: () => `${Object.keys(bench).length} of 2 options run`, done: () => Object.keys(bench).length >= 2 },
+  { title: "Approve, then copy", body: "My recommendation is under the window. Answer Your decision (the first question starts blank, so nothing is chosen for you), then press Copy my answers and paste the text into the chat.",
+    prog: () => "", done: () => false },
+];
+const advanced = new Set();
+function renderWalk() {
+  while (W.step < WALK.length - 1 && !advanced.has(W.step) && WALK[W.step].done()) { advanced.add(W.step); W.step++; }
+  const s = WALK[W.step];
+  $("walk").innerHTML = `<div class="wtop"><span class="wstep">Step ${W.step + 1} of ${WALK.length}</span><h2>${s.title}</h2><span class="wprog">${s.prog()}</span></div>
+    <p>${s.body}</p>
+    <div class="row"><div class="wdots">${WALK.map((_, i) => `<i class="${i < W.step ? "ok" : i === W.step ? "on" : ""}"></i>`).join("")}</div>
+    <span class="grow"></span><div class="wnav">${W.step > 0 ? '<button class="ghost" type="button" id="w-back">Back</button>' : ""}${W.step < WALK.length - 1 ? '<button class="ghost" type="button" id="w-skip">Skip this step</button>' : ""}</div></div>`;
+  $("ask").classList.toggle("lit", W.step === WALK.length - 1);
+  const b = $("w-back"), k = $("w-skip");
+  if (b) b.onclick = () => { W.step--; renderWalk(); };
+  if (k) k.onclick = () => { advanced.add(W.step); W.step++; renderWalk(); };
+}
+
+/* ---------- render ---------- */
+function render() {
+  const s = $("shell");
+  const keep = {};
+  ["pscroll", "cscroll", "rcol"].forEach((c) => { const e = s.querySelector("." + c); if (e) keep[c] = e.scrollTop; });
+  const panel = st.mod === "project" ? projectPanel() : st.mod === "projects" ? projectsPanel() : "";
+  const dots = TERMS.map(([n, d, x], i) => `<button class="tdot${i === 0 ? " sel" : ""}" type="button" aria-label="${n}, ${x}" data-a="sel"><i class="td ${d}"></i></button>`).join("");
+  s.innerHTML = `<nav class="abar" aria-label="Module bar">
+      <button class="ib${st.mod === "projects" ? " on" : ""}" type="button" aria-label="Projects" data-a="mod" data-arg="projects">${ico("folder")}</button>
+      <div class="tdots">${dots}</div>
+      <button class="ib" type="button" aria-label="Source control, 2 open pull requests" data-a="noop">${ico("branch")}<span class="badge">2</span></button>
+      <button class="ib" type="button" aria-label="Agents" data-a="noop">${ico("bot")}</button>
+      <button class="ib" type="button" aria-label="Workflows" data-a="noop">${ico("flow")}</button>
+      <button class="ib${st.mod === "project" ? " on" : ""}" type="button" aria-label="Project" data-a="mod" data-arg="project"${g("mod-project")}>${ico("sliders")}</button>
+      <span class="grow"></span>
+      ${v === "B" ? `<button class="ib${st.setTab && st.stage === "settings" ? " on" : ""}" type="button" aria-label="Settings (Ctrl+,)" data-a="open-settings"${g("open-settings")}>${ico("gear")}</button>` : ""}
+      <button class="ib${v === "C" ? (st.palOpen ? " on" : "") : " dim"}" type="button" aria-label="Command palette (Ctrl+Shift+P)${v === "C" ? "" : ", not part of this option's job"}" data-a="${v === "C" ? "pal" : "noop"}"${v === "C" ? g("open-pal") : ""}>${ico("cmd")}</button>
+      <span class="spend">$4.12</span></nav>
+    ${panel ? `<div class="panel" style="width:${st.mod === "project" && v === "A" ? 300 : 250}px">${panel}</div>` : ""}
+    ${stageHtml()}${compHtml()}`;
+  ["pscroll", "cscroll", "rcol"].forEach((c) => { const e = s.querySelector("." + c); if (e && keep[c] != null) e.scrollTop = keep[c]; });
+  if (!J.finished) {
+    const i = jobStep();
+    if (i >= 0) {
+      for (const key of JOB[i].keys) {
+        const el = s.querySelector(`[data-guide="${key}"]`);
+        if (el) {
+          el.classList.add("guide");
+          const box = el.closest(".pscroll, .cscroll, .rcol");
+          if (box && box.getBoundingClientRect) {
+            const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+            if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 12;
+            else if (r.top < b.top) box.scrollTop -= b.top - r.top + 12;
+          }
+          break;
+        }
+      }
+    }
+  }
+  const q = $("palq");
+  if (q) {
+    q.addEventListener("input", () => { st.q = q.value; const pos = q.selectionStart; render(); const n = $("palq"); n.focus(); n.setSelectionRange(pos, pos); });
+    if (document.activeElement !== q && st.palOpen && !st.palCmd) q.focus({ preventScroll: true });
+  }
+  const cur = jobStep();
+  $("job").innerHTML = JOB.map((j, i) => `<li class="${J.finished || j.done() ? "done" : i === cur ? "now" : ""}">${j.label}</li>`).join("");
+  const nt = NOTES[v];
+  $("n-what").textContent = nt.what;
+  $("n-pro").innerHTML = nt.pro.map((x) => `<li>${x}</li>`).join("");
+  $("n-con").innerHTML = nt.con.map((x) => `<li>${x}</li>`).join("");
+  $("readout").innerHTML = `<span>This run: <b>${J.clicks}</b> clicks</span><span><b>${Math.round(J.travel).toLocaleString("en-US")}</b> px pointer travel</span>${J.finished ? '<span class="toast">Job done. Press Reset run, or pick another option.</span>' : ""}${st.toast ? `<span class="toast">${esc(st.toast)}</span>` : ""}`;
+  document.querySelectorAll("#seg label").forEach((l) => l.classList.toggle("seen", W.seen.has(l.htmlFor.slice(2))));
+  renderTables();
+  renderWalk();
+  renderAnswer();
+}
+
+/* ---------- events ---------- */
+const shell = $("shell");
+shell.addEventListener("pointerdown", (e) => {
+  if (J.finished) return;
+  if (e.target.closest("input")) return;
+  J.clicks++;
+  const p = { x: e.clientX + scrollX, y: e.clientY + scrollY };
+  if (J.last && Number.isFinite(p.x) && Number.isFinite(p.y)) J.travel += Math.hypot(p.x - J.last.x, p.y - J.last.y);
+  if (Number.isFinite(p.x) && Number.isFinite(p.y)) J.last = p;
+});
+shell.addEventListener("click", (e) => {
+  if (e.target.closest("input")) return;
+  const b = e.target.closest("[data-a]");
+  if (!b) return;
+  act(b.dataset.a, b.dataset.arg);
+  render();
+});
+shell.addEventListener("contextmenu", (e) => {
+  const b = e.target.closest('[data-a="pie"]');
+  if (!b) return;
+  e.preventDefault();
+  act("pie");
+  render();
+});
+shell.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (st.palOpen) act("pal-close"); else if (st.pie) act("pie-done"); else if (st.compMenu) act("comp-done"); else return;
+  render();
+});
+const resetAll = () => { st = fresh(); P = { ...P0 }; resetJob(); render(); };
+document.querySelectorAll('#seg input[name="v"]').forEach((r) => r.addEventListener("change", () => { v = r.value; W.seen.add(v); resetAll(); }));
+$("reset").addEventListener("click", resetAll);
+
+/* ---------- decision form ---------- */
+function answerText() {
+  const f = new FormData($("ask"));
+  const fav = f.get("fav"), pal = f.get("pal"), move = f.get("move"), delay = f.get("delay");
+  const runs = Object.keys(bench).sort().map((k) => `${k} ${bench[k].clicks} clicks, ${bench[k].travel.toLocaleString("en-US")} px`).join("; ");
+  return [
+    "Shell preferences: my decision",
+    "Home approved: " + (fav ? (fav === "none" ? "none of these" : NAMES[fav]) : "(not answered)"),
+    "Also palette commands: " + (fav === "C" ? "n/a" : pal ? pal : "(not answered)"),
+    "Sound and updates move there too: " + (move || "(not answered)"),
+    "Default pie delay: " + (delay ? (delay === "0" ? "none" : delay + " ms") : "(not answered)"),
+    "Best job runs: " + (runs || "none"),
+    "Notes: " + ($("notes").value.trim() || "none"),
+  ].join("\n");
+}
+function renderAnswer() { $("answer").textContent = answerText(); }
+$("ask").addEventListener("input", renderAnswer);
+$("ask").addEventListener("change", renderAnswer);
+$("ask").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = answerText();
+  renderAnswer();
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("answer")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copied").textContent = "Selected. Press Ctrl+C, then paste it into the chat."; };
+  try { navigator.clipboard.writeText(text).then(() => { $("copied").textContent = "Copied. Paste it into the chat."; }, fallback); } catch (_) { fallback(); }
+});
+
+render();
+</script>
