@@ -20,6 +20,7 @@ import { ClaudeTokenStats } from "../sessions/types";
 import { isSamePath, isSubpathOf, resolveRootRepo } from "../../utils/paths";
 import { getGlobalTerminalDimensions, getTerminalDimensions } from "../terminal/useTerminal";
 import { reportTerminalRelaunched } from "../terminal/terminalRelaunched";
+import { focusTerminal } from "../terminal/terminalRequests";
 import { removeWorktreeSafely, WorktreeRemovalResult } from "./worktreeRemoval";
 import { createCtrlBKeyHandler } from "./ctrlBPrefix";
 import { useCtrlBPrefix } from "./useCtrlBPrefix";
@@ -42,16 +43,7 @@ export type { Project };
 /** How long a project's view must sit still before it is written to disk. */
 const VIEW_SAVE_DEBOUNCE_MS = 500;
 
-/** What the app hands the workspace for chords whose target lives outside it. */
-export interface WorkspaceOptions {
-  /**
-   * Chord `d`: opens the diff lens for the selected terminal's pull request, else the repo-wide
-   * Diffs. Without it, chord `d` opens the repo-wide Diffs.
-   */
-  openDiffs?: () => void;
-}
-
-export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
+export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
   // Empty until the backend reports the persisted active project
   const [activeProject, setActiveProject] = useState<string>("");
@@ -899,14 +891,10 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
 
       // Lock focus on the newly selected terminal
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
-        );
+        focusTerminal(id);
       }, 20);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: id } })
-        );
+        focusTerminal(id);
       }, 100);
     },
     [terminals, activeProject, selectProject, layout, primaryTerminalId, secondaryTerminalId, focusedPane, gridTerminalIds]
@@ -1171,19 +1159,13 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
 
       // Proactively notify the terminal to lock focus as soon as it mounts in the DOM
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 20);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 100);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId: newTerm.id } })
-        );
+        focusTerminal(newTerm.id);
       }, 250);
       return newTerm;
     } catch (err) {
@@ -1252,14 +1234,10 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
 
       // Lock focus on the relaunched terminal
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
-        );
+        focusTerminal(terminalId);
       }, 50);
       setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("quay:focus-terminal", { detail: { terminalId } })
-        );
+        focusTerminal(terminalId);
       }, 150);
     } catch (err) {
       console.error("Failed to relaunch terminal:", err);
@@ -1272,9 +1250,10 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
   // to a focused terminal. The prefix outlives each render, so a re-render between Ctrl+Shift+B and
   // its second key keeps it.
   const ctrlBPrefix = useCtrlBPrefix();
-  // The chord handler reads the app's latest `openDiffs`, whichever render set it up.
-  const openDiffsRef = useRef(openDiffs);
-  openDiffsRef.current = openDiffs;
+  // Chord `d` asks the app to open the diff lens, which needs the terminal links the app works out
+  // from what this hook returns. The app sets the opener each render; it returns false when the
+  // selected terminal has no pull request, and the chord then opens the Diff Inspector.
+  const diffLensOpener = useRef<(() => boolean) | null>(null);
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1283,7 +1262,9 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
       splitVertical,
       splitGrid,
       openSwarmModal: () => setIsSwarmModalOpen(true),
-      openDiffs: () => (openDiffsRef.current ? openDiffsRef.current() : setIsDiffInspectorOpen(true)),
+      openDiffs: () => {
+        if (!diffLensOpener.current?.()) setIsDiffInspectorOpen(true);
+      },
       openNewWorktreeModal,
       toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
       openAuditModal: () => setIsAuditModalOpen(true),
@@ -1439,6 +1420,7 @@ export function useWorkspace({ openDiffs }: WorkspaceOptions = {}) {
     setIsCommandPaletteOpen,
     isDiffInspectorOpen,
     setIsDiffInspectorOpen,
+    diffLensOpener,
     projectWorktrees,
     refreshWorktrees,
     isNewWorktreeOpen,

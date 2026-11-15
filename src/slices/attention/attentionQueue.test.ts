@@ -7,7 +7,7 @@ import {
   attentionItems,
   droppedPermissionCount,
   emptyAttentionQueue,
-  lastQuestion,
+  latestPermission,
   modalPermissions,
   pendingPermissionIds,
   type AttentionEvent,
@@ -423,12 +423,12 @@ test("a terminal's last question is its newest waiting permission request, defer
     { type: "permissionsDeferred", requestIds: ["new"] },
     { type: "turnCompleted", terminalId: "term-a", project: "E:/proj", subagent: false, at: 400 },
   );
-  assert.equal(lastQuestion(attentionItems(queue), "term-a")?.requestId, "new");
-  assert.equal(lastQuestion(attentionItems(queue), "term-b")?.requestId, "other");
+  assert.equal(latestPermission(attentionItems(queue), "term-a")?.requestId, "new");
+  assert.equal(latestPermission(attentionItems(queue), "term-b")?.requestId, "other");
 });
 
 test("a terminal asks nothing once its requests are answered, or when it never asked", () => {
   const queue = run(requested("req", "term-a", 100), { type: "permissionResolved", requestId: "req" });
-  assert.equal(lastQuestion(attentionItems(queue), "term-a"), null);
-  assert.equal(lastQuestion(attentionItems(queue), "term-z"), null);
+  assert.equal(latestPermission(attentionItems(queue), "term-a"), null);
+  assert.equal(latestPermission(attentionItems(queue), "term-z"), null);
 });

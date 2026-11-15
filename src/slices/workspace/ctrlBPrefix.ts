@@ -68,7 +68,7 @@ export interface CtrlBActions {
   splitVertical(): void;
   splitGrid(): void;
   openSwarmModal(): void;
-  /** The diff lens for the selected terminal's pull request, else the repo-wide Diffs. */
+  /** The diff lens for the selected terminal's pull request, else the Diff Inspector. */
   openDiffs(): void;
   openNewWorktreeModal(): void;
   toggleGithubDrawer(): void;

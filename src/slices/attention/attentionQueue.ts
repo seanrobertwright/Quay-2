@@ -341,11 +341,10 @@ export function undeliveredAnswer(queue: AttentionQueue): UndeliveredAnswer | nu
 }
 
 /**
- * The last question `terminalId` asked that still waits for an answer: its newest permission
- * request among `items`, deferred or not, or null when it waits on none. The lens reply strip
- * shows it.
+ * The newest permission request `terminalId` has waiting among `items`, deferred or not, or null
+ * when it waits on none. The lens reply strip shows it as the terminal's last question.
  */
-export function lastQuestion(items: readonly AttentionItem[], terminalId: string): PermissionItem | null {
+export function latestPermission(items: readonly AttentionItem[], terminalId: string): PermissionItem | null {
   let last: PermissionItem | null = null;
   for (const item of items) {
     if (item.kind !== "permission" || item.terminalId !== terminalId) continue;

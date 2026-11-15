@@ -13,13 +13,13 @@ import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
-import { Companion, COMPANION_VIEWS, type CompanionLens } from "./slices/companion/Companion";
+import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
-import { diffLensFor, type DiffLensTarget } from "./slices/companion/diffLensTarget";
+import { diffLensFor } from "./slices/companion/diffLensTarget";
 import { terminalRepository } from "./slices/companion/terminalRepository";
 import { ReplyStrip } from "./slices/lens/ReplyStrip";
-import { lastQuestion } from "./slices/attention/attentionQueue";
-import { focusTerminal } from "./slices/terminal/terminalRequests";
+import { latestPermission } from "./slices/attention/attentionQueue";
 import { companionPrefs } from "./slices/companion/companionPrefs";
 import { useTerminalLinks } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
@@ -58,8 +58,6 @@ import { isSamePath, resolveRootRepo } from "./utils/paths";
 import { AlertCircle, X } from "lucide-react";
 
 export function App() {
-  // Chord `d` needs the terminal links, which are worked out from what the workspace returns.
-  const openDiffsRef = useRef<(() => void) | null>(null);
   const {
     projects,
     activeProject,
@@ -144,7 +142,8 @@ export function App() {
     relaunchTerminal,
     toggleTerminalLiveMode,
     openInVsCode,
-  } = useWorkspace({ openDiffs: () => openDiffsRef.current?.() });
+    diffLensOpener,
+  } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
   const attentionQueue = useAttentionQueue(terminals);
@@ -536,22 +535,11 @@ export function App() {
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
-  // The diff lens belongs to the terminal it opened for; selecting another terminal closes it.
-  const [diffLens, setDiffLens] = useState<DiffLensTarget | null>(null);
-  if (diffLens && diffLens.terminalId !== activeTerminalId) setDiffLens(null);
-  const companionLens = useMemo<CompanionLens>(
-    () => ({
-      shown: diffLens,
-      openDiff: setDiffLens,
-      close: () => {
-        if (!diffLens) return;
-        setDiffLens(null);
-        focusTerminal(diffLens.terminalId);
-      },
-    }),
-    [diffLens]
-  );
-  openDiffsRef.current = () => {
+  const companionLens = useDiffLens(activeTerminalId);
+  const diffLens = companionLens.shown;
+  // Chord `d`: the diff lens for the selected terminal's pull request; false leaves it to the
+  // workspace to open the Diff Inspector.
+  diffLensOpener.current = () => {
     const target =
       selectedTerminal &&
       diffLensFor(
@@ -559,8 +547,9 @@ export function App() {
         terminalRepository(selectedTerminal, projects, projectWorktrees).path,
         linking.linkOf(selectedTerminal)
       );
-    if (target) setDiffLens(target);
-    else setIsDiffInspectorOpen(true);
+    if (!target) return false;
+    companionLens.openDiff(target);
+    return true;
   };
 
   const launchers = placeholderLaunchers({
@@ -688,11 +677,11 @@ export function App() {
         <DiffLens
           key={`${diffLens.repoPath}|${diffLens.repo ?? ""}#${diffLens.number}`}
           target={diffLens}
-          onClose={() => setDiffLens(null)}
+          onClose={companionLens.dismiss}
           replyStrip={
             <ReplyStrip
               terminalName={selectedTerminal.name}
-              question={lastQuestion(waitingItems, selectedTerminal.id)}
+              permission={latestPermission(waitingItems, selectedTerminal.id)}
               onAnswer={attentionQueue.answerPermission}
             />
           }

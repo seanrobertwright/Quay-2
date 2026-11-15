@@ -611,3 +611,55 @@ test("with no lens open, a click on a readiness cell asks nothing of the lens", 
   await click(cellButton(container, "commits"));
   assert.deepEqual(asked, []);
 });
+
+test("closing the lens with a click on a readiness cell returns keyboard focus to the selected terminal", async () => {
+  const { useDiffLens } = await import("./useDiffLens.ts");
+  // A stand-in for terminal a's pane: a textarea that takes focus when the pane is asked to.
+  const pane = document.createElement("textarea");
+  document.body.append(pane);
+  const focusPane = (e: Event) => {
+    if ((e as CustomEvent<{ terminalId?: string }>).detail?.terminalId === "a") pane.focus();
+  };
+  window.addEventListener("quay:focus-terminal", focusPane);
+  let shown: DiffLensTarget | null = null;
+  let opened = false;
+  try {
+    // The companion's real lens control, opened on the pull request before the companion renders.
+    type CompanionProps = Parameters<typeof Companion>[0];
+    const Host = (props: CompanionProps) => {
+      const lens = useDiffLens("a");
+      shown = lens.shown;
+      if (!lens.shown && !opened) {
+        opened = true;
+        lens.openDiff(lensOn(null));
+      }
+      return createElement(Companion, { ...props, lens });
+    };
+    fakeInvoke(async (cmd, args) => github(undefined, { comments: { total: 0, unresolved: 0 } })(cmd, args));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        createElement(Host, {
+          selectedTerminal: { ...terminalInfo("a", "E:/alpha"), link },
+          projects: [{ path: "E:/alpha", name: "Alpha", terminal_ids: [] }],
+          projectWorktrees: {},
+          views: COMPANION_VIEWS,
+          prefs: companionPrefs(memoryStorage()),
+        }),
+      ),
+    );
+    mounted = { root, container };
+    await settle();
+    assert.deepEqual(shown, lensOn(null), "the lens is open");
+    cellButton(container, "commits")?.focus();
+    assert.ok(document.activeElement !== pane, "focus starts in the companion");
+    await click(cellButton(container, "commits"));
+    assert.equal(shown, null, "the cell click closed the lens");
+    assert.ok(document.activeElement === pane, "focus is back on the terminal");
+  } finally {
+    window.removeEventListener("quay:focus-terminal", focusPane);
+    pane.remove();
+  }
+});

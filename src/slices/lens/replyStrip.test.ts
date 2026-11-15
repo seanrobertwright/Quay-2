@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// Component tests for the reply strip at a lens's foot (#640): it shows the terminal's last
-// question and answers it through the attention queue's `answerPermission`.
+// Component tests for the reply strip at a lens's foot (#640): it shows the terminal's newest
+// waiting permission request and answers it through the attention queue's `answerPermission`.
 import "../../test-support/dom.ts";
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ afterEach(() => {
   mounted = null;
 });
 
-const question: PermissionItem = {
+const permission: PermissionItem = {
   kind: "permission",
   requestId: "req-1",
   terminalId: "a",
@@ -30,7 +30,7 @@ const question: PermissionItem = {
   deferred: false,
 };
 
-function render(props: { question: PermissionItem | null }) {
+function render(props: { permission: PermissionItem | null }) {
   const answers: unknown[][] = [];
   const container = document.createElement("div");
   document.body.append(container);
@@ -51,8 +51,8 @@ function render(props: { question: PermissionItem | null }) {
 const button = (container: HTMLElement, text: string) =>
   [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
 
-test("the reply strip shows the terminal's last question and its reply buttons", () => {
-  const { container } = render({ question });
+test("the reply strip shows the terminal's newest permission request and its reply buttons", () => {
+  const { container } = render({ permission });
   const text = container.textContent ?? "";
   assert.match(text, /implement 5/);
   assert.match(text, /Bash/);
@@ -61,8 +61,8 @@ test("the reply strip shows the terminal's last question and its reply buttons",
   for (const reply of ["Allow once", "Allow for session", "Deny"]) assert.ok(button(container, reply), reply);
 });
 
-test("each reply button answers the question", () => {
-  const { container, answers } = render({ question });
+test("each reply button answers the permission request", () => {
+  const { container, answers } = render({ permission });
   act(() => button(container, "Allow once")?.click());
   act(() => button(container, "Allow for session")?.click());
   act(() => button(container, "Deny")?.click());
@@ -73,8 +73,8 @@ test("each reply button answers the question", () => {
   ]);
 });
 
-test("with no question waiting, the strip says so and offers no replies", () => {
-  const { container } = render({ question: null });
+test("with no permission request waiting, the strip says so and offers no replies", () => {
+  const { container } = render({ permission: null });
   assert.match(container.textContent ?? "", /implement 5 is not asking anything/);
   assert.equal(container.querySelectorAll("button").length, 0);
 });

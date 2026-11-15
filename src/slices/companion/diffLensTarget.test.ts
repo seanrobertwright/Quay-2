@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // Which pull request the diff lens opens on (#640): the companion header, the Files detail and
-// chord `d` all ask `diffLensFor`; with no pull request, chord `d` falls back to the repo-wide Diffs.
+// chord `d` all ask `diffLensFor`; with no pull request, chord `d` falls back to the Diff Inspector.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { TerminalLink } from "../terminal/types.ts";
