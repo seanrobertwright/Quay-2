@@ -133,3 +133,84 @@ export interface PullRequestReadiness {
 
 /** A merge method GitHub's merge API takes. */
 export type MergeMethod = "merge" | "squash" | "rebase";
+
+/** How one check turned out, as GitHub's pull request page groups them. */
+export type CheckOutcome = "failing" | "pending" | "skipped" | "passing";
+
+/** One check on a pull request's head commit. Mirrors `PullRequestCheck` in the backend. */
+export interface PullRequestCheck {
+  /** The check run's id, which its log is read by; null for a commit status. */
+  checkRunId: number | null;
+  name: string;
+  /** The Actions workflow that ran it, when one did. */
+  workflow: string | null;
+  outcome: CheckOutcome;
+  /** The check run's title or the status's description. */
+  description: string | null;
+  url: string | null;
+}
+
+/** The end of a check's log. */
+export interface CheckLog {
+  text: string;
+  /** Whether lines before `text` were left out. */
+  truncated: boolean;
+}
+
+/** A reply in a review thread. */
+export interface TimelineReply {
+  id: string;
+  author: string;
+  createdAt: string;
+  body: string;
+}
+
+/** One item in a pull request's comment timeline. Mirrors `TimelineItem` in the backend. */
+export interface TimelineItem {
+  id: string;
+  /** A conversation comment, a review's summary, or a review thread on a file. */
+  kind: "comment" | "review" | "thread";
+  author: string;
+  /** GitHub's ISO 8601 UTC timestamp. */
+  createdAt: string;
+  body: string;
+  url: string | null;
+  /** A review's verdict: APPROVED, CHANGES_REQUESTED, COMMENTED or DISMISSED. */
+  reviewState: string | null;
+  /** A thread's file. */
+  path: string | null;
+  /** Whether a thread is resolved; null for other items. */
+  resolved: boolean | null;
+  /** A thread's replies after its first comment, oldest first. */
+  replies: TimelineReply[];
+}
+
+/** A pull request's comment timeline, oldest first, and the signed-in login. */
+export interface PullRequestTimeline {
+  viewer: string;
+  items: TimelineItem[];
+  /** Whether GitHub holds more comments, reviews or threads than were read. */
+  truncated: boolean;
+}
+
+/** One file a pull request changes. */
+export interface PullRequestFile {
+  path: string;
+  /** The path before a rename. */
+  previousPath: string | null;
+  status: string;
+  additions: number;
+  deletions: number;
+  /** The unified diff hunks; null for a binary file or one too large for GitHub to show. */
+  patch: string | null;
+}
+
+/** One commit on a pull request. */
+export interface PullRequestCommit {
+  sha: string;
+  headline: string;
+  author: string;
+  /** GitHub's ISO 8601 UTC timestamp. */
+  authoredAt: string;
+  url: string | null;
+}
