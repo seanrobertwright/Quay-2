@@ -12,13 +12,10 @@ import {
   FileCode,
   CheckCircle2,
   Sparkles,
-  GitCompare,
-  Coins,
   History,
 } from "lucide-react";
 import { GithubIcon } from "../github/GithubIcon";
 import { AttentionBadge } from "../attention/AttentionBadge";
-import { ClaudeTokenStats } from "../sessions/types";
 
 interface StatusStripProps {
   terminal: TerminalInfo;
@@ -26,14 +23,10 @@ interface StatusStripProps {
   pendingCount?: number;
   /** How many items wait in the attention queue, across every project. */
   waitingCount?: number;
-  diffCount?: number;
-  claudeStats?: ClaudeTokenStats | null;
   onOpenActionLog: () => void;
-  onOpenDiffInspector?: () => void;
   onOpenGithubDrawer?: () => void;
   onOpenAuditModal?: () => void;
   onOpenSessionHistory?: () => void;
-  onOpenTokenSpend?: () => void;
   onToggleLiveMode?: () => void;
   onOpenPermissionModal?: () => void;
   onOpenAttentionQueue?: () => void;
@@ -96,14 +89,10 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   activeTool,
   pendingCount,
   waitingCount = 0,
-  diffCount = 0,
-  claudeStats,
   onOpenActionLog,
-  onOpenDiffInspector,
   onOpenGithubDrawer,
   onOpenAuditModal,
   onOpenSessionHistory,
-  onOpenTokenSpend,
   onToggleLiveMode,
   onOpenPermissionModal,
   onOpenAttentionQueue,
@@ -253,17 +242,6 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
           />
         )}
 
-        {onOpenDiffInspector && (
-          <StripButton
-            Icon={GitCompare}
-            label="Diffs"
-            count={diffCount > 0 ? diffCount : undefined}
-            title="Inspect Visual Diff & File Changes"
-            className="text-[#3fb950]"
-            onClick={onOpenDiffInspector}
-          />
-        )}
-
         {onOpenGithubDrawer && (
           <StripButton
             Icon={GithubIcon}
@@ -292,21 +270,6 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
             className="text-[#c9d1d9] hover:text-white"
             onClick={onOpenSessionHistory}
           />
-        )}
-
-        {/* Live Token Spend Ticker Pill */}
-        {onOpenTokenSpend && (
-          <button
-            type="button"
-            onClick={onOpenTokenSpend}
-            className="flex shrink-0 items-center gap-1 px-2 py-0.5 rounded bg-[#21262d] hover:bg-[#30363d] text-[#e3b341] hover:text-[#f2cc60] font-mono text-[11px] font-semibold cursor-pointer border border-[#30363d] transition-colors"
-            title={`All-time API-equivalent Claude spend · today (UTC) $${(
-              claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? 0
-            ).toFixed(2)} (Ctrl+Shift+B t)`}
-          >
-            <Coins className="w-3.5 h-3.5 text-[#e3b341]" />
-            <span>${(claudeStats?.total_cost_usd ?? 0).toFixed(2)}</span>
-          </button>
         )}
 
         <div className="flex min-w-[4rem] shrink-[100] items-center gap-1 text-[#8b949e] font-mono text-[11px]">

@@ -2,7 +2,7 @@
 
 **Machina is Quay's local factory.** It runs inside Quay 2 on this machine, with no host, no sign-in and no browser. An agent does each piece of work, a **work order**, in its own git worktree; your project's own checks gate it; and you **Accept** it to squash-merge it into its base branch. Every decision on a work order is made in Quay.
 
-The **Factory Station** (`Ctrl+Shift+B F`) is Machina's cockpit. Its title reads **Machina: local**. Open it with the shortcut, the stage's **Factory** button, or **Machina Factory Station...** in the command palette.
+The **Factory Station** (`Ctrl+Shift+B F`) is Machina's cockpit. Its title reads **Machina: local**. Open it with the shortcut or **Machina Factory Station...** in the command palette.
 
 ## Machina is not Praxis
 

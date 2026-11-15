@@ -6,27 +6,8 @@ import { StatusStrip } from "./StatusStrip";
 import { Placeholder } from "./Placeholder";
 import { AttentionBadge } from "../attention/AttentionBadge";
 import { singleLayoutTerminalId } from "./singlePane";
-import {
-  Square,
-  Columns2,
-  Rows2,
-  Grid2x2,
-  Maximize2,
-  Minimize2,
-  Plus,
-  X,
-  GripVertical,
-  GripHorizontal,
-  Folder,
-  ShieldAlert,
-  Settings,
-  Zap,
-  GitCompare,
-  GitBranch,
-  Cpu,
-} from "lucide-react";
-import { VsCodeIcon } from "../workspace/VsCodeIcon";
-import { ClaudeTokenStats } from "../sessions/types";
+import { StageTabBar } from "./StageTabBar";
+import { Plus, GripVertical, GripHorizontal } from "lucide-react";
 import { isSamePath } from "../../utils/paths";
 
 interface StageProps {
@@ -43,7 +24,6 @@ interface StageProps {
   activeTool?: string | null;
   pendingPermissionsCount?: number;
   waitingCount?: number;
-  diffCount?: number;
   onSelectTerminal: (id: string) => void;
   onSelectPane: (pane: "primary" | "secondary" | number) => void;
   onSwitchPaneTerminal: (pane: "primary" | "secondary" | number, terminalId: string) => void;
@@ -58,17 +38,9 @@ interface StageProps {
   onOpenActionLog: () => void;
   onOpenPermissionModal?: () => void;
   onOpenAttentionQueue?: () => void;
-  onOpenWorkspaceSettings?: () => void;
-  onOpenSwarm?: () => void;
-  onOpenDiffInspector?: () => void;
-  onOpenNewWorktree?: () => void;
   onOpenGithubDrawer?: () => void;
   onOpenAuditModal?: () => void;
   onOpenSessionHistory?: () => void;
-  onOpenTokenSpend?: () => void;
-  onOpenFactoryStation?: () => void;
-  onOpenInVsCode?: (projectPath: string) => void;
-  claudeStats?: ClaudeTokenStats | null;
   onToggleLiveMode?: (terminalId: string, currentMode: "skip" | "normal") => void;
   onRelaunchTerminal?: (terminalId: string) => void;
   onRenameTerminal?: (terminalId: string, name: string) => void;
@@ -89,8 +61,7 @@ export const Stage: FC<StageProps> = ({
   activeTool,
   pendingPermissionsCount = 0,
   waitingCount = 0,
-  diffCount = 0,
-  claudeStats,
+  onSelectTerminal,
   onSelectPane,
   onSwitchPaneTerminal,
   onSetSplitRatio,
@@ -103,16 +74,9 @@ export const Stage: FC<StageProps> = ({
   onOpenActionLog,
   onOpenPermissionModal,
   onOpenAttentionQueue,
-  onOpenWorkspaceSettings,
-  onOpenSwarm,
-  onOpenDiffInspector,
-  onOpenNewWorktree,
   onOpenGithubDrawer,
   onOpenAuditModal,
   onOpenSessionHistory,
-  onOpenTokenSpend,
-  onOpenFactoryStation,
-  onOpenInVsCode,
   onToggleLiveMode,
   onRelaunchTerminal,
   onRenameTerminal,
@@ -325,8 +289,6 @@ export const Stage: FC<StageProps> = ({
     isAgent &&
     focusedTerminal.permission_mode === "skip";
 
-  const projectName = activeProject.split(/[/\\]/).filter(Boolean).pop() || "Workspace";
-
   // Draggable Divider mouse down handler
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -360,223 +322,19 @@ export const Stage: FC<StageProps> = ({
 
   return (
     <main className="flex-1 flex flex-col h-full bg-[#0d1117] overflow-hidden relative select-none">
-      {/* Stage Top Control Bar */}
-      <header className="h-9 px-3 bg-[#161b22] border-b border-[#30363d] flex items-center justify-between text-xs select-none shrink-0 z-10">
-        {/* Left: Project Breadcrumb & Active Terminal indicator */}
-        <div className="flex items-center gap-1.5 min-w-0 text-[#8b949e]">
-          <Folder className="w-3.5 h-3.5 text-[#58a6ff] shrink-0" />
-          <span className="font-semibold text-white truncate max-w-[150px]" title={activeProject}>
-            {projectName}
-          </span>
-          {onOpenWorkspaceSettings && (
-            <button
-              type="button"
-              onClick={onOpenWorkspaceSettings}
-              className="p-1 text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#21262d] rounded transition-colors"
-              title={`Workspace Settings (Env Vars & Flags) for ${projectName}`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {onOpenInVsCode && (
-            <button
-              type="button"
-              onClick={() => onOpenInVsCode(activeProject)}
-              className="p-1 text-[#8b949e] hover:text-[#007acc] hover:bg-[#21262d] rounded transition-colors"
-              title={`Open ${projectName} in VS Code`}
-              aria-label={`Open ${projectName} in VS Code`}
-            >
-              <VsCodeIcon className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <span className="text-[#30363d]">/</span>
-          <span className="font-medium text-[#c9d1d9] truncate max-w-[150px]">
-            {activeTerminal.name}
-          </span>
-
-          {layout !== "single" && (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#30363d]/80 text-[#58a6ff] font-mono uppercase tracking-wider font-semibold">
-              {layout === "split-horizontal"
-                ? `Split ${splitRatio}/${100 - splitRatio}`
-                : layout === "split-vertical"
-                ? `Stacked ${splitRatio}/${100 - splitRatio}`
-                : `2x2 Grid`}
-            </span>
-          )}
-        </div>
-
-        {/* Right: Layout Switchers, Zoom, Unsplit, New Terminal */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Segmented Layout Selector */}
-          <div className="flex items-center bg-[#0d1117] border border-[#30363d] rounded p-0.5 gap-0.5">
-            <button
-              type="button"
-              onClick={onUnsplit}
-              className={`p-1 rounded transition-colors ${
-                layout === "single"
-                  ? "bg-[#21262d] text-white shadow-xs"
-                  : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
-              }`}
-              title="Single Pane (Ctrl+Shift+B x)"
-            >
-              <Square className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onSplitHorizontal}
-              className={`p-1 rounded transition-colors ${
-                layout === "split-horizontal"
-                  ? "bg-[#21262d] text-[#58a6ff] shadow-xs"
-                  : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
-              }`}
-              title="Side-by-Side Split (Ctrl+Shift+B %)"
-            >
-              <Columns2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onSplitVertical}
-              className={`p-1 rounded transition-colors ${
-                layout === "split-vertical"
-                  ? "bg-[#21262d] text-[#58a6ff] shadow-xs"
-                  : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
-              }`}
-              title='Stacked Split (Ctrl+Shift+B ")'
-            >
-              <Rows2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onSplitGrid}
-              className={`p-1 rounded transition-colors ${
-                layout === "grid"
-                  ? "bg-[#21262d] text-[#58a6ff] shadow-xs"
-                  : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-[#161b22]"
-              }`}
-              title="2x2 Grid Layout"
-            >
-              <Grid2x2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="w-[1px] h-4 bg-[#30363d] mx-0.5" />
-
-          {/* Toggle Zoom button */}
-          <button
-            type="button"
-            onClick={onToggleZoom}
-            className={`p-1.5 rounded transition-colors ${
-              zoomedFromLayout
-                ? "bg-[#58a6ff]/20 text-[#58a6ff]"
-                : "text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-            }`}
-            title={
-              zoomedFromLayout
-                ? "Restore split layout (Ctrl+Shift+B z)"
-                : "Zoom active pane (Ctrl+Shift+B z)"
-            }
-          >
-            {zoomedFromLayout ? (
-              <Minimize2 className="w-3.5 h-3.5" />
-            ) : (
-              <Maximize2 className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          {/* Unsplit / Close split button */}
-          {layout !== "single" && (
-            <button
-              type="button"
-              onClick={onUnsplit}
-              className="p-1.5 rounded text-[#8b949e] hover:text-[#ff7b72] hover:bg-[#21262d] transition-colors"
-              title="Close split layout (Ctrl+Shift+B x)"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          <div className="w-[1px] h-4 bg-[#30363d] mx-0.5" />
-
-          {/* Pending Approvals Warning Pill in Top Bar */}
-          {pendingPermissionsCount > 0 && onOpenPermissionModal && (
-            <button
-              type="button"
-              onClick={onOpenPermissionModal}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#d29922] text-[#0d1117] font-bold text-xs animate-pulse cursor-pointer shadow-md hover:bg-[#e3b341] transition-colors"
-              title="Review pending tool approvals"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              <span>Approval ({pendingPermissionsCount})</span>
-            </button>
-          )}
-
-          {/* Swarm Launcher Button */}
-          {onOpenSwarm && (
-            <button
-              type="button"
-              onClick={onOpenSwarm}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#d29922] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Launch Multi-Agent Swarm Preset (Ctrl+Shift+B s)"
-            >
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>Swarm</span>
-            </button>
-          )}
-
-          {/* Machina Factory Station Button */}
-          {onOpenFactoryStation && (
-            <button
-              type="button"
-              onClick={onOpenFactoryStation}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded border border-[#58a6ff]/30 transition-colors text-xs font-medium cursor-pointer"
-              title="Machina Factory Station: local, on this machine (Ctrl+Shift+B F)"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>Factory</span>
-            </button>
-          )}
-
-          {/* Visual Diff Inspector Button */}
-          {onOpenDiffInspector && (
-            <button
-              type="button"
-              onClick={onOpenDiffInspector}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#3fb950] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Visual Diff & File Changes (Ctrl+Shift+B d)"
-            >
-              <GitCompare className="w-3.5 h-3.5" />
-              <span>Diffs{diffCount > 0 ? ` (${diffCount})` : ""}</span>
-            </button>
-          )}
-
-          {/* New Worktree Button */}
-          {onOpenNewWorktree && (
-            <button
-              type="button"
-              onClick={onOpenNewWorktree}
-              className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-              title="Create Git Worktree for active project (Ctrl+Shift+B w)"
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-              <span>Worktree</span>
-            </button>
-          )}
-
-          {/* Quick New Terminal button */}
-          <button
-            type="button"
-            onClick={onNewTerminal}
-            className="flex items-center gap-1 px-2 py-1 bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] hover:text-white rounded transition-colors text-xs font-medium cursor-pointer"
-            title="New Terminal (Ctrl+Shift+B n)"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#58a6ff]" />
-            <span>New Terminal</span>
-          </button>
-        </div>
-      </header>
+      <StageTabBar
+        terminals={visibleTerminals}
+        currentTerminalId={focusedTerminal.id}
+        layout={layout}
+        zoomedFromLayout={zoomedFromLayout}
+        onSelectTerminal={onSelectTerminal}
+        onNewTerminal={onNewTerminal}
+        onUnsplit={onUnsplit}
+        onSplitHorizontal={onSplitHorizontal}
+        onSplitVertical={onSplitVertical}
+        onSplitGrid={onSplitGrid}
+        onToggleZoom={onToggleZoom}
+      />
 
       {/* Skip Banner above terminal */}
       {showSkipBanner && (
@@ -710,14 +468,10 @@ export const Stage: FC<StageProps> = ({
         activeTool={activeTool}
         pendingCount={pendingPermissionsCount}
         waitingCount={waitingCount}
-        diffCount={diffCount}
-        claudeStats={claudeStats}
         onOpenActionLog={onOpenActionLog}
-        onOpenDiffInspector={onOpenDiffInspector}
         onOpenGithubDrawer={onOpenGithubDrawer}
         onOpenAuditModal={onOpenAuditModal}
         onOpenSessionHistory={onOpenSessionHistory}
-        onOpenTokenSpend={onOpenTokenSpend}
         onOpenPermissionModal={onOpenPermissionModal}
         onOpenAttentionQueue={onOpenAttentionQueue}
         onToggleLiveMode={

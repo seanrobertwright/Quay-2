@@ -203,28 +203,6 @@ export function App() {
   const currentTool = activeTerminalId ? activeTools[activeTerminalId] : null;
   const currentEvents = getTerminalEvents(activeTerminalId);
 
-  // Calculate total file modifications recorded across events
-  const diffCount = useMemo(() => {
-    let count = 0;
-    events.forEach((e) => {
-      const tool = (e.data?.tool || "").toLowerCase();
-      const input = e.data?.input;
-      if (input && typeof input === "object") {
-        if (
-          tool === "edit" ||
-          tool.includes("edit") ||
-          tool === "write" ||
-          tool.includes("write") ||
-          input.old_string !== undefined ||
-          input.content !== undefined
-        ) {
-          count++;
-        }
-      }
-    });
-    return count;
-  }, [events]);
-
   const activeProjectObj =
     workspaceSettingsTarget || projects.find((p) => p.path === activeProject) || null;
 
@@ -622,8 +600,6 @@ export function App() {
         activeTool={currentTool}
         pendingPermissionsCount={pendingPermissionIds.length}
         waitingCount={waitingItems.length}
-        diffCount={diffCount}
-        claudeStats={claudeStats}
         onSelectTerminal={selectTerminal}
         onSelectPane={focusPane}
         onSwitchPaneTerminal={switchPaneTerminal}
@@ -638,16 +614,9 @@ export function App() {
         onOpenActionLog={() => setIsActionLogOpen(true)}
         onOpenPermissionModal={() => reopenPermissions(pendingPermissionIds)}
         onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
-        onOpenWorkspaceSettings={() => openWorkspaceSettings(activeProject)}
-        onOpenSwarm={() => setIsSwarmModalOpen(true)}
-        onOpenDiffInspector={() => setIsDiffInspectorOpen(true)}
-        onOpenNewWorktree={() => openNewWorktreeModal(activeRootRepo)}
         onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
         onOpenAuditModal={() => setIsAuditModalOpen(true)}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
-        onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
-        onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
-        onOpenInVsCode={handleOpenInVsCode}
         onToggleLiveMode={toggleTerminalLiveMode}
         onRelaunchTerminal={relaunchTerminal}
         onRenameTerminal={renameTerminal}
