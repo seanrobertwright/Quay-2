@@ -15,7 +15,7 @@ import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
 import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
 import { companionPrefs } from "./slices/companion/companionPrefs";
-import { useCompanionLinking } from "./slices/companion/useTerminalLinks";
+import { useTerminalLinks } from "./slices/companion/useTerminalLinks";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
@@ -526,7 +526,7 @@ export function App() {
   );
   // localStorage is the WebView's, so the companion's width is kept per machine.
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
-  const { linking, recordLaunch } = useCompanionLinking(terminals, projects, projectWorktrees);
+  const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),

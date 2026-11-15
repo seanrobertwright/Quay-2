@@ -26,22 +26,12 @@ const OPEN_PULL_REQUESTS_TTL_MS = 60_000;
 /** Most open pull requests or tickets read per repository: one page. */
 const LIST_PAGE_SIZE = 100;
 
-/** The terminal links the companion shows, and what the operator can do to them. */
+/** The terminal links the companion shows, and the launch facts the app records for them. */
 export interface TerminalLinks {
-  /** The terminal's link as last resolved, or null when it has none. */
-  linkOf: (terminal: TerminalInfo) => TerminalLink | null;
-  /** Pins `ref` to the terminal's `slot`. */
-  pin: (terminalId: string, slot: LinkSlotName, ref: LinkRef) => void;
-  /** Takes the pin off the terminal's `slot`. */
-  unpin: (terminalId: string, slot: LinkSlotName) => void;
+  /** What the companion reads and changes about terminal links. */
+  linking: CompanionLinking;
   /** Records the ticket a new terminal was launched from, such as a worktree created from an issue. */
   recordLaunch: (terminal: TerminalInfo, ticket: number) => void;
-  /** The open pull requests of the terminal's repository, newest first, as last fetched. */
-  openPullRequests: (terminal: TerminalInfo) => readonly GithubPullRequest[];
-  /** The open tickets of the terminal's repository, newest first, once `loadTickets` fetched them. */
-  openTickets: (terminal: TerminalInfo) => readonly GithubIssue[];
-  /** Fetches the terminal's repository's open tickets and pull requests, for the Link to... picker. */
-  loadChoices: (terminal: TerminalInfo) => void;
 }
 
 /** The repository folder (`resolveRootRepo`) a terminal works in. */
@@ -237,13 +227,19 @@ export function useTerminalLinks(
   );
 
   return {
-    linkOf: (terminal) => links[terminal.id] ?? terminal.link ?? null,
-    pin,
-    unpin,
+    linking: {
+      linkOf: (terminal) => links[terminal.id] ?? terminal.link ?? null,
+      pin,
+      unpin,
+      loadChoices,
+      choices: (terminal, query) => {
+        const prs = pullRequests[rootOf(terminal)]?.items ?? [];
+        return query.trim()
+          ? searchLinkChoices(query, prs, tickets[rootOf(terminal)] ?? [])
+          : linkGuesses(findWorktree(projectWorktrees, terminal.project_path)?.branch ?? null, prs);
+      },
+    },
     recordLaunch,
-    openPullRequests: (terminal) => pullRequests[rootOf(terminal)]?.items ?? [],
-    openTickets: (terminal) => tickets[rootOf(terminal)] ?? [],
-    loadChoices,
   };
 }
 
@@ -262,30 +258,4 @@ function findWorktree(
 /** `folder` as an absolute path, read against the terminal's folder when it is relative. */
 function absoluteFolder(folder: string, base: string): string {
   return /^(?:[a-zA-Z]:[\\/]|[\\/])/.test(folder) ? folder : `${normalizePath(base)}/${folder}`;
-}
-
-/**
- * Terminal links as the companion uses them: `useTerminalLinks`, with Link to... offering
- * `linkGuesses` from the terminal's branch and open pull requests, or `searchLinkChoices` once
- * the operator types.
- */
-export function useCompanionLinking(
-  terminals: readonly TerminalInfo[],
-  projects: readonly Project[],
-  projectWorktrees: Readonly<Record<string, readonly GitWorktree[]>>,
-): { linking: CompanionLinking; recordLaunch: TerminalLinks["recordLaunch"] } {
-  const links = useTerminalLinks(terminals, projects, projectWorktrees);
-  const linking: CompanionLinking = {
-    linkOf: links.linkOf,
-    pin: links.pin,
-    unpin: links.unpin,
-    loadChoices: links.loadChoices,
-    choices: (terminal, query) => {
-      const prs = links.openPullRequests(terminal);
-      return query.trim()
-        ? searchLinkChoices(query, prs, links.openTickets(terminal))
-        : linkGuesses(findWorktree(projectWorktrees, terminal.project_path)?.branch ?? null, prs);
-    },
-  };
-  return { linking, recordLaunch: links.recordLaunch };
 }
