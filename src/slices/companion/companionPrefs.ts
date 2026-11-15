@@ -5,11 +5,13 @@ export const MIN_COMPANION_WIDTH = 340;
 /** The widest the divider drags the companion to, in CSS px. */
 export const MAX_COMPANION_WIDTH = 560;
 
+import type { CompanionViewId } from "./companionViews.ts";
+
 const WIDTH_KEY = "quay_companion_width";
 const OPENS_ON_KEY = "quay_companion_opens_on";
 
 /** The companion views the Companion opens on setting can name. */
-export const OPENS_ON_VALUES = ["pull-request", "ticket", "activity"] as const;
+export const OPENS_ON_VALUES = ["pull-request", "ticket", "activity"] as const satisfies readonly CompanionViewId[];
 /** The view the companion shows first when the selected terminal has it. */
 export type CompanionOpensOn = (typeof OPENS_ON_VALUES)[number];
 /** Companion opens on before the operator sets it. */
@@ -23,6 +25,13 @@ function parseOpensOn(raw: string | null): CompanionOpensOn {
 export interface PrefsStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+}
+
+/** The companion's preferences, read from and written to its storage. */
+export interface CompanionPrefs {
+  readWidth(): number;
+  readOpensOn(): CompanionOpensOn;
+  writeWidth(width: number): void;
 }
 
 /** A width the companion can take: whole px between the minimum and maximum, else the default. */
@@ -41,7 +50,7 @@ function parseWidth(raw: string | null): number {
  * The companion's preferences in `storage`, which is the WebView's `localStorage` in the app, so
  * they are kept per machine. Every value is validated as it is read and falls back to its default.
  */
-export function companionPrefs(storage: PrefsStorage) {
+export function companionPrefs(storage: PrefsStorage): CompanionPrefs {
   return {
     readWidth: (): number => parseWidth(storage.getItem(WIDTH_KEY)),
     readOpensOn: (): CompanionOpensOn => parseOpensOn(storage.getItem(OPENS_ON_KEY)),

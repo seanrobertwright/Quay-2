@@ -39,8 +39,8 @@ export function isSubpathOf(child?: string | null, parent?: string | null): bool
  */
 export function resolveRootRepo(
   activePath: string,
-  projects: { path: string }[],
-  worktreesByProject: Record<string, { path: string }[]> = {}
+  projects: readonly { path: string }[],
+  worktreesByProject: Readonly<Record<string, readonly { path: string }[]>> = {}
 ): string {
   const worktreesOf = (projectPath: string) =>
     Object.prototype.hasOwnProperty.call(worktreesByProject, projectPath)

@@ -27,7 +27,7 @@ export function terminalRepository(
   projectWorktrees: Readonly<Record<string, readonly GitWorktree[]>>,
 ): TerminalRepository {
   const folder = terminal.project_path;
-  const path = resolveRootRepo(folder, [...projects], projectWorktrees as Record<string, GitWorktree[]>);
+  const path = resolveRootRepo(folder, projects, projectWorktrees);
   const project = projects.find((p) => p.path === path);
   const worktrees = Object.prototype.hasOwnProperty.call(projectWorktrees, path) ? projectWorktrees[path] : [];
   const entry = worktrees.find((wt) => isSamePath(wt.path, folder));

@@ -7,9 +7,9 @@ import {
   companionWidthByKey,
   MAX_COMPANION_WIDTH,
   MIN_COMPANION_WIDTH,
-  type companionPrefs,
+  type CompanionPrefs,
 } from "./companionPrefs.ts";
-import { firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
+import { REPOSITORY_VIEW_ID, firstView, switchableViews, type CompanionView, type CompanionViewId } from "./companionViews.ts";
 import { terminalRepository, type TerminalRepository } from "./terminalRepository.ts";
 import { RepositoryView } from "./RepositoryView.tsx";
 
@@ -24,7 +24,7 @@ export interface CompanionContext {
  * Until terminals record a link, every terminal has none.
  */
 export const REPOSITORY_VIEW: CompanionView<CompanionContext> = {
-  id: "repository",
+  id: REPOSITORY_VIEW_ID,
   label: "Repository",
   available: () => true,
   render: ({ terminal, repository }) => <RepositoryView terminal={terminal} repository={repository} />,
@@ -47,7 +47,7 @@ interface CompanionProps {
   projectWorktrees: Readonly<Record<string, readonly GitWorktree[]>>;
   /** The registered views, in the order the view switch lists them. */
   views: readonly CompanionView<CompanionContext>[];
-  prefs: ReturnType<typeof companionPrefs>;
+  prefs: CompanionPrefs;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
