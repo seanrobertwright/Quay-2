@@ -48,3 +48,31 @@ export function companionPrefs(storage: PrefsStorage) {
     writeWidth: (width: number): void => storage.setItem(WIDTH_KEY, String(clampCompanionWidth(width))),
   };
 }
+
+const WIDTH_STEP = 16;
+const WIDTH_BIG_STEP = 64;
+
+/**
+ * The width the companion's divider `key` moves it to, or null for a key it doesn't handle. The
+ * divider is on the companion's left edge, so ArrowLeft widens it. Shift or PageUp/PageDown move
+ * further, and Home and End go to either end.
+ */
+export function companionWidthByKey(width: number, key: string, shift: boolean): number | null {
+  const step = shift ? WIDTH_BIG_STEP : WIDTH_STEP;
+  switch (key) {
+    case "ArrowLeft":
+      return clampCompanionWidth(width + step);
+    case "ArrowRight":
+      return clampCompanionWidth(width - step);
+    case "PageUp":
+      return clampCompanionWidth(width + WIDTH_BIG_STEP);
+    case "PageDown":
+      return clampCompanionWidth(width - WIDTH_BIG_STEP);
+    case "Home":
+      return MIN_COMPANION_WIDTH;
+    case "End":
+      return MAX_COMPANION_WIDTH;
+    default:
+      return null;
+  }
+}

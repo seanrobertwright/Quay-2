@@ -29,7 +29,7 @@ export function terminalRepository(
   const folder = terminal.project_path;
   const path = resolveRootRepo(folder, [...projects], projectWorktrees as Record<string, GitWorktree[]>);
   const project = projects.find((p) => p.path === path);
-  const worktrees = Object.hasOwn(projectWorktrees, path) ? projectWorktrees[path] : [];
+  const worktrees = Object.prototype.hasOwnProperty.call(projectWorktrees, path) ? projectWorktrees[path] : [];
   const entry = worktrees.find((wt) => isSamePath(wt.path, folder));
   const name = project?.name ?? (normalizePath(folder).split("/").pop() || folder);
   return {

@@ -13,6 +13,8 @@ import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
+import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import { companionPrefs } from "./slices/companion/companionPrefs";
 import { NewTerminalModal } from "./slices/terminal/NewTerminalModal";
 import { OpenProjectDialog } from "./slices/workspace/OpenProjectDialog";
 import { ActionLogDrawer } from "./slices/bridge/ActionLogDrawer";
@@ -517,6 +519,13 @@ export function App() {
   const openPrCount = useOpenPrCount(activeRootRepo);
   const spendTodayUsd = claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? null;
 
+  const selectedTerminal = useMemo(
+    () => terminals.find((t) => t.id === activeTerminalId) ?? null,
+    [terminals, activeTerminalId]
+  );
+  // localStorage is the WebView's, so the companion's width is kept per machine.
+  const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
+
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),
     openTopos: () => setIsToposOpen(true),
@@ -636,6 +645,14 @@ export function App() {
         onRelaunchTerminal={relaunchTerminal}
         onRenameTerminal={renameTerminal}
         onCloseTerminal={(id) => killTerminal(id)}
+      />
+
+      <Companion
+        selectedTerminal={selectedTerminal}
+        projects={projects}
+        projectWorktrees={projectWorktrees}
+        views={COMPANION_VIEWS}
+        prefs={companionStore}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
