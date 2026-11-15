@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, ExternalLink, FolderPlus, GitBranch, RefreshCw, WifiOff, X } from "lucide-react";
-import { useOverlay } from "../../overlay/useOverlay";
+import { AlertTriangle, ExternalLink, GitBranch, RefreshCw, WifiOff } from "lucide-react";
 import type { RunKind, TerminalInfo } from "../../terminal/types";
 import { ToposIcon } from "./ToposIcon";
 import { errorMessage, gateView, GIT_DOWNLOAD_URL, type GitVersionStatus } from "./gitVersion";
@@ -60,7 +59,7 @@ import {
 const NO_SELECTION: CommitSelection = { kind: "none" };
 const NO_REF_BADGES: RefBadge[] = [];
 
-/** The repository or worktree Topos works on: the Projects panel selection when Topos is shown. */
+/** The repository or worktree Topos works on: the selected terminal's when Topos is shown. */
 export interface ToposTarget {
   path: string;
   /** The project's name, or `Project · branch` for a worktree. */
@@ -69,12 +68,15 @@ export interface ToposTarget {
   repoPath: string;
 }
 
-export interface ToposOverlayProps {
+export interface ToposProps {
+  /** Whether Topos shows, in the companion's Topos view or in the Topos lens. */
   isOpen: boolean;
-  /** The active Projects panel selection, or null when no project is open. */
+  /** Whether Topos shows in the Topos lens, at full width. */
+  wide: boolean;
+  /** Each new value moves keyboard focus into Topos while it shows, as when a chord opens it. */
+  focusKey: number;
+  /** The selected terminal's repository or worktree, or null when no terminal is selected. */
   project: ToposTarget | null;
-  onClose: () => void;
-  onAddProject: () => void;
   /** Quay's terminals, whose live agents show on their worktree's HEAD marker (#381). */
   terminals: TerminalInfo[];
   /** Opens a shell terminal in `cwd` and shows it, for a conflict resolved by hand (#391). */
@@ -102,15 +104,16 @@ type VersionCheck =
   | { state: "failed"; message: string };
 
 /**
- * Topos, the visual Git cockpit (#349): a full-window overlay toggled by `Ctrl+Shift+B c`. Closing
- * hides it without unmounting, so its state survives until it is shown again. It targets the Projects panel
- * selection it was shown with, and checks git's version on its first open (#369).
+ * Topos, the visual Git cockpit (#349): the companion's Topos view, opened by `Ctrl+Shift+B c`,
+ * and at full width the Topos lens (#643). Its host draws it once and hides it without unmounting,
+ * so its state survives until it is shown again. It targets the selected terminal's repository it
+ * was shown with, and checks git's version on its first open (#369).
  */
-export const ToposOverlay: React.FC<ToposOverlayProps> = ({
+export const Topos: React.FC<ToposProps> = ({
   isOpen,
+  wide,
+  focusKey,
   project,
-  onClose,
-  onAddProject,
   terminals,
   onOpenTerminal,
   onNewAgent,
@@ -122,11 +125,15 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // One modal layer for every confirm in Topos (#421): while one is open everything else in the panel
   // is inert. A click on the backdrop waits for it too.
   const modal = useToposModal();
-  const modalLayer = modal.layer;
-  const closeUnlessModal = useCallback(() => {
-    if (!modalLayer.isOpen()) onClose();
-  }, [modalLayer, onClose]);
-  const { backdropProps, panelProps } = useOverlay({ isOpen, onClose: closeUnlessModal });
+  const panel = useRef<HTMLElement | null>(null);
+  // Focus moves in when a chord, the palette or the Wide toggle asks for it.
+  useEffect(() => {
+    if (isOpen && focusKey > 0) panel.current?.focus({ preventScroll: true });
+  }, [isOpen, focusKey]);
+  // An open diff's Escape takes it back to the graph only while Topos is wide or has focus, so
+  // Escape in a terminal beside the companion stays the terminal's.
+  const [focusWithin, setFocusWithin] = useState(false);
+  const diffOwnsEscape = isOpen && (wide || focusWithin);
 
   // Retarget each time Topos is shown; while hidden it keeps the target it last showed.
   const [target, setTarget] = useState<ToposTarget | null>(project);
@@ -462,14 +469,13 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   // Find's keys work anywhere in Topos while the graph shows (#399), but not in a dialog drawn over
   // it, nor while a diff or the conflict resolver covers the graph and its find field.
   const graphCovered = openFile !== null || commitFile !== null || resolving !== null;
-  const panel = panelProps.ref;
   useEffect(() => {
     const el = panel.current;
     if (!el || graphCovered) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const surface = e.target instanceof Element ? e.target.closest('[role="dialog"], [role="alertdialog"]') : null;
-      if (surface !== el) return;
+      if (surface !== null && el.contains(surface)) return;
       if (findKeys.current?.(e)) e.preventDefault();
     };
     el.addEventListener("keydown", onKeyDown);
@@ -477,14 +483,16 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
   }, [panel, graphCovered]);
 
   return (
-    <div
-      {...backdropProps}
-      className={isOpen ? "fixed inset-0 z-40 flex bg-black/75 backdrop-blur-xs p-3" : "hidden"}
-    >
-      <div
-        {...panelProps}
+    <div className={isOpen ? "flex flex-1 min-h-0 w-full h-full" : "hidden"}>
+      <section
+        ref={panel}
+        tabIndex={-1}
         aria-labelledby={titleId}
-        className="relative flex flex-col w-full h-full bg-[#0d1117] border border-[#30363d] rounded-xl shadow-2xl overflow-hidden text-[#c9d1d9] outline-none"
+        onFocus={() => setFocusWithin(true)}
+        onBlur={(e) => {
+          if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) setFocusWithin(false);
+        }}
+        className="relative flex flex-col w-full h-full bg-[#0d1117] overflow-hidden text-[#c9d1d9] outline-none"
       >
         {/* Everything a confirm blocks while it is open; the confirms draw beside it, over the whole panel. */}
         <ToposModalScope modal={modal}>
@@ -495,9 +503,11 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           <h2 id={titleId} className="text-sm font-bold text-white shrink-0">
             Topos
           </h2>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
-            Ctrl+Shift+B C
-          </span>
+          {wide && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#bc8cff] font-mono border border-[#30363d] shrink-0">
+              Ctrl+Shift+B C
+            </span>
+          )}
           {target && (
             <span className="text-xs text-[#8b949e] truncate min-w-0" title={target.path}>
               {target.name}
@@ -535,28 +545,11 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
             <GitBranch className="w-3.5 h-3.5" aria-hidden="true" />
             Topo order
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Topos"
-            title="Close (Esc)"
-            className="p-1.5 rounded-md text-[#8b949e] hover:text-white hover:bg-[#21262d]"
-          >
-            <X className="w-4 h-4" aria-hidden="true" />
-          </button>
         </header>
 
         {!target ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
-            <p className="text-sm text-[#8b949e]">Open a project to see its commits in Topos.</p>
-            <button
-              type="button"
-              onClick={onAddProject}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-xs font-semibold"
-            >
-              <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
-              Add project
-            </button>
+          <div className="flex-1 flex items-center justify-center text-center p-6">
+            <p className="text-sm text-[#8b949e]">Select a terminal to see its repository's commits in Topos.</p>
           </div>
         ) : view === null ? (
           <div className="flex-1 flex items-center justify-center text-sm text-[#8b949e]" role="status">
@@ -682,7 +675,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                         next: stepFiles !== null && commitFileIndex !== -1 && commitFileIndex < stepFiles.length - 1,
                       }}
                       onBack={() => setCommitFile(null)}
-                      visible={isOpen}
+                      visible={diffOwnsEscape}
                     />
                   )}
                   {openFile && (
@@ -697,7 +690,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
                       otherSideHasChanges={otherSideHasChanges}
                       onOpenOtherSide={() => setOpenFile({ path: openFile.path, side: otherSide(openFile.side) })}
                       onBack={() => setOpenFile(null)}
-                      visible={isOpen}
+                      visible={diffOwnsEscape}
                       announce={staging.announce}
                     />
                   )}
@@ -777,7 +770,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
           open={speedupOpen && graphRepo !== null}
           speedup={speedup}
           onClose={() => setSpeedupOpen(false)}
-          fallbackFocus={panelProps.ref}
+          fallbackFocus={panel}
         />
         <HandToAgentDialog picker={handToAgent.picker} onChoose={handToAgent.choose} onCancel={handToAgent.closePicker} />
         {/* The staging inspector's, the commit composer's and the diff view's one live region, here so it stays while
@@ -785,7 +778,7 @@ export const ToposOverlay: React.FC<ToposOverlayProps> = ({
         <div role="status" aria-live="polite" className="sr-only">
           <span key={staging.announcement.seq}>{staging.announcement.text}</span>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

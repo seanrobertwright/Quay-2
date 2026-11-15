@@ -102,7 +102,7 @@ export interface FileDiffViewProps {
   otherSideHasChanges: boolean;
   onOpenOtherSide: () => void;
   onBack: () => void;
-  /** Whether Topos shows, so Escape returns to the graph only then. */
+  /** Whether Escape returns to the graph: while Topos shows wide, or shows and has focus. */
   visible: boolean;
   /** Says `text` in Topos's live region. */
   announce: (text: string) => void;

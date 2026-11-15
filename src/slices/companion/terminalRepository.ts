@@ -40,3 +40,8 @@ export function terminalRepository(
     branch: entry?.branch ?? null,
   };
 }
+
+/** How Quay names a project's worktree: `Project · branch`, or `Project · worktree` with no branch. */
+export function worktreeDisplayName(projectName: string, branch: string | null): string {
+  return `${projectName} · ${branch || "worktree"}`;
+}

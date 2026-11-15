@@ -1,4 +1,4 @@
-// Topos's git version gate (#369), as the overlay shows it. The backend's `git_version_check`
+// Topos's git version gate (#369), as Topos shows it. The backend's `git_version_check`
 // runs `git --version` once per app run and returns one of these statuses.
 
 /** `GitVersionStatus` from `src-tauri/src/slices/git/version.rs`. */
@@ -114,7 +114,7 @@ export const MIN_GIT_VERSION = "2.36";
 
 export const GIT_DOWNLOAD_URL = "https://git-scm.com/downloads";
 
-/** What the overlay shows for a status: Topos itself, perhaps with a warning, or a blocking message. */
+/** What Topos shows for a status: Topos itself, perhaps with a warning, or a blocking message. */
 export type GateView =
   | { kind: "open"; warning?: string }
   | { kind: "blocked"; title: string; detail: string };

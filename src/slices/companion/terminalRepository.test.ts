@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GitWorktree } from "../git/types.ts";
-import { terminalRepository } from "./terminalRepository.ts";
+import { terminalRepository, worktreeDisplayName } from "./terminalRepository.ts";
 import { terminalInfo } from "./fixtures/companionFixtures.ts";
 
 const terminal = (project_path: string) => terminalInfo("t1", project_path);
@@ -48,4 +48,10 @@ test("a terminal in no project is named for its folder, with no branch Quay know
     worktree: false,
     branch: null,
   });
+});
+
+test("a worktree is named for its project and branch, or 'worktree' when its branch is unknown", () => {
+  assert.equal(worktreeDisplayName("Quay", "ticket-636"), "Quay · ticket-636");
+  assert.equal(worktreeDisplayName("Quay", null), "Quay · worktree");
+  assert.equal(worktreeDisplayName("Quay", ""), "Quay · worktree");
 });
