@@ -18,7 +18,7 @@ import type { TicketActions, TicketToStart } from "./slices/companion/TicketView
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
 import { diffLensFor, type DiffLensTarget } from "./slices/companion/diffLensTarget";
-import { terminalRepository } from "./slices/companion/terminalRepository";
+import { terminalRepository, worktreeDisplayName } from "./slices/companion/terminalRepository";
 import { ReplyStrip } from "./slices/lens/ReplyStrip";
 import { latestPermission } from "./slices/attention/attentionQueue";
 import { companionPrefs } from "./slices/companion/companionPrefs";
@@ -245,7 +245,7 @@ export function App() {
     if (registered) return { path: registered.path, name: registered.name };
     for (const p of projects) {
       const wt = projectWorktrees[p.path]?.find((w) => isSamePath(w.path, activeProject));
-      if (wt) return { path: wt.path, name: `${p.name} · ${wt.branch || "worktree"}` };
+      if (wt) return { path: wt.path, name: worktreeDisplayName(p.name, wt.branch) };
     }
     return null;
   }, [projects, projectWorktrees, activeProject]);
@@ -632,7 +632,7 @@ export function App() {
         ? {
             path: selectedTerminal.project_path,
             name: selectedRepository.worktree
-              ? `${selectedRepository.name} · ${selectedRepository.branch || "worktree"}`
+              ? worktreeDisplayName(selectedRepository.name, selectedRepository.branch)
               : selectedRepository.name,
             repoPath: selectedRepository.path,
           }
