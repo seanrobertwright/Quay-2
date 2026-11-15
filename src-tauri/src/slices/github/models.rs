@@ -6,7 +6,7 @@ pub struct GithubUser {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GithubLabel {
     pub name: String,
     #[serde(default)]

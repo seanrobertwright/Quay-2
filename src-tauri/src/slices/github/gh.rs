@@ -95,7 +95,7 @@ pub(super) fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec
 
 pub(super) fn number_arg(number: u32) -> Result<u32, String> {
     if number == 0 {
-        Err("Not a pull request number: 0".to_string())
+        Err("Not an issue or pull request number: 0".to_string())
     } else {
         Ok(number)
     }

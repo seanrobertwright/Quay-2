@@ -362,7 +362,7 @@ pub async fn get_github_pr_timeline(repo_path: String, repo: Option<String>, num
 }
 
 /// Checks a comment is something GitHub takes: not blank, and no longer than its limit.
-fn comment_body(body: &str) -> Result<&str, String> {
+pub(super) fn comment_body(body: &str) -> Result<&str, String> {
     if body.trim().is_empty() {
         Err("A comment needs some text.".to_string())
     } else if body.chars().count() > COMMENT_MAX_CHARS {
@@ -372,7 +372,7 @@ fn comment_body(body: &str) -> Result<&str, String> {
     }
 }
 
-fn comment_args(slug: &RepoSlug, number: u32, body: &str) -> Vec<String> {
+pub(super) fn comment_args(slug: &RepoSlug, number: u32, body: &str) -> Vec<String> {
     // `-f` sends the body as a raw string, so a leading `@` is never read as a file name.
     vec![
         "api".into(),
