@@ -64,7 +64,7 @@ graph TB
 
 ### 2. `bridge` — Embedded Loopback Wire Protocol
 - Runs a lightweight, non-blocking `axum` HTTP listener bound strictly to `127.0.0.1:<bridge_port>`.
-- Ingests structured telemetry events from agent mod hooks via `POST /v1/events` (`turn.started`, `turn.completed`, `tool.started`, `tool.finished`).
+- Ingests structured telemetry events from agent mod hooks via `POST /v1/events` (`turn.started`, `turn.completed`, `tool.started`, `tool.finished`). Each `tool.finished` is given the `input` its `tool.started` carried, matched by `toolUseId`, so a finished tool call holds both its command and its result.
 - Provides long-poll command retrieval via `GET /v1/commands` for human-in-the-loop overrides.
 - Verifies Bearer authentication tokens with a constant-time byte comparison to prevent side-channel timing attacks.
 
@@ -107,7 +107,7 @@ The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xt
 
 - **`terminal/`**: Terminal instance rendering, auto-fit addon, proposed API emoji width alignment, selection handling, and keyboard shortcuts.
 - **`shell/`**: The module bar on the window's left edge and the panel beside it, which shows the open module.
-- **`companion/`**: The companion on the window's right edge: its divider, its view switch and the views that show the selected terminal's work, starting with the Repository view.
+- **`companion/`**: The companion on the window's right edge: its divider, its view switch and the views that show the selected terminal's work, starting with the Repository view. It also keeps each terminal's link: `terminalLink.ts` resolves a signal against the link's two slots, `linkSignals.ts` reads signals from a finished tool call, a launch and the branch, and `useTerminalLinks.ts` feeds them in and saves the result with `set_terminal_link`.
 - **`rail/`**: The Projects panel: the collapsible project and worktree tree, terminal rows and their menus.
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.
