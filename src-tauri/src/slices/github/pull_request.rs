@@ -64,7 +64,7 @@ __typename ... on CheckRun {{ status conclusion }} ... on StatusContext {{ state
     )
 }
 
-/// Counts check runs and status contexts by outcome, as GitHub's merge box groups them.
+/// Counts check runs and status contexts by outcome, as GitHub's pull request page groups them.
 fn count_checks(nodes: &[serde_json::Value]) -> PullRequestCheckCounts {
     let mut counts = PullRequestCheckCounts::default();
     for node in nodes {
@@ -196,13 +196,32 @@ fn repo_slug(repo: Option<&str>) -> Result<RepoSlug, String> {
     }
 }
 
-/// Parses a merge method GitHub's merge API takes.
-fn merge_method(method: &str) -> Result<&'static str, String> {
-    match method {
-        "merge" => Ok("merge"),
-        "squash" => Ok("squash"),
-        "rebase" => Ok("rebase"),
-        other => Err(format!("Not a merge method (merge, squash or rebase): {other:?}")),
+/// A merge method GitHub's merge API takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MergeMethod {
+    Merge,
+    Squash,
+    Rebase,
+}
+
+impl MergeMethod {
+    /// Parses the method the frontend sent.
+    fn parse(method: &str) -> Result<Self, String> {
+        match method {
+            "merge" => Ok(MergeMethod::Merge),
+            "squash" => Ok(MergeMethod::Squash),
+            "rebase" => Ok(MergeMethod::Rebase),
+            other => Err(format!("Not a merge method (merge, squash or rebase): {other:?}")),
+        }
+    }
+
+    /// The `merge_method` value GitHub's merge API takes.
+    fn as_str(self) -> &'static str {
+        match self {
+            MergeMethod::Merge => "merge",
+            MergeMethod::Squash => "squash",
+            MergeMethod::Rebase => "rebase",
+        }
     }
 }
 
@@ -236,7 +255,7 @@ fn check_sha(sha: &str) -> Result<(), String> {
 fn merge_async_args(
     repo: &RepoSlug,
     number: u32,
-    method: &str,
+    method: MergeMethod,
     title: Option<&str>,
     message: Option<&str>,
     sha: &str,
@@ -247,11 +266,11 @@ fn merge_async_args(
         "PUT".into(),
         format!("{}/pulls/{number}/merge-async", repo.path()),
         "-f".into(),
-        format!("merge_method={method}"),
+        format!("merge_method={}", method.as_str()),
         "-f".into(),
         format!("sha={sha}"),
     ];
-    if method != "rebase" {
+    if method != MergeMethod::Rebase {
         for (field, value) in [("commit_title", title), ("commit_message", message)] {
             if let Some(value) = value.filter(|v| !v.trim().is_empty()) {
                 args.push("-f".into());
@@ -312,12 +331,18 @@ fn wait_for_merge(
     ))
 }
 
+/// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns what it printed, whether or
+/// not it succeeded.
+fn run_gh(repo_path: &str, args: &[String]) -> Result<super::commands::GhOutput, String> {
+    let mut cmd = super::commands::create_gh_command(repo_path);
+    cmd.args(args);
+    super::commands::output_within(&mut cmd, GH_TIMEOUT)
+}
+
 /// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns its stdout, or GitHub's
 /// error when it fails.
 fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec<u8>, String> {
-    let mut cmd = super::commands::create_gh_command(repo_path);
-    cmd.args(args);
-    let out = super::commands::output_within(&mut cmd, GH_TIMEOUT)?;
+    let out = run_gh(repo_path, args)?;
     if out.success {
         Ok(out.stdout)
     } else {
@@ -344,12 +369,11 @@ pub async fn get_github_pr_readiness(
     let slug = repo_slug(repo.as_deref())?;
     let number = number_arg(number)?;
     tokio::task::spawn_blocking(move || {
-        let mut cmd = super::commands::create_gh_command(&repo_path);
-        cmd.args(["api", "graphql"]);
-        cmd.args(slug.graphql_fields());
-        cmd.args(["-F".to_string(), format!("number={number}"), "-f".to_string(), format!("query={}", readiness_query())]);
+        let mut args: Vec<String> = vec!["api".into(), "graphql".into()];
+        args.extend(slug.graphql_fields());
+        args.extend(["-F".to_string(), format!("number={number}"), "-f".to_string(), format!("query={}", readiness_query())]);
         // A GraphQL error exits non-zero but still prints `errors`, which the parser reports.
-        let out = super::commands::output_within(&mut cmd, GH_TIMEOUT)?;
+        let out = run_gh(&repo_path, &args)?;
         parse_readiness(&out.stdout, &out.stderr)
     })
     .await
@@ -367,7 +391,7 @@ pub struct MergeOutcome {
 
 /// Merges a pull request through GitHub's async merge API, waits for GitHub to report it merged,
 /// then deletes the head branch when `delete_branch` is set. Each `gh` call is killed after
-/// 20 s, and the wait gives up after `MERGE_POLL_ATTEMPTS` polls `MERGE_POLL_INTERVAL` apart with
+/// `GH_TIMEOUT`, and the wait gives up after `MERGE_POLL_ATTEMPTS` polls `MERGE_POLL_INTERVAL` apart with
 /// an error that says the merge may still land.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -384,7 +408,7 @@ pub async fn merge_github_pr(
 ) -> Result<MergeOutcome, String> {
     let slug = repo_slug(repo.as_deref())?;
     let number = number_arg(number)?;
-    let method = merge_method(&method)?;
+    let method = MergeMethod::parse(&method)?;
     check_sha(&head_sha)?;
     let branch_path = if delete_branch { Some(branch_ref_path(&head_branch)?) } else { None };
     tokio::task::spawn_blocking(move || {
@@ -393,9 +417,7 @@ pub async fn merge_github_pr(
         let pull = [String::from("api"), format!("{}/pulls/{number}", slug.path())];
         wait_for_merge(
             || {
-                let mut cmd = super::commands::create_gh_command(&repo_path);
-                cmd.args(&pull);
-                let out = super::commands::output_within(&mut cmd, GH_TIMEOUT)?;
+                let out = run_gh(&repo_path, &pull)?;
                 parse_pull_state(&out.stdout, &out.stderr)
             },
             std::thread::sleep,
@@ -544,10 +566,11 @@ mod tests {
 
     #[test]
     fn merge_methods_are_merge_squash_and_rebase_only() {
-        assert_eq!(merge_method("merge"), Ok("merge"));
-        assert_eq!(merge_method("squash"), Ok("squash"));
-        assert_eq!(merge_method("rebase"), Ok("rebase"));
-        assert!(merge_method("fast-forward").is_err());
+        for (sent, method) in [("merge", MergeMethod::Merge), ("squash", MergeMethod::Squash), ("rebase", MergeMethod::Rebase)] {
+            assert_eq!(MergeMethod::parse(sent), Ok(method));
+            assert_eq!(method.as_str(), sent);
+        }
+        assert!(MergeMethod::parse("fast-forward").is_err());
     }
 
     #[test]
@@ -570,7 +593,7 @@ mod tests {
     #[test]
     fn merge_async_args_name_the_method_the_head_and_the_message() {
         let sha = "0123456789abcdef0123456789abcdef01234567";
-        let args = merge_async_args(&RepoSlug::Folder, 12, "squash", Some("Add it (#12)"), Some("Closes #5"), sha);
+        let args = merge_async_args(&RepoSlug::Folder, 12, MergeMethod::Squash, Some("Add it (#12)"), Some("Closes #5"), sha);
         assert_eq!(
             args,
             [
@@ -579,10 +602,10 @@ mod tests {
                 "-f", "commit_title=Add it (#12)", "-f", "commit_message=Closes #5",
             ]
         );
-        let rebase = merge_async_args(&RepoSlug::Named("o".into(), "r".into()), 3, "rebase", Some("ignored"), Some("ignored"), sha);
+        let rebase = merge_async_args(&RepoSlug::Named("o".into(), "r".into()), 3, MergeMethod::Rebase, Some("ignored"), Some("ignored"), sha);
         assert_eq!(rebase[3], "repos/o/r/pulls/3/merge-async");
         assert!(!rebase.iter().any(|a| a.starts_with("commit_")));
-        let blank = merge_async_args(&RepoSlug::Folder, 3, "merge", Some("  "), None, sha);
+        let blank = merge_async_args(&RepoSlug::Folder, 3, MergeMethod::Merge, Some("  "), None, sha);
         assert!(!blank.iter().any(|a| a.starts_with("commit_")));
     }
 
