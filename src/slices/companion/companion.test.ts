@@ -10,7 +10,7 @@ import type { TerminalInfo } from "../terminal/types.ts";
 import { companionPrefs, type PrefsStorage } from "./companionPrefs.ts";
 import { memoryStorage, terminalInfo as terminal } from "./fixtures/companionFixtures.ts";
 import type { CompanionContext } from "./Companion.tsx";
-import type { CompanionView } from "./companionViews.ts";
+import type { CompanionView, CompanionViewId } from "./companionViews.ts";
 
 const { Companion, REPOSITORY_VIEW } = await import("./Companion.tsx");
 
@@ -217,4 +217,27 @@ test("arrow keys move the view switch's choice, as a radio group does", () => {
   assert.equal(body(container)?.dataset.companionView, "repository");
   key(radios(container)[0], "ArrowLeft");
   assert.equal(body(container)?.dataset.companionView, "ticket");
+});
+
+test("a request from outside the companion shows its view for its terminal, and a repeat shows it again", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+  const prefs = companionPrefs(memoryStorage());
+  const linked = terminal("linked", "E:/alpha");
+  const draw = (showRequest: { terminalId: string; view: CompanionViewId; seq: number } | null) =>
+    act(() =>
+      root.render(createElement(Companion, { selectedTerminal: linked, projects, projectWorktrees: worktrees, views: laterViews, prefs, showRequest })),
+    );
+  draw(null);
+  assert.equal(body(container)?.dataset.companionView, "pull-request");
+  draw({ terminalId: "linked", view: "ticket", seq: 1 });
+  assert.equal(body(container)?.dataset.companionView, "ticket");
+  act(() => radios(container).find((r) => r.textContent === "Pull request")!.click());
+  assert.equal(body(container)?.dataset.companionView, "pull-request");
+  draw({ terminalId: "linked", view: "ticket", seq: 2 });
+  assert.equal(body(container)?.dataset.companionView, "ticket");
+  draw({ terminalId: "other", view: "pull-request", seq: 3 });
+  assert.equal(body(container)?.dataset.companionView, "ticket", "a request for another terminal changes nothing");
 });

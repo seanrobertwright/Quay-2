@@ -152,6 +152,17 @@ export const TICKET_VIEW: CompanionView<CompanionContext> = {
  */
 export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, TICKET_VIEW, REPOSITORY_VIEW];
 
+/**
+ * A request from outside the companion, such as a pick in the Source control panel, to show `view`
+ * for the terminal `terminalId`. Each new `seq` is a new request, so asking again for the view
+ * already asked for shows it again after the operator switched away.
+ */
+export interface CompanionShowRequest {
+  terminalId: string;
+  view: CompanionViewId;
+  seq: number;
+}
+
 /** The divider's hit area and the line it draws, in CSS px. */
 const DIVIDER_HIT_WIDTH = 9;
 const DIVIDER_LINE_WIDTH = 1;
@@ -170,6 +181,8 @@ interface CompanionProps {
   lens?: CompanionLens | null;
   /** Starts work on a ticket; without it the Ticket view offers no Implement. */
   ticketActions?: TicketActions | null;
+  /** The latest request to show a view; one for a terminal other than the selected one is ignored. */
+  showRequest?: CompanionShowRequest | null;
 }
 
 /** The right-hand column that shows what the selected terminal is working on. */
@@ -182,6 +195,7 @@ export const Companion = ({
   linking = null,
   lens = null,
   ticketActions = null,
+  showRequest = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
   // The view picked on the switch holds while its terminal stays selected and still has it.
@@ -203,6 +217,12 @@ export const Companion = ({
     [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions],
   );
   const selectedId = context?.terminal.id ?? null;
+  // Each request is taken once, when it arrives, as if its view were picked on the switch.
+  const [takenSeq, setTakenSeq] = useState<number | null>(null);
+  if (showRequest && showRequest.seq !== takenSeq) {
+    setTakenSeq(showRequest.seq);
+    if (showRequest.terminalId === selectedId) setPicked({ terminalId: showRequest.terminalId, view: showRequest.view });
+  }
   if (picked && picked.terminalId !== selectedId) setPicked(null);
   const choices = context ? switchableViews(views, context) : [];
   // While both slots are filled, the slot switch in the terminal link reaches the ticket, and the
