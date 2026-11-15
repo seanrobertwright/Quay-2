@@ -1,0 +1,571 @@
+<title>Quay Builder Canvas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a guided walkthrough card, a layout switch and a window-width switch, then one live Quay
+   window scaled to fit (module bar, Workflows panel, stage with a terminal tab and a Praxis Builder tab,
+   companion), a live canvas-width readout, a five-step job with a click counter, a canvas-width table,
+   and a decision form with one Copy button. Single dark look, Quay's palette, as the other prototypes. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12; --q-bg: #0d1117; --q-panel: #161b22; --q-raise: #21262d; --q-line: #30363d;
+  --fg: #c9d1d9; --muted: #8b949e; --hi: #f0f6fc; --blue: #58a6ff; --green: #3fb950; --amber: #d29922;
+  --red: #f85149; --purple: #a371f7; --go: #238636; --go-line: #2ea043; --sel: #132339; --guide: #f0b72f;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--display); font-weight: 600; margin: 0; color: var(--hi); text-wrap: balance; }
+h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 18px; }
+p { margin: 0; max-width: 72ch; } .lede { color: var(--muted); margin-top: 6px; }
+.tag { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scroll { overflow-x: auto; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg legend { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { border: 1px solid var(--q-line); border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--q-panel); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#seg label { flex: 1 1 230px; }
+.seg label b { color: var(--hi); font: 600 14px var(--display); }
+.seg label small { color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--blue); background: var(--sel); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+.seg label.seen b::after { content: " ✓"; color: var(--green); font-size: 12px; }
+.rec-mark { font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.ghost { border: 1px solid var(--q-line); background: var(--q-panel); border-radius: 6px; padding: 5px 10px; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: flex-end; }
+
+.walk { border: 1px solid rgba(240,183,47,.55); background: linear-gradient(180deg, rgba(240,183,47,.08), rgba(240,183,47,.02)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.walk .wtop { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+.walk .wstep { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.walk h2 { margin: 0; font-size: 19px; }
+.walk .wprog { font: 12px var(--mono); color: var(--hi); margin-left: auto; }
+.walk .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdots { display: flex; gap: 6px; }
+.wdots i { width: 22px; height: 4px; border-radius: 2px; background: var(--q-line); }
+.wdots i.on { background: var(--guide); } .wdots i.ok { background: var(--green); }
+.wnav { display: flex; gap: 8px; } .grow { flex: 1; }
+
+.job { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.job ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.job li { border: 1px solid var(--q-line); border-radius: 14px; padding: 3px 10px 3px 8px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; background: var(--q-panel); font-size: 13px; }
+.job li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--q-line); box-sizing: border-box; }
+.job li.done { color: #e6edf3; border-color: rgba(63,185,80,.5); }
+.job li.done::before { background: var(--green); border-color: var(--green); }
+.job li.now { color: var(--hi); border-color: var(--guide); }
+.job .lead { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.fit { position: relative; overflow: hidden; border-radius: 8px; }
+.shell { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: flex; height: 680px; background: var(--q-bg); border: 1px solid var(--q-line);
+  border-radius: 8px; overflow: hidden; font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+.shell svg.i { width: 16px; height: 16px; flex: none; }
+.shell button { background: none; border: 0; padding: 0; text-align: left; color: inherit; }
+.abar { width: 48px; flex: none; background: var(--q-panel); border-right: 1px solid var(--q-line); display: flex; flex-direction: column; }
+.ib { height: 44px; display: grid !important; place-items: center; position: relative; color: var(--muted) !important; }
+.ib svg.i { width: 20px; height: 20px; }
+.ib:hover { color: var(--hi) !important; background: var(--q-raise) !important; }
+.ib.on { color: #fff !important; box-shadow: inset 2px 0 0 var(--blue); }
+.badge { position: absolute; top: 5px; right: 5px; min-width: 14px; height: 14px; border-radius: 7px; font: 600 9px/14px var(--mono); text-align: center; background: var(--amber); color: #0d1117; padding: 0 3px; }
+.panel { width: 280px; flex: none; border-right: 1px solid var(--q-line); background: var(--q-panel); display: flex; flex-direction: column; gap: 4px; padding: 0 8px 10px; }
+.phead { padding: 9px 4px 7px; font: 600 13px var(--display); color: var(--hi); }
+.sh { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 4px 3px; }
+.prow { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--q-bg); border: 1px solid var(--q-line); }
+.ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ttl b { color: #e6edf3; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ttl small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { border: 1px solid var(--q-line) !important; background: var(--q-raise) !important; border-radius: 6px; padding: 3px 9px !important; font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+.btn.go { background: var(--go) !important; border-color: var(--go-line) !important; color: #fff !important; }
+.m { color: var(--muted); }
+.ok { color: var(--green); }
+
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.stabs { height: 34px; flex: none; border-bottom: 1px solid var(--q-line); display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--q-panel); }
+.stab { padding: 5px 10px !important; border-radius: 6px; color: var(--muted) !important; font: 11.5px var(--mono); display: inline-flex !important; gap: 6px; align-items: center; white-space: nowrap; }
+.stab[aria-selected=true] { background: var(--q-raise) !important; color: #fff !important; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; }
+.out { flex: 1; margin: 0; overflow: hidden; padding: 10px 14px; font: 12px/1.65 var(--mono); white-space: pre-wrap; color: #8b949e; }
+.out b { color: #e6edf3; font-weight: 500; } .out .g { color: var(--green); } .out .p { color: var(--purple); }
+
+.builder { flex: 1; min-height: 0; display: flex; position: relative; }
+.defs { width: 224px; flex: none; border-right: 1px solid var(--q-line); padding: 8px 6px; display: flex; flex-direction: column; gap: 3px; background: var(--q-bg); }
+.defs.fly { position: absolute; left: 40px; top: 0; bottom: 0; z-index: 5; box-shadow: 8px 0 24px rgba(0,0,0,.5); }
+.drow { padding: 5px 8px !important; border-radius: 6px; font: 11.5px var(--mono); display: flex !important; gap: 6px; align-items: center; }
+.drow:hover { background: var(--q-raise) !important; }
+.drow[aria-current=true] { background: var(--sel) !important; color: #fff; }
+.drow small { margin-left: auto; color: var(--muted); }
+.rail { width: 40px; flex: none; border-right: 1px solid var(--q-line); display: flex; flex-direction: column; align-items: center; padding-top: 6px; background: var(--q-bg); }
+.railbtn { width: 32px; height: 32px; border-radius: 6px; display: grid !important; place-items: center; color: var(--muted) !important; }
+.railbtn:hover, .railbtn[aria-expanded=true] { background: var(--q-raise) !important; color: var(--hi) !important; }
+.canvas { flex: 1; min-width: 0; position: relative; overflow: hidden;
+  background-color: #0b0f14; background-image: radial-gradient(#1f2630 1px, transparent 1px); background-size: 16px 16px; }
+.cw { position: absolute; right: 8px; bottom: 8px; z-index: 3; font: 600 11px var(--mono); padding: 3px 8px; border-radius: 6px; background: rgba(13,17,23,.92); border: 1px solid var(--q-line); }
+.cw.bad { color: var(--red); border-color: rgba(248,81,73,.5); } .cw.mid { color: var(--amber); } .cw.good { color: var(--green); border-color: rgba(63,185,80,.5); }
+.pal { position: absolute; left: 8px; top: 8px; z-index: 2; display: flex; flex-direction: column; gap: 2px; padding: 3px; border-radius: 8px; background: rgba(22,27,34,.95); border: 1px solid var(--q-line); }
+.pal span { width: 22px; height: 22px; border-radius: 5px; background: var(--q-raise); display: block; }
+.graph { position: absolute; left: 44px; top: 40px; width: 980px; height: 360px; }
+.graph svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.node { position: absolute; width: 132px; padding: 8px 10px !important; border-radius: 8px; background: var(--q-panel) !important; border: 1px solid var(--q-line) !important; display: flex !important; flex-direction: column; gap: 2px; }
+.node b { color: #e6edf3; font-size: 12px; } .node small { color: var(--muted); font: 10px var(--mono); }
+.node[aria-pressed=true] { border-color: var(--blue) !important; box-shadow: 0 0 0 2px rgba(88,166,255,.25); }
+.insp { width: 288px; flex: none; border-left: 1px solid var(--q-line); background: var(--q-bg); padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.insp.float { position: absolute; right: 10px; top: 10px; z-index: 4; border: 1px solid var(--q-line); border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,.6); max-height: calc(100% - 20px); box-sizing: border-box; }
+.insp h3 { margin: 0; font: 600 13px var(--display); color: var(--hi); }
+.fld { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--q-line) !important; border-radius: 10px; padding: 1px 9px !important; font-size: 11px; color: var(--fg); }
+.chip[aria-pressed=true] { border-color: var(--blue) !important; color: #fff; background: var(--sel) !important; }
+.fake { border: 1px solid var(--q-line); border-radius: 5px; padding: 3px 6px; background: var(--q-panel); color: var(--fg); font: 11px var(--mono); }
+.problems { height: 26px; flex: none; border-top: 1px solid var(--q-line); display: flex; align-items: center; padding: 0 10px; font: 11px var(--mono); color: var(--muted); gap: 10px; background: var(--q-panel); }
+.fullbar { height: 34px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); font: 600 12px var(--display); color: var(--hi); }
+.full { position: absolute; inset: 0; z-index: 6; background: var(--q-bg); display: flex; flex-direction: column; }
+.comp { width: 340px; flex: none; border-left: 1px solid var(--q-line); display: flex; flex-direction: column; min-height: 0; }
+.chead { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--q-line); background: var(--q-panel); align-items: center; font-size: 11.5px; color: #fff; }
+.cbody { flex: 1; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.card { border: 1px solid var(--q-line); border-radius: 8px; padding: 10px; background: var(--q-panel); display: flex; flex-direction: column; gap: 6px; }
+.card h3 { margin: 0; font: 600 13px var(--display); color: var(--hi); }
+.cells { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { border: 1px solid var(--q-line); border-radius: 6px; padding: 5px 7px; font-size: 11px; } .cell b { display: block; color: var(--hi); font-size: 13px; }
+.handle { position: absolute; top: 50%; transform: translateY(-50%); z-index: 4; width: 18px; height: 72px; border-radius: 6px 0 0 6px; background: var(--q-raise) !important; border: 1px solid var(--q-line) !important; border-right: 0 !important; display: grid !important; place-items: center; color: var(--muted) !important; font-size: 12px; right: 0; }
+.guide { outline: 2px solid var(--guide) !important; outline-offset: 2px; animation: pulse 1.1s ease-in-out infinite; z-index: 7; }
+@keyframes pulse { 50% { outline-color: rgba(240,183,47,.25); } }
+@media (prefers-reduced-motion: reduce) { .guide { animation: none; } }
+
+.readout { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; min-height: 18px; }
+.readout b { color: var(--hi); font-weight: 500; }
+.toast { color: var(--green); font: 500 12px var(--mono); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px 28px; }
+.notes > div { min-width: 0; }
+.notes h3 { margin: 0 0 4px; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.notes ul { margin: 0; padding-left: 18px; }
+.rec { border-left: 2px solid var(--blue); padding-left: 12px; }
+.recbox { border: 1px solid rgba(240,183,47,.45); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.recbox h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--guide); }
+.recbox ul { margin: 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--q-line); }
+th { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.n { font: 600 15px var(--display); color: var(--hi); white-space: nowrap; }
+td.n small { font: 400 11px var(--mono); color: var(--muted); margin-left: 4px; }
+tr.cur td { background: var(--sel); } td.cur { outline: 1px solid var(--blue); outline-offset: -1px; }
+
+form.ask { display: flex; flex-direction: column; gap: 18px; border: 1px solid var(--q-line); border-radius: 10px; padding: 16px; background: var(--q-panel); }
+form.ask.lit { border-color: var(--guide); }
+.q { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.q legend { color: var(--hi); font-weight: 600; padding: 0; margin-bottom: 4px; }
+.q legend small { color: var(--muted); font-weight: 400; display: block; }
+.opt { display: flex; gap: 8px; align-items: flex-start; }
+.opt input { margin-top: 4px; accent-color: var(--blue); }
+.opt em { font-style: normal; font: 600 9px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--bg); background: var(--guide); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+form.ask textarea { background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 7px 9px; min-height: 60px; color: var(--hi); }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copybtn { background: var(--go); border: 1px solid var(--go-line); color: #fff; font-weight: 600; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+pre.answer { margin: 0; background: var(--q-bg); border: 1px solid var(--q-line); border-radius: 6px; padding: 10px 12px; font: 12px/1.6 var(--mono); white-space: pre-wrap; color: var(--fg); max-height: 260px; overflow: auto; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-flow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></symbol>
+  <symbol id="i-praxis" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 2"/><path d="M9 16V8h4a2.5 2.5 0 0 1 0 5H9"/><rect x="2.5" y="2.5" width="3" height="3" fill="currentColor"/><rect x="18.5" y="18.5" width="3" height="3" fill="currentColor"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <header>
+    <div class="tag">Throwaway prototype · example data · click everything</div>
+    <h1>Quay Builder Canvas</h1>
+    <p class="lede">The Praxis Builder opens as a stage tab. Today's Builder has its own definitions list (224 px) and inspector (288 px), so between the module panel and the companion its canvas shrinks to about 420 px on a 1600 px window. Four ways to give the canvas room, and how each brings the rest back. The card below walks you through it.</p>
+  </header>
+
+  <section class="walk" id="walk" aria-live="polite"></section>
+
+  <fieldset class="seg" id="seg">
+    <legend>Layout</legend>
+    <input type="radio" name="v" id="v-A" value="A"><label for="v-A"><b>A · Side columns fold</b><small>Panel and companion fold while the Builder tab is in front</small></label>
+    <input type="radio" name="v" id="v-B" value="B" checked><label for="v-B"><b>B · Inspector in the companion<span class="rec-mark">Recommended</span></b><small>Panel folds; the companion column holds the inspector; definitions become a rail</small></label>
+    <input type="radio" name="v" id="v-C" value="C"><label for="v-C"><b>C · Full window</b><small>The Builder covers the whole window; Back to Quay returns</small></label>
+    <input type="radio" name="v" id="v-D" value="D"><label for="v-D"><b>D · Nothing folds</b><small>Definitions become a rail and the inspector floats over the canvas</small></label>
+  </fieldset>
+
+  <div class="controls">
+    <fieldset class="seg" id="seg-w">
+      <legend>Window width</legend>
+      <input type="radio" name="w" id="w-1280" value="1280"><label for="w-1280">1280 px</label>
+      <input type="radio" name="w" id="w-1600" value="1600" checked><label for="w-1600">1600 px</label>
+      <input type="radio" name="w" id="w-1920" value="1920"><label for="w-1920">1920 px</label>
+    </fieldset>
+  </div>
+
+  <div class="job" aria-live="polite">
+    <span class="lead">The job</span>
+    <ol id="job"></ol>
+    <button class="ghost" id="reset" type="button">Reset run</button>
+  </div>
+
+  <div class="fit" id="fit"><div class="shell" id="shell"></div></div>
+  <div class="readout" id="readout" aria-live="polite"></div>
+
+  <div class="notes">
+    <div class="rec"><h3>What it is</h3><p id="n-what"></p></div>
+    <div><h3>Gains</h3><ul id="n-pro"></ul></div>
+    <div><h3>Costs</h3><ul id="n-con"></ul></div>
+  </div>
+
+  <h2>Canvas width while the Builder is in front</h2>
+  <p class="lede">The example graph is 980 px wide. Today's row is the redesigned shell with nothing folding. In D the inspector floats over the right 300 px of the canvas while a node is selected.</p>
+  <div class="scroll"><table id="widths"></table></div>
+
+  <h2>Your runs of the job</h2>
+  <p class="lede">Counted live in the window: every press is a click; pointer travel is the straight-line distance between presses, in screen pixels. Switching layout or width starts a fresh run.</p>
+  <div class="scroll"><table id="bench"></table></div>
+
+  <h2>My recommendation</h2>
+  <div class="recbox">
+    <h3>B · Inspector in the companion</h3>
+    <ul>
+      <li>The companion column's job is "detail for what is in front of you". With a terminal in front that is its pull request; with the Builder in front it is the selected node. So the inspector moves into that column, and the Builder no longer pays for two right-hand columns.</li>
+      <li>The module panel folds when the Builder tab comes to the front, and comes back by itself when you switch to any other tab. The Workflows icon still opens it at any time, and the module bar's badges stay visible, so nothing waiting on you is hidden.</li>
+      <li>The definitions list becomes a 40 px rail; its button opens the list over the canvas and closes it once you pick one.</li>
+      <li>That gives the widest canvas of the four while staying inside the shell: about 1,170 px on a 1600 px window, against about 420 px today.</li>
+    </ul>
+    <p>The cost: while the Builder is in front, the companion cannot show a pull request. In my own run of the job, following the outline, B took the most clicks: 8, against 7 for A and D and 6 for C. The extra one opens the definitions rail. I judge the wider canvas worth one click.</p>
+    <p>This is only my pick. Nothing is decided until you approve below.</p>
+  </div>
+
+  <h2>Your decision</h2>
+  <form class="ask" id="ask">
+    <fieldset class="q">
+      <legend>1. Which layout do you approve?</legend>
+      <label class="opt"><input type="radio" name="fav" value="A"> A · Side columns fold</label>
+      <label class="opt"><input type="radio" name="fav" value="B"> <span>B · Inspector in the companion<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="fav" value="C"> C · Full window</label>
+      <label class="opt"><input type="radio" name="fav" value="D"> D · Nothing folds</label>
+      <label class="opt"><input type="radio" name="fav" value="none"> None of these; see my notes</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>2. When you leave the Builder tab, what happens to whatever folded?</legend>
+      <label class="opt"><input type="radio" name="back" value="auto"> <span>It comes back by itself<em>Recommended</em></span></label>
+      <label class="opt"><input type="radio" name="back" value="stay"> It stays folded until I open it again</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>3. How wide is the Quay window you usually work in?</legend>
+      <label class="opt"><input type="radio" name="ww" value="1280"> About 1280 px</label>
+      <label class="opt"><input type="radio" name="ww" value="1600"> About 1600 px</label>
+      <label class="opt"><input type="radio" name="ww" value="1920"> About 1920 px or more</label>
+      <label class="opt"><input type="radio" name="ww" value="unsure"> Not sure</label>
+    </fieldset>
+    <fieldset class="q">
+      <legend>4. Anything else? (optional)</legend>
+      <textarea id="notes" aria-label="Your notes"></textarea>
+    </fieldset>
+    <div class="copyrow">
+      <button class="copybtn" type="submit" id="copy">Copy my answers</button>
+      <span class="toast" id="copied" aria-live="polite"></span>
+    </div>
+    <pre class="answer" id="answer" tabindex="0" aria-label="Your answers as text"></pre>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ico = (n) => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const NAMES = { A: "A · Side columns fold", B: "B · Inspector in the companion", C: "C · Full window", D: "D · Nothing folds" };
+const BAR = 48, PANEL = 280, DEFS = 224, RAIL = 40, INSP = 288, COMP = 340, GRAPH_W = 980;
+/* canvas width with the Builder in front, panel and companion as each layout leaves them at rest */
+const canvasW = (k, w) => ({ today: w - BAR - PANEL - DEFS - INSP - COMP, A: w - BAR - DEFS - INSP, B: w - BAR - RAIL - COMP, C: w - DEFS - INSP, D: w - BAR - PANEL - RAIL - COMP })[k];
+
+/* ---------- example data ---------- */
+const DEFS_LIST = [
+  { id: "review", name: "review-graph", kind: "graph" },
+  { id: "triage", name: "triage-graph", kind: "graph" },
+  { id: "nightly", name: "nightly-audit", kind: "graph" },
+  { id: "c1", name: "pr-review", kind: "contract" },
+  { id: "g1", name: "repo-write", kind: "grant" },
+];
+const NODES = {
+  review: [
+    { id: "n1", name: "On pull request", kind: "trigger", x: 0, y: 140 },
+    { id: "n2", name: "Fetch diff", kind: "tool", x: 170, y: 140 },
+    { id: "n3", name: "Review", kind: "agent · sonnet", x: 340, y: 60 },
+    { id: "n4", name: "Security pass", kind: "agent · haiku", x: 340, y: 220 },
+    { id: "n5", name: "Gate", kind: "decision", x: 510, y: 140 },
+    { id: "n6", name: "Comment", kind: "tool", x: 680, y: 60 },
+    { id: "n7", name: "Notify", kind: "tool", x: 848, y: 220 },
+  ],
+  triage: [
+    { id: "t1", name: "On new issue", kind: "trigger", x: 0, y: 140 },
+    { id: "t2", name: "Classify", kind: "agent · haiku", x: 170, y: 140 },
+    { id: "t3", name: "Label", kind: "tool", x: 340, y: 60 },
+    { id: "t4", name: "Ask for info", kind: "agent · haiku", x: 340, y: 220 },
+    { id: "t5", name: "Route", kind: "decision", x: 510, y: 140 },
+    { id: "t6", name: "Assign", kind: "tool", x: 680, y: 140 },
+    { id: "t7", name: "Digest", kind: "tool", x: 848, y: 140 },
+  ],
+};
+const EDGES = { review: [["n1", "n2"], ["n2", "n3"], ["n2", "n4"], ["n3", "n5"], ["n4", "n5"], ["n5", "n6"], ["n5", "n7"]],
+  triage: [["t1", "t2"], ["t2", "t3"], ["t2", "t4"], ["t3", "t5"], ["t4", "t5"], ["t5", "t6"], ["t6", "t7"]] };
+
+/* ---------- state ---------- */
+let v = "B", ww = 1600;
+const fresh = () => ({ mod: "workflows", stage: "term", full: false, flyout: false, def: "review", sel: null, model: "sonnet",
+  compShown: true, approved: false, toast: "" });
+let st = fresh();
+let J;
+const resetJob = () => { J = { model: false, clicks: 0, travel: 0, last: null, finished: false }; };
+resetJob();
+const bench = {};
+const W = { step: 0, seen: new Set(["B"]) };
+const inBuilder = () => st.stage === "builder";
+
+const JOB = [
+  { label: "Open the review-graph Builder tab", done: () => J.opened, keys: ["tab-builder"] },
+  { label: "Set the Review node's model to opus", done: () => J.model, keys: ["model-opus", "node-n3", "tab-builder"] },
+  { label: "Switch to triage-graph", done: () => st.def === "triage" && J.model, keys: ["def-triage", "defs-rail", "tab-builder"] },
+  { label: "Approve the Archon run waiting in the Workflows panel", done: () => st.approved, keys: ["approve", "exit-full", "mod-workflows"] },
+  { label: "Back to the claude terminal with its pull request", done: () => st.stage === "term" && !st.full && st.compShown, keys: ["exit-full", "tab-term", "comp-handle"] },
+];
+const jobStep = () => JOB.findIndex((j) => !j.done());
+
+/* entering and leaving the Builder tab: what each layout folds and restores */
+function enterBuilder() {
+  st.stage = "builder"; J.opened = true;
+  if (v === "A") { st.mod = null; st.compShown = false; }
+  if (v === "B") { st.mod = null; }
+  if (v === "C") { st.full = true; }
+}
+function leaveBuilder() {
+  st.stage = "term"; st.flyout = false;
+  if (v === "A") { st.mod = "workflows"; st.compShown = true; }
+  if (v === "B") { st.mod = "workflows"; }
+}
+
+function act(a, arg) {
+  st.toast = "";
+  switch (a) {
+    case "mod": st.mod = st.mod === arg ? null : arg; break;
+    case "tab": if (arg === "builder") { if (!inBuilder()) enterBuilder(); } else if (inBuilder()) leaveBuilder(); break;
+    case "exit": st.full = false; leaveBuilder(); break;
+    case "node": st.sel = arg; break;
+    case "model": st.model = arg; if (arg === "opus" && st.sel === "n3" && st.def === "review") J.model = true; st.toast = `Review now runs on ${arg}.`; break;
+    case "rail": st.flyout = !st.flyout; break;
+    case "def": if (NODES[arg]) { st.def = arg; st.sel = null; } st.flyout = false; break;
+    case "approve": st.approved = true; st.toast = "Approved. The Archon run continues."; break;
+    case "comp": st.compShown = !st.compShown; break;
+    case "noop": break;
+  }
+  if (!J.finished && jobStep() === -1) {
+    J.finished = true;
+    const key = `${v}@${ww}`, b = bench[key], run = { clicks: J.clicks, travel: Math.round(J.travel) };
+    bench[key] = !b || run.clicks < b.clicks || (run.clicks === b.clicks && run.travel < b.travel) ? { ...run, runs: (b ? b.runs : 0) + 1 } : { ...b, runs: b.runs + 1 };
+  }
+}
+
+/* ---------- render pieces ---------- */
+const g = (key, on = true) => (on ? ` data-guide="${key}"` : "");
+function panelHtml() {
+  return `<div class="panel"><div class="phead">Workflows</div>
+    <div class="sh">Needs you</div>
+    ${st.approved ? `<p class="m" style="padding:4px 8px">Nothing needs you</p>` : `<div class="prow"><span class="ttl"><b>Archon · implement #588</b><small>waiting on approval · plan ready</small></span><button class="btn go" type="button" data-a="approve"${g("approve")}>Approve</button></div>`}
+    <div class="sh">Running</div><div class="prow"><span class="ttl"><b>Factory · WO-112</b><small>stage 3 of 5 · $0.84</small></span></div>
+    <div class="sh">Start</div><div class="prow"><span class="ttl"><b>review-graph</b><small>Praxis graph · opens the Builder tab</small></span></div></div>`;
+}
+function nodeHtml(n) {
+  return `<button class="node" type="button" style="left:${n.x}px;top:${n.y}px" aria-pressed="${st.sel === n.id}" data-a="node" data-arg="${n.id}"${g("node-" + n.id)}><b>${esc(n.name)}</b><small>${esc(n.id === "n3" ? "agent · " + st.model : n.kind)}</small></button>`;
+}
+function edgesSvg() {
+  const by = Object.fromEntries(NODES[st.def].map((n) => [n.id, n]));
+  return `<svg class="edges" aria-hidden="true">${EDGES[st.def].map(([a, b]) => {
+    const p = by[a], q = by[b], x1 = p.x + 132, y1 = p.y + 22, x2 = q.x, y2 = q.y + 22, mx = (x1 + x2) / 2;
+    return `<path d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="#484f58" stroke-width="1.5"/>`;
+  }).join("")}</svg>`;
+}
+function inspectorBody() {
+  const n = NODES[st.def].find((x) => x.id === st.sel);
+  if (!n) return `<h3>Inspector</h3><p class="m">Select a node on the canvas to edit it.</p>`;
+  const isAgent = n.kind.startsWith("agent");
+  return `<h3>${esc(n.name)}</h3><div class="fld">Kind<span class="fake">${esc(n.kind.split(" · ")[0])}</span></div>
+    ${isAgent ? `<div class="fld">Model<div class="chips">${["haiku", "sonnet", "opus"].map((m) => `<button class="chip" type="button" aria-pressed="${n.id === "n3" ? st.model === m : m === n.kind.split(" · ")[1]}" data-a="model" data-arg="${m}"${g("model-" + m, n.id === "n3")}>${m}</button>`).join("")}</div></div>
+    <div class="fld">Prompt<span class="fake">Review the diff for correctness…</span></div>` : `<div class="fld">Config<span class="fake">{ … }</span></div>`}
+    <div class="fld">Contract<span class="fake">pr-review</span></div>`;
+}
+function builderHtml() {
+  const railMode = v === "B" || v === "D";
+  const list = `<nav class="defs${railMode ? " fly" : ""}" aria-label="Definitions">${DEFS_LIST.map((d) => `<button class="drow" type="button" aria-current="${st.def === d.id}" data-a="def" data-arg="${d.id}"${g("def-" + d.id)}>${ico(d.kind === "graph" ? "flow" : "list")}${esc(d.name)}<small>${d.kind}</small></button>`).join("")}</nav>`;
+  const left = railMode
+    ? `<div class="rail"><button class="railbtn" type="button" aria-label="Definitions" aria-expanded="${st.flyout}" data-a="rail"${g("defs-rail", !st.flyout)}>${ico("list")}</button></div>${st.flyout ? list : ""}`
+    : list;
+  const insp = v === "B" ? "" : `<aside class="insp${v === "D" ? " float" : ""}" aria-label="Inspector">${inspectorBody()}</aside>`;
+  const showInsp = v !== "B" && (v !== "D" || st.sel);
+  return `<div class="builder">${left}<div class="canvas" id="canvas"><div class="pal">${"<span></span>".repeat(5)}</div>
+      <div class="graph">${edgesSvg()}${NODES[st.def].map(nodeHtml).join("")}</div><span class="cw" id="cw"></span></div>${showInsp ? insp : ""}</div>
+    <div class="problems"><span class="ok">● No problems</span><span>${esc(DEFS_LIST.find((d) => d.id === st.def).name)}</span><span>${NODES[st.def].length} nodes</span></div>`;
+}
+function stageHtml() {
+  const tabs = `<div class="stabs" role="tablist" aria-label="Stage tabs">
+    <button class="stab" type="button" role="tab" aria-selected="${st.stage === "term"}" data-a="tab" data-arg="term"${g("tab-term", st.stage !== "term")}><i class="dot"></i>claude · ticket-571</button>
+    <button class="stab" type="button" role="tab" aria-selected="${inBuilder()}" data-a="tab" data-arg="builder"${g("tab-builder", !inBuilder())}>${ico("praxis")}Praxis · review-graph</button></div>`;
+  const body = inBuilder() && !st.full ? builderHtml() : `<pre class="out"><span class="m">$</span> claude <span class="m">--ticket 571</span>
+<span class="p">●</span> Reading ticket <b>Run canvas: node phases</b> (#571)
+<span class="g">✓</span> phases.ts, runCanvas.ts, RunNode.tsx updated
+<span class="p">●</span> gh pr create --fill  <span class="m">→ #574</span>
+<span class="g">✓</span> All checks passed. Waiting for your review.</pre>`;
+  const handle = v === "A" && !st.compShown ? `<button class="handle" type="button" aria-label="Show the companion" data-a="comp"${g("comp-handle")}>‹</button>` : "";
+  return `<section class="stage" aria-label="Stage">${tabs}${body}${handle}</section>`;
+}
+function compHtml() {
+  if (!st.compShown) return "";
+  if (v === "B" && inBuilder()) return `<aside class="comp" aria-label="Companion"><div class="chead">${ico("praxis")}Inspector<span class="grow"></span><span class="m">review-graph</span></div><div class="cbody">${inspectorBody()}</div></aside>`;
+  return `<aside class="comp" aria-label="Companion"><div class="chead">Pull request<span class="grow"></span><span class="m">claude · ticket-571</span></div><div class="cbody">
+    <div class="card"><h3>Run canvas: node phases <span class="m">#574</span></h3><div class="cells"><div class="cell">Checks<b>passing</b></div><div class="cell">Comments<b>2</b></div><div class="cell">Files<b>6</b></div><div class="cell">Commits<b>3</b></div></div><button class="btn go" type="button" data-a="noop">Squash and merge</button></div></div></aside>`;
+}
+function fullHtml() {
+  if (!(st.full && inBuilder())) return "";
+  return `<div class="full" role="dialog" aria-label="Praxis Builder, full window"><div class="fullbar">${ico("praxis")}Praxis Builder · ${esc(DEFS_LIST.find((d) => d.id === st.def).name)}<span class="grow"></span><span class="m" style="font:11px var(--mono)">Esc</span><button class="btn" type="button" data-a="exit"${g("exit-full")}>Back to Quay</button></div><div style="flex:1;min-height:0;display:flex;flex-direction:column">${builderHtml()}</div></div>`;
+}
+
+/* ---------- notes and tables ---------- */
+const NOTES = {
+  A: { what: "Bringing the Builder tab to the front folds the module panel and the companion. The Builder keeps its own definitions list and inspector. Leaving the tab brings both back; a Workflows icon click or the handle on the right brings either back early.",
+    pro: ["The Builder looks as it does today, just wider.", "Simple rule: the Builder tab gets the middle of the window."],
+    con: ["Two right-hand columns still exist inside the Builder (canvas, then inspector).", "Opening the panel mid-edit pushes the canvas narrower again."] },
+  B: { what: "The module panel folds and the companion column shows the inspector for the selected node instead of a pull request. The definitions list becomes a 40 px rail that opens over the canvas. Leaving the tab brings back the panel and the pull request.",
+    pro: ["Widest canvas that still keeps the shell around it.", "One right-hand column everywhere: the companion always shows detail for what is in front.", "The module bar and its badges stay visible."],
+    con: ["No pull request in view while the Builder is in front.", "The definitions list is one extra click away."] },
+  C: { what: "The Builder takes the whole window, over the module bar, panel, stage tabs and companion. A bar on top says where you are; Back to Quay (or Esc) returns everything as it was.",
+    pro: ["Most room for the canvas apart from B, with the Builder's own lists intact.", "No question of what folded: everything comes back together.", "Fewest clicks in the job."],
+    con: ["Badges and the Workflows panel are hidden; anything waiting on you means leaving the Builder.", "It feels like a separate app, which the stage-tab decision tried to avoid."] },
+  D: { what: "Nothing in the shell moves. The definitions list becomes a rail and the inspector floats over the canvas's right edge only while a node is selected.",
+    pro: ["Nothing jumps around; the panel and the pull request stay in view.", "Nothing to bring back when you leave the Builder."],
+    con: ["Narrowest canvas of the four, and the floating inspector covers part of it.", "On a 1280 px window the canvas is barely wider than today's."] },
+};
+function renderTables() {
+  const cols = [1280, 1600, 1920];
+  const rows = [["today", "Today, nothing folds"], ["A", NAMES.A], ["B", NAMES.B], ["C", NAMES.C], ["D", NAMES.D]];
+  $("widths").innerHTML = `<thead><tr><th>Layout</th>${cols.map((c) => `<th>${c} px window</th>`).join("")}</tr></thead><tbody>${rows.map(([k, n]) => `<tr class="${k === v ? "cur" : ""}"><td>${n}</td>${cols.map((c) => {
+    const w = canvasW(k, c);
+    return `<td class="n${k === v && c === ww ? " cur" : ""}">${w.toLocaleString("en-US")} px<small>${Math.min(100, Math.round((w / GRAPH_W) * 100))}% of the graph</small></td>`;
+  }).join("")}</tr>`).join("")}</tbody>`;
+  const keys = Object.keys(bench).sort();
+  $("bench").innerHTML = `<thead><tr><th>Layout</th><th>Window</th><th>Clicks</th><th>Pointer travel</th><th>Runs</th></tr></thead><tbody>${keys.length ? keys.map((k) => {
+    const [lv, lw] = k.split("@"), b = bench[k];
+    return `<tr class="${lv === v && Number(lw) === ww ? "cur" : ""}"><td>${NAMES[lv]}</td><td>${lw} px</td><td class="n">${b.clicks}</td><td class="n">${b.travel.toLocaleString("en-US")} px</td><td>${b.runs}</td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="m">No runs yet.</td></tr>`}</tbody>`;
+}
+
+/* ---------- walkthrough ---------- */
+const WALK = [
+  { title: "Look at each layout", body: "Press A, B, C and D in the Layout row, and press the Builder tab in the window for each, to see how much canvas it leaves. The badge at the canvas's bottom right shows its width. Try another window width too.",
+    prog: () => `${W.seen.size} of 4 seen`, done: () => W.seen.size === 4 },
+  { title: "Run the job in a layout", body: "Pick a layout, then follow the glowing outline in the window: it shows the next thing to press, for five short steps (the job row above the window ticks them off).",
+    prog: () => J.finished ? "Finished" : `Step ${jobStep() + 1} of ${JOB.length}`, done: () => Object.keys(bench).length >= 1 },
+  { title: "Run it in a second layout", body: "Pick a different layout and follow the outline again, so the table compares two.",
+    prog: () => `${new Set(Object.keys(bench).map((k) => k[0])).size} of 2 layouts run`, done: () => new Set(Object.keys(bench).map((k) => k[0])).size >= 2 },
+  { title: "Approve, then copy", body: "My recommendation is under the window. Answer Your decision (it starts blank, so nothing is chosen for you), then press Copy my answers and paste the text into the chat.",
+    prog: () => "", done: () => false },
+];
+const advanced = new Set();
+function renderWalk() {
+  while (W.step < WALK.length - 1 && !advanced.has(W.step) && WALK[W.step].done()) { advanced.add(W.step); W.step++; }
+  const s = WALK[W.step];
+  $("walk").innerHTML = `<div class="wtop"><span class="wstep">Step ${W.step + 1} of ${WALK.length}</span><h2>${s.title}</h2><span class="wprog">${s.prog()}</span></div>
+    <p>${s.body}</p>
+    <div class="row"><div class="wdots">${WALK.map((_, i) => `<i class="${i < W.step ? "ok" : i === W.step ? "on" : ""}"></i>`).join("")}</div>
+    <span class="grow"></span><div class="wnav">${W.step > 0 ? '<button class="ghost" type="button" id="w-back">Back</button>' : ""}${W.step < WALK.length - 1 ? '<button class="ghost" type="button" id="w-skip">Skip this step</button>' : ""}</div></div>`;
+  $("ask").classList.toggle("lit", W.step === WALK.length - 1);
+  const b = $("w-back"), k = $("w-skip");
+  if (b) b.onclick = () => { W.step--; renderWalk(); };
+  if (k) k.onclick = () => { advanced.add(W.step); W.step++; renderWalk(); };
+}
+
+/* ---------- render ---------- */
+function fitShell() {
+  const fit = $("fit"), s = $("shell");
+  const avail = fit.clientWidth || ww;
+  const scale = Math.min(1, avail / ww);
+  s.style.width = ww + "px";
+  s.style.transform = `scale(${scale})`;
+  fit.style.height = Math.round(680 * scale) + "px";
+}
+function render() {
+  const s = $("shell");
+  s.innerHTML = `<nav class="abar" aria-label="Module bar">
+      <button class="ib" type="button" aria-label="Projects" data-a="noop">${ico("folder")}</button>
+      <button class="ib" type="button" aria-label="Source control" data-a="noop">${ico("branch")}</button>
+      <button class="ib" type="button" aria-label="Agents" data-a="noop">${ico("bot")}</button>
+      <button class="ib${st.mod === "workflows" ? " on" : ""}" type="button" aria-label="Workflows${st.approved ? "" : ", 1 needs you"}" data-a="mod" data-arg="workflows"${g("mod-workflows", st.mod !== "workflows")}>${ico("flow")}${st.approved ? "" : '<span class="badge">1</span>'}</button>
+      <button class="ib" type="button" aria-label="Project" data-a="noop">${ico("sliders")}</button></nav>
+    ${st.mod === "workflows" && !(st.full && inBuilder()) ? panelHtml() : ""}${stageHtml()}${compHtml()}${fullHtml()}`;
+  const i = J.finished ? -1 : jobStep();
+  if (i >= 0) for (const key of JOB[i].keys) { const el = s.querySelector(`[data-guide="${key}"]`); if (el) { el.classList.add("guide"); break; } }
+  fitShell();
+  /* the badge reads the canvas as laid out; in a browser without layout, fall back to the arithmetic */
+  const cv = s.querySelector("#canvas"), cw = s.querySelector("#cw");
+  if (cv && cw) {
+    const measured = cv.getBoundingClientRect ? cv.offsetWidth : 0;
+    const w = measured || canvasW(v, ww);
+    const pct = Math.min(100, Math.round((w / GRAPH_W) * 100));
+    cw.textContent = `Canvas ${w.toLocaleString("en-US")} px · ${pct}% of the graph`;
+    cw.className = "cw " + (pct >= 100 ? "good" : pct >= 75 ? "mid" : "bad");
+  }
+  const cur = jobStep();
+  $("job").innerHTML = JOB.map((j, k) => `<li class="${J.finished || (cur >= 0 && k < cur) ? "done" : k === cur ? "now" : ""}">${j.label}</li>`).join("");
+  const n = NOTES[v];
+  $("n-what").textContent = n.what;
+  $("n-pro").innerHTML = n.pro.map((x) => `<li>${x}</li>`).join("");
+  $("n-con").innerHTML = n.con.map((x) => `<li>${x}</li>`).join("");
+  $("readout").innerHTML = `<span>This run: <b>${J.clicks}</b> clicks</span><span><b>${Math.round(J.travel).toLocaleString("en-US")}</b> px pointer travel</span><span>Canvas with the Builder in front: <b>${canvasW(v, ww).toLocaleString("en-US")} px</b> (today ${canvasW("today", ww).toLocaleString("en-US")} px)</span>${J.finished ? '<span class="toast">Job done. Press Reset run, or pick another layout.</span>' : ""}${st.toast ? `<span class="toast">${esc(st.toast)}</span>` : ""}`;
+  document.querySelectorAll("#seg label").forEach((l) => l.classList.toggle("seen", W.seen.has(l.htmlFor.slice(2))));
+  renderTables();
+  renderWalk();
+  renderAnswer();
+}
+
+/* ---------- events ---------- */
+const shell = $("shell");
+shell.addEventListener("pointerdown", (e) => {
+  if (J.finished) return;
+  J.clicks++;
+  const p = { x: e.clientX + scrollX, y: e.clientY + scrollY };
+  if (Number.isFinite(p.x) && Number.isFinite(p.y)) { if (J.last) J.travel += Math.hypot(p.x - J.last.x, p.y - J.last.y); J.last = p; }
+});
+shell.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (!b) return; act(b.dataset.a, b.dataset.arg); render(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && st.full) { act("exit"); render(); } });
+document.querySelectorAll('#seg input[name="v"]').forEach((r) => r.addEventListener("change", () => { v = r.value; W.seen.add(v); st = fresh(); resetJob(); render(); }));
+document.querySelectorAll('#seg-w input[name="w"]').forEach((r) => r.addEventListener("change", () => { ww = Number(r.value); st = fresh(); resetJob(); render(); }));
+$("reset").addEventListener("click", () => { st = fresh(); resetJob(); render(); });
+addEventListener("resize", fitShell);
+
+/* ---------- decision form ---------- */
+function answerText() {
+  const f = new FormData($("ask"));
+  const fav = f.get("fav"), back = f.get("back"), w = f.get("ww");
+  const runs = Object.keys(bench).sort().map((k) => `${k.replace("@", " at ")} px: ${bench[k].clicks} clicks`).join("; ");
+  return [
+    "Praxis Builder canvas: my decision",
+    "Layout approved: " + (fav ? (fav === "none" ? "none of these" : NAMES[fav]) : "(not answered)"),
+    "On leaving the Builder: " + (back ? (back === "auto" ? "what folded comes back by itself" : "stays folded until I reopen it") : "(not answered)"),
+    "Usual window width: " + (w ? (w === "unsure" ? "not sure" : w + " px") : "(not answered)"),
+    "Best job runs: " + (runs || "none"),
+    "Notes: " + ($("notes").value.trim() || "none"),
+  ].join("\n");
+}
+function renderAnswer() { $("answer").textContent = answerText(); }
+$("ask").addEventListener("input", renderAnswer);
+$("ask").addEventListener("change", renderAnswer);
+$("ask").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = answerText(); renderAnswer();
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("answer")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copied").textContent = "Selected. Press Ctrl+C, then paste it into the chat."; };
+  try { navigator.clipboard.writeText(text).then(() => { $("copied").textContent = "Copied. Paste it into the chat."; }, fallback); } catch (_) { fallback(); }
+});
+
+render();
+</script>

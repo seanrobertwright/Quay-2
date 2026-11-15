@@ -70,3 +70,8 @@ with example data; nothing is wired to Quay.
   (no pipeline, a lane on each terminal row, a strip over the stage, and a
   board stage tab), with a guided four-step job, a click counter, and a
   table of what each one shows and where.
+- `quay-builder-canvas.html`: four ways to give the Praxis Builder tab a
+  big enough canvas (side columns fold, inspector in the companion, full
+  window, nothing folds), with a canvas-width readout at three window
+  widths and a guided five-step job. Chosen: B, the inspector in the
+  companion column, panel folded, definitions as a rail.
