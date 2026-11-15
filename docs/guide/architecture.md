@@ -107,6 +107,7 @@ The frontend is constructed using **React 19**, **Tailwind CSS**, and `@xterm/xt
 
 - **`terminal/`**: Terminal instance rendering, auto-fit addon, proposed API emoji width alignment, selection handling, and keyboard shortcuts.
 - **`shell/`**: The module bar on the window's left edge and the panel beside it, which shows the open module.
+- **`companion/`**: The companion on the window's right edge: its divider, its view switch and the views that show the selected terminal's work, starting with the Repository view.
 - **`rail/`**: The Projects panel: the collapsible project and worktree tree, terminal rows and their menus.
 - **`stage/`**: Viewport layout engine supporting single view, horizontal split, vertical split, and 2x2 quad grid. Keeps background terminals mounted to ensure seamless buffer preservation.
 - **`orchestrator/`**: UI modal for human operator task dispatch, broadcast management, and real-time message stream inspection.

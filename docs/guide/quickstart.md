@@ -10,6 +10,8 @@ When Quay 2 launches, the **module bar** runs down the window's left edge, with 
 
 Under the **Projects** icon, the bar shows one status dot per terminal: a pulsing green dot while it works, an amber dot with a halo while it waits on you, a hollow grey ring while it is idle and a red square once it has exited. Click a dot to show that terminal. The **Agents** icon counts what is waiting on you, the **Source control** icon counts open pull requests, and the bottom of the bar shows today's spend.
 
+On the window's right, the **companion** shows what the selected terminal is working on. Select a terminal by its pane, its status dot or its row in the **Projects** panel, and the companion follows. For now it shows the terminal's repository: the project, the terminal, its branch and its folder. Drag the companion's left edge, or focus it and use the arrow keys, to make it between 340 and 560 px wide; Quay remembers the width.
+
 1. Click **Add** at the top of the **Projects** panel, or press `Ctrl+Shift+P` and choose **"Add Project Folder"**.
 2. Select your local git repository directory (e.g. `E:\Projects\MyProject`).
 3. Quay 2 registers the workspace, detects existing git branches, and discovers any secondary git worktrees associated with the repository.
