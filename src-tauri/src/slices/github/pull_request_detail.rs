@@ -120,7 +120,8 @@ pub struct CheckLog {
     pub truncated: bool,
 }
 
-/// Whether `line` starts with the timestamp GitHub Actions puts on every log line.
+/// The length of the timestamp GitHub Actions puts at the start of each log line, with the space
+/// after it, or 0 when `line` has none.
 fn timestamp_len(line: &str) -> usize {
     let bytes = line.as_bytes();
     let digits = |range: std::ops::Range<usize>| bytes.get(range).is_some_and(|b| b.iter().all(u8::is_ascii_digit));
