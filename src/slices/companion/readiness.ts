@@ -90,11 +90,10 @@ export type ReadinessCellId = "checks" | "comments" | "files" | "commits";
 
 /**
  * The cell the pull request view opens on arrival, on what needs the operator: Checks when a
- * check is failing, else Comments when a review thread is unresolved, else none. A merged or
- * closed pull request needs nothing, so it opens none.
+ * check is failing, else Comments when a review thread is unresolved, else none, whatever the
+ * pull request's state.
  */
-export function arrivalCell(pr: Pick<PullRequestReadiness, "state" | "checks" | "comments">): ReadinessCellId | null {
-  if (pr.state !== "OPEN") return null;
+export function arrivalCell(pr: Pick<PullRequestReadiness, "checks" | "comments">): ReadinessCellId | null {
   if (pr.checks.failing > 0) return "checks";
   if (pr.comments.unresolved > 0) return "comments";
   return null;

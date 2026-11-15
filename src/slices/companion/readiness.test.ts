@@ -179,8 +179,9 @@ test("on arrival a failing check opens, else an unresolved comment, else nothing
   assert.equal(arrivalCell(open()), null);
 });
 
-test("a merged or closed pull request opens nothing on arrival, whatever its checks and comments", () => {
-  const leftovers = { checks: { failing: 1, pending: 0, skipped: 0, passing: 0 }, comments: { total: 1, unresolved: 1 } };
-  assert.equal(arrivalCell(open({ ...leftovers, state: "MERGED" })), null);
-  assert.equal(arrivalCell(open({ ...leftovers, state: "CLOSED" })), null);
+test("arrival follows the same rule on a merged or closed pull request", () => {
+  const failing = { checks: { failing: 1, pending: 0, skipped: 0, passing: 0 }, comments: { total: 1, unresolved: 1 } };
+  assert.equal(arrivalCell(open({ ...failing, state: "MERGED" })), "checks");
+  assert.equal(arrivalCell(open({ comments: { total: 1, unresolved: 1 }, state: "CLOSED" })), "comments");
+  assert.equal(arrivalCell(open({ state: "CLOSED" })), null);
 });

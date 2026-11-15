@@ -421,7 +421,7 @@ test("the comment box sits above the items, with Close pull request beside Comme
   assert.equal(comment.disabled, true, "an empty comment cannot be posted");
   const box = form.querySelector<HTMLTextAreaElement>('textarea[aria-label="Comment"]') as HTMLTextAreaElement;
   type(box, "Looks good");
-  assert.ok(byName(form, "button", "Close with comment"));
+  assert.deepEqual([...form.querySelectorAll("button")].map((b) => b.textContent), ["Close pull request", "Comment"], "typing does not relabel Close");
   await click(comment);
   assert.deepEqual(calls.find(([cmd]) => cmd === "comment_on_github_pr")?.[1], { repoPath: "E:/alpha", repo: "o/r", number: 12, body: "Looks good" });
   assert.equal(box.value, "", "the box empties once the comment is posted");
@@ -457,6 +457,16 @@ test("Close pull request closes it, and a closed pull request offers no close", 
   assert.equal(calls.some(([cmd]) => cmd === "comment_on_github_pr"), false, "an empty box posts no comment");
   assert.equal(container.querySelector('[aria-label="Readiness"] h3')?.textContent, "Closed without merging");
   assert.equal(byName(container, "button", "Close pull request"), undefined);
+});
+
+test("Close pull request with text in the box closes it without posting the text", async () => {
+  const { container, calls } = await render(github(undefined, { comments: { total: 0, unresolved: 0 } }));
+  await click(cellButton(container, "comments"));
+  const box = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Comment"]') as HTMLTextAreaElement;
+  type(box, "Not posted");
+  await click(byName(container, "button", "Close pull request"));
+  assert.ok(calls.some(([cmd]) => cmd === "close_github_pr"));
+  assert.equal(calls.some(([cmd]) => cmd === "comment_on_github_pr"), false);
 });
 
 const files: PullRequestFile[] = [

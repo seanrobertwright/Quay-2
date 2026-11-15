@@ -248,15 +248,11 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const typed = body.trim() !== "";
-  const act = async (what: string, close: boolean) => {
+  const act = async (what: string, run: () => Promise<unknown>) => {
     setBusy(true);
     setFailure(null);
     try {
-      if (typed) {
-        await invoke("comment_on_github_pr", { ...target(location), body });
-        setBody("");
-      }
-      if (close) await invoke("close_github_pr", target(location));
+      await run();
     } catch (e) {
       setFailure(`${what} failed: ${errorText(e)}`);
     } finally {
@@ -270,7 +266,11 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
       className="space-y-2"
       onSubmit={(e) => {
         e.preventDefault();
-        if (typed) void act("Comment", false);
+        if (typed)
+          void act("Comment", async () => {
+            await invoke("comment_on_github_pr", { ...target(location), body });
+            setBody("");
+          });
       }}
     >
       <textarea
@@ -283,8 +283,8 @@ const CommentBox = ({ pr, location, onPosted }: { pr: PullRequestReadiness; loca
       />
       <div className="flex justify-end gap-2">
         {pr.state === "OPEN" && (
-          <button type="button" disabled={busy} onClick={() => void act("Close", true)} className={SECONDARY}>
-            {typed ? "Close with comment" : "Close pull request"}
+          <button type="button" disabled={busy} onClick={() => void act("Close", () => invoke("close_github_pr", target(location)))} className={SECONDARY}>
+            Close pull request
           </button>
         )}
         <button type="submit" disabled={busy || !typed} className={PRIMARY}>
