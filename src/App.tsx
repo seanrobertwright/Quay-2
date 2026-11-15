@@ -58,6 +58,17 @@ import { UpdateInfo } from "./slices/updater/types";
 import { isSamePath, resolveRootRepo } from "./utils/paths";
 import { AlertCircle, X } from "lucide-react";
 
+/** What starting work on a ticket needs to know about it. */
+type IssueToStart = Pick<GithubIssue, "number" | "title">;
+
+/** The folder a start action works in, and the root repository it belongs to. */
+interface WorkPlace {
+  rootRepo: string;
+  targetDir: string;
+  /** Whether `targetDir` is a linked worktree, so Archon stays in it rather than making one. */
+  isWorktree: boolean;
+}
+
 export function App() {
   const {
     projects,
@@ -315,11 +326,21 @@ export function App() {
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
   const praxisBuilder = useRef<PraxisBuilderHandle | null>(null);
 
+  // Where the drawer's start actions work: the active worktree, with Archon told to stay in it, or
+  // the active project's root repository.
+  const activePlace: WorkPlace = {
+    rootRepo: activeRootRepo,
+    targetDir: activeProject !== activeRootRepo ? activeProject : activeRootRepo,
+    isWorktree: activeProject !== activeRootRepo,
+  };
+
   // 1-Click: Execute real Archon Workflow Run for an issue
-  const handleImplementIssue = async (issue: GithubIssue, workflowOverride?: string) => {
-    const rootRepo = activeRootRepo;
-    const targetDir = activeProject !== activeRootRepo ? activeProject : rootRepo;
-    const isWorktree = activeProject !== activeRootRepo;
+  const handleImplementIssue = async (
+    issue: IssueToStart,
+    workflowOverride?: string,
+    place: WorkPlace = activePlace,
+  ) => {
+    const { targetDir, isWorktree } = place;
 
     try {
       // 1. Fetch available Archon workflows
@@ -392,10 +413,12 @@ export function App() {
   };
 
   // 1-Click: Triage issue with Archon workflow
-  const handleTriageIssue = async (issue: GithubIssue, workflowOverride?: string) => {
-    const rootRepo = activeRootRepo;
-    const targetDir = activeProject !== activeRootRepo ? activeProject : rootRepo;
-    const isWorktree = activeProject !== activeRootRepo;
+  const handleTriageIssue = async (
+    issue: IssueToStart,
+    workflowOverride?: string,
+    place: WorkPlace = activePlace,
+  ) => {
+    const { targetDir, isWorktree } = place;
 
     try {
       let availableWorkflows: ArchonWorkflow[] = [];
@@ -481,31 +504,26 @@ export function App() {
   };
 
   // 1-Click: Create worktree modal targeting specific issue
-  const handleCreateWorktreeForIssue = (issue: GithubIssue) => {
-    openNewWorktreeModal(activeRootRepo, issue.number);
+  const handleCreateWorktreeForIssue = (issue: IssueToStart, place: WorkPlace = activePlace) => {
+    openNewWorktreeModal(place.rootRepo, issue.number);
   };
 
   // The Ticket view's Implement split button starts work through the same handlers as the GitHub
-  // drawer. They change on every render, so the companion gets one stable object that calls the
+  // panel, in the repository of the terminal the ticket belongs to rather than the active project.
+  // The handlers change on every render, so the companion gets one stable object that calls the
   // latest of them.
   const ticketHandlers = useRef({ handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue });
   ticketHandlers.current = { handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue };
   const ticketActions = useMemo<TicketActions>(() => {
-    const asIssue = (ticket: TicketToStart): GithubIssue => ({
-      number: ticket.number,
-      title: ticket.title,
-      state: "OPEN",
-      labels: [],
-      assignees: [],
-      updatedAt: "",
-      url: "",
-      blockedBy: [],
-      openBlockerCount: 0,
+    const placeOf = (ticket: TicketToStart): WorkPlace => ({
+      rootRepo: ticket.repoPath,
+      targetDir: ticket.repoPath,
+      isWorktree: false,
     });
     return {
-      implement: (ticket) => void ticketHandlers.current.handleImplementIssue(asIssue(ticket)),
-      triage: (ticket) => void ticketHandlers.current.handleTriageIssue(asIssue(ticket)),
-      newWorktree: (ticket) => ticketHandlers.current.handleCreateWorktreeForIssue(asIssue(ticket)),
+      implement: (ticket) => void ticketHandlers.current.handleImplementIssue(ticket, undefined, placeOf(ticket)),
+      triage: (ticket) => void ticketHandlers.current.handleTriageIssue(ticket, undefined, placeOf(ticket)),
+      newWorktree: (ticket) => ticketHandlers.current.handleCreateWorktreeForIssue(ticket, placeOf(ticket)),
     };
   }, []);
 

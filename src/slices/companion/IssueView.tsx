@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { IssueStatus } from "../github/types.ts";
+import type { GithubRepoInfo, IssueStatus } from "../github/types.ts";
 import type { LinkRef } from "../terminal/types.ts";
 import { formatDateTime, formatRelative, parseUtcTimestamp } from "../../lib/dates.ts";
 import {
@@ -211,6 +211,36 @@ const IssueHeader = ({ issue }: { issue: IssueStatus }) => {
   );
 };
 
+/**
+ * The Implement split button. Work starts in the terminal's repository, so a ticket the slot places
+ * in another repository offers none and says where it lives instead.
+ */
+const StartWork = (props: { ticket: TicketToStart; ticketRepo: string; actions: TicketActions }) =>
+  props.ticket.repo === null ? <StartButton {...props} /> : <StartIfHere {...props} />;
+
+/** Implement, for a slot that names a repository: only when it is the terminal's own. */
+const StartIfHere = (props: { ticket: TicketToStart; ticketRepo: string; actions: TicketActions }) => {
+  const here = useGithubRead<GithubRepoInfo | null>("get_github_repo_info", { repoPath: props.ticket.repoPath });
+  if (here.loading && !here.data) return null;
+  if (here.data?.nwo.toLowerCase() === props.ticketRepo.toLowerCase()) return <StartButton {...props} />;
+  return (
+    <p className={MUTED}>
+      {props.ticketRepo} is not this terminal's repository; start it from a clone of that repository.
+    </p>
+  );
+};
+
+const StartButton = ({ ticket, actions }: { ticket: TicketToStart; actions: TicketActions }) => (
+  <SplitButton
+    label="Implement"
+    onMain={() => actions.implement(ticket)}
+    toggleLabel="More ways to start"
+    menuLabel="Start"
+    items={START_ITEMS}
+    onPick={(key) => actions[key](ticket)}
+  />
+);
+
 /** The status card: headline, its reason, and the one button that follows the ticket's state. */
 const StatusCardView = ({ issue, acting, children }: { issue: IssueStatus; acting: Acting; children: ReactNode }) => {
   const verdict = statusCard(issue);
@@ -223,16 +253,7 @@ const StatusCardView = ({ issue, acting, children }: { issue: IssueStatus; actin
       <div className="p-3 space-y-2">
         <h3 className={`text-sm font-semibold ${HEADLINE_TONE[verdict.tone]}`}>{verdict.headline}</h3>
         {verdict.reason && <p className={MUTED}>{verdict.reason}</p>}
-        {action.kind === "implement" && actions && (
-          <SplitButton
-            label="Implement"
-            onMain={() => actions.implement(ticket)}
-            toggleLabel="More ways to start"
-            menuLabel="Start"
-            items={START_ITEMS}
-            onPick={(key) => actions[key](ticket)}
-          />
-        )}
+        {action.kind === "implement" && actions && <StartWork ticket={ticket} ticketRepo={issue.repo} actions={actions} />}
         {action.kind === "show-blocker" && showTicket && (
           <button
             type="button"

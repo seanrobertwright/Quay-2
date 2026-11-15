@@ -70,6 +70,7 @@ const github =
     const answer = over(cmd, args);
     if (answer !== undefined) return answer;
     if (cmd === "get_github_issue_status") return issue(status);
+    if (cmd === "get_github_repo_info") return { owner: "o", name: "r", nwo: "o/r", is_authenticated: true };
     return null;
   };
 
@@ -151,6 +152,22 @@ test("Ready to start shows an Implement split button whose menu holds Implement,
   await click(toggle);
   await click([...container.querySelectorAll<HTMLElement>('[role="menuitem"]')][2]);
   assert.deepEqual(started.slice(1), [["triage", ticket], ["newWorktree", ticket]]);
+});
+
+test("a ticket in another repository offers no Implement, and says where it lives", async () => {
+  const { started, ticketActions } = recordingActions();
+  const elsewhere: TerminalLink = { ...ticketOnly, ticket: { ...ticketOnly.ticket!, repo: "other/repo" } };
+  const { container } = await render(github({ repo: "other/repo" }), { link: elsewhere, ticketActions });
+  assert.equal(byName(card(container)!, "button", "Implement"), undefined);
+  assert.match(card(container)?.textContent ?? "", /other\/repo is not this terminal's repository/);
+  assert.deepEqual(started, []);
+});
+
+test("a ticket whose slot names the terminal's own repository, in any case, offers Implement", async () => {
+  const { ticketActions } = recordingActions();
+  const own: TerminalLink = { ...ticketOnly, ticket: { ...ticketOnly.ticket!, repo: "O/R" } };
+  const { container } = await render(github(), { link: own, ticketActions });
+  assert.ok(byName(card(container)!, "button", "Implement"));
 });
 
 /** Terminal links that hand back `link` and record each pin. */
