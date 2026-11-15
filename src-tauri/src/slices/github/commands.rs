@@ -433,9 +433,126 @@ pub async fn list_github_prs(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// The query for how many pull requests are open, without fetching any of them.
+const OPEN_PRS_COUNT_QUERY: &str = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { pullRequests(states: [OPEN]) { totalCount } } }";
+
+/// How long the open pull request count may take before `gh` is killed.
+const OPEN_PRS_COUNT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Reads `totalCount` from the open pull request count query's output. Without a count, the
+/// error is GraphQL's `errors` messages, else a REST-style `message` (such as "Bad
+/// credentials"), else `stderr`.
+fn parse_open_prs_count(stdout: &[u8], stderr: &str) -> Result<u32, String> {
+    let json = serde_json::from_slice::<serde_json::Value>(stdout).unwrap_or(serde_json::Value::Null);
+    if let Some(count) = json["data"]["repository"]["pullRequests"]["totalCount"].as_u64() {
+        return u32::try_from(count).map_err(|_| format!("Open pull request count out of range: {}", count));
+    }
+    let mut messages: Vec<&str> = json["errors"]
+        .as_array()
+        .map(|errs| errs.iter().filter_map(|e| e["message"].as_str()).collect())
+        .unwrap_or_default();
+    if messages.is_empty()
+        && let Some(message) = json["message"].as_str()
+    {
+        messages.push(message);
+    }
+    Err(if !messages.is_empty() {
+        messages.join("; ")
+    } else if !stderr.trim().is_empty() {
+        format!("gh api graphql failed: {}", stderr.trim())
+    } else {
+        "GitHub returned no pull request count for this repository".to_string()
+    })
+}
+
+/// Runs `cmd` to the end and returns its stdout and stderr, or kills its process tree and
+/// fails once `timeout` passes.
+fn output_within(cmd: &mut Command, timeout: std::time::Duration) -> Result<(Vec<u8>, String), String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut tree = crate::spawn::spawn_tree(cmd).map_err(|e| format!("Failed to execute gh: {}", e))?;
+    let pump = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = pump(tree.child().stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = pump(tree.child().stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let started = std::time::Instant::now();
+    loop {
+        match tree.child().try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < timeout => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Ok(None) => {
+                tree.kill();
+                // A surviving grandchild could hold the pipes open, so the readers are not joined.
+                return Err(format!("gh did not answer within {} s", timeout.as_secs()));
+            }
+            Err(e) => {
+                tree.kill();
+                return Err(format!("Failed to wait for gh: {}", e));
+            }
+        }
+    }
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).into_owned();
+    Ok((stdout, stderr))
+}
+
+/// How many pull requests are open on the repository at `repo_path`, for the module bar's
+/// Source control badge. `gh` gets 20 s before it is killed.
+#[tauri::command]
+pub async fn count_open_github_prs(repo_path: String) -> Result<u32, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = create_gh_command(&repo_path);
+        // gh fills {owner} and {repo} from the repository of the working directory.
+        cmd.args([
+            "api",
+            "graphql",
+            "-F",
+            "owner={owner}",
+            "-F",
+            "name={repo}",
+            "-f",
+            &format!("query={}", OPEN_PRS_COUNT_QUERY),
+        ]);
+        let (stdout, stderr) = output_within(&mut cmd, OPEN_PRS_COUNT_TIMEOUT)?;
+        parse_open_prs_count(&stdout, &stderr)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_open_prs_count_reads_the_total() {
+        let out = br#"{ "data": { "repository": { "pullRequests": { "totalCount": 7 } } } }"#;
+        assert_eq!(parse_open_prs_count(out, ""), Ok(7));
+    }
+
+    #[test]
+    fn parse_open_prs_count_returns_the_real_cause() {
+        let graphql = br#"{ "errors": [{ "message": "Could not resolve to a Repository" }] }"#;
+        assert_eq!(
+            parse_open_prs_count(graphql, ""),
+            Err("Could not resolve to a Repository".to_string())
+        );
+        let rest = br#"{ "message": "Bad credentials", "status": "401" }"#;
+        assert_eq!(parse_open_prs_count(rest, "HTTP 401"), Err("Bad credentials".to_string()));
+        assert_eq!(
+            parse_open_prs_count(b"", "not a git repository"),
+            Err("gh api graphql failed: not a git repository".to_string())
+        );
+        assert!(parse_open_prs_count(b"{}", "").is_err());
+    }
 
     #[test]
     fn query_aliases_every_issue() {

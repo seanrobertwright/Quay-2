@@ -22,14 +22,14 @@ afterEach(() => {
 });
 
 /** Renders the module bar with `initial` open, the way the shell holds it, and counts palette opens. */
-function render(initial: ModuleId | null = "projects") {
+function render(initial: ModuleId | null = "projects", extra: Record<string, unknown> = {}) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const palette = { opened: 0 };
   const Harness = () => {
     const [open, setOpen] = useState<ModuleId | null>(initial);
-    return createElement(ModuleBar, { openModule: open, onOpenModule: setOpen, panelId: "panel", onOpenPalette: () => palette.opened++ });
+    return createElement(ModuleBar, { openModule: open, onOpenModule: setOpen, panelId: "panel", onOpenPalette: () => palette.opened++, ...extra });
   };
   act(() => root.render(createElement(Harness)));
   mounted = { root, container };
@@ -110,4 +110,34 @@ test("the palette icon opens the command palette and leaves the panel as it was"
   act(() => named("Command palette").click());
   assert.equal(palette.opened, 1);
   assert.equal(named("Source control").getAttribute("aria-current"), "true");
+});
+
+test("the Agents icon shows the Waiting on you count and Source control the open pull request count", () => {
+  const { named } = render("projects", { waitingCount: 3, openPrCount: 1 });
+  const agents = named("Agents, 3 waiting on you");
+  assert.equal(agents.querySelector("[data-badge]")?.textContent, "3");
+  const source = named("Source control, 1 open pull request");
+  assert.equal(source.querySelector("[data-badge]")?.textContent, "1");
+});
+
+test("a zero or unknown count shows no badge and leaves the plain module name", () => {
+  const { named, nav } = render("projects", { waitingCount: 0, openPrCount: null });
+  named("Agents");
+  named("Source control");
+  assert.equal(nav.querySelectorAll("[data-badge]").length, 0);
+});
+
+test("the spend ticker at the bottom shows today's spend and opens the spend window", () => {
+  let opened = 0;
+  const { buttons } = render("projects", { spendTodayUsd: 4.5, onOpenSpend: () => opened++ });
+  const last = buttons()[buttons().length - 1];
+  assert.equal(last.getAttribute("aria-label"), "Today's spend: $4.50");
+  assert.equal(last.textContent, "$4.50");
+  act(() => last.click());
+  assert.equal(opened, 1);
+});
+
+test("the terminal status list sits directly under the Projects icon", () => {
+  const { named } = render("projects", { renderTerminalList: () => createElement("ul", { "aria-label": "Terminals" }) });
+  assert.equal(named("Projects").nextElementSibling?.getAttribute("aria-label"), "Terminals");
 });

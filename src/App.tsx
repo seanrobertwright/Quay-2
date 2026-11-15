@@ -6,6 +6,9 @@ import { useAttentionQueue } from "./slices/attention/useAttentionQueue";
 import { AttentionSurfaces } from "./slices/attention/AttentionSurfaces";
 import { ProjectsPanel } from "./slices/rail/ProjectsPanel";
 import { ModuleBar } from "./slices/shell/ModuleBar";
+import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
+import { statusRows } from "./slices/shell/terminalStatus";
+import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
 import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
@@ -507,6 +510,13 @@ export function App() {
     }
   };
 
+  const terminalStatusRows = useMemo(
+    () => statusRows(terminals, projects, projectWorktrees),
+    [terminals, projects, projectWorktrees]
+  );
+  const openPrCount = useOpenPrCount(activeRootRepo);
+  const spendTodayUsd = claudeStats?.windows?.find((w) => w.key === "today")?.cost_usd ?? null;
+
   const launchers = placeholderLaunchers({
     openGithub: () => setIsGithubDrawerOpen(true),
     openTopos: () => setIsToposOpen(true),
@@ -535,6 +545,19 @@ export function App() {
         onOpenModule={setOpenModule}
         panelId={modulePanelId}
         onOpenPalette={() => setIsCommandPaletteOpen(true)}
+        renderTerminalList={(maxHeight) => (
+          <TerminalStatusList
+            rows={terminalStatusRows}
+            maxHeight={maxHeight}
+            selectedTerminalId={activeTerminalId}
+            onSelectTerminal={selectTerminal}
+            onOpenProjects={() => setOpenModule("projects")}
+          />
+        )}
+        waitingCount={waitingItems.length}
+        openPrCount={openPrCount}
+        spendTodayUsd={spendTodayUsd}
+        onOpenSpend={() => setIsTokenSpendOpen(true)}
       />
       <ModulePanel
         id={modulePanelId}

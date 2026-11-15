@@ -24,8 +24,8 @@ use slices::git::{
     GraphSessions,
 };
 use slices::github::{
-    check_gh_cli_installed, get_github_issue, get_github_repo_info, list_github_issues,
-    list_github_prs,
+    check_gh_cli_installed, count_open_github_prs, get_github_issue, get_github_repo_info,
+    list_github_issues, list_github_prs,
 };
 use slices::logging::open_logs_folder;
 use slices::machina::{
@@ -284,6 +284,7 @@ pub fn run() {
             list_github_issues,
             get_github_issue,
             list_github_prs,
+            count_open_github_prs,
             run_pre_pr_audit,
             list_claude_sessions,
             get_claude_stats,
