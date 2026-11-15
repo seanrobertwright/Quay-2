@@ -8,7 +8,7 @@ use super::models::{
     GithubRepoInfo,
 };
 
-fn create_gh_command(dir: &str) -> Command {
+pub(super) fn create_gh_command(dir: &str) -> Command {
     let mut cmd = hidden_command("gh");
     cmd.current_dir(dir);
     cmd
@@ -478,9 +478,16 @@ fn parse_open_prs_count(stdout: &[u8], stderr: &str) -> Result<u32, String> {
     })
 }
 
-/// Runs `cmd` to the end and returns its stdout and stderr, or kills its process tree and
-/// fails once `timeout` passes.
-fn output_within(cmd: &mut Command, timeout: std::time::Duration) -> Result<(Vec<u8>, String), String> {
+/// What a `gh` run printed and whether it exited successfully.
+pub(super) struct GhOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: String,
+    pub success: bool,
+}
+
+/// Runs `cmd` to the end and returns what it printed and whether it succeeded, or kills its
+/// process tree and fails once `timeout` passes.
+pub(super) fn output_within(cmd: &mut Command, timeout: std::time::Duration) -> Result<GhOutput, String> {
     use std::io::Read;
     use std::process::Stdio;
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -497,9 +504,9 @@ fn output_within(cmd: &mut Command, timeout: std::time::Duration) -> Result<(Vec
     let stdout = pump(tree.child().stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = pump(tree.child().stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let started = std::time::Instant::now();
-    loop {
+    let status = loop {
         match tree.child().try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() < timeout => std::thread::sleep(std::time::Duration::from_millis(50)),
             Ok(None) => {
                 tree.kill();
@@ -511,10 +518,10 @@ fn output_within(cmd: &mut Command, timeout: std::time::Duration) -> Result<(Vec
                 return Err(format!("Failed to wait for gh: {}", e));
             }
         }
-    }
+    };
     let stdout = stdout.join().unwrap_or_default();
     let stderr = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).into_owned();
-    Ok((stdout, stderr))
+    Ok(GhOutput { stdout, stderr, success: status.success() })
 }
 
 /// How many pull requests are open on the repository at `repo_path`, for the module bar's
@@ -534,8 +541,8 @@ pub async fn count_open_github_prs(repo_path: String) -> Result<u32, String> {
             "-f",
             &format!("query={}", OPEN_PRS_COUNT_QUERY),
         ]);
-        let (stdout, stderr) = output_within(&mut cmd, OPEN_PRS_COUNT_TIMEOUT)?;
-        parse_open_prs_count(&stdout, &stderr)
+        let out = output_within(&mut cmd, OPEN_PRS_COUNT_TIMEOUT)?;
+        parse_open_prs_count(&out.stdout, &out.stderr)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
