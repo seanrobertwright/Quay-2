@@ -6,6 +6,8 @@ import { TerminalInfo, isAgentRunKind, relaunchLabel } from "./types";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
+import { PaneStatus } from "./PaneStatus.tsx";
+import { SkipBanner } from "../stage/SkipBanner";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
 import { TerminalBodyMenu, TerminalMenu, type TerminalMenuHandlers } from "./TerminalMenu.tsx";
 import { RenameInput } from "./RenameInput";
@@ -16,7 +18,6 @@ import { useContextMenu } from "../overlay/useContextMenu";
 import {
   Maximize2,
   X,
-  Loader2,
   Search,
   Play,
   RotateCw,
@@ -29,6 +30,10 @@ interface TerminalViewProps {
   terminal?: TerminalInfo;
   allTerminals?: TerminalInfo[];
   showPaneHeader?: boolean;
+  /** Draws the pane's border and focus ring, as a pane of a split or grid has. */
+  framed?: boolean;
+  /** The bridge's current tool, for the pane whose terminal is selected. */
+  activeTool?: string | null;
   onSelect?: () => void;
   onClosePane?: () => void;
   onZoomPane?: () => void;
@@ -53,6 +58,8 @@ export const TerminalView: FC<TerminalViewProps> = ({
   terminal,
   allTerminals = [],
   showPaneHeader = false,
+  framed = false,
+  activeTool,
   onSelect,
   onClosePane,
   onZoomPane,
@@ -185,59 +192,6 @@ export const TerminalView: FC<TerminalViewProps> = ({
     return <AgentIcon kind={terminal?.run_kind} className="w-3.5 h-3.5 shrink-0" />;
   };
 
-  const renderStatusBadge = () => {
-    if (!terminal || !isAgent) return null;
-
-    if (terminal.claude_status === "working") {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-[#58a6ff]">
-          <Loader2 className="w-2.5 h-2.5 animate-spin" />
-          <span>{terminal.current_tool || "Working"}</span>
-        </span>
-      );
-    }
-    if (terminal.claude_status === "waiting") {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-[#d29922] font-semibold animate-pulse">
-          <span className="text-xs leading-none">◆</span>
-          <span>Waiting</span>
-        </span>
-      );
-    }
-    if (terminal.claude_status === "idle") {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-[#3fb950]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" />
-          <span>Ready</span>
-        </span>
-      );
-    }
-    if (terminal.claude_status === "starting") {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-[#8b949e]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#d29922] animate-pulse" />
-          <span>Starting</span>
-        </span>
-      );
-    }
-    if (terminal.claude_status === "unknown") {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-[#8b949e]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#8b949e]" />
-          <span>Unknown</span>
-        </span>
-      );
-    }
-    if (terminal.claude_status === "exited") {
-      return (
-        <span className="text-[10px] text-[#ff7b72] font-mono">
-          Exited
-        </span>
-      );
-    }
-    return null;
-  };
-
   const showPluginHint = !!terminal?.plugin_hint && terminal.claude_status !== "exited";
 
   return (
@@ -259,7 +213,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
         className={`overflow-hidden transition-colors bg-[#0d1117] ${
           isVisible ? "flex flex-col" : "hidden"
         } ${
-          showPaneHeader
+          framed
             ? isFocused
               ? "ring-1 ring-[#58a6ff] border border-[#58a6ff]/70 rounded-md shadow-md"
               : "border border-[#30363d]/60 rounded-md"
@@ -270,7 +224,7 @@ export const TerminalView: FC<TerminalViewProps> = ({
           ...style,
         }}
       >
-        {/* Pane Header (only displayed in split/grid layout) */}
+        {/* Pane header: the terminal's name, its session's state and the Skip/Ask pill */}
         {showPaneHeader && (
           // Focusable so Shift+F10 and the Menu key open its terminal menu, as on a Projects panel row.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- a labelled group that opens its terminal menu from the keyboard
@@ -307,18 +261,12 @@ export const TerminalView: FC<TerminalViewProps> = ({
                 </span>
               )}
 
-              {renderStatusBadge()}
+              {terminal && <PaneStatus terminal={terminal} activeTool={activeTool} onToggleAsk={onToggleAsk} />}
             </div>
 
             {/* Right: Actions (Search, Focus indicator, Zoom, Close) */}
             <div className="flex items-center gap-1 shrink-0">
-              {terminal?.permission_mode === "skip" && (
-                <span className="text-[9px] px-1 py-0.2 rounded bg-[#ff7b72]/20 text-[#ff7b72] font-mono font-bold border border-[#ff7b72]/40" title="Bypassing tool permissions">
-                  SKIP
-                </span>
-              )}
-
-              {isFocused && (
+              {framed && isFocused && (
                 <span className="text-[10px] px-1 py-0.2 rounded bg-[#58a6ff]/20 text-[#58a6ff] font-mono font-medium">
                   ACTIVE
                 </span>
@@ -383,6 +331,11 @@ export const TerminalView: FC<TerminalViewProps> = ({
               )}
             </div>
           </div>
+        )}
+
+        {/* The Skip banner is this terminal's own notice, so it stays in its pane */}
+        {isAgent && terminal?.permission_mode === "skip" && (
+          <SkipBanner runKind={terminal.run_kind} agentName={terminal.name} />
         )}
 
         {showPluginHint && (
