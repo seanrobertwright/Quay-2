@@ -8,36 +8,23 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { TerminalInfo } from "../terminal/types.ts";
 import { companionPrefs, type PrefsStorage } from "./companionPrefs.ts";
+import { memoryStorage, terminalInfo as terminal } from "./fixtures/companionFixtures.ts";
 import type { CompanionContext } from "./Companion.tsx";
 import type { CompanionView } from "./companionViews.ts";
 
 const { Companion, REPOSITORY_VIEW } = await import("./Companion.tsx");
 
 let mounted: { root: Root; container: HTMLElement } | null = null;
-afterEach(() => {
+function unmount() {
   if (mounted) {
     const { root, container } = mounted;
     act(() => root.unmount());
     container.remove();
     mounted = null;
   }
-});
-
-function memoryStorage(initial: Record<string, string> = {}): PrefsStorage & { data: Map<string, string> } {
-  const data = new Map(Object.entries(initial));
-  return { data, getItem: (key) => data.get(key) ?? null, setItem: (key, value) => void data.set(key, value) };
 }
+afterEach(unmount);
 
-const terminal = (id: string, project_path: string): TerminalInfo => ({
-  id,
-  name: `term-${id}`,
-  project_path,
-  run_kind: "claude",
-  permission_mode: "normal",
-  live_mode: "normal",
-  claude_status: "idle",
-  auto_approved_count: 0,
-});
 const projects = [
   { path: "E:/alpha", name: "Alpha", terminal_ids: [] },
   { path: "E:/beta", name: "Beta", terminal_ids: [] },
@@ -109,9 +96,7 @@ test("a width set with the divider is the companion's width the next time it ope
   const first = render({ selected: null, storage });
   key(first.divider, "ArrowLeft", true);
   assert.equal(getComputedStyle(first.aside).width, "404px");
-  act(() => mounted!.root.unmount());
-  mounted!.container.remove();
-  mounted = null;
+  unmount();
   const second = render({ selected: null, storage });
   assert.equal(getComputedStyle(second.aside).width, "404px");
 });
@@ -203,9 +188,7 @@ test("the first view follows Companion opens on, Pull request by default, fallin
   assert.equal(body(byDefault.container)?.dataset.companionView, "pull-request");
   byDefault.select(terminal("a", "E:/alpha"));
   assert.equal(body(byDefault.container)?.dataset.companionView, "repository");
-  act(() => mounted!.root.unmount());
-  mounted!.container.remove();
-  mounted = null;
+  unmount();
   const ticketFirst = render({ selected: linked, views: laterViews, storage: memoryStorage({ quay_companion_opens_on: "ticket" }) });
   assert.equal(body(ticketFirst.container)?.dataset.companionView, "ticket");
 });

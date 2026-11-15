@@ -2,16 +2,8 @@
 // the Companion opens on setting, both validated when read.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { companionPrefs, type PrefsStorage } from "./companionPrefs.ts";
-
-function memoryStorage(initial: Record<string, string> = {}): PrefsStorage & { data: Map<string, string> } {
-  const data = new Map(Object.entries(initial));
-  return {
-    data,
-    getItem: (key) => data.get(key) ?? null,
-    setItem: (key, value) => void data.set(key, value),
-  };
-}
+import { companionPrefs } from "./companionPrefs.ts";
+import { memoryStorage } from "./fixtures/companionFixtures.ts";
 
 test("the width starts at 340 px and is remembered once set", () => {
   const storage = memoryStorage();

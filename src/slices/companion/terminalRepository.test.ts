@@ -2,20 +2,11 @@
 // terminal's project, its working folder and branch, from what Quay already holds.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { TerminalInfo } from "../terminal/types.ts";
 import type { GitWorktree } from "../git/types.ts";
 import { terminalRepository } from "./terminalRepository.ts";
+import { terminalInfo } from "./fixtures/companionFixtures.ts";
 
-const terminal = (project_path: string): TerminalInfo => ({
-  id: "t1",
-  name: "claude",
-  project_path,
-  run_kind: "claude",
-  permission_mode: "normal",
-  live_mode: "normal",
-  claude_status: "idle",
-  auto_approved_count: 0,
-});
+const terminal = (project_path: string) => terminalInfo("t1", project_path);
 const wt = (path: string, branch: string, is_main = false): GitWorktree => ({
   path,
   head: "abc1234",
