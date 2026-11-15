@@ -54,7 +54,7 @@ use slices::praxis::host::{
 };
 use slices::pty::{
     dismiss_plugin_hint, get_pig_tested_version, get_terminal_output, kill_terminal, list_terminals, relaunch_terminal,
-    rename_terminal, resize_pty, save_terminal_screens, spawn_terminal, write_pty, PtyManager,
+    rename_terminal, resize_pty, save_terminal_screens, set_terminal_link, spawn_terminal, write_pty, PtyManager,
 };
 use slices::sessions::{get_claude_stats, list_claude_sessions};
 use slices::workspace::{
@@ -182,6 +182,7 @@ pub fn run() {
             kill_terminal,
             list_terminals,
             rename_terminal,
+            set_terminal_link,
             relaunch_terminal,
             save_terminal_screens,
             dismiss_plugin_hint,

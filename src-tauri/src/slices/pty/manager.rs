@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::models::{
     ClaudeStatus, PermissionMode, PersistedTerminalSession, RunKind, SpawnTerminalRequest,
-    TerminalInfo, TerminalOutputPayload, TerminalStatusPayload,
+    TerminalInfo, TerminalLink, TerminalOutputPayload, TerminalStatusPayload,
 };
 use super::osc7501::{AntigravityTurn, TurnReport};
 use super::plugin_watch::{LaunchRef, PluginWatch, PLUGIN_SILENCE};
@@ -179,6 +179,7 @@ fn persisted_session(info: &TerminalInfo, now: u64) -> PersistedTerminalSession 
         claude_session_id: info.claude_session_id.clone(),
         last_updated: now,
         created_at: info.created_at,
+        link: info.link.clone(),
     }
 }
 
@@ -204,6 +205,7 @@ fn restored_terminal(item: PersistedTerminalSession, created_at: u64) -> Termina
         claude_session_id: item.claude_session_id,
         created_at,
         plugin_hint: false,
+        link: item.link,
     }
 }
 
@@ -396,6 +398,7 @@ impl PtyManager {
             claude_session_id: None,
             created_at,
             plugin_hint: false,
+            link: None,
         };
 
         self.dormant_buffers.lock().remove(&terminal_id);
@@ -841,7 +844,12 @@ impl PtyManager {
             settle_after_first_output(&mut info);
         }
         attach();
-        self.terminals_info.lock().insert(info.id.clone(), info.clone());
+        let mut info_map = self.terminals_info.lock();
+        // A link recorded while the terminal relaunched wins over the one read before it
+        if let Some(listed) = info_map.get(&info.id) {
+            info.link = listed.link.clone();
+        }
+        info_map.insert(info.id.clone(), info.clone());
         Ok(info)
     }
 
@@ -1064,6 +1072,20 @@ impl PtyManager {
         }
     }
 
+    /// Records `link` as the terminal's link and saves it with the terminal. Fails when the
+    /// terminal is not listed or the link is malformed.
+    pub fn set_link(&self, terminal_id: &str, link: TerminalLink) -> Result<(), String> {
+        link.validate()?;
+        let mut info_map = self.terminals_info.lock();
+        let info = info_map
+            .get_mut(terminal_id)
+            .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
+        info.link = Some(link);
+        drop(info_map);
+        self.save_sessions_to_disk();
+        Ok(())
+    }
+
     pub fn update_task_title(&self, terminal_id: &str, task_title: &str) {
         let mut info_map = self.terminals_info.lock();
         if let Some(info) = info_map.get_mut(terminal_id) {
@@ -1121,7 +1143,10 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slices::pty::models::{test_terminal, PermissionMode, RunKind, ALL_RUN_KINDS};
+    use crate::slices::pty::models::{
+        test_terminal, LinkCandidates, LinkSlot, LinkSlotName, LinkSource, PermissionMode, RunKind, TerminalLink,
+        ALL_RUN_KINDS,
+    };
     use crate::test_support::TempDir;
 
     fn temp_sessions_file() -> (TempDir, PathBuf) {
@@ -1154,6 +1179,7 @@ mod tests {
             claude_session_id: None,
             last_updated: 1,
             created_at: 1,
+            link: None,
         }
     }
 
@@ -1254,6 +1280,7 @@ mod tests {
             claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
+            link: None,
         };
 
         manager.terminals_info.lock().insert(term_id.clone(), initial_info);
@@ -1306,6 +1333,7 @@ mod tests {
             claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
+            link: None,
         };
 
         let request = relaunch_request(&info, Some(30), Some(100), None);
@@ -1385,6 +1413,90 @@ mod tests {
         assert_eq!(args[2..6], ["--model", "opus", "--resume", SESSION_A], "{:?}", args);
     }
 
+    fn pinned_pull_request_link() -> TerminalLink {
+        TerminalLink {
+            ticket: Some(LinkSlot {
+                repo: None,
+                number: 637,
+                source: LinkSource::Launch,
+                pinned: false,
+                at: 10,
+                state: None,
+                closes: None,
+            }),
+            pull_request: Some(LinkSlot {
+                repo: Some("seanrobertwright/Quay-2".to_string()),
+                number: 659,
+                source: LinkSource::Pin,
+                pinned: true,
+                at: 20,
+                state: Some("OPEN".to_string()),
+                closes: Some(vec![637]),
+            }),
+            candidates: vec![],
+        }
+    }
+
+    #[test]
+    fn a_terminal_link_survives_the_session_list_and_a_relaunch() {
+        let (_dir, path) = temp_sessions_file();
+        let mut info = test_terminal("term-linked", RunKind::Claude, ClaudeStatus::Idle);
+        info.link = Some(pinned_pull_request_link());
+
+        write_session_list(&path, &[persisted_session(&info, 1)]).unwrap();
+        let mut list = read_session_list(&path);
+        let restored = restored_terminal(list.remove(0), 1);
+        assert_eq!(restored.link, Some(pinned_pull_request_link()));
+
+        let manager = PtyManager::new();
+        launched(&manager, "term-relaunched", RunKind::Codex);
+        manager.set_link("term-relaunched", pinned_pull_request_link()).unwrap();
+        let info = manager.get_info("term-relaunched").unwrap();
+        let relaunch = manager.begin_launch("term-relaunched", RunKind::Codex);
+        let listed = manager.relist_launched(&relaunch, info, || ()).ok().expect("relisted");
+        assert_eq!(listed.link, Some(pinned_pull_request_link()));
+    }
+
+    #[test]
+    fn a_session_list_saved_before_terminal_links_loads_with_none() {
+        let (_dir, path) = temp_sessions_file();
+        std::fs::write(
+            &path,
+            r#"[{"id":"term-old","name":"old","project_path":"E:\\Projects\\Test",
+                "run_kind":"claude","permission_mode":"normal"}]"#,
+        )
+        .unwrap();
+        let mut list = read_session_list(&path);
+        assert_eq!(restored_terminal(list.remove(0), 1).link, None);
+    }
+
+    #[test]
+    fn a_terminal_link_is_set_only_on_a_listed_terminal_and_goes_when_it_closes() {
+        let manager = PtyManager::new();
+        assert!(manager.set_link("term-missing", pinned_pull_request_link()).is_err());
+        launched(&manager, "term-link-close", RunKind::Codex);
+        manager.set_link("term-link-close", pinned_pull_request_link()).unwrap();
+        assert_eq!(manager.get_info("term-link-close").unwrap().link, Some(pinned_pull_request_link()));
+        manager.kill("term-link-close").unwrap();
+        assert!(manager.get_info("term-link-close").is_none());
+    }
+
+    #[test]
+    fn a_malformed_terminal_link_is_refused() {
+        let manager = PtyManager::new();
+        launched(&manager, "term-link-bad", RunKind::Codex);
+        let mut zero = pinned_pull_request_link();
+        zero.ticket.as_mut().unwrap().number = 0;
+        assert!(manager.set_link("term-link-bad", zero).is_err());
+        let mut repo = pinned_pull_request_link();
+        repo.pull_request.as_mut().unwrap().repo = Some("not a repo".to_string());
+        assert!(manager.set_link("term-link-bad", repo).is_err());
+        let mut tie = pinned_pull_request_link();
+        tie.candidates = vec![LinkCandidates { slot: LinkSlotName::PullRequest, source: LinkSource::Branch, options: vec![], at: 1 }];
+        assert!(manager.set_link("term-link-bad", tie).is_err(), "a tie names at least two refs");
+        assert_eq!(manager.get_info("term-link-bad").unwrap().link, None);
+    }
+
     #[test]
     fn a_session_list_saved_before_session_ids_loads_and_relaunches_fresh() {
         let (_dir, path) = temp_sessions_file();
@@ -1445,6 +1557,7 @@ mod tests {
             claude_session_id: None,
             created_at: 1000,
             plugin_hint: false,
+            link: None,
         };
         manager.terminals_info.lock().insert(id.to_string(), info);
         manager.begin_launch(id, run_kind)
@@ -2271,6 +2384,7 @@ mod tests {
                 claude_session_id: None,
                 created_at,
                 plugin_hint: false,
+                link: None,
             };
             manager.terminals_info.lock().insert(id.to_string(), info);
         }
