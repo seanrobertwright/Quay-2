@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import { FileDiff, GitGraph, GitPullRequest, RotateCw, Search, ShieldCheck, Zap } from "lucide-react";
 import type { LinkRef, LinkSlotName } from "../terminal/types.ts";
+import { LauncherList, type PanelLauncher } from "../shell/ModulePanel.tsx";
 import type { GithubIssue, GithubPullRequest, GithubRepoInfo } from "./types.ts";
 import { canLoadMore, GITHUB_LIST_CAP, loadedCountLabel } from "./paging.ts";
 import { useLoadMoreSentinel, usePagedGithubList, type PagedGithubList } from "./usePagedGithubList.ts";
@@ -155,8 +156,9 @@ const EMPTY = "py-8 text-center text-xs text-[#8b949e]";
 
 /**
  * The Source control module's panel: Topos, the repo-wide Diffs and the Pre-PR Audit, then the
- * repository's pull requests and issues, filtered and paged as the GitHub drawer did. Picking a row
- * pins it to the selected terminal, which opens it in the companion.
+ * repository's pull requests or issues: filtered by state, search and label, paged as the list
+ * scrolls and capped at GITHUB_LIST_CAP. Picking a row pins it to the selected terminal, which opens
+ * it in the companion.
  */
 export const SourceControlPanel = ({
   isOpen,
@@ -224,14 +226,20 @@ export const SourceControlPanel = ({
     [issuePages.list.items, label, query],
   );
 
+  // Each list's own state, pages and loader, so the controls below index the shown list once.
+  const lists = {
+    prs: { state: prState, setState: setPrState, load: loadPrs, pages: prPages, sentinelRef: prSentinelRef },
+    issues: { state: issueState, setState: setIssueState, load: loadIssues, pages: issuePages, sentinelRef: issueSentinelRef },
+  };
+  const shown = lists[kind];
   const nwo = repoInfo?.nwo ?? null;
   const canPick = pickTarget !== null;
   const hintId = `${id}-hint`;
   const shownError = errors[kind];
-  const tools = [
-    { key: "topos", name: "Topos", shortcut: "Ctrl+Shift+B c", icon: <GitGraph className="w-4 h-4 text-[#58a6ff]" />, onClick: onOpenTopos },
-    { key: "diffs", name: "Diffs", shortcut: "Ctrl+Shift+B d", icon: <FileDiff className="w-4 h-4 text-[#3fb950]" />, onClick: onOpenDiffs },
-    { key: "audit", name: "Pre-PR Audit", shortcut: "Ctrl+Shift+B a", icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />, onClick: onOpenPrePrAudit },
+  const tools: PanelLauncher[] = [
+    { id: "topos", label: "Topos", shortcut: "Ctrl+Shift+B c", icon: <GitGraph className="w-4 h-4 text-[#58a6ff]" />, onClick: onOpenTopos },
+    { id: "diffs", label: "Diffs", shortcut: "Ctrl+Shift+B d", icon: <FileDiff className="w-4 h-4 text-[#3fb950]" />, onClick: onOpenDiffs },
+    { id: "audit", label: "Pre-PR Audit", shortcut: "Ctrl+Shift+B a", icon: <ShieldCheck className="w-4 h-4 text-[#f85149]" />, onClick: onOpenPrePrAudit },
   ];
 
   return (
@@ -254,38 +262,19 @@ export const SourceControlPanel = ({
         </button>
       </div>
 
-      <ul aria-label="Source control tools" className="shrink-0 p-2 space-y-1 border-b border-[#30363d]">
-        {tools.map((tool) => {
-          const shortcutId = `${id}-${tool.key}-shortcut`;
-          return (
-            <li key={tool.key}>
-              <button
-                type="button"
-                onClick={tool.onClick}
-                aria-label={tool.name}
-                aria-describedby={shortcutId}
-                className="w-full min-h-10 flex items-center gap-2.5 px-2.5 rounded-md text-left text-xs hover:bg-[#161b22] hover:text-white"
-              >
-                <span aria-hidden="true" className="shrink-0 w-4 h-4 grid place-items-center">
-                  {tool.icon}
-                </span>
-                <span className="flex-1 truncate">{tool.name}</span>
-                <span id={shortcutId} className="shrink-0 font-mono text-[10px] text-[#8b949e]">
-                  {tool.shortcut}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <LauncherList
+        label="Source control tools"
+        launchers={tools}
+        className="shrink-0 p-2 space-y-1 border-b border-[#30363d]"
+      />
 
       <div className="shrink-0 p-2 space-y-2 border-b border-[#30363d] text-xs">
         <Choice label="List" options={LIST_OPTIONS} value={kind} onChange={setKind} />
         <Choice
           label="State"
           options={STATE_OPTIONS}
-          value={kind === "prs" ? prState : issueState}
-          onChange={kind === "prs" ? setPrState : setIssueState}
+          value={shown.state}
+          onChange={shown.setState}
         />
         <div className="relative">
           <Search aria-hidden="true" className="w-3.5 h-3.5 text-[#8b949e] absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -326,7 +315,7 @@ export const SourceControlPanel = ({
             <p className="text-[#8b949e] break-words">{shownError}</p>
             <button
               type="button"
-              onClick={kind === "prs" ? loadPrs : loadIssues}
+              onClick={shown.load}
               className="min-h-6 px-3 rounded bg-[#21262d] hover:bg-[#30363d] text-white font-medium"
             >
               Retry
@@ -414,12 +403,7 @@ export const SourceControlPanel = ({
             })}
           </ul>
         )}
-        {!shownError &&
-          (kind === "prs" ? (
-            <LoadMoreRow key="prs" pages={prPages} sentinelRef={prSentinelRef} />
-          ) : (
-            <LoadMoreRow key="issues" pages={issuePages} sentinelRef={issueSentinelRef} />
-          ))}
+        {!shownError && <LoadMoreRow key={kind} pages={shown.pages} sentinelRef={shown.sentinelRef} />}
       </div>
     </div>
   );
