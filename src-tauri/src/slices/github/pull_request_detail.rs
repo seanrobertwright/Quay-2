@@ -1,10 +1,11 @@
 //! What the pull request view's cells open: the head commit's checks and a failing check's log,
 //! the comment timeline, the changed files and the commits; and commenting on and closing the
-//! pull request. All through `gh api`, each call under the same timeout as the readiness read.
+//! pull request. All through `gh api`, each call through `gh.rs` under its timeout.
 
 use serde::Serialize;
 
-use super::pull_request::{api_error, check_outcome, count, gh_api, number_arg, repo_slug, run_gh, text, CheckOutcome, RepoSlug};
+use super::gh::{api_error, blocking, count, gh_api, pr_task, repo_slug, run_gh, text, RepoSlug};
+use super::pull_request::{check_outcome, CheckOutcome};
 
 /// Check runs and status contexts listed per pull request; more are left out.
 const CHECKS_READ: u32 = 100;
@@ -101,14 +102,11 @@ fn parse_checks(stdout: &[u8], stderr: &str) -> Result<Vec<PullRequestCheck>, St
 /// The checks on a pull request's head commit, for the Checks cell.
 #[tauri::command]
 pub async fn get_github_pr_checks(repo_path: String, repo: Option<String>, number: u32) -> Result<Vec<PullRequestCheck>, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let out = run_gh(&repo_path, &graphql_args(&slug, number, checks_query()))?;
         parse_checks(&out.stdout, &out.stderr)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// The end of a check's log.
@@ -188,7 +186,7 @@ pub async fn get_github_check_log(repo_path: String, repo: Option<String>, check
     if check_run_id == 0 {
         return Err("Not a check run id: 0".to_string());
     }
-    tokio::task::spawn_blocking(move || {
+    blocking(move || {
         // An Actions job's id is its check run's id. GitHub answers with a redirect to the log.
         let job = run_gh(&repo_path, &["api".into(), format!("{}/actions/jobs/{check_run_id}/logs", slug.path())])?;
         if job.success {
@@ -200,7 +198,6 @@ pub async fn get_github_check_log(repo_path: String, repo: Option<String>, check
             .ok_or_else(|| "GitHub keeps no log for this check.".to_string())
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -357,14 +354,11 @@ fn parse_timeline(stdout: &[u8], stderr: &str) -> Result<PullRequestTimeline, St
 /// The pull request's comment timeline, for the Comments cell and the Files picker's marks.
 #[tauri::command]
 pub async fn get_github_pr_timeline(repo_path: String, repo: Option<String>, number: u32) -> Result<PullRequestTimeline, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let out = run_gh(&repo_path, &graphql_args(&slug, number, timeline_query()))?;
         parse_timeline(&out.stdout, &out.stderr)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Checks a comment is something GitHub takes: not blank, and no longer than its limit.
@@ -393,20 +387,15 @@ fn comment_args(slug: &RepoSlug, number: u32, body: &str) -> Vec<String> {
 /// Adds a conversation comment to a pull request.
 #[tauri::command]
 pub async fn comment_on_github_pr(repo_path: String, repo: Option<String>, number: u32, body: String) -> Result<(), String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
     comment_body(&body)?;
-    tokio::task::spawn_blocking(move || gh_api(&repo_path, &comment_args(&slug, number, &body), "Comment").map(|_| ()))
+    pr_task(repo, number, move |slug, number| gh_api(&repo_path, &comment_args(&slug, number, &body), "Comment").map(|_| ()))
         .await
-        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Closes a pull request without merging it.
 #[tauri::command]
 pub async fn close_github_pr(repo_path: String, repo: Option<String>, number: u32) -> Result<(), String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let args: Vec<String> = vec![
             "api".into(),
             "--method".into(),
@@ -418,7 +407,6 @@ pub async fn close_github_pr(repo_path: String, repo: Option<String>, number: u3
         gh_api(&repo_path, &args, "Close").map(|_| ())
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -463,14 +451,11 @@ fn parse_files(stdout: &[u8], stderr: &str) -> Result<Vec<PullRequestFile>, Stri
 /// The first page of files a pull request changes, for the Files cell.
 #[tauri::command]
 pub async fn get_github_pr_files(repo_path: String, repo: Option<String>, number: u32) -> Result<Vec<PullRequestFile>, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let out = run_gh(&repo_path, &["api".into(), format!("{}/pulls/{number}/files?per_page={FILES_READ}", slug.path())])?;
         parse_files(&out.stdout, &out.stderr)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// One commit on the pull request.
@@ -504,14 +489,11 @@ fn parse_commits(stdout: &[u8], stderr: &str) -> Result<Vec<PullRequestCommit>, 
 /// The first page of a pull request's commits, oldest first, for the Commits cell.
 #[tauri::command]
 pub async fn get_github_pr_commits(repo_path: String, repo: Option<String>, number: u32) -> Result<Vec<PullRequestCommit>, String> {
-    let slug = repo_slug(repo.as_deref())?;
-    let number = number_arg(number)?;
-    tokio::task::spawn_blocking(move || {
+    pr_task(repo, number, move |slug, number| {
         let out = run_gh(&repo_path, &["api".into(), format!("{}/pulls/{number}/commits?per_page={COMMITS_READ}", slug.path())])?;
         parse_commits(&out.stdout, &out.stderr)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[cfg(test)]
