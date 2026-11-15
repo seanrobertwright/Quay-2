@@ -168,6 +168,7 @@ fn build_prs_page_query(states: Option<&str>) -> String {
          pullRequests(first: $first, after: $after{states_arg}, orderBy: {{ field: CREATED_AT, direction: DESC }}) {{ \
          pageInfo {{ endCursor hasNextPage }} \
          nodes {{ number title state isDraft headRefName baseRefName url mergeable {AUTHOR_FIELDS} {LABEL_FIELDS} \
+         repository {{ nameWithOwner }} closingIssuesReferences(first: 20) {{ nodes {{ number repository {{ nameWithOwner }} }} }} \
          commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ state }} }} }} }} }} }} }} }}"
     )
 }
@@ -266,8 +267,20 @@ fn parse_prs_page(json: &serde_json::Value) -> Result<GithubPage<GithubPullReque
     parse_page(json, "pullRequests", |node| {
         flatten_nodes(node, "labels");
         node["statusCheckRollup"] = node["commits"]["nodes"][0]["commit"]["statusCheckRollup"].take();
+        // `Closes #N` may name a ticket in another repository; the link keeps only its own.
+        let own = node["repository"]["nameWithOwner"].as_str().unwrap_or_default().to_ascii_lowercase();
+        let closing: Vec<serde_json::Value> = node["closingIssuesReferences"]["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|issue| issue["repository"]["nameWithOwner"].as_str().map(str::to_ascii_lowercase).as_deref() == Some(own.as_str()))
+            .filter_map(|issue| issue["number"].as_u64().map(serde_json::Value::from))
+            .collect();
+        node["closingIssues"] = serde_json::Value::Array(closing);
         if let Some(obj) = node.as_object_mut() {
             obj.remove("commits");
+            obj.remove("repository");
+            obj.remove("closingIssuesReferences");
         }
     })
 }
@@ -731,6 +744,31 @@ mod tests {
         assert!(page.items[1].status_check_rollup.is_none());
         assert!(page.items[1].is_draft);
         assert_eq!(page.items[1].mergeable.as_deref(), Some("CONFLICTING"));
+    }
+
+    #[test]
+    fn parse_prs_page_lists_the_tickets_each_pull_request_closes_in_its_own_repository() {
+        let json = serde_json::json!({
+            "data": { "repository": { "pullRequests": {
+                "pageInfo": { "endCursor": null, "hasNextPage": false },
+                "nodes": [{
+                    "number": 659, "title": "Terminal link", "state": "OPEN",
+                    "isDraft": false, "headRefName": "ticket-637", "baseRefName": "master",
+                    "url": "", "mergeable": "MERGEABLE", "author": { "login": "sean" },
+                    "labels": { "nodes": [] },
+                    "repository": { "nameWithOwner": "o/r" },
+                    "closingIssuesReferences": { "nodes": [
+                        { "number": 637, "repository": { "nameWithOwner": "o/r" } },
+                        { "number": 5, "repository": { "nameWithOwner": "other/repo" } },
+                        { "number": 640, "repository": { "nameWithOwner": "O/R" } }
+                    ]},
+                    "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] }
+                }]
+            }}}
+        });
+        let page = parse_prs_page(&json).unwrap();
+        assert_eq!(page.items[0].closing_issues, vec![637, 640]);
+        assert!(build_prs_page_query(None).contains("closingIssuesReferences(first: 20)"));
     }
 
     #[test]
