@@ -80,7 +80,7 @@ flowchart LR
 
 ### 🏭 Machina: Quay's Local Factory
 - **Machina is Quay's local factory.** It runs inside Quay on this machine, with no host, no sign-in and no browser, and every decision is made in Quay. The Factory Station's title reads **Machina: local**. It is not Praxis: a Machina work order never becomes a Praxis run (see ADR 0006 in `.scratch/machina-praxis/adr/`).
-- Opens with `Ctrl+Shift+B F`, the stage's **Factory** button or **Machina Factory Station...** in the command palette.
+- Opens with `Ctrl+Shift+B F` or **Machina Factory Station...** in the command palette.
 - Each work order gets its own git worktree, is gated by the project's own checks in `.machina/factory.json` with hidden holdbacks, and is squash-merged into its base branch only when you **Accept** it. Holds stop a work order until you resolve them.
 - State is kept in `%LOCALAPPDATA%\Quay2\machina\state.json`.
 
