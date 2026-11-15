@@ -24,8 +24,9 @@ use slices::git::{
     GraphSessions,
 };
 use slices::github::{
-    check_gh_cli_installed, count_open_github_prs, delete_github_branch, get_github_issue,
-    get_github_pr_readiness, get_github_repo_info, list_github_issues, list_github_prs,
+    check_gh_cli_installed, close_github_pr, comment_on_github_pr, count_open_github_prs, delete_github_branch,
+    get_github_check_log, get_github_issue, get_github_pr_checks, get_github_pr_commits, get_github_pr_files,
+    get_github_pr_readiness, get_github_pr_timeline, get_github_repo_info, list_github_issues, list_github_prs,
     merge_github_pr, reopen_github_pr, restore_github_branch,
 };
 use slices::logging::open_logs_folder;
@@ -292,6 +293,13 @@ pub fn run() {
             delete_github_branch,
             restore_github_branch,
             reopen_github_pr,
+            get_github_pr_checks,
+            get_github_check_log,
+            get_github_pr_timeline,
+            comment_on_github_pr,
+            close_github_pr,
+            get_github_pr_files,
+            get_github_pr_commits,
             run_pre_pr_audit,
             list_claude_sessions,
             get_claude_stats,

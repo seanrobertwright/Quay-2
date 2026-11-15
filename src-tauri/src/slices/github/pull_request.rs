@@ -64,41 +64,64 @@ __typename ... on CheckRun {{ status conclusion }} ... on StatusContext {{ state
     )
 }
 
-/// Counts check runs and status contexts by outcome, as GitHub's pull request page groups them.
+/// How one check run or status context turned out, as GitHub's pull request page groups them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckOutcome {
+    /// Failed, timed out, cancelled, or waiting on an action.
+    Failing,
+    /// Queued or running.
+    Pending,
+    /// Skipped, neutral or stale.
+    Skipped,
+    Passing,
+}
+
+/// The outcome of one `statusCheckRollup` context: a `CheckRun` or a `StatusContext`.
+pub(super) fn check_outcome(node: &serde_json::Value) -> CheckOutcome {
+    if node["__typename"] == "StatusContext" {
+        match node["state"].as_str().unwrap_or_default() {
+            "SUCCESS" => CheckOutcome::Passing,
+            "FAILURE" | "ERROR" => CheckOutcome::Failing,
+            _ => CheckOutcome::Pending,
+        }
+    } else if node["status"].as_str() != Some("COMPLETED") {
+        CheckOutcome::Pending
+    } else {
+        match node["conclusion"].as_str().unwrap_or_default() {
+            "SUCCESS" => CheckOutcome::Passing,
+            "SKIPPED" | "NEUTRAL" | "STALE" => CheckOutcome::Skipped,
+            _ => CheckOutcome::Failing,
+        }
+    }
+}
+
+/// Counts check runs and status contexts by outcome.
 fn count_checks(nodes: &[serde_json::Value]) -> PullRequestCheckCounts {
     let mut counts = PullRequestCheckCounts::default();
     for node in nodes {
-        let bucket = if node["__typename"] == "StatusContext" {
-            match node["state"].as_str().unwrap_or_default() {
-                "SUCCESS" => &mut counts.passing,
-                "FAILURE" | "ERROR" => &mut counts.failing,
-                _ => &mut counts.pending,
-            }
-        } else if node["status"].as_str() != Some("COMPLETED") {
-            &mut counts.pending
-        } else {
-            match node["conclusion"].as_str().unwrap_or_default() {
-                "SUCCESS" => &mut counts.passing,
-                "SKIPPED" | "NEUTRAL" | "STALE" => &mut counts.skipped,
-                _ => &mut counts.failing,
-            }
+        let bucket = match check_outcome(node) {
+            CheckOutcome::Failing => &mut counts.failing,
+            CheckOutcome::Pending => &mut counts.pending,
+            CheckOutcome::Skipped => &mut counts.skipped,
+            CheckOutcome::Passing => &mut counts.passing,
         };
         *bucket += 1;
     }
     counts
 }
 
-fn count(value: &serde_json::Value) -> u32 {
+pub(super) fn count(value: &serde_json::Value) -> u32 {
     value.as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0)
 }
 
-fn text(value: &serde_json::Value) -> String {
+pub(super) fn text(value: &serde_json::Value) -> String {
     value.as_str().unwrap_or_default().to_string()
 }
 
 /// The error GitHub gave in `stdout` (GraphQL `errors`, else a REST `message`), else `stderr`,
 /// else `fallback`.
-fn api_error(stdout: &[u8], stderr: &str, fallback: &str) -> String {
+pub(super) fn api_error(stdout: &[u8], stderr: &str, fallback: &str) -> String {
     let json = serde_json::from_slice::<serde_json::Value>(stdout).unwrap_or(serde_json::Value::Null);
     let messages: Vec<&str> = json["errors"]
         .as_array()
@@ -166,7 +189,7 @@ pub(crate) enum RepoSlug {
 
 impl RepoSlug {
     /// The REST path of the repository.
-    fn path(&self) -> String {
+    pub(super) fn path(&self) -> String {
         match self {
             RepoSlug::Folder => "repos/{owner}/{repo}".to_string(),
             RepoSlug::Named(owner, name) => format!("repos/{owner}/{name}"),
@@ -176,7 +199,7 @@ impl RepoSlug {
     /// The `gh api graphql` fields that set `$owner` and `$name`. A named repository goes as raw
     /// strings (`-f`); the working folder's goes as `-F`, the only form in which `gh` fills its
     /// placeholders.
-    fn graphql_fields(&self) -> [String; 4] {
+    pub(super) fn graphql_fields(&self) -> [String; 4] {
         match self {
             RepoSlug::Folder => ["-F".into(), "owner={owner}".into(), "-F".into(), "name={repo}".into()],
             RepoSlug::Named(owner, name) => ["-f".into(), format!("owner={owner}"), "-f".into(), format!("name={name}")],
@@ -185,7 +208,7 @@ impl RepoSlug {
 }
 
 /// Parses a pull request slot's repository: `owner/name`, or none for the working folder's.
-fn repo_slug(repo: Option<&str>) -> Result<RepoSlug, String> {
+pub(super) fn repo_slug(repo: Option<&str>) -> Result<RepoSlug, String> {
     let Some(repo) = repo else { return Ok(RepoSlug::Folder) };
     let part_ok = |p: &str| {
         !p.is_empty() && p != "." && p != ".." && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
@@ -333,7 +356,7 @@ fn wait_for_merge(
 
 /// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns what it printed, whether or
 /// not it succeeded.
-fn run_gh(repo_path: &str, args: &[String]) -> Result<super::commands::GhOutput, String> {
+pub(super) fn run_gh(repo_path: &str, args: &[String]) -> Result<super::commands::GhOutput, String> {
     let mut cmd = super::commands::create_gh_command(repo_path);
     cmd.args(args);
     super::commands::output_within(&mut cmd, GH_TIMEOUT)
@@ -341,7 +364,7 @@ fn run_gh(repo_path: &str, args: &[String]) -> Result<super::commands::GhOutput,
 
 /// Runs `gh` with `args` in `repo_path` under `GH_TIMEOUT` and returns its stdout, or GitHub's
 /// error when it fails.
-fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec<u8>, String> {
+pub(super) fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec<u8>, String> {
     let out = run_gh(repo_path, args)?;
     if out.success {
         Ok(out.stdout)
@@ -350,7 +373,7 @@ fn gh_api(repo_path: &str, args: &[String], what: &str) -> Result<Vec<u8>, Strin
     }
 }
 
-fn number_arg(number: u32) -> Result<u32, String> {
+pub(super) fn number_arg(number: u32) -> Result<u32, String> {
     if number == 0 {
         Err("Not a pull request number: 0".to_string())
     } else {
