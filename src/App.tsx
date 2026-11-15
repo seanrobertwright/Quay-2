@@ -17,7 +17,7 @@ import { Companion, COMPANION_VIEWS, type CompanionShowRequest } from "./slices/
 import type { TicketActions, TicketToStart } from "./slices/companion/TicketView";
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
-import { diffLensFor } from "./slices/companion/diffLensTarget";
+import { diffLensFor, type DiffLensTarget } from "./slices/companion/diffLensTarget";
 import { terminalRepository } from "./slices/companion/terminalRepository";
 import { ReplyStrip } from "./slices/lens/ReplyStrip";
 import { latestPermission } from "./slices/attention/attentionQueue";
@@ -46,7 +46,8 @@ import { ArchonGraphModal } from "./slices/archon/ArchonGraphModal";
 import { ArchonWorkflow } from "./slices/archon/types";
 import { FactoryStationModal } from "./slices/machina/FactoryStationModal";
 import { BuilderProject, PraxisBuilderModal, type PraxisBuilderHandle } from "./slices/praxis-builder/PraxisBuilderModal";
-import { ToposOverlay, type ToposTarget } from "./slices/git/topos/ToposOverlay";
+import { Topos, type ToposTarget } from "./slices/git/topos/Topos";
+import { ToposLayer, ToposLens, useToposDock } from "./slices/companion/ToposDock";
 import type { ToposRequestKind } from "./slices/git/topos/toposPalette";
 import { commandLine, shellFor, typeCommand } from "./slices/terminal/typedCommand";
 import { NEW_AGENT_RUN_KIND } from "./slices/git/topos/handOff";
@@ -137,8 +138,6 @@ export function App() {
     setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
-    isToposOpen,
-    setIsToposOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,
@@ -154,6 +153,7 @@ export function App() {
     openInVsCode,
     diffLensOpener,
     sourceControlOpener,
+    toposOpener,
     openRepoDiffs,
     openPrePrAudit,
   } = useWorkspace();
@@ -249,22 +249,16 @@ export function App() {
     }
     return null;
   }, [projects, projectWorktrees, activeProject]);
-  // Topos targets the same folder, and draws the graph of its root repo for each worktree.
-  const toposTarget = useMemo<ToposTarget | null>(
-    () => (builderProject ? { ...builderProject, repoPath: activeRootRepo } : null),
-    [builderProject, activeRootRepo]
-  );
   const closePraxisBuilder = useCallback(() => setIsPraxisBuilderOpen(false), [setIsPraxisBuilderOpen]);
-  const closeTopos = useCallback(() => setIsToposOpen(false), [setIsToposOpen]);
-  // A Topos palette entry (#393) opens Topos on its dialog; the count makes a repeat run again.
-  const [toposRequest, setToposRequest] = useState<{ kind: ToposRequestKind; seq: number } | null>(null);
-  const requestTopos = useCallback(
-    (kind: ToposRequestKind) => {
-      setToposRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
-      setIsToposOpen(true);
-    },
-    [setIsToposOpen]
-  );
+  // The diff lens and the Topos lens open over the stage one at a time: opening one closes the other.
+  const companionLens = useDiffLens(activeTerminalId);
+  // Each open of Topos by a chord, the palette or its Wide toggle moves focus into it.
+  const [toposFocus, setToposFocus] = useState(0);
+  const toposDock = useToposDock(activeTerminalId, () => {
+    companionLens.dismiss();
+    setToposFocus((n) => n + 1);
+  });
+  const dismissTopos = toposDock.dismiss;
   // "Show that worktree" (#393) selects the Projects panel entry for a worktree git names, however its
   // path is spelled, and reports false when the Projects panel lists no such worktree.
   const showToposWorktree = useCallback(
@@ -288,9 +282,9 @@ export function App() {
   const openToposTerminal = useCallback(
     (cwd: string) => {
       void spawnTerminal({ project_path: cwd, run_kind: "powershell", name: "conflict" });
-      setIsToposOpen(false);
+      dismissTopos();
     },
-    [spawnTerminal, setIsToposOpen]
+    [spawnTerminal, dismissTopos]
   );
   // Types `argv` into a new plain shell terminal in `cwd`, never an agent's, so it gets no commit
   // stamping env, then calls `onOpened` so the modal that asked steps aside. False when the shell
@@ -308,8 +302,8 @@ export function App() {
   );
   // Run in terminal (#395): the git command typed in for the operator to finish.
   const runInToposTerminal = useCallback(
-    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "git", () => setIsToposOpen(false)),
-    [runInShellTerminal, setIsToposOpen]
+    (cwd: string, argv: string[]) => runInShellTerminal(cwd, argv, "git", dismissTopos),
+    [runInShellTerminal, dismissTopos]
   );
   // The Praxis host chip's actions (#448): `praxis setup`, `serve` or `login` typed in for the
   // operator to answer. The builder hides so the terminal shows.
@@ -575,8 +569,17 @@ export function App() {
   const companionStore = useMemo(() => companionPrefs(window.localStorage), []);
   const { linking, recordLaunch } = useTerminalLinks(terminals, projects, projectWorktrees);
 
-  const companionLens = useDiffLens(activeTerminalId);
   const diffLens = companionLens.shown;
+  const diffLensControl = useMemo(
+    () => ({
+      ...companionLens,
+      openDiff: (target: DiffLensTarget) => {
+        dismissTopos();
+        companionLens.openDiff(target);
+      },
+    }),
+    [companionLens, dismissTopos]
+  );
   // Chord `d`: the diff lens for the selected terminal's pull request; false leaves it to the
   // workspace to open the Diff Inspector.
   diffLensOpener.current = () => {
@@ -588,7 +591,7 @@ export function App() {
         linking.linkOf(selectedTerminal)
       );
     if (!target) return false;
-    companionLens.openDiff(target);
+    diffLensControl.openDiff(target);
     return true;
   };
 
@@ -607,6 +610,49 @@ export function App() {
       view: slot === "ticket" ? "ticket" : "pull-request",
       seq: (prev?.seq ?? 0) + 1,
     }));
+  };
+
+  // The reply strip at the foot of every lens: the selected terminal's last question.
+  const replyStrip = selectedTerminal && (
+    <ReplyStrip
+      terminalName={selectedTerminal.name}
+      permission={latestPermission(waitingItems, selectedTerminal.id)}
+      onAnswer={attentionQueue.answerPermission}
+    />
+  );
+
+  // Topos works on the selected terminal's folder, and draws the graph of its repository's root.
+  const selectedRepository = useMemo(
+    () => (selectedTerminal ? terminalRepository(selectedTerminal, projects, projectWorktrees) : null),
+    [selectedTerminal, projects, projectWorktrees]
+  );
+  const toposTarget = useMemo<ToposTarget | null>(
+    () =>
+      selectedTerminal && selectedRepository
+        ? {
+            path: selectedTerminal.project_path,
+            name: selectedRepository.worktree
+              ? `${selectedRepository.name} · ${selectedRepository.branch || "worktree"}`
+              : selectedRepository.name,
+            repoPath: selectedRepository.path,
+          }
+        : null,
+    [selectedTerminal, selectedRepository]
+  );
+  // Chord `c`, the palette and the panels' Topos buttons show the Topos view in the companion for
+  // the selected terminal; with none selected there is no repository to show.
+  const openToposView = () => {
+    if (!selectedTerminal) return;
+    const terminalId = selectedTerminal.id;
+    setCompanionRequest((prev) => ({ terminalId, view: "topos", seq: (prev?.seq ?? 0) + 1 }));
+    setToposFocus((n) => n + 1);
+  };
+  toposOpener.current = openToposView;
+  // A Topos palette entry (#393) opens the Topos view on its dialog; the count makes a repeat run again.
+  const [toposRequest, setToposRequest] = useState<{ kind: ToposRequestKind; seq: number } | null>(null);
+  const requestTopos = (kind: ToposRequestKind) => {
+    setToposRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
+    openToposView();
   };
 
   const launchers = placeholderLaunchers({
@@ -681,7 +727,7 @@ export function App() {
               onOpenSwarm={() => setIsSwarmModalOpen(true)}
               onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
               onRemoveWorktree={handleRemoveWorktree}
-              onOpenTopos={() => setIsToposOpen(true)}
+              onOpenTopos={openToposView}
               onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
               onOpenInVsCode={handleOpenInVsCode}
               onRelaunchTerminal={relaunchTerminal}
@@ -694,7 +740,7 @@ export function App() {
               repoPath={activeRootRepo}
               pickTarget={selectedTerminal?.name ?? null}
               onPick={pickForCompanion}
-              onOpenTopos={() => setIsToposOpen(true)}
+              onOpenTopos={openToposView}
               onOpenDiffs={openRepoDiffs}
               onOpenPrePrAudit={openPrePrAudit}
               onResolveConflicts={handleResolvePrConflicts}
@@ -741,13 +787,15 @@ export function App() {
           key={`${diffLens.repoPath}|${diffLens.repo ?? ""}#${diffLens.number}`}
           target={diffLens}
           onClose={companionLens.dismiss}
-          replyStrip={
-            <ReplyStrip
-              terminalName={selectedTerminal.name}
-              permission={latestPermission(waitingItems, selectedTerminal.id)}
-              onAnswer={attentionQueue.answerPermission}
-            />
-          }
+          replyStrip={replyStrip}
+        />
+      )}
+      {toposDock.wide && selectedTerminal && (
+        <ToposLens
+          dock={toposDock}
+          terminalId={selectedTerminal.id}
+          title={toposTarget ? `Topos · ${toposTarget.name}` : "Topos"}
+          replyStrip={replyStrip}
         />
       )}
       </div>
@@ -759,8 +807,9 @@ export function App() {
         views={COMPANION_VIEWS}
         prefs={companionStore}
         linking={linking}
-        lens={companionLens}
+        lens={diffLensControl}
         ticketActions={ticketActions}
+        topos={toposDock.companion}
         showRequest={companionRequest}
       />
 
@@ -810,7 +859,7 @@ export function App() {
         onOpenArchonGraph={() => setIsArchonGraphOpen(true)}
         onOpenFactoryStation={() => setIsFactoryStationOpen(true)}
         onOpenPraxisBuilder={() => setIsPraxisBuilderOpen(true)}
-        onOpenTopos={() => setIsToposOpen(true)}
+        onOpenTopos={openToposView}
         onOpenLogsFolder={() => {
           invoke("open_logs_folder").catch((err) => alert(`Failed to open the logs folder: ${err}`));
         }}
@@ -997,19 +1046,22 @@ export function App() {
         onRunInTerminal={runInPraxisTerminal}
       />
 
-      {/* Topos git cockpit (Ctrl+Shift+B c): hidden, never unmounted, when closed */}
-      <ToposOverlay
-        isOpen={isToposOpen}
-        project={toposTarget}
-        onClose={closeTopos}
-        onAddProject={() => setIsAddProjectOpen(true)}
-        terminals={terminals}
-        onOpenTerminal={openToposTerminal}
-        onNewAgent={startToposAgent}
-        onShowWorktree={showToposWorktree}
-        onRunInTerminal={runInToposTerminal}
-        request={toposRequest}
-      />
+      {/* Topos git cockpit (Ctrl+Shift+B c), over the companion's Topos view or in the Topos lens:
+          hidden, never unmounted, when neither shows */}
+      <ToposLayer dock={toposDock}>
+        <Topos
+          isOpen={toposDock.placement !== null}
+          wide={toposDock.placement === "lens"}
+          focusKey={toposFocus}
+          project={toposTarget}
+          terminals={terminals}
+          onOpenTerminal={openToposTerminal}
+          onNewAgent={startToposAgent}
+          onShowWorktree={showToposWorktree}
+          onRunInTerminal={runInToposTerminal}
+          request={toposRequest}
+        />
+      </ToposLayer>
 
       {/* Global Live A2A Dispatch HUD & Swarm Broadcast Toasts */}
       <A2AToast

@@ -18,6 +18,7 @@ import { TerminalLinkBar } from "./TerminalLinkBar.tsx";
 import { LinkToPicker } from "./LinkToPicker.tsx";
 import type { LinkChoice } from "./linkChoices.ts";
 import { diffLensFor, type DiffLensTarget } from "./diffLensTarget.ts";
+import { ToposViewSlot, type CompanionTopos } from "./ToposDock.tsx";
 
 /** What the companion reads and changes about terminal links. */
 export interface CompanionLinking {
@@ -51,6 +52,8 @@ export interface CompanionContext {
   lens: CompanionLens | null;
   /** Starts work on a ticket, or null where the companion starts none (as in some tests). */
   ticketActions: TicketActions | null;
+  /** Topos, or null where the companion shows none (as in some tests). */
+  topos: CompanionTopos | null;
   /** Shows `view` for the terminal, as the view switch does. */
   show: (view: CompanionViewId) => void;
 }
@@ -93,7 +96,7 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
   id: "pull-request",
   label: "Pull request",
   available: ({ link }) => !!link?.pull_request,
-  render: ({ terminal, repository, link, lens }) => {
+  render: ({ terminal, repository, link, lens, topos }) => {
     const slot = link?.pull_request;
     if (!slot) return null;
     return (
@@ -103,15 +106,19 @@ export const PULL_REQUEST_VIEW: CompanionView<CompanionContext> = {
         repo={slot.repo}
         number={slot.number}
         lens={
-          lens && {
-            openOn: (file) => {
-              const target = diffLensFor(terminal.id, repository.path, link, file);
-              if (target) lens.openDiff(target);
-            },
-            closeIfOpen: () => {
-              if (lens.shown) lens.close();
-            },
-          }
+          lens || topos
+            ? {
+                openOn: (file) => {
+                  const target = diffLensFor(terminal.id, repository.path, link, file);
+                  if (target) lens?.openDiff(target);
+                },
+                // A click on a readiness cell closes whichever lens is open.
+                closeIfOpen: () => {
+                  if (lens?.shown) lens.close();
+                  if (topos?.wide) topos.closeWide();
+                },
+              }
+            : null
         }
       />
     );
@@ -147,10 +154,22 @@ export const TICKET_VIEW: CompanionView<CompanionContext> = {
 };
 
 /**
- * The views the companion registers, in the order its view switch lists them. Each later view
- * (Activity, Run, Topos, Inspector) is added here.
+ * The Topos view: the commit graph of the selected terminal's repository. Topos itself is drawn
+ * once by the app and laid over this view's slot, so it keeps its state while the view is away.
+ * The companion header's Wide toggle opens it as the Topos lens.
  */
-export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, TICKET_VIEW, REPOSITORY_VIEW];
+export const TOPOS_VIEW: CompanionView<CompanionContext> = {
+  id: "topos",
+  label: "Topos",
+  available: ({ topos }) => topos !== null,
+  render: ({ topos }) => topos && <ToposViewSlot topos={topos} />,
+};
+
+/**
+ * The views the companion registers, in the order its view switch lists them. Each later view
+ * (Activity, Run, Inspector) is added here.
+ */
+export const COMPANION_VIEWS: readonly CompanionView<CompanionContext>[] = [PULL_REQUEST_VIEW, TICKET_VIEW, REPOSITORY_VIEW, TOPOS_VIEW];
 
 /**
  * A request from outside the companion, such as a pick in the Source control panel, to show `view`
@@ -181,6 +200,8 @@ interface CompanionProps {
   lens?: CompanionLens | null;
   /** Starts work on a ticket; without it the Ticket view offers no Implement. */
   ticketActions?: TicketActions | null;
+  /** Topos; without it the companion offers no Topos view. */
+  topos?: CompanionTopos | null;
   /** The latest request to show a view; one for a terminal other than the selected one is ignored. */
   showRequest?: CompanionShowRequest | null;
 }
@@ -195,6 +216,7 @@ export const Companion = ({
   linking = null,
   lens = null,
   ticketActions = null,
+  topos = null,
   showRequest = null,
 }: CompanionProps) => {
   const [width, setWidth] = useState(() => prefs.readWidth());
@@ -211,10 +233,11 @@ export const Companion = ({
             linking,
             lens,
             ticketActions,
+            topos,
             show: (view: CompanionViewId) => setPicked({ terminalId: selectedTerminal.id, view }),
           }
         : null,
-    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions],
+    [selectedTerminal, projects, projectWorktrees, linking, lens, ticketActions, topos],
   );
   const selectedId = context?.terminal.id ?? null;
   // Each request is taken once, when it arrives, as if its view were picked on the switch.
@@ -252,7 +275,10 @@ export const Companion = ({
               shown={shown.id}
               onPick={(view) => setPicked({ terminalId: context.terminal.id, view })}
             />
-            {lens && <DiffLensToggle context={context} lens={lens} />}
+            <div className="ml-auto shrink-0 flex items-center gap-2 pl-2">
+              {lens && <DiffLensToggle context={context} lens={lens} />}
+              {topos && shown.id === TOPOS_VIEW.id && <WideToggle topos={topos} />}
+            </div>
           </div>
           {context.link && (
             <TerminalLinkBar
@@ -301,7 +327,7 @@ const DiffLensToggle = ({ context, lens }: { context: CompanionContext; lens: Co
       aria-pressed={open}
       title={open ? "Close the diff lens" : "Open every diff of this pull request over the terminal"}
       onClick={() => (open ? lens.close() : lens.openDiff(target))}
-      className={`ml-auto shrink-0 h-7 px-2.5 rounded-md border text-xs ${
+      className={`shrink-0 h-7 px-2.5 rounded-md border text-xs ${
         open ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
       }`}
     >
@@ -309,6 +335,24 @@ const DiffLensToggle = ({ context, lens }: { context: CompanionContext; lens: Co
     </button>
   );
 };
+
+/**
+ * The Topos view's Wide toggle in the companion header: it opens Topos as the Topos lens over the
+ * terminal, and closes the lens while it is open.
+ */
+const WideToggle = ({ topos }: { topos: CompanionTopos }) => (
+  <button
+    type="button"
+    aria-pressed={topos.wide}
+    title={topos.wide ? "Close the Topos lens" : "Open Topos wide over the terminal"}
+    onClick={() => (topos.wide ? topos.closeWide() : topos.openWide())}
+    className={`shrink-0 h-7 px-2.5 rounded-md border text-xs ${
+      topos.wide ? "border-[#58a6ff] bg-[#1f6feb26] text-white" : "border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]"
+    }`}
+  >
+    Wide
+  </button>
+);
 
 /**
  * The companion header's view switch: one radio per view the selected terminal has, the shown one

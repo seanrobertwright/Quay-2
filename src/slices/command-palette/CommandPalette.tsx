@@ -500,7 +500,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         id: "action-topos",
         category: "Tools & Actions",
         title: "Topos: Git Cockpit",
-        subtitle: "See the active project's commits, branches and changes",
+        subtitle: "Show the selected terminal's repository in the companion's Topos view",
         icon: <GitBranch className="w-4 h-4 text-[#06B6D4]" />,
         shortcut: "Ctrl+Shift+B c",
         action: () => onOpenTopos(),

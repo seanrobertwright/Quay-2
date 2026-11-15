@@ -73,7 +73,6 @@ export function useWorkspace() {
   const [isArchonGraphOpen, setIsArchonGraphOpen] = useState(false);
   const [isFactoryStationOpen, setIsFactoryStationOpen] = useState(false);
   const [isPraxisBuilderOpen, setIsPraxisBuilderOpen] = useState(false);
-  const [isToposOpen, setIsToposOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [claudeStats, setClaudeStats] = useState<ClaudeTokenStats | null>(null);
 
@@ -1257,6 +1256,9 @@ export function useWorkspace() {
   // Chords `i` and `a` open the Source control panel, a module the app owns. The app sets the opener
   // each render.
   const sourceControlOpener = useRef<(() => void) | null>(null);
+  // Chord `c` opens the Topos view in the companion for the selected terminal, which the app owns.
+  // The app sets the opener each render.
+  const toposOpener = useRef<(() => void) | null>(null);
   // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
   // chords and the app's palette and panel share these.
   const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
@@ -1288,7 +1290,7 @@ export function useWorkspace() {
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
       toggleFactoryStation: () => setIsFactoryStationOpen((prev) => !prev),
       togglePraxisBuilder: () => setIsPraxisBuilderOpen((prev) => !prev),
-      toggleTopos: () => setIsToposOpen((prev) => !prev),
+      openTopos: () => toposOpener.current?.(),
       toggleUpdateModal: () => setIsUpdateModalOpen((prev) => !prev),
       toggleAttentionQueue: () => setIsAttentionQueueOpen((prev) => !prev),
       openA2A: () => setIsA2AOpen(true),
@@ -1440,6 +1442,7 @@ export function useWorkspace() {
     setIsDiffInspectorOpen,
     diffLensOpener,
     sourceControlOpener,
+    toposOpener,
     openRepoDiffs,
     openPrePrAudit,
     projectWorktrees,
@@ -1464,8 +1467,6 @@ export function useWorkspace() {
     setIsFactoryStationOpen,
     isPraxisBuilderOpen,
     setIsPraxisBuilderOpen,
-    isToposOpen,
-    setIsToposOpen,
     isUpdateModalOpen,
     setIsUpdateModalOpen,
     claudeStats,

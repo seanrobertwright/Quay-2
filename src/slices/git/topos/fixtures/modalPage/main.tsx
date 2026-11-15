@@ -1,6 +1,6 @@
 // The page `modalBlocking.test.ts` drives (#421): Topos's real modal scope and `ConfirmDialog`,
 // with stand-ins for the graph and the diff view that count their clicks, inside a positioned
-// panel as in `ToposOverlay`, styled by Quay's own stylesheet.
+// panel as in `Topos`, styled by Quay's own stylesheet.
 
 import { useState } from "react";
 import ReactDOM from "react-dom/client";

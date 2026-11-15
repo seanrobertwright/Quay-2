@@ -80,7 +80,8 @@ export interface CtrlBActions {
   toggleArchonGraph(): void;
   toggleFactoryStation(): void;
   togglePraxisBuilder(): void;
-  toggleTopos(): void;
+  /** The Topos view in the companion, for the selected terminal's repository. */
+  openTopos(): void;
   toggleUpdateModal(): void;
   toggleAttentionQueue(): void;
   openA2A(): void;
@@ -123,7 +124,7 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["r", "toggleArchonGraph"],
   ["f", "toggleFactoryStation"],
   ["p", "togglePraxisBuilder"],
-  ["c", "toggleTopos"],
+  ["c", "openTopos"],
   ["u", "toggleUpdateModal"],
   ["q", "toggleAttentionQueue"],
   ["m", "openA2A"],

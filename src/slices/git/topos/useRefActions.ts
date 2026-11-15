@@ -392,10 +392,10 @@ export function useRefActions({ worktreePath, repoPath, busy, staging, refs, onL
           return deleteTag(action.name);
         case "pushTag":
         case "deleteRemoteBranch":
-          // Network operations, which Topos's toolbar runs; see ToposOverlay.
+          // Network operations, which Topos's toolbar runs; see `Topos`.
           return;
         case "showOnly":
-          // A filter, which Topos's filter bar owns; see ToposOverlay.
+          // A filter, which Topos's filter bar owns; see `Topos`.
           return;
         case "copySha":
           navigator.clipboard.writeText(action.oid).then(
