@@ -10,10 +10,10 @@ import { TerminalStatusList } from "./slices/shell/TerminalStatusList";
 import { statusRows } from "./slices/shell/terminalStatus";
 import { useOpenPrCount } from "./slices/github/useOpenPrCount";
 import { LauncherPanel, ModulePanel } from "./slices/shell/ModulePanel";
-import { placeholderLaunchers } from "./slices/shell/placeholderPanels";
+import { placeholderLaunchers, type PlaceholderModule } from "./slices/shell/placeholderPanels";
 import { MODULE_NAMES, type ModuleId } from "./slices/shell/modules";
 import { Stage } from "./slices/stage/Stage";
-import { Companion, COMPANION_VIEWS } from "./slices/companion/Companion";
+import { Companion, COMPANION_VIEWS, type CompanionShowRequest } from "./slices/companion/Companion";
 import type { TicketActions, TicketToStart } from "./slices/companion/TicketView";
 import { useDiffLens } from "./slices/companion/useDiffLens";
 import { DiffLens } from "./slices/companion/DiffLens";
@@ -34,9 +34,9 @@ import { CommandPalette } from "./slices/command-palette/CommandPalette";
 import { DiffViewerDrawer } from "./slices/bridge/DiffViewerDrawer";
 import { NewWorktreeModal } from "./slices/git/NewWorktreeModal";
 import { RemoveWorktreeDialog, WorktreeRemovalPrompt } from "./slices/git/RemoveWorktreeDialog";
-import { GithubCompanionDrawer } from "./slices/github/GithubCompanionDrawer";
+import { SourceControlPanel } from "./slices/github/SourceControlPanel";
 import { GithubIssue, GithubPullRequest } from "./slices/github/types";
-import { TerminalInfo } from "./slices/terminal/types";
+import type { LinkRef, LinkSlotName, TerminalInfo } from "./slices/terminal/types";
 import { getGlobalTerminalDimensions } from "./slices/terminal/useTerminal";
 import { PrePrAuditModal } from "./slices/audit/PrePrAuditModal";
 import { AuditViolation } from "./slices/audit/types";
@@ -123,8 +123,6 @@ export function App() {
     openNewWorktreeModal,
     createWorktree,
     removeWorktree,
-    isGithubDrawerOpen,
-    setIsGithubDrawerOpen,
     isAuditModalOpen,
     setIsAuditModalOpen,
     isSessionHistoryOpen,
@@ -155,6 +153,9 @@ export function App() {
     toggleTerminalLiveMode,
     openInVsCode,
     diffLensOpener,
+    sourceControlOpener,
+    openRepoDiffs,
+    openPrePrAudit,
   } = useWorkspace();
 
   const { events, activeTools, getTerminalEvents } = useBridgeEvents();
@@ -326,8 +327,8 @@ export function App() {
   const onPraxisUnsavedChange = useCallback((keys: string[]) => setPraxisUnsaved(new Set(keys)), []);
   const praxisBuilder = useRef<PraxisBuilderHandle | null>(null);
 
-  // Where the drawer's start actions work: the active worktree, with Archon told to stay in it, or
-  // the active project's root repository.
+  // Where a start action works unless told otherwise: the active worktree, with Archon told to stay
+  // in it, or the active project's root repository.
   const activePlace: WorkPlace = {
     rootRepo: activeRootRepo,
     targetDir: activeProject !== activeRootRepo ? activeProject : activeRootRepo,
@@ -405,7 +406,6 @@ export function App() {
         command_text: cmd,
       });
 
-      setIsGithubDrawerOpen(false);
     } catch (err) {
       console.error("Failed to run Archon workflow:", err);
       alert(`Failed to run Archon workflow for issue #${issue.number}: ${err}`);
@@ -471,7 +471,6 @@ export function App() {
         command_text: cmd,
       });
 
-      setIsGithubDrawerOpen(false);
     } catch (err) {
       console.error("Failed to run Archon triage workflow:", err);
       alert(`Failed to run Archon triage for issue #${issue.number}: ${err}`);
@@ -496,7 +495,6 @@ export function App() {
         command_text: cmd,
       });
 
-      setIsGithubDrawerOpen(false);
     } catch (err) {
       console.error("Failed to resolve PR conflicts with Archon:", err);
       alert(`Failed to resolve PR conflicts for PR #${pr.number}: ${err}`);
@@ -508,10 +506,9 @@ export function App() {
     openNewWorktreeModal(place.rootRepo, issue.number);
   };
 
-  // The Ticket view's Implement split button starts work through the same handlers as the GitHub
-  // panel, in the repository of the terminal the ticket belongs to rather than the active project.
-  // The handlers change on every render, so the companion gets one stable object that calls the
-  // latest of them.
+  // The Ticket view's Implement split button starts work through the handlers above, in the
+  // repository of the terminal the ticket belongs to rather than the active project. The handlers
+  // change on every render, so the companion gets one stable object that calls the latest of them.
   const ticketHandlers = useRef({ handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue });
   ticketHandlers.current = { handleImplementIssue, handleTriageIssue, handleCreateWorktreeForIssue };
   const ticketActions = useMemo<TicketActions>(() => {
@@ -595,11 +592,24 @@ export function App() {
     return true;
   };
 
+  // Chords `i` and `a`, and `d` with no pull request to show, open the Source control panel.
+  const openSourceControl = () => setOpenModule("source-control");
+  sourceControlOpener.current = openSourceControl;
+
+  // A pick in the Source control panel pins it to the selected terminal and shows it in the companion.
+  const [companionRequest, setCompanionRequest] = useState<CompanionShowRequest | null>(null);
+  const pickForCompanion = (slot: LinkSlotName, ref: LinkRef) => {
+    if (!selectedTerminal) return;
+    const terminalId = selectedTerminal.id;
+    linking.pin(terminalId, slot, ref);
+    setCompanionRequest((prev) => ({
+      terminalId,
+      view: slot === "ticket" ? "ticket" : "pull-request",
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  };
+
   const launchers = placeholderLaunchers({
-    openGithub: () => setIsGithubDrawerOpen(true),
-    openTopos: () => setIsToposOpen(true),
-    openDiffs: () => setIsDiffInspectorOpen(true),
-    openPrePrAudit: () => setIsAuditModalOpen(true),
     openMissionControl: () => setIsA2AOpen(true),
     openSessionHistory: () => setIsSessionHistoryOpen(true),
     openSwarm: () => setIsSwarmModalOpen(true),
@@ -612,7 +622,7 @@ export function App() {
     openTokenSpend: () => setIsTokenSpendOpen(true),
     hasProject: activeProject !== "",
   });
-  const launcherPanel = (module: Exclude<ModuleId, "projects">) => (
+  const launcherPanel = (module: PlaceholderModule) => (
     <LauncherPanel title={MODULE_NAMES[module]} launchers={launchers[module]} />
   );
 
@@ -671,7 +681,6 @@ export function App() {
               onOpenSwarm={() => setIsSwarmModalOpen(true)}
               onOpenNewWorktree={(repoPath) => openNewWorktreeModal(repoPath)}
               onRemoveWorktree={handleRemoveWorktree}
-              onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
               onOpenTopos={() => setIsToposOpen(true)}
               onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
               onOpenInVsCode={handleOpenInVsCode}
@@ -679,7 +688,18 @@ export function App() {
               onToggleTerminalAsk={toggleTerminalLiveMode}
             />
           ),
-          "source-control": launcherPanel("source-control"),
+          "source-control": (
+            <SourceControlPanel
+              isOpen={openModule === "source-control"}
+              repoPath={activeRootRepo}
+              pickTarget={selectedTerminal?.name ?? null}
+              onPick={pickForCompanion}
+              onOpenTopos={() => setIsToposOpen(true)}
+              onOpenDiffs={openRepoDiffs}
+              onOpenPrePrAudit={openPrePrAudit}
+              onResolveConflicts={handleResolvePrConflicts}
+            />
+          ),
           agents: launcherPanel("agents"),
           workflows: launcherPanel("workflows"),
           project: launcherPanel("project"),
@@ -741,6 +761,7 @@ export function App() {
         linking={linking}
         lens={companionLens}
         ticketActions={ticketActions}
+        showRequest={companionRequest}
       />
 
       {/* Global Command Palette (Ctrl+Shift+P anywhere, Ctrl+K outside a terminal) */}
@@ -779,10 +800,10 @@ export function App() {
         savedSwarms={savedSwarms}
         onOpenActionLog={() => setIsActionLogOpen(true)}
         onOpenA2A={() => setIsA2AOpen(true)}
-        onOpenDiffInspector={() => setIsDiffInspectorOpen(true)}
+        onOpenDiffInspector={openRepoDiffs}
         onOpenNewWorktree={() => openNewWorktreeModal(activeRootRepo)}
-        onOpenGithubDrawer={() => setIsGithubDrawerOpen(true)}
-        onOpenPrePrAudit={() => setIsAuditModalOpen(true)}
+        onOpenSourceControl={openSourceControl}
+        onOpenPrePrAudit={openPrePrAudit}
         onOpenSessionHistory={() => setIsSessionHistoryOpen(true)}
         onOpenAttentionQueue={() => setIsAttentionQueueOpen(true)}
         onOpenTokenSpend={() => setIsTokenSpendOpen(true)}
@@ -916,19 +937,6 @@ export function App() {
           // A worktree created from an issue launches its terminal with that ticket as a launch fact
           if (terminal && fromIssue) recordLaunch(terminal, fromIssue);
         }}
-      />
-
-      {/* GitHub Companion Drawer (Ctrl+Shift+B i) */}
-      <GithubCompanionDrawer
-        isOpen={isGithubDrawerOpen}
-        repoPath={activeRootRepo}
-        projectName={activeProjectObj?.name || "Repo"}
-        onClose={() => setIsGithubDrawerOpen(false)}
-        onImplementIssue={handleImplementIssue}
-        onTriageIssue={handleTriageIssue}
-        onCreateWorktreeForIssue={handleCreateWorktreeForIssue}
-        onResolvePrConflicts={handleResolvePrConflicts}
-        onOpenArchonMonitor={() => setIsArchonGraphOpen(true)}
       />
 
       {/* Pre-PR Audit Gate Modal (Ctrl+Shift+B a) */}

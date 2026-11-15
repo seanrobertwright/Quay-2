@@ -74,7 +74,6 @@ function renderRail() {
         onOpenSettings: (project: Project) => void calls.push(`settings ${project.path}`),
         onOpenSwarm: log("swarm"),
         onOpenTopos: log("topos"),
-        onOpenGithubDrawer: log("github"),
         onOpenNewWorktree: log("newWorktree"),
         onRemoveWorktree: log("removeWorktree"),
       })
@@ -115,9 +114,9 @@ function choose(el: HTMLElement, name: string) {
   act(() => item.click());
 }
 
-test("Swarm preset…, Open Topos and GitHub issues & PRs on a project that is not active select it, then open the tool", () => {
+test("Swarm preset… and Open Topos on a project that is not active select it, then open the tool", () => {
   renderRail();
-  for (const [name, tool] of [["Swarm preset…", "swarm"], ["Open Topos", "topos"], ["GitHub issues & PRs", "github"]]) {
+  for (const [name, tool] of [["Swarm preset…", "swarm"], ["Open Topos", "topos"]]) {
     calls = [];
     choose(row("beta"), name);
     assert.deepEqual(calls, [`select ${BETA.path}`, tool], name);

@@ -68,11 +68,13 @@ export interface CtrlBActions {
   splitVertical(): void;
   splitGrid(): void;
   openSwarmModal(): void;
-  /** The diff lens for the selected terminal's pull request, else the Diff Inspector. */
+  /** The diff lens for the selected terminal's pull request, else the repo-wide Diffs in Source control. */
   openDiffs(): void;
   openNewWorktreeModal(): void;
-  toggleGithubDrawer(): void;
-  openAuditModal(): void;
+  /** The Source control panel. */
+  openSourceControl(): void;
+  /** The Pre-PR Audit, from the Source control panel. */
+  openPrePrAudit(): void;
   toggleSessionHistory(): void;
   toggleTokenSpend(): void;
   toggleArchonGraph(): void;
@@ -113,8 +115,8 @@ const CHORD_ACTIONS = new Map<string, Exclude<keyof CtrlBActions, "selectTermina
   ["s", "openSwarmModal"],
   ["d", "openDiffs"],
   ["w", "openNewWorktreeModal"],
-  ["i", "toggleGithubDrawer"],
-  ["a", "openAuditModal"],
+  ["i", "openSourceControl"],
+  ["a", "openPrePrAudit"],
   ["h", "toggleSessionHistory"],
   ["t", "toggleTokenSpend"],
   ["$", "toggleTokenSpend"],

@@ -2,17 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   appendPage,
+  canLoadMore,
   emptyPagedList,
   GITHUB_PAGE_SIZE,
   type GithubPage,
   type PagedList,
-} from "./paging";
+} from "./paging.ts";
 
 export interface PagedGithubList<T> {
   list: PagedList<T>;
   /** Restarts from page one. Rejects when the fetch fails, so callers can show the error. */
   loadFirstPage: () => Promise<void>;
-  /** Fetches the next page; does nothing while a fetch is running or when all are loaded. */
+  /** Fetches the next page; does nothing while a fetch is running, when all are loaded, or at the cap. */
   loadMore: () => Promise<void>;
   isLoadingMore: boolean;
   loadMoreError: string | null;
@@ -21,12 +22,14 @@ export interface PagedGithubList<T> {
 /**
  * Cursor-paged issues or pull requests for one repository and state filter. A new
  * first page (refresh, filter change) supersedes any page still in flight: its
- * response is dropped instead of being appended to the new list.
+ * response is dropped instead of being appended to the new list. Paging stops once the list holds
+ * `cap` items.
  */
 export function usePagedGithubList<T extends { number: number }>(
   command: "list_github_issues" | "list_github_prs",
   repoPath: string,
   state: string,
+  cap: number = Infinity,
 ): PagedGithubList<T> {
   const [list, setList] = useState<PagedList<T>>(emptyPagedList);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -68,7 +71,7 @@ export function usePagedGithubList<T extends { number: number }>(
 
   const loadMore = useCallback(async () => {
     const current = listRef.current;
-    if (fetchingRef.current || !current.hasNextPage || loadedKeyRef.current !== key) return;
+    if (fetchingRef.current || !canLoadMore(current, cap) || loadedKeyRef.current !== key) return;
     const run = runRef.current;
     fetchingRef.current = true;
     setIsLoadingMore(true);
@@ -87,7 +90,7 @@ export function usePagedGithubList<T extends { number: number }>(
         setIsLoadingMore(false);
       }
     }
-  }, [fetchPage, key]);
+  }, [fetchPage, key, cap]);
 
   return { list, loadFirstPage, loadMore, isLoadingMore, loadMoreError };
 }

@@ -30,11 +30,11 @@ Common questions, troubleshooting steps, and operational guidance for **Quay 2**
 
 ---
 
-## 3. GitHub Companion Drawer
+## 3. Source Control Panel
 
 ### Issue: GitHub Issues Show Error "Failed to execute gh issue list"
 **Solution**:
-- The GitHub Companion requires the official GitHub CLI (`gh`).
+- The Source control panel and the companion require the official GitHub CLI (`gh`).
 - Install `gh` via `winget install GitHub.cli`.
 - In a terminal, run `gh auth login` to authenticate with your GitHub account.
 - Run `gh auth status` to confirm your session is valid.

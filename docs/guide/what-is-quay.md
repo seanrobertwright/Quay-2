@@ -47,7 +47,7 @@ flowchart TD
         Stage["Tiling Stage (Splits, 2x2 Grid, Zoom)"]
         ArchonModal["Archon SDD Graph & Logs"]
         MachinaModal["Machina Cockpit"]
-        GithubDrawer["GitHub Companion Drawer"]
+        SourceControl["Source Control Panel and Companion"]
     end
 
     PTY <--> Claude

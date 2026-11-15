@@ -66,7 +66,6 @@ export function useWorkspace() {
     projectName: string;
     suggestedIssueNumber?: number;
   } | null>(null);
-  const [isGithubDrawerOpen, setIsGithubDrawerOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
   const [isAttentionQueueOpen, setIsAttentionQueueOpen] = useState(false);
@@ -1252,8 +1251,23 @@ export function useWorkspace() {
   const ctrlBPrefix = useCtrlBPrefix();
   // Chord `d` asks the app to open the diff lens, which needs the terminal links the app works out
   // from what this hook returns. The app sets the opener each render; it returns false when the
-  // selected terminal has no pull request, and the chord then opens the Diff Inspector.
+  // selected terminal has no pull request, and the chord then opens the repo-wide Diffs (the Diff
+  // Inspector) from the Source control panel.
   const diffLensOpener = useRef<(() => boolean) | null>(null);
+  // Chords `i` and `a` open the Source control panel, a module the app owns. The app sets the opener
+  // each render.
+  const sourceControlOpener = useRef<(() => void) | null>(null);
+  // The repo-wide Diffs and the Pre-PR Audit open with the Source control panel, their home. The
+  // chords and the app's palette and panel share these.
+  const openSourceControl = useCallback(() => sourceControlOpener.current?.(), []);
+  const openRepoDiffs = useCallback(() => {
+    openSourceControl();
+    setIsDiffInspectorOpen(true);
+  }, [openSourceControl]);
+  const openPrePrAudit = useCallback(() => {
+    openSourceControl();
+    setIsAuditModalOpen(true);
+  }, [openSourceControl]);
 
   useEffect(() => {
     const handleCtrlBChord = createCtrlBKeyHandler(ctrlBPrefix, {
@@ -1263,11 +1277,12 @@ export function useWorkspace() {
       splitGrid,
       openSwarmModal: () => setIsSwarmModalOpen(true),
       openDiffs: () => {
-        if (!diffLensOpener.current?.()) setIsDiffInspectorOpen(true);
+        if (diffLensOpener.current?.()) return;
+        openRepoDiffs();
       },
       openNewWorktreeModal,
-      toggleGithubDrawer: () => setIsGithubDrawerOpen((prev) => !prev),
-      openAuditModal: () => setIsAuditModalOpen(true),
+      openSourceControl,
+      openPrePrAudit,
       toggleSessionHistory: () => setIsSessionHistoryOpen((prev) => !prev),
       toggleTokenSpend: () => setIsTokenSpendOpen((prev) => !prev),
       toggleArchonGraph: () => setIsArchonGraphOpen((prev) => !prev),
@@ -1329,6 +1344,9 @@ export function useWorkspace() {
     unsplit,
     selectTerminal,
     openNewWorktreeModal,
+    openSourceControl,
+    openRepoDiffs,
+    openPrePrAudit,
   ]);
 
   // Rename terminal
@@ -1421,6 +1439,9 @@ export function useWorkspace() {
     isDiffInspectorOpen,
     setIsDiffInspectorOpen,
     diffLensOpener,
+    sourceControlOpener,
+    openRepoDiffs,
+    openPrePrAudit,
     projectWorktrees,
     refreshWorktrees,
     isNewWorktreeOpen,
@@ -1429,8 +1450,6 @@ export function useWorkspace() {
     openNewWorktreeModal,
     createWorktree,
     removeWorktree,
-    isGithubDrawerOpen,
-    setIsGithubDrawerOpen,
     isAuditModalOpen,
     setIsAuditModalOpen,
     isSessionHistoryOpen,

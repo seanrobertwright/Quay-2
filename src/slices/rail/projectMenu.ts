@@ -10,7 +10,6 @@ export type ProjectMenuAction =
   | "newWorktree"
   | "swarm"
   | "topos"
-  | "github"
   | "settings"
   | "copyPath"
   | "openFolder"
@@ -32,7 +31,6 @@ export function projectMenu({ collapsed }: ProjectMenuState): ProjectMenuEntry[]
     { action: "newWorktree", name: "New worktree…", group: "new", enabled: true, hint: "Ctrl+Shift+B w" },
     { action: "swarm", name: "Swarm preset…", group: "new", enabled: true },
     { action: "topos", name: "Open Topos", group: "tools", enabled: true },
-    { action: "github", name: "GitHub issues & PRs", group: "tools", enabled: true },
     { action: "settings", name: "Workspace settings…", group: "tools", enabled: true },
     { action: "copyPath", name: "Copy path", group: "folder", enabled: true },
     { action: "openFolder", name: "Open folder in Explorer", group: "folder", enabled: true },

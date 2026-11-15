@@ -74,7 +74,7 @@ pnpm --version
 winget install Git.Git
 winget install GitHub.cli
 
-# Authenticate GitHub CLI for the GitHub Companion Drawer
+# Authenticate GitHub CLI for the Source control panel and the companion
 gh auth login
 ```
 

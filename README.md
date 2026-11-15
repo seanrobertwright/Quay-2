@@ -141,11 +141,11 @@ flowchart LR
 - Worktrees in the Projects panel start collapsed by default to save precious vertical space.
 - A smart indicator dot marks any collapsed worktree housing the active terminal.
 
-### 🐙 GitHub Companion Drawer with Dependency Triage
-- Keyboard-accessible drawer (`Ctrl+Shift+B I`) for issues and pull requests.
-- Filter by label, author, or state (`open`, `closed`).
-- **Native Blocked Issue Detection**: Automatically queries GitHub GraphQL issue dependencies; blocked issues display a prominent red **`BLOCKED`** tag listing their open blocker issue numbers.
-- 1-click **"Implement with Claude"** and **"Implement with Archon"** prompts automatically pre-filled and launched in dedicated worktrees.
+### 🐙 Source Control Panel with Dependency Triage
+- The **Source control** module's panel (`Ctrl+Shift+B I`) lists the repository's pull requests and issues, and opens Topos, the repo-wide Diffs and the Pre-PR Audit.
+- Filter by state (`Open` or `All`), by label, or by a search over title, number, head branch and label. Lists load as you scroll, up to 500 rows.
+- **Native Blocked Issue Detection**: Automatically queries GitHub GraphQL issue dependencies; a blocked issue shows a red **Blocked by N** tag.
+- Picking a pull request or issue opens it in the companion for the selected terminal, where the Ticket view's **Implement** split button starts an Archon run on it.
 
 ### 💰 Real-Time Token & Spend Telemetry
 - High-speed transcript scanner deduplicating thousands of `.jsonl` message records across `~/.claude/projects/`.
@@ -174,9 +174,9 @@ Quay 2 is designed for muscle memory. Inspired by `tmux`, all primary actions us
 | `Ctrl+Shift+B O` | **Cycle Focus** | Move focus to next pane |
 | `Ctrl+Shift+B X` | **Close / Unsplit** | Return to single active terminal |
 | `Ctrl+Shift+B S` | **Swarm Presets** | Launch multi-agent swarm arrangements |
-| `Ctrl+Shift+B D` | **Diff Inspector** | Open the log of agents' Edit and Write tool calls |
+| `Ctrl+Shift+B D` | **Diffs** | Open the diff lens on the selected terminal's pull request, else the repo-wide Diffs |
 | `Ctrl+Shift+B W` | **New Worktree** | Create an isolated branch worktree |
-| `Ctrl+Shift+B I` | **GitHub Companion** | Open GitHub Issues & PR drawer |
+| `Ctrl+Shift+B I` | **Source control** | Open the Source control panel's pull requests and issues |
 | `Ctrl+Shift+B A` | **Pre-PR Audit** | Run secret scanner & safety gate |
 | `Ctrl+Shift+B H` | **Session History** | Search and auto-resume past Claude sessions |
 | `Ctrl+Shift+B T` | **Token Spend** | View token meter & turn chime settings |

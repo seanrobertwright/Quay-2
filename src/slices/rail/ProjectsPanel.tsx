@@ -46,7 +46,6 @@ interface ProjectsPanelProps {
   onOpenSwarm?: () => void;
   onOpenNewWorktree?: (repoPath: string) => void;
   onRemoveWorktree?: (repoPath: string, wtPath: string) => void;
-  onOpenGithubDrawer?: () => void;
   /** Opens Topos on the active project. */
   onOpenTopos?: () => void;
   onOpenTokenSpend?: () => void;
@@ -88,7 +87,6 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
   onOpenSwarm,
   onOpenNewWorktree,
   onRemoveWorktree,
-  onOpenGithubDrawer,
   onOpenTopos,
   onOpenTokenSpend,
   onOpenInVsCode,
@@ -175,7 +173,6 @@ export const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
             newWorktree: onOpenNewWorktree && (() => onOpenNewWorktree(proj.path)),
             swarm: selectThen(proj.path, onOpenSwarm),
             topos: selectThen(proj.path, onOpenTopos),
-            github: selectThen(proj.path, onOpenGithubDrawer),
             settings: onOpenSettings && (() => onOpenSettings(proj)),
             toggleCollapse: () => toggleCollapse(proj.path),
             remove: () => removeProject(proj),

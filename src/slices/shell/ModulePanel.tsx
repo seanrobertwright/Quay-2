@@ -33,7 +33,7 @@ export const ModulePanel = ({ id, openModule, panels }: ModulePanelProps) => (
   </aside>
 );
 
-/** One command a placeholder panel offers. */
+/** One tool a module panel offers. */
 export interface PanelLauncher {
   id: string;
   label: string;
@@ -44,44 +44,58 @@ export interface PanelLauncher {
   disabled?: boolean;
 }
 
-/**
- * A panel that lists the tools its module holds today, each opening that tool as before. The
- * Source control, Agents, Workflows and Project panels start as these until their own panels land.
- */
-export const LauncherPanel = ({ title, launchers }: { title: string; launchers: PanelLauncher[] }) => {
+/** The rows of module tools: an icon, a name and the tool's shortcut, each opening its tool. */
+export const LauncherList = ({
+  launchers,
+  label,
+  className,
+}: {
+  launchers: PanelLauncher[];
+  /** The list's accessible name, when the panel shows more than this list. */
+  label?: string;
+  className: string;
+}) => {
   const id = useId();
   return (
-    <div className="flex-1 min-h-0 flex flex-col select-none text-[#c9d1d9]">
-      <h2 className="h-12 shrink-0 px-4 flex items-center border-b border-[#30363d] bg-[#161b22] text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">
-        {title}
-      </h2>
-      <ul className="flex-1 overflow-y-auto p-2 space-y-1">
-        {launchers.map((launcher) => {
-          const shortcutId = `${id}-${launcher.id}-shortcut`;
-          return (
-            <li key={launcher.id}>
-              <button
-                type="button"
-                onClick={launcher.onClick}
-                disabled={launcher.disabled}
-                aria-label={launcher.label}
-                aria-describedby={launcher.shortcut ? shortcutId : undefined}
-                className="w-full min-h-10 flex items-center gap-2.5 px-2.5 rounded-md text-left text-xs enabled:hover:bg-[#161b22] enabled:hover:text-white disabled:opacity-50 transition-colors"
-              >
-                <span className="shrink-0 w-4 h-4 grid place-items-center" aria-hidden="true">
-                  {launcher.icon}
+    <ul aria-label={label} className={className}>
+      {launchers.map((launcher) => {
+        const shortcutId = `${id}-${launcher.id}-shortcut`;
+        return (
+          <li key={launcher.id}>
+            <button
+              type="button"
+              onClick={launcher.onClick}
+              disabled={launcher.disabled}
+              aria-label={launcher.label}
+              aria-describedby={launcher.shortcut ? shortcutId : undefined}
+              className="w-full min-h-10 flex items-center gap-2.5 px-2.5 rounded-md text-left text-xs enabled:hover:bg-[#161b22] enabled:hover:text-white disabled:opacity-50 transition-colors"
+            >
+              <span className="shrink-0 w-4 h-4 grid place-items-center" aria-hidden="true">
+                {launcher.icon}
+              </span>
+              <span className="flex-1 truncate">{launcher.label}</span>
+              {launcher.shortcut && (
+                <span id={shortcutId} className="shrink-0 font-mono text-[10px] text-[#8b949e]">
+                  {launcher.shortcut}
                 </span>
-                <span className="flex-1 truncate">{launcher.label}</span>
-                {launcher.shortcut && (
-                  <span id={shortcutId} className="shrink-0 font-mono text-[10px] text-[#8b949e]">
-                    {launcher.shortcut}
-                  </span>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
+
+/**
+ * A panel that lists the tools its module holds today, each opening that tool as before. The
+ * Agents, Workflows and Project panels start as these until their own panels land.
+ */
+export const LauncherPanel = ({ title, launchers }: { title: string; launchers: PanelLauncher[] }) => (
+  <div className="flex-1 min-h-0 flex flex-col select-none text-[#c9d1d9]">
+    <h2 className="h-12 shrink-0 px-4 flex items-center border-b border-[#30363d] bg-[#161b22] text-[11px] font-semibold text-[#8b949e] uppercase tracking-wider">
+      {title}
+    </h2>
+    <LauncherList launchers={launchers} className="flex-1 overflow-y-auto p-2 space-y-1" />
+  </div>
+);
