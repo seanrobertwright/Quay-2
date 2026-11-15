@@ -7,7 +7,7 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { AgentIcon } from "./AgentIcons";
 import { PluginHint } from "./PluginHint";
 import { PaneStatus } from "./PaneStatus.tsx";
-import { SkipBanner } from "../stage/SkipBanner";
+import { SkipBanner } from "./SkipBanner";
 // The extension is needed: on a case-insensitive disk "./TerminalMenu" resolves to terminalMenu.ts.
 import { TerminalBodyMenu, TerminalMenu, type TerminalMenuHandlers } from "./TerminalMenu.tsx";
 import { RenameInput } from "./RenameInput";
